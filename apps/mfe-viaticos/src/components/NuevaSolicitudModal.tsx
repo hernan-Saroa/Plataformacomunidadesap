@@ -24,10 +24,13 @@ import {
 } from 'lucide-react';
 import {
   Comisionado,
+  Dependencia,
   DocumentoFormItem,
   DocumentoSoporte,
+  ESTADOS_CONSOLIDABLES,
   FormNuevaSolicitud,
   Geopolitica,
+  ResultadoConsolidacion,
   SolicitudComisionResponse,
   TicketValidationResult,
   TipoTransporteTiquete,
@@ -38,6 +41,7 @@ import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
 import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
+import ConsolidacionExpediente from './ConsolidacionExpediente';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
@@ -60,12 +64,43 @@ interface Props {
   abierta: boolean;
   onCerrar: () => void;
   onSolicitudCreada: (solicitud: SolicitudComisionResponse) => void;
+  /**
+   * Callback de consolidación (RF-LIQ-004): se dispara cuando un expediente en
+   * estado RADICADA/EXTEMPORANEA/DEVUELTA se consolida con éxito (→ SOLICITADO).
+   * El padre refresca la bandeja y muestra el mensaje de éxito.
+   */
+  onSolicitudConsolidada?: (resultado: ResultadoConsolidacion) => void;
   solicitudAResumir?: SolicitudComisionResponse | null;
+  /** Usuario elevado según el backend de viáticos (mismo flag que usa
+   * `ViaticosModulePremium` desde `obtenerSolicitudes()`). Si se entrega,
+   * es la fuente autoritativa para decidir si se muestra el catálogo
+   * completo de dependencias. */
+  esSuperAdmin?: boolean;
+}
+
+interface UsuarioContexto {
+  esSuperAdmin: boolean;
+  dependencia: {
+    idDependencia?: number;
+    codDependencia?: string;
+    nomDependencia?: string;
+  } | null;
 }
 
 const PASOS = ['Comisionado', 'Objeto y Destino', 'Documentos', 'Confirmación'];
 
-export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, solicitudAResumir }: Props) {
+/**
+ * Detecta por rol si el usuario es SUPER_ADMIN (o variantes normalizadas
+ * como SUPERADMIN / SUPER_ADMINISTRADOR). Es un respaldo cuando el shell
+ * no ha entregado aún el flag `esSuperAdmin` del backend de viáticos.
+ */
+const tieneRolSuperAdmin = (roles: string[] = []): boolean =>
+  roles.some((r) => {
+    const limpio = String(r).replace(/[^a-zA-Z]/g, '').toUpperCase();
+    return limpio.includes('SUPER') && limpio.includes('ADMIN');
+  });
+
+export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, onSolicitudConsolidada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
@@ -82,12 +117,24 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   } | null>(null);
   const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
+  const [dependencias, setDependencias] = useState<Dependencia[]>([]);
+  const [cargandoDependencias, setCargandoDependencias] = useState(false);
   // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
   // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
   const [ciudadesDepto, setCiudadesDepto] = useState('');
   const [cargandoDepartamentos, setCargandoDepartamentos] = useState(false);
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
-  const [usuarioActual, setUsuarioActual] = useState<{ userId: string; username: string } | null>(null);
+  const [usuarioActual, setUsuarioActual] = useState<{
+    userId: string;
+    username: string;
+    roles?: string[];
+    dependencia?: {
+      idDependencia?: number;
+      codDependencia?: string;
+      nomDependencia?: string;
+    } | null;
+  } | null>(null);
+  const [esSuperAdminViaticos, setEsSuperAdminViaticos] = useState(false);
   const [cargandoUsuario, setCargandoUsuario] = useState(false);
   const [parametrizacion, setParametrizacion] = useState<ConfigTipoComisionado | null>(null);
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
@@ -112,8 +159,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   // ========== Estado RF-LIQ-003 / RF-LIQ-004 (tiquetes y presupuesto) ==========
   const [tipoTransporte, setTipoTransporte] = useState<TipoTransporteTiquete>('AEREO');
   const [montoEstimadoTiquete, setMontoEstimadoTiquete] = useState<number>(0);
-  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá');
-  const [dependenciaId, setDependenciaId] = useState<string>('DEP-PLAN-01');
+  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá D.C.');
+  // Catálogo completo de ciudades de geopolítica para el selector de origen.
+  const [todasCiudades, setTodasCiudades] = useState<Geopolitica[]>([]);
+  const [cargandoTodasCiudades, setCargandoTodasCiudades] = useState(false);
+  const [dependenciaId, setDependenciaId] = useState<string>('');
   const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
   const [validandoTiquete, setValidandoTiquete] = useState(false);
   const [numeroActoExcepcion, setNumeroActoExcepcion] = useState('');
@@ -149,15 +199,107 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
-  const cargarUsuarioActual = async () => {
+  const cargarDependencias = async (ctx: UsuarioContexto) => {
+    // Usuario elevado (superadmin según el backend de viáticos): ve el
+    // catálogo completo de dependencias para elegir la solicitante.
+    if (ctx.esSuperAdmin) {
+      setCargandoDependencias(true);
+      try {
+        const data = await viaticosService.obtenerDependencias();
+        setDependencias(data);
+        // Si el valor actual no existe en el catálogo (caso normal al abrir
+        // el modal vacío o al reanudar), seleccionamos la primera activa.
+        if (data.length > 0) {
+          const existe = data.some((d) => d.codDependencia === dependenciaId);
+          if (!existe) {
+            setDependenciaId(data[0].codDependencia);
+          }
+        }
+      } catch (e) {
+        console.error('Error cargando dependencias:', e);
+        setDependencias([]);
+      } finally {
+        setCargandoDependencias(false);
+      }
+      return;
+    }
+
+    // Cualquier otro rol: el campo queda bloqueado a la dependencia asociada
+    // a su persona. Nunca se muestra el catálogo ni se permite cambiarla.
+    setDependencias([]);
+    setCargandoDependencias(false);
+    let codPropio = ctx.dependencia?.codDependencia || '';
+    let nomPropio = ctx.dependencia?.nomDependencia || '';
+    const idPropio = ctx.dependencia?.idDependencia;
+
+    // Si la sesión sólo trajo idDependencia numérica (sin el objeto anidado
+    // con codDependencia), la resolvemos contra el catálogo para poder
+    // mostrarla y enviarla al validar tiquetes.
+    if (!codPropio && idPropio != null) {
+      setCargandoDependencias(true);
+      try {
+        const catalogo = await viaticosService.obtenerDependencias();
+        const match = catalogo.find(
+          (d) => Number(d.idDependencia) === Number(idPropio),
+        );
+        if (match) {
+          codPropio = match.codDependencia;
+          nomPropio = match.nomDependencia;
+        }
+      } catch (e) {
+        console.error('Error resolviendo la dependencia del usuario:', e);
+      } finally {
+        setCargandoDependencias(false);
+      }
+    }
+
+    if (codPropio) {
+      setDependenciaId(codPropio);
+      // Refleja el código/nombre resuelto para el campo bloqueado.
+      setUsuarioActual((prev) =>
+        prev
+          ? {
+              ...prev,
+              dependencia: {
+                ...(prev.dependencia || {}),
+                codDependencia: codPropio,
+                nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
+              },
+            }
+          : prev,
+      );
+    }
+  };
+
+  const cargarUsuarioActual = async (): Promise<UsuarioContexto> => {
     setCargandoUsuario(true);
     try {
       const usuario = await authService.getCurrentUser();
       if (usuario) {
-        setUsuarioActual({ userId: usuario.userId, username: usuario.username });
+        const dependencia = usuario.person?.dependencia
+          ? {
+            idDependencia: usuario.person.dependencia.idDependencia,
+            codDependencia: usuario.person.dependencia.codDependencia,
+            nomDependencia: usuario.person.dependencia.nomDependencia,
+          }
+          : null;
+        // Respaldo por rol (se complementa con el flag del backend de
+        // viáticos en el efecto de apertura del modal).
+        const superAdmin = tieneRolSuperAdmin(usuario.roles);
+        setUsuarioActual({
+          userId: usuario.userId,
+          username: usuario.username,
+          roles: usuario.roles,
+          dependencia,
+        });
+        return { esSuperAdmin: superAdmin, dependencia };
       }
+      setUsuarioActual(null);
+      return { esSuperAdmin: false, dependencia: null };
     } catch (e) {
       console.error('Error cargando usuario actual:', e);
+      setUsuarioActual(null);
+      return { esSuperAdmin: false, dependencia: null };
     } finally {
       setCargandoUsuario(false);
     }
@@ -261,6 +403,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setCiudades([]);
       setCiudadesDepto('');
       setUsuarioActual(null);
+      setEsSuperAdminViaticos(false);
       setCargandoUsuario(false);
       setParametrizacion(null);
       setDocumentosFaltantes([]);
@@ -276,15 +419,31 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setAsignacionesBasicas([]);
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
-      setOrigenCiudad('Bogotá');
-      setDependenciaId('DEP-PLAN-01');
+      setOrigenCiudad('Bogotá D.C.');
+      setTodasCiudades([]);
+      setCargandoTodasCiudades(false);
+      setDependenciaId('');
       setValidacionTiquete(null);
       setValidandoTiquete(false);
       setNumeroActoExcepcion('');
       setSoporteExcepcionPdf(null);
       setErrorExcepcion(null);
       void cargarDepartamentos();
-      void cargarUsuarioActual();
+      // La carga de dependencias depende del rol: primero resolvemos el
+      // usuario y su dependencia asociada. El usuario elevado —superadmin
+      // según el backend de viáticos (el mismo flag que usa
+      // `ViaticosModulePremium` desde `obtenerSolicitudes()`) o por rol
+      // SUPER_ADMIN— ve el catálogo completo; el resto queda bloqueado a la
+      // dependencia de su persona. El contexto resuelto se pasa directo a
+      // `cargarDependencias` para evitar lecturas de estado ajenas a su
+      // render (stale closure) que todavía están en null/false la primera
+      // vez que se abre el modal.
+      void (async () => {
+        const ctx = await cargarUsuarioActual();
+        const superAdmin = ctx.esSuperAdmin || esSuperAdmin === true;
+        setEsSuperAdminViaticos(superAdmin);
+        await cargarDependencias({ ...ctx, esSuperAdmin: superAdmin });
+      })();
       if (solicitudAResumir) {
         void cargarSolicitudAResumir(solicitudAResumir);
       }
@@ -408,7 +567,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     try {
       const resultado = await viaticosService.consultarComisionado(documento);
       if (!resultado) {
-        setErrorConsulta('No se encontró un comisionado con ese documento.');
+        setErrorConsulta(
+          `No se encontró un comisionado con documento ${documento} en ESAP. Verifique el número o contacte al administrador.`,
+        );
         return;
       }
       setComisionado(resultado);
@@ -416,9 +577,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error consultando comisionado:', e);
-      setErrorConsulta('Ocurrió un error al consultar el comisionado.');
+      // Mensaje proveniente del backend (origen único ESAP).
+      setErrorConsulta(
+        e?.message ||
+          'Ocurrió un error al consultar el comisionado. Intente nuevamente.',
+      );
     } finally {
       setConsultando(false);
     }
@@ -501,6 +666,40 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     tipoTransporte,
     montoEstimadoTiquete,
   ]);
+
+  // Carga el catálogo de ciudades de geopolítica para el selector de
+  // "Ciudad de origen" cuando la comisión requiere tiquetes. Por defecto el
+  // origen es la sede (Bogotá D.C.).
+  useEffect(() => {
+    if (!form.requiereTiquetes || todasCiudades.length > 0) return;
+    let activo = true;
+    setCargandoTodasCiudades(true);
+    void viaticosService
+      .obtenerTodasCiudades()
+      .then((lista) => {
+        if (!activo) return;
+        setTodasCiudades(lista || []);
+        const bogota = (lista || []).find((c) =>
+          /^bogota/i.test(String(c.nomDivGeopolitica || '').trim()),
+        );
+        if (bogota?.nomDivGeopolitica) {
+          setOrigenCiudad(bogota.nomDivGeopolitica.trim());
+        }
+      })
+      .catch((e) => {
+        if (activo) {
+          console.error('Error cargando ciudades de origen:', e);
+          setTodasCiudades([]);
+        }
+      })
+      .finally(() => {
+        if (activo) setCargandoTodasCiudades(false);
+      });
+    return () => {
+      activo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.requiereTiquetes, todasCiudades.length]);
 
   useEffect(() => {
     if (!previewDoc) return;
@@ -844,9 +1043,37 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return etiquetaBase;
   };
 
+  // ========================================================================
+  // RF-LIQ-004 — Modo de consolidación del expediente ("Paso 4: Resumen de
+  // Expediente y Envío"). Cuando el modal se abre con una solicitud ya
+  // radicada (RADICADA / EXTEMPORANEA / DEVUELTA), NO se muestra el asistente
+  // de creación sino la vista de consolidación que permite revisar el
+  // expediente completo y enviarlo a revisión del Grupo de Viáticos.
+  // ========================================================================
+  const esModoConsolidacion = Boolean(
+    solicitudAResumir &&
+      (ESTADOS_CONSOLIDABLES as readonly string[]).includes(
+        solicitudAResumir.estadoSolicitud,
+      ),
+  );
+
+  if (esModoConsolidacion && solicitudAResumir) {
+    return (
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
+        <div className="bg-white rounded-2xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
+          <ConsolidacionExpediente
+            solicitud={solicitudAResumir}
+            onConsolidada={(resultado) => onSolicitudConsolidada?.(resultado)}
+            onCerrar={onCerrar}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-full flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+    <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-50 text-[#003DA5] rounded-xl">
@@ -1049,6 +1276,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       <p className="text-[11px] text-slate-400 mt-1">Cargando ciudades...</p>
                     )}
                   </div>
+                  {form.requiereTiquetes && (
+                    <div>
+                      <label className={labelCls} htmlFor="origenCiudad">
+                        {renderLabel('requiereTiquetes', 'Ciudad de origen (sede)')}
+                      </label>
+                      <SearchableSelect
+                        id="origenCiudad"
+                        options={todasCiudades.map((c) => ({
+                          value: c.nomDivGeopolitica,
+                          label: c.nomDivGeopolitica,
+                        }))}
+                        value={origenCiudad}
+                        onChange={(nombre) => setOrigenCiudad(nombre)}
+                        placeholder="Seleccione la ciudad de origen..."
+                        disabled={cargandoTodasCiudades}
+                        loading={cargandoTodasCiudades}
+                        emptyText="No hay ciudades de origen"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Ciudad desde donde inicia el viaje (sede). Por defecto Bogotá D.C.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1129,7 +1379,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {!esCampoOculto('montoViaticos') && (
                       <div>
                         <label className={labelCls} htmlFor="montoViaticos">
@@ -1143,11 +1393,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             inputMode="numeric"
                             required={esCampoObligatorio('montoViaticos')}
                             value={formatearMoneda(form.montoViaticos)}
+                            readOnly
+                            aria-readonly="true"
+                            title="Calculado automáticamente por el Autoliquidador (no editable)"
                             onChange={(e) => actualizar('montoViaticos', Number(soloNumeros(e.target.value)) || 0)}
-                            className={`${inputCls} pl-7 text-right font-bold`}
+                            className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
                           />
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-1">Valor total estimado de viáticos</p>
+                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                          <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
+                        </span>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Calculado automáticamente por el Autoliquidador (no editable).
+                        </p>
                       </div>
                     )}
                     {!esCampoOculto('montoGastosViaje') && (
@@ -1173,7 +1431,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </div>
 
                   {!esCampoOculto('diasComision') && (
-                    <div className="max-w-[200px]">
+                    <div className="w-full sm:max-w-[200px]">
                       <label className={labelCls} htmlFor="diasComision">
                         {renderLabel('diasComision', 'Días de comisión')}
                       </label>
@@ -1248,62 +1506,45 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </p>
 
                   <div className="space-y-2">
-                    {asignacionesBasicas.length === 0 && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Salario básico mensual</label>
-                        <div className="relative max-w-xs">
+                    {/* Input de salario UNIFICADO: siempre se renderiza el mismo
+                        campo (idx 0) para no perder el foco al escribir el primer
+                        dígito. El "doble rol" agrega más campos. */}
+                    {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
+                      <div key={idx} className="w-full sm:max-w-xs">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                          {asignacionesBasicas.length > 1
+                            ? idx === 0
+                              ? 'Salario básico mensual'
+                              : `Salario ${idx + 1} (doble rol)`
+                            : 'Salario básico mensual'}
+                        </label>
+                        <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
                           <input
                             type="text"
                             inputMode="numeric"
                             placeholder="0"
-                            value=""
+                            value={valor ? formatearMoneda(valor) : ''}
                             onChange={(e) => {
                               const val = Number(soloNumeros(e.target.value)) || 0;
-                              setAsignacionesBasicas([val]);
+                              actualizarAsignacionBasica(idx, val);
                             }}
-                            className={`${inputCls} pl-7 text-right font-bold`}
+                            className={`${inputCls} pl-7 pr-8 text-right font-bold`}
                           />
+                          {asignacionesBasicas.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => eliminarAsignacionBasica(idx)}
+                              className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
+                              title="Eliminar salario"
+                              aria-label="Eliminar salario"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                    )}
-
-                    {asignacionesBasicas.length > 0 && (
-                      <div className="space-y-2">
-                        {asignacionesBasicas.map((valor, idx) => (
-                          <div key={idx} className="max-w-xs">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                              {idx === 0 ? 'Salario básico mensual' : `Salario ${idx + 1} (doble rol)`}
-                            </label>
-                            <div className="relative">
-                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="0"
-                                value={valor ? formatearMoneda(valor) : ''}
-                                onChange={(e) => {
-                                  const val = Number(soloNumeros(e.target.value)) || 0;
-                                  actualizarAsignacionBasica(idx, val);
-                                }}
-                                className={`${inputCls} pl-7 pr-8 text-right font-bold`}
-                              />
-                              {asignacionesBasicas.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => eliminarAsignacionBasica(idx)}
-                                  className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
-                                  title="Eliminar salario"
-                                  aria-label="Eliminar salario"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    ))}
 
                     <div className="flex items-center gap-2">
                       <button
@@ -1364,33 +1605,60 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                          </p>
                        </div>
 
+                       <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mb-3">
+                         <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                         <span className="text-slate-400 font-semibold">Itinerario:</span>
+                         <span className="font-bold text-slate-700">{origenCiudad || '—'}</span>
+                         <span className="text-slate-400">→</span>
+                         <span className="font-bold text-slate-700">{form.destinoCiudad || 'Ciudad de destino'}</span>
+                       </div>
+
                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                         <div>
-                           <label className={labelCls} htmlFor="origenCiudad">
-                             Ciudad de origen
-                           </label>
-                           <input
-                             id="origenCiudad"
-                             type="text"
-                             value={origenCiudad}
-                             onChange={(e) => setOrigenCiudad(e.target.value)}
-                             placeholder="Bogotá"
-                             className={inputCls}
-                           />
-                         </div>
-                         <div>
-                           <label className={labelCls} htmlFor="dependenciaId">
-                             Dependencia (ID)
-                           </label>
-                           <input
-                             id="dependenciaId"
-                             type="text"
-                             value={dependenciaId}
-                             onChange={(e) => setDependenciaId(e.target.value.toUpperCase())}
-                             placeholder="DEP-PLAN-01"
-                             className={inputCls}
-                           />
-                         </div>
+                          <div>
+                            <label className={labelCls} htmlFor="dependenciaId">
+                              Dependencia solicitante
+                            </label>
+                            {esSuperAdminViaticos ? (
+                              <>
+                                <SearchableSelect
+                                  id="dependenciaId"
+                                  options={dependencias.map((dep) => ({
+                                    value: dep.codDependencia,
+                                    label: `${dep.codDependencia} — ${dep.nomDependencia}`,
+                                  }))}
+                                  value={dependenciaId}
+                                  onChange={(valor) => setDependenciaId(valor)}
+                                  placeholder="Seleccione dependencia..."
+                                  disabled={cargandoDependencias}
+                                  loading={cargandoDependencias}
+                                  emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
+                                />
+                                {cargandoDependencias && (
+                                  <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div
+                                  id="dependenciaId"
+                                  className={`${inputCls} bg-slate-50 cursor-not-allowed flex items-center justify-between`}
+                                  aria-readonly="true"
+                                >
+                                  <span className="truncate">
+                                    {dependenciaId
+                                      ? `${dependenciaId}${usuarioActual?.dependencia?.nomDependencia ? ` — ${usuarioActual.dependencia.nomDependencia}` : ''}`
+                                      : 'Sin dependencia asignada a su usuario'}
+                                  </span>
+                                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-2">
+                                    Automática
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  Su dependencia se asigna automáticamente desde su perfil y no puede modificarse.
+                                </p>
+                              </>
+                            )}
+                          </div>
                          <div>
                            <label className={labelCls} htmlFor="tipoTransporte">
                              Tipo de transporte

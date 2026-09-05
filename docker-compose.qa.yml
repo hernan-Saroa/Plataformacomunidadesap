@@ -417,6 +417,8 @@ services:
         condition: service_started
     networks:
       - superapp-net-qa
+    volumes:
+      - ./backend/legal-management-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ NOTIFICATIONS SERVICE ============

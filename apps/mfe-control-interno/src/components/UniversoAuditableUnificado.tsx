@@ -60,7 +60,7 @@ import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext'
 // ════════════════════════════════════════════════════════════════════════════
 
 type TabActiva = 'universo' | 'programa' | 'profesionales';
-type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+type NivelRiesgo = 'Extremo' | 'Alto' | 'Moderado' | 'Bajo' | 'Crítico' | 'Medio';
 type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
 // Re-usar los tipos de ProcesoAuditable y AuditoriaProgramada desde hooks
@@ -185,18 +185,29 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
   const evaluacionesComoFilas = useMemo((): ProcesoAuditable[] => {
     if (!procesos.length && !evaluaciones.length) return [];
 
-    const nivelRiesgoMap: Record<string, NivelRiesgo> = {
-      'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
-    };
-    const mapPonderacion: Record<string, NivelRiesgo> = {
-      'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
-    };
-
     return evaluaciones.map(ev => {
       const p = procesosMap.get(ev.procesoId);
       if (!p) return null;
 
-      const nivelRiesgo = (nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio');
+      // Calcular nivel de riesgo según los riesgos inherentes (Columna 'Riesgo' de la tabla)
+      const e = ev.riesgosExtremos ?? 0;
+      const a = ev.riesgosAltos ?? 0;
+      const m = ev.riesgosModerados ?? 0;
+      const b = ev.riesgosBajos ?? 0;
+      const totalRiesgos = e + a + m + b;
+
+      let nivelRiesgo: NivelRiesgo = 'Bajo';
+      if (totalRiesgos > 0) {
+        if (e >= 1) nivelRiesgo = 'Extremo';
+        else if (a >= 1) nivelRiesgo = 'Alto';
+        else if (m >= 1) nivelRiesgo = 'Moderado';
+        else nivelRiesgo = 'Bajo';
+      } else if (ev.nivelCriticidadDafp) {
+        nivelRiesgo = (ev.nivelCriticidadDafp === 'Crítico' ? 'Extremo' : ev.nivelCriticidadDafp === 'Medio' ? 'Moderado' : ev.nivelCriticidadDafp) as NivelRiesgo;
+      } else if (p.nivelRiesgo) {
+        nivelRiesgo = (p.nivelRiesgo === 'Crítico' ? 'Extremo' : p.nivelRiesgo === 'Medio' ? 'Moderado' : p.nivelRiesgo) as NivelRiesgo;
+      }
+
       const scoreCalculado = ev.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev.scoreRiesgo || 0);
       const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
       
@@ -234,6 +245,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
         horasEstimadas: horasEst,
         frecuenciaSugerida: frecuencia,
         frecuenciaAuditoria: frecuencia as any,
+        tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria,
         _evaluacionRiesgo: {
           ponderacionFinalDafp: ev.ponderacionFinalDafp,
           nivelCriticidadDafp: ev.nivelCriticidadDafp,
@@ -287,17 +299,17 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
   // ✅ Estadísticas calculadas desde evaluaciones
   const estadisticasEvaluaciones = useMemo(() => {
     const total = evaluacionesComoFilas.length;
-    const criticos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Crítico').length;
+    const extremos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Extremo' || e.nivelRiesgo === 'Crítico').length;
     const altos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Alto').length;
-    const medios = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Medio').length;
+    const moderados = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Moderado' || e.nivelRiesgo === 'Medio').length;
     const bajos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Bajo').length;
     return {
       ...estadisticas,
       totalProcesos: total,
       procesosAuditables: evaluacionesComoFilas.filter(e => e.auditable).length,
-      procesosCriticos: criticos,
+      procesosCriticos: extremos,
       procesosAltos: altos,
-      procesosMedios: medios,
+      procesosMedios: moderados,
       procesosBajos: bajos,
     };
   }, [evaluacionesComoFilas, estadisticas]);
@@ -305,7 +317,11 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
   // Filtrar evaluaciones (misma lógica que antes pero sobre evaluaciones)
   const evaluacionesFiltradas = useMemo(() => {
     return evaluacionesComoFilas.filter(fila => {
-      const cumpleFiltroRiesgo = filtroNivelRiesgo === 'TODOS' || fila.nivelRiesgo === filtroNivelRiesgo;
+      const cumpleFiltroRiesgo =
+        filtroNivelRiesgo === 'TODOS' ||
+        fila.nivelRiesgo === filtroNivelRiesgo ||
+        (filtroNivelRiesgo === 'Extremo' && fila.nivelRiesgo === 'Crítico') ||
+        (filtroNivelRiesgo === 'Moderado' && fila.nivelRiesgo === 'Medio');
       const cumpleFiltroTipo = filtroTipoProceso === 'TODOS' || fila.tipo === filtroTipoProceso;
       const cumpleBusqueda = busqueda === '' || 
         fila.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -712,7 +728,6 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
             }
             return exito; // ✅ Retornar resultado para que el formulario sepa si fue exitoso
           }}
-          mode="create"
         />
       )}
       

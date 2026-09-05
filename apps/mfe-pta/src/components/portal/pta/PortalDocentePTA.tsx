@@ -49,6 +49,7 @@ import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
 import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getPtaComponentDisplayStatus, getPtaApprovalDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
@@ -218,16 +219,13 @@ function HorasBadge({ horas, color }: { horas: number; color: string }) {
 }
 
 /** Estado real de aprobación de un componente, desde el DTO enriquecido del backend
- *  (componentes_estado). Devuelve null si no aplica (Borrador o sin datos). */
-function getEstadoComponente(pta: any, key: string): string | null {
-  if (!pta) return null;
-  if (['Aprobado', 'En Firme', 'Finalizado'].includes(pta.estado)) return 'aprobado';
-  if (pta.estado === 'Borrador') return null;
-  const arr = Array.isArray(pta.componentes_estado) ? pta.componentes_estado : [];
-  return arr.find((c: any) => c?.key === key)?.estado || null;
-}
+ *  (componentes_estado), priorizando la aplicabilidad sobre el estado global. */
+const getEstadoComponente = getPtaComponentDisplayStatus;
 
 const ESTADO_COMPONENTE_CFG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  no_aplica: { label: 'No aplica', color: '#64748B', bg: '#F1F5F9', icon: Info },
+  no_iniciado: { label: 'No iniciado', color: '#64748B', bg: '#F1F5F9', icon: Clock },
+  en_revision: { label: 'En revisión', color: '#92400E', bg: '#FEF3C7', icon: Clock },
   aprobado: { label: 'Aprobado', color: '#047857', bg: '#D1FAE5', icon: CheckCircle2 },
   devuelto: { label: 'Devuelto', color: '#B91C1C', bg: '#FEE2E2', icon: RotateCcw },
   pendiente: { label: 'Pendiente', color: '#92400E', bg: '#FEF3C7', icon: Clock },
@@ -335,9 +333,7 @@ const COMPONENT_STEPS = [
   { key: 'complementarias', label: 'Complementarias', icon: Briefcase, color: '#D89E00', compKeys: [...PTA_COMPLEMENTARIAS_COMPONENT_KEYS] },
 ];
 
-function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { estado: string; componentesAprobacion?: any[]; pta?: any }) {
-  const isAprobado = estado === 'Aprobado' || estado === 'En Firme' || estado === 'Finalizado';
-  const isBorrador = estado === 'Borrador';
+export function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { estado: string; componentesAprobacion?: any[]; pta?: any }) {
 
   /**
    * Fuente de verdad: `componentes_estado` del backend (claves colapsadas
@@ -354,25 +350,8 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { est
    * La agregacion granular se conserva como respaldo para payloads sin
    * `componentes_estado`.
    */
-  const getStatusForComponent = (compKeys: string[], collapsedKey: string) => {
-    if (isAprobado) return 'aprobado';
-    if (isBorrador) return 'pendiente';
-
-    const delBackend = Array.isArray(pta?.componentes_estado)
-      ? pta.componentes_estado.find((c: any) => c?.key === collapsedKey)?.estado
-      : undefined;
-    if (delBackend) {
-      if (delBackend === 'aprobado') return 'aprobado';
-      if (delBackend === 'devuelto') return 'devuelto';
-      // 'pendiente', 'en_revision' y 'no_iniciado' se muestran como pendientes.
-      return 'pendiente';
-    }
-
-    const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
-    if (approvals.length === 0) return 'pendiente';
-    if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
-    if (approvals.every(a => a.estado === 'aprobado')) return 'aprobado';
-    return 'pendiente';
+  const getStatusForComponent = (collapsedKey: string) => {
+    return getPtaComponentDisplayStatus({ ...pta, estado }, collapsedKey, componentesAprobacion);
   };
 
   return (
@@ -385,8 +364,7 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { est
       }}>
         {COMPONENT_STEPS.map(step => {
           const Icon = step.icon;
-          const keys = (step as any).compKeys || [step.key];
-          const status = getStatusForComponent(keys, step.key);
+          const status = getStatusForComponent(step.key);
 
           let bg = '#FFFBEB';
           let borderColor = '#FEF3C7';
@@ -395,7 +373,16 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { est
           let iconBg = '#FEF3C7';
           let iconColor = '#D97706';
 
-          if (status === 'aprobado') {
+          if (status === 'no_aplica' || status === 'no_iniciado') {
+            bg = '#F8FAFC';
+            borderColor = '#E2E8F0';
+            statusColor = '#64748B';
+            statusLabel = status === 'no_aplica' ? 'No aplica' : 'No iniciado';
+            iconBg = '#F1F5F9';
+            iconColor = '#94A3B8';
+          } else if (status === 'en_revision') {
+            statusLabel = 'En revisión';
+          } else if (status === 'aprobado') {
             bg = '#F0FDF4';
             borderColor = '#BBF7D0';
             statusColor = '#15803D';
@@ -528,15 +515,15 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { est
 
                     <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 10px 6px' }}>
                       {grupo.items.map(({ key, fila }, itemIndex) => {
-                        const estadoComp = isAprobado ? 'aprobado' : String((fila as any)?.estado || 'pendiente');
-                        const auto = estadoComp === 'aprobado' && (fila as any)?.aprobadorNombre === 'Sistema';
+                        const estadoComp = getPtaApprovalDisplayStatus({ ...pta, estado }, fila);
+                        const auto = estadoComp === 'no_aplica';
                         const visual = auto
                           ? { label: 'No aplica', color: '#64748B', bg: '#F1F5F9', borde: '#E2E8F0', punto: '#CBD5E1' }
                           : estadoComp === 'aprobado'
                             ? { label: 'Aprobado', color: '#15803D', bg: '#F0FDF4', borde: '#BBF7D0', punto: '#22C55E' }
                             : estadoComp === 'devuelto'
                               ? { label: 'Devuelto', color: '#B91C1C', bg: '#FEF2F2', borde: '#FECACA', punto: '#EF4444' }
-                              : { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FDE68A', punto: '#F59E0B' };
+                              : { label: estadoComp === 'no_iniciado' ? 'No iniciado' : estadoComp === 'en_revision' ? 'En revisión' : 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FDE68A', punto: '#F59E0B' };
                         const etiquetaCompleta = labelDeComponente(key);
                         const separador = etiquetaCompleta.indexOf(' — ');
                         const etiqueta = separador >= 0

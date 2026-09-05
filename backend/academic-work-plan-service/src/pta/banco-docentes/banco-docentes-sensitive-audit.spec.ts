@@ -34,4 +34,20 @@ describe('BancoDocentesService - auditoría de accesos sensibles', () => {
     }));
     expect(auditLogRepo.save).toHaveBeenCalledWith([expect.any(Object)]);
   });
+
+  it('mantiene tolerante la auditoria operativa compartida para no romper otros flujos RUND', async () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    service.auditLogRepo = {
+      create: jest.fn((entry) => entry),
+      save: jest.fn().mockRejectedValue(new Error('auditoria no disponible')),
+    };
+    service.logger = { warn: jest.fn() };
+
+    await expect(service.logAudit({
+      docenteId: '11111111-1111-4111-8111-111111111111',
+      accion: 'OPERACION_AJENA_AL_CRUD',
+      actorId: 'ggp-1',
+    })).resolves.toBeUndefined();
+    expect(service.logger.warn).toHaveBeenCalledWith(expect.stringContaining('auditoria no disponible'));
+  });
 });

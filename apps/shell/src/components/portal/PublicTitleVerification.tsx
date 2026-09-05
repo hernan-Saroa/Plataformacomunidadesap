@@ -68,7 +68,9 @@ type CreatedReviewDetails = {
 
 const DOCUMENT_MIN_LENGTH = 5;
 const DOCUMENT_MAX_LENGTH = 20;
+const PERSON_NAME_MIN_LENGTH = 5;
 const PERSON_NAME_MAX_LENGTH = 80;
+const COMPANY_NAME_MIN_LENGTH = 5;
 const COMPANY_NAME_MAX_LENGTH = 120;
 const COMPANY_NIT_MIN_LENGTH = 9;
 const COMPANY_NIT_MAX_LENGTH = 10;
@@ -173,8 +175,8 @@ const getPersonNameValidationError = (value: string, fieldName: string) => {
     return `Por favor, ingrese ${fieldName}`;
   }
 
-  if (normalizedValue.length < 2) {
-    return `${fieldName} debe tener al menos 2 caracteres`;
+  if (normalizedValue.length < PERSON_NAME_MIN_LENGTH) {
+    return `${fieldName} debe tener al menos ${PERSON_NAME_MIN_LENGTH} caracteres`;
   }
 
   if (normalizedValue.length > PERSON_NAME_MAX_LENGTH) {
@@ -684,7 +686,7 @@ export function PublicTitleVerification({
         `^\\d{${COMPANY_NIT_MIN_LENGTH},${COMPANY_NIT_MAX_LENGTH}}$`,
       ).test(normalizedCompanyNit)
     ) {
-      return `El NIT debe tener entre ${COMPANY_NIT_MIN_LENGTH} y ${COMPANY_NIT_MAX_LENGTH} dígitos`;
+      return `El NIT debe tener ${COMPANY_NIT_MIN_LENGTH} dígitos sin DV o ${COMPANY_NIT_MAX_LENGTH} dígitos si incluye el DV; escriba solo números, sin puntos ni guiones`;
     }
 
     if (requesterType === "empresa") {
@@ -692,8 +694,8 @@ export function PublicTitleVerification({
         return "Por favor, ingrese el nombre de la empresa";
       }
 
-      if (normalizedRequesterName.length < 2) {
-        return "El nombre de la empresa debe tener al menos 2 caracteres";
+      if (normalizedRequesterName.length < COMPANY_NAME_MIN_LENGTH) {
+        return `El nombre de la empresa debe tener al menos ${COMPANY_NAME_MIN_LENGTH} caracteres`;
       }
 
       if (normalizedRequesterName.length > COMPANY_NAME_MAX_LENGTH) {
@@ -1038,7 +1040,7 @@ export function PublicTitleVerification({
 
       setGeneratedCertificate(null);
       setReviewRequestCreated(false);
-      setMatchSuggestions(response.suggestions.slice(0, 3));
+      setMatchSuggestions(response.suggestions);
       setSelectedSuggestionId("");
 
       toast.info("Seleccione la persona correcta para continuar", {
@@ -1089,7 +1091,7 @@ export function PublicTitleVerification({
 
       setGeneratedCertificate(null);
       setReviewRequestCreated(false);
-      setMatchSuggestions(response.suggestions.slice(0, 3));
+      setMatchSuggestions(response.suggestions);
       setSelectedSuggestionId("");
 
       toast.info("Seleccione la persona correcta para continuar", {
@@ -2032,13 +2034,36 @@ export function PublicTitleVerification({
                             value={companyNIT}
                             onChange={(e) => handleNITChange(e.target.value)}
                             inputMode="numeric"
+                            minLength={COMPANY_NIT_MIN_LENGTH}
                             maxLength={COMPANY_NIT_MAX_LENGTH}
                             pattern={`[0-9]{${COMPANY_NIT_MIN_LENGTH},${COMPANY_NIT_MAX_LENGTH}}`}
-                            placeholder="Ej: 9001234567"
-                            className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                            placeholder="Ej: 900123456"
+                            aria-describedby="companyNITHelp"
+                            aria-invalid={
+                              companyNIT.length > 0 &&
+                              companyNIT.length < COMPANY_NIT_MIN_LENGTH
+                            }
+                            className={`h-10 text-sm focus:ring-1 focus:ring-blue-500/20 ${
+                              companyNIT.length > 0 &&
+                              companyNIT.length < COMPANY_NIT_MIN_LENGTH
+                                ? "border-red-400 focus:border-red-500"
+                                : "border-gray-300 focus:border-blue-500"
+                            }`}
                           />
-                          <p className="text-xs text-gray-500 mt-1">
-                            Si dispone de este dato, ingrese manualmente el NIT de la empresa.
+                          <p
+                            id="companyNITHelp"
+                            aria-live="polite"
+                            className={`text-xs mt-1 ${
+                              companyNIT.length > 0 &&
+                              companyNIT.length < COMPANY_NIT_MIN_LENGTH
+                                ? "text-red-600"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {companyNIT.length > 0 &&
+                            companyNIT.length < COMPANY_NIT_MIN_LENGTH
+                              ? `Debe ingresar mínimo ${COMPANY_NIT_MIN_LENGTH} dígitos. Faltan ${COMPANY_NIT_MIN_LENGTH - companyNIT.length}.`
+                              : `Opcional. Ingrese ${COMPANY_NIT_MIN_LENGTH} dígitos sin DV o ${COMPANY_NIT_MAX_LENGTH} dígitos si incluye el DV, solo números y sin puntos ni guiones.`}
                           </p>
                         </div>
 
@@ -2060,6 +2085,7 @@ export function PublicTitleVerification({
                                 e.target.value.slice(0, COMPANY_NAME_MAX_LENGTH),
                               )
                             }
+                            minLength={COMPANY_NAME_MIN_LENGTH}
                             maxLength={COMPANY_NAME_MAX_LENGTH}
                             placeholder="Ej: Empresa Ejemplo S.A.S."
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
@@ -2112,6 +2138,7 @@ export function PublicTitleVerification({
                             onChange={(e) =>
                               handleContactPersonChange(e.target.value)
                             }
+                            minLength={PERSON_NAME_MIN_LENGTH}
                             maxLength={PERSON_NAME_MAX_LENGTH}
                             placeholder="Ej: María Fernanda Rodríguez"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
@@ -2150,6 +2177,7 @@ export function PublicTitleVerification({
                         onChange={(e) =>
                           handleGraduateNameChange(e.target.value)
                         }
+                        minLength={PERSON_NAME_MIN_LENGTH}
                         maxLength={PERSON_NAME_MAX_LENGTH}
                         placeholder="Ej: María Fernanda Rodríguez García"
                         className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
@@ -2317,19 +2345,51 @@ export function PublicTitleVerification({
                       <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                         <CheckCircle className="w-4 h-4 text-white" />
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-900 mb-1">
-                          Selección obligatoria de coincidencias
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-900">
+                            Selección obligatoria de coincidencias
+                          </p>
+                          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                            {matchSuggestions.length}{" "}
+                            {matchSuggestions.length === 1
+                              ? "título encontrado"
+                              : "títulos encontrados"}
+                          </span>
+                        </div>
                         <p className="text-xs text-gray-600">
-                          Seleccione la persona correcta entre las coincidencias
-                          encontradas con el documento de identificación antes de
-                          generar el certificado.
+                          Seleccione el título o registro académico correcto entre
+                          las coincidencias encontradas con el documento de
+                          identificación antes de generar el certificado.
                         </p>
+                        {matchSuggestions.length > 3 && (
+                          <p className="mt-1.5 text-[11px] font-medium text-blue-700">
+                            Todos los títulos están disponibles. Desplácese dentro
+                            de la lista para consultar los demás.
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div
+                      className={`space-y-3 ${
+                        matchSuggestions.length > 3
+                          ? "max-h-[17rem] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-slate-50/70 p-2 pr-3 shadow-inner"
+                          : ""
+                      }`}
+                      role={matchSuggestions.length > 3 ? "region" : undefined}
+                      aria-label={
+                        matchSuggestions.length > 3
+                          ? "Lista desplazable de títulos encontrados"
+                          : undefined
+                      }
+                      tabIndex={matchSuggestions.length > 3 ? 0 : undefined}
+                      style={
+                        matchSuggestions.length > 3
+                          ? { scrollbarGutter: "stable" }
+                          : undefined
+                      }
+                    >
                       {matchSuggestions.map((suggestion, index) => {
                         const isSelected =
                           selectedSuggestionId === suggestion.graduateId;

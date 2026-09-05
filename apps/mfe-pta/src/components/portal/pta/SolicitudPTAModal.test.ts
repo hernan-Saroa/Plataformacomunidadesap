@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// Estas pruebas de reglas no necesitan inicializar clientes HTTP ni IndexedDB.
+vi.mock('../../../services/api/ptaApi', () => ({}));
 import {
   admiteSolicitudEdicion,
   CASOS,

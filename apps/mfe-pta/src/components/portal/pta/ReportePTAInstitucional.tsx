@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { IsotipoESAP } from '../../../../../shell/src/components/assets/ESAPLogoSVG';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
@@ -291,6 +292,9 @@ const normalizarCapturaReporte = (documentoClonado: Document) => {
 };
 
 const ESTADO_COMP_CFG: Record<string, { label: string; color: string; bg: string }> = {
+  no_aplica: { label: 'No aplica', color: '#64748B', bg: '#F1F5F9' },
+  no_iniciado: { label: 'No iniciado', color: '#475569', bg: '#E2E8F0' },
+  en_revision: { label: 'En revisión', color: '#92400E', bg: '#FEF3C7' },
   aprobado: { label: 'Aprobado', color: '#047857', bg: '#D1FAE5' },
   devuelto: { label: 'Devuelto', color: '#B91C1C', bg: '#FEE2E2' },
   pendiente: { label: 'Pendiente', color: '#92400E', bg: '#FEF3C7' },
@@ -686,9 +690,7 @@ export function ReportePTAInstitucional({
   const compEstados: any[] = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
   const infoDe = (key: string): any => compEstados.find((c: any) => c?.key === key);
   const estadoDe = (key: string): string => {
-    if (!isParcial) return 'aprobado';
-    if (['Borrador', 'BORRADOR'].includes(String(pta?.estado))) return 'borrador';
-    return infoDe(key)?.estado || 'pendiente';
+    return getPtaComponentDisplayStatus(pta, key);
   };
 
   const componentes = [
@@ -704,7 +706,7 @@ export function ReportePTAInstitucional({
     // legacy/mocks) se conserva el criterio anterior de todo-o-nada por `estado`.
     const aprobadas = estado === 'aprobado'
       ? c.horas
-      : estado === 'borrador'
+      : estado === 'no_iniciado' || estado === 'no_aplica'
         ? 0
         : Math.min(numero(infoDe(c.key)?.horas_aprobadas), c.horas);
     return { ...c, estado, aprobadas, pendientes: Math.max(c.horas - aprobadas, 0), pctAprob: c.horas > 0 ? Math.round((aprobadas / c.horas) * 100) : 0 };
@@ -742,7 +744,7 @@ export function ReportePTAInstitucional({
   // actividades. Mostrar "Sistema" sugería que alguien lo avaló; para el lector
   // ese subcomponente sigue sin aprobación de una persona.
   const nombreAprobadorVisible = (nombre?: string | null): string | null =>
-    !nombre ? null : (nombre === 'Sistema' ? 'Pendiente' : nombre);
+    !nombre || nombre === 'Sistema' ? null : nombre;
   const detalleRevisiones = (componentesAprobacion || [])
     .filter((r: any) => r && (r.componente || r.key))
     .map((r: any) => {

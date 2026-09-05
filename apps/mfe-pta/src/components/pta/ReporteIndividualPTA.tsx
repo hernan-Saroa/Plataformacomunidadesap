@@ -21,6 +21,8 @@ import {
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import { PTA_COLORS } from './shared/ptaColors';
+import { PTA_COMPONENT_PROGRESS_ORDER, labelDeComponente } from './shared/ptaComponentPermissions';
+import { getPtaApprovalDisplayStatus } from './shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
@@ -79,17 +81,8 @@ const normalizarColoresParaCaptura = (documentoClonado: Document, elementoClonad
 };
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
-// 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
-// Las claves coinciden con auth.permission (migración 327) y con el panel de aprobación.
-const COMPONENTE_APROBACION_SLOTS: { key: string; label: string }[] = [
-  { key: 'academica', label: 'Docencia' },
-  { key: 'investigacion', label: 'Investigación' },
-  { key: 'ext_capacitacion', label: 'Ext. Capacitación' },
-  { key: 'ext_procesos', label: 'Ext. Procesos Selección' },
-  { key: 'ext_fortalecimiento', label: 'Ext. Fortalecimiento' },
-  { key: 'ext_gobierno', label: 'Ext. Alto Gobierno' },
-  { key: 'complementarias', label: 'Complementarias' },
-];
+// Comparte los ámbitos vigentes con el panel; incluye Territorial y Gestión Profesoral.
+const COMPONENTE_APROBACION_SLOTS = PTA_COMPONENT_PROGRESS_ORDER.map(key => ({ key, label: labelDeComponente(key) }));
 
 interface ReporteIndividualPTAProps {
   pta: any;
@@ -907,12 +900,13 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           }}>
             {COMPONENTE_APROBACION_SLOTS.map(slot => {
               const apr = componentesAprobacion.find((c: any) => c.componente === slot.key);
-              const estado = apr?.estado || 'pendiente';
+              const estado = getPtaApprovalDisplayStatus(pta, apr || { componente: slot.key });
+              const noAplica = estado === 'no_aplica';
               const aprobado = estado === 'aprobado';
               const devuelto = estado === 'devuelto';
               const badgeBg = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#F3F4F6';
               const badgeColor = aprobado ? '#065F46' : devuelto ? '#991B1B' : '#9CA3AF';
-              const fecha = apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
+              const fecha = !noAplica && apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
               return (
                 <div key={slot.key} style={{
                   padding: 12, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center',
@@ -922,14 +916,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     {slot.label}
                   </div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: aprobado || devuelto ? '#111827' : '#9CA3AF', marginBottom: 5, minHeight: 18 }}>
-                    {aprobado || devuelto ? (apr?.aprobadorNombre || 'Revisor Autorizado') : '—'}
+                    {(aprobado || devuelto) && apr?.aprobadorNombre !== 'Sistema' ? (apr?.aprobadorNombre || '—') : '—'}
                   </div>
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '3px 10px', borderRadius: 6,
                     background: badgeBg, color: badgeColor, fontSize: '0.66rem', fontWeight: 600,
                   }}>
-                    {aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
+                    {noAplica ? 'No aplica' : estado === 'no_iniciado' ? 'No iniciado' : estado === 'en_revision' ? 'En revisión' : aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
                       : devuelto ? (<><Clock style={{ width: 11, height: 11 }} /> Devuelto</>)
                         : (<><Clock style={{ width: 11, height: 11 }} /> Pendiente por firmar</>)}
                   </div>
