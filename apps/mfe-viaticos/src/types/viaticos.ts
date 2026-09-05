@@ -223,6 +223,27 @@ export interface SolicitudListaResponse {
   esCreadoPorMi?: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  motivoDevolucion?: string | null;
+  fechaRevision?: string | null;
+}
+
+export interface BandejaSecretarioResponse {
+  data: SolicitudListaResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface PrioridadUpdateResponse {
+  id: string;
+  prioridad: string;
+  fechaRevision?: string;
+}
+
+export interface ReturnRequestResponse {
+  id: string;
+  estadoSolicitud: string;
+  motivoDevolucion: string;
 }
 
 /** Modelo de presentación para la tabla de solicitudes. */

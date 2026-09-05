@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
-import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion, SolicitudListaResponse } from '../types/viaticos';
+import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import ParametrizacionManager from './ParametrizacionManager';
@@ -34,11 +34,11 @@ import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
 
-type VistaBandeja = 'solicitante' | 'secretario' | 'analistas' | 'configuracion';
+type VistaBandeja = 'solicitante' | 'secretario' | 'analistas';
 
 /**
- * Orden de la vista general de solicitudes por estado (según requerimiento):
- * 1) Radicadas, 2) Extemporáneas, 3) Solicitadas (en revisión), 4) Pendientes
+ * Orden de la vista general de solicitudes por estado (segÃºn requerimiento):
+ * 1) Radicadas, 2) ExtemporÃ¡neas, 3) Solicitadas (en revisiÃ³n), 4) Pendientes
  * (borradores) y el resto al final.
  */
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
@@ -92,7 +92,7 @@ export default function ViaticosModulePremium() {
       const res = await viaticosService.obtenerResumenEstadistico();
       setResumen(res);
     } catch (e) {
-      console.error('Error cargando viáticos:', e);
+      console.error('Error cargando viÃ¡ticos:', e);
     } finally {
       setCargando(false);
     }
@@ -129,7 +129,7 @@ export default function ViaticosModulePremium() {
 
   const grupos: MenuGroup[] = [
     {
-      title: 'GESTIÓN PRINCIPAL',
+      title: 'GESTIÃ“N PRINCIPAL',
       items: [
         {
           id: 'solicitudes',
@@ -141,13 +141,13 @@ export default function ViaticosModulePremium() {
         {
           id: 'tiquetes',
           label: 'Pasajes y Alojamiento',
-          subtitle: 'Reservas aéreas y terrestres',
+          subtitle: 'Reservas aÃ©reas y terrestres',
           icon: <CreditCard className="w-5 h-5" />,
           color: '#059669',
         },
         {
           id: 'legalizaciones',
-          label: 'Legalización de Gastos',
+          label: 'LegalizaciÃ³n de Gastos',
           subtitle: 'Carga de facturas y cumplidos',
           icon: <Receipt className="w-5 h-5" />,
           color: '#D97706',
@@ -155,14 +155,14 @@ export default function ViaticosModulePremium() {
         {
           id: 'resoluciones',
           label: 'Resoluciones Institucionales',
-          subtitle: 'Actos administrativos de comisión',
+          subtitle: 'Actos administrativos de comisiÃ³n',
           icon: <FileCheck className="w-5 h-5" />,
           color: '#7C3AED',
         },
         {
           id: 'configuracion',
-          label: 'Configuración',
-          subtitle: 'Parametrización de formulario y documentos',
+          label: 'ConfiguraciÃ³n',
+          subtitle: 'ParametrizaciÃ³n de formulario y documentos',
           icon: <Settings className="w-5 h-5" />,
           color: '#64748B',
         },
@@ -183,7 +183,7 @@ export default function ViaticosModulePremium() {
       return cumpleBusqueda && cumpleEstado;
     })
     // Orden por prioridad de estado y, dentro del mismo estado, por fecha de
-    // creación (más reciente primero).
+    // creaciÃ³n (mÃ¡s reciente primero).
     .sort(
       (a, b) =>
         prioridadEstadoTabla(a.estado) - prioridadEstadoTabla(b.estado) ||
@@ -206,29 +206,29 @@ export default function ViaticosModulePremium() {
   };
 
   /**
-   * RF-LIQ-004 — Maneja la consolidación exitosa del expediente: refresca la
-   * bandeja y muestra el aviso de que el expediente quedó en revisión del
-   * Grupo de Viáticos (estado SOLICITADO / solo lectura).
+   * RF-LIQ-004 â€” Maneja la consolidaciÃ³n exitosa del expediente: refresca la
+   * bandeja y muestra el aviso de que el expediente quedÃ³ en revisiÃ³n del
+   * Grupo de ViÃ¡ticos (estado SOLICITADO / solo lectura).
    */
   const handleSolicitudConsolidada = (
     resultado: ResultadoConsolidacion,
   ) => {
     const ref = resultado.consecutivoUnico || 'el expediente';
     setMensajeExito(
-      `El expediente ${ref} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
+      `El expediente ${ref} fue consolidado y enviado a revisiÃ³n del Grupo de ViÃ¡ticos.`,
     );
     setSolicitudAResumir(null);
     cargarDatos();
   };
 
-  /** Abre el modal en modo consolidación (Paso 4) para un expediente radicado. */
+  /** Abre el modal en modo consolidaciÃ³n (Paso 4) para un expediente radicado. */
   const handleConsolidar = async (sol: SolicitudViatico) => {
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
       setSolicitudAResumir(completa);
     } catch (e) {
-      console.error('Error abriendo consolidación:', e);
-      setMensajeExito('No fue posible abrir el expediente para consolidación.');
+      console.error('Error abriendo consolidaciÃ³n:', e);
+      setMensajeExito('No fue posible abrir el expediente para consolidaciÃ³n.');
     }
   };
 
@@ -270,7 +270,7 @@ export default function ViaticosModulePremium() {
       await viaticosService.actualizarPrioridad(solicitudEnRevision.id, prioridadSeleccionada);
       setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
       cargarBandejaSecretario();
-      setSolicitudEnRevision((prev: SolicitudListaResponse | null) => prev ? { ...prev, prioridad: prioridadSeleccionada } : null);
+      setSolicitudEnRevision((prev) => prev ? { ...prev, prioridad: prioridadSeleccionada } : null);
     } catch (error) {
       console.error('Error guardando prioridad:', error);
       setMensajeExito('No fue posible actualizar la prioridad.');
@@ -298,8 +298,8 @@ export default function ViaticosModulePremium() {
 
   return (
     <ModuleLayout
-      moduleName="VIÁTICOS Y GASTOS DE VIAJE"
-      moduleDescription="Gestión de Comisiones de Servicios y Tiquetes Institucionales · ESAP"
+      moduleName="VIÃTICOS Y GASTOS DE VIAJE"
+      moduleDescription="GestiÃ³n de Comisiones de Servicios y Tiquetes Institucionales Â· ESAP"
       moduleIcon={<Plane className="w-6 h-6" />}
       moduleColor="#003DA5"
       groups={grupos}
@@ -322,7 +322,7 @@ export default function ViaticosModulePremium() {
             className="text-emerald-600 hover:text-emerald-800 font-bold"
             aria-label="Cerrar aviso"
           >
-            ✕
+            âœ•
           </button>
         </div>
       )}
@@ -402,10 +402,10 @@ export default function ViaticosModulePremium() {
                     <div>
                       <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                         <Inbox className="w-5 h-5 text-[#003DA5]" />
-                        Bandeja de Entrada — Secretario/a
+                        Bandeja de Entrada â€” Secretario/a
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Solicitudes en estado SOLICITADO para revisión y priorización.
+                        Solicitudes en estado SOLICITADO para revisiÃ³n y priorizaciÃ³n.
                       </p>
                     </div>
                   </div>
@@ -415,7 +415,7 @@ export default function ViaticosModulePremium() {
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                       <input
                         type="text"
-                        placeholder="Buscar por funcionario, código, ciudad o dependencia..."
+                        placeholder="Buscar por funcionario, cÃ³digo, ciudad o dependencia..."
                         value={busqueda}
                         onChange={(e) => setBusqueda(e.target.value)}
                         className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
@@ -520,7 +520,7 @@ export default function ViaticosModulePremium() {
                                 <td className="px-4 py-3">
                                   {sol.extemporanea && (
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
-                                      Extemporánea
+                                      ExtemporÃ¡nea
                                     </span>
                                   )}
                                   {!sol.extemporanea && (
@@ -569,13 +569,13 @@ export default function ViaticosModulePremium() {
                         Bandeja de Analistas
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Vista en construcción para el rol Analista de Viáticos.
+                        Vista en construcciÃ³n para el rol Analista de ViÃ¡ticos.
                       </p>
                     </div>
                   </div>
                   <div className="p-8 text-center text-slate-400 text-xs">
                     <FileCheck className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                    Próximamente disponible.
+                    PrÃ³ximamente disponible.
                   </div>
                 </div>
               );
@@ -587,7 +587,7 @@ export default function ViaticosModulePremium() {
 
             return (
               <>
-                {/* ── KPI HEADER ── */}
+                {/* â”€â”€ KPI HEADER â”€â”€ */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
                     <div>
@@ -602,7 +602,7 @@ export default function ViaticosModulePremium() {
 
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En AprobaciÃ³n</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
                       <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
                     </div>
@@ -613,7 +613,7 @@ export default function ViaticosModulePremium() {
 
                   <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En ComisiÃ³n</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
                       <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
                     </div>
@@ -628,7 +628,7 @@ export default function ViaticosModulePremium() {
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
                       </h3>
-                      <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
+                      <p className="text-xs text-purple-600 font-medium mt-1">ViÃ¡ticos + Gastos de viaje</p>
                     </div>
                     <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
                       <DollarSign className="w-6 h-6" />
@@ -636,17 +636,17 @@ export default function ViaticosModulePremium() {
                   </div>
                 </div>
 
-                {/* ── SOLICITUDES ── */}
+                {/* â”€â”€ SOLICITUDES â”€â”€ */}
                 {seccion === 'solicitudes' && (
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
                       <div>
                         <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                           <Plane className="w-5 h-5 text-[#003DA5]" />
-                          Solicitudes de Comisión y Viáticos
+                          Solicitudes de ComisiÃ³n y ViÃ¡ticos
                         </h2>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
+                          Proceso de aprobaciÃ³n, emisiÃ³n de tiquetes y resoluciones para comisiones institucionales.
                         </p>
                       </div>
                       <button
@@ -655,7 +655,7 @@ export default function ViaticosModulePremium() {
                         className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
                       >
                         <Plus className="w-4 h-4" />
-                        Nueva Solicitud de Comisión
+                        Nueva Solicitud de ComisiÃ³n
                       </button>
                     </div>
 
@@ -665,7 +665,7 @@ export default function ViaticosModulePremium() {
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="text"
-                    placeholder="Buscar por funcionario, código, ciudad o dependencia..."
+                    placeholder="Buscar por funcionario, cÃ³digo, ciudad o dependencia..."
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
                     className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
@@ -680,8 +680,8 @@ export default function ViaticosModulePremium() {
                       { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
-                      { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
-                      { value: 'EN_COMISION', label: 'En Comisión' },
+                      { value: 'RESOLUCION_EMITIDA', label: 'ResoluciÃ³n Emitida' },
+                      { value: 'EN_COMISION', label: 'En ComisiÃ³n' },
                       { value: 'LEGALIZADO', label: 'Legalizado' },
                     ]}
                     value={filtroEstado}
@@ -693,14 +693,14 @@ export default function ViaticosModulePremium() {
 
               {cargando && solicitudes.length === 0 ? (
                 <div className="py-10 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                  <AlertCircle className="w-4 h-4" /> Cargando solicitudes de viáticos...
+                  <AlertCircle className="w-4 h-4" /> Cargando solicitudes de viÃ¡ticos...
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-slate-200">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-3">Código / Solicitante</th>
+                        <th className="px-4 py-3">CÃ³digo / Solicitante</th>
                         <th className="px-4 py-3">Destino / Fechas</th>
                         <th className="px-4 py-3">Tipo & Transporte</th>
                         <th className="px-4 py-3">Monto Estimado</th>
@@ -712,7 +712,7 @@ export default function ViaticosModulePremium() {
                       {solicitudesFiltradas.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                            No se encontraron solicitudes de viáticos registradas.
+                            No se encontraron solicitudes de viÃ¡ticos registradas.
                           </td>
                         </tr>
                       ) : (
@@ -724,7 +724,7 @@ export default function ViaticosModulePremium() {
                                 {esSuperAdmin && sol.esCreadoPorMi && (
                                   <span
                                     className="inline-flex items-center text-blue-500"
-                                    title="Radicada por mí"
+                                    title="Radicada por mÃ­"
                                   >
                                     <UserCheck className="w-3 h-3" />
                                   </span>
@@ -732,7 +732,7 @@ export default function ViaticosModulePremium() {
                               </div>
                               <div className="font-bold text-slate-800 text-sm mt-0.5">{sol.nombreComisionado}</div>
                               <div className="text-[11px] text-slate-400">
-                                {sol.cargoComisionado} · {sol.dependencia}
+                                {sol.cargoComisionado} Â· {sol.dependencia}
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -742,7 +742,7 @@ export default function ViaticosModulePremium() {
                               </div>
                               <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
                                 <Calendar className="w-3 h-3 text-slate-400" />
-                                {sol.fechaInicio} al {sol.fechaFin} ({sol.diasComision} días)
+                                {sol.fechaInicio} al {sol.fechaFin} ({sol.diasComision} dÃ­as)
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -759,7 +759,7 @@ export default function ViaticosModulePremium() {
                                 {formatearMoneda(sol.montoTotalEstimado)}
                               </div>
                               <div className="text-[10px] text-slate-400">
-                                Viáticos: {formatearMoneda(sol.montoSolicitadoViaticos)}
+                                ViÃ¡ticos: {formatearMoneda(sol.montoSolicitadoViaticos)}
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -815,8 +815,8 @@ export default function ViaticosModulePremium() {
                                       type="button"
                                       onClick={() => void handleConsolidar(sol)}
                                       className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
-                                      title="Consolidar y enviar a revisión (RF-LIQ-004)"
-                                      aria-label="Consolidar y enviar a revisión"
+                                      title="Consolidar y enviar a revisiÃ³n (RF-LIQ-004)"
+                                      aria-label="Consolidar y enviar a revisiÃ³n"
                                     >
                                       <Send className="w-3.5 h-3.5" />
                                     </button>
@@ -833,17 +833,17 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-          {/* ── TIQUETES ── */}
+          {/* â”€â”€ TIQUETES â”€â”€ */}
           {seccion === 'tiquetes' && (
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-emerald-600" />
-                    Reserva y Emisión de Pasajes
+                    Reserva y EmisiÃ³n de Pasajes
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Gestión de itinerarios, pasajes aéreos y terrestres para funcionarios en comisión de servicios.
+                    GestiÃ³n de itinerarios, pasajes aÃ©reos y terrestres para funcionarios en comisiÃ³n de servicios.
                   </p>
                 </div>
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold">
@@ -852,54 +852,54 @@ export default function ViaticosModulePremium() {
               </div>
               <div className="p-8 text-center text-slate-400 text-xs">
                 <CreditCard className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                La gestión de pasajes y alojamiento se habilita tras la emisión de la resolución de comisión.
+                La gestiÃ³n de pasajes y alojamiento se habilita tras la emisiÃ³n de la resoluciÃ³n de comisiÃ³n.
               </div>
             </div>
           )}
 
-          {/* ── LEGALIZACIONES ── */}
+          {/* â”€â”€ LEGALIZACIONES â”€â”€ */}
           {seccion === 'legalizaciones' && (
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                     <Receipt className="w-5 h-5 text-amber-600" />
-                    Legalización y Cumplido de Comisión
+                    LegalizaciÃ³n y Cumplido de ComisiÃ³n
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Revisión de facturas, cumplidos firmados y cálculo de reintegros o devoluciones.
+                    RevisiÃ³n de facturas, cumplidos firmados y cÃ¡lculo de reintegros o devoluciones.
                   </p>
                 </div>
               </div>
               <div className="p-8 text-center text-slate-400 text-xs">
                 <Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Cargue de soportes de legalización activo para comisiones finalizadas.
+                Cargue de soportes de legalizaciÃ³n activo para comisiones finalizadas.
               </div>
             </div>
           )}
 
-          {/* ── RESOLUCIONES ── */}
+          {/* â”€â”€ RESOLUCIONES â”€â”€ */}
           {seccion === 'resoluciones' && (
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                     <FileCheck className="w-5 h-5 text-purple-600" />
-                    Resoluciones Institucionales de Comisión
+                    Resoluciones Institucionales de ComisiÃ³n
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Actos administrativos oficializados por la Subdirección de Gestión Institucional.
+                    Actos administrativos oficializados por la SubdirecciÃ³n de GestiÃ³n Institucional.
                   </p>
                 </div>
               </div>
               <div className="p-8 text-center text-slate-400 text-xs">
                 <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Las resoluciones asociadas a cada solicitud aparecerán aquí tras su aprobación.
+                Las resoluciones asociadas a cada solicitud aparecerÃ¡n aquÃ­ tras su aprobaciÃ³n.
               </div>
             </div>
           )}
 
-          {/* ── MODAL DETALLE DE SOLICITUD ── */}
+          {/* â”€â”€ MODAL DETALLE DE SOLICITUD â”€â”€ */}
           {(solicitudSeleccionada || solicitudEnRevision) && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-start sm:items-center justify-center p-4 pt-20 sm:pt-4 overflow-y-auto">
               <div className="bg-white rounded-2xl max-w-xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col max-h-[calc(100vh-6rem)]">
@@ -912,7 +912,7 @@ export default function ViaticosModulePremium() {
                       {esSuperAdmin && (solicitudEnRevision ?? solicitudSeleccionada)?.esCreadoPorMi && (
                         <span
                           className="inline-flex items-center text-blue-500"
-                          title="Radicada por mí"
+                          title="Radicada por mÃ­"
                         >
                           <UserCheck className="w-3 h-3" />
                         </span>
@@ -955,7 +955,7 @@ export default function ViaticosModulePremium() {
                     <div className="bg-slate-50 rounded-lg px-3 py-2">
                       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Fechas</span>
                       <span className="font-semibold text-slate-800 text-xs">
-                        {(solicitudEnRevision ?? solicitudSeleccionada)?.fechaInicio} → {(solicitudEnRevision ?? solicitudSeleccionada)?.fechaFin}
+                        {(solicitudEnRevision ?? solicitudSeleccionada)?.fechaInicio} â†’ {(solicitudEnRevision ?? solicitudSeleccionada)?.fechaFin}
                       </span>
                     </div>
                   </div>
@@ -964,7 +964,7 @@ export default function ViaticosModulePremium() {
                     <span>{getBadgeEstado((solicitudEnRevision ?? solicitudSeleccionada)?.estado || '')}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Justificación</span>
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">JustificaciÃ³n</span>
                     <p className="bg-slate-50 p-2.5 rounded-lg text-slate-700 leading-relaxed border border-slate-100">
                       {(solicitudEnRevision ?? solicitudSeleccionada)?.justificacion}
                     </p>
@@ -973,7 +973,7 @@ export default function ViaticosModulePremium() {
                   {(solicitudEnRevision ?? solicitudSeleccionada)?.estado === 'SOLICITADO' && esSuperAdmin && (
                     <>
                       <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                        <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>
+                        <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de RevisiÃ³n (Etapa 4)</span>
                         <div className="flex items-center gap-2 mb-2">
                           <Flag className="w-4 h-4 text-blue-600" />
                           <span className="text-xs font-bold text-slate-700">Prioridad</span>
@@ -1005,7 +1005,7 @@ export default function ViaticosModulePremium() {
                         <textarea
                           value={motivoDevolucion}
                           onChange={(e) => setMotivoDevolucion(e.target.value)}
-                          placeholder="Escriba el motivo detallado de la devolución..."
+                          placeholder="Escriba el motivo detallado de la devoluciÃ³n..."
                           rows={3}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
@@ -1015,7 +1015,7 @@ export default function ViaticosModulePremium() {
                           disabled={devolviendo || !motivoDevolucion.trim()}
                           className="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
                         >
-                          {devolviendo ? 'Devolviendo...' : 'Confirmar Devolución'}
+                          {devolviendo ? 'Devolviendo...' : 'Confirmar DevoluciÃ³n'}
                         </button>
                       </div>
                     </>
@@ -1046,7 +1046,7 @@ export default function ViaticosModulePremium() {
                                     type="button"
                                     onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
                                     className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
-                                    title="Abrir en nueva pestaña"
+                                    title="Abrir en nueva pestaÃ±a"
                                   >
                                     <Eye className="w-3.5 h-3.5" />
                                   </button>
@@ -1084,12 +1084,11 @@ export default function ViaticosModulePremium() {
               </div>
             </div>
           )}
-              </>
-            );
-          })()}
         </>
       )}
 
+      {/* â”€â”€ CONFIGURACIÃ“N â”€â”€ */}
+      {seccion === 'configuracion' && <ParametrizacionManager />}
     </ModuleLayout>
   );
 }

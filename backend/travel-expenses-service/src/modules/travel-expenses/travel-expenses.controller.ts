@@ -15,6 +15,8 @@ import {
   Query,
   Res,
   BadRequestException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Response } from 'express';
@@ -30,6 +32,8 @@ import { Permissions } from '../../common/permissions.decorator';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
+import { UpdatePriorityDto } from '../../dto/update-priority.dto';
+import { ReturnRequestDto } from '../../dto/return-request.dto';
 import { getClientIp } from '../../common/ip.util';
 
 interface AuthenticatedRequest extends Request {
@@ -89,24 +93,8 @@ export class TravelExpensesController {
         ? r.toUpperCase().replace(/\s+/g, '_')
         : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
     );
-    const SUPER_ADMIN_ROLES = [
-      'ADMIN',
-      'SUPER_ADMIN',
-      'ADMINISTRATIVO',
-      'SUPER_ADMINISTRADOR',
-    ];
     const superAdmin = normalizedRoles.some((r) =>
       SUPER_ADMIN_ROLES.includes(r),
-    );
-    console.log(
-      '[travel-expenses] obtenerSolicitudes req.user=',
-      JSON.stringify(req.user),
-      'usuarioId=',
-      usuarioId,
-      'roles=',
-      JSON.stringify(rawRoles),
-      'superAdmin=',
-      superAdmin,
     );
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
@@ -115,12 +103,6 @@ export class TravelExpensesController {
       superAdmin,
       pageNum,
       limitNum,
-    );
-    console.log(
-      '[travel-expenses] obtenerSolicitudes response count=',
-      result.data.length,
-      'total=',
-      result.total,
     );
     return {
       data: result.data,
@@ -158,8 +140,10 @@ export class TravelExpensesController {
   actualizarSolicitud(
     @Param('id') id: string,
     @Body() dto: UpdateSolicitudDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.service.actualizarSolicitud(id, dto);
+    const esSuperAdmin = isSuperAdmin(req.user);
+    return this.service.actualizarSolicitud(id, dto, esSuperAdmin);
   }
 
   @Post('requests/:id/documentos')
@@ -204,8 +188,10 @@ export class TravelExpensesController {
     @Param('id') id: string,
     @Body() dto: UploadDocumentoDto,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.service.subirDocumento(id, { ...dto, file });
+    const esSuperAdmin = isSuperAdmin(req.user);
+    return this.service.subirDocumento(id, { ...dto, file, isSuperAdmin: esSuperAdmin });
   }
 
   @Delete('requests/:id/documentos/:documentoId')
@@ -213,8 +199,10 @@ export class TravelExpensesController {
   eliminarDocumento(
     @Param('id') id: string,
     @Param('documentoId') documentoId: string,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.service.eliminarDocumento(id, documentoId);
+    const esSuperAdmin = isSuperAdmin(req.user);
+    return this.service.eliminarDocumento(id, documentoId, esSuperAdmin);
   }
 
   @Post('requests/:id/finalizar')
@@ -227,6 +215,74 @@ export class TravelExpensesController {
   @Permissions('travel_expenses:read')
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
+  }
+
+  @Get('requests/inbox/secretary')
+  @Permissions('travel_expenses:read_inbox')
+  async obtenerBandejaSecretario(
+    @Req() req: AuthenticatedRequest,
+    @Query('dependencia_id') dependenciaId?: string,
+    @Query('prioridad') prioridad?: string,
+    @Query('extemporanea') extemporanea?: string,
+    @Query('comisionado') comisionado?: string,
+    @Query('fecha_inicio') fechaInicio?: string,
+    @Query('fecha_fin') fechaFin?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const extemporaneaBool =
+      extemporanea === 'true' ? true : extemporanea === 'false' ? false : undefined;
+
+    const result = await this.service.obtenerBandejaSecretario({
+      dependenciaId: dependenciaId || undefined,
+      prioridad: prioridad || undefined,
+      extemporanea: extemporaneaBool,
+      comisionadoDocumento: comisionado || undefined,
+      fechaInicio: fechaInicio || undefined,
+      fechaFin: fechaFin || undefined,
+      page: pageNum,
+      limit: limitNum,
+    });
+
+    return {
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
+  }
+
+  @Patch('requests/:id/priority')
+  @Permissions('travel_expenses:set_priority')
+  async actualizarPrioridad(
+    @Param('id') id: string,
+    @Body() dto: UpdatePriorityDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const esSuperAdmin = isSuperAdmin(req.user);
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    return this.service.actualizarPrioridad(id, dto.prioridad, usuarioId, esSuperAdmin);
+  }
+
+  @Post('requests/:id/return')
+  @Permissions('travel_expenses:return_request')
+  @HttpCode(HttpStatus.OK)
+  async devolverSolicitud(
+    @Param('id') id: string,
+    @Body() dto: ReturnRequestDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const esSuperAdmin = isSuperAdmin(req.user);
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    return this.service.devolverSolicitud(id, dto.motivo, usuarioId, esSuperAdmin);
   }
 
   @Get('parametrizacion/checklist/:tipo')

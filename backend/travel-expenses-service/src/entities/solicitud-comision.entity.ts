@@ -103,6 +103,12 @@ export class SolicitudComisionEntity {
   @Column({ name: 'extemporanea', type: 'boolean', default: false })
   extemporanea: boolean;
 
+  @Column({ name: 'motivo_devolucion', type: 'text', nullable: true })
+  motivoDevolucion: string | null;
+
+  @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
+  fechaRevision: Date | null;
+
   @Column({
     name: 'tipo_comision',
     type: 'varchar',

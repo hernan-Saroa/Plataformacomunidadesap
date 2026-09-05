@@ -11,18 +11,21 @@ import {
   EstadoSolicitudViatico,
   Geopolitica,
    ChecklistDocumentosResponse,
-   FinalizarSolicitudResponse,
-   LiquidacionResponse,
-   CalcularLiquidacionRequest,
-   CategoriaInvestigador,
-   TicketValidationResult,
-   ValidateTicketRequest,
-   SaldoTiquete,
-   RutaRestringida,
-   ExcepcionTiquete,
-   CreateExcepcionTiqueteRequest,
-   ResumenConsolidacion,
-   ResultadoConsolidacion,
+    FinalizarSolicitudResponse,
+    LiquidacionResponse,
+    CalcularLiquidacionRequest,
+    CategoriaInvestigador,
+    TicketValidationResult,
+    ValidateTicketRequest,
+    SaldoTiquete,
+    RutaRestringida,
+    ExcepcionTiquete,
+    CreateExcepcionTiqueteRequest,
+    ResumenConsolidacion,
+    ResultadoConsolidacion,
+    BandejaSecretarioResponse,
+    PrioridadUpdateResponse,
+    ReturnRequestResponse,
   } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
@@ -1034,6 +1037,72 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('Error actualizando holgura global:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REC-001 — Etapa 4: Revisar solicitud y definir prioridad (Secretario/a)
+  // ========================================================================
+
+  async obtenerBandejaSecretario(filtros: {
+    dependenciaId?: string;
+    prioridad?: string;
+    extemporanea?: boolean;
+    comisionadoDocumento?: string;
+    fechaInicio?: string;
+    fechaFin?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<BandejaSecretarioResponse> {
+    try {
+      const params = new URLSearchParams();
+      if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
+      if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
+      if (typeof filtros.extemporanea === 'boolean') params.set('extemporanea', String(filtros.extemporanea));
+      if (filtros.comisionadoDocumento) params.set('comisionado', filtros.comisionadoDocumento);
+      if (filtros.fechaInicio) params.set('fecha_inicio', filtros.fechaInicio);
+      if (filtros.fechaFin) params.set('fecha_fin', filtros.fechaFin);
+      if (filtros.page) params.set('page', String(filtros.page));
+      if (filtros.limit) params.set('limit', String(filtros.limit));
+
+      const query = params.toString();
+      const response = await apiClient.get<BandejaSecretarioResponse>(
+        `/viaticos/api/v1/requests/inbox/secretary${query ? `?${query}` : ''}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja secretario:', error);
+      return { data: [], total: 0, page: filtros.page || 1, limit: filtros.limit || 20 };
+    }
+  }
+
+  async actualizarPrioridad(
+    solicitudId: string,
+    prioridad: string,
+  ): Promise<PrioridadUpdateResponse> {
+    try {
+      return await apiClient.patch<PrioridadUpdateResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/priority`,
+        { prioridad },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error actualizando prioridad:', error);
+      throw error;
+    }
+  }
+
+  async devolverSolicitud(
+    solicitudId: string,
+    motivo: string,
+  ): Promise<ReturnRequestResponse> {
+    try {
+      return await apiClient.post<ReturnRequestResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return`,
+        { motivo },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo solicitud:', error);
       throw error;
     }
   }
