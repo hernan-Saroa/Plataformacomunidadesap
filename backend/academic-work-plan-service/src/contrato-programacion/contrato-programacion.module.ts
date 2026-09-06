@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { CalculoHorasController } from './v1/calculo-horas.controller';
+import { CalculoHorasService } from './v1/calculo-horas.service';
 import { DocentesContratoController } from './v1/docentes-contrato.controller';
 import { DocentesContratoService } from './v1/docentes-contrato.service';
 
@@ -11,8 +13,8 @@ import { DocentesContratoService } from './v1/docentes-contrato.service';
  * de los DTOs propios.
  */
 @Module({
-  controllers: [DocentesContratoController],
-  providers: [DocentesContratoService],
-  exports: [DocentesContratoService],
+  controllers: [DocentesContratoController, CalculoHorasController],
+  providers: [DocentesContratoService, CalculoHorasService],
+  exports: [DocentesContratoService, CalculoHorasService],
 })
 export class ContratoProgramacionModule {}
