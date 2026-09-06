@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  AlertTriangle, CalendarClock, CheckCircle2, Loader2, Lock, Search, ShieldAlert, User, UserCheck, XCircle,
+  AlertTriangle, CalendarClock, CalendarRange, CheckCircle2, Loader2, Lock, Search, ShieldAlert, User, UserCheck, XCircle,
 } from 'lucide-react';
 
 import {
@@ -41,6 +41,8 @@ export function AsignacionDocente() {
   const [asignando, setAsignando] = useState(false);
   const [motivosBloqueo, setMotivosBloqueo] = useState<MotivoRechazo[] | null>(null);
   const [asignado, setAsignado] = useState(false);
+  // AC-03 (EFDS-1376): confirmación de disponibilidad, con registro de quién.
+  const [dispConfirmada, setDispConfirmada] = useState(false);
 
   const consultar = async () => {
     if (!documento.trim()) return;
@@ -48,6 +50,7 @@ export function AsignacionDocente() {
     setError('');
     setMotivosBloqueo(null);
     setAsignado(false);
+    setDispConfirmada(false);
     try {
       const d = await consultarDocente(documento.trim(), idGrupo.trim() || undefined);
       setDocente(d);
@@ -65,7 +68,14 @@ export function AsignacionDocente() {
     setError('');
     setMotivosBloqueo(null);
     try {
-      const r = await asignarDocente({ idGrupo: idGrupo.trim(), documento: docente.documento });
+      const r = await asignarDocente({
+        idGrupo: idGrupo.trim(),
+        documento: docente.documento,
+        // AC-03: se registra quién confirmó la disponibilidad. El "cuándo" lo pone
+        // el backend (NOW()). El usuario real sale del token en el servidor; aquí
+        // se marca la confirmación explícita de la decanatura.
+        disponibilidadConfirmadaPor: dispConfirmada ? 'decanatura' : null,
+      });
       if (r.asignado) {
         setAsignado(true);
       } else {
@@ -254,6 +264,38 @@ export function AsignacionDocente() {
         </div>
       )}
 
+      {/* EFDS-1376: rango de vinculación + confirmación de disponibilidad (AC-03) */}
+      {docente && idGrupo.trim() && !asignado && !bloqueado && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+            <CalendarRange className="w-4 h-4 text-[#003DA5]" />
+            Disponibilidad del docente
+          </div>
+          <p className="text-xs text-slate-600">
+            Vinculación del{' '}
+            <strong className="text-slate-800">{docente.vinculacionDesde || '—'}</strong> al{' '}
+            {/* Nulo = indefinida, no error (104 de 263 docentes). */}
+            <strong className="text-slate-800">{docente.vinculacionHasta || 'indefinido'}</strong>.
+            {docente.vinculacionHasta
+              ? ' Verifique que el periodo del grupo cae dentro de este rango (RN-10).'
+              : ' Vinculación sin fecha de término.'}
+          </p>
+          {/* AC-03: paso operativo, no notificaciones — una casilla con registro. */}
+          <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={dispConfirmada}
+              onChange={(e) => setDispConfirmada(e.target.checked)}
+              className="mt-0.5 accent-[#003DA5]"
+            />
+            <span>
+              Confirmo que la decanatura contactó al docente y está disponible para el periodo del grupo.
+              Se registrará quién confirma y la fecha.
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* Acción de asignar: deshabilitada si el backend ya marcó bloqueo */}
       {docente && idGrupo.trim() && !asignado && (
         <div className="flex items-center justify-end gap-3">
@@ -262,9 +304,12 @@ export function AsignacionDocente() {
               <AlertTriangle className="w-3.5 h-3.5" /> Bloqueo duro: revise los motivos.
             </span>
           )}
+          {!bloqueado && !dispConfirmada && (
+            <span className="text-xs text-slate-500 font-medium">Confirme la disponibilidad para asignar.</span>
+          )}
           <button
             onClick={asignar}
-            disabled={asignando || bloqueado}
+            disabled={asignando || bloqueado || !dispConfirmada}
             className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-xs rounded-xl shadow-md transition-all"
           >
             {asignando ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}

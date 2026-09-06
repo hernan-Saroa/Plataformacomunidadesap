@@ -18,6 +18,11 @@ export interface AsignarDocenteDto {
   horasRequeridas?: number;
   asignadoPor?: string;
   observaciones?: string | null;
+  /**
+   * Quién confirma que se contactó al docente y está disponible en el periodo
+   * (AC-03, EFDS-1376). Si viene, se registra con la fecha; si no, queda nulo.
+   */
+  disponibilidadConfirmadaPor?: string | null;
 }
 
 export interface ResultadoAsignacion {
@@ -241,17 +246,20 @@ export class AsignacionesService {
 
     const filas = await this.dataSource.query(
       `INSERT INTO "academic-schedule".asignacion_docente
-         (id_grupo, id_docente, horas_asignadas, asignado_por, observaciones, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+         (id_grupo, id_docente, horas_asignadas, asignado_por, observaciones,
+          disponibilidad_confirmada_por, disponibilidad_confirmada_en, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6 IS NULL THEN NULL ELSE NOW() END, NOW())
        ON CONFLICT (id_grupo) DO UPDATE
          SET id_docente = EXCLUDED.id_docente,
              horas_asignadas = EXCLUDED.horas_asignadas,
              asignado_por = EXCLUDED.asignado_por,
              observaciones = EXCLUDED.observaciones,
+             disponibilidad_confirmada_por = EXCLUDED.disponibilidad_confirmada_por,
+             disponibilidad_confirmada_en = EXCLUDED.disponibilidad_confirmada_en,
              estado = 'ASIGNADO',
              updated_at = NOW()
        RETURNING id_asignacion`,
-      [dto.idGrupo, docente.idDocente, grupo.horasRequeridas, dto.asignadoPor ?? null, dto.observaciones ?? null],
+      [dto.idGrupo, docente.idDocente, grupo.horasRequeridas, dto.asignadoPor ?? null, dto.observaciones ?? null, dto.disponibilidadConfirmadaPor ?? null],
     );
 
     return { asignado: true, idAsignacion: filas[0].id_asignacion };
