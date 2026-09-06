@@ -212,7 +212,7 @@ export class TravelExpensesController {
   }
 
   @Get('requests/:id')
-  @Permissions('travel_expenses:create_request')
+  @Permissions('travel_expenses:create_request', 'travel_expenses:read_inbox', 'travel_expenses:set_priority', 'travel_expenses:return_request')
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
   }

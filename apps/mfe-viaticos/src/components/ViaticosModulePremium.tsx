@@ -126,9 +126,30 @@ export default function ViaticosModulePremium() {
     setCargando(true);
     try {
       const { solicitudes: list, esSuperAdmin: esSuperAdminResp } = await viaticosService.obtenerSolicitudes();
-      console.log('[ViaticosModulePremium] solicitudes cargadas=', list.length, 'esSuperAdmin=', esSuperAdminResp);
-      setSolicitudes(list);
       setEsSuperAdmin(esSuperAdminResp);
+
+      const esSecretario = authService.hasAnyPermission([
+        Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+        Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+        Permissions.VIATICOS_SOLICITUDES_RETURN,
+      ]);
+
+      let solicitudesCombinadas = [...list];
+
+      if (esSecretario) {
+        try {
+          const bandeja = await viaticosService.obtenerBandejaSecretario();
+          const solicitudesBandeja = bandeja.data.map((item) => viaticosService.mapearSolicitudLista(item));
+          const map = new Map<string, SolicitudViatico>();
+          solicitudesCombinadas.forEach((s) => map.set(s.id, s));
+          solicitudesBandeja.forEach((s) => map.set(s.id, s));
+          solicitudesCombinadas = Array.from(map.values());
+        } catch (e) {
+          console.error('Error cargando bandeja secretario:', e);
+        }
+      }
+
+      setSolicitudes(solicitudesCombinadas);
       const res = await viaticosService.obtenerResumenEstadistico();
       setResumen(res);
     } catch (e) {
@@ -268,6 +289,8 @@ export default function ViaticosModulePremium() {
       Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
       Permissions.VIATICOS_SOLICITUDES_RETURN,
     ]);
+  const puedeCrearSolicitud =
+    esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE);
   const puedeVerTiquetes =
     esSuperAdmin ||
     authService.hasAnyPermission([
@@ -411,14 +434,16 @@ export default function ViaticosModulePremium() {
                     Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setModalNuevaAbierta(true)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Nueva Solicitud de Comisión
-                </button>
+                {puedeCrearSolicitud && (
+                  <button
+                    type="button"
+                    onClick={() => setModalNuevaAbierta(true)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nueva Solicitud de Comisión
+                  </button>
+                )}
               </div>
 
               {/* Filtros */}

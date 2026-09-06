@@ -147,7 +147,7 @@ export class ViaticosService {
   /**
    * Mapea una solicitud del backend (GET /solicitudes) al modelo de presentación.
    */
-  private mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
+  public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
     return {

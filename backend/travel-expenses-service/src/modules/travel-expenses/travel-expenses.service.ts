@@ -215,7 +215,7 @@ export class TravelExpensesService {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado')
-      .where('s.estado_solicitud = :estado', { estado: 'SOLICITADO' });
+      .where('s.estado_solicitud IN (:...estados)', { estados: ['SOLICITADO', 'EXTEMPORANEA'] });
 
     if (dependenciaId) {
       query.andWhere('comisionado.id_dependencia = :dependenciaId', { dependenciaId });
