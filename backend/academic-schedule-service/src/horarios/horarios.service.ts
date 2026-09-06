@@ -7,7 +7,7 @@ import {
   type DiaSemana, type Jornada, type TipoSesion,
 } from './franja-horaria.entity.js';
 import {
-  buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos,
+  buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos, seSolapan,
 } from './solapamiento.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
 
@@ -90,6 +90,22 @@ export class HorariosService {
       );
     }
 
+    // EFDS-1374 — Bloqueo de AULA: un salón no aloja dos sesiones que se cruzan
+    // en día y hora. El mensaje NO revela qué grupo lo ocupa (RN-07): otra
+    // decanatura puede tener ahí una asignatura de posgrado que este programador
+    // no debe ver. Solo se dice el aula, el día y la hora.
+    if (dto.aulaCodigo) {
+      const choqueAula = await this.buscarChoqueAula(
+        dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,
+      );
+      if (choqueAula) {
+        throw new BadRequestException(
+          `El aula ${dto.aulaCodigo} ya está ocupada el ${dto.diaSemana.toLowerCase()} `
+          + `de ${String(choqueAula.horaInicio).slice(0, 5)} a ${String(choqueAula.horaFin).slice(0, 5)}.`,
+        );
+      }
+    }
+
     return this.franjaRepo.save(this.franjaRepo.create({
       idGrupo: dto.idGrupo,
       diaSemana: dto.diaSemana,
@@ -103,6 +119,26 @@ export class HorariosService {
       aulaCodigo: dto.aulaCodigo ?? null,
       estado: 'PROGRAMADO',
     }));
+  }
+
+  /**
+   * Busca una franja de OTRO grupo que ocupe la misma aula y se cruce en día y
+   * hora. Transversal a todos los programas (RN-07). Devuelve la franja ocupada
+   * para nombrar el día y la hora, nunca su grupo ni su asignatura.
+   */
+  private async buscarChoqueAula(
+    aulaCodigo: string, diaSemana: string, horaInicio: string, horaFin: string, idFranjaExcluir?: string,
+  ): Promise<{ horaInicio: string; horaFin: string } | null> {
+    const mismas = await this.franjaRepo.find({
+      where: { aulaCodigo, diaSemana: diaSemana as DiaSemana },
+    });
+    for (const f of mismas) {
+      if (idFranjaExcluir && f.idFranja === idFranjaExcluir) continue;
+      if (seSolapan(horaInicio, horaFin, f.horaInicio, f.horaFin)) {
+        return { horaInicio: f.horaInicio, horaFin: f.horaFin };
+      }
+    }
+    return null;
   }
 
   async eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {
