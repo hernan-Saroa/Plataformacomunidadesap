@@ -322,3 +322,26 @@ export function getDisponibilidadAula(codigo: string): Promise<{ aula: string; o
 export function publicarGrupo(idGrupo: string): Promise<{ publicado: boolean }> {
   return pedirJson(`${BASE_AULAS}/publicar/${encodeURIComponent(idGrupo)}`, { method: 'POST' });
 }
+
+// ─── Ofertas académicas (EFDS-1375) ─────────────────────────────────────────
+
+export interface Oferta {
+  idPeriodo: string;
+  codigo: string;
+  nombre: string;
+  tipo: string | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  activo: boolean;
+}
+
+const BASE_OFERTAS = '/programacion-academica/api/v1/ofertas';
+
+export function getOfertas(): Promise<Oferta[]> {
+  return pedirJson<Oferta[]>(BASE_OFERTAS, { method: 'GET' });
+}
+
+/** Consumo del docente por oferta vs tope (reusa el acumulado de 1373). */
+export function getConsumoPorOferta(documento: string): Promise<AcumuladoDocente> {
+  return pedirJson<AcumuladoDocente>(`${BASE_OFERTAS}/consumo/${encodeURIComponent(documento)}`, { method: 'GET' });
+}
