@@ -42,6 +42,19 @@ const ASIGNABLES = [
   'cargo directivo',
 ];
 
+/**
+ * Categoría de vinculación para elegir el tope (RN-04). Es clasificación de un
+ * DATO del RUND (como `situacionCategoria`), no cálculo de horas: el cálculo va
+ * por el contrato. El factor de horas (×3/×1) vive en el contrato; aquí solo se
+ * distingue al catedrático, cuyo tope transversal es 304 h.
+ */
+export function categoriaVinculacion(v: string | null | undefined): 'CARRERA' | 'OCASIONAL' | 'CATEDRA' {
+  const n = normalizar(v);
+  if (n.includes('catedra') || n === 'hc') return 'CATEDRA';
+  if (n.includes('carrera')) return 'CARRERA';
+  return 'OCASIONAL';
+}
+
 /** Sin tildes, minúsculas, espacios colapsados. */
 function normalizar(texto: string | null | undefined): string {
   return String(texto || '')

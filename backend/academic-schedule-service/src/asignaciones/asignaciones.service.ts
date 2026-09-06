@@ -10,6 +10,7 @@ import {
   type MotivoRechazo,
 } from './reglas-asignacion.js';
 import { resolverSituacion } from './situacion-docente.js';
+import { ContratoClient } from './contrato-client.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -52,6 +53,8 @@ export interface DocenteConsulta {
   motivos?: MotivoRechazo[];
   /** true solo si no hay ningún motivo de bloqueo contra el grupo consultado. */
   asignableAlGrupo?: boolean;
+  /** Impacto en horas que tendría esta asignación (factor RN-03). */
+  horasImpacto?: number;
 }
 
 /**
@@ -66,15 +69,19 @@ export interface DocenteConsulta {
  */
 @Injectable()
 export class AsignacionesService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly contrato: ContratoClient,
+  ) {}
 
   /** Datos del docente, resueltos por documento a su identidad estable. */
-  private async cargarDocente(documento: string): Promise<DocenteParaAsignar & { situacionRaw: string | null; categoriaRaw: string | null }> {
+  private async cargarDocente(documento: string): Promise<DocenteParaAsignar & { situacionRaw: string | null; categoriaRaw: string | null; vinculacion: string | null }> {
     const filas = await this.dataSource.query(
       `SELECT p.id_person                    AS id_docente,
               p.nom_largo                    AS nombre,
               d."escalafon"                  AS escalafon,
               d."horasAsignables"            AS horas_pta,
+              d."tipoVinculacion"            AS vinculacion,
               d."fechaInicioVinculacion"     AS desde,
               d."fechaFinVinculacion"        AS hasta,
               d."situacionAdministrativa"    AS situacion,
@@ -96,6 +103,7 @@ export class AsignacionesService {
       nombre: f.nombre,
       escalafon: f.escalafon ?? null,
       horasPta: Number(f.horas_pta ?? 0),
+      vinculacion: f.vinculacion ?? null,
       vinculacionDesde: iso(f.desde),
       vinculacionHasta: iso(f.hasta),
       // Las llena el llamador con el clasificador del contrato.
@@ -106,9 +114,9 @@ export class AsignacionesService {
     };
   }
 
-  private async cargarGrupo(idGrupo: string, horasRequeridas: number): Promise<GrupoParaAsignar> {
+  private async cargarGrupo(idGrupo: string, horasRequeridas: number): Promise<GrupoParaAsignar & { codigoAsignatura: string | null }> {
     const filas = await this.dataSource.query(
-      `SELECT g.id_grupo, g.fecha_inicio, g.fecha_fin, pr.tipo AS tipo_programa
+      `SELECT g.id_grupo, g.fecha_inicio, g.fecha_fin, pr.tipo AS tipo_programa, a.codigo AS codigo_asignatura
          FROM "academic-schedule".grupo g
          JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
          JOIN academic_work_plan.programa  pr ON pr.id = a.id_programa
@@ -128,6 +136,7 @@ export class AsignacionesService {
     return {
       idGrupo: g.id_grupo,
       tipoPrograma: g.tipo_programa ?? null,
+      codigoAsignatura: g.codigo_asignatura ?? null,
       fechaInicio: iso(g.fecha_inicio),
       fechaFin: iso(g.fecha_fin),
       franjas: franjas.map((f: any) => ({
@@ -180,7 +189,7 @@ export class AsignacionesService {
    * `situacionCategoria`; el cliente nunca la envía. Con `idGrupo`, además evalúa
    * en seco las reglas de bloqueo y devuelve TODOS los motivos.
    */
-  async consultarDocente(documento: string, idGrupo?: string): Promise<DocenteConsulta> {
+  async consultarDocente(documento: string, idGrupo?: string, token?: string | null): Promise<DocenteConsulta> {
     const docente = await this.cargarDocente(documento);
     const situacion = resolverSituacion(docente.categoriaRaw, docente.situacionRaw);
 
@@ -205,11 +214,28 @@ export class AsignacionesService {
     docente.situacionAsignable = situacion.asignable;
     docente.situacionMotivo = situacion.motivo;
     const grupo = await this.cargarGrupo(idGrupo, 0);
+    // Impacto real calculado por el contrato (RN-03), no un dato del cliente.
+    grupo.horasRequeridas = await this.impactoDelGrupo(grupo, docente, token ?? null);
     const ocupadas = await this.franjasOcupadas(docente.idDocente);
     const consumidas = await this.horasConsumidas(docente.idDocente, idGrupo);
     const motivos = evaluarAsignacion(docente, grupo, ocupadas, consumidas);
 
-    return { ...base, motivos, asignableAlGrupo: motivos.length === 0 };
+    return { ...base, motivos, asignableAlGrupo: motivos.length === 0, horasImpacto: grupo.horasRequeridas };
+  }
+
+  /**
+   * Impacto en horas del grupo para el docente, calculado por el CONTRATO (RN-03).
+   * El cálculo es lógica del PTA y no se reimplementa: se consume por HTTP. Si el
+   * grupo no tiene código de asignatura, el impacto es 0 (no hay qué calcular).
+   */
+  private async impactoDelGrupo(
+    grupo: { codigoAsignatura: string | null },
+    docente: { vinculacion: string | null },
+    token: string | null,
+  ): Promise<number> {
+    if (!grupo.codigoAsignatura) return 0;
+    const calc = await this.contrato.calcularImpacto(grupo.codigoAsignatura, docente.vinculacion, token);
+    return Number(calc.horasImpacto ?? 0);
   }
 
   /**
@@ -219,7 +245,7 @@ export class AsignacionesService {
    * RUND: el cliente no la envía. Confiar en una `asignable` del cliente sería un
    * bypass del bloqueo duro.
    */
-  async asignar(dto: AsignarDocenteDto): Promise<ResultadoAsignacion> {
+  async asignar(dto: AsignarDocenteDto, token?: string | null): Promise<ResultadoAsignacion> {
     if (!dto?.idGrupo || !dto?.documento) {
       throw new BadRequestException('Debe indicar el grupo y el documento del docente.');
     }
@@ -229,7 +255,10 @@ export class AsignacionesService {
     docente.situacionAsignable = situacion.asignable;
     docente.situacionMotivo = situacion.motivo;
 
-    const grupo = await this.cargarGrupo(dto.idGrupo, Number(dto.horasRequeridas ?? 0));
+    const grupo = await this.cargarGrupo(dto.idGrupo, 0);
+    // Impacto real por el contrato (RN-03): el cliente no fija las horas — sería
+    // un bypass del tope. Un `horasRequeridas` del DTO se ignora a propósito.
+    grupo.horasRequeridas = await this.impactoDelGrupo(grupo, docente, token ?? null);
     const ocupadas = await this.franjasOcupadas(docente.idDocente);
     const consumidas = await this.horasConsumidas(docente.idDocente, dto.idGrupo);
 
