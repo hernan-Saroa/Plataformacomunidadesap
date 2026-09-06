@@ -73,6 +73,18 @@ export class ComisionadoEntity {
   })
   ipRegistroHabeasData: string | null;
 
+  // Dependencia institucional del comisionado (FK lógica a auth.dependencias).
+  // Se alimenta desde auth.personas.id_dependencia al consultar por número de
+  // documento. No se declara FK a nivel de BD porque la tabla vive en otro
+  // esquema/microservicio (auth-service).
+  @Column({
+    name: 'id_dependencia',
+    type: 'bigint',
+    nullable: true,
+  })
+  @Index('idx_comisionados_id_dependencia')
+  idDependencia: number | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

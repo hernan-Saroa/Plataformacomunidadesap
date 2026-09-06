@@ -216,7 +216,7 @@ export class ActuacionController {
         const access = getLegalAccessFromRequest(req);
         const email = access.userEmail || 'sistema@esap.edu.co';
         const name = access.userName || 'Usuario';
-        return this.actuacionService.autorizarPorDocumentosFirmados(actuacionId, email, name);
+        return this.actuacionService.autorizarPorDocumentosFirmados(actuacionId, email, name, access.roles, access.userId);
     }
 
     @Post(':actuacionId/devolver')

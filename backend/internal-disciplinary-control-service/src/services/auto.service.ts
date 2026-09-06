@@ -678,6 +678,30 @@ export class AutoService {
     return await this.autoRepository.save(auto);
   }
 
+  /**
+   * Adjunta el documento de soporte que el Jefe sube al devolver un auto.
+   * Se llama justo después de approve(RETURN); no cambia el estado del auto.
+   */
+  async uploadRejectionDocument(
+    id: string,
+    documentUrl: string,
+    documentName: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id);
+
+    if (auto.estado !== AutoStatus.DEVUELTO) {
+      throw new HttpException(
+        'Solo se puede adjuntar el documento de soporte a un auto devuelto',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    auto.rejectionDocumentUrl = documentUrl;
+    auto.rejectionDocumentName = documentName;
+
+    return await this.autoRepository.save(auto);
+  }
+
   async getVersions(id: string): Promise<AutoVersion[]> {
     return await this.versionRepository.find({
       where: { auto: { id } },

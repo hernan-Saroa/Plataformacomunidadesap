@@ -40,6 +40,7 @@ import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { ReportePTAInstitucional } from '../portal/pta/ReportePTAInstitucional';
 import { PTA_COLORS } from './shared/ptaColors';
+import { getPtaComponentDisplayStatus, getPtaApprovalDisplayStatus, getPtaApprovalGroupStatus } from './shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import { resolvePtaFileUrl } from './shared/ptaFiles';
@@ -363,7 +364,8 @@ function getMimeTypeForExtension(extension: string): string {
 
 // ═══ SUB-COMPONENTS ═══════════════════════════════════════════════════
 
-function ApprovalTracker({
+export function ApprovalTracker({
+  pta,
   estado,
   componentesAprobacion = [],
   isMobile = false,
@@ -372,6 +374,7 @@ function ApprovalTracker({
   componentesRevision = [],
   componentesEstado = [],
 }: {
+  pta?: any;
   estado: string;
   componentesAprobacion?: any[];
   isMobile?: boolean;
@@ -386,6 +389,9 @@ function ApprovalTracker({
   const getStatusForComponent = (compKeys: string[], collapsedKey?: string) => {
     const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
     if (scopedKeys.length === 0) return 'hidden';
+    const source = { ...pta, estado, componentes_estado: componentesEstado };
+    const collapsedStatus = getPtaComponentDisplayStatus(source, collapsedKey || '');
+    if (collapsedStatus === 'no_aplica') return 'no_aplica';
 
     if (modoRevision) {
       const revisiones = componentesRevision.filter(r => scopedKeys.includes(r.componente));
@@ -406,30 +412,14 @@ function ApprovalTracker({
     // "Aprobado" en otras, por la fila territorial que queda sin horas.
     // Con recorte activo se sigue agregando a mano, porque el colapsado del backend
     // no distingue qué sub-componentes le corresponden a este usuario.
-    const estadoBackend = !visibleSet && collapsedKey && Array.isArray(componentesEstado)
+    const estadoBackend = scopedKeys.length === compKeys.length && collapsedKey && Array.isArray(componentesEstado)
       ? componentesEstado.find((c: any) => c?.key === collapsedKey)?.estado
       : undefined;
     if (estadoBackend) {
-      if (estadoBackend === 'devuelto') return 'devuelto';
-      if (estadoBackend === 'aprobado') {
-        // Se conserva el matiz de "No aplica": si todo lo que hay fue auto-aprobado
-        // por el Sistema (componente vacío), no es un aval de nadie.
-        const todoAuto = approvals.length > 0 && approvals.every(a => a.aprobadorNombre === 'Sistema');
-        return todoAuto ? 'no_aplica' : 'aprobado';
-      }
-      return 'pendiente';
+      return collapsedStatus;
     }
 
-    if (approvals.length === 0) return 'pendiente';
-    if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
-    if (approvals.every(a => a.estado === 'aprobado')) {
-      // Un componente SIN actividades lo auto-aprueba el backend con
-      // aprobadorNombre='Sistema'. Mostrarlo como "Aprobado" en verde da a
-      // entender que alguien lo avaló; debe verse en gris como "No aplica".
-      const todoAutoAprobado = approvals.every(a => a.aprobadorNombre === 'Sistema');
-      return todoAutoAprobado ? 'no_aplica' : 'aprobado';
-    }
-    return 'pendiente';
+    return getPtaApprovalGroupStatus(source, approvals);
   };
 
   const steps = [
@@ -526,7 +516,7 @@ function ApprovalTracker({
           bg = '#FFFBEB';
           borderColor = '#FEF3C7';
           statusColor = '#B45309';
-          statusLabel = 'Pendiente';
+          statusLabel = step.status === 'no_iniciado' ? 'No iniciado' : step.status === 'en_revision' ? 'En revisión' : 'Pendiente';
           iconBg = '#FEF3C7';
           iconColor = '#D97706';
         }
@@ -1832,6 +1822,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
     const estado = approval.estado || 'pendiente';
+    const estadoVisual = getPtaApprovalDisplayStatus(pta, { ...approval, componente: key });
+    const noAplica = estadoVisual === 'no_aplica';
     const isAutoAprobado = estado === 'aprobado' && approval.aprobadorNombre === 'Sistema';
     const isEditing = estado !== 'aprobado' || !!evaluandoComponente[key];
     const isProcessing = !!procesandoAprobacionComponente[key];
@@ -1934,6 +1926,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         badgeText = 'Pendiente (Lectura)';
         badgeIcon = Clock;
       }
+    }
+
+    // Solo presentación: permisos y acciones siguen usando la decisión persistida.
+    if (noAplica) {
+      cardBg = 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)';
+      cardBorder = '1px solid #E2E8F0';
+      badgeBg = '#F1F5F9';
+      badgeColor = '#64748B';
+      badgeBorder = '1px solid #CBD5E1';
+      badgeText = 'No aplica';
+      badgeIcon = Info;
+      dotColor = '#94A3B8';
+      dotPulse = false;
     }
 
     const BadgeIcon = badgeIcon;
@@ -2197,18 +2202,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         {/* Detalle de Aprobación Guardada */}
         {!isEditing && (
           <div style={{
-            background: isAutoAprobado ? 'rgba(241, 245, 249, 0.6)' : 'rgba(240, 253, 244, 0.4)',
+            background: noAplica ? 'rgba(241, 245, 249, 0.6)' : 'rgba(240, 253, 244, 0.4)',
             borderRadius: 10,
             padding: '12px 14px',
             fontSize: '0.74rem',
-            color: isAutoAprobado ? '#475569' : '#15803D',
-            border: isAutoAprobado ? '1px dashed #CBD5E1' : '1px dashed #A7F3D0',
+            color: noAplica ? '#475569' : '#15803D',
+            border: noAplica ? '1px dashed #CBD5E1' : '1px dashed #A7F3D0',
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
             marginLeft: 6
           }}>
-            {isAutoAprobado ? (
+            {noAplica ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#64748B', fontStyle: 'italic' }}>
                 <CheckCircle style={{ width: 13, height: 13, color: '#94A3B8', flexShrink: 0 }} />
                 Sin actividades registradas — no requiere aprobación
@@ -3406,6 +3411,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Approval Tracker */}
           <div style={{ marginTop: 4 }}>
             <ApprovalTracker
+              pta={pta}
               estado={pta.estado}
               componentesAprobacion={componentesAprobacion}
               isMobile={isMobile}
@@ -3759,25 +3765,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
                 {/* Progress Stats & Count Badges */}
                 {(() => {
-                  // Componentes fijos (Docencia, Investigación, Complementarias, AADM) = 4
-                  // + sub-componentes de extensión que tengan horas > 0
-                  const extSubKeyMap: Record<string, string> = {
-                    capacitacion: 'ext_capacitacion',
-                    seleccion: 'ext_procesos',
-                    fortalecimiento: 'ext_fortalecimiento',
-                    alto_gobierno: 'ext_gobierno',
-                    otras: 'ext_secciones',
-                  };
-                  const extSubKeys = Object.keys(extSubKeyMap);
-                  const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
-                  const visibleComponenteKeys = new Set([
-                    ...docenciaCards.map(c => c.key),
-                    'investigacion', 'complementarias',
-                    ...extConHoras.map(k => extSubKeyMap[k]),
-                  ].filter(key => shouldShowComponentKey(key)));
-                  const total = visibleComponenteKeys.size;
-                  const aprobados = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
-                  const devueltos = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
+                  const visibleComponenteKeys = new Set(PTA_COMPONENT_PROGRESS_ORDER.filter(key => shouldShowComponentKey(key)));
+                  const estadosAplicables = [...visibleComponenteKeys]
+                    .map(key => getPtaApprovalDisplayStatus(pta, componentesAprobacionVisibles.find(c => c.componente === key) || { componente: key }))
+                    .filter(estado => estado !== 'no_aplica');
+                  const total = estadosAplicables.length;
+                  const aprobados = estadosAplicables.filter(estado => estado === 'aprobado').length;
+                  const devueltos = estadosAplicables.filter(estado => estado === 'devuelto').length;
                   const pendientes = total - aprobados - devueltos;
                   const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
                   return (
@@ -3823,15 +3817,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                           .filter(k => visibleComponenteKeys.has(k))
                           .map(k => {
                             const fila = componentesAprobacionVisibles.find(c => c.componente === k);
-                            const estadoComp = String(fila?.estado || 'pendiente');
-                            const auto = estadoComp === 'aprobado' && fila?.aprobadorNombre === 'Sistema';
+                            const estadoComp = getPtaApprovalDisplayStatus(pta, fila || { componente: k });
+                            const auto = estadoComp === 'no_aplica';
                             const visual = auto
                               ? { label: 'No aplica', color: '#9CA3AF', bg: '#F9FAFB', borde: '#E5E7EB' }
                               : estadoComp === 'aprobado'
                                 ? { label: 'Aprobado', color: '#15803D', bg: '#F0FDF4', borde: '#BBF7D0' }
                                 : estadoComp === 'devuelto'
                                   ? { label: 'Devuelto', color: '#B91C1C', bg: '#FEF2F2', borde: '#FECACA' }
-                                  : { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FEF3C7' };
+                                  : { label: estadoComp === 'no_iniciado' ? 'No iniciado' : estadoComp === 'en_revision' ? 'En revisión' : 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FEF3C7' };
                             return (
                               <div key={k} style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',

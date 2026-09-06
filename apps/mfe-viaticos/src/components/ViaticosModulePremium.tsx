@@ -18,16 +18,33 @@ import {
   UserCheck,
   Settings,
   Download,
+  Send,
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
-import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte } from '../types/viaticos';
+import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
+
+/**
+ * Orden de la vista general de solicitudes por estado (según requerimiento):
+ * 1) Radicadas, 2) Extemporáneas, 3) Solicitadas (en revisión), 4) Pendientes
+ * (borradores) y el resto al final.
+ */
+const ORDEN_ESTADOS_TABLA: Record<string, number> = {
+  RADICADA: 1,
+  EXTEMPORANEA: 2,
+  SOLICITADO: 3,
+  PENDIENTE: 4,
+};
+
+function prioridadEstadoTabla(estado: string): number {
+  return ORDEN_ESTADOS_TABLA[estado] ?? 5;
+}
 
 export default function ViaticosModulePremium() {
   const [seccion, setSeccion] = useState<Seccion>('solicitudes');
@@ -108,17 +125,25 @@ export default function ViaticosModulePremium() {
     },
   ];
 
-  const solicitudesFiltradas = solicitudes.filter((sol) => {
-    const termino = busqueda.toLowerCase();
-    const cumpleBusqueda =
-      !termino ||
-      sol.nombreComisionado.toLowerCase().includes(termino) ||
-      sol.codigo.toLowerCase().includes(termino) ||
-      sol.ciudadDestino.toLowerCase().includes(termino) ||
-      sol.dependencia.toLowerCase().includes(termino);
-    const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
-    return cumpleBusqueda && cumpleEstado;
-  });
+  const solicitudesFiltradas = solicitudes
+    .filter((sol) => {
+      const termino = busqueda.toLowerCase();
+      const cumpleBusqueda =
+        !termino ||
+        sol.nombreComisionado.toLowerCase().includes(termino) ||
+        sol.codigo.toLowerCase().includes(termino) ||
+        sol.ciudadDestino.toLowerCase().includes(termino) ||
+        sol.dependencia.toLowerCase().includes(termino);
+      const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
+      return cumpleBusqueda && cumpleEstado;
+    })
+    // Orden por prioridad de estado y, dentro del mismo estado, por fecha de
+    // creación (más reciente primero).
+    .sort(
+      (a, b) =>
+        prioridadEstadoTabla(a.estado) - prioridadEstadoTabla(b.estado) ||
+        (a.creadoEn < b.creadoEn ? 1 : -1),
+    );
 
   const getBadgeEstado = (estado: string) => {
     const c = getConfigEstado(estado);
@@ -133,6 +158,33 @@ export default function ViaticosModulePremium() {
     const ref = solicitud.consecutivoUnico || 'su solicitud';
     setMensajeExito(`La solicitud ${ref} fue radicada correctamente.`);
     cargarDatos();
+  };
+
+  /**
+   * RF-LIQ-004 — Maneja la consolidación exitosa del expediente: refresca la
+   * bandeja y muestra el aviso de que el expediente quedó en revisión del
+   * Grupo de Viáticos (estado SOLICITADO / solo lectura).
+   */
+  const handleSolicitudConsolidada = (
+    resultado: ResultadoConsolidacion,
+  ) => {
+    const ref = resultado.consecutivoUnico || 'el expediente';
+    setMensajeExito(
+      `El expediente ${ref} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
+    );
+    setSolicitudAResumir(null);
+    cargarDatos();
+  };
+
+  /** Abre el modal en modo consolidación (Paso 4) para un expediente radicado. */
+  const handleConsolidar = async (sol: SolicitudViatico) => {
+    try {
+      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setSolicitudAResumir(completa);
+    } catch (e) {
+      console.error('Error abriendo consolidación:', e);
+      setMensajeExito('No fue posible abrir el expediente para consolidación.');
+    }
   };
 
   const handleVerDetalle = async (sol: SolicitudViatico) => {
@@ -204,7 +256,9 @@ export default function ViaticosModulePremium() {
             setSolicitudAResumir(null);
           }}
           onSolicitudCreada={handleSolicitudCreada}
+          onSolicitudConsolidada={handleSolicitudConsolidada}
           solicitudAResumir={solicitudAResumir}
+          esSuperAdmin={esSuperAdmin}
         />
       ) : (
         <>
@@ -429,6 +483,17 @@ export default function ViaticosModulePremium() {
                                       aria-label="Continuar solicitud"
                                     >
                                       <FileText className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  {['RADICADA', 'EXTEMPORANEA', 'DEVUELTA'].includes(sol.estado) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleConsolidar(sol)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                                      title="Consolidar y enviar a revisión (RF-LIQ-004)"
+                                      aria-label="Consolidar y enviar a revisión"
+                                    >
+                                      <Send className="w-3.5 h-3.5" />
                                     </button>
                                   )}
                                 </div>

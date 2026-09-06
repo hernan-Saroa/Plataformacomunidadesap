@@ -12,6 +12,7 @@ export class ComisionadoResponseDto {
   autorizacionHabeasData: boolean;
   fechaAutorizacionHabeasData?: Date;
   ipRegistroHabeasData?: string;
+  idDependencia?: number | null;
   creadoEn: Date;
   actualizadoEn: Date;
 }

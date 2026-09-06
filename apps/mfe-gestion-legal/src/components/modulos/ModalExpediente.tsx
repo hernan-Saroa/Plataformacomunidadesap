@@ -1060,18 +1060,23 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     };
 
     const checkActuacionDocsSigned = (act: any) => {
-      const associatedDocIds = act.metadata?.documentosAsociados || [];
-      if (associatedDocIds.length === 0) return true;
+      // Una actuación ya autorizada (auto por documentos, o manualmente con OTP) siempre
+      // cuenta como "lista", sin importar sus documentos asociados.
+      if (act.metadata?.estadoAutorizacion === 'AUTORIZADO') return true;
 
+      const associatedDocIds = act.metadata?.documentosAsociados || [];
       const resolvedDocs = documentos.filter(doc => {
         const docIdStr = String(doc.id);
         return associatedDocIds.some((id: any) => String(id) === docIdStr);
       });
 
       // Solo PDF y Word requieren firma; Excel, imágenes, video, etc. no bloquean el avance.
-      return resolvedDocs
-        .filter(doc => requiresSignature(doc.nombre))
-        .every(doc => isDocSigned(doc));
+      // Una actuación SIN documentos firmables NO se considera "lista" por vacuidad: debe
+      // aprobarse explícitamente con OTP (botón "Aprobar Actuación") antes de poder avanzar
+      // la etapa (BUG 1461).
+      const documentosFirmables = resolvedDocs.filter(doc => requiresSignature(doc.nombre));
+      if (documentosFirmables.length === 0) return false;
+      return documentosFirmables.every(doc => isDocSigned(doc));
     };
 
     const actuacionesConDocsSinFirmar = actuaciones.filter(a => {

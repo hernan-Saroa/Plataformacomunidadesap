@@ -1,3 +1,4 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { Actuacion } from '../entities/actuacion.entity';
@@ -15,6 +16,14 @@ describe('ActuacionService', () => {
     let mockConfigService: any;
     let mockNotificationClient: any;
     let mockDataSource: any;
+    let mockDocumentoRepo: any;
+
+    // Documento PDF firmado, tal como lo dejaría el flujo de firma individual en el visor.
+    const documentoFirmado = (id = 'doc-1', nombre = 'contrato.pdf') => ({
+        id,
+        nombre,
+        descripcion: JSON.stringify({ firmado: true }),
+    });
 
     const expedienteBase = {
         id: 'expediente-1',
@@ -57,7 +66,11 @@ describe('ActuacionService', () => {
             getUsersDetailsByRole: jest.fn().mockResolvedValue([]),
             getUserDetailsById: jest.fn().mockResolvedValue(null),
         };
-        mockDataSource = { query: jest.fn().mockResolvedValue([]) };
+        mockDocumentoRepo = { find: jest.fn().mockResolvedValue([]) };
+        mockDataSource = {
+            query: jest.fn().mockResolvedValue([]),
+            getRepository: jest.fn().mockReturnValue(mockDocumentoRepo),
+        };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -115,8 +128,9 @@ describe('ActuacionService', () => {
                 id: 'actuacion-2',
                 expedienteId: 'expediente-1',
                 tipoActuacion: 'Auto',
-                metadata: {},
+                metadata: { documentosAsociados: ['doc-1'] },
             });
+            mockDocumentoRepo.find.mockResolvedValue([documentoFirmado()]);
             mockDataSource.query.mockResolvedValue([{ id_user: 'abogado-1', email: 'abogado@esap.edu.co', fullName: 'Abogado Uno' }]);
 
             await service.autorizarPorDocumentosFirmados('actuacion-2', 'firmante@esap.edu.co', 'Firmante');
@@ -142,8 +156,9 @@ describe('ActuacionService', () => {
                 id: 'actuacion-2b',
                 expedienteId: 'expediente-1',
                 tipoActuacion: 'Auto',
-                metadata: {},
+                metadata: { documentosAsociados: ['doc-1'] },
             });
+            mockDocumentoRepo.find.mockResolvedValue([documentoFirmado()]);
             mockExpedienteService.findOne.mockResolvedValue({ ...expedienteBase, abogadoSustanciador: null });
 
             await service.autorizarPorDocumentosFirmados('actuacion-2b', 'firmante@esap.edu.co', 'Firmante');
@@ -154,6 +169,144 @@ describe('ActuacionService', () => {
                 expect.objectContaining({ tipo_notificacion: 'ACTUACION_AUTORIZADA' }),
                 expect.any(Object),
             );
+        });
+    });
+
+    // BUG 1461: en QA, un usuario con el rol configurado como aprobador entró a la pestaña
+    // de Actuaciones y la actuación se autorizó sola (avanzando de etapa) sin firma ni token
+    // de ningún tipo, porque una actuación SIN documentos asociados pasaba la validación de
+    // "documentos firmados" por vacuidad (.every() sobre un array vacío es true). Estos casos
+    // cubren la corrección: revalidación de rol/usuario en el servidor y exigencia de al
+    // menos un documento firmable realmente firmado.
+    describe('autorizarPorDocumentosFirmados() - validaciones de seguridad (BUG 1461)', () => {
+        it('rechaza autorizar una actuación sin documentos asociados, aunque el llamante tenga el rol configurado', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-sin-docs',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+
+            await expect(
+                service.autorizarPorDocumentosFirmados('actuacion-sin-docs', 'jefe@esap.edu.co', 'Jefe', ['JEFE_GESTION_LEGAL'], 'jefe-1'),
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(mockActuacionRepo.save).not.toHaveBeenCalled();
+            expect(mockNotificationClient.notifyUserById).not.toHaveBeenCalled();
+        });
+
+        it('rechaza autorizar cuando los documentos asociados no requieren firma (p. ej. Excel)', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-doc-no-firmable',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { documentosAsociados: ['doc-1'], aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+            mockDocumentoRepo.find.mockResolvedValue([{ id: 'doc-1', nombre: 'anexo.xlsx', descripcion: null }]);
+
+            await expect(
+                service.autorizarPorDocumentosFirmados('actuacion-doc-no-firmable', 'jefe@esap.edu.co', 'Jefe', ['JEFE_GESTION_LEGAL']),
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(mockActuacionRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('rechaza autorizar cuando el documento firmable asociado aún no está firmado', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-doc-sin-firmar',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { documentosAsociados: ['doc-1'], aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+            mockDocumentoRepo.find.mockResolvedValue([{ id: 'doc-1', nombre: 'contrato.pdf', descripcion: null }]);
+
+            await expect(
+                service.autorizarPorDocumentosFirmados('actuacion-doc-sin-firmar', 'jefe@esap.edu.co', 'Jefe', ['JEFE_GESTION_LEGAL']),
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(mockActuacionRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('rechaza (Forbidden) cuando el rol del llamante no coincide con el rol configurado como aprobador', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-rol-incorrecto',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { documentosAsociados: ['doc-1'], aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+            mockDocumentoRepo.find.mockResolvedValue([documentoFirmado()]);
+
+            await expect(
+                service.autorizarPorDocumentosFirmados('actuacion-rol-incorrecto', 'otro@esap.edu.co', 'Otro', ['RESUELVE_GESTION_LEGAL'], 'user-2'),
+            ).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(mockActuacionRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('rechaza (Forbidden) cuando la etapa exige un usuario aprobador específico y el llamante es otro', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-usuario-incorrecto',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { documentosAsociados: ['doc-1'], aprobacionTipo: 'usuario', aprobacionUsuario: 'usuario-aprobador' },
+            });
+            mockDocumentoRepo.find.mockResolvedValue([documentoFirmado()]);
+
+            await expect(
+                service.autorizarPorDocumentosFirmados('actuacion-usuario-incorrecto', 'otro@esap.edu.co', 'Otro', [], 'otro-usuario-id'),
+            ).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(mockActuacionRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('autoriza cuando el rol del llamante coincide con el rol configurado y los documentos están firmados', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-rol-correcto',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { documentosAsociados: ['doc-1'], aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+            mockDocumentoRepo.find.mockResolvedValue([documentoFirmado()]);
+
+            const resultado = await service.autorizarPorDocumentosFirmados(
+                'actuacion-rol-correcto', 'jefe@esap.edu.co', 'Jefe', ['JEFE_GESTION_LEGAL'], 'jefe-1',
+            );
+
+            expect(resultado.metadata.estadoAutorizacion).toBe('AUTORIZADO');
+            expect(mockActuacionRepo.save).toHaveBeenCalled();
+        });
+
+        it('un SUPER_ADMIN puede autorizar sin cumplir el rol configurado, siempre que los documentos estén firmados', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-superadmin',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { documentosAsociados: ['doc-1'], aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+            mockDocumentoRepo.find.mockResolvedValue([documentoFirmado()]);
+
+            const resultado = await service.autorizarPorDocumentosFirmados(
+                'actuacion-superadmin', 'admin@esap.edu.co', 'Admin', ['SUPER_ADMIN'], 'admin-1',
+            );
+
+            expect(resultado.metadata.estadoAutorizacion).toBe('AUTORIZADO');
+        });
+
+        it('es idempotente: si ya estaba AUTORIZADO, no vuelve a validar ni a guardar', async () => {
+            mockActuacionRepo.findOne.mockResolvedValue({
+                id: 'actuacion-ya-autorizada',
+                expedienteId: 'expediente-1',
+                tipoActuacion: 'Auto',
+                metadata: { estadoAutorizacion: 'AUTORIZADO', aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            });
+
+            const resultado = await service.autorizarPorDocumentosFirmados(
+                'actuacion-ya-autorizada', 'cualquiera@esap.edu.co', 'Cualquiera', [], undefined,
+            );
+
+            expect(resultado.metadata.estadoAutorizacion).toBe('AUTORIZADO');
+            expect(mockActuacionRepo.save).not.toHaveBeenCalled();
+            expect(mockDocumentoRepo.find).not.toHaveBeenCalled();
         });
     });
 

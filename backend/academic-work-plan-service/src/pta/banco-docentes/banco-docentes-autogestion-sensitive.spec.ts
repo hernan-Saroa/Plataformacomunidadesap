@@ -97,7 +97,14 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
       documento_identidad: '1020304050',
       telefono: '3001234567',
       canal_origen: 'AUTOGESTION',
-    }), { rejectExisting: false, relaxValidation: true });
+    }), expect.objectContaining({
+      rejectExisting: false,
+      relaxValidation: true,
+      audit: expect.objectContaining({
+        canalOrigen: 'AUTOGESTION',
+        soporteId: 'invitacion-1',
+      }),
+    }));
     const submittedPayload = upsertSpy.mock.calls[0][0];
     expect(submittedPayload).not.toHaveProperty('puntajeSalarial');
     expect(submittedPayload).not.toHaveProperty('PUNTAJE_SALARIAL');

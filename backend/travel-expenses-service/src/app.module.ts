@@ -20,10 +20,12 @@ import { LiquidationParamEntity } from './entities/liquidation/liquidation-param
 import { SaldoTiqueteEntity } from './entities/tickets/saldo-tiquete.entity';
 import { RutaRestringidaEntity } from './entities/tickets/ruta-restringida.entity';
 import { ExcepcionTiqueteEntity } from './entities/tickets/excepcion-tiquete.entity';
+import { SolicitudHistorialEstadoEntity } from './entities/solicitud-historial-estado.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
+import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
 
 @Module({
   imports: [
@@ -51,6 +53,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
         SaldoTiqueteEntity,
         RutaRestringidaEntity,
         ExcepcionTiqueteEntity,
+        SolicitudHistorialEstadoEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -60,6 +63,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
     ConfigParamModule,
     LiquidationModule,
     TicketsModule,
+    ConsolidacionModule,
   ],
   controllers: [AppController],
   providers: [

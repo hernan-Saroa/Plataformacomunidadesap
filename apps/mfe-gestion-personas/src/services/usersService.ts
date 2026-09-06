@@ -41,11 +41,12 @@ export interface User {
     first_name: string;
     last_name: string;
     gender: string;
-    email: string;
-    phone: string;
-    created_at: string;
-    updated_at: string;
-  };
+     email: string;
+     phone: string;
+     created_at: string;
+     updated_at: string;
+     idDependencia?: number | null;
+   };
   roles: Array<{
     id: string;
     code: string;

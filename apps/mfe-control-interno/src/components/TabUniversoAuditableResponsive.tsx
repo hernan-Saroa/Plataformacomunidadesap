@@ -38,7 +38,7 @@ import { exportarUniversoAuditableExcel, exportarUniversoAuditablePDF } from './
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+type NivelRiesgo = 'Extremo' | 'Alto' | 'Moderado' | 'Bajo' | 'Crítico' | 'Medio';
 type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
 interface ProcesoAuditable {
@@ -903,9 +903,9 @@ export function TabUniversoAuditableResponsive({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none text-sm"
                 >
                   <option value="TODOS">Todos los niveles</option>
-                  <option value="Crítico">🔴 Crítico</option>
+                  <option value="Extremo">🔴 Extremo</option>
                   <option value="Alto">🟠 Alto</option>
-                  <option value="Medio">🟡 Medio</option>
+                  <option value="Moderado">🟡 Moderado</option>
                   <option value="Bajo">🔵 Bajo</option>
                 </select>
               </div>

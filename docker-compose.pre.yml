@@ -420,6 +420,8 @@ services:
         condition: service_started
     networks:
       - superapp-net-pre
+    volumes:
+      - ./backend/legal-management-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ NOTIFICATIONS SERVICE ============

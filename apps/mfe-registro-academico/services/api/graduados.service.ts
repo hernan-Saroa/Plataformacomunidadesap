@@ -803,6 +803,7 @@ const graduadosService = {
       const response = await apiClient.put(
         `${SERVICE_PREFIX}/graduates/${id}`,
         graduado,
+        { retries: 0 },
       );
       return response;
     },

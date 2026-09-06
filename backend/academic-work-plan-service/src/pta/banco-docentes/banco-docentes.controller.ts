@@ -26,6 +26,11 @@ const RUND_DOCUMENT_UPLOAD_OPTIONS = {
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
 };
 
+const RUND_BULK_UPLOAD_OPTIONS = {
+  storage: memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+};
+
 @Controller(['banco-docentes', 'pta/banco-docentes'])
 @UseGuards(BancoDocentesRolesGuard)
 export class BancoDocentesController {
@@ -295,10 +300,11 @@ export class BancoDocentesController {
   @Post('bulk')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', RUND_BULK_UPLOAD_OPTIONS))
   async bulkUpload(
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body() body: any,
+    @Req() req: any,
     @Query('dry_run') dryRunQuery?: string,
     @Query('omit_errors') omitErrorsQuery?: string,
     @Query('periodo_carga') periodoCargaQuery?: string,
@@ -309,7 +315,20 @@ export class BancoDocentesController {
     let periodoCargaFromFile: string | null = null;
 
     if (file) {
-      const workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
+      const extension = extname(file.originalname || '').toLowerCase();
+      if (!['.xlsx', '.xls', '.csv'].includes(extension)) {
+        throw new BadRequestException('El soporte de carga masiva debe ser un archivo XLSX, XLS o CSV.');
+      }
+      let workbook: xlsx.WorkBook;
+      try {
+        workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
+      } catch {
+        throw new BadRequestException('El archivo de carga masiva esta corrupto o no tiene un formato Excel/CSV valido.');
+      }
+
+      if (workbook.SheetNames.length === 0) {
+        throw new BadRequestException('El archivo de carga masiva no contiene hojas de datos.');
+      }
       
       // Find the correct sheet containing the data (ignoring README, DICCIONARIO, etc.)
       const sheetName = workbook.SheetNames.find(name => 
@@ -382,13 +401,42 @@ export class BancoDocentesController {
     // Antes iba en true, por lo que un docente ya cargado se rechazaba y su bolsa de horas
     // (HORAS_PTA) nunca se actualizaba, quedando el PTA con el valor viejo (800 en vez de
     // 720). Los duplicados DENTRO del mismo archivo sí se siguen bloqueando en bulkUpsert.
+    const actor = this.requestActor(req);
+    const supportContent = file?.buffer || Buffer.from(JSON.stringify(rows), 'utf8');
     const result = await this.service.bulkUpsert(rows, {
       rejectExisting: false,
       dryRun,
       omitErrors,
       periodoCarga: periodoCargaQuery || periodoCargaFromFile || undefined,
+      actorId: actor.actorId,
+      ip: actor.ip,
+      support: {
+        fileName: file?.originalname || 'carga-masiva-api.json',
+        mimeType: file?.mimetype || 'application/json',
+        content: supportContent,
+        justificacion: String(body?.justificacion || 'Carga masiva de perfiles docentes RUND').trim(),
+      },
     });
     return { success: true, data: result };
+  }
+
+  @Get('bulk/historial')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  async bulkHistory(@Query('limit') limit?: string) {
+    const data = await this.service.getBulkHistory(limit ? parseInt(limit, 10) : 50);
+    return { success: true, data };
+  }
+
+  @Get('bulk/:cargaId/soporte')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
+  async bulkSupport(@Param('cargaId') cargaId: string, @Res() res: Response) {
+    const support = await this.service.getBulkSupport(cargaId);
+    const safeName = String(support.fileName || 'carga-rund.xlsx').replace(/[\r\n"\\/:*?<>|]/g, '_');
+    res.setHeader('Content-Type', support.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.send(support.content);
   }
 
   @Post('sync-auth')
@@ -607,18 +655,20 @@ export class BancoDocentesController {
   @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
   async create(@Body() body: any, @Req() req: any) {
     const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const actor = this.requestActor(req);
     const result = await this.service.upsertDocente(
       { ...body, actorId, cargadoPor: actorId, canal_origen: 'MODAL' },
-      { rejectExisting: true },
+      {
+        rejectExisting: true,
+        audit: {
+          actorId,
+          canalOrigen: 'MODAL',
+          ip: actor.ip,
+          accion: 'CREAR',
+          metadata: { periodoCarga: body.periodoCarga || body.periodo_carga || null },
+        },
+      },
     );
-    await this.service.logAudit({
-      docenteId: result.docenteId,
-      bloque: 'GENERAL',
-      accion: 'CREAR',
-      actorId,
-      canalOrigen: 'MODAL',
-      metadata: { periodoCarga: body.periodoCarga || body.periodo_carga || null },
-    });
     return { success: true, data: result };
   }
 
@@ -627,7 +677,8 @@ export class BancoDocentesController {
   @RequireRundPermissions(RUND_PERMISSIONS.EDIT, RUND_PERMISSIONS.MANAGE)
   async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
-    const result = await this.service.updateDocente(id, { ...body, actorId, cargadoPor: actorId });
+    const actor = this.requestActor(req);
+    const result = await this.service.updateDocente(id, { ...body, actorId, cargadoPor: actorId, ip: actor.ip });
     return { success: true, data: result };
   }
 
@@ -636,7 +687,8 @@ export class BancoDocentesController {
   @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
   async cambiarEstado(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
-    const result = await this.service.cambiarEstado(id, { ...body, actorId });
+    const actor = this.requestActor(req);
+    const result = await this.service.cambiarEstado(id, { ...body, actorId, ip: actor.ip });
     return { success: true, data: result };
   }
 
@@ -645,7 +697,8 @@ export class BancoDocentesController {
   @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
   async toggleEstado(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     const actorId = req?.user?.userId || req?.user?.email || body?.actorId || body?.cargadoPor || 'SISTEMA';
-    const result = await this.service.cambiarEstado(id, { ...(body || {}), actorId });
+    const actor = this.requestActor(req);
+    const result = await this.service.cambiarEstado(id, { ...(body || {}), actorId, ip: actor.ip });
     return { success: true, data: result };
   }
 

@@ -16,11 +16,10 @@ INSERT INTO travel_expenses.comisionados (
   autorizacion_habeas_data, fecha_autorizacion_habeas_data, ip_registro_habeas_data
 )
 VALUES
-  ('123456789',   'Juan',   'Pablo',  'Suárez',   '',          'juan.pablo.suarez@esap.edu.co',  '3001234567', 'FUNCIONARIO',  'HUMANO', true, '2026-01-15'::timestamp, '127.0.0.1'),
-  ('1004734004',  'Juan',   'Pablo',  'Suárez',   '',          'juan.pablo.suarez2@esap.edu.co', '3007654321', 'CONTRATISTA', 'HUMANO', true, '2026-02-10'::timestamp, '127.0.0.1'),
-  ('1019283746',  'Carlos', 'Eduardo','Ramírez',  'Gómez',     'carlos.ramirez@esap.edu.co',    '3159876543', 'FUNCIONARIO',  'HUMANO', true, '2026-03-05'::timestamp, '127.0.0.1'),
-  ('52839102',    'Ana',    'María',  'Gómez',    'Quintero',  'ana.gomez@esap.edu.co',         '3204567890', 'DOCENTE',     'HUMANO', true, '2026-03-20'::timestamp, '127.0.0.1'),
-  ('79483920',    'Jorge',  'Enrique','Vargas',   'Muñoz',     'jorge.vargas@esap.edu.co',      '3501234567', 'FUNCIONARIO',  'HUMANO', true, '2026-04-12'::timestamp, '127.0.0.1')
+  ('1004734004',  'Juan',   'Pablo',  'Suárez',   '',          'juan.pablo.suarez2@esap.edu.co', '3007654321', 'CONTRATISTA', 'ESAP', true, '2026-02-10'::timestamp, '127.0.0.1'),
+  ('123456789',  'Carlos', 'Eduardo','Ramírez',  'Gómez',     'carlos.ramirez@esap.edu.co',    '3159876543', 'FUNCIONARIO',  'ESAP', true, '2026-03-05'::timestamp, '127.0.0.1'),
+  ('1234567890',    'Ana',    'María',  'Gómez',    'Quintero',  'ana.gomez@esap.edu.co',         '3204567890', 'DOCENTE',     'ESAP', true, '2026-03-20'::timestamp, '127.0.0.1'),
+  ('79483920',    'Jorge',  'Enrique','Vargas',   'Muñoz',     'jorge.vargas@esap.edu.co',      '3501234567', 'FUNCIONARIO',  'ESAP', true, '2026-04-12'::timestamp, '127.0.0.1')
 ON CONFLICT (numero_documento) DO NOTHING;
 
 INSERT INTO travel_expenses.solicitudes_comision (

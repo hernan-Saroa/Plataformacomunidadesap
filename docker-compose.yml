@@ -318,6 +318,8 @@ services:
       - redis
     networks:
       - superapp-net
+    volumes:
+      - ./backend/legal-management-service/uploads:/app/uploads
 
   # ============ NOTIFICATIONS SERVICE ============
   notifications-service:

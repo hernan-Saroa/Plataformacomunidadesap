@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { Actuacion } from '../entities/actuacion.entity';
@@ -7,6 +7,19 @@ import { ExpedienteService } from './expediente.service';
 import { TerminosService } from './terminos.service';
 import { ConfigurationsService } from './configurations.service';
 import { NotificationClientService } from './notification-client.service';
+
+// Solo PDF y Word requieren firma electrónica en los flujos de aprobación (debe coincidir
+// con requiresSignature de apps/utils/fileUtils.ts en el frontend).
+const SIGNABLE_EXTENSIONS = ['.pdf', '.doc', '.docx'];
+function isSignableDocument(nombre: string | null | undefined): boolean {
+    if (!nombre) return false;
+    const cleaned = nombre.toLowerCase().replace(/\s*\(firmado\)\s*/g, '').trim();
+    const queryIndex = cleaned.indexOf('?');
+    const withoutQuery = queryIndex === -1 ? cleaned : cleaned.substring(0, queryIndex);
+    const dotIndex = withoutQuery.lastIndexOf('.');
+    const ext = dotIndex === -1 ? '' : withoutQuery.substring(dotIndex);
+    return SIGNABLE_EXTENSIONS.includes(ext);
+}
 
 @Injectable()
 export class ActuacionService {
@@ -402,12 +415,21 @@ export class ActuacionService {
      * Autoriza automáticamente la actuación cuando todos sus documentos asociados que
      * requieren firma ya fueron firmados individualmente (uno por uno, cada uno con su
      * propia verificación de identidad). Ya no se exige un segundo paso manual de "Autorizar
-     * Actuación" con OTP: la firma de los documentos es la autorización.
+     * Actuación" con OTP para ESTE caso: la firma de los documentos es la autorización.
+     *
+     * Revalida en el servidor (nunca confiando solo en el frontend):
+     *   1. Que el usuario que llama cumple el rol/usuario configurado como aprobador.
+     *   2. Que existe al menos un documento firmable asociado y que todos están firmados.
+     * Una actuación sin documentos firmables NO puede autorizarse por esta vía (BUG 1461:
+     * antes se autorizaba sola con solo entrar a la pestaña de Actuaciones, sin firma ni
+     * token de ningún tipo). Esas actuaciones deben usar POST /:actuacionId/autorizar (OTP).
      */
     async autorizarPorDocumentosFirmados(
         actuacionId: string,
         userEmail: string,
-        userName: string
+        userName: string,
+        callerRoles: string[] = [],
+        callerUserId?: string
     ): Promise<Actuacion> {
         const actuacion = await this.actuacionRepository.findOne({ where: { id: actuacionId } });
         if (!actuacion) throw new NotFoundException('Actuación no encontrada');
@@ -415,6 +437,42 @@ export class ActuacionService {
         const metadata = actuacion.metadata || {};
         if (metadata.estadoAutorizacion === 'AUTORIZADO') {
             return actuacion;
+        }
+
+        const isSuperAdmin = (callerRoles || []).includes('SUPER_ADMIN');
+        if (!isSuperAdmin) {
+            if (metadata.aprobacionTipo === 'rol' && metadata.aprobacionRol) {
+                if (!(callerRoles || []).includes(String(metadata.aprobacionRol).toUpperCase())) {
+                    throw new ForbiddenException(`Se requiere el rol "${metadata.aprobacionRol}" para autorizar esta actuación`);
+                }
+            } else if (metadata.aprobacionTipo === 'usuario' && metadata.aprobacionUsuario) {
+                if (!callerUserId || String(callerUserId) !== String(metadata.aprobacionUsuario)) {
+                    throw new ForbiddenException('Solo el usuario configurado como aprobador puede autorizar esta actuación');
+                }
+            }
+        }
+
+        const associatedDocIds = metadata.documentosAsociados || [];
+        const documentoRepository = this.dataSource.getRepository(Documento);
+        const resolvedDocs = associatedDocIds.length > 0
+            ? await documentoRepository.find({ where: { id: In(associatedDocIds) } })
+            : [];
+
+        const isDocSigned = (d: Documento) => {
+            if (!d?.descripcion) return false;
+            try {
+                const data = JSON.parse(d.descripcion);
+                return !!(data && data.firmado);
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const documentosFirmables = resolvedDocs.filter(doc => isSignableDocument(doc.nombre));
+        if (documentosFirmables.length === 0 || !documentosFirmables.every(isDocSigned)) {
+            throw new BadRequestException(
+                'No se puede autorizar automáticamente: esta actuación no tiene documentos firmados asociados. Use la autorización manual con verificación OTP.'
+            );
         }
 
         return this.finalizarAutorizacion(actuacion, metadata, userEmail, userName);

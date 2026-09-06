@@ -71,6 +71,7 @@ export function EmailTagInput({
   const [suggestions, setSuggestions] = useState<DestinatarioSugerido[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [searchDone, setSearchDone] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -85,10 +86,12 @@ export function EmailTagInput({
     if (q.length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
+      setSearchDone(false);
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const reqId = ++requestIdRef.current;
+    setSearchDone(false);
     debounceRef.current = setTimeout(async () => {
       setLoadingSuggestions(true);
       try {
@@ -100,7 +103,10 @@ export function EmailTagInput({
       } catch {
         if (reqId === requestIdRef.current) setSuggestions([]);
       } finally {
-        if (reqId === requestIdRef.current) setLoadingSuggestions(false);
+        if (reqId === requestIdRef.current) {
+          setLoadingSuggestions(false);
+          setSearchDone(true);
+        }
       }
     }, 300);
     return () => {
@@ -222,12 +228,16 @@ export function EmailTagInput({
           />
         )}
 
-        {!readOnly && showSuggestions && (loadingSuggestions || suggestions.length > 0) && (
+        {!readOnly && showSuggestions && (loadingSuggestions || suggestions.length > 0 || searchDone) && (
           <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-            {suggestions.length === 0 ? (
+            {loadingSuggestions ? (
               <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Buscando en Outlook…
+              </div>
+            ) : suggestions.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-gray-400">
+                Sin resultados en Outlook
               </div>
             ) : (
               suggestions.map((s, idx) => (

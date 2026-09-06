@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, FileSpreadsheet
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -159,7 +159,11 @@ export function ModuloTerminosInformesV3() {
     return solicitudes
       .filter(s => s.etapa === 'CUMPLIDO')
       .map(s => ({
-        id: s.id,
+        // `id` debe ser el identificador único real en backend (UUID), no el radicado visible:
+        // dos términos distintos pueden compartir numeroRadicado (mismo expediente, distinto
+        // módulo/actuación), y usar el radicado como identidad podía restaurar/eliminar el
+        // término equivocado. `codigo` sigue siendo el radicado para mostrar en pantalla.
+        id: s.metadata?.uuid || s.id,
         codigo: s.id,
         nombre: s.asunto || 'Sin título',
         tipo: s.tipoInforme || 'Término',
@@ -175,12 +179,12 @@ export function ModuloTerminosInformesV3() {
   }, [solicitudes]);
 
   // ✅ Función para restaurar una solicitud archivada
+  // `itemId` ya es el UUID real de backend (ver itemsArchivados), no el radicado visible.
   const handleRestaurar = async (itemId: string) => {
     try {
-      const backendId = solicitudes.find(s => s.id === itemId)?.metadata?.uuid || itemId;
-      await legalService.updateTermino(backendId, { estado: 'PENDIENTE', closedAt: null });
+      await legalService.updateTermino(itemId, { estado: 'PENDIENTE', closedAt: null });
       toast.success('Término restaurado exitosamente');
-      fetchData();
+      await fetchData();
     } catch (e) {
       toast.error('Error al restaurar término');
     }
@@ -196,12 +200,14 @@ export function ModuloTerminosInformesV3() {
     if (!terminoAEliminar) return;
     try {
       const { id, permanente } = terminoAEliminar;
-      const backendId = solicitudes.find(s => s.id === id)?.metadata?.uuid || id;
-      await legalService.eliminarTermino(backendId);
+      // `id` ya es el UUID real de backend, asignado en el momento del clic (ver handleEliminar,
+      // VistaTimeline/VistaLista y ModalDetalleSolicitudInforme). No se vuelve a buscar por el id
+      // visible (radicado), que puede repetirse entre varios términos del mismo expediente.
+      await legalService.eliminarTermino(id);
       toast.success(permanente ? 'Término eliminado permanentemente' : 'Término eliminado');
       setModalDetalleOpen(false);
       setModalEliminarOpen(false);
-      fetchData();
+      await fetchData();
     } catch (e) {
       toast.error('Error al eliminar término');
     }
@@ -410,27 +416,34 @@ export function ModuloTerminosInformesV3() {
     }
   };
 
+  // `id` ya es el UUID real de backend, resuelto en el punto de clic (VistaTimeline/VistaLista/
+  // ModalDetalleSolicitudInforme pasan solicitud.metadata?.uuid || solicitud.id).
   const handleArchivar = async (id: string) => {
     try {
-      const solicitud = solicitudes.find(s => s.id === id);
-      if (!solicitud) return;
-      const backendId = solicitud.metadata?.uuid || solicitud.id;
-      await legalService.updateTermino(backendId, { estado: 'CUMPLIDO', closedAt: new Date() });
+      await legalService.updateTermino(id, { estado: 'CUMPLIDO', closedAt: new Date() });
       toast.success('El término ha sido archivado (CUMPLIDO)');
       setModalDetalleOpen(false);
-      fetchData();
+      await fetchData();
     } catch (e) {
       toast.error('Error al archivar el término');
     }
   };
 
+  // `id` ya es el UUID real de backend (ver VistaTimeline/VistaLista/ModalDetalleSolicitudInforme).
   const handleEliminar = async (id: string) => {
     setTerminoAEliminar({ id: id, permanente: false });
     setModalEliminarOpen(true);
   };
 
+  // Universo de solicitudes "vigentes" (sin archivadas ni eliminadas), previo a búsqueda/filtros
+  // de UI. Es la base tanto de la lista visible como del total mostrado en "Mostrando X de Y".
+  const solicitudesActivas = useMemo(
+    () => solicitudes.filter(s => s.etapa !== 'CUMPLIDO' && s.etapa !== 'ELIMINADO'),
+    [solicitudes]
+  );
+
   const solicitudesFiltradas = useMemo(() => {
-    let resultado = [...solicitudes].filter(s => s.etapa !== 'CUMPLIDO' && s.etapa !== 'ELIMINADO');
+    let resultado = [...solicitudesActivas];
 
     if (busqueda) {
       resultado = resultado.filter(s =>
@@ -460,7 +473,7 @@ export function ModuloTerminosInformesV3() {
 
     // Always sort by urgency (less days remaining first)
     return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
-  }, [solicitudes, busqueda, filtroSemaforo, filtroEtapa, filtroModuloOrigen]);
+  }, [solicitudesActivas, busqueda, filtroSemaforo, filtroEtapa, filtroModuloOrigen]);
 
   const solicitudesCriticas = solicitudesFiltradas.filter(s => s.diasRestantes <= 2).length;
   const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
@@ -551,17 +564,25 @@ export function ModuloTerminosInformesV3() {
       { width: 16 }, { width: 40 }, { width: 26 }, { width: 30 }, { width: 22 }, { width: 14 }, { width: 18 }, { width: 14 }
     ];
 
+    worksheet.mergeCells(1, 1, 1, headers.length);
+    const titleCell = worksheet.getCell(1, 1);
+    titleCell.value = 'CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES';
+    titleCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 14 };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(1).height = 28;
+
     headers.forEach((header, index) => {
-      const cell = worksheet.getCell(1, index + 1);
+      const cell = worksheet.getCell(2, index + 1);
       cell.value = header;
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
-    worksheet.getRow(1).height = 22;
+    worksheet.getRow(2).height = 22;
 
     solicitudesFiltradas.forEach((s, index) => {
-      const row = worksheet.getRow(index + 2);
+      const row = worksheet.getRow(index + 3);
       row.getCell(1).value = s.id;
       row.getCell(2).value = s.asunto || 'Sin asunto';
       row.getCell(3).value = s.destinatario || 'Sin asignar';
@@ -714,7 +735,7 @@ export function ModuloTerminosInformesV3() {
             ]
           }
         ]}
-        totalItems={solicitudes.length}
+        totalItems={solicitudesActivas.length}
         filteredItems={solicitudesFiltradas.length}
         onClearFilters={() => {
           setBusqueda('');
@@ -722,7 +743,7 @@ export function ModuloTerminosInformesV3() {
           setFiltroEtapa('TODAS');
           setFiltroModuloOrigen('TODOS');
         }}
-        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudes.length} solicitudes`}
+        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudesActivas.length} solicitudes`}
       />
 
       {/* Contenido principal */}
@@ -810,25 +831,46 @@ export function ModuloTerminosInformesV3() {
       {/* Modal Seleccionar Formato de Exportación */}
       {modalExportarOpen && (
         <Dialog open={modalExportarOpen} onOpenChange={setModalExportarOpen}>
-          <DialogContent hideCloseButton className="max-w-md">
+          <DialogContent hideCloseButton className="max-w-sm">
             <DialogTitle>Exportar términos e informes</DialogTitle>
             <DialogDescription>
               Seleccione el formato en el que desea descargar {solicitudesFiltradas.length} término{solicitudesFiltradas.length === 1 ? '' : 's'}.
             </DialogDescription>
 
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" onClick={handleExportarPDF} className="flex-1 flex-col h-auto py-4 gap-1">
-                <FileText className="w-6 h-6" />
-                <span className="font-semibold">PDF</span>
+            <div className="flex justify-center gap-4 py-3">
+              <Button
+                variant="outline"
+                onClick={handleExportarPDF}
+                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-red-300 hover:bg-red-50/60"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+                  <FileText className="w-5 h-5" />
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className="text-sm font-semibold text-gray-900">PDF</span>
+                  <span className="text-xs text-gray-500">Documento</span>
+                </span>
               </Button>
-              <Button variant="outline" onClick={handleExportarExcel} className="flex-1 flex-col h-auto py-4 gap-1">
-                <Download className="w-6 h-6" />
-                <span className="font-semibold">Excel (.xlsx)</span>
+              <Button
+                variant="outline"
+                onClick={handleExportarExcel}
+                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-green-300 hover:bg-green-50/60"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-green-600">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className="text-sm font-semibold text-gray-900">Excel</span>
+                  <span className="text-xs text-gray-500">.xlsx</span>
+                </span>
               </Button>
             </div>
-            <Button variant="outline" onClick={() => setModalExportarOpen(false)} className="w-full">
-              Cancelar
-            </Button>
+
+            <div className="flex justify-center border-t border-gray-100 pt-3">
+              <Button variant="ghost" onClick={() => setModalExportarOpen(false)} className="text-gray-500 hover:text-gray-700">
+                Cancelar
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}
@@ -843,7 +885,7 @@ interface VistaTimelineProps {
   onEliminar?: (id: string) => void;
 }
 
-function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
+export function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
   // Ordenar por fecha límite
   const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
     new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime()
@@ -933,7 +975,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   </button>
                   {onArchivar && (
                   <button
-                    onClick={() => onArchivar(solicitud.id)}
+                    onClick={() => onArchivar(solicitud.metadata?.uuid || solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100"
                     title="Archivar (marcar como Cumplido)"
                   >
@@ -943,7 +985,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   )}
                   {onEliminar && (
                   <button
-                    onClick={() => onEliminar(solicitud.id)}
+                    onClick={() => onEliminar(solicitud.metadata?.uuid || solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
                     title="Eliminar término"
                   >
@@ -1151,7 +1193,7 @@ export function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }
                       </button>
                       {onArchivar && (
                       <Button
-                        onClick={() => onArchivar(solicitud.id)}
+                        onClick={() => onArchivar(solicitud.metadata?.uuid || solicitud.id)}
                         size="sm"
                         variant="outline"
                         title="Archivar (Cumplido)"
@@ -1162,7 +1204,7 @@ export function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }
                       )}
                       {onEliminar && (
                       <Button
-                        onClick={() => onEliminar(solicitud.id)}
+                        onClick={() => onEliminar(solicitud.metadata?.uuid || solicitud.id)}
                         size="sm"
                         variant="outline"
                         title="Eliminar"

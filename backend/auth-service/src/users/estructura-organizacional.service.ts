@@ -4,11 +4,14 @@ import { Repository, DataSource, In, QueryRunner } from 'typeorm';
 import { Geopolitica } from './geopolitica.entity';
 import { Sede } from './sede.entity';
 import { Seccional } from './seccional.entity';
+import { Dependencia } from './dependencia.entity';
 import {
   CreateSeccionalDto,
   UpdateSeccionalDto,
   CreateSedeDto,
   UpdateSedeDto,
+  CreateDependenciaDto,
+  UpdateDependenciaDto,
 } from './estructura-organizacional.dto';
 import * as xlsx from 'xlsx';
 import * as fs from 'fs';
@@ -73,6 +76,8 @@ export class EstructuraOrganizacionalService {
     private readonly sedeRepo: Repository<Sede>,
     @InjectRepository(Seccional)
     private readonly seccionalRepo: Repository<Seccional>,
+    @InjectRepository(Dependencia)
+    private readonly dependenciaRepo: Repository<Dependencia>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -1972,11 +1977,11 @@ export class EstructuraOrganizacionalService {
 
         await queryRunner.query(
           `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo, created_at)
-           VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-           ON CONFLICT ON CONSTRAINT uq_periodo_cetap_periodo_cetap
-           DO UPDATE SET activo = EXCLUDED.activo`,
-          [idPeriodo, idCetap, activo]
-        );
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ON CONFLICT ON CONSTRAINT uq_periodo_cetap_periodo_cetap
+            DO UPDATE SET activo = EXCLUDED.activo`,
+           [idPeriodo, idCetap, activo]
+         );
         actualizados++;
       }
 
@@ -1988,5 +1993,152 @@ export class EstructuraOrganizacionalService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  // ========================================================================
+  // DEPENDENCIAS (transversal a la plataforma)
+  // ========================================================================
+
+  /**
+   * Lista dependencias de la ESAP con filtros opcionales. Es transversal:
+   * la consumen el módulo de viáticos (cupo presupuestal de tiquetes),
+   * estructura organizacional, control interno, etc.
+   *
+   * Por defecto devuelve solo activas. El parámetro `includeInactive=true`
+   * expone las inactivas para el panel admin de parametrización.
+   */
+  async findAllDependencias(
+    filters: { includeInactive?: boolean; search?: string; codigo?: string } = {},
+  ): Promise<Dependencia[]> {
+    const qb = this.dependenciaRepo.createQueryBuilder('d');
+    if (!filters.includeInactive) {
+      qb.where('d.activo = TRUE');
+    }
+    if (filters.codigo) {
+      qb.andWhere('UPPER(d.cod_dependencia) = :codigo', {
+        codigo: filters.codigo.toUpperCase(),
+      });
+    }
+    if (filters.search) {
+      const like = `%${filters.search.toUpperCase()}%`;
+      qb.andWhere(
+        '(UPPER(d.nom_dependencia) LIKE :like OR UPPER(d.cod_dependencia) LIKE :like)',
+        { like },
+      );
+    }
+    qb.orderBy('d.nom_dependencia', 'ASC');
+    return qb.getMany();
+  }
+
+  async findDependenciaById(id: number): Promise<Dependencia> {
+    const dep = await this.dependenciaRepo.findOne({
+      where: { idDependencia: id },
+    });
+    if (!dep) {
+      throw new NotFoundException(`Dependencia con id ${id} no encontrada.`);
+    }
+    return dep;
+  }
+
+  /**
+   * Crea una dependencia nueva. Valida que el código no exista y que
+   * la FK a Geopolitica (si se envía) apunte a un registro válido.
+   */
+  async createDependencia(dto: CreateDependenciaDto): Promise<Dependencia> {
+    const codigo = dto.codDependencia.trim().toUpperCase();
+    const existe = await this.dependenciaRepo.findOne({
+      where: { codDependencia: codigo },
+    });
+    if (existe) {
+      throw new ConflictException(
+        `Ya existe una dependencia con el código ${codigo}.`,
+      );
+    }
+    if (dto.idGeopolitica) {
+      const geo = await this.geopoliticaRepo.findOne({
+        where: { idGeopolitica: dto.idGeopolitica },
+      });
+      if (!geo) {
+        throw new BadRequestException(
+          `Geopolitica con id ${dto.idGeopolitica} no existe.`,
+        );
+      }
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.query(
+        `SELECT pg_advisory_xact_lock(hashtext('estructura-dependencia-create'))`,
+      );
+
+      const [maxRow] = await queryRunner.query(
+        `SELECT COALESCE(MAX(id_dependencia), 0) + 1 AS next_id
+           FROM auth.dependencias`,
+      );
+      const nextId = Number(maxRow?.next_id || 1);
+
+      const entity = this.dependenciaRepo.create({
+        ...dto,
+        idDependencia: nextId,
+        codDependencia: codigo,
+        idEmpresa: 1,
+        activo: dto.activo ?? true,
+        genTipUnidad: dto.genTipUnidad ?? 'TIUORG',
+      });
+      return await queryRunner.manager.save(Dependencia, entity);
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async updateDependencia(
+    id: number,
+    dto: UpdateDependenciaDto,
+  ): Promise<Dependencia> {
+    const dep = await this.findDependenciaById(id);
+    if (dto.codDependencia) {
+      const codigo = dto.codDependencia.trim().toUpperCase();
+      if (codigo !== dep.codDependencia) {
+        const duplicado = await this.dependenciaRepo.findOne({
+          where: { codDependencia: codigo },
+        });
+        if (duplicado && duplicado.idDependencia !== id) {
+          throw new ConflictException(
+            `Ya existe una dependencia con el código ${codigo}.`,
+          );
+        }
+        dep.codDependencia = codigo;
+      }
+    }
+    if (dto.idGeopolitica !== undefined && dto.idGeopolitica !== null) {
+      const geo = await this.geopoliticaRepo.findOne({
+        where: { idGeopolitica: dto.idGeopolitica },
+      });
+      if (!geo) {
+        throw new BadRequestException(
+          `Geopolitica con id ${dto.idGeopolitica} no existe.`,
+        );
+      }
+    }
+    Object.assign(dep, dto);
+    return this.dependenciaRepo.save(dep);
+  }
+
+  /**
+   * Desactivación lógica (soft delete). Mantiene el registro para
+   * trazabilidad histórica con `travel_expenses.saldos_tiquetes` y
+   * `solicitudes_comision` que ya lo referencian.
+   */
+  async deleteDependencia(id: number): Promise<{ message: string }> {
+    const dep = await this.findDependenciaById(id);
+    dep.activo = false;
+    await this.dependenciaRepo.save(dep);
+    return { message: `Dependencia ${dep.codDependencia} desactivada correctamente.` };
   }
 }

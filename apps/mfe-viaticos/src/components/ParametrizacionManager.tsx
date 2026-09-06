@@ -31,6 +31,8 @@ import TarifasInvestigadorAdmin from './admin/TarifasInvestigadorAdmin';
 import ExcepcionesRegionalesAdmin from './admin/ExcepcionesRegionalesAdmin';
 import ParametrosLiquidacionAdmin from './admin/ParametrosLiquidacionAdmin';
 import TicketsAdminPanel from './admin/TicketsAdminPanel';
+// Dependencias se gestiona desde el shell (Configuración General > Dependencias)
+// y NO se renderiza como tab aquí para evitar duplicación con el menú global.
 
 type TabActiva = 'campos' | 'configuraciones' | 'escalas' | 'tarifas' | 'excepciones' | 'parametros' | 'tiquetes';
 
