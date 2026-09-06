@@ -25,6 +25,7 @@ import {
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
+import { DisponibilidadAulas } from './DisponibilidadAulas';
 
 interface FranjaHoraria {
   id: string;
@@ -414,52 +415,8 @@ export function ProgramacionAcademicaModule() {
         </div>
       )}
 
-      {seccion === 'aulas' && (
-        <div className="space-y-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <h3 className="font-bold text-slate-800 text-sm mb-1">Ocupación y Capacidad de Aulas</h3>
-            <p className="text-xs text-slate-500">Monitoreo en tiempo real de espacios universitarios por Sede y Territorial</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800 text-sm">Aula 204 (Bloque B)</span>
-                <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">Disponible</span>
-              </div>
-              <p className="text-xs text-slate-500">Sede Central - Bogotá · Capacidad: 40 estudiantes</p>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full w-[65%]" />
-              </div>
-              <span className="text-[11px] text-slate-400 font-semibold">Ocupación lectiva: 65%</span>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800 text-sm">Auditorio Principal</span>
-                <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800">Ocupado</span>
-              </div>
-              <p className="text-xs text-slate-500">Territorial Cundinamarca - Soacha · Capacidad: 100 personas</p>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-600 h-full w-[85%]" />
-              </div>
-              <span className="text-[11px] text-slate-400 font-semibold">Ocupación lectiva: 85%</span>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800 text-sm">Laboratorio de Cómputo 1</span>
-                <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">Sobrecarga</span>
-              </div>
-              <p className="text-xs text-slate-500">Sede Central - Bogotá · Capacidad: 30 equipos</p>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-amber-500 h-full w-[95%]" />
-              </div>
-              <span className="text-[11px] text-slate-400 font-semibold">Ocupación lectiva: 95%</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* EFDS-1374: disponibilidad de aulas, sin revelar qué las ocupa (RN-07). */}
+      {seccion === 'aulas' && <DisponibilidadAulas />}
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
       {seccion === 'docentes' && <AsignacionDocente />}
