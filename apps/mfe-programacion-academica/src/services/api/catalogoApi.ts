@@ -217,6 +217,33 @@ export function retirarAsignacion(idGrupo: string): Promise<{ retirado: boolean 
   return pedirJson(`${BASE_ASIGN}/grupo/${encodeURIComponent(idGrupo)}`, { method: 'DELETE' });
 }
 
+// ─── Acumulado de horas vs tope (EFDS-1373) ─────────────────────────────────
+
+export interface ConsumoPorOferta {
+  idPeriodo: string | null;
+  periodo: string | null;
+  horas: number;
+}
+
+export interface AcumuladoDocente {
+  documento: string;
+  nombre: string;
+  categoriaVinculacion: string;
+  /** Tope de docencia: 304 para cátedra (RN-04), horas del plan en otro caso. */
+  tope: number;
+  /** Horas de investigación/extensión ya comprometidas (RN-06), inalterables. */
+  horasInvestigacion: number;
+  totalAsignado: number;
+  /** Cuánto queda antes del tope. Negativo = excedido. */
+  disponible: number;
+  /** Desglose por oferta académica (periodo) — la dimensión de EFDS-1375. */
+  porOferta: ConsumoPorOferta[];
+}
+
+export function getAcumulado(documento: string): Promise<AcumuladoDocente> {
+  return pedirJson<AcumuladoDocente>(`${BASE_ASIGN}/acumulado/${encodeURIComponent(documento)}`, { method: 'GET' });
+}
+
 export function eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {
   return pedirJson(`${BASE_HORARIOS}/${encodeURIComponent(idFranja)}`, { method: 'DELETE' });
 }

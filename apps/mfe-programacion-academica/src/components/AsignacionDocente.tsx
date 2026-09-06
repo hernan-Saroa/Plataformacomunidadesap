@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import {
-  AlertTriangle, CalendarClock, CheckCircle2, Loader2, Lock, Search, ShieldAlert, User, UserCheck, XCircle,
+  AlertTriangle, CalendarClock, CheckCircle2, Gauge, Loader2, Lock, Search, ShieldAlert, User, UserCheck, XCircle,
 } from 'lucide-react';
 
 import {
-  asignarDocente, consultarDocente, retirarAsignacion,
-  type DocenteConsulta, type MotivoRechazo,
+  asignarDocente, consultarDocente, getAcumulado, retirarAsignacion,
+  type AcumuladoDocente, type DocenteConsulta, type MotivoRechazo,
 } from '../services/api/catalogoApi';
 
 /**
@@ -41,6 +41,15 @@ export function AsignacionDocente() {
   const [asignando, setAsignando] = useState(false);
   const [motivosBloqueo, setMotivosBloqueo] = useState<MotivoRechazo[] | null>(null);
   const [asignado, setAsignado] = useState(false);
+  const [acumulado, setAcumulado] = useState<AcumuladoDocente | null>(null);
+
+  const refrescarAcumulado = async (doc: string) => {
+    try {
+      setAcumulado(await getAcumulado(doc));
+    } catch {
+      setAcumulado(null); // el acumulado es informativo; su fallo no rompe el panel
+    }
+  };
 
   const consultar = async () => {
     if (!documento.trim()) return;
@@ -51,8 +60,10 @@ export function AsignacionDocente() {
     try {
       const d = await consultarDocente(documento.trim(), idGrupo.trim() || undefined);
       setDocente(d);
+      await refrescarAcumulado(documento.trim());
     } catch (e: any) {
       setDocente(null);
+      setAcumulado(null);
       setError(e?.message || 'No se pudo consultar el docente.');
     } finally {
       setCargando(false);
@@ -68,6 +79,7 @@ export function AsignacionDocente() {
       const r = await asignarDocente({ idGrupo: idGrupo.trim(), documento: docente.documento });
       if (r.asignado) {
         setAsignado(true);
+        await refrescarAcumulado(docente.documento);
       } else {
         // Bloqueo duro: no se guardó. Se muestran TODOS los motivos.
         setMotivosBloqueo(r.motivos ?? []);
@@ -86,6 +98,7 @@ export function AsignacionDocente() {
       await retirarAsignacion(idGrupo.trim());
       setAsignado(false);
       await consultar();
+      if (docente) await refrescarAcumulado(docente.documento);
     } catch (e: any) {
       setError(e?.message || 'No se pudo retirar la asignación.');
     } finally {
@@ -205,6 +218,63 @@ export function AsignacionDocente() {
           </div>
         </div>
       )}
+
+      {/* Acumulado vs tope en tiempo real (RN-04/05/06) */}
+      {acumulado && (() => {
+        const impacto = docente?.horasImpacto ?? 0;
+        const proyectado = acumulado.totalAsignado + (asignado ? 0 : impacto);
+        const pct = acumulado.tope > 0 ? Math.min(100, Math.round((proyectado / acumulado.tope) * 100)) : 0;
+        const excede = proyectado > acumulado.tope;
+        const color = excede ? 'bg-red-500' : pct >= 85 ? 'bg-amber-500' : 'bg-[#003DA5]';
+        return (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <Gauge className="w-4 h-4 text-[#003DA5]" /> Carga horaria vs tope
+              </h4>
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                {acumulado.categoriaVinculacion} · tope {acumulado.tope} h
+              </span>
+            </div>
+
+            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+              <div className={`${color} h-full transition-all`} style={{ width: `${pct}%` }} />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-slate-600">
+                Asignado <strong className="text-slate-800">{acumulado.totalAsignado} h</strong>
+                {!asignado && impacto > 0 && (
+                  <span className="text-[#003DA5]"> + {impacto} h de esta asignación → <strong>{proyectado} h</strong></span>
+                )}
+              </span>
+              <span className={excede ? 'text-red-600 font-semibold' : 'text-slate-500'}>
+                {excede ? `Excede el tope en ${proyectado - acumulado.tope} h` : `Disponible ${acumulado.tope - proyectado} h`}
+              </span>
+            </div>
+
+            {acumulado.horasInvestigacion > 0 && (
+              <p className="text-[11px] text-slate-400">
+                Incluye {acumulado.horasInvestigacion} h de investigación/extensión ya comprometidas (inalterables, RN-06).
+              </p>
+            )}
+
+            {acumulado.porOferta.length > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Por oferta académica</p>
+                <div className="space-y-1">
+                  {acumulado.porOferta.map((o, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs text-slate-600">
+                      <span>{o.periodo || 'Sin periodo definido'}</span>
+                      <span className="font-semibold text-slate-800">{o.horas} h</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Motivos de bloqueo contra el grupo (todos, no el primero) */}
       {docente && docente.motivos && docente.motivos.length > 0 && (
