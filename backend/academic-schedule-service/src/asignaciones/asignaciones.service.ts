@@ -248,7 +248,7 @@ export class AsignacionesService {
       `INSERT INTO "academic-schedule".asignacion_docente
          (id_grupo, id_docente, horas_asignadas, asignado_por, observaciones,
           disponibilidad_confirmada_por, disponibilidad_confirmada_en, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $6 IS NULL THEN NULL ELSE NOW() END, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6::text, CASE WHEN $6::text IS NULL THEN NULL ELSE NOW() END, NOW())
        ON CONFLICT (id_grupo) DO UPDATE
          SET id_docente = EXCLUDED.id_docente,
              horas_asignadas = EXCLUDED.horas_asignadas,
