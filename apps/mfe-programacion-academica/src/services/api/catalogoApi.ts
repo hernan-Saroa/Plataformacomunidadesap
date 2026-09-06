@@ -190,6 +190,8 @@ export interface DocenteConsulta {
   /** Presente si se consultó con grupo: TODOS los motivos, no el primero. */
   motivos?: MotivoRechazo[];
   asignableAlGrupo?: boolean;
+  /** Impacto en horas que tendría esta asignación (factor RN-03). */
+  horasImpacto?: number;
 }
 
 export interface ResultadoAsignacion {
@@ -209,6 +211,8 @@ export function consultarDocente(documento: string, idGrupo?: string): Promise<D
 /** Asigna con bloqueo duro. Devuelve `{ asignado:false, motivos }` si alguna regla falla. */
 export function asignarDocente(datos: {
   idGrupo: string; documento: string; horasRequeridas?: number; observaciones?: string | null;
+  /** Quién confirma la disponibilidad del docente en el periodo (AC-03, EFDS-1376). */
+  disponibilidadConfirmadaPor?: string | null;
 }): Promise<ResultadoAsignacion> {
   return pedirJson<ResultadoAsignacion>(BASE_ASIGN, { method: 'POST', body: JSON.stringify(datos) });
 }
