@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
+import { AsignacionDocente } from './AsignacionDocente';
 
 interface FranjaHoraria {
   id: string;
@@ -460,53 +461,8 @@ export function ProgramacionAcademicaModule() {
         </div>
       )}
 
-      {seccion === 'docentes' && (
-        <div className="space-y-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <h3 className="font-bold text-slate-800 text-sm mb-1">Carga Horaria Docente y Disponibilidad</h3>
-            <p className="text-xs text-slate-500">Control de horas semanales asignadas y vinculación académica de docentes ESAP</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-            <table className="w-full text-left text-sm divide-y divide-slate-100">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
-                <tr>
-                  <th className="px-6 py-4">Docente</th>
-                  <th className="px-6 py-4">Asignaturas Asignadas</th>
-                  <th className="px-6 py-4">Horas Semanales</th>
-                  <th className="px-6 py-4">Estado Carga</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                <tr className="hover:bg-slate-50/80">
-                  <td className="px-6 py-4 font-semibold text-slate-800">Dr. Roberto Mendoza</td>
-                  <td className="px-6 py-4 text-slate-600">Derecho Constitucional I</td>
-                  <td className="px-6 py-4 font-bold text-[#003DA5]">12 horas / semana</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">Normal</span>
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-50/80">
-                  <td className="px-6 py-4 font-semibold text-slate-800">Dra. María Fernanda Silva</td>
-                  <td className="px-6 py-4 text-slate-600">Políticas Públicas y Gestión Estatal</td>
-                  <td className="px-6 py-4 font-bold text-[#003DA5]">16 horas / semana</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">Normal</span>
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-50/80">
-                  <td className="px-6 py-4 font-semibold text-slate-800">Mg. Carlos Eduardo Gómez</td>
-                  <td className="px-6 py-4 text-slate-600">Finanzas Públicas y Presupuesto</td>
-                  <td className="px-6 py-4 font-bold text-amber-600">22 horas / semana</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">Cerca del Límite</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
+      {seccion === 'docentes' && <AsignacionDocente />}
 
       {seccion === 'alertas' && (
         <div className="space-y-4">

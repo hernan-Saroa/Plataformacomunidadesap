@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 
@@ -138,6 +138,73 @@ export class CatalogoService {
         tipo: programa.tipo,
       },
       semestres: [...porSemestre.values()].sort((a, b) => a.orden - b.orden),
+    };
+  }
+
+  /**
+   * Autocompletado por código de asignatura (EFDS-1369, AC-01).
+   *
+   * El código es la LLAVE MAESTRA del sistema (RN-01) y resuelve los siete
+   * campos maestros del SNIES. Todos son de SOLO LECTURA (RN-02): se exponen tal
+   * como están en el catálogo.
+   *
+   * ⚠️ Las horas NO se calculan aquí: `horasClase` y `horasPta` viajan tal cual.
+   * No es créditos × 16: el factor es 16 en pregrado y especializaciones y 12 en
+   * maestrías, con excepciones de horas fijas de la Circular 003 (384 / 20 / 144).
+   * Cualquier fórmula propia aquí contradiría los datos reales.
+   */
+  async buscarPorCodigo(permisos: ReadonlySet<string>, codigo: string) {
+    const limpio = String(codigo ?? '').trim();
+    if (!limpio) {
+      throw new BadRequestException('Debe indicar el código de la asignatura.');
+    }
+
+    const asignatura = await this.asignaturaRepo.findOne({ where: { codigo: limpio } });
+    if (!asignatura) {
+      // Error controlado, no un 500: un código que no existe es un caso de uso
+      // normal (el programador se equivoca al teclear), no una falla.
+      throw new NotFoundException(`No existe una asignatura con el código ${limpio}.`);
+    }
+
+    const programa = await this.programaRepo.findOne({ where: { id: asignatura.idPrograma } });
+    if (!programa) {
+      throw new NotFoundException('La asignatura no tiene un programa asociado en el catálogo.');
+    }
+
+    // Se valida el nivel del programa REAL: conocer un código de posgrado no
+    // alcanza para leerlo desde un perfil de pregrado (RN-08, mismo criterio que
+    // el detalle del catálogo).
+    const nivel = nivelDeProgramaTipo(programa.tipo);
+    if (!puedeVerNivel(permisos, nivel)) {
+      throw new ForbiddenException(
+        `La asignatura ${limpio} pertenece a un programa de ${nivel} y no tiene permiso para consultarlo.`,
+      );
+    }
+
+    const semestre = await this.semestreRepo.findOne({
+      where: { id: asignatura.idUbicacionSemestral },
+    });
+
+    return {
+      // Identidad
+      codigo: asignatura.codigo,
+      // Los siete campos maestros del SNIES (AC-01)
+      nombre: asignatura.nombre,
+      creditos: asignatura.creditos,
+      horasClase: asignatura.horasClase,
+      horasPta: asignatura.horasPta,
+      programa: { id: String(programa.id), codigo: programa.codigo, nombre: programa.nombre },
+      pensum: asignatura.pensum,
+      modalidad: asignatura.modalidad,
+      // 'Metodología' es la del PROGRAMA (presencial / distancia / mixto), que es
+      // cómo se imparte; distinta de la modalidad de la asignatura.
+      metodologia: programa.modalidad,
+      // Contexto útil, no parte de los siete
+      nivel,
+      semestre: semestre ? { etiqueta: semestre.etiqueta, orden: semestre.orden } : null,
+      tipoExcepcion: asignatura.tipoExcepcion ?? null,
+      // Marca explícita para la UI: estos datos no se editan (RN-02).
+      soloLectura: true,
     };
   }
 }
