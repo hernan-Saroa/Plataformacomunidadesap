@@ -289,3 +289,36 @@ export interface AsignaturaSnies {
 export function getAsignaturaPorCodigo(codigo: string): Promise<AsignaturaSnies> {
   return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}`);
 }
+
+// ─── Aulas y disponibilidad (EFDS-1374) ─────────────────────────────────────
+
+export interface Aula {
+  codigo: string;
+  nombre: string;
+  sedeCodigo: string | null;
+  capacidad: number | null;
+  provisional: boolean;
+}
+
+/** Franja ocupada de un aula: SOLO día y hora (RN-07, no revela qué la ocupa). */
+export interface FranjaOcupadaAula {
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+}
+
+const BASE_AULAS = '/programacion-academica/api/v1/aulas';
+
+export function getAulas(): Promise<Aula[]> {
+  return pedirJson<Aula[]>(BASE_AULAS, { method: 'GET' });
+}
+
+/** Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo. */
+export function getDisponibilidadAula(codigo: string): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
+  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad`, { method: 'GET' });
+}
+
+/** Publica la oferta del grupo. Exige aula en todas las franjas (cierra deuda de 1371). */
+export function publicarGrupo(idGrupo: string): Promise<{ publicado: boolean }> {
+  return pedirJson(`${BASE_AULAS}/publicar/${encodeURIComponent(idGrupo)}`, { method: 'POST' });
+}
