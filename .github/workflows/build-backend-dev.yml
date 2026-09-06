@@ -22,6 +22,7 @@ jobs:
           - api-gateway
           - auth-service
           - academic-registration-service
+          - academic-schedule-service
           - academic-work-plan-service
           - certification-service
           - internal-disciplinary-control-service
