@@ -38,7 +38,7 @@ export interface SemestreCatalogo {
   asignaturas: AsignaturaCatalogo[];
 }
 
-const BASE = '/programacion-academica/catalogo';
+const BASE = '/programacion-academica/api/v1/catalogo';
 
 async function pedir<T>(ruta: string): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -47,12 +47,18 @@ async function pedir<T>(ruta: string): Promise<T> {
     credentials: 'include',
   });
   if (!res.ok) {
-    // 403 es un caso esperado (RN-08), no un fallo del sistema: se propaga con
-    // un mensaje que la UI pueda mostrar tal cual.
+    // El backend explica el motivo: qué código no existe, o de qué nivel es la
+    // asignatura que no puede ver. Se propaga tal cual porque es lo que le dice
+    // al programador qué corregir; el genérico solo queda de respaldo.
+    let detalle = "";
+    try {
+      const cuerpo = await res.json();
+      detalle = cuerpo?.message || cuerpo?.error || "";
+    } catch { /* respuesta sin cuerpo util */ }
     if (res.status === 403) {
-      throw new Error('No tiene permisos de programación sobre este nivel académico.');
+      throw new Error(detalle || "No tiene permisos de programación sobre este nivel académico.");
     }
-    throw new Error(`No se pudo consultar el catálogo (error ${res.status}).`);
+    throw new Error(detalle || `No se pudo consultar el catálogo (error ${res.status}).`);
   }
   const cuerpo = await res.json();
   return (cuerpo?.data ?? cuerpo) as T;
@@ -84,7 +90,7 @@ export interface Grupo {
   observaciones: string | null;
 }
 
-const BASE_GRUPOS = '/programacion-academica/grupos';
+const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
 
 async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -141,7 +147,7 @@ export interface Sesion {
   estado: string;
 }
 
-const BASE_HORARIOS = '/programacion-academica/horarios';
+const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
 
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
   return pedirJson<Sesion[]>(`${BASE_HORARIOS}?grupo=${encodeURIComponent(idGrupo)}`, { method: 'GET' });
@@ -152,6 +158,94 @@ export function crearSesion(datos: {
   tipoSesion: TipoSesion; aulaCodigo?: string | null;
 }): Promise<Sesion> {
   return pedirJson<Sesion>(BASE_HORARIOS, { method: 'POST', body: JSON.stringify(datos) });
+}
+
+// ─── Asignación de docente (EFDS-1372) ──────────────────────────────────────
+
+export interface MotivoRechazo {
+  regla: string;
+  mensaje: string;
+}
+
+/**
+ * Ficha de SOLO LECTURA del docente para el panel de asignación (RN-09).
+ * El RUND no se escribe desde la interfaz: esto es lo que la decanatura ve.
+ */
+export interface DocenteConsulta {
+  documento: string;
+  nombre: string;
+  escalafon: string | null;
+  vinculacionDesde: string | null;
+  /** Nulo = vinculación indefinida, no dato faltante. La UI no lo pinta como error. */
+  vinculacionHasta: string | null;
+  horasPta: number;
+  situacion: {
+    descripcion: string | null;
+    categoria: string | null;
+    asignable: boolean;
+    /** Por qué no es asignable, con la vigencia dentro del texto. */
+    motivo: string | null;
+    vigenteHasta: string | null;
+  };
+  /** Presente si se consultó con grupo: TODOS los motivos, no el primero. */
+  motivos?: MotivoRechazo[];
+  asignableAlGrupo?: boolean;
+  /** Impacto en horas que tendría esta asignación (factor RN-03). */
+  horasImpacto?: number;
+}
+
+export interface ResultadoAsignacion {
+  asignado: boolean;
+  idAsignacion?: string;
+  motivos?: MotivoRechazo[];
+}
+
+const BASE_ASIGN = '/programacion-academica/api/v1/asignaciones';
+
+/** Consulta la ficha del docente. Con `idGrupo`, trae la evaluación en seco del bloqueo. */
+export function consultarDocente(documento: string, idGrupo?: string): Promise<DocenteConsulta> {
+  const q = idGrupo ? `?grupo=${encodeURIComponent(idGrupo)}` : '';
+  return pedirJson<DocenteConsulta>(`${BASE_ASIGN}/docente/${encodeURIComponent(documento)}${q}`, { method: 'GET' });
+}
+
+/** Asigna con bloqueo duro. Devuelve `{ asignado:false, motivos }` si alguna regla falla. */
+export function asignarDocente(datos: {
+  idGrupo: string; documento: string; horasRequeridas?: number; observaciones?: string | null;
+  /** Quién confirma la disponibilidad del docente en el periodo (AC-03, EFDS-1376). */
+  disponibilidadConfirmadaPor?: string | null;
+}): Promise<ResultadoAsignacion> {
+  return pedirJson<ResultadoAsignacion>(BASE_ASIGN, { method: 'POST', body: JSON.stringify(datos) });
+}
+
+export function retirarAsignacion(idGrupo: string): Promise<{ retirado: boolean }> {
+  return pedirJson(`${BASE_ASIGN}/grupo/${encodeURIComponent(idGrupo)}`, { method: 'DELETE' });
+}
+
+// ─── Acumulado de horas vs tope (EFDS-1373) ─────────────────────────────────
+
+export interface ConsumoPorOferta {
+  idPeriodo: string | null;
+  periodo: string | null;
+  horas: number;
+}
+
+export interface AcumuladoDocente {
+  documento: string;
+  nombre: string;
+  categoriaVinculacion: string;
+  /** Tope de docencia: 304 para cátedra (RN-04), horas del plan en otro caso. */
+  tope: number;
+  /** Horas de investigación/extensión ya comprometidas (RN-06), inalterables. */
+  horasInvestigacion: number;
+  totalAsignado: number;
+  /** Cuánto queda antes del tope. Negativo = excedido. */
+  disponible: number;
+  /** Desglose por oferta académica (periodo) — la dimensión de EFDS-1375. */
+  porOferta: ConsumoPorOferta[];
+}
+
+export function getAcumulado(documento: string): Promise<AcumuladoDocente> {
+  return pedirJson<AcumuladoDocente>(`${BASE_ASIGN}/acumulado/${encodeURIComponent(documento)}`, { method: 'GET' });
 }
 
 export function eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {
@@ -167,4 +261,31 @@ export function definirPeriodoGrupo(
     method: 'PUT',
     body: JSON.stringify(periodo),
   });
+}
+
+// ─── Búsqueda por código SNIES (EFDS-1369) ──────────────────────────────────
+
+/**
+ * Los siete campos maestros del SNIES, más contexto útil.
+ * TODOS son de solo lectura (RN-02): el backend rechaza cualquier escritura.
+ */
+export interface AsignaturaSnies {
+  codigo: string;
+  nombre: string;
+  creditos: number;
+  horasClase: number | null;
+  horasPta: number | null;
+  programa: { id: string; codigo: string; nombre: string };
+  pensum: string | null;
+  modalidad: string;
+  metodologia: string;
+  nivel: NivelAcademico;
+  semestre: { etiqueta: string; orden: number } | null;
+  tipoExcepcion: string | null;
+  soloLectura: boolean;
+}
+
+/** Autocompletado por llave maestra. El código no existente devuelve error controlado. */
+export function getAsignaturaPorCodigo(codigo: string): Promise<AsignaturaSnies> {
+  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}`);
 }
