@@ -160,6 +160,90 @@ export function crearSesion(datos: {
   return pedirJson<Sesion>(BASE_HORARIOS, { method: 'POST', body: JSON.stringify(datos) });
 }
 
+// ─── Asignación de docente (EFDS-1372) ──────────────────────────────────────
+
+export interface MotivoRechazo {
+  regla: string;
+  mensaje: string;
+}
+
+/**
+ * Ficha de SOLO LECTURA del docente para el panel de asignación (RN-09).
+ * El RUND no se escribe desde la interfaz: esto es lo que la decanatura ve.
+ */
+export interface DocenteConsulta {
+  documento: string;
+  nombre: string;
+  escalafon: string | null;
+  vinculacionDesde: string | null;
+  /** Nulo = vinculación indefinida, no dato faltante. La UI no lo pinta como error. */
+  vinculacionHasta: string | null;
+  horasPta: number;
+  situacion: {
+    descripcion: string | null;
+    categoria: string | null;
+    asignable: boolean;
+    /** Por qué no es asignable, con la vigencia dentro del texto. */
+    motivo: string | null;
+    vigenteHasta: string | null;
+  };
+  /** Presente si se consultó con grupo: TODOS los motivos, no el primero. */
+  motivos?: MotivoRechazo[];
+  asignableAlGrupo?: boolean;
+}
+
+export interface ResultadoAsignacion {
+  asignado: boolean;
+  idAsignacion?: string;
+  motivos?: MotivoRechazo[];
+}
+
+const BASE_ASIGN = '/programacion-academica/api/v1/asignaciones';
+
+/** Consulta la ficha del docente. Con `idGrupo`, trae la evaluación en seco del bloqueo. */
+export function consultarDocente(documento: string, idGrupo?: string): Promise<DocenteConsulta> {
+  const q = idGrupo ? `?grupo=${encodeURIComponent(idGrupo)}` : '';
+  return pedirJson<DocenteConsulta>(`${BASE_ASIGN}/docente/${encodeURIComponent(documento)}${q}`, { method: 'GET' });
+}
+
+/** Asigna con bloqueo duro. Devuelve `{ asignado:false, motivos }` si alguna regla falla. */
+export function asignarDocente(datos: {
+  idGrupo: string; documento: string; horasRequeridas?: number; observaciones?: string | null;
+}): Promise<ResultadoAsignacion> {
+  return pedirJson<ResultadoAsignacion>(BASE_ASIGN, { method: 'POST', body: JSON.stringify(datos) });
+}
+
+export function retirarAsignacion(idGrupo: string): Promise<{ retirado: boolean }> {
+  return pedirJson(`${BASE_ASIGN}/grupo/${encodeURIComponent(idGrupo)}`, { method: 'DELETE' });
+}
+
+// ─── Acumulado de horas vs tope (EFDS-1373) ─────────────────────────────────
+
+export interface ConsumoPorOferta {
+  idPeriodo: string | null;
+  periodo: string | null;
+  horas: number;
+}
+
+export interface AcumuladoDocente {
+  documento: string;
+  nombre: string;
+  categoriaVinculacion: string;
+  /** Tope de docencia: 304 para cátedra (RN-04), horas del plan en otro caso. */
+  tope: number;
+  /** Horas de investigación/extensión ya comprometidas (RN-06), inalterables. */
+  horasInvestigacion: number;
+  totalAsignado: number;
+  /** Cuánto queda antes del tope. Negativo = excedido. */
+  disponible: number;
+  /** Desglose por oferta académica (periodo) — la dimensión de EFDS-1375. */
+  porOferta: ConsumoPorOferta[];
+}
+
+export function getAcumulado(documento: string): Promise<AcumuladoDocente> {
+  return pedirJson<AcumuladoDocente>(`${BASE_ASIGN}/acumulado/${encodeURIComponent(documento)}`, { method: 'GET' });
+}
+
 export function eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {
   return pedirJson(`${BASE_HORARIOS}/${encodeURIComponent(idFranja)}`, { method: 'DELETE' });
 }
