@@ -25,6 +25,7 @@ import {
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
+import { GestionOfertas } from './GestionOfertas';
 
 interface FranjaHoraria {
   id: string;
@@ -43,7 +44,7 @@ interface FranjaHoraria {
   estado: 'PROGRAMADO' | 'CONFIRMADO' | 'CONFLICTO';
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'alertas';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas';
 
 const INITIAL_SCHEDULE: FranjaHoraria[] = [
   {
@@ -167,6 +168,14 @@ export function ProgramacionAcademicaModule() {
           subtitle: 'Carga horaria y asignaciones',
           icon: <Users className="w-5 h-5" />,
           color: '#7C3AED',
+        },
+        {
+          // EFDS-1375: las cinco ofertas academicas y el consumo entre ellas.
+          id: 'ofertas',
+          label: 'Ofertas Académicas',
+          subtitle: 'Periodos, virtual e interperiodo',
+          icon: <Layers3 className="w-5 h-5" />,
+          color: '#003DA5',
         },
         {
           id: 'alertas',
@@ -463,6 +472,9 @@ export function ProgramacionAcademicaModule() {
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
       {seccion === 'docentes' && <AsignacionDocente />}
+
+      {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
+      {seccion === 'ofertas' && <GestionOfertas />}
 
       {seccion === 'alertas' && (
         <div className="space-y-4">
