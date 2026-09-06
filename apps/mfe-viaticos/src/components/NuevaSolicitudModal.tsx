@@ -84,6 +84,7 @@ interface UsuarioContexto {
     codDependencia?: string;
     nomDependencia?: string;
   } | null;
+  esSuperAdmin?: boolean;
 }
 
 const PASOS = ['Comisionado', 'Objeto y Destino', 'Documentos', 'Confirmación'];
@@ -100,6 +101,9 @@ const tieneRolSuperAdmin = (roles: string[] = []): boolean =>
   });
 
 const puedeElegirDependencia = (): boolean => {
+  const usuario = authService.getCurrentUserSync();
+  if (usuario?.esAdmin) return true;
+  if (tieneRolSuperAdmin(usuario?.roles)) return true;
   return authService.hasPermission('travel_expenses:manage_config');
 };
 
@@ -272,13 +276,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (usuario) {
         const dependencia = usuario.person?.dependencia
           ? {
-            idDependencia: usuario.person.dependencia.idDependencia,
-            codDependencia: usuario.person.dependencia.codDependencia,
-            nomDependencia: usuario.person.dependencia.nomDependencia,
-          }
+              idDependencia: usuario.person.dependencia.idDependencia,
+              codDependencia: usuario.person.dependencia.codDependencia,
+              nomDependencia: usuario.person.dependencia.nomDependencia,
+            }
           : null;
-        // Respaldo por rol (se complementa con el flag del backend de
-        // viáticos en el efecto de apertura del modal).
         const superAdmin = tieneRolSuperAdmin(usuario.roles);
         setUsuarioActual({
            userId: usuario.userId,
@@ -286,7 +288,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
            roles: usuario.roles,
            dependencia,
          });
-         return { dependencia };
+         return { dependencia, esSuperAdmin: superAdmin };
        }
        setUsuarioActual(null);
        return { dependencia: null };
@@ -440,7 +442,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       // vez que se abre el modal.
       void (async () => {
         const ctx = await cargarUsuarioActual();
-        const superAdmin = authService.hasPermission('travel_expenses:manage_config');
+        const superAdmin = ctx.esSuperAdmin || authService.hasPermission('travel_expenses:manage_config');
         setEsSuperAdminViaticos(superAdmin);
 
         if (!puedeElegirDependencia() && ctx.dependencia?.codDependencia) {

@@ -402,7 +402,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                         <Inbox className="w-5 h-5 text-[#003DA5]" />
-                        Bandeja de Entrada â€” Secretario/a
+                        Bandeja de Entrada — Secretario/a de Viáticos
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5">
                         Solicitudes en estado SOLICITADO para revisiÃ³n y priorizaciÃ³n.

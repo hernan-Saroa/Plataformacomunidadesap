@@ -259,23 +259,35 @@ export default function ViaticosModulePremium() {
     }
   };
 
-  const puedeVerSolicitudes = authService.hasAnyPermission([
-    Permissions.VIATICOS_SOLICITUDES_READ_OWN,
-    Permissions.VIATICOS_SOLICITUDES_CREATE,
-  ]);
-  const puedeVerTiquetes = authService.hasAnyPermission([
-    Permissions.VIATICOS_TIQUETES_VIEW,
-    Permissions.VIATICOS_TIQUETES_MANAGE,
-  ]);
-  const puedeVerLegalizaciones = authService.hasAnyPermission([
-    Permissions.VIATICOS_LEGALIZACIONES_VIEW,
-    Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
-  ]);
-  const puedeVerResoluciones = authService.hasAnyPermission([
-    Permissions.VIATICOS_RESOLUCIONES_VIEW,
-    Permissions.VIATICOS_RESOLUCIONES_MANAGE,
-  ]);
-  const puedeVerConfiguracion = authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
+  const puedeVerSolicitudes =
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_SOLICITUDES_READ_OWN,
+      Permissions.VIATICOS_SOLICITUDES_CREATE,
+      Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+      Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+      Permissions.VIATICOS_SOLICITUDES_RETURN,
+    ]);
+  const puedeVerTiquetes =
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_TIQUETES_VIEW,
+      Permissions.VIATICOS_TIQUETES_MANAGE,
+    ]);
+  const puedeVerLegalizaciones =
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_LEGALIZACIONES_VIEW,
+      Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+    ]);
+  const puedeVerResoluciones =
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_RESOLUCIONES_VIEW,
+      Permissions.VIATICOS_RESOLUCIONES_MANAGE,
+    ]);
+  const puedeVerConfiguracion =
+    esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => ({
@@ -450,22 +462,22 @@ export default function ViaticosModulePremium() {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-3">Código / Solicitante</th>
-                        <th className="px-4 py-3">Destino / Fechas</th>
-                        <th className="px-4 py-3">Tipo & Transporte</th>
-                        <th className="px-4 py-3">Monto Estimado</th>
-                        <th className="px-4 py-3">Estado</th>
-                         {authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) && <th className="px-4 py-3">Prioridad</th>}
-                        <th className="px-4 py-3 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {solicitudesFiltradas.length === 0 ? (
-                        <tr>
-                           <td colSpan={authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
-                            No se encontraron solicitudes de viáticos registradas.
-                          </td>
-                        </tr>
+                         <th className="px-4 py-3">Código / Solicitante</th>
+                         <th className="px-4 py-3">Destino / Fechas</th>
+                         <th className="px-4 py-3">Tipo & Transporte</th>
+                         <th className="px-4 py-3">Monto Estimado</th>
+                         <th className="px-4 py-3">Estado</th>
+                          {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && <th className="px-4 py-3">Prioridad</th>}
+                         <th className="px-4 py-3 text-right">Acciones</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 bg-white">
+                       {solicitudesFiltradas.length === 0 ? (
+                         <tr>
+                            <td colSpan={(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
+                             No se encontraron solicitudes de viáticos registradas.
+                           </td>
+                         </tr>
                       ) : (
                         solicitudesFiltradas.map((sol) => (
                           <tr key={sol.id} className="hover:bg-slate-50/80 transition-colors">
@@ -520,7 +532,7 @@ export default function ViaticosModulePremium() {
                                 )}
                               </div>
                             </td>
-                            {authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) && (
+                             {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && (
                               <td className="px-4 py-3">
                                 {sol.prioridad ? (
                                   <span
@@ -642,26 +654,46 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-           {/* ── RESOLUCIONES ── */}
-           {seccion === 'resoluciones' && puedeVerResoluciones && (
-             <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <FileCheck className="w-5 h-5 text-purple-600" />
-                    Resoluciones Institucionales de Comisión
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Actos administrativos oficializados por la Subdirección de Gestión Institucional.
-                  </p>
-                </div>
-              </div>
-              <div className="p-8 text-center text-slate-400 text-xs">
-                <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Las resoluciones asociadas a cada solicitud aparecerán aquí tras su aprobación.
-              </div>
-            </div>
-          )}
+            {/* ── RESOLUCIONES ── */}
+            {seccion === 'resoluciones' && puedeVerResoluciones && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6">
+               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <FileCheck className="w-5 h-5 text-purple-600" />
+                     Resoluciones Institucionales de Comisión
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                     Actos administrativos oficializados por la Subdirección de Gestión Institucional.
+                   </p>
+                 </div>
+               </div>
+               <div className="p-8 text-center text-slate-400 text-xs">
+                 <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                 Las resoluciones asociadas a cada solicitud aparecerán aquí tras su aprobación.
+               </div>
+             </div>
+           )}
+
+            {/* ── CONFIGURACIÓN ── */}
+            {seccion === 'configuracion' && puedeVerConfiguracion && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Settings className="w-5 h-5 text-slate-600" />
+                     Configuración del Módulo de Viáticos
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                     Parámetros, formularios, checklist y reglas de negocio del módulo.
+                   </p>
+                 </div>
+               </div>
+               <div className="mt-4">
+                 <ParametrizacionManager />
+               </div>
+             </div>
+           )}
 
           {/* ── MODAL DETALLE DE SOLICITUD ── */}
           {solicitudSeleccionada && (
@@ -727,7 +759,7 @@ export default function ViaticosModulePremium() {
                     </p>
                   </div>
 
-                  {authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                   {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
                     <div className="mt-4 space-y-3">
                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                         <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>

@@ -1043,7 +1043,7 @@ export class ViaticosService {
   }
 
   // ========================================================================
-  // RF-REC-001 — Etapa 4: Revisar solicitud y definir prioridad (Secretario/a)
+  // RF-REC-001 — Etapa 4: Revisar solicitud y definir prioridad (Secretario/a de Viáticos)
   // ========================================================================
 
   async obtenerBandejaSecretario(filtros: {

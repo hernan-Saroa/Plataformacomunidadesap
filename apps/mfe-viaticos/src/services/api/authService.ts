@@ -14,6 +14,7 @@ export const ROLES_ADMIN_VIATICOS = [
   'SUPERADMIN',
   'SUPER_ADMINISTRADOR',
   'ADMINISTRATIVO',
+  'SUPERUSER',
 ];
 
 export interface DependenciaUsuario {
