@@ -633,7 +633,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   useEffect(() => {
     if (paso === PASOS.length && form.fechaInicio) {
       const validacion = validarAnticipacionRadicacion(form.fechaInicio);
-      setAlertaAnticipacion(validacion);
+      setAlertaAnticipacion({
+        extemporanea: false,
+        diasHabiles: validacion?.diasHabiles ?? 0,
+        radicadoFueraJornada: validacion?.radicadoFueraJornada ?? false,
+      });
     } else {
       setAlertaAnticipacion(null);
     }

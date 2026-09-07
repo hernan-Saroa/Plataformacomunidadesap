@@ -12,6 +12,7 @@ import { DocumentoSoporteEntity } from '../../../entities/documento-soporte.enti
 import { SolicitudHistorialEstadoEntity } from '../../../entities/solicitud-historial-estado.entity';
 import { ConfigService } from '../../config/config.service';
 import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
+import { NotificationClientService } from '../../../common/notification-client.service';
 
 describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
   let service: TravelExpensesService;
@@ -40,6 +41,7 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
     historialRepo?: any;
     dataSource?: any;
     configService?: any;
+    notificationClient?: any;
   } = {}) => {
     const {
       comisionadoRepo = { findOne: jest.fn(), save: jest.fn() },
@@ -61,6 +63,11 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+      },
+      notificationClient = {
+        archiveNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+        send: jest.fn().mockResolvedValue(undefined),
       },
     } = overrides;
 
@@ -90,6 +97,10 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         {
           provide: ConfigService,
           useValue: configService,
+        },
+        {
+          provide: NotificationClientService,
+          useValue: notificationClient,
         },
       ],
     }).compile();
@@ -335,6 +346,7 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         estadoSolicitud: 'SOLICITADO',
         motivoDevolucion: null,
         fechaRevision: null,
+        creadoPorUsuarioId: 'user-creador-1',
         save: jest.fn().mockImplementation(async (ent) => ent),
       };
 
@@ -374,6 +386,60 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         expect.objectContaining({
           solicitudId: 'sol-001',
           estadoAnterior: 'SOLICITADO',
+          estadoNuevo: EstadoSolicitud.DEVUELTA,
+          usuarioId: 'user-001',
+          comentarios: 'Falta soporte digital',
+        }),
+      );
+    });
+
+    it('debe transicionar a DEVUELTA desde EXTEMPORANEA y registrar en historial', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: 'EXTEMPORANEA',
+        motivoDevolucion: null,
+        fechaRevision: null,
+        creadoPorUsuarioId: 'user-creador-1',
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision') return solicitudRepo;
+              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados') return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModule({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.devolverSolicitud('sol-001', 'Falta soporte digital', 'user-001', false);
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.DEVUELTA);
+      expect(result.motivoDevolucion).toBe('Falta soporte digital');
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          solicitudId: 'sol-001',
+          estadoAnterior: 'EXTEMPORANEA',
           estadoNuevo: EstadoSolicitud.DEVUELTA,
           usuarioId: 'user-001',
           comentarios: 'Falta soporte digital',

@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -24,6 +25,7 @@ import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
+import { NotificationClientService } from '../../common/notification-client.service';
 
 function esDiaHabil(fecha: Date): boolean {
   const dia = fecha.getDay();
@@ -82,6 +84,8 @@ function etiquetaEstadoHumana(estado?: string): string {
 
 @Injectable()
 export class TravelExpensesService {
+  private readonly logger = new Logger(TravelExpensesService.name);
+
   constructor(
     @InjectRepository(ComisionadoEntity)
     private readonly comisionadoRepo: Repository<ComisionadoEntity>,
@@ -91,6 +95,7 @@ export class TravelExpensesService {
     private readonly documentoRepo: Repository<DocumentoSoporteEntity>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    private readonly notificationClient: NotificationClientService,
   ) {}
 
   async obtenerSolicitudes(
@@ -319,7 +324,17 @@ export class TravelExpensesService {
       solicitud.fechaRevision = new Date();
     }
 
-    return this.solicitudRepo.save(solicitud);
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    this.notificationClient
+      .archiveNotificacionesPorSolicitud(solicitud.id)
+      .catch((err) =>
+        this.logger.warn(
+          `[notify] No se pudieron archivar notificaciones para solicitud ${solicitud.id}: ${err?.message}`,
+        ),
+      );
+
+    return saved;
   }
 
   async devolverSolicitud(
@@ -336,9 +351,9 @@ export class TravelExpensesService {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    if (!isSuperAdmin && solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO) {
+    if (!isSuperAdmin && ![EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA].includes(solicitud.estadoSolicitud)) {
       throw new BadRequestException(
-        `Solo se pueden devolver solicitudes en estado SOLICITADO. Estado actual: ${solicitud.estadoSolicitud}`,
+        `Solo se pueden devolver solicitudes en estado SOLICITADO o EXTEMPORANEA. Estado actual: ${solicitud.estadoSolicitud}`,
       );
     }
 
@@ -359,6 +374,38 @@ export class TravelExpensesService {
         comentarios: motivo,
       });
     });
+
+    this.notificationClient
+      .deleteNotificacionesPorSolicitud(solicitud.id)
+      .catch((err) =>
+        this.logger.warn(
+          `[notify] No se pudieron eliminar notificaciones para solicitud ${solicitud.id}: ${err?.message}`,
+        ),
+      );
+
+    if (solicitud.creadoPorUsuarioId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+          tipo_notificacion: 'VIATICOS_DEVOLUCION',
+          titulo: `Solicitud devuelta: ${solicitud.consecutivoUnico}`,
+          mensaje: `Su solicitud ${solicitud.consecutivoUnico} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
+          descripcion_corta: `Devolución · ${solicitud.consecutivoUnico}`,
+          icono: 'AlertTriangle',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver solicitud',
+          url_accion: '/viaticos',
+          datos_adicionales: { solicitudId: solicitud.id, consecutivoUnico: solicitud.consecutivoUnico },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `[notify] No se pudo notificar devolución a usuario ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
+          ),
+        );
+    }
 
     return solicitud;
   }
@@ -580,14 +627,8 @@ export class TravelExpensesService {
       const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
       radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
 
-      const diasHabilesAnticipacion = contarDiasHabilesEntre(
-        ahora,
-        fechaInicio,
-      );
-      extemporanea = diasHabilesAnticipacion < 14;
-      estadoSolicitud = extemporanea
-        ? EstadoSolicitud.EXTEMPORANEA
-        : EstadoSolicitud.RADICADA;
+      estadoSolicitud = EstadoSolicitud.RADICADA;
+      extemporanea = false;
     } else {
       estadoSolicitud = EstadoSolicitud.PENDIENTE;
     }
@@ -961,13 +1002,8 @@ export class TravelExpensesService {
     const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
     const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
 
-    const diasHabilesAnticipacion = contarDiasHabilesEntre(ahora, fechaInicio);
-    const extemporanea = diasHabilesAnticipacion < 14;
-
-    solicitud.estadoSolicitud = extemporanea
-      ? EstadoSolicitud.EXTEMPORANEA
-      : EstadoSolicitud.RADICADA;
-    solicitud.extemporanea = extemporanea;
+    solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
+    solicitud.extemporanea = false;
     solicitud.radicadoFueraJornada = radicadoFueraJornada;
 
     const saved = await this.solicitudRepo.save(solicitud);

@@ -6,6 +6,7 @@ import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
 import { ConfigModule } from '../config/config.module';
+import { CommonModule } from '../../common/common.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ConfigModule } from '../config/config.module';
       DocumentoSoporteEntity,
     ]),
     ConfigModule,
+    CommonModule,
   ],
   controllers: [TravelExpensesController],
   providers: [TravelExpensesService],

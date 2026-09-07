@@ -26,6 +26,7 @@ import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { ConsolidacionModule } from './modules/consolidacion/consolidacion.modul
     LiquidationModule,
     TicketsModule,
     ConsolidacionModule,
+    CommonModule,
   ],
   controllers: [AppController],
   providers: [

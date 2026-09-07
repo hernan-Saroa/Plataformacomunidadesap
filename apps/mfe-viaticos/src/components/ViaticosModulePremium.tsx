@@ -49,6 +49,7 @@ const Permissions = {
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
+  DEVUELTA: 1,
   RADICADA: 1,
   EXTEMPORANEA: 2,
   SOLICITADO: 3,
@@ -611,7 +612,7 @@ export default function ViaticosModulePremium() {
                                     <FileText className="w-3.5 h-3.5" />
                                   </button>
                                 )}
-                                {['RADICADA', 'EXTEMPORANEA', 'DEVUELTA'].includes(sol.estado) && (
+                                {puedeCrearSolicitud && ['RADICADA', 'DEVUELTA'].includes(sol.estado) && (
                                   <button
                                     type="button"
                                     onClick={() => void handleConsolidar(sol)}

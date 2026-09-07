@@ -20,6 +20,7 @@ import {
 } from '../../entities/estado-solicitud.enum';
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
+import { NotificationClientService } from '../../common/notification-client.service';
 
 /**
  * Estado al que se transiciona el expediente consolidado (RF-LIQ-004).
@@ -114,6 +115,7 @@ export class ConsolidacionService {
     private readonly historialRepo: Repository<SolicitudHistorialEstadoEntity>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    private readonly notificationClient: NotificationClientService,
   ) {}
 
   // ========================================================================
@@ -183,7 +185,10 @@ export class ConsolidacionService {
    *  - Bloqueo pesimista de la fila (`SELECT ... FOR UPDATE`) para evitar
    *    colisiones de estado ante envíos concurrentes del mismo expediente.
    *  - Si alguna validación falla se retorna HTTP 422 sin mutar nada (rollback).
-   *  - Si todo es correcto: `SOLICITADO` + registro en el historial inmutable.
+   *  - Si es íntegro, evalúa la anticipación de 14 días hábiles: si la fecha
+   *    de inicio del viaje está a menos de 14 días hábiles, el estado final
+   *    es `EXTEMPORANEA`; en caso contrario es `SOLICITADO` (solo lectura).
+   *  - Registra la transición en `solicitudes_historial_estados`.
    *
    * @throws NotFoundException         si el expediente no existe.
    * @throws BadRequestException(400)  si el estado no permite consolidar.
@@ -237,34 +242,69 @@ export class ConsolidacionService {
         throw new HttpException({ success: false, errors: errores }, 422);
       }
 
-      // 4) Transición y cierre de seguridad (inmutabilidad).
+      // 4) Evaluar anticipación y transición a EXTEMPORANEA o SOLICITADO.
+      const ahora = new Date();
+      const diasHabilesAnticipacion = contarDiasHabilesEntre(ahora, expediente.fechaInicio);
+      const esExtemporanea = diasHabilesAnticipacion < 14;
+
       const estadoAnterior = expediente.estadoSolicitud;
-      expediente.estadoSolicitud = ESTADO_EXPEDIENTE_SOLICITADO;
+      if (esExtemporanea) {
+        expediente.estadoSolicitud = EstadoSolicitud.EXTEMPORANEA;
+        expediente.extemporanea = true;
+      } else {
+        expediente.estadoSolicitud = EstadoSolicitud.SOLICITADO;
+        expediente.extemporanea = false;
+      }
       await manager.save(SolicitudComisionEntity, expediente);
 
       // 5) Registrar la transición en el historial de auditoría (append-only).
       const historial = manager.create(SolicitudHistorialEstadoEntity, {
         solicitudId: expediente.id,
         estadoAnterior,
-        estadoNuevo: ESTADO_EXPEDIENTE_SOLICITADO,
+        estadoNuevo: expediente.estadoSolicitud,
         usuarioId:
           usuarioId ?? expediente.creadoPorUsuarioId ?? '00000000-0000-0000-0000-000000000000',
-        comentarios: `Expediente consolidado y enviado a revisión del Grupo de Viáticos (RF-LIQ-004).`,
+        comentarios: esExtemporanea
+          ? 'Expediente consolidado como EXTEMPORANEA por anticipación menor a 14 días hábiles.'
+          : 'Expediente consolidado y enviado a revisión del Grupo de Viáticos (RF-LIQ-004).',
       });
       await manager.save(SolicitudHistorialEstadoEntity, historial);
 
       this.logger.log(
         `[consolidacion] Expediente ${expediente.consecutivoUnico} consolidado: ` +
-          `${estadoAnterior} -> ${ESTADO_EXPEDIENTE_SOLICITADO}`,
+          `${estadoAnterior} -> ${expediente.estadoSolicitud}`,
       );
+
+      this.notificationClient
+        .notifyByRole('SECRETARIO', {
+          tipo_notificacion: 'VIATICOS_RADICADA',
+          titulo: `Nueva solicitud para revisión: ${expediente.consecutivoUnico}`,
+          mensaje: `El expediente ${expediente.consecutivoUnico} fue radicado y requiere revisión en la bandeja del Grupo de Viáticos.`,
+          descripcion_corta: `Solicitud ${expediente.consecutivoUnico} · ${expediente.comisionado?.numeroDocumento ?? ''}`,
+          icono: 'FileText',
+          color: '#003DA5',
+          prioridad: esExtemporanea ? 'Alta' : 'Media',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver en bandeja',
+          url_accion: '/viaticos',
+          datos_adicionales: { solicitudId: expediente.id, consecutivoUnico: expediente.consecutivoUnico },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `[notify] No se pudo notificar a secretarios para solicitud ${expediente.id}: ${err?.message}`,
+          ),
+        );
 
       return {
         success: true,
         id: expediente.id,
         consecutivoUnico: expediente.consecutivoUnico,
         estadoAnterior,
-        estadoSolicitud: ESTADO_EXPEDIENTE_SOLICITADO,
-        mensaje: `El expediente ${expediente.consecutivoUnico} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
+        estadoSolicitud: expediente.estadoSolicitud,
+        mensaje: esExtemporanea
+          ? `El expediente ${expediente.consecutivoUnico} fue consolidado como EXTEMPORANEA por no cumplir la anticipación mínima de 14 días hábiles.`
+          : `El expediente ${expediente.consecutivoUnico} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
       };
     });
   }
@@ -739,5 +779,26 @@ function campoPresente(valor: unknown): boolean {
   if (typeof valor === 'number') return !Number.isNaN(valor);
   if (valor instanceof Date) return !Number.isNaN(valor.getTime());
   return true;
+}
+
+// ============================================================================
+// Helpers para la regla de 14 días hábiles (evaluada en consolidación).
+// ============================================================================
+
+function esDiaHabil(fecha: Date): boolean {
+  const dia = fecha.getDay();
+  return dia !== 0 && dia !== 6;
+}
+
+function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
+  let count = 0;
+  const fecha = new Date(fechaInicio);
+  while (fecha <= fechaFin) {
+    if (esDiaHabil(fecha)) {
+      count++;
+    }
+    fecha.setDate(fecha.getDate() + 1);
+  }
+  return count;
 }
 
