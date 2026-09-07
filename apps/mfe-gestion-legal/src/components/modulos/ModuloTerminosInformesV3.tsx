@@ -1009,7 +1009,7 @@ interface VistaCalendarioProps {
   onVerDetalle: (solicitud: SolicitudInforme) => void;
 }
 
-function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }: VistaCalendarioProps) {
+export function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }: VistaCalendarioProps) {
   // ... (keep existing logic)
   const nombreMes = mesActual.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
@@ -1078,7 +1078,6 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
               key={dia}
               className={`aspect-square border rounded-lg p-1 text-xs ${esHoy ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
                 } ${solicitudesDia.length > 0 ? 'bg-red-50' : ''}`}
-              onClick={() => solicitudesDia.length > 0 && onVerDetalle(solicitudesDia[0])}
             >
               <div className="font-semibold text-gray-700 mb-1">{dia}</div>
               {solicitudesDia.length > 0 && (
@@ -1091,7 +1090,10 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
                         backgroundColor: formatearDiasRestantes(s.diasRestantes).color,
                         color: '#FFFFFF'
                       }}
-                      onClick={() => onVerDetalle(s)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onVerDetalle(s);
+                      }}
                       title={`${s.id} · ${s.asunto} — ${formatearDiasRestantes(s.diasRestantes).texto}`}
                     >
                       <span className="font-bold">{s.id}</span>
