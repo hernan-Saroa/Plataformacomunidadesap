@@ -2284,6 +2284,14 @@ export interface EstadoRegistroActividad {
   numeral: string;
   etapa: number;
   exigeSoporte: boolean;
+  /**
+   * Si la actividad tiene formatos asignados en la biblioteca.
+   *
+   * Donde los hay, el soporte se carga en el bloque de documentos y no en el
+   * formulario: los dos escriben el mismo adjunto, y ofrecer los dos era pedir
+   * el documento dos veces.
+   */
+  tieneFormatos: boolean;
   /** Si la exigencia sale de la matriz o es suposicion del equipo. */
   exigenciaConfirmada: boolean;
   /** Lo que la matriz dice de esta actividad, para mostrarlo en la pantalla. */

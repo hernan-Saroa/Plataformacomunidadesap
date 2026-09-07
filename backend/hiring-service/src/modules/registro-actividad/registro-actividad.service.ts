@@ -156,13 +156,21 @@ export class RegistroActividadService {
       numeral,
       etapa: parametro.etapa,
       exigeSoporte: conFormato ? pendientePorFormato : parametro.exigeSoporte,
+      /*
+       * Si el soporte lo recibe el bloque de formatos en vez del formulario.
+       *
+       * El formulario y el bloque escriben el mismo adjunto —desde que el
+       * soporte cumple el formato pendiente, los dos llenan la misma casilla—,
+       * así que ofrecer los dos a la vez es pedir el documento dos veces. Con
+       * formatos asignados manda el bloque, que dice de qué formato se trata y
+       * presta la plantilla en blanco; el formulario retira su selector.
+       */
+      tieneFormatos: conFormato,
       // Se dice en la pantalla: una exigencia sin confirmar no se presenta como
       // si viniera de la norma. Un formato asignado sí es decisión del área
       // —alguien entró a la biblioteca y lo puso en esta actividad—, así que
       // presentarlo como pendiente de confirmar sería decir algo falso.
-      exigenciaConfirmada:
-        parametro.confirmado ||
-        (await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null)),
+      exigenciaConfirmada: parametro.confirmado || conFormato,
       notaFuente: parametro.notaFuente,
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
