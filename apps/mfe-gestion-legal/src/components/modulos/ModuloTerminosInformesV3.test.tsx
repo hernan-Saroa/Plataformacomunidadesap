@@ -20,7 +20,7 @@ vi.mock('../../../../services/api/authService', () => ({
   authService: { hasRole: vi.fn(() => false), getCurrentUser: vi.fn(() => null) },
 }));
 
-import { VistaLista, VistaTimeline, ModuloTerminosInformesV3, formatearFuenteInformativa } from './ModuloTerminosInformesV3';
+import { VistaLista, VistaTimeline, VistaCalendario, ModuloTerminosInformesV3, formatearFuenteInformativa } from './ModuloTerminosInformesV3';
 import { SolicitudInforme } from '../core/types';
 import { PermisosProvider } from '../config/PermisosContext';
 import { ConfiguracionesSIGLProvider } from '../config/ConfiguracionesSIGLContext';
@@ -97,6 +97,60 @@ describe('VistaLista · Calendario de Vencimientos', () => {
 
     expect(screen.getByText('Sin asignar')).toBeInTheDocument();
     expect(screen.getByText('Sin especificar')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Regresión: bug "Calendario → dos informes en el mismo día, la previsualización siempre
+// muestra el primero". La celda del día tenía un onClick propio que llamaba a onVerDetalle con
+// solicitudesDia[0] a secas; al hacer clic en el segundo (o siguiente) informe de la celda, ese
+// clic interno disparaba primero onVerDetalle(s) correcto, pero el evento burbujeaba hacia el
+// onClick del div exterior de la celda, que lo sobrescribía siempre con el primer informe del
+// día. El fix quita ese onClick redundante del div exterior y agrega stopPropagation en el
+// onClick de cada informe individual.
+// ---------------------------------------------------------------------------------------------
+describe('VistaCalendario · con varios informes el mismo día, cada uno abre su propia previsualización', () => {
+  it('al hacer clic en el segundo informe del día, onVerDetalle se llama con el segundo, no con el primero', async () => {
+    const user = userEvent.setup();
+    const onVerDetalle = vi.fn();
+    const primero = crearSolicitud({ id: 'TERM-2026-0010', asunto: 'Primer informe', fechaVencimiento: new Date(2026, 8, 3) });
+    const segundo = crearSolicitud({ id: 'TERM-2026-0011', asunto: 'Segundo informe', fechaVencimiento: new Date(2026, 8, 3) });
+
+    render(
+      <VistaCalendario
+        solicitudes={[primero, segundo]}
+        mesActual={new Date(2026, 8, 1)}
+        setMesActual={vi.fn()}
+        onVerDetalle={onVerDetalle}
+      />,
+    );
+
+    await user.click(screen.getByText(/TERM-2026-0011/));
+
+    expect(onVerDetalle).toHaveBeenCalledTimes(1);
+    expect(onVerDetalle).toHaveBeenCalledWith(segundo);
+    expect(onVerDetalle).not.toHaveBeenCalledWith(primero);
+  });
+
+  it('al hacer clic en el primer informe del día, onVerDetalle se llama solo con el primero', async () => {
+    const user = userEvent.setup();
+    const onVerDetalle = vi.fn();
+    const primero = crearSolicitud({ id: 'TERM-2026-0010', asunto: 'Primer informe', fechaVencimiento: new Date(2026, 8, 3) });
+    const segundo = crearSolicitud({ id: 'TERM-2026-0011', asunto: 'Segundo informe', fechaVencimiento: new Date(2026, 8, 3) });
+
+    render(
+      <VistaCalendario
+        solicitudes={[primero, segundo]}
+        mesActual={new Date(2026, 8, 1)}
+        setMesActual={vi.fn()}
+        onVerDetalle={onVerDetalle}
+      />,
+    );
+
+    await user.click(screen.getByText(/TERM-2026-0010/));
+
+    expect(onVerDetalle).toHaveBeenCalledTimes(1);
+    expect(onVerDetalle).toHaveBeenCalledWith(primero);
   });
 });
 

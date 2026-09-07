@@ -30,7 +30,10 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
     const invitacionRepo = {
       findOne: jest.fn().mockResolvedValue({
         id: 'invitacion-1',
-        tokenAcceso: 'token-seguro',
+        estado: 'OTP validado',
+        tokenAcceso: 'enlace-invitacion',
+        fechaExpiracion: new Date(Date.now() + 60000),
+        sesionExpiraEn: new Date(Date.now() + 60000),
         correoInstitucional: 'maria@esap.edu.co',
       }),
       save: jest.fn(),
@@ -50,7 +53,7 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
     } as any);
     const auditSpy = jest.spyOn(service, 'logSensitiveDataAccess').mockResolvedValue(undefined);
 
-    const result = await service.getAutogestionInfo('token-seguro');
+    const result = await service.getAutogestionInfo('a'.repeat(64));
 
     expect(result.documento_identidad).toBe('******4050');
     expect(result.puntaje_salarial).toBeNull();
@@ -67,7 +70,9 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
   it('conserva la cédula confiable y descarta el puntaje recibido al guardar', async () => {
     const invitacion = {
       id: 'invitacion-1',
-      tokenAcceso: 'token-seguro',
+      tokenAcceso: 'enlace-invitacion',
+        fechaExpiracion: new Date(Date.now() + 60000),
+        sesionExpiraEn: new Date(Date.now() + 60000),
       correoInstitucional: 'maria@esap.edu.co',
       estado: 'OTP validado',
     };
@@ -82,9 +87,12 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
       query: jest.fn().mockResolvedValue([{ document_number: '1020304050' }]),
     };
     const { service } = createService({ docenteRepo, invitacionRepo, dataSource });
-    const upsertSpy = jest.spyOn(service, 'upsertDocente').mockResolvedValue({ id: 'docente-1' } as any);
+    const upsertSpy = jest.spyOn(service, 'upsertDocente').mockResolvedValue({
+      docenteId: '11111111-1111-4111-8111-111111111111', documentNumber: '1020304050',
+    } as any);
+    const auditSpy = jest.spyOn(service, 'logSensitiveDataAccess').mockResolvedValue(undefined);
 
-    await service.submitFromToken('token-seguro', {
+    const response = await service.submitFromToken('a'.repeat(64), {
       documentNumber: '******4050',
       documento_identidad: '******4050',
       puntajeSalarial: 999999,
@@ -109,5 +117,7 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
     expect(submittedPayload).not.toHaveProperty('puntajeSalarial');
     expect(submittedPayload).not.toHaveProperty('PUNTAJE_SALARIAL');
     expect(invitacionRepo.save).toHaveBeenCalledWith(expect.objectContaining({ estado: 'Gestionada' }));
+    expect(response.documentNumber).toBe('******4050');
+    expect(upsertSpy.mock.calls[0][1]?.audit?.sensitiveAccess).toEqual({ roles: ['DOCENTE_AUTOGESTION'], fullAccess: false, endpoint: 'AUTOGESTION_ENVIAR_PERFIL' });
   });
 });
