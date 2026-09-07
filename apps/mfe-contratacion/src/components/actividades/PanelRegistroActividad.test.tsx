@@ -1,0 +1,222 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import { PanelRegistroActividad } from './PanelRegistroActividad';
+import { contratacionService } from '../../services/contratacionService';
+import { EstadoRegistroActividad } from '../../types';
+
+vi.mock('../../services/contratacionService', () => ({
+  contratacionService: {
+    registroActividad: vi.fn(),
+    registrarActividad: vi.fn(),
+    anularRegistroActividad: vi.fn(),
+    urlDescarga: (url: string) => `https://gateway${url}`,
+  },
+}));
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+const servicio = contratacionService as unknown as {
+  registroActividad: ReturnType<typeof vi.fn>;
+  registrarActividad: ReturnType<typeof vi.fn>;
+  anularRegistroActividad: ReturnType<typeof vi.fn>;
+};
+
+const estado = (parcial: Partial<EstadoRegistroActividad> = {}): EstadoRegistroActividad => ({
+  numeral: '5.10',
+  etapa: 5,
+  exigeSoporte: true,
+  exigenciaConfirmada: true,
+  notaFuente: 'Campo de sí/no, adjunta soporte.',
+  aplica: true,
+  motivoNoAplica: null,
+  registro: null,
+  historial: [],
+  ...parcial,
+});
+
+const pintar = (numeral = '5.10', requiereAprobacion = false) =>
+  render(
+    <PanelRegistroActividad
+      procesoId="p-1"
+      numeral={numeral}
+      requiereAprobacion={requiereAprobacion}
+    />,
+  );
+
+describe('PanelRegistroActividad · las actividades que se cumplen dejando constancia', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.registroActividad.mockResolvedValue(estado());
+  });
+
+  it('muestra lo que la matriz dice de la actividad', async () => {
+    // El numeral y el nombre ya no se comprueban aquí: los pinta el
+    // contenedor, igual para las sesenta y tres, y repetirlos en el panel
+    // dejaba un título doble en pantalla.
+    pintar();
+    expect(await screen.findByText(/Campo de sí\/no, adjunta soporte/)).toBeInTheDocument();
+  });
+
+  it('dice que la actividad ocurre por fuera de la plataforma', async () => {
+    // El criterio que atraviesa el módulo: la pantalla no aparenta que el dato
+    // venga de SECOP II.
+    pintar();
+    expect(await screen.findByText(/por fuera de la plataforma/i)).toBeInTheDocument();
+  });
+
+  it('no ofrece registrar cuando la modalidad no adelanta la actividad', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({ aplica: false, motivoNoAplica: 'La mínima cuantía no hace subasta.' }),
+    );
+    pintar('6.10');
+
+    expect(await screen.findByText(/no adelanta la actividad/i)).toBeInTheDocument();
+    expect(screen.getByText(/La mínima cuantía no hace subasta/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Registrar la actividad/ })).toBeNull();
+  });
+
+  it('avisa cuando la exigencia de soporte es criterio del equipo', async () => {
+    // Una suposición no se presenta como si viniera de la norma.
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '3.3', exigeSoporte: true, exigenciaConfirmada: false }),
+    );
+    pintar('3.3');
+
+    expect(await screen.findByText(/criterio del equipo/i)).toBeInTheDocument();
+  });
+
+  it('no avisa nada cuando la exigencia sí sale de la matriz', async () => {
+    pintar();
+    await screen.findByText(/por fuera de la plataforma/i);
+    expect(screen.queryByText(/criterio del equipo/i)).toBeNull();
+  });
+
+  it('no deja registrar sin nota', async () => {
+    pintar();
+    await screen.findByText(/por fuera de la plataforma/i);
+    expect(screen.getByRole('button', { name: /Registrar la actividad/ })).toBeDisabled();
+  });
+
+  it('sigue sin dejar registrar con nota pero sin el soporte que la actividad exige', async () => {
+    pintar();
+    await screen.findByText(/por fuera de la plataforma/i);
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Qué se hizo/),
+      'Se sorteó entre los tres oferentes que manifestaron interés.',
+    );
+
+    expect(screen.getByRole('button', { name: /Registrar la actividad/ })).toBeDisabled();
+  });
+
+  it('deja registrar sin soporte cuando la actividad no lo exige', async () => {
+    // La 5.9 es «campo para nota de trazabilidad»: la matriz no pide adjunto.
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '5.9', exigeSoporte: false }),
+    );
+    pintar('5.9');
+    await screen.findByText(/por fuera de la plataforma/i);
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Qué se hizo/),
+      'Dos interesados manifestaron dentro del término del cronograma.',
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Registrar la actividad/ })).toBeEnabled(),
+    );
+  });
+
+  it('muestra el registro vigente con su nota y quién lo transcribió', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({
+        registro: {
+          id: 'r-1',
+          fecha: '2026-08-20',
+          nota: 'Se sorteó entre los tres oferentes.',
+          datos: {},
+          registradoPor: 'Ana Gestora',
+          registradoAt: '2026-08-21T14:00:00.000Z',
+          soporte: { nombre: 'Acta del sorteo', url: '/hiring/documentos/d-1/descargar' },
+        },
+      }),
+    );
+    pintar();
+
+    expect(await screen.findByText(/Se sorteó entre los tres oferentes/)).toBeInTheDocument();
+    expect(screen.getByText(/Ana Gestora/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ver el soporte/ })).toBeInTheDocument();
+  });
+
+  it('exige motivo para anular', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({
+        registro: {
+          id: 'r-1',
+          fecha: '2026-08-20',
+          nota: 'Se sorteó entre los tres oferentes.',
+          datos: {},
+          registradoPor: 'Ana Gestora',
+          registradoAt: '2026-08-21T14:00:00.000Z',
+          soporte: null,
+        },
+      }),
+    );
+    pintar();
+
+    await userEvent.click(await screen.findByRole('button', { name: /Anular y registrar/ }));
+    expect(screen.getByRole('button', { name: /Anular el registro/ })).toBeDisabled();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Por qué se anula/),
+      'El acta cargada era la del proceso anterior.',
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Anular el registro/ })).toBeEnabled(),
+    );
+  });
+
+  it('lista los registros anulados con su motivo', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({
+        historial: [
+          {
+            fecha: '2026-08-18',
+            nota: 'Primer intento del sorteo.',
+            anuladoAt: '2026-08-19T10:00:00.000Z',
+            anuladoPor: 'Ana Gestora',
+            motivoAnulacion: 'Se cargó el acta equivocada.',
+          },
+        ],
+      }),
+    );
+    pintar();
+
+    expect(await screen.findByText(/Registros anulados/)).toBeInTheDocument();
+    expect(screen.getByText(/Se cargó el acta equivocada/)).toBeInTheDocument();
+  });
+
+  it('dice que el registro envia a aprobacion cuando alguien la revisa', async () => {
+    // El envio dejo de ser un boton aparte: registrar es lo que manda la
+    // actividad a revision, y el gestor tiene que saberlo antes de pulsar.
+    pintar('5.10', true);
+
+    expect(
+      await screen.findByRole('button', { name: /Registrar y enviar a aprobación/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Registrar la actividad$/ })).toBeNull();
+  });
+
+  it('donde nadie revisa el registro cierra la actividad y lo dice asi', async () => {
+    pintar('5.10', false);
+
+    expect(
+      await screen.findByRole('button', { name: /Registrar la actividad/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enviar a aprobación/ })).toBeNull();
+  });
+});
