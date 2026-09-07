@@ -1,22 +1,30 @@
 import { NivelAcademico } from '../catalogo/nivel-academico.js';
 
 /**
- * Permisos de Programación Académica (sembrados en la migración 004).
+ * Permisos de Programación Académica (sembrados en la migración 004, renombrados
+ * en la 017).
+ *
+ * ⚠️ EL PREFIJO ES `programacion-academica`, NO `programacion`. El backoffice
+ * deriva el módulo visible del prefijo del permiso (antes del primer punto); con
+ * `programacion` no coincidía con el código del módulo `programacion-academica` y
+ * el módulo quedaba huérfano en el sidebar. Estos códigos deben coincidir
+ * carácter por carácter con los de la migración 017: si cambian aquí, cambian
+ * allá, o el RBAC deja de encontrar los permisos.
  *
  * ⚠️ RN-08 segrega el CATÁLOGO por nivel, pero NO la disponibilidad de docentes:
  * ambos perfiles deben verla, porque es lo que hace posible el bloqueo
  * transversal de franjas (RN-07) en la fase 3.
  */
 export const PERMISO_CATALOGO_POR_NIVEL: Record<NivelAcademico, string> = {
-  pregrado: 'programacion.catalogo.pregrado',
-  posgrado: 'programacion.catalogo.posgrado',
+  pregrado: 'programacion-academica.catalogo.pregrado',
+  posgrado: 'programacion-academica.catalogo.posgrado',
 };
 
 /** Transversal a los dos niveles: nunca se divide (ver nota de arriba). */
-export const PERMISO_DISPONIBILIDAD_DOCENTE = 'programacion.docentes.disponibilidad';
+export const PERMISO_DISPONIBILIDAD_DOCENTE = 'programacion-academica.docentes.disponibilidad';
 
 /** Acceso integral al catálogo, análogo a `pta.approve.all`. */
-export const PERMISO_PROGRAMACION_ALL = 'programacion.all';
+export const PERMISO_PROGRAMACION_ALL = 'programacion-academica.all';
 
 /** Niveles cuyo catálogo puede ver este conjunto de permisos. */
 export function nivelesVisibles(permisos: ReadonlySet<string>): NivelAcademico[] {

@@ -27,7 +27,7 @@ export class ProgramacionPermissionsService {
            INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
           WHERE COALESCE(rp.is_active, true) = true
             AND r.code = ANY($1::text[])
-            AND p.code LIKE 'programacion.%'`,
+            AND p.code LIKE 'programacion-academica.%'`,
         [codes],
       );
       return new Set((rows || []).map((r) => String(r.code)).filter(Boolean));
