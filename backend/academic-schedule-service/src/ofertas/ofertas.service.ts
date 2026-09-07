@@ -27,6 +27,7 @@ export interface OfertaDto {
   tipo: string | null;
   fechaInicio: string | null;
   fechaFin: string | null;
+  /** Derivado de `estado = 'activo'` (migración 018); ya no hay columna is_activo. */
   activo: boolean;
 }
 
@@ -39,7 +40,7 @@ export class OfertasService {
 
   async listar(): Promise<OfertaDto[]> {
     const filas = await this.dataSource.query(
-      `SELECT id_periodo, codigo, nombre, tipo, fecha_inicio, fecha_fin, is_activo
+      `SELECT id_periodo, codigo, nombre, tipo, fecha_inicio, fecha_fin, estado
          FROM "academic-schedule".periodo_programacion
         ORDER BY tipo, codigo`,
     );
@@ -51,7 +52,7 @@ export class OfertasService {
       tipo: p.tipo ?? null,
       fechaInicio: iso(p.fecha_inicio),
       fechaFin: iso(p.fecha_fin),
-      activo: p.is_activo,
+      activo: p.estado === 'activo',
     }));
   }
 

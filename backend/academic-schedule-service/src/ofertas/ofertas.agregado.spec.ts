@@ -1,5 +1,7 @@
 import { Client } from 'pg';
 
+import { OfertasService } from './ofertas.service.js';
+
 /**
  * EFDS-1375 :: AC :: las cinco ofertas académicas.
  *
@@ -66,5 +68,48 @@ describe('EFDS-1375 :: las cinco ofertas academicas (agregado real)', () => {
          FROM "academic-schedule".asignacion_docente WHERE estado='ASIGNADO'`,
     );
     expect(rows[0].total_directo).toBe(rows[0].total_por_oferta);
+  });
+
+  // ---------------------------------------------------------------------------
+  // NUEVA-5a :: ciclo de vida del periodo (migración 018)
+  // ---------------------------------------------------------------------------
+
+  siHayBase('los 5 periodos quedaron en estado activo tras el backfill', async () => {
+    const { rows } = await client!.query(
+      `SELECT estado, count(*)::int AS n
+         FROM "academic-schedule".periodo_programacion
+        GROUP BY estado`,
+    );
+    const porEstado = Object.fromEntries(rows.map((r) => [r.estado, r.n]));
+    expect(porEstado).toEqual({ activo: 5 });
+  });
+
+  siHayBase('is_activo no existe: una sola fuente de verdad del ciclo', async () => {
+    // Canario anti-regresión del patrón que costó EFDS-1536/1539: dos campos
+    // que pueden contradecirse sobre el mismo concepto. Si alguien reintroduce
+    // is_activo "por prudencia", esto falla.
+    const { rows } = await client!.query(
+      `SELECT count(*)::int AS n
+         FROM information_schema.columns
+        WHERE table_schema = 'academic-schedule'
+          AND table_name   = 'periodo_programacion'
+          AND column_name  = 'is_activo'`,
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
+  siHayBase('el DTO deriva activo=true en los cinco (contrato intacto)', async () => {
+    // Ejercita el servicio REAL —su SQL y su derivación—, no una copia de la
+    // regla: el DataSource se sustituye por el cliente pg de esta suite.
+    const dataSource = { query: (sql: string) => client!.query(sql).then((r) => r.rows) };
+    const servicio = new OfertasService(dataSource as any, null as any);
+
+    const ofertas = await servicio.listar();
+
+    expect(ofertas).toHaveLength(5);
+    expect(ofertas.every((o) => o.activo === true)).toBe(true);
+    expect(ofertas.map((o) => o.codigo).sort()).toEqual(
+      ['2026-1', '2026-2', '2026-INT', '2026-V1', '2026-V2'],
+    );
   });
 });
