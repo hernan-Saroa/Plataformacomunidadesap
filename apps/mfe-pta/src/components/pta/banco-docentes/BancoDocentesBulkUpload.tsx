@@ -123,7 +123,11 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
       setIsSimulated(dryRun);
       if (!dryRun) {
         const omitidos = stats.errors || 0;
-        toast.success(omitidos > 0 ? `Importación parcial: ${omitidos} fila(s) omitidas por error.` : 'Datos de docentes cargados exitosamente');
+        if (stats.detalleNoDisponible) {
+          toast.warning(stats.message || 'La carga terminó. Consulte el listado antes de repetir la importación.', { duration: 12000 });
+        } else {
+          toast.success(omitidos > 0 ? `Importación parcial: ${omitidos} fila(s) omitidas por error.` : 'Datos de docentes cargados exitosamente');
+        }
         onSuccess();
       }
     } catch (err: any) {

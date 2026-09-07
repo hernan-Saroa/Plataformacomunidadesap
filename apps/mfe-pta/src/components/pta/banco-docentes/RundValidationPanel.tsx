@@ -465,6 +465,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
   }, [auth]);
 
   const openDocViewer = async (url: string, nombre: string, campo: string, tipoSoporte?: string) => {
+    if (tarjetaRund?.proteccion_datos?.acceso_completo === false) {
+      toast.error('El documento original está restringido para su rol.');
+      return;
+    }
     // Si la URL es 'mock', intentar buscar el doc real desde el backend
     if (url === 'mock' && tipoSoporte && tarjetaRund?.docenteId) {
       setViewingDoc({ url, nombre, campo, displayUrl: '', loading: true });

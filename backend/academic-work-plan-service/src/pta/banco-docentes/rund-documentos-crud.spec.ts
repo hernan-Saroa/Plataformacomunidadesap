@@ -173,7 +173,7 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
     const storage = { read: jest.fn().mockResolvedValue(pdfFile.buffer) };
     const service = new RundDocumentosService(dataSource as any, storage as any);
 
-    const result = await service.content(docente.id, current.id);
+    const result = await service.content(docente.id, current.id, { actorId: 'ggp-1', roles: ['GESTION_PROFESORAL'], fullAccess: true });
 
     expect(result).toEqual({
       buffer: pdfFile.buffer,
