@@ -82,4 +82,37 @@ describe('RBAC de datos sensibles RUND', () => {
     expect(maskIdentityDocument('1234')).toBe('****');
     expect(maskIdentityDocument(null)).toBeNull();
   });
+
+  it('protege snapshots históricos, alias de campos y valores anidados sin alterar el original', () => {
+    const source = {
+      historial: [
+        { campo_afectado: 'DOCUMENTO_IDENTIDAD', dato_previo: '1020304050', dato_nuevo: '1020304051' },
+        { campoAfectado: 'PUNTAJE_SALARIAL', datoPrevio: '145.5', datoNuevo: '200' },
+        { campoAfectado: 'GENERAL', datoNuevo: JSON.stringify({ document_number: '1020304050', puntajeSalarial: 200, nombre: 'MARIA' }) },
+      ],
+      persona: { 'Cédula': '1020304050', 'Documento de identidad': '1020304050' },
+    };
+    const result = protectRundSensitiveData(source, false);
+    expect(JSON.stringify(result)).not.toContain('1020304050');
+    expect(result.historial[0]).toMatchObject({ dato_previo: '******4050', dato_nuevo: '******4051' });
+    expect(result.historial[1]).toMatchObject({ datoPrevio: null, datoNuevo: null });
+    expect(JSON.parse(result.historial[2].datoNuevo!)).toEqual({ document_number: '******4050', puntajeSalarial: null, nombre: 'MARIA' });
+    expect(findRundSensitiveFields(source)).toEqual(['DOCUMENTO_IDENTIDAD', 'PUNTAJE_SALARIAL']);
+    expect(source.historial[1].datoNuevo).toBe('200');
+  });
+
+  it('niega acceso completo a roles desconocidos, vacíos o permisos enviados en el usuario', () => {
+    for (const user of [undefined, {}, { roles: [] }, { roles: ['GGP'] }, { roles: ['CONSULTOR'], permissions: ['banco-docentes.rund.manage'] }]) {
+      expect(canViewRundSensitiveData(user)).toBe(false);
+    }
+  });
+
+  it('protege nombres y rutas de soportes en historiales anidados', () => {
+    const source = { soporteId: 'support-1', accion: 'CARGAR_DOCUMENTO',
+      metadata: { nombreArchivo: '1020304050.pdf', contenidoUrl: '/uploads/1020304050.pdf', categoria: 'TITULOS' } };
+    const result = protectRundSensitiveData(source, false);
+    expect(JSON.stringify(result)).not.toContain('1020304050');
+    expect(result.metadata.categoria).toBe('TITULOS');
+    expect(protectRundSensitiveData(source, true).metadata.nombreArchivo).toBe('1020304050.pdf');
+  });
 });

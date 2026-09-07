@@ -164,9 +164,10 @@ export function AutogestionDocenteRUND() {
 
       if (isSuccess && sToken) {
         setSessionToken(sToken);
-        await loadDraft(sToken);
         // Check if docente already exists in banco
         await checkExistingDocente(sToken);
+        // Los cambios aún no enviados del borrador prevalecen sobre el perfil persistido.
+        await loadDraft(sToken);
         setAutoSaveEnabled(true); // §5.3.1 — Enable auto-save
         setStep('FORM');
       } else {
@@ -182,8 +183,9 @@ export function AutogestionDocenteRUND() {
   const loadDraft = async (sToken: string) => {
     try {
       const res = await apiClient.get(`/pta/api/v1/banco-docentes/drafts/${sToken}`);
-      if (res.data?.success && res.data.data?.draft) {
-        setForm({ ...form, ...res.data.data.draft });
+      const draft = res?.draft || res?.data?.draft || res?.data?.data?.draft;
+      if (draft) {
+        setForm((previous: any) => ({ ...previous, ...draft, puntajeSalarial: '' }));
       }
     } catch (e) {
       console.warn('Error loading draft', e);
@@ -195,8 +197,8 @@ export function AutogestionDocenteRUND() {
       // El endpoint me/:token resuelve el correo desde la invitación en el server,
       // así que NO necesitamos un guard de correo aquí (antes retornaba temprano).
       const searchRes: any = await apiClient.get(`/pta/api/v1/banco-docentes/autogestion/me/${sToken}`);
-      // El controlador responde { success, data: match } → los campos están en data.data.
-      const match = searchRes?.data?.data || null;
+      // apiClient devuelve el contenido de data; se admiten también respuestas envueltas.
+      const match = searchRes?.data?.data ?? searchRes?.data ?? searchRes ?? null;
 
       if (!match || Object.keys(match).length === 0) {
         console.warn("No data found for this user in the RUND.");
@@ -235,7 +237,7 @@ export function AutogestionDocenteRUND() {
           origenVinculacion: match.origen_vinculacion || prev.origenVinculacion,
           situacionAdministrativa: match.situacion_administrativa || prev.situacionAdministrativa,
           ultimaEvaluacion: match.ultima_evaluacion || prev.ultimaEvaluacion,
-          puntajeSalarial: match.puntaje_salarial || prev.puntajeSalarial,
+          puntajeSalarial: match.proteccion_datos?.acceso_completo === false ? '' : (match.puntaje_salarial ?? ''),
           horasAsignables: match.horas_programables || prev.horasAsignables,
           estado: match.estado || prev.estado,
           periodoCarga: match.periodo_carga || prev.periodoCarga,
@@ -316,7 +318,11 @@ export function AutogestionDocenteRUND() {
         for (const [key, file] of entries) {
           const [bloque, tipoSoporte] = key.split('__');
           setUploadProgress(`Subiendo documentos (${done + 1}/${entries.length})…`);
-          const up = await vincularRundSoporte(docenteId, bloque, { tipoSoporte, cargadoPor: form.correoInstitucional || email }, file);
+          const up = await vincularRundSoporte(docenteId, bloque, {
+            tipoSoporte,
+            cargadoPor: form.correoInstitucional || email,
+            autogestionToken: sessionToken || undefined,
+          }, file);
           if (!(up as any)?.success) {
             console.warn('[RUND] Falló la carga de un soporte', key, up);
           }
@@ -778,7 +784,7 @@ export function AutogestionDocenteRUND() {
                     <Field label="Origen Vinculación"><input style={{ ...inputStyle, background: '#f1f5f9', cursor: 'not-allowed' }} value={form.origenVinculacion} readOnly /></Field>
                     <Field label="Situación Administrativa"><input style={{ ...inputStyle, background: '#f1f5f9', cursor: 'not-allowed' }} value={form.situacionAdministrativa} readOnly /></Field>
                     <Field label="Última Evaluación"><input style={{ ...inputStyle, background: '#f1f5f9', cursor: 'not-allowed' }} value={form.ultimaEvaluacion} readOnly /></Field>
-                    <Field label="Puntaje Salarial"><input style={{ ...inputStyle, background: '#f1f5f9', cursor: 'not-allowed' }} value={form.puntajeSalarial} readOnly /></Field>
+                    <Field label="Puntaje Salarial"><input style={{ ...inputStyle, background: '#f1f5f9', cursor: 'not-allowed' }} value="Información restringida" readOnly /></Field>
                     <Field label="Horas Asignables"><input style={{ ...inputStyle, background: '#f1f5f9', cursor: 'not-allowed' }} value={form.horasAsignables} readOnly /></Field>
                   </div>
                 </div>

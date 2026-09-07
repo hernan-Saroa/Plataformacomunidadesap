@@ -39,7 +39,10 @@ export class AlertasVencimientoTerminosService {
         private readonly terminosService: TerminosService,
     ) { }
 
-    @Cron('0 7 * * *', {
+    // Corre cada hora (no una vez al día): la UI permite configurar anticipaciones y
+    // recordatorios en HORAS, así que una corrida diaria a las 7am dejaba pasar de largo
+    // cualquier umbral fino (p. ej. "3 horas antes") sin que se llegara a evaluar a tiempo.
+    @Cron('0 * * * *', {
         name: 'verificar-alertas-terminos',
         timeZone: 'America/Bogota',
     })
@@ -92,7 +95,7 @@ export class AlertasVencimientoTerminosService {
                 termino.recordatorioManualHorasAnticipacion != null &&
                 horasRestantes <= termino.recordatorioManualHorasAnticipacion
             ) {
-                await this.legalNotifications.notifyTerminoProximoAVencer({
+                const enviado = await this.legalNotifications.notifyTerminoProximoAVencer({
                     terminoId: termino.id,
                     responsableId: termino.responsableId,
                     nombreActuacion: termino.nombreActuacion,
@@ -100,15 +103,17 @@ export class AlertasVencimientoTerminosService {
                     horasRestantes,
                     origen: 'manual',
                 });
-                await this.terminosService.addNota(
-                    termino.id,
-                    `Recordatorio manual enviado (${termino.recordatorioManualHorasAnticipacion}h de anticipación)`,
-                    'Sistema',
-                );
-                // Envío único: se limpia con un update parcial, sin re-guardar la
-                // entidad completa (evita pisar la nota recién agregada por addNota).
-                await this.terminoRepository.update(termino.id, { recordatorioManualHorasAnticipacion: null });
-                recordatoriosEnviados++;
+                // Solo se limpia el recordatorio (envío único) si realmente se pudo notificar;
+                // si falló, se reintenta en la próxima corrida del cron en vez de perderse.
+                if (enviado) {
+                    await this.terminosService.addNota(
+                        termino.id,
+                        `Recordatorio manual enviado (${termino.recordatorioManualHorasAnticipacion}h de anticipación)`,
+                        'Sistema',
+                    );
+                    await this.terminoRepository.update(termino.id, { recordatorioManualHorasAnticipacion: null });
+                    recordatoriosEnviados++;
+                }
             }
         }
 
@@ -133,7 +138,7 @@ export class AlertasVencimientoTerminosService {
         });
         if (yaEnviada) return false;
 
-        await this.legalNotifications.notifyTerminoProximoAVencer({
+        const enviada = await this.legalNotifications.notifyTerminoProximoAVencer({
             terminoId: termino.id,
             responsableId: termino.responsableId,
             nombreActuacion: termino.nombreActuacion,
@@ -141,6 +146,10 @@ export class AlertasVencimientoTerminosService {
             horasRestantes,
             origen,
         });
+
+        // Solo se marca como enviada (y se deja de reintentar) si la notificación
+        // realmente se despachó; si falló, se reintenta en la próxima corrida del cron.
+        if (!enviada) return false;
 
         await this.alertaEnviadaRepository.save(
             this.alertaEnviadaRepository.create({ terminoId: termino.id, reglaId }),

@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { Public } from '../auth/public.decorator';
 import { GraduateProgramsService } from './graduate-programs.service';
 
 type AuthenticatedRequest = Request & {
@@ -68,6 +69,7 @@ export class GraduateProgramsController {
   }
 
   @Get('options')
+  @Public()
   listOptions() {
     return this.service.listOptions();
   }

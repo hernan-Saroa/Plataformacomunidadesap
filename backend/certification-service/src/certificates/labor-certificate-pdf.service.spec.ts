@@ -86,7 +86,7 @@ describe('LaborCertificatePdfService', () => {
 
   it('mantiene fecha de expedición, firma y reserva del pie en un bloque indivisible', () => {
     const contentHtml = [
-      '<p>Las funciones asociadas al cargo son:</p>',
+      '<p>Las funciones para el cargo de son:</p>',
       '<p>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a).</p>',
     ].join('');
     const parts = service['splitCertificateClosingContent'](contentHtml);
@@ -98,7 +98,7 @@ describe('LaborCertificatePdfService', () => {
       signerName: 'FIRMANTE PRUEBA',
     });
 
-    expect(parts.bodyHtml).toContain('Las funciones asociadas');
+    expect(parts.bodyHtml).toContain('Las funciones para el cargo');
     expect(parts.bodyHtml).not.toContain('Se expide');
     expect(parts.closingHtml).toContain('Se expide');
     expect(html).toMatch(
@@ -566,7 +566,7 @@ describe('LaborCertificatePdfService', () => {
   );
 
   it.each(['administrador', 'docente'] as const)(
-    'ubica salario, prima y funciones en ese orden para la plantilla %s',
+    'ubica funciones, salario y prima en ese orden para la plantilla %s',
     (templateType) => {
       const content = service['buildCertificateContent']({
         certificate: {
@@ -593,19 +593,79 @@ describe('LaborCertificatePdfService', () => {
 
       const salaryIndex = content.indexOf('Asignacion salarial');
       const bonusIndex = content.indexOf('Percibe una');
-      const functionsIndex = content.indexOf('Las funciones asociadas al cargo son:');
+      const legalIntroIndex = content.indexOf('Conforme lo establece');
+      const functionsIndex = content.indexOf('Las funciones para el cargo de son:');
       const issueIndex = content.indexOf('Se expide');
 
+      expect(legalIntroIndex).toBeGreaterThan(-1);
+      expect(functionsIndex).toBeGreaterThan(legalIntroIndex);
       expect(salaryIndex).toBeGreaterThan(-1);
+      expect(functionsIndex).toBeLessThan(salaryIndex);
       expect(bonusIndex).toBeGreaterThan(salaryIndex);
-      expect(functionsIndex).toBeGreaterThan(bonusIndex);
-      expect(issueIndex).toBeGreaterThan(functionsIndex);
-      expect(content).toContain('<ul class="labor-functions-list">');
+      expect(issueIndex).toBeGreaterThan(bonusIndex);
+      expect(content).toContain('<em>el Manual Espec\u00EDfico de Funciones');
+      expect(content).toContain('<ol class="labor-functions-list">');
       expect(content.match(/class="labor-function-item"/g)).toHaveLength(2);
       expect(content.indexOf('Primera funcion &lt;segura&gt;.')).toBeLessThan(
         content.indexOf('Segunda funcion laboral.'),
       );
       expect(content).not.toContain('Primera funcion <segura>.');
+    },
+  );
+
+  it.each(['administrador', 'docente'] as const)(
+    'reemplaza [FUNCIONES] y conserva editables sus textos en la plantilla %s',
+    (templateType) => {
+      const templateHtml = [
+        '<p>Informacion laboral inicial.</p>',
+        '<section class="labor-functions-template-block" data-functions-template="true">',
+        '<p>Texto normativo completamente editable.</p>',
+        '<p>Titulo de funciones editable:</p>',
+        '<p>[FUNCIONES]</p>',
+        '</section>',
+        '<p>Asignacion salarial [SALARIO] [SALARIO_LETRAS] pesos.</p>',
+        '<p>Se expide a solicitud.</p>',
+      ].join('');
+      const certificate = {
+        monthly_salary: 1000000,
+        include_salary: true,
+        include_functions: true,
+        functions_snapshot: {
+          functions: [{ ordinal: 1, description: 'Funcion dinamica.' }],
+        },
+      } as unknown as Certificate;
+
+      const content = service['buildCertificateContent']({
+        certificate,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        includeFunctions: true,
+        templateHtml,
+      });
+
+      expect(content).toContain('Texto normativo completamente editable.');
+      expect(content).toContain('Titulo de funciones editable:');
+      expect(content).toContain('<ol class="labor-functions-list">');
+      expect(content).toContain('Funcion dinamica.');
+      expect(content).not.toContain('[FUNCIONES]');
+      expect(content.indexOf('Funcion dinamica.')).toBeLessThan(
+        content.indexOf('Asignacion salarial'),
+      );
+
+      const withoutFunctions = service['buildCertificateContent']({
+        certificate,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        includeFunctions: false,
+        templateHtml,
+      });
+
+      expect(withoutFunctions).not.toContain('Texto normativo completamente editable.');
+      expect(withoutFunctions).not.toContain('Titulo de funciones editable:');
+      expect(withoutFunctions).not.toContain('[FUNCIONES]');
+      expect(withoutFunctions).toContain('Asignacion salarial');
     },
   );
 

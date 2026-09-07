@@ -485,6 +485,7 @@ export class CertificatesController {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
       includeFunctions?: boolean;
+      publicBaseUrl?: string;
     },
   ) {
     return await this.certificatesService.validarCodigoYGenerarCertificado(
@@ -495,6 +496,7 @@ export class CertificatesController {
         includeSalary: data.includeSalary,
         includeTechnicalBonus: data.includeTechnicalBonus,
         includeFunctions: data.includeFunctions,
+        publicBaseUrl: data.publicBaseUrl,
       },
     );
   }

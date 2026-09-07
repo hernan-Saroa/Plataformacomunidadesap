@@ -499,6 +499,7 @@ export function ModuloPlanAccionV4() {
     } catch (error) {
       console.error('Error recording progress:', error);
       toast.error('Error al guardar el avance');
+      throw error;
     }
   };
 

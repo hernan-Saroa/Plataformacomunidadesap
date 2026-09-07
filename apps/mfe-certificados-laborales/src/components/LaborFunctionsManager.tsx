@@ -50,6 +50,8 @@ type EditorField = Exclude<keyof EditorState, 'id'>;
 type EditorErrors = Partial<Record<EditorField, string>>;
 type BulkError = { rowNumber: number; field?: EditorField | 'row'; message: string; source?: 'client' | 'server' };
 type BulkStage = 'select' | 'review' | 'result';
+type BulkFileError = { fileName: string; message: string };
+type OperationSuccessNotice = { title: string; message: string };
 type BulkValidationRow = {
   rowNumber: number;
   status: 'valid' | 'error';
@@ -150,6 +152,23 @@ const normalizeHeader = (value: unknown) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+
+const OFFICIAL_SHEET_NAME = 'Matriz Funciones ESAP';
+const OFFICIAL_TEMPLATE_MARKER = normalizeHeader(
+  'PLANTILLA OFICIAL DE CARGA - No cambie el nombre de esta hoja',
+);
+const OFFICIAL_TEMPLATE_HEADERS = [
+  'Código',
+  'Grado',
+  'cod_cargo',
+  'Nivel Jerárquico',
+  'Denominación del empleo',
+  'Dependencia/Área',
+  'Grupo Interno',
+  'CentroCosto',
+  'FUNCIONES',
+];
+const NORMALIZED_OFFICIAL_TEMPLATE_HEADERS = OFFICIAL_TEMPLATE_HEADERS.map(normalizeHeader);
 
 const normalizeMatchText = (value: unknown) => normalizeHeader(value);
 
@@ -512,6 +531,8 @@ export function LaborFunctionsManager() {
   const [editor, setEditor] = React.useState<EditorState | null>(null);
   const [editorTouched, setEditorTouched] = React.useState<Set<EditorField>>(new Set());
   const [editorAttempted, setEditorAttempted] = React.useState(false);
+  const [editorSubmissionError, setEditorSubmissionError] = React.useState('');
+  const [operationSuccessNotice, setOperationSuccessNotice] = React.useState<OperationSuccessNotice | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [bulkOpen, setBulkOpen] = React.useState(false);
   const [bulkRows, setBulkRows] = React.useState<LaborFunctionProfilePayloadApi[]>([]);
@@ -525,16 +546,39 @@ export function LaborFunctionsManager() {
   const [bulkStage, setBulkStage] = React.useState<BulkStage>('select');
   const [bulkValidation, setBulkValidation] = React.useState<BulkValidationResponse | null>(null);
   const [bulkValidationFailure, setBulkValidationFailure] = React.useState('');
+  const [bulkFileError, setBulkFileError] = React.useState<BulkFileError | null>(null);
   const [bulkImportResult, setBulkImportResult] = React.useState<BulkImportResponse | null>(null);
   const [bulkFilter, setBulkFilter] = React.useState<'all' | 'valid' | 'error'>('all');
   const [bulkPreviewPage, setBulkPreviewPage] = React.useState(1);
   const [dragActive, setDragActive] = React.useState(false);
+  const [selectedProfiles, setSelectedProfiles] = React.useState<Map<string, LaborFunctionProfileApi>>(new Map());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+  const [bulkDeleteSubmissionError, setBulkDeleteSubmissionError] = React.useState('');
+  const [deletingSelected, setDeletingSelected] = React.useState(false);
   const [profileToDelete, setProfileToDelete] = React.useState<LaborFunctionProfileApi | null>(null);
+  const [deleteSubmissionError, setDeleteSubmissionError] = React.useState('');
   const [deleting, setDeleting] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const selectPageCheckboxRef = React.useRef<HTMLInputElement | null>(null);
+  const operationSuccessNoticeRef = React.useRef<HTMLDivElement | null>(null);
 
   const editorErrors = React.useMemo(() => editor ? validateEditor(editor) : {}, [editor]);
   const editorFunctionCount = React.useMemo(() => extractFunctionItems(editor?.functions).length, [editor?.functions]);
+  const selectedProfilesList = React.useMemo(() => Array.from(selectedProfiles.values()), [selectedProfiles]);
+  const selectedCount = selectedProfiles.size;
+  const selectedFunctionCount = React.useMemo(
+    () => selectedProfilesList.reduce((total, profile) => total + profile.function_count, 0),
+    [selectedProfilesList],
+  );
+  const selectedAssociationCount = React.useMemo(
+    () => selectedProfilesList.reduce((total, profile) => total + profile.association_count, 0),
+    [selectedProfilesList],
+  );
+  const currentPageSelectedCount = React.useMemo(
+    () => items.reduce((total, profile) => total + (selectedProfiles.has(profile.id) ? 1 : 0), 0),
+    [items, selectedProfiles],
+  );
+  const allCurrentPageSelected = items.length > 0 && currentPageSelectedCount === items.length;
   const combinedPreview = editor
     ? expectedCombinedCode(editor.positionCode, editor.gradeCode) || '—'
     : '—';
@@ -584,18 +628,34 @@ export function LaborFunctionsManager() {
     () => new Set(bulkErrors.map((error) => error.rowNumber)).size,
     [bulkErrors],
   );
-  const load = React.useCallback(async (showRefresh = false) => {
+  const load = React.useCallback(async (
+    showRefresh = false,
+    overrides?: { page?: number; search?: string },
+  ) => {
+    const requestedPage = overrides?.page ?? page;
+    const requestedSearch = overrides?.search ?? search;
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     try {
       const response = await certificadosService.laborales.listarFuncionesLaborales({
-        search: search.trim() || undefined,
-        page,
+        search: requestedSearch.trim() || undefined,
+        page: requestedPage,
         limit: 15,
       });
       const resolvedTotalPages = Math.max(1, response.totalPages || 1);
-      const resolvedPage = Math.min(resolvedTotalPages, Math.max(1, response.page || page));
+      const resolvedPage = Math.min(resolvedTotalPages, Math.max(1, response.page || requestedPage));
       setItems(response.items || []);
+      setSelectedProfiles((current) => {
+        if (!current.size) return current;
+        const next = new Map(current);
+        let changed = false;
+        (response.items || []).forEach((profile) => {
+          if (!next.has(profile.id)) return;
+          next.set(profile.id, profile);
+          changed = true;
+        });
+        return changed ? next : current;
+      });
       setTotalItems(response.total || 0);
       setTotalPages(resolvedTotalPages);
       if (resolvedPage !== page) setPage(resolvedPage);
@@ -615,16 +675,31 @@ export function LaborFunctionsManager() {
 
   React.useEffect(() => setPage(1), [search]);
   React.useEffect(() => setBulkPreviewPage(1), [bulkFilter, bulkRows]);
+  React.useEffect(() => {
+    if (selectPageCheckboxRef.current) {
+      selectPageCheckboxRef.current.indeterminate =
+        currentPageSelectedCount > 0 && !allCurrentPageSelected;
+    }
+  }, [allCurrentPageSelected, currentPageSelectedCount]);
+  React.useEffect(() => {
+    if (!operationSuccessNotice) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      operationSuccessNoticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      operationSuccessNoticeRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [operationSuccessNotice]);
 
-  const anyModalOpen = Boolean(editor || bulkOpen || profileToDelete);
+  const anyModalOpen = Boolean(editor || bulkOpen || bulkDeleteOpen || profileToDelete);
   React.useEffect(() => {
     if (!anyModalOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || saving || bulkLoading || bulkReading || bulkValidating || deleting) return;
+      if (event.key !== 'Escape' || saving || bulkLoading || bulkReading || bulkValidating || deleting || deletingSelected) return;
       setEditor(null);
       setBulkOpen(false);
+      setBulkDeleteOpen(false);
       setProfileToDelete(null);
     };
     window.addEventListener('keydown', handleEscape);
@@ -632,15 +707,19 @@ export function LaborFunctionsManager() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [anyModalOpen, saving, bulkLoading, bulkReading, bulkValidating, deleting]);
+  }, [anyModalOpen, saving, bulkLoading, bulkReading, bulkValidating, deleting, deletingSelected]);
 
   const openCreate = () => {
+    setOperationSuccessNotice(null);
+    setEditorSubmissionError('');
     setEditor({ ...EMPTY_EDITOR });
     setEditorTouched(new Set());
     setEditorAttempted(false);
   };
 
   const openEdit = (profile: LaborFunctionProfileApi) => {
+    setOperationSuccessNotice(null);
+    setEditorSubmissionError('');
     setEditor({
       id: profile.id,
       positionCode: profile.position_code || '',
@@ -661,7 +740,56 @@ export function LaborFunctionsManager() {
     setEditorAttempted(false);
   };
 
+  const openDelete = (profile: LaborFunctionProfileApi) => {
+    setOperationSuccessNotice(null);
+    setDeleteSubmissionError('');
+    setProfileToDelete(profile);
+  };
+
+  const closeDelete = () => {
+    if (deleting) return;
+    setDeleteSubmissionError('');
+    setProfileToDelete(null);
+  };
+
+  const toggleProfileSelection = (profile: LaborFunctionProfileApi) => {
+    setSelectedProfiles((current) => {
+      const next = new Map(current);
+      if (next.has(profile.id)) next.delete(profile.id);
+      else next.set(profile.id, profile);
+      return next;
+    });
+  };
+
+  const toggleCurrentPageSelection = () => {
+    setSelectedProfiles((current) => {
+      const next = new Map(current);
+      if (allCurrentPageSelected) items.forEach((profile) => next.delete(profile.id));
+      else items.forEach((profile) => next.set(profile.id, profile));
+      return next;
+    });
+  };
+
+  const clearSelectedProfiles = () => setSelectedProfiles(new Map());
+
+  const openBulkDelete = () => {
+    if (!selectedCount) {
+      toast.error('Selecciona al menos un registro para eliminar.');
+      return;
+    }
+    setOperationSuccessNotice(null);
+    setBulkDeleteSubmissionError('');
+    setBulkDeleteOpen(true);
+  };
+
+  const closeBulkDelete = () => {
+    if (deletingSelected) return;
+    setBulkDeleteSubmissionError('');
+    setBulkDeleteOpen(false);
+  };
+
   const updateEditor = (field: EditorField, value: string) => {
+    setEditorSubmissionError('');
     setEditor((current) => {
       if (!current) return current;
       const next = { ...current, [field]: value };
@@ -695,23 +823,48 @@ export function LaborFunctionsManager() {
   const saveEditor = async () => {
     if (!editor) return;
     setEditorAttempted(true);
+    setEditorSubmissionError('');
     if (Object.keys(editorErrors).length) {
-      toast.error('Revisa los campos marcados antes de guardar.');
+      toast.error('No se guardó el registro', {
+        description: 'Revisa los campos marcados e inténtalo nuevamente.',
+      });
       return;
     }
     setSaving(true);
     try {
+      const isEditing = Boolean(editor.id);
+      const payload = payloadFromEditor(editor);
+      let savedProfile: LaborFunctionProfileApi;
       if (editor.id) {
-        await certificadosService.laborales.actualizarFuncionesLaborales(editor.id, payloadFromEditor(editor));
+        savedProfile = await certificadosService.laborales.actualizarFuncionesLaborales(editor.id, payload);
         toast.success('Funciones actualizadas correctamente.');
       } else {
-        await certificadosService.laborales.crearFuncionesLaborales(payloadFromEditor(editor));
+        savedProfile = await certificadosService.laborales.crearFuncionesLaborales(payload);
         toast.success('Perfil y funciones asociados correctamente.');
       }
+      const functionCount = savedProfile.function_count || editorFunctionCount;
+      setSelectedProfiles((current) => {
+        if (!current.has(savedProfile.id)) return current;
+        const next = new Map(current);
+        next.set(savedProfile.id, savedProfile);
+        return next;
+      });
+      setOperationSuccessNotice({
+        title: isEditing ? 'Registro actualizado correctamente' : 'Registro creado correctamente',
+        message: `${savedProfile.combined_code} · ${savedProfile.position_name}. Se ${isEditing ? 'actualizaron' : 'crearon'} ${functionCount} ${functionCount === 1 ? 'función laboral' : 'funciones laborales'}.`,
+      });
       setEditor(null);
-      await load(true);
+      if (isEditing) {
+        await load(true);
+      } else {
+        setSearch('');
+        setPage(1);
+        await load(true, { page: 1, search: '' });
+      }
     } catch (error: any) {
-      toast.error(error?.message || 'No se pudo guardar el registro.');
+      const message = String(error?.message || 'No se pudo guardar el registro. Verifica los datos e inténtalo nuevamente.');
+      setEditorSubmissionError(message);
+      toast.error('No se pudo guardar el registro', { description: message });
     } finally {
       setSaving(false);
     }
@@ -719,27 +872,76 @@ export function LaborFunctionsManager() {
 
   const removeProfile = async () => {
     if (!profileToDelete) return;
+    const profile = profileToDelete;
+    setDeleteSubmissionError('');
     setDeleting(true);
     try {
-      await certificadosService.laborales.eliminarFuncionesLaborales(profileToDelete.id);
+      await certificadosService.laborales.eliminarFuncionesLaborales(profile.id);
       toast.success('Perfil de funciones eliminado.');
+      setOperationSuccessNotice({
+        title: 'Registro eliminado correctamente',
+        message: profile.function_count === 1
+          ? `Se eliminó 1 función laboral del perfil ${profile.combined_code} · ${profile.position_name}.`
+          : `Se eliminaron ${profile.function_count} funciones laborales del perfil ${profile.combined_code} · ${profile.position_name}.`,
+      });
+      setSelectedProfiles((current) => {
+        if (!current.has(profile.id)) return current;
+        const next = new Map(current);
+        next.delete(profile.id);
+        return next;
+      });
       setProfileToDelete(null);
       await load(true);
     } catch (error: any) {
-      toast.error(error?.message || 'No se pudo eliminar el registro.');
+      const message = String(error?.message || 'No se pudo eliminar el registro. Inténtalo nuevamente.');
+      setDeleteSubmissionError(message);
+      toast.error('No se pudo eliminar el registro', { description: message });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const removeSelectedProfiles = async () => {
+    const profiles = Array.from(selectedProfiles.values());
+    if (!profiles.length) {
+      setBulkDeleteOpen(false);
+      return;
+    }
+    setBulkDeleteSubmissionError('');
+    setDeletingSelected(true);
+    try {
+      const result = await certificadosService.laborales.eliminarFuncionesLaboralesMasivas(
+        profiles.map((profile) => profile.id),
+      );
+      clearSelectedProfiles();
+      setBulkDeleteOpen(false);
+      setOperationSuccessNotice({
+        title: result.deletedCount === 1
+          ? 'Registro eliminado correctamente'
+          : `${result.deletedCount} registros eliminados correctamente`,
+        message: result.deletedCount === 1
+          ? `Se eliminó 1 perfil y ${result.functionCount} ${result.functionCount === 1 ? 'función laboral' : 'funciones laborales'}.`
+          : `Se eliminaron ${result.deletedCount} perfiles y ${result.functionCount} ${result.functionCount === 1 ? 'función laboral' : 'funciones laborales'}.`,
+      });
+      toast.success(
+        result.deletedCount === 1
+          ? 'Registro eliminado correctamente.'
+          : `${result.deletedCount} registros eliminados correctamente.`,
+      );
+      await load(true);
+    } catch (error: any) {
+      const message = String(error?.message || 'No se pudieron eliminar los registros seleccionados. Inténtalo nuevamente.');
+      setBulkDeleteSubmissionError(message);
+      toast.error('No se completó la eliminación múltiple', { description: message });
+    } finally {
+      setDeletingSelected(false);
     }
   };
 
   const downloadTemplate = async () => {
     try {
       const workbook = XLSX.utils.book_new();
-      const headers = [
-        'Código', 'Grado', 'cod_cargo', 'Nivel Jerárquico',
-        'Denominación del empleo', 'Dependencia/Área', 'Grupo Interno',
-        'CentroCosto', 'FUNCIONES',
-      ];
+      const headers = OFFICIAL_TEMPLATE_HEADERS;
       const dataSheet = XLSX.utils.aoa_to_sheet([
         ['PLANTILLA OFICIAL DE CARGA - No cambie el nombre de esta hoja'],
         ['Pegue los datos desde la fila 4. Los códigos deben conservar los ceros a la izquierda.'],
@@ -753,7 +955,7 @@ export function LaborFunctionsManager() {
         { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 22 }, { wch: 34 },
         { wch: 42 }, { wch: 30 }, { wch: 20 }, { wch: 100 },
       ];
-      XLSX.utils.book_append_sheet(workbook, dataSheet, 'Matriz Funciones ESAP');
+      XLSX.utils.book_append_sheet(workbook, dataSheet, OFFICIAL_SHEET_NAME);
 
       const examplesSheet = XLSX.utils.aoa_to_sheet([
         headers,
@@ -800,28 +1002,58 @@ export function LaborFunctionsManager() {
     if (!/\.xlsx?$/.test(file.name.toLowerCase())) {
       throw new Error('Selecciona un archivo Excel con extensión .xlsx o .xls.');
     }
+    if (!file.size) {
+      throw new Error('El archivo está vacío. Descarga la plantilla oficial y vuelve a intentarlo.');
+    }
     if (file.size > 10 * 1024 * 1024) {
       throw new Error('El archivo supera el tamaño máximo permitido de 10 MB.');
     }
-    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    const sheetName = workbook.SheetNames.find((name) => normalizeHeader(name) === 'matriz funciones esap');
-    if (!sheetName) throw new Error('No se encontró la hoja “Matriz Funciones ESAP”.');
+
+    let workbook: XLSX.WorkBook;
+    try {
+      workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    } catch {
+      throw new Error('Excel no pudo abrir el archivo. Puede estar dañado, protegido con contraseña o no ser un libro de Excel válido.');
+    }
+
+    const sheetName = workbook.SheetNames.find(
+      (name) => name.trim() === OFFICIAL_SHEET_NAME,
+    );
+    if (!sheetName) {
+      throw new Error(`El archivo no corresponde a la plantilla oficial: falta la hoja “${OFFICIAL_SHEET_NAME}”. No cambies el nombre de esa hoja.`);
+    }
     const sheet = workbook.Sheets[sheetName];
     const matrix = XLSX.utils.sheet_to_json<Array<unknown>>(sheet, { header: 1, defval: '', raw: true });
-    let headerRow = -1;
-    let headers: string[] = [];
-    for (let index = 0; index < Math.min(matrix.length, 20); index += 1) {
-      const candidate = (matrix[index] || []).map(normalizeHeader);
-      const required = ['cod cargo', 'denominacion del empleo', 'funciones']
-        .filter((value) => candidate.includes(value)).length;
-      if (required >= 2 && candidate.includes('funciones')) {
-        headerRow = index;
-        headers = candidate;
-        break;
-      }
+    if (!matrix.length) {
+      throw new Error(`La hoja “${OFFICIAL_SHEET_NAME}” está vacía.`);
     }
-    if (headerRow < 0) {
-      throw new Error('No se reconocieron los encabezados. Verifica Código, cod_cargo, Denominación del empleo y FUNCIONES.');
+
+    const marker = normalizeHeader(matrix[0]?.[0]);
+    if (marker !== OFFICIAL_TEMPLATE_MARKER) {
+      throw new Error('El archivo no tiene la identificación de la plantilla oficial. Descarga una plantilla nueva y pega allí la información sin modificar sus primeras tres filas.');
+    }
+
+    const headerRow = 2;
+    const headers = (matrix[headerRow] || []).map(normalizeHeader);
+    const invalidHeaderIndexes = NORMALIZED_OFFICIAL_TEMPLATE_HEADERS
+      .map((expected, index) => headers[index] === expected ? -1 : index)
+      .filter((index) => index >= 0);
+    const unexpectedHeaders = headers
+      .slice(NORMALIZED_OFFICIAL_TEMPLATE_HEADERS.length)
+      .filter(Boolean);
+    const hasUnexpectedData = matrix.some((row) =>
+      (row || [])
+        .slice(NORMALIZED_OFFICIAL_TEMPLATE_HEADERS.length)
+        .some((cell) => String(cell ?? '').trim()),
+    );
+    if (invalidHeaderIndexes.length || unexpectedHeaders.length || hasUnexpectedData) {
+      const incorrectColumns = invalidHeaderIndexes
+        .map((index) => OFFICIAL_TEMPLATE_HEADERS[index])
+        .join(', ');
+      const detail = incorrectColumns
+        ? ` Revisa estas columnas o su posición: ${incorrectColumns}.`
+        : '';
+      throw new Error(`Los encabezados no coinciden con la plantilla oficial.${detail} Deben conservarse las 9 columnas originales y en el mismo orden.`);
     }
 
     const indexes = {
@@ -835,15 +1067,8 @@ export function LaborFunctionsManager() {
       costCenter: findHeader(headers, ['centrocosto', 'centro costo']),
       functions: findHeader(headers, ['funciones', 'funcion']),
     };
-    const requiredColumns = [
-      indexes.positionCode,
-      indexes.hierarchicalLevel,
-      indexes.positionName,
-      indexes.departmentName,
-      indexes.functions,
-    ];
-    if (requiredColumns.some((index) => index < 0)) {
-      throw new Error('Faltan columnas obligatorias: Código, Nivel Jerárquico, Denominación del empleo, Dependencia/Área o FUNCIONES.');
+    if (Object.values(indexes).some((index) => index < 0)) {
+      throw new Error('La plantilla está incompleta. No elimines ni cambies los nombres de las columnas originales.');
     }
 
     const displayValue = (rowIndex: number, columnIndex: number) => {
@@ -879,6 +1104,7 @@ export function LaborFunctionsManager() {
 
   const readBulkFile = async (file: File) => {
     setBulkReading(true);
+    setBulkFileError(null);
     setBulkValidation(null);
     setBulkValidationFailure('');
     setBulkImportResult(null);
@@ -889,10 +1115,15 @@ export function LaborFunctionsManager() {
     try {
       rows = await parseExcel(file);
     } catch (error: any) {
+      const message = error?.message || 'No se pudo leer el archivo.';
       setBulkRows([]);
       setBulkFileName('');
       setBulkFileSize(0);
-      toast.error(error?.message || 'No se pudo leer el archivo.');
+      setBulkFileError({ fileName: file.name, message });
+      toast.error('Archivo rechazado', {
+        description: message,
+        duration: 10_000,
+      });
       setBulkReading(false);
       return;
     }
@@ -985,6 +1216,7 @@ export function LaborFunctionsManager() {
     setBulkFileSize(0);
     setBulkValidation(null);
     setBulkValidationFailure('');
+    setBulkFileError(null);
     setBulkImportResult(null);
     setBulkValidationProgress({ processed: 0, total: 0 });
     setBulkImportProgress({ processed: 0, total: 0 });
@@ -1127,6 +1359,31 @@ export function LaborFunctionsManager() {
         </div>
       </motion.section>
 
+      <AnimatePresence initial={false}>
+        {operationSuccessNotice && (
+          <motion.div
+            ref={operationSuccessNoticeRef}
+            role="status"
+            aria-live="polite"
+            tabIndex={-1}
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            className="overflow-hidden rounded-2xl border border-emerald-300 bg-emerald-50 shadow-sm outline-none focus:ring-4 focus:ring-emerald-100"
+          >
+            <div className="flex items-start gap-3 p-4 sm:p-5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white"><CheckCircle2 className="h-5 w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-emerald-950">{operationSuccessNotice.title}</p>
+                <p className="mt-1 text-sm leading-5 text-emerald-800">{operationSuccessNotice.message}</p>
+                <p className="mt-1 text-xs text-emerald-700">La operación fue confirmada por el servidor y la matriz ya se actualizó.</p>
+              </div>
+              <button type="button" onClick={() => setOperationSuccessNotice(null)} aria-label="Cerrar confirmación" className="rounded-lg p-1.5 text-emerald-700 transition hover:bg-emerald-100 hover:text-emerald-950"><X className="h-4 w-4" /></button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <section className="grid gap-4 md:grid-cols-3">
         {[
           { label: 'Perfiles de cargo', value: stats.profiles, detail: 'Combinaciones institucionales', icon: Layers3, tone: 'blue' },
@@ -1157,6 +1414,7 @@ export function LaborFunctionsManager() {
             {search && <button onClick={() => setSearch('')} aria-label="Limpiar búsqueda" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}
           </div>
           <div className="flex items-center justify-between gap-3 lg:justify-end">
+            <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-[#003DA5] sm:inline-flex">Más recientes primero</span>
             <span className="text-xs font-medium text-slate-500">{totalItems} {totalItems === 1 ? 'perfil encontrado' : 'perfiles encontrados'}</span>
             <button onClick={() => void load(true)} disabled={refreshing} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#003DA5] disabled:opacity-60">
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Actualizar
@@ -1164,27 +1422,69 @@ export function LaborFunctionsManager() {
           </div>
         </div>
 
+        <AnimatePresence initial={false}>
+          {selectedCount > 0 && (
+            <motion.div
+              role="status"
+              aria-live="polite"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden border-b border-blue-200 bg-blue-50/80"
+            >
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl bg-[#003DA5] px-2.5 text-sm font-bold text-white shadow-sm">{selectedCount}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-blue-950">{selectedCount === 1 ? '1 registro seleccionado' : `${selectedCount} registros seleccionados`}</p>
+                    <p className="text-xs text-blue-700">{currentPageSelectedCount} en esta página · La selección se conserva al navegar o buscar.</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button type="button" onClick={clearSelectedProfiles} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-3.5 text-xs font-semibold text-[#003DA5] transition hover:bg-blue-100"><X className="h-3.5 w-3.5" /> Desmarcar todos</button>
+                  <button type="button" onClick={openBulkDelete} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-red-600 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700"><Trash2 className="h-3.5 w-3.5" /> Eliminar seleccionados</button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {loading ? (
           <div className="flex flex-1 items-center justify-center p-10">
             <div className="text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-[#003DA5]" /><p className="mt-3 text-sm font-medium text-slate-500">Consultando la matriz…</p></div>
           </div>
         ) : items.length ? (
           <div className="flex-1 overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-left text-sm">
+            <table className="w-full min-w-[1180px] text-left text-sm">
               <thead className="sticky top-0 z-[1] bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                <tr><th className="px-5 py-3.5">Código / grado</th><th className="px-5 py-3.5">Denominación</th><th className="px-5 py-3.5">Dependencia / grupo</th><th className="px-5 py-3.5 text-center">Funciones</th><th className="px-5 py-3.5 text-center">Asociados</th><th className="px-5 py-3.5 text-right">Acciones</th></tr>
+                <tr>
+                  <th className="w-16 px-4 py-3.5 text-center">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition hover:bg-blue-100" title={allCurrentPageSelected ? 'Desmarcar esta página' : 'Seleccionar esta página'}>
+                      <input ref={selectPageCheckboxRef} type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} aria-label={allCurrentPageSelected ? 'Desmarcar todos los registros de esta página' : 'Seleccionar todos los registros de esta página'} className="h-5 w-5 cursor-pointer rounded-md border-slate-300 accent-[#003DA5]" />
+                    </label>
+                  </th>
+                  <th className="px-5 py-3.5">Código / grado</th><th className="px-5 py-3.5">Denominación</th><th className="px-5 py-3.5">Dependencia / grupo</th><th className="px-5 py-3.5 text-center">Funciones</th><th className="px-5 py-3.5 text-center">Asociados</th><th className="px-5 py-3.5 text-right">Acciones</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {items.map((profile, index) => (
-                  <motion.tr key={profile.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(index * 0.025, 0.2) }} className="group hover:bg-blue-50/35">
+                {items.map((profile, index) => {
+                  const selected = selectedProfiles.has(profile.id);
+                  return (
+                  <motion.tr key={profile.id} aria-selected={selected} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(index * 0.025, 0.2) }} className={`group transition ${selected ? 'bg-blue-50/80 hover:bg-blue-100/70' : 'hover:bg-blue-50/35'}`}>
+                    <td className="px-4 py-4 text-center">
+                      <label className={`inline-flex cursor-pointer items-center justify-center rounded-xl border p-2 shadow-sm transition ${selected ? 'border-blue-300 bg-[#003DA5] text-white' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
+                        <input type="checkbox" checked={selected} onChange={() => toggleProfileSelection(profile)} aria-label={`${selected ? 'Desmarcar' : 'Seleccionar'} ${profile.combined_code} · ${profile.position_name}`} className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#003DA5]" />
+                      </label>
+                    </td>
                     <td className="px-5 py-4"><p className="font-mono text-base font-bold text-[#003DA5]">{profile.combined_code}</p><p className="mt-0.5 text-xs text-slate-500">Base {profile.position_code}{profile.grade_code ? ` · Grado ${profile.grade_code}` : ' · Sin grado'}</p></td>
                     <td className="px-5 py-4"><p className="font-semibold text-slate-900">{profile.position_name}</p><p className="mt-0.5 text-xs text-slate-500">{profile.hierarchical_level || 'Nivel no informado'}</p></td>
                     <td className="max-w-xl px-5 py-4"><p className="truncate font-medium text-slate-700">{profile.department_name || 'Sin dependencia específica'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{[profile.internal_group, profile.cost_center].filter(Boolean).join(' · ') || 'Sin grupo ni centro de costo'}</p></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-emerald-50 px-3 py-1.5 font-bold text-emerald-700 ring-1 ring-emerald-100">{profile.function_count}</span></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-blue-50 px-3 py-1.5 font-bold text-[#003DA5] ring-1 ring-blue-100">{profile.association_count}</span></td>
-                    <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => openEdit(profile)} aria-label={`Editar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button><button onClick={() => setProfileToDelete(profile)} aria-label={`Eliminar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-red-600 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></td>
+                    <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => openEdit(profile)} aria-label={`Editar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button><button onClick={() => openDelete(profile)} aria-label={`Eliminar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-red-600 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></td>
                   </motion.tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1230,9 +1530,22 @@ export function LaborFunctionsManager() {
               </div>
 
               {editorAttempted && Object.keys(editorErrors).length > 0 && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mx-5 mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 sm:mx-7">
+                <motion.div role="alert" aria-live="assertive" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mx-5 mt-5 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 sm:mx-7">
                   <p className="flex items-center gap-2 font-bold"><AlertCircle className="h-4 w-4" /> Hay {Object.keys(editorErrors).length} campos que requieren revisión.</p>
-                  <p className="mt-1 text-xs text-red-700">Corrige los mensajes señalados para habilitar un registro seguro.</p>
+                  <p className="mt-1 text-xs text-red-700">No se guardó ningún dato. Corrige los mensajes señalados e inténtalo nuevamente.</p>
+                </motion.div>
+              )}
+
+              {editorSubmissionError && (
+                <motion.div role="alert" aria-live="assertive" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mx-5 mt-5 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 shadow-sm sm:mx-7">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700"><AlertCircle className="h-5 w-5" /></span>
+                    <div className="min-w-0">
+                      <p className="font-bold text-red-900">No se pudo guardar el registro</p>
+                      <p className="mt-1 break-words text-xs leading-5">{editorSubmissionError}</p>
+                      <p className="mt-1 text-xs text-red-700">Tus datos permanecen en el formulario para que puedas corregirlos y volver a intentar.</p>
+                    </div>
+                  </div>
                 </motion.div>
               )}
 
@@ -1257,7 +1570,7 @@ export function LaborFunctionsManager() {
             </div>
 
             <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
-              <p className="hidden text-xs text-slate-500 sm:flex sm:items-center sm:gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" /> Los datos se normalizarán sin alterar el texto de cada función.</p>
+              <p className={`text-xs sm:flex sm:items-center sm:gap-1.5 ${saving ? 'flex font-semibold text-blue-700' : 'hidden text-slate-500'}`}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5 text-emerald-600" />}{saving ? 'Validando y guardando en el servidor…' : 'Los datos se normalizarán sin alterar el texto de cada función.'}</p>
               <div className="flex justify-end gap-2"><button disabled={saving} onClick={() => setEditor(null)} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={saving} onClick={() => void saveEditor()} className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:bg-[#002873] disabled:cursor-not-allowed disabled:opacity-60">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{saving ? 'Guardando…' : 'Guardar funciones'}</button></div>
             </footer>
           </>
@@ -1316,15 +1629,44 @@ export function LaborFunctionsManager() {
               <aside className="space-y-4 xl:col-span-1">
                 <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-950"><p className="flex items-center gap-2 font-bold"><ShieldCheck className="h-4 w-4 text-[#003DA5]" /> Validación integral</p><ul className="mt-2 space-y-1.5 pl-6 text-xs leading-5 text-blue-800"><li className="list-disc">Se revisan todas las filas y todas las columnas.</li><li className="list-disc">Máximo 10 MB y 5.000 perfiles por carga.</li><li className="list-disc">Código, nivel, denominación, dependencia y funciones son obligatorios.</li><li className="list-disc">Se detectan códigos inconsistentes, duplicados y longitudes inválidas.</li><li className="list-disc">Una combinación ya creada se rechaza; nunca se duplica ni se sobrescribe.</li><li className="list-disc">La denominación debe coincidir con la vinculación laboral.</li></ul></div>
                 <button onClick={downloadTemplate} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"><Download className="h-4 w-4" /> Descargar plantilla con ejemplos</button>
-                <div onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={(event) => { event.preventDefault(); if (event.currentTarget === event.target) setDragActive(false); }} onDrop={(event) => { event.preventDefault(); setDragActive(false); const file = event.dataTransfer.files?.[0]; if (file) void readBulkFile(file); }} className={`rounded-2xl border-2 border-dashed p-6 text-center transition ${dragActive ? 'border-[#0057B8] bg-blue-50 ring-4 ring-blue-50' : bulkFileName ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/40'}`}>
+                <div onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={(event) => { event.preventDefault(); if (event.currentTarget === event.target) setDragActive(false); }} onDrop={(event) => { event.preventDefault(); setDragActive(false); const file = event.dataTransfer.files?.[0]; if (file) void readBulkFile(file); }} className={`rounded-2xl border-2 border-dashed p-6 text-center transition ${dragActive ? 'border-[#0057B8] bg-blue-50 ring-4 ring-blue-50' : bulkFileError ? 'border-red-300 bg-red-50/60' : bulkFileName ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/40'}`}>
                   {bulkReading ? <><Loader2 className="mx-auto h-9 w-9 animate-spin text-[#003DA5]" /><p className="mt-3 text-sm font-bold text-slate-800">Leyendo todas las filas…</p></> : bulkFileName ? <><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><FileCheck2 className="h-6 w-6" /></span><p className="mt-3 break-all text-sm font-bold text-slate-900">{bulkFileName}</p><p className="mt-1 text-xs text-slate-500">{(bulkFileSize / 1024).toLocaleString('es-CO', { maximumFractionDigits: 1 })} KB</p><div className="mt-4 flex justify-center gap-2"><button disabled={bulkValidating} onClick={() => fileInputRef.current?.click()} className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">Cambiar</button><button disabled={bulkValidating} onClick={clearBulkFile} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-50">Quitar</button></div></> : <><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-[#003DA5]"><FileSpreadsheet className="h-6 w-6" /></span><p className="mt-3 text-sm font-bold text-slate-900">Arrastra aquí el archivo Excel</p><p className="mt-1 text-xs text-slate-500">o selecciónalo desde tu equipo</p><button onClick={() => fileInputRef.current?.click()} className="mt-4 rounded-xl bg-[#003DA5] px-4 py-2.5 text-sm font-semibold text-white">Seleccionar Excel</button></>}
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={onFile} className="hidden" />
                 </div>
+                {bulkFileError && (
+                  <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-800 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700"><AlertCircle className="h-5 w-5" /></span>
+                      <div className="min-w-0">
+                        <p className="font-bold">Archivo rechazado</p>
+                        <p className="mt-1 break-all text-xs font-semibold">{bulkFileError.fileName}</p>
+                        <p className="mt-2 text-xs leading-5">{bulkFileError.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {bulkRows.length > 0 && <div className="grid grid-cols-2 gap-2"><div className="rounded-xl border border-slate-200 p-3 text-center"><p className="text-xl font-bold text-slate-900">{bulkRows.length}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Filas</p></div><div className="rounded-xl border border-slate-200 p-3 text-center"><p className="text-xl font-bold text-slate-900">{bulkFunctionCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Funciones</p></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center"><p className="text-xl font-bold text-emerald-700">{bulkImportableRows.length}</p><p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Válidas</p></div><div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center"><p className="text-xl font-bold text-red-700">{bulkInvalidRowCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-red-600">Con errores</p></div></div>}
               </aside>
 
               <section className="min-w-0 space-y-4 xl:col-span-2">
-                {!bulkRows.length ? <div className="flex min-h-80 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/60 p-8 text-center"><div><FileSpreadsheet className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-3 font-bold text-slate-700">El informe de validación aparecerá aquí</p><p className="mt-1 text-sm text-slate-500">Selecciona un archivo para revisar cada fila y columna antes de guardar.</p></div></div> : <>
+                {!bulkRows.length ? bulkFileError ? (
+                  <motion.div
+                    role="alert"
+                    aria-live="assertive"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex min-h-80 items-center justify-center rounded-2xl border-2 border-red-300 bg-red-50 p-8 text-center"
+                  >
+                    <div className="max-w-xl">
+                      <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-700"><AlertCircle className="h-7 w-7" /></span>
+                      <p className="mt-4 text-lg font-bold text-red-900">El archivo no se puede procesar</p>
+                      <p className="mt-2 break-all text-sm font-semibold text-red-800">{bulkFileError.fileName}</p>
+                      <p className="mt-3 text-sm leading-6 text-red-700">{bulkFileError.message}</p>
+                      <p className="mt-3 text-xs leading-5 text-red-600">No se creó ni se modificó ningún registro.</p>
+                      <button onClick={() => fileInputRef.current?.click()} className="mt-5 rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800">Seleccionar otro archivo</button>
+                    </div>
+                  </motion.div>
+                ) : <div className="flex min-h-80 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/60 p-8 text-center"><div><FileSpreadsheet className="mx-auto h-12 w-12 text-slate-300" /><p className="mt-3 font-bold text-slate-700">El informe de validación aparecerá aquí</p><p className="mt-1 text-sm text-slate-500">Selecciona un archivo para revisar cada fila y columna antes de guardar.</p></div></div> : <>
                   {bulkValidating && <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"><Loader2 className="h-5 w-5 animate-spin" /><div><p className="font-bold">Validando el archivo por bloques…</p><p className="text-xs">{bulkValidationProgress.total ? `${bulkValidationProgress.processed} de ${bulkValidationProgress.total} filas candidatas revisadas. ` : ''}Todavía no se ha guardado ningún registro.</p></div></div>}
                   {bulkValidationFailure && <div className={`rounded-2xl border p-4 text-sm ${bulkImportableRows.length ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-700'}`}><p className="font-bold">{bulkImportableRows.length ? 'La validación terminó con observaciones.' : 'No se pudo completar la validación del servidor.'}</p><p className="mt-1 text-xs">{bulkValidationFailure}</p></div>}
                   <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -1340,12 +1682,60 @@ export function LaborFunctionsManager() {
         </div>
 
         <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
-          {bulkStage === 'result' && bulkImportResult ? <><p className="text-xs text-slate-500">Proceso terminado: {bulkImportResult.summary.created} {bulkImportResult.summary.created === 1 ? 'creada' : 'creadas'} y {bulkImportResult.summary.failed} {bulkImportResult.summary.failed === 1 ? 'fallida' : 'fallidas'}.</p><div className="flex justify-end gap-2"><button onClick={clearBulkFile} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cargar otro archivo</button><button onClick={closeBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg"><CheckCircle2 className="h-4 w-4" /> Volver a funciones</button></div></> : <><p className="text-xs text-slate-500">Las filas con errores se omiten. Solo se crearán las que hayan superado todas las validaciones.</p><div className="flex justify-end gap-2"><button disabled={bulkLoading || bulkReading || bulkValidating} onClick={closeBulkModal} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={!bulkValidation || !bulkImportableRows.length || bulkLoading || bulkReading || bulkValidating} onClick={() => void importBulk()} className="inline-flex h-11 min-w-44 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#002873] disabled:cursor-not-allowed disabled:opacity-45">{bulkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{bulkLoading ? `Creando ${bulkImportProgress.processed} de ${bulkImportProgress.total}…` : bulkImportableRows.length === 1 ? 'Crear 1 fila válida' : `Crear ${bulkImportableRows.length || ''} filas válidas`}</button></div></>}
+          {bulkStage === 'result' && bulkImportResult ? <><p className="text-xs text-slate-500">Proceso terminado: {bulkImportResult.summary.created} {bulkImportResult.summary.created === 1 ? 'creada' : 'creadas'} y {bulkImportResult.summary.failed} {bulkImportResult.summary.failed === 1 ? 'fallida' : 'fallidas'}.</p><div className="flex justify-end gap-2"><button onClick={clearBulkFile} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cargar otro archivo</button><button onClick={closeBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg"><CheckCircle2 className="h-4 w-4" /> Volver a funciones</button></div></> : <><p className={`text-xs ${bulkFileError ? 'font-semibold text-red-700' : 'text-slate-500'}`}>{bulkFileError ? 'Archivo rechazado: corrige el formato o selecciona la plantilla oficial para continuar.' : 'Las filas con errores se omiten. Solo se crearán las que hayan superado todas las validaciones.'}</p><div className="flex justify-end gap-2"><button disabled={bulkLoading || bulkReading || bulkValidating} onClick={closeBulkModal} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={!bulkValidation || !bulkImportableRows.length || bulkLoading || bulkReading || bulkValidating} onClick={() => void importBulk()} className="inline-flex h-11 min-w-44 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#002873] disabled:cursor-not-allowed disabled:opacity-45">{bulkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{bulkLoading ? `Creando ${bulkImportProgress.processed} de ${bulkImportProgress.total}…` : bulkImportableRows.length === 1 ? 'Crear 1 fila válida' : `Crear ${bulkImportableRows.length || ''} filas válidas`}</button></div></>}
         </footer>
       </ModalShell>
 
-      <ModalShell open={Boolean(profileToDelete)} titleId="labor-functions-delete-title" onClose={() => setProfileToDelete(null)} busy={deleting} widthClass="max-w-lg">
-        {profileToDelete && <div className="p-6 sm:p-7"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100"><Trash2 className="h-6 w-6" /></span><h2 id="labor-functions-delete-title" className="mt-5 text-xl font-bold text-slate-950">¿Eliminar este perfil de funciones?</h2><p className="mt-2 text-sm leading-6 text-slate-600">Se eliminarán <strong>{profileToDelete.function_count} funciones</strong> asociadas a <strong>{profileToDelete.combined_code} · {profileToDelete.position_name}</strong>. Los certificados ya emitidos conservarán su snapshot histórico.</p><div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong>Importante:</strong> las nuevas solicitudes dejarán de encontrar estas funciones.</div><div className="mt-6 flex justify-end gap-2"><button disabled={deleting} onClick={() => setProfileToDelete(null)} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={deleting} onClick={() => void removeProfile()} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-900/10 hover:bg-red-700 disabled:opacity-60">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button></div></div>}
+      <ModalShell open={bulkDeleteOpen} titleId="labor-functions-bulk-delete-title" onClose={closeBulkDelete} busy={deletingSelected} widthClass="max-w-2xl">
+        {bulkDeleteOpen && (
+          <div className="p-6 sm:p-7">
+            <div className="flex items-start gap-4">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100"><Trash2 className="h-6 w-6" /></span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-red-600">Eliminación múltiple</p>
+                <h2 id="labor-functions-bulk-delete-title" className="mt-1 text-xl font-bold text-slate-950">¿Eliminar {selectedCount} {selectedCount === 1 ? 'registro seleccionado' : 'registros seleccionados'}?</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">La selección incluye registros de todas las páginas recorridas. Los certificados ya emitidos conservarán su información histórica.</p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-slate-950">{selectedCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Perfiles</p></div>
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center"><p className="text-xl font-bold text-red-700">{selectedFunctionCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-red-600">Funciones</p></div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center"><p className="text-xl font-bold text-amber-700">{selectedAssociationCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-amber-600">Asociados</p></div>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700">Vista previa de la selección</div>
+              <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto">
+                {selectedProfilesList.slice(0, 8).map((profile) => (
+                  <li key={profile.id} className="flex items-start justify-between gap-3 px-4 py-2.5 text-xs">
+                    <span className="min-w-0"><strong className="font-mono text-[#003DA5]">{profile.combined_code}</strong><span className="ml-2 text-slate-700">{profile.position_name}</span></span>
+                    <span className="shrink-0 font-semibold text-slate-500">{profile.function_count} {profile.function_count === 1 ? 'función' : 'funciones'}</span>
+                  </li>
+                ))}
+              </ul>
+              {selectedCount > 8 && <p className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500">Y {selectedCount - 8} {selectedCount - 8 === 1 ? 'registro adicional' : 'registros adicionales'} seleccionados en otras filas o páginas.</p>}
+            </div>
+
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong>Validación segura:</strong> el servidor comprobará todos los identificadores antes de borrar. Si falta o es inválido uno de ellos, no se eliminará ningún registro.</div>
+            {bulkDeleteSubmissionError && (
+              <div role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                <p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se completó la eliminación</p>
+                <p className="mt-1 break-words text-xs leading-5">{bulkDeleteSubmissionError}</p>
+                <p className="mt-1 text-xs text-red-700">La selección se conserva para que puedas revisar, actualizar o volver a intentar.</p>
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button disabled={deletingSelected} onClick={closeBulkDelete} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button>
+              <button disabled={deletingSelected || !selectedCount} onClick={() => void removeSelectedProfiles()} className="inline-flex h-11 min-w-52 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-900/10 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{deletingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deletingSelected ? 'Validando y eliminando…' : `Eliminar ${selectedCount} ${selectedCount === 1 ? 'registro' : 'registros'}`}</button>
+            </div>
+          </div>
+        )}
+      </ModalShell>
+
+      <ModalShell open={Boolean(profileToDelete)} titleId="labor-functions-delete-title" onClose={closeDelete} busy={deleting} widthClass="max-w-lg">
+        {profileToDelete && <div className="p-6 sm:p-7"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100"><Trash2 className="h-6 w-6" /></span><h2 id="labor-functions-delete-title" className="mt-5 text-xl font-bold text-slate-950">¿Eliminar este perfil de funciones?</h2><p className="mt-2 text-sm leading-6 text-slate-600">Se eliminarán <strong>{profileToDelete.function_count} funciones</strong> asociadas a <strong>{profileToDelete.combined_code} · {profileToDelete.position_name}</strong>. Los certificados ya emitidos conservarán su snapshot histórico.</p><div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong>Importante:</strong> las nuevas solicitudes dejarán de encontrar estas funciones.</div>{deleteSubmissionError && <div role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800"><p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se pudo eliminar el registro</p><p className="mt-1 break-words text-xs leading-5">{deleteSubmissionError}</p><p className="mt-1 text-xs text-red-700">El registro permanece en la matriz y puedes volver a intentarlo.</p></div>}<div className="mt-6 flex justify-end gap-2"><button disabled={deleting} onClick={closeDelete} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={deleting} onClick={() => void removeProfile()} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-900/10 hover:bg-red-700 disabled:opacity-60">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button></div></div>}
       </ModalShell>
     </div>
   );

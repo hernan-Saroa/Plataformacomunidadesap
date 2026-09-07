@@ -1,12 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as fs from 'fs';
+import * as path from 'path';
+import { StorageService, getUploadRootDir } from './storage.service';
+
+export interface EmailAdjunto {
+  filename: string;
+  contentBase64: string;
+  contentType?: string;
+}
+
+// Tope total de adjuntos por correo (SMTP/Graph rechazan mensajes muy grandes).
+const MAX_ADJUNTOS_BYTES = 20 * 1024 * 1024;
+// Timeout para descargar un adjunto alojado en una URL externa.
+const DESCARGA_EXTERNA_TIMEOUT_MS = 15000;
 
 @Injectable()
 export class JuridicaEmailService {
   private readonly logger = new Logger(JuridicaEmailService.name);
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly storageService: StorageService,
+  ) {}
 
   /**
    * Envía correo a la oficina de jurídica usando el notifications-service.
@@ -29,6 +46,7 @@ export class JuridicaEmailService {
       profesionalEmail?: string;
       enviadoPorEmail?: string;
     },
+    adjuntos: EmailAdjunto[] = [],
   ): Promise<boolean> {
     const destinatario = process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co';
     // Soporte para ambos nombres de variable de entorno
@@ -91,7 +109,11 @@ export class JuridicaEmailService {
           </div>
 
           <p style="margin-top: 20px;">
-            <strong>Nota:</strong> El expediente completo del proceso se encuentra disponible en el Sistema Integrado de Gesti&oacute;n Legal (SIGL) de la ESAP.
+            <strong>Nota:</strong> ${
+              adjuntos.length > 0
+                ? `Se anexan a este correo ${adjuntos.length} documento(s) del expediente. `
+                : ''
+            }El expediente completo del proceso se encuentra disponible en el Sistema Integrado de Gesti&oacute;n Legal (SIGL) de la ESAP.
           </p>
         </div>
         <div class="footer">
@@ -108,10 +130,13 @@ export class JuridicaEmailService {
           to: destinatario,
           subject: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
           html,
+          ...(adjuntos.length > 0 && { attachments: adjuntos }),
         }),
       );
 
-      this.logger.log(`Correo enviado a jurídica para proceso ${processId} vía notifications-service`);
+      this.logger.log(
+        `Correo enviado a jurídica para proceso ${processId} vía notifications-service (${adjuntos.length} adjunto(s))`,
+      );
       return true;
     } catch (error: any) {
       const errorDetails = {
@@ -128,6 +153,131 @@ export class JuridicaEmailService {
       console.error('[JuridicaEmailService] Full error object:', error);
       return false;
     }
+  }
+
+  /**
+   * Localiza un archivo del expediente en disco. Reproduce el resolvedor de
+   * process.controller.ts::downloadDocument (getFullPath + búsqueda en
+   * subcarpetas por año/radicado).
+   */
+  private resolverRutaArchivo(referencia?: string | null): string | null {
+    if (!referencia) return null;
+    const limpia = referencia.replace(/^\/files\//, '').replace(/^\/+/, '');
+    const rutaDirecta = this.storageService.getFullPath(limpia);
+    if (fs.existsSync(rutaDirecta)) return rutaDirecta;
+
+    const nombreBase = path.basename(limpia);
+    const uploadsRoot = path.resolve(getUploadRootDir());
+    if (!nombreBase || !fs.existsSync(uploadsRoot)) return null;
+
+    for (const entrada of fs.readdirSync(uploadsRoot, { withFileTypes: true })) {
+      if (!entrada.isDirectory()) continue;
+      const nivel1 = path.join(uploadsRoot, entrada.name, nombreBase);
+      if (fs.existsSync(nivel1)) return nivel1;
+      const dirNivel1 = path.join(uploadsRoot, entrada.name);
+      for (const sub of fs.readdirSync(dirNivel1, { withFileTypes: true })) {
+        if (!sub.isDirectory()) continue;
+        const nivel2 = path.join(dirNivel1, sub.name, nombreBase);
+        if (fs.existsSync(nivel2)) return nivel2;
+      }
+    }
+    return null;
+  }
+
+  private async leerAdjunto(
+    referencia: string | null | undefined,
+    nombreVisible: string,
+    contentType?: string | null,
+  ): Promise<EmailAdjunto | null> {
+    try {
+      // URL externa (http/https): descargar por HTTP.
+      if (referencia && /^https?:\/\//i.test(referencia)) {
+        const resp = await firstValueFrom(
+          this.httpService.get(referencia, {
+            responseType: 'arraybuffer',
+            timeout: DESCARGA_EXTERNA_TIMEOUT_MS,
+          }),
+        );
+        return {
+          filename: nombreVisible,
+          contentBase64: Buffer.from(resp.data).toString('base64'),
+          contentType:
+            contentType || (resp.headers as any)?.['content-type'] || undefined,
+        };
+      }
+
+      const ruta = this.resolverRutaArchivo(referencia);
+      if (!ruta) {
+        this.logger.warn(`Adjunto no encontrado en disco, se omite del correo: ${referencia}`);
+        return null;
+      }
+      const buffer = await fs.promises.readFile(ruta);
+      return {
+        filename: nombreVisible,
+        contentBase64: buffer.toString('base64'),
+        contentType: contentType || undefined,
+      };
+    } catch (e: any) {
+      this.logger.warn(`No se pudo leer el adjunto "${nombreVisible}": ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Recolecta todos los documentos del expediente (autos aprobados/firmados/
+   * notificados + evidencias + adjuntos de la noticia) como adjuntos base64,
+   * respetando un tope de tamaño total. Nunca lanza: lo que no se puede leer se
+   * omite con un warning para no romper el envío a Jurídica.
+   */
+  async recolectarAdjuntosExpediente(
+    evidencias: any[] = [],
+    autos: any[] = [],
+    adjuntosNoticia: string[] = [],
+  ): Promise<EmailAdjunto[]> {
+    const candidatos: Array<{ ref: string | null; nombre: string; contentType?: string | null }> = [];
+
+    for (const auto of autos) {
+      if (!auto?.documentUrl) continue; // autos solo-HTML no tienen archivo físico
+      const ext = auto.documentType === 'application/pdf' || !auto.documentType ? 'pdf' : 'docx';
+      candidatos.push({
+        ref: auto.documentUrl,
+        nombre: auto.documentName || `${auto.tipo || 'Auto'}-${auto.numero || auto.id}.${ext}`,
+        contentType: auto.documentType || 'application/pdf',
+      });
+    }
+
+    for (const ev of evidencias) {
+      const ref = ev?.url || ev?.archivoUrl || ev?.filename || null;
+      if (!ref) continue;
+      candidatos.push({
+        ref,
+        nombre: ev.nombreDocumento || ev.filename || ev.nombreArchivo || 'Documento.pdf',
+        contentType: ev.fileType || null,
+      });
+    }
+
+    for (const adj of adjuntosNoticia) {
+      if (!adj) continue;
+      candidatos.push({ ref: adj, nombre: path.basename(adj), contentType: null });
+    }
+
+    const adjuntos: EmailAdjunto[] = [];
+    let totalBytes = 0;
+    for (const c of candidatos) {
+      const leido = await this.leerAdjunto(c.ref, c.nombre, c.contentType);
+      if (!leido) continue;
+      const bytes = Math.ceil((leido.contentBase64.length * 3) / 4);
+      if (totalBytes + bytes > MAX_ADJUNTOS_BYTES) {
+        this.logger.warn(
+          `Se alcanzó el tope de tamaño de adjuntos (${MAX_ADJUNTOS_BYTES} bytes); ` +
+            `"${c.nombre}" y los siguientes se omiten del correo.`,
+        );
+        break;
+      }
+      totalBytes += bytes;
+      adjuntos.push(leido);
+    }
+    return adjuntos;
   }
 
   /**

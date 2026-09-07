@@ -109,8 +109,10 @@ describe('BancoDocentesService - validacion del Canal 2 manual', () => {
 });
 
 describe('BancoDocentesService - protecciones de edicion manual', () => {
+  const DOCENTE_ID = '11111111-1111-4111-8111-111111111111';
+
   function buildService(queryResults: any[] = []) {
-    const docente = { id: 'docente-1', personaId: 'persona-1', periodoCarga: '2026-2', estado: 'ACTIVO' };
+    const docente = { id: DOCENTE_ID, personaId: 'persona-1', periodoCarga: '2026-2', estado: 'ACTIVO' };
     const docenteRepo = {
       findOne: jest.fn().mockResolvedValue(docente),
       save: jest.fn().mockImplementation(async (value) => value),
@@ -131,7 +133,7 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
 
   it('bloquea una edicion sin soporte y justificacion', async () => {
     const { service } = buildService();
-    await expect(service.updateDocente('docente-1', {})).rejects.toThrow(BadRequestException);
+    await expect(service.updateDocente(DOCENTE_ID, {})).rejects.toThrow(BadRequestException);
   });
 
   it('bloquea cualquier intento de modificar la cedula', async () => {
@@ -139,11 +141,39 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
       [{ id: 'soporte-1' }],
       [{ document_number: '1020304050' }],
     ]);
-    await expect(service.updateDocente('docente-1', {
+    await expect(service.updateDocente(DOCENTE_ID, {
       soporteEdicionId: 'soporte-1',
       justificacionEdicion: 'Correccion de datos',
       documentNumber: '9999999999',
     })).rejects.toThrow(BadRequestException);
+  });
+
+  it('acepta la misma cedula con formato visual y exige el soporte otra vez dentro de la transaccion', async () => {
+    const { service } = buildService([
+      [{ id: 'soporte-1' }],
+      [{ document_number: '1020304050' }],
+    ]);
+    const upsertSpy = jest.spyOn(service, 'upsertDocente').mockResolvedValue({ action: 'update' } as any);
+
+    await expect(service.updateDocente(DOCENTE_ID, {
+      soporteEdicionId: 'soporte-1',
+      justificacionEdicion: 'Correccion documentada del perfil',
+      documentNumber: '1.020.304.050',
+      periodoCarga: '2026-2',
+    })).resolves.toMatchObject({ action: 'update' });
+
+    expect(upsertSpy).toHaveBeenCalledWith(expect.objectContaining({
+      documentNumber: '1020304050',
+    }), expect.objectContaining({
+      audit: expect.objectContaining({
+        soporteId: 'soporte-1',
+        requiredSupport: {
+          id: 'soporte-1',
+          type: 'soporte_edicion_perfil',
+          docenteId: DOCENTE_ID,
+        },
+      }),
+    }));
   });
 
   it('bloquea el cambio de periodo para conservar las relaciones PTA', async () => {
@@ -151,7 +181,7 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
       [{ id: 'soporte-1' }],
       [{ document_number: '1020304050' }],
     ]);
-    await expect(service.updateDocente('docente-1', {
+    await expect(service.updateDocente(DOCENTE_ID, {
       soporteEdicionId: 'soporte-1',
       justificacionEdicion: 'Correccion de datos',
       documentNumber: '1020304050',
@@ -164,7 +194,7 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
       [{ id: 'soporte-1' }],
       [{ document_number: '1020304050' }],
     ]);
-    await expect(service.updateDocente('docente-1', {
+    await expect(service.updateDocente(DOCENTE_ID, {
       soporteEdicionId: 'soporte-1',
       justificacionEdicion: 'Correccion de datos generales',
       documentNumber: '1020304050',
@@ -175,7 +205,7 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
 
   it('exige soporte y justificacion para activar o inactivar', async () => {
     const { service } = buildService();
-    await expect(service.cambiarEstado('docente-1', {
+    await expect(service.cambiarEstado(DOCENTE_ID, {
       estadoObjetivo: 'INACTIVO',
       justificacion: 'Motivo valido del cambio',
     })).rejects.toThrow(BadRequestException);
@@ -183,9 +213,8 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
 
   it('cambia solo el perfil del periodo y registra actor, motivo y soporte', async () => {
     const { service, dataSource, docenteRepo, docente } = buildService([[{ id: 'soporte-estado-1' }]]);
-    const auditSpy = jest.spyOn(service, 'logAudit').mockResolvedValue(undefined);
 
-    const result = await service.cambiarEstado('docente-1', {
+    const result = await service.cambiarEstado(DOCENTE_ID, {
       estadoObjetivo: 'INACTIVO',
       justificacion: 'Terminacion de la vinculacion docente',
       soporteId: 'soporte-estado-1',
@@ -193,18 +222,19 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
       periodoCarga: '2026-2',
     });
 
-    expect(result).toMatchObject({ id: 'docente-1', estado: 'INACTIVO', periodoCarga: '2026-2' });
+    expect(result).toMatchObject({ id: DOCENTE_ID, estado: 'INACTIVO', periodoCarga: '2026-2' });
     expect(docente.estado).toBe('INACTIVO');
     expect(docenteRepo.save).toHaveBeenCalledWith(docente);
-    expect(dataSource.query).toHaveBeenCalledTimes(1);
+    expect(dataSource.query).toHaveBeenCalledTimes(2);
     expect(String(dataSource.query.mock.calls[0][0])).not.toContain('UPDATE auth."user"');
-    expect(auditSpy).toHaveBeenCalledWith(expect.objectContaining({
-      accion: 'DESACTIVAR',
-      actorId: 'usuario-ggp-1',
-      soporteId: 'soporte-estado-1',
-      datoPrevio: 'ACTIVO',
-      datoNuevo: 'INACTIVO',
-    }));
+    expect(String(dataSource.query.mock.calls[1][0])).toContain('RundAprobacionLog');
+    expect(dataSource.query.mock.calls[1][1]).toEqual(expect.arrayContaining([
+      'DESACTIVAR',
+      'usuario-ggp-1',
+      'soporte-estado-1',
+      'ACTIVO',
+      'INACTIVO',
+    ]));
   });
 
 });
@@ -235,7 +265,7 @@ describe('BancoDocentesService - consulta por cedula y periodo', () => {
     const [sql, params] = dataSource.query.mock.calls[0];
 
     expect(result).toMatchObject({ documento_identidad: '1020304050', periodoCarga: '2026-2' });
-    expect(sql).toContain('documento_identidad = $1');
+    expect(sql).toContain('UPPER(regexp_replace(BTRIM(documento_identidad)');
     expect(sql).toContain('AND ($2::text IS NULL OR periodo_carga = $2::text)');
     expect(params).toEqual(['1020304050', '2026-2']);
   });

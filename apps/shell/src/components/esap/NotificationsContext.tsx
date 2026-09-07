@@ -17,7 +17,12 @@ const REMOTE_NOTIFICATIONS_ENABLED = true;
 const MODULE_NOTIFICATION_CATEGORIAS: Record<string, string[]> = {
   'control-disciplinario': ['DISCIPLINARIO'],
   'pta': ['PTA'],
-  'gestion-legal': ['ENVIADO', 'REENVIO', 'RESPUESTA'],
+  // El backend de gestión legal (legal-notifications.service.ts, tareas-notas.service.ts,
+  // correos-juridicos.service.ts) siempre envía `categoria: 'gestion-legal'` en el DTO de
+  // notificación in-app. 'ENVIADO'/'REENVIO'/'RESPUESTA' son valores del campo `categoria`
+  // del correo (CorreoJuridico), no de la notificación — nunca coinciden aquí y dejaban la
+  // campanita sin nada mientras se navegaba dentro del módulo.
+  'gestion-legal': ['gestion-legal'],
 };
 
 // ============ TIPOS ============

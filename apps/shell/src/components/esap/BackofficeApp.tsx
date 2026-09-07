@@ -105,6 +105,7 @@ const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
 const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
+const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 
 // ✅ Loading Spinner Component
@@ -160,7 +161,8 @@ type ModuleView =
   | 'contratacion'
   | 'viaticos'
   | 'programacion-academica'
-  | 'modules';
+  | 'modules'
+  | 'dependencias';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -237,10 +239,12 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'programacion-academica': 'programacion-academica',
   'academic-schedule': 'programacion-academica',
   'banco-docentes-pta': 'banco-docentes-pta',
+  'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
   'gestion-profesoral': 'gestion-profesoral',
   'registro-academico': 'graduates',
-  'modules': 'modules'
+  'modules': 'modules',
+  'dependencias': 'dependencias'
 };
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
@@ -846,6 +850,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               onModuleUpdated={loadActiveModules}
               userRoles={(userData?.roles || (usuario?.rol ? [usuario.rol] : [])) as string[]}
             />
+          </Suspense>
+        );
+
+      case 'dependencias':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <DependenciasPage />
           </Suspense>
         );
 

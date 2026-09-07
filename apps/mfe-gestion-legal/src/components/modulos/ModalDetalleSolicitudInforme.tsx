@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,
-  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing, Printer
+  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing, Printer, Scale
 } from 'lucide-react';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
@@ -553,6 +553,19 @@ export function ModalDetalleSolicitudInforme({
               <p className="text-sm font-bold text-gray-900">{solicitud.destinatario || 'No especificado'}</p>
             </div>
 
+            {/* FUENTE INFORMATIVA */}
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 mb-1">
+                <Scale className="w-3.5 h-3.5 text-gray-500" />
+                <p className="text-xs text-gray-500">Fuente Informativa</p>
+              </div>
+              <p className="text-sm font-bold text-gray-900">
+                {solicitud.fundamentoNormativo && solicitud.fundamentoNormativo.length > 0
+                  ? solicitud.fundamentoNormativo.map(f => [f.tipo, f.cita].filter(Boolean).join(': ')).join('; ')
+                  : 'No especificado'}
+              </p>
+            </div>
+
             {/* ETAPA ACTUAL Y CAMBIO DE ETAPA */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -912,7 +925,7 @@ export function ModalDetalleSolicitudInforme({
               <Button
                 variant="outline"
                 className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
-                onClick={() => onArchivar(solicitud.id)}
+                onClick={() => onArchivar(solicitud.metadata?.uuid || solicitud.id)}
               >
                 <Archive className="w-4 h-4 mr-2" />
                 Archivar
@@ -922,7 +935,7 @@ export function ModalDetalleSolicitudInforme({
               <Button
                 variant="outline"
                 className="text-red-700 border-red-200 hover:bg-red-50 hover:border-red-300"
-                onClick={() => onEliminar(solicitud.id)}
+                onClick={() => onEliminar(solicitud.metadata?.uuid || solicitud.id)}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Eliminar
@@ -961,7 +974,7 @@ export function ModalDetalleSolicitudInforme({
       {/* Modal de Alertas y Recordatorio de Vencimiento */}
       {mostrarModalRecordatorio && (
         <Dialog open={mostrarModalRecordatorio} onOpenChange={() => setMostrarModalRecordatorio(false)}>
-          <DialogContent hideCloseButton className="max-w-md">
+          <DialogContent hideCloseButton size="md">
             <DialogTitle className="sr-only">Alertas y Recordatorio de Vencimiento</DialogTitle>
             <DialogDescription className="sr-only">
               Programar un recordatorio manual o definir una anticipación de alerta personalizada para este término

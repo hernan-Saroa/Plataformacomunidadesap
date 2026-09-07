@@ -5346,6 +5346,7 @@ export class CertificatesService {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
       includeFunctions?: boolean;
+      publicBaseUrl?: string;
     } = {},
   ) {
     const documentoTrim = (documento || '').trim();
@@ -5417,9 +5418,36 @@ export class CertificatesService {
       validation_expires_at: null,
     });
 
+    // El autoservicio no tiene una sesion autenticada para invocar la ruta
+    // administrativa de reenvio. Una vez validado el codigo de un solo uso,
+    // entrega el certificado al mismo correo con el que se valido la identidad.
+    // La generacion del documento no se revierte si notifications-service falla.
+    let emailSent = false;
+    let email = this.normalizarCorreo(solicitud.email);
+    try {
+      const delivery = await this.enviarCertificadoLaboralPorEmail(
+        nuevoCertificado,
+        {
+          to: email,
+          includeSalary,
+          includeTechnicalBonus,
+          includeFunctions,
+          publicBaseUrl: options.publicBaseUrl,
+        },
+      );
+      emailSent = true;
+      email = delivery.to;
+    } catch (error) {
+      this.logger.warn(
+        `Certificado ${nuevoCertificado.id} generado, pero no pudo enviarse por email: ${error?.message || error}`,
+      );
+    }
+
     return {
       mensaje: 'Certificado generado exitosamente',
       certificado: nuevoCertificado,
+      emailSent,
+      email,
     };
   }
 }

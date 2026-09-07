@@ -1,145 +1,1219 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { existsSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { ComisionadoEntity } from '../../entities/comisionado.entity';
+import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
+import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
+import {
+  EstadoSolicitud,
+  ESTADOS_SOLO_LECTURA,
+} from '../../entities/estado-solicitud.enum';
+import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
+import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
+import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
+import { sanitizeObjetoComision } from '../../common/sanitize.util';
+import { getClientIp } from '../../common/ip.util';
+import { getUploadRootDir } from '../../common/storage.util';
+import { ConfigService } from '../config/config.service';
+import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 
-export interface SolicitudViaticoEntity {
-  id: string;
-  codigo: string;
-  cedulaComisionado: string;
-  nombreComisionado: string;
-  cargoComisionado: string;
-  dependencia: string;
-  sedeOrigen: string;
-  ciudadDestino: string;
-  departamentoDestino: string;
-  fechaInicio: string;
-  fechaFin: string;
-  diasComision: number;
-  tipoComision: string;
-  medioTransporte: string;
-  justificacion: string;
-  montoSolicitadoViaticos: number;
-  montoSolicitadoGastosViaje: number;
-  montoTotalEstimado: number;
-  estado: string;
-  requiereTiqueteAereo: boolean;
-  numeroResolucion?: string;
-  fechaResolucion?: string;
-  creadoEn: string;
-  actualizadoEn: string;
+function esDiaHabil(fecha: Date): boolean {
+  const dia = fecha.getDay();
+  return dia !== 0 && dia !== 6;
+}
+
+/**
+ * Subset de columnas de `auth.personas` consumidas por el módulo de viáticos
+ * al materializar un comisionado desde ESAP. La tabla vive en otro esquema y
+ * la consultamos directamente vía SQL (misma base de datos compartida).
+ */
+interface AuthPersonaRow {
+  num_identificacion: string;
+  nom_tercero: string;
+  pri_apellido: string;
+  dir_email: string | null;
+  tel_celular: string | null;
+  id_dependencia: string | number | null;
+}
+
+function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
+  let count = 0;
+  const fecha = new Date(fechaInicio);
+  while (fecha <= fechaFin) {
+    if (esDiaHabil(fecha)) {
+      count++;
+    }
+    fecha.setDate(fecha.getDate() + 1);
+  }
+  return count;
+}
+
+/**
+ * Traduce el estado interno de una solicitud a una etiqueta humana para los
+ * mensajes orientados al usuario (evita exponer códigos internos).
+ */
+function etiquetaEstadoHumana(estado?: string): string {
+  const mapa: Record<string, string> = {
+    PENDIENTE: 'borrador/pendiente',
+    RADICADA: 'radicada',
+    EXTEMPORANEA: 'extemporánea',
+    DEVUELTA: 'devuelta para subsanar',
+    SOLICITADO: 'en revisión del Grupo de Viáticos',
+    APROBADO_JEFE: 'aprobada por el jefe inmediato',
+    APROBADO_TALENTO_HUMANO: 'aprobada por Talento Humano',
+    RESOLUCION_EMITIDA: 'con resolución emitida',
+    TIQUETES_COMPRADOS: 'con tiquetes gestionados',
+    EN_COMISION: 'en comisión',
+    PENDIENTE_LEGALIZACION: 'pendiente de legalización',
+    LEGALIZADO: 'legalizada',
+    RECHAZADO: 'rechazada',
+  };
+  if (!estado) return 'en trámite';
+  return mapa[estado.toUpperCase()] ?? estado;
 }
 
 @Injectable()
 export class TravelExpensesService {
-  private solicitudes: SolicitudViaticoEntity[] = [
-    {
-      id: 'sol-001',
-      codigo: 'SOL-VIA-2026-001',
-      cedulaComisionado: '1019283746',
-      nombreComisionado: 'Carlos Eduardo Ramírez',
-      cargoComisionado: 'Docente Ocasional',
-      dependencia: 'Subdirección Académica',
-      sedeOrigen: 'Sede Central Bogotá',
-      ciudadDestino: 'Medellín',
-      departamentoDestino: 'Antioquia',
-      fechaInicio: '2026-08-20',
-      fechaFin: '2026-08-23',
-      diasComision: 3,
-      tipoComision: 'CAPACITACION_DOCENTE',
-      medioTransporte: 'AEREO',
-      justificacion: 'Impartir módulo presencial de Gestión Pública en la Sede Territorial Antioquia.',
-      montoSolicitadoViaticos: 840000,
-      montoSolicitadoGastosViaje: 180000,
-      montoTotalEstimado: 1020000,
-      estado: 'RESOLUCION_EMITIDA',
-      requiereTiqueteAereo: true,
-      numeroResolucion: 'RES-0452-2026',
-      fechaResolucion: '2026-08-15',
-      creadoEn: '2026-08-10',
-      actualizadoEn: '2026-08-15',
-    },
-    {
-      id: 'sol-002',
-      codigo: 'SOL-VIA-2026-002',
-      cedulaComisionado: '52839102',
-      nombreComisionado: 'Ana María Gómez',
-      cargoComisionado: 'Asesora de Dirección',
-      dependencia: 'Oficina Asesora de Planeación',
-      sedeOrigen: 'Sede Central Bogotá',
-      ciudadDestino: 'Cali',
-      departamentoDestino: 'Valle del Cauca',
-      fechaInicio: '2026-08-25',
-      fechaFin: '2026-08-27',
-      diasComision: 2,
-      tipoComision: 'REUNION_TECNICA',
-      medioTransporte: 'AEREO',
-      justificacion: 'Acompañamiento a la autoevaluación institucional en la Sede Valle.',
-      montoSolicitadoViaticos: 560000,
-      montoSolicitadoGastosViaje: 120000,
-      montoTotalEstimado: 680000,
-      estado: 'APROBADO_TALENTO_HUMANO',
-      requiereTiqueteAereo: true,
-      creadoEn: '2026-08-11',
-      actualizadoEn: '2026-08-12',
-    },
-    {
-      id: 'sol-003',
-      codigo: 'SOL-VIA-2026-003',
-      cedulaComisionado: '79483920',
-      nombreComisionado: 'Jorge Enrique Vargas',
-      cargoComisionado: 'Auditor Interno',
-      dependencia: 'Oficina de Control Interno',
-      sedeOrigen: 'Sede Central Bogotá',
-      ciudadDestino: 'Bucaramanga',
-      departamentoDestino: 'Santander',
-      fechaInicio: '2026-09-01',
-      fechaFin: '2026-09-05',
-      diasComision: 4,
-      tipoComision: 'INSPECCION_TERRITORIAL',
-      medioTransporte: 'AEREO',
-      justificacion: 'Ejecución de auditoría interna de cobertura territorial en Sede Santander.',
-      montoSolicitadoViaticos: 1120000,
-      montoSolicitadoGastosViaje: 250000,
-      montoTotalEstimado: 1370000,
-      estado: 'SOLICITADO',
-      requiereTiqueteAereo: true,
-      creadoEn: '2026-08-12',
-      actualizadoEn: '2026-08-12',
-    },
-  ];
+  constructor(
+    @InjectRepository(ComisionadoEntity)
+    private readonly comisionadoRepo: Repository<ComisionadoEntity>,
+    @InjectRepository(SolicitudComisionEntity)
+    private readonly solicitudRepo: Repository<SolicitudComisionEntity>,
+    @InjectRepository(DocumentoSoporteEntity)
+    private readonly documentoRepo: Repository<DocumentoSoporteEntity>,
+    private readonly dataSource: DataSource,
+    private readonly configService: ConfigService,
+  ) {}
 
-  findAll(): SolicitudViaticoEntity[] {
-    return this.solicitudes;
+  async obtenerSolicitudes(
+    usuarioId?: string,
+    isSuperAdmin = false,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    console.log(
+      '[travel-expenses] service obtenerSolicitudes usuarioId=',
+      usuarioId,
+      'isSuperAdmin=',
+      isSuperAdmin,
+      'page=',
+      page,
+      'limit=',
+      limit,
+    );
+    const query = this.solicitudRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'comisionado');
+
+    if (!isSuperAdmin && usuarioId) {
+      query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+    }
+
+    // Orden por prioridad de estado (vista general): Radicadas → Extemporáneas →
+    // Solicitadas (en revisión) → Pendientes → resto. Dentro del mismo estado
+    // se ordena por fecha de creación (más reciente primero).
+    query
+      .orderBy(
+        `CASE s.estado_solicitud
+           WHEN 'RADICADA' THEN 1
+           WHEN 'EXTEMPORANEA' THEN 2
+           WHEN 'SOLICITADO' THEN 3
+           WHEN 'PENDIENTE' THEN 4
+           ELSE 5
+         END`,
+        'ASC',
+      )
+      .addOrderBy('s.estadoSolicitud', 'ASC')
+      .addOrderBy('s.creadoEn', 'DESC');
+
+    const total = await query.getCount();
+    const solicitudes = await query
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+    console.log(
+      '[travel-expenses] service obtenerSolicitudes count=',
+      solicitudes.length,
+      'total=',
+      total,
+    );
+
+    const data = solicitudes.map((s) => ({
+      id: s.id,
+      consecutivoUnico: s.consecutivoUnico,
+      comisionadoId: s.comisionadoId,
+      comisionado: s.comisionado
+        ? {
+            id: s.comisionado.id,
+            numeroDocumento: s.comisionado.numeroDocumento,
+            primerNombre: s.comisionado.primerNombre,
+            segundoNombre: s.comisionado.segundoNombre,
+            primerApellido: s.comisionado.primerApellido,
+            segundoApellido: s.comisionado.segundoApellido,
+            tipoComisionado: s.comisionado.tipoComisionado,
+            email: s.comisionado.email,
+            telefonoContacto: s.comisionado.telefonoContacto,
+            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+          }
+        : null,
+      destinoCiudad: s.destinoCiudad,
+      destinoDepartamento: s.destinoDepartamento,
+      fechaInicio: s.fechaInicio.toISOString(),
+      fechaFin: s.fechaFin.toISOString(),
+      objetoComision: s.objetoComision,
+      prioridad: s.prioridad,
+      rubroPresupuestal: s.rubroPresupuestal,
+      requiereTiquetes: s.requiereTiquetes,
+      montoViaticos: Number(s.montoViaticos || 0),
+      montoGastosViaje: Number(s.montoGastosViaje || 0),
+      diasComision: s.diasComision ?? 1,
+      estadoSolicitud: s.estadoSolicitud,
+      radicadoFueraJornada: s.radicadoFueraJornada,
+      extemporanea: s.extemporanea,
+      creadoEn: s.creadoEn.toISOString(),
+      actualizadoEn: s.actualizadoEn.toISOString(),
+      creadoPorUsuarioId: s.creadoPorUsuarioId,
+      esCreadoPorMi: isSuperAdmin
+        ? s.creadoPorUsuarioId === usuarioId
+        : undefined,
+    }));
+
+    return { data, total, page, limit };
   }
 
-  findOne(id: string): SolicitudViaticoEntity | undefined {
-    return this.solicitudes.find(s => s.id === id);
+  async consultarComisionado(
+    documento: string,
+  ): Promise<ComisionadoEntity> {
+    const doc = (documento || '').trim();
+    if (!doc) {
+      throw new BadRequestException(
+        'Debe proporcionar el número de documento del comisionado.',
+      );
+    }
+
+    // 1) Búsqueda primaria: tabla local de comisionados (cache histórico).
+    const existente = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
+    if (existente) {
+      return existente;
+    }
+
+    // 2) Búsqueda secundaria: auth.personas (origen único ESAP).
+    //    Ambos microservicios comparten la misma base de datos
+    //    (`esap_db`), por lo que se consulta directamente vía DataSource
+    //    para evitar un round-trip HTTP y mantener la latencia baja.
+    const persona: AuthPersonaRow | undefined = await this.dataSource
+      .query(
+        `SELECT
+            p.num_identificacion,
+            p.nom_tercero,
+            p.pri_apellido,
+            p.dir_email,
+            p.tel_celular,
+            p.id_dependencia
+         FROM auth.personas p
+         WHERE p.num_identificacion = $1
+         LIMIT 1`,
+        [doc],
+      )
+      .then((rows: any[]) => rows?.[0])
+      .catch((err) => {
+        console.error(
+          '[travel-expenses] Error consultando auth.personas:',
+          err,
+        );
+        return undefined;
+      });
+
+    if (!persona) {
+      // 3) No existe ni en comisionados ni en auth.personas:
+      //    bloqueamos el flujo porque no hay un funcionario válido
+      //    para asociar a la solicitud de viáticos.
+      throw new NotFoundException(
+        `No se encontró un comisionado con documento ${doc} en ESAP. Verifique el número o contacte al administrador del módulo de autenticación.`,
+      );
+    }
+
+    // 4) Persistimos la "foto" de la persona de ESAP en
+    //    travel_expenses.comisionados para que las siguientes consultas
+    //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
+    const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
+    const apellidos = (persona.pri_apellido || '').trim().split(/\s+/);
+    const primerNombre = nombres.shift() || persona.nom_tercero || 'SIN NOMBRE';
+    const segundoNombre = nombres.join(' ') || null;
+    const primerApellido = apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
+    const segundoApellido = apellidos.join(' ') || null;
+
+    const idDependencia =
+      persona.id_dependencia != null
+        ? Number(persona.id_dependencia)
+        : null;
+
+    const nuevo = this.comisionadoRepo.create({
+      numeroDocumento: doc,
+      primerNombre,
+      segundoNombre,
+      primerApellido,
+      segundoApellido,
+      email: persona.dir_email || 'sin-correo@esap.edu.co',
+      telefonoContacto: persona.tel_celular || '0000000000',
+      tipoComisionado: 'FUNCIONARIO',
+      origenDatos: 'ESAP',
+      autorizacionHabeasData: false,
+      idDependencia,
+    } as Partial<ComisionadoEntity>);
+
+    return this.comisionadoRepo.save(nuevo as ComisionadoEntity);
   }
 
-  create(dto: Partial<SolicitudViaticoEntity>): SolicitudViaticoEntity {
-    const nueva: SolicitudViaticoEntity = {
-      id: `sol-${Date.now()}`,
-      codigo: `SOL-VIA-2026-${Math.floor(100 + Math.random() * 900)}`,
-      cedulaComisionado: dto.cedulaComisionado || '1020304050',
-      nombreComisionado: dto.nombreComisionado || 'Funcionario ESAP',
-      cargoComisionado: dto.cargoComisionado || 'Profesional Especializado',
-      dependencia: dto.dependencia || 'Subdirección de Gestión Institucional',
-      sedeOrigen: dto.sedeOrigen || 'Sede Central Bogotá',
-      ciudadDestino: dto.ciudadDestino || 'Cartagena',
-      departamentoDestino: dto.departamentoDestino || 'Bolívar',
-      fechaInicio: dto.fechaInicio || new Date().toISOString().split('T')[0],
-      fechaFin: dto.fechaFin || new Date().toISOString().split('T')[0],
-      diasComision: dto.diasComision || 2,
-      tipoComision: dto.tipoComision || 'SERVICIOS_INSTITUCIONALES',
-      medioTransporte: dto.medioTransporte || 'AEREO',
-      justificacion: dto.justificacion || 'Comisión oficial.',
-      montoSolicitadoViaticos: dto.montoSolicitadoViaticos || 560000,
-      montoSolicitadoGastosViaje: dto.montoSolicitadoGastosViaje || 120000,
-      montoTotalEstimado: (dto.montoSolicitadoViaticos || 560000) + (dto.montoSolicitadoGastosViaje || 120000),
-      estado: 'SOLICITADO',
-      requiereTiqueteAereo: dto.requiereTiqueteAereo ?? true,
-      creadoEn: new Date().toISOString().split('T')[0],
-      actualizadoEn: new Date().toISOString().split('T')[0],
+  async obtenerSolicitudCompleta(
+    solicitudId: string,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado', 'documentosSoporte'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    return solicitud;
+  }
+
+  async crearSolicitud(
+    dto: CreateSolicitudDto,
+  ): Promise<SolicitudComisionEntity> {
+    const comisionado = await this.comisionadoRepo.findOne({
+      where: { id: dto.comisionadoId },
+    });
+
+    if (!comisionado) {
+      throw new BadRequestException('Comisionado no encontrado.');
+    }
+
+    if (!comisionado.autorizacionHabeasData && !dto.aceptaHabeasData) {
+      throw new BadRequestException(
+        'Debe aceptar el tratamiento de datos semiprivados (email y teléfono) según Ley 1581 de 2012 y Sentencia T-254 de 2024.',
+      );
+    }
+
+    if (!comisionado.autorizacionHabeasData && dto.aceptaHabeasData) {
+      comisionado.autorizacionHabeasData = true;
+      comisionado.fechaAutorizacionHabeasData = new Date();
+      comisionado.ipRegistroHabeasData =
+        dto.ipRegistroHabeasData || getClientIp({ headers: {} } as any);
+      await this.comisionadoRepo.save(comisionado);
+    }
+
+    const esBorrador = dto.modoBorrador === true;
+
+    const datosFormulario: Record<string, any> = {
+      objetoComision: dto.objetoComision,
+      destinoCiudad: dto.destinoCiudad,
+      destinoDepartamento: dto.destinoDepartamento,
+      fechaInicio: dto.fechaInicio,
+      fechaFin: dto.fechaFin,
+      rubroPresupuestal: dto.rubroPresupuestal,
+      prioridad: dto.prioridad,
+      requiereTiquetes: dto.requiereTiquetes,
+      montoViaticos: dto.montoViaticos,
+      montoGastosViaje: dto.montoGastosViaje,
+      diasComision: dto.diasComision,
     };
-    this.solicitudes.unshift(nueva);
-    return nueva;
+
+    const { camposFaltantes } = await this.validarCamposObligatorios(
+      comisionado.tipoComisionado,
+      datosFormulario,
+    );
+
+    if (camposFaltantes.length > 0) {
+      throw new BadRequestException(
+        `Faltan los siguientes campos obligatorios para el tipo de comisionado ${comisionado.tipoComisionado}: ${camposFaltantes.join(', ')}`,
+      );
+    }
+
+    const config = await this.configService.obtenerConfiguracionPorTipo(
+      comisionado.tipoComisionado,
+    );
+    const camposOcultos = new Set(config?.camposOcultos ?? []);
+    const camposOpcionales = new Set(config?.camposOpcionales ?? []);
+
+    const objetoSanitizado = sanitizeObjetoComision(dto.objetoComision ?? '');
+    const objetoEsObligatorio =
+      !camposOcultos.has('objetoComision') &&
+      !camposOpcionales.has('objetoComision');
+    if (objetoEsObligatorio && objetoSanitizado.length === 0) {
+      throw new BadRequestException(
+        'El objeto de la comisión debe contener al menos un carácter válido.',
+      );
+    }
+
+    const fechaInicioStr = dto.fechaInicio as string;
+    const fechaFinStr = dto.fechaFin as string;
+    const fechaInicio = new Date(fechaInicioStr);
+    const fechaFin = new Date(fechaFinStr);
+
+    if (fechaFin < fechaInicio) {
+      throw new BadRequestException(
+        'La fecha fin no puede ser anterior a la fecha inicio.',
+      );
+    }
+
+    const hoy = new Date();
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
+      hoy.getDate(),
+    ).padStart(2, '0')}`;
+    if (fechaInicioStr < hoyStr) {
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser anterior a la fecha actual.',
+      );
+    }
+
+    let extemporanea = false;
+    let radicadoFueraJornada = false;
+    let estadoSolicitud: EstadoSolicitud;
+
+    if (!esBorrador) {
+      const solapamiento = await this.solicitudRepo
+        .createQueryBuilder('s')
+        .where('s.comisionado_id = :comisionadoId', {
+          comisionadoId: dto.comisionadoId,
+        })
+        .andWhere(
+          `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
+          { fechaInicio, fechaFin },
+        )
+        .getOne();
+
+      if (solapamiento) {
+        throw new ConflictException(
+          this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
+        );
+      }
+
+      const ahora = new Date();
+      const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+      const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
+      radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+
+      const diasHabilesAnticipacion = contarDiasHabilesEntre(
+        ahora,
+        fechaInicio,
+      );
+      extemporanea = diasHabilesAnticipacion < 14;
+      estadoSolicitud = extemporanea
+        ? EstadoSolicitud.EXTEMPORANEA
+        : EstadoSolicitud.RADICADA;
+    } else {
+      estadoSolicitud = EstadoSolicitud.PENDIENTE;
+    }
+
+    let consecutivoUnico = '';
+    await this.dataSource.transaction(async (manager) => {
+      const maxSolicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .select('MAX(s.consecutivo_unico)', 'max')
+        .where('s.consecutivo_unico LIKE :pattern', { pattern: 'COM-2026-%' })
+        .getRawOne();
+
+      let nextNumber = 1;
+      if (maxSolicitud?.max) {
+        const match = maxSolicitud.max.match(/COM-2026-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      consecutivoUnico = `COM-2026-${String(nextNumber).padStart(4, '0')}`;
+    });
+
+    const solicitud = this.solicitudRepo.create({
+      consecutivoUnico,
+      comisionadoId: dto.comisionadoId,
+      destinoCiudad: dto.destinoCiudad ?? '',
+      destinoDepartamento: dto.destinoDepartamento ?? '',
+      fechaInicio,
+      fechaFin,
+      objetoComision: objetoSanitizado,
+      prioridad: dto.prioridad ?? 'BAJA',
+      rubroPresupuestal: dto.rubroPresupuestal ?? '',
+      requiereTiquetes: dto.requiereTiquetes ?? false,
+      montoViaticos: dto.montoViaticos ?? 0,
+      montoGastosViaje: dto.montoGastosViaje ?? 0,
+      diasComision: dto.diasComision ?? 1,
+      estadoSolicitud,
+      radicadoFueraJornada,
+      extemporanea,
+      esInternacional: dto.esInternacional ?? false,
+      tipoComision: dto.esInternacional
+        ? 'INTERNACIONAL'
+        : (dto.tipoComision ?? 'TERRESTRE'),
+      creadoPorUsuarioId: dto.creadoPorUsuarioId,
+    });
+
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    if (dto.documentos && dto.documentos.length > 0) {
+      const documentos = dto.documentos.map((doc) => {
+        const entity = this.documentoRepo.create({
+          solicitudId: saved.id,
+          tipoDocumento: doc.tipoDocumento,
+          nombreArchivoOriginal: doc.nombreArchivoOriginal,
+          nombreArchivoSeguro: doc.nombreArchivoSeguro,
+          urlRepositorio: doc.urlRepositorio,
+          tipoMime: doc.tipoMime ?? 'application/pdf',
+        });
+        return entity;
+      });
+
+      await this.documentoRepo.save(documentos);
+      saved.documentosSoporte = documentos;
+    }
+
+    const response: any = saved;
+    if (radicadoFueraJornada) {
+      response.warningMessage = 'El trámite iniciará el día hábil siguiente.';
+    }
+
+    return response;
+  }
+
+  /**
+   * Actualiza los campos editables de una solicitud en estado PENDIENTE
+   * (borrador). Permite corregir fechas, destino, montos, etc. y persistir los
+   * cambios antes de radicar la solicitud.
+   */
+  async actualizarSolicitud(
+    solicitudId: string,
+    dto: UpdateSolicitudDto,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {
+      throw new BadRequestException(
+        `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede editarse.`,
+      );
+    }
+
+    const fechaInicio = dto.fechaInicio
+      ? new Date(dto.fechaInicio)
+      : solicitud.fechaInicio;
+    const fechaFin = dto.fechaFin ? new Date(dto.fechaFin) : solicitud.fechaFin;
+    if (fechaFin < fechaInicio) {
+      throw new BadRequestException(
+        'La fecha fin no puede ser anterior a la fecha inicio.',
+      );
+    }
+
+    if (dto.objetoComision !== undefined) {
+      solicitud.objetoComision = sanitizeObjetoComision(
+        dto.objetoComision ?? '',
+      );
+    }
+    if (dto.destinoCiudad !== undefined) {
+      solicitud.destinoCiudad = dto.destinoCiudad ?? '';
+    }
+    if (dto.destinoDepartamento !== undefined) {
+      solicitud.destinoDepartamento = dto.destinoDepartamento ?? '';
+    }
+    if (dto.fechaInicio !== undefined) {
+      solicitud.fechaInicio = new Date(dto.fechaInicio);
+    }
+    if (dto.fechaFin !== undefined) {
+      solicitud.fechaFin = new Date(dto.fechaFin);
+    }
+    if (dto.rubroPresupuestal !== undefined) {
+      solicitud.rubroPresupuestal = dto.rubroPresupuestal ?? '';
+    }
+    if (dto.prioridad !== undefined) {
+      solicitud.prioridad = dto.prioridad ?? 'MEDIA';
+    }
+    if (dto.requiereTiquetes !== undefined) {
+      solicitud.requiereTiquetes = dto.requiereTiquetes;
+    }
+    if (dto.montoViaticos !== undefined) {
+      solicitud.montoViaticos = dto.montoViaticos;
+    }
+    if (dto.montoGastosViaje !== undefined) {
+      solicitud.montoGastosViaje = dto.montoGastosViaje;
+    }
+    if (dto.diasComision !== undefined) {
+      solicitud.diasComision = dto.diasComision;
+    }
+    if (dto.tipoComision !== undefined) {
+      solicitud.tipoComision = dto.tipoComision;
+    }
+    if (dto.esInternacional !== undefined) {
+      solicitud.esInternacional = dto.esInternacional;
+    }
+
+    return this.solicitudRepo.save(solicitud);
+  }
+
+  async subirDocumento(
+    solicitudId: string,
+    dto: UploadDocumentoDto,
+  ): Promise<DocumentoSoporteEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new BadRequestException('Solicitud no encontrada.');
+    }
+
+    // RF-LIQ-004 — Inmutabilidad: un expediente ya consolidado (SOLICITADO o
+    // superior) está en modo solo lectura y no admite subida de nuevos PDFs.
+    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte');
+
+    const file = dto.file;
+    const nombreArchivoOriginal =
+      (file ? file.originalname : undefined) || dto.nombreArchivoOriginal;
+
+    const tipoMime =
+      dto.tipoMime ||
+      (file ? file.mimetype : undefined) ||
+      this.inferirTipoMime(nombreArchivoOriginal || '');
+
+    if (!this.esTipoMimePdf(tipoMime)) {
+      throw new BadRequestException(
+        `El documento "${nombreArchivoOriginal || dto.tipoDocumento}" debe estar en formato PDF.`,
+      );
+    }
+
+    const nombreArchivoSeguro =
+      (file ? file.filename : undefined) || dto.nombreArchivoSeguro;
+    const urlRepositorio = file
+      ? `/uploads/${solicitudId}/${file.filename}`
+      : dto.urlRepositorio;
+
+    const entity = this.documentoRepo.create({
+      solicitudId,
+      tipoDocumento: dto.tipoDocumento,
+      nombreArchivoOriginal,
+      nombreArchivoSeguro: nombreArchivoSeguro,
+      urlRepositorio,
+      tipoMime,
+    });
+
+    return this.documentoRepo.save(entity);
+  }
+
+  /**
+   * Elimina un documento de soporte: primero borra el registro de la BD y luego
+   * elimina el archivo físico del storage (uploads/{solicitudId}/{nombreArchivoSeguro}).
+   * Esto permite al usuario volver a cargar el documento (re-upload).
+   */
+  async eliminarDocumento(
+    solicitudId: string,
+    documentoId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    // RF-LIQ-004 — Inmutabilidad: bloquea la eliminación de soportes cuando el
+    // expediente ya fue consolidado (modo solo lectura).
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+    if (solicitud) {
+      this.verificarExpedienteModificable(
+        solicitud,
+        'eliminar documentos de soporte',
+      );
+    }
+
+    const documento = await this.documentoRepo.findOne({
+      where: { id: documentoId, solicitudId },
+    });
+
+    if (!documento) {
+      throw new NotFoundException('Documento de soporte no encontrado.');
+    }
+
+    await this.documentoRepo.delete(documentoId);
+
+    const nombreArchivo = documento.nombreArchivoSeguro;
+    if (nombreArchivo) {
+      const rutaArchivo = join(getUploadRootDir(), solicitudId, nombreArchivo);
+      try {
+        if (existsSync(rutaArchivo)) {
+          unlinkSync(rutaArchivo);
+        }
+      } catch (error) {
+        console.warn(
+          `[travel-expenses] No se pudo eliminar el archivo físico ${rutaArchivo}:`,
+          error,
+        );
+      }
+    }
+
+    return {
+      success: true,
+      message: `Documento ${documento.tipoDocumento} eliminado correctamente.`,
+    };
+  }
+
+  async obtenerChecklistDocumentos(tipoComisionado: string): Promise<{
+    obligatorios: Array<{
+      codigo: string;
+      nombre: string;
+      descripcion: string | null;
+    }>;
+    opcionales: Array<{
+      codigo: string;
+      nombre: string;
+      descripcion: string | null;
+    }>;
+  }> {
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    if (!config || !config.documentos) {
+      return { obligatorios: [], opcionales: [] };
+    }
+
+    const obligatorios = config.documentos
+      .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+      .map((d) => d.tipoDocumentoSoporte)
+      .filter((d): d is NonNullable<typeof d> => Boolean(d))
+      .map((d) => ({
+        codigo: d.codigo,
+        nombre: d.nombre,
+        descripcion: d.descripcion,
+      }));
+
+    const opcionales = config.documentos
+      .filter((d) => d.tipoRequisito === 'OPCIONAL')
+      .map((d) => d.tipoDocumentoSoporte)
+      .filter((d): d is NonNullable<typeof d> => Boolean(d))
+      .map((d) => ({
+        codigo: d.codigo,
+        nombre: d.nombre,
+        descripcion: d.descripcion,
+      }));
+
+    return { obligatorios, opcionales };
+  }
+
+  async finalizarSolicitud(
+    solicitudId: string,
+  ): Promise<SolicitudComisionEntity & { warningMessage?: string }> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {
+      throw new BadRequestException(
+        `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede finalizarse.`,
+      );
+    }
+
+    const documentos = await this.documentoRepo.find({
+      where: { solicitudId: solicitud.id },
+    });
+
+    const tipoChecklist = solicitud.esInternacional
+      ? 'INTERNACIONAL'
+      : solicitud.comisionado?.tipoComisionado;
+
+    const { faltantes, noPdf } = await this.validarChecklistCompleto(
+      tipoChecklist,
+      documentos,
+    );
+
+    if (faltantes.length > 0) {
+      throw new BadRequestException(
+        `No se puede radicar la solicitud. Faltan por cargar los siguientes soportes obligatorios en PDF: ${faltantes.join(', ')}.`,
+      );
+    }
+
+    if (noPdf.length > 0) {
+      throw new BadRequestException(
+        `Los siguientes soportes obligatorios deben estar en formato PDF: ${noPdf.join(', ')}.`,
+      );
+    }
+
+    const fechaInicio = solicitud.fechaInicio;
+    const fechaFin = solicitud.fechaFin;
+
+    const solapamiento = await this.solicitudRepo
+      .createQueryBuilder('s')
+      .where('s.comisionado_id = :comisionadoId', {
+        comisionadoId: solicitud.comisionadoId,
+      })
+      .andWhere('s.id <> :solicitudId', { solicitudId: solicitud.id })
+      .andWhere(
+        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
+        { fechaInicio, fechaFin },
+      )
+      .getOne();
+
+    if (solapamiento) {
+      throw new ConflictException(
+        this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
+      );
+    }
+
+    const ahora = new Date();
+    const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+    const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
+    const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+
+    const diasHabilesAnticipacion = contarDiasHabilesEntre(ahora, fechaInicio);
+    const extemporanea = diasHabilesAnticipacion < 14;
+
+    solicitud.estadoSolicitud = extemporanea
+      ? EstadoSolicitud.EXTEMPORANEA
+      : EstadoSolicitud.RADICADA;
+    solicitud.extemporanea = extemporanea;
+    solicitud.radicadoFueraJornada = radicadoFueraJornada;
+
+    const saved = await this.solicitudRepo.save(solicitud);
+    const response: any = {
+      ...saved,
+      documentosSoporte: documentos,
+    };
+    if (radicadoFueraJornada) {
+      response.warningMessage = 'El trámite iniciará el día hábil siguiente.';
+    }
+
+    return response;
+  }
+
+  private inferirTipoMime(nombreArchivo: string): string {
+    const extension = nombreArchivo.split('.').pop()?.toLowerCase() || '';
+    if (extension === 'pdf') return 'application/pdf';
+    return 'application/octet-stream';
+  }
+
+  private formatearFecha(fecha: Date): string {
+    if (!fecha) return 'N/D';
+    return new Date(fecha).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  }
+
+  /**
+   * Mensaje de conflicto de fechas orientado al usuario: NO expone UUIDs ni
+   * códigos internos; muestra el consecutivo real (p. ej. COM-2026-0001) y el
+   * estado en lenguaje humano para mejorar la experiencia.
+   */
+  private mensajeConflictoFechas(
+    solapada: SolicitudComisionEntity,
+    fechaInicio: Date,
+    fechaFin: Date,
+  ): string {
+    const referencia = solapada.consecutivoUnico || solapada.id;
+    const estado = etiquetaEstadoHumana(solapada.estadoSolicitud);
+    return (
+      `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) ` +
+      `se cruzan con la solicitud ${referencia} (${estado}, ${this.formatearFecha(solapada.fechaInicio)} a ${this.formatearFecha(solapada.fechaFin)}). ` +
+      `Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`
+    );
+  }
+
+  private async validarChecklistCompleto(
+    tipoComisionado: string,
+    documentos: DocumentoSoporteEntity[],
+  ): Promise<{ faltantes: string[]; noPdf: string[] }> {
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    if (!config || !config.documentos) {
+      return { faltantes: [], noPdf: [] };
+    }
+
+    const obligatorios = config.documentos
+      .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+      .map((d) => d.tipoDocumentoSoporte?.codigo)
+      .filter((codigo): codigo is string => Boolean(codigo));
+
+    const tiposCargados = documentos.map((d) => d.tipoDocumento);
+    const faltantes = obligatorios.filter(
+      (req) => !tiposCargados.includes(req),
+    );
+
+    const documentosPorTipo = new Map<string, DocumentoSoporteEntity[]>();
+    for (const doc of documentos) {
+      const lista = documentosPorTipo.get(doc.tipoDocumento) || [];
+      lista.push(doc);
+      documentosPorTipo.set(doc.tipoDocumento, lista);
+    }
+
+    const noPdf: string[] = [];
+    for (const codigo of obligatorios) {
+      const docs = documentosPorTipo.get(codigo) || [];
+      if (docs.some((d) => !this.esTipoMimePdf(d.tipoMime))) {
+        noPdf.push(codigo);
+      }
+    }
+
+    return { faltantes, noPdf };
+  }
+
+  private esTipoMimePdf(tipoMime: string): boolean {
+    if (!tipoMime) return false;
+    const mime = tipoMime.toLowerCase();
+    return (
+      mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf')
+    );
+  }
+
+  /**
+   * RF-LIQ-004 — Verifica que el expediente NO esté en modo solo lectura.
+   * Una vez consolidado (estado SOLICITADO o superior) ningún enlace puede
+   * alterar los datos ni subir/eliminar archivos del expediente.
+   *
+   * @throws BadRequestException cuando el expediente está bloqueado.
+   */
+  private verificarExpedienteModificable(
+    solicitud: SolicitudComisionEntity,
+    accion: string,
+  ): void {
+    const estado = solicitud.estadoSolicitud as EstadoSolicitud;
+    if (ESTADOS_SOLO_LECTURA.has(estado)) {
+      throw new BadRequestException(
+        `El expediente ${solicitud.consecutivoUnico ?? solicitud.id} tiene estado ${solicitud.estadoSolicitud} (solo lectura). No puede ${accion} en un expediente ya consolidado.`,
+      );
+    }
+  }
+
+  async obtenerParametrizacionFormulario(): Promise<{
+    campos: any[];
+    configuraciones: Record<string, ConfigTipoComisionadoEntity>;
+  }> {
+    const [campos, configs] = await Promise.all([
+      this.configService.obtenerCamposFormulario(),
+      this.configService.obtenerTodasConfiguraciones(),
+    ]);
+
+    const configuraciones: Record<string, ConfigTipoComisionadoEntity> = {};
+    for (const config of configs) {
+      configuraciones[config.tipoComisionado] = config;
+    }
+
+    return { campos, configuraciones };
+  }
+
+  async obtenerParametrizacionPorCodigoFormulario(
+    codigoFormulario: string,
+  ): Promise<ConfigTipoComisionadoEntity | null> {
+    return this.configService.obtenerConfiguracionPorCodigoFormulario(
+      codigoFormulario,
+    );
+  }
+
+  async validarDocumentosRequeridos(
+    tipoComisionado: string,
+    tiposDocumentos: string[],
+  ): Promise<{ faltantes: string[] }> {
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    if (!config) {
+      return { faltantes: [] };
+    }
+
+    const codigosObligatorios = (config.documentos || [])
+      .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+      .map((d) => d.tipoDocumentoSoporte?.codigo)
+      .filter((codigo): codigo is string => Boolean(codigo));
+
+    const faltantes = codigosObligatorios.filter(
+      (req) => !tiposDocumentos.includes(req),
+    );
+
+    return { faltantes };
+  }
+
+  async validarCamposObligatorios(
+    tipoComisionado: string,
+    datosFormulario: Record<string, any>,
+  ): Promise<{ camposFaltantes: string[] }> {
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    if (!config) {
+      return { camposFaltantes: [] };
+    }
+
+    const camposOpcionales = new Set(config.camposOpcionales ?? []);
+    const camposOcultos = new Set(config.camposOcultos ?? []);
+
+    const camposEfectivamenteObligatorios = config.camposObligatorios.filter(
+      (campo) => !camposOpcionales.has(campo) && !camposOcultos.has(campo),
+    );
+
+    const camposFaltantes = camposEfectivamenteObligatorios.filter((campo) => {
+      const valor = datosFormulario[campo];
+      if (valor === undefined || valor === null || valor === '') {
+        return true;
+      }
+      if (Array.isArray(valor) && valor.length === 0) {
+        return true;
+      }
+      return false;
+    });
+
+    return { camposFaltantes };
+  }
+
+  async exportarFormato023(solicitudId: string, req?: any): Promise<Buffer> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado', 'documentosSoporte'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const comisionado = solicitud.comisionado;
+    const PDFDocument = require('pdfkit');
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'letter' });
+      const buffers: Buffer[] = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const drawHeader = () => {
+        doc.fontSize(10).font('Helvetica-Bold');
+        doc.fillColor('#003DA5');
+        doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', {
+          align: 'center',
+        });
+        doc.fontSize(9).font('Helvetica');
+        doc.fillColor('#333333');
+        doc.text('Sede Nacional - Bogotá - Calle 44 No. 53-37 CAN', {
+          align: 'center',
+        });
+        doc.text('PBX: +57 (1) 220 2790 · www.esap.edu.co', {
+          align: 'center',
+        });
+        doc.moveDown(0.5);
+
+        doc
+          .strokeColor('#003DA5')
+          .lineWidth(2)
+          .moveTo(50, doc.y)
+          .lineTo(562, doc.y)
+          .stroke();
+        doc.moveDown(1);
+      };
+
+      const drawTitle = () => {
+        doc.fillColor('#003DA5').fontSize(14).font('Helvetica-Bold');
+        doc.text('FORMATO 023 — SOLICITUD DE COMISIÓN DE VIÁTICOS', {
+          align: 'center',
+        });
+        doc.fontSize(10).font('Helvetica');
+        doc.fillColor('#666666');
+        doc.text('Código: EM-FO-023 · Versión: 1 · Fecha: 01/Ene/2026', {
+          align: 'center',
+        });
+        doc.moveDown(1);
+      };
+
+      const drawSectionTitle = (title: string) => {
+        doc.moveDown(0.5);
+        doc.fillColor('#003DA5').fontSize(11).font('Helvetica-Bold');
+        doc.text(title);
+        doc
+          .strokeColor('#CCCCCC')
+          .lineWidth(0.5)
+          .moveTo(50, doc.y)
+          .lineTo(562, doc.y)
+          .stroke();
+        doc.moveDown(0.5);
+      };
+
+      const drawField = (label: string, value: string) => {
+        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        doc.text(`${label}: `, { continued: true });
+        doc.font('Helvetica').fillColor('#000000');
+        doc.text(value || 'N/A');
+      };
+
+      const drawMultiLineField = (label: string, value: string) => {
+        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        doc.text(`${label}:`);
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fillColor('#000000');
+        doc.text(value || 'N/A', {
+          width: 512,
+          align: 'justify',
+        });
+        doc.moveDown(0.3);
+      };
+
+      const formatDate = (date: Date | string): string => {
+        const d = new Date(date);
+        return d.toLocaleDateString('es-CO', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      };
+
+      const formatCurrency = (amount: number): string => {
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          minimumFractionDigits: 0,
+        }).format(amount || 0);
+      };
+
+      const nombreCompleto = [
+        comisionado?.primerNombre,
+        comisionado?.segundoNombre,
+        comisionado?.primerApellido,
+        comisionado?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const tipoTransporte = solicitud.requiereTiquetes
+        ? 'Aéreo / Terrestre'
+        : 'Terrestre';
+      const prioridad = solicitud.prioridad || 'MEDIA';
+      const estado = solicitud.estadoSolicitud || 'RADICADA';
+
+      drawHeader();
+      drawTitle();
+
+      drawSectionTitle('1. INFORMACIÓN DE LA SOLICITUD');
+      drawField('No. Radicado', solicitud.consecutivoUnico);
+      drawField('Fecha de Radicación', formatDate(solicitud.creadoEn));
+      drawField('Estado de la Solicitud', estado);
+      drawField('Prioridad', prioridad);
+      drawField('Extemporánea', solicitud.extemporanea ? 'SÍ' : 'NO');
+      drawField(
+        'Radicado Fuera de Jornada',
+        solicitud.radicadoFueraJornada ? 'SÍ' : 'NO',
+      );
+      doc.moveDown(0.3);
+
+      drawSectionTitle('2. DATOS DEL COMISIONADO');
+      drawField('Nombre Completo', nombreCompleto);
+      drawField('No. Documento', comisionado?.numeroDocumento || 'N/A');
+      drawField('Tipo de Comisionado', comisionado?.tipoComisionado || 'N/A');
+      drawField('Correo Electrónico', comisionado?.email || 'N/A');
+      drawField('Teléfono de Contacto', comisionado?.telefonoContacto || 'N/A');
+      drawField('Origen de Datos', comisionado?.origenDatos || 'N/A');
+      drawField(
+        'Autorización Hábeas Data',
+        comisionado?.autorizacionHabeasData ? 'SÍ' : 'NO',
+      );
+      doc.moveDown(0.3);
+
+      drawSectionTitle('3. DATOS DE LA COMISIÓN');
+      drawField('Ciudad Destino', solicitud.destinoCiudad);
+      drawField('Departamento Destino', solicitud.destinoDepartamento);
+      drawField('Fecha de Inicio', formatDate(solicitud.fechaInicio));
+      drawField('Fecha de Finalización', formatDate(solicitud.fechaFin));
+      drawField('Días de Comisión', String(solicitud.diasComision));
+      drawField('Tipo de Transporte', tipoTransporte);
+      drawField('Requiere Tiquetes', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+      doc.moveDown(0.3);
+
+      drawSectionTitle('4. OBJETO DE LA COMISIÓN');
+      drawMultiLineField('Objeto / Justificación', solicitud.objetoComision);
+      doc.moveDown(0.3);
+
+      drawSectionTitle('5. INFORMACIÓN PRESUPUESTAL');
+      drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
+      drawField(
+        'Monto Viáticos',
+        formatCurrency(Number(solicitud.montoViaticos)),
+      );
+      drawField(
+        'Monto Gastos de Viaje',
+        formatCurrency(Number(solicitud.montoGastosViaje)),
+      );
+      drawField(
+        'Monto Total',
+        formatCurrency(
+          Number(solicitud.montoViaticos) + Number(solicitud.montoGastosViaje),
+        ),
+      );
+      doc.moveDown(0.3);
+
+      drawSectionTitle('6. DOCUMENTOS DE SOPORTE');
+      if (
+        solicitud.documentosSoporte &&
+        solicitud.documentosSoporte.length > 0
+      ) {
+        solicitud.documentosSoporte.forEach((documento, index) => {
+          const fileUrl = documento.urlRepositorio?.startsWith('http')
+            ? documento.urlRepositorio
+            : `${req?.protocol || 'http'}://${req?.get('host') || 'localhost:3010'}${documento.urlRepositorio}`;
+          const encodedUrl = encodeURI(fileUrl);
+          const displayText = `  ${index + 1}. ${documento.tipoDocumento} — ${documento.nombreArchivoOriginal || 'N/A'} (Abrir)`;
+          doc.font('Helvetica-Bold').fillColor('#003DA5');
+          doc.text(displayText, { link: encodedUrl });
+        });
+      } else {
+        doc.font('Helvetica').fillColor('#666666');
+        doc.text('  No se han adjuntado documentos de soporte.');
+      }
+      doc.moveDown(0.5);
+
+      drawSectionTitle('7. FIRMAS Y APROBACIONES');
+      doc.moveDown(1);
+
+      const firmaY = doc.y;
+      doc.strokeColor('#333333').lineWidth(0.5);
+      doc.moveTo(80, firmaY).lineTo(250, firmaY).stroke();
+      doc.moveTo(350, firmaY).lineTo(520, firmaY).stroke();
+      doc.moveDown(0.3);
+      doc.font('Helvetica').fontSize(8).fillColor('#333333');
+      doc.text('Firma del Solicitante', 80, firmaY + 5);
+      doc.text('Firma del Jefe Inmediato / Aprobación', 350, firmaY + 5);
+
+      doc.moveDown(3);
+
+      const fechaY = doc.y;
+      doc.strokeColor('#333333').lineWidth(0.5);
+      doc.moveTo(200, fechaY).lineTo(400, fechaY).stroke();
+      doc.moveDown(0.3);
+      doc.font('Helvetica').fontSize(8).fillColor('#333333');
+      doc.text('Firma Subdirector / Director', 220, fechaY + 5);
+
+      doc.moveDown(3);
+
+      doc.fontSize(8).font('Helvetica').fillColor('#999999');
+      doc.text('─'.repeat(80), { align: 'center' });
+      doc.moveDown(0.3);
+      doc.text(
+        `Documento generado automáticamente el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`,
+        { align: 'center' },
+      );
+      doc.text(
+        'Sistema Integrado de Gestión ESAP — Módulo de Viáticos y Comisiones',
+        { align: 'center' },
+      );
+
+      doc.end();
+    });
   }
 }

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationClientService } from './notification-client.service';
+import { NotificationClientService, SendNotificationDto } from './notification-client.service';
 
 const ROLE_JEFE = 'JEFE_GESTION_LEGAL';
 const ROLE_RESUELVE = 'RESUELVE_GESTION_LEGAL';
@@ -158,6 +158,40 @@ function buildTerminoAsignacionEmailHtml(params: {
 }
 
 /**
+ * Cuerpo HTML del correo que avisa al abogado (rol Resuelve) recién asignado (o reasignado)
+ * a un proceso/expediente.
+ */
+function buildProcesoAsignacionEmailHtml(params: {
+  radicado: string;
+  moduloLabel: string;
+  asignadoPor?: string;
+  esReasignacion?: boolean;
+  url: string;
+}): string {
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${params.url}`;
+  const accion = params.esReasignacion ? 'reasignado(a)' : 'asignado(a)';
+  const radicado = escapeHtml(params.radicado);
+  const moduloLabel = escapeHtml(params.moduloLabel);
+  const asignadoPor = params.asignadoPor ? escapeHtml(params.asignadoPor) : null;
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #1D4ED8; border-bottom: 2px solid #1D4ED8; padding-bottom: 10px;">Proceso ${params.esReasignacion ? 'Reasignado' : 'Asignado'}</h2>
+      <p>Estimado(a) funcionario(a),</p>
+      <p>Ha sido ${accion} como responsable del proceso <strong>${radicado}</strong> en <strong>${moduloLabel}</strong>${asignadoPor ? ` por ${asignadoPor}` : ''}.</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${link}"
+           style="background-color: #1D4ED8; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+          Ver Proceso
+        </a>
+      </div>
+      <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+        Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+      </p>
+    </div>
+  `;
+}
+
+/**
  * Cuerpo HTML del correo que avisa al aprobador de la nueva etapa que hay una firma pendiente.
  */
 function buildEtapaPendienteEmailHtml(etapaNombre: string, radicado: string, moduloLabel: string, url: string): string {
@@ -172,6 +206,37 @@ function buildEtapaPendienteEmailHtml(etapaNombre: string, radicado: string, mod
         <a href="${link}"
            style="background-color: #003DA5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
           Ir al Expediente
+        </a>
+      </div>
+      <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+        Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Plantilla genérica de correo para notificaciones directas a un usuario (asignaciones,
+ * alertas de riesgo, observaciones, etc.) que no requieren un layout propio. `bodyHtml`
+ * ya debe venir con cualquier texto de usuario escapado (ver `escapeHtml`).
+ */
+function buildLegalEmailHtml(params: {
+  headerTitle: string;
+  headerColor: string;
+  bodyHtml: string;
+  ctaLabel: string;
+  url: string;
+}): string {
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${params.url}`;
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: ${params.headerColor}; border-bottom: 2px solid ${params.headerColor}; padding-bottom: 10px;">${params.headerTitle}</h2>
+      <p>Estimado(a) funcionario(a),</p>
+      ${params.bodyHtml}
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${link}"
+           style="background-color: ${params.headerColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+          ${params.ctaLabel}
         </a>
       </div>
       <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
@@ -306,6 +371,20 @@ export class LegalNotificationsService {
         },
       });
 
+      // Correo al abogado asignado (mismo patrón que notifyResponsableAsignadoTermino)
+      const detalleAbogado = await this.notificationClient.getUserDetailsById(params.abogadoId);
+      if (detalleAbogado?.email) {
+        const emailSubject = `Proceso ${accion} — ${params.radicado}`;
+        const emailHtml = buildProcesoAsignacionEmailHtml({
+          radicado: params.radicado,
+          moduloLabel: meta.label,
+          asignadoPor: params.asignadoPor !== params.abogadoId ? params.asignadoPor : undefined,
+          esReasignacion: params.esReasignacion,
+          url,
+        });
+        await this.notificationClient.sendEmail(detalleAbogado.email, emailSubject, emailHtml);
+      }
+
       // Notificar al Jefe de Gestión Legal
       await this.notificationClient.notifyByRole(ROLE_JEFE, {
         tipo_notificacion: params.esReasignacion ? 'PROCESO_REASIGNADO' : 'PROCESO_ASIGNADO',
@@ -376,6 +455,21 @@ export class LegalNotificationsService {
             etapa: params.etapaNombre,
           },
         });
+
+        const detalleAbogado = await this.notificationClient.getUserDetailsById(params.abogadoId);
+        if (detalleAbogado?.email) {
+          await this.notificationClient.sendEmail(
+            detalleAbogado.email,
+            `Proceso avanzó de etapa — ${params.radicado}`,
+            buildLegalEmailHtml({
+              headerTitle: 'Proceso Avanzó de Etapa',
+              headerColor: meta.color,
+              bodyHtml: `<p>El proceso <strong>${escapeHtml(params.radicado)}</strong> en <strong>${escapeHtml(meta.label)}</strong> avanzó a la etapa <strong>${escapeHtml(params.etapaNombre)}</strong>.</p>`,
+              ctaLabel: 'Ver Proceso',
+              url,
+            }),
+          );
+        }
       }
 
       // 2) Notificar al aprobador (rol/usuario) de la NUEVA etapa: tiene una firma pendiente
@@ -455,6 +549,21 @@ export class LegalNotificationsService {
           autorNombre: params.autorNombre,
         },
       });
+
+      const detalleAbogado = await this.notificationClient.getUserDetailsById(params.abogadoId);
+      if (detalleAbogado?.email) {
+        await this.notificationClient.sendEmail(
+          detalleAbogado.email,
+          `Nueva observación — ${params.radicado}`,
+          buildLegalEmailHtml({
+            headerTitle: 'Nueva Observación en tu Proceso',
+            headerColor: '#F59E0B',
+            bodyHtml: `<p><strong>${escapeHtml(params.autorNombre)}</strong> realizó una observación en el proceso <strong>${escapeHtml(params.radicado)}</strong>.</p>`,
+            ctaLabel: 'Ver Proceso',
+            url,
+          }),
+        );
+      }
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar observación en proceso ${params.radicado} al abogado ${params.abogadoId}: ${err?.message}`);
     }
@@ -518,52 +627,82 @@ export class LegalNotificationsService {
     const urlPrincipal = buildUrl(params.modulo, params.radicadoPrincipal);
     const urlAnexado = buildUrl(params.modulo, params.radicadoPrincipal);
 
+    const notificarConCorreo = async (
+      abogadoId: string,
+      dto: Omit<SendNotificationDto, 'id_usuario_destinatario'>,
+      emailSubject: string,
+      bodyHtml: string,
+      url: string,
+    ): Promise<void> => {
+      await this.notificationClient.notifyUserById(abogadoId, dto);
+      const detalle = await this.notificationClient.getUserDetailsById(abogadoId);
+      if (detalle?.email) {
+        await this.notificationClient.sendEmail(
+          detalle.email,
+          emailSubject,
+          buildLegalEmailHtml({ headerTitle: 'Proceso Anexado', headerColor: meta.color, bodyHtml, ctaLabel: 'Ver Expediente', url }),
+        );
+      }
+    };
+
     const promises: Promise<void>[] = [];
 
     if (params.abogadoPrincipalId) {
-      promises.push(this.notificationClient.notifyUserById(params.abogadoPrincipalId, {
-        tipo_notificacion: 'PROCESO_ANEXADO',
-        titulo: 'Proceso anexado a tu expediente',
-        mensaje: `El proceso ${params.radicadoAnexado} fue anexado a tu expediente ${params.radicadoPrincipal} por ${params.anexadoPor}.`,
-        descripcion_corta: `${params.radicadoAnexado} → ${params.radicadoPrincipal}`,
-        icono: 'Link',
-        color: meta.color,
-        prioridad: 'Media' as const,
-        categoria: meta.categoria,
-        tiene_accion: true,
-        texto_boton_accion: 'Ver expediente',
-        url_accion: urlPrincipal,
-        datos_adicionales: {
-          modulo: params.modulo,
-          radicadoAnexado: params.radicadoAnexado,
-          radicadoPrincipal: params.radicadoPrincipal,
-          procesoPrincipalId: params.procesoPrincipalId,
-          anexadoPor: params.anexadoPor,
+      promises.push(notificarConCorreo(
+        params.abogadoPrincipalId,
+        {
+          tipo_notificacion: 'PROCESO_ANEXADO',
+          titulo: 'Proceso anexado a tu expediente',
+          mensaje: `El proceso ${params.radicadoAnexado} fue anexado a tu expediente ${params.radicadoPrincipal} por ${params.anexadoPor}.`,
+          descripcion_corta: `${params.radicadoAnexado} → ${params.radicadoPrincipal}`,
+          icono: 'Link',
+          color: meta.color,
+          prioridad: 'Media' as const,
+          categoria: meta.categoria,
+          tiene_accion: true,
+          texto_boton_accion: 'Ver expediente',
+          url_accion: urlPrincipal,
+          datos_adicionales: {
+            modulo: params.modulo,
+            radicadoAnexado: params.radicadoAnexado,
+            radicadoPrincipal: params.radicadoPrincipal,
+            procesoPrincipalId: params.procesoPrincipalId,
+            anexadoPor: params.anexadoPor,
+          },
         },
-      }));
+        `Proceso anexado — ${params.radicadoPrincipal}`,
+        `<p>El proceso <strong>${escapeHtml(params.radicadoAnexado)}</strong> fue anexado a tu expediente <strong>${escapeHtml(params.radicadoPrincipal)}</strong> por ${escapeHtml(params.anexadoPor)}.</p>`,
+        urlPrincipal,
+      ));
     }
 
     if (params.abogadoAnexadoId && params.abogadoAnexadoId !== params.abogadoPrincipalId) {
-      promises.push(this.notificationClient.notifyUserById(params.abogadoAnexadoId, {
-        tipo_notificacion: 'PROCESO_ANEXADO',
-        titulo: 'Tu proceso fue anexado a un expediente',
-        mensaje: `Tu proceso ${params.radicadoAnexado} fue anexado al expediente ${params.radicadoPrincipal} por ${params.anexadoPor}.`,
-        descripcion_corta: `${params.radicadoAnexado} → ${params.radicadoPrincipal}`,
-        icono: 'Link',
-        color: meta.color,
-        prioridad: 'Media' as const,
-        categoria: meta.categoria,
-        tiene_accion: true,
-        texto_boton_accion: 'Ver expediente principal',
-        url_accion: urlAnexado,
-        datos_adicionales: {
-          modulo: params.modulo,
-          radicadoAnexado: params.radicadoAnexado,
-          radicadoPrincipal: params.radicadoPrincipal,
-          procesoPrincipalId: params.procesoPrincipalId,
-          anexadoPor: params.anexadoPor,
+      promises.push(notificarConCorreo(
+        params.abogadoAnexadoId,
+        {
+          tipo_notificacion: 'PROCESO_ANEXADO',
+          titulo: 'Tu proceso fue anexado a un expediente',
+          mensaje: `Tu proceso ${params.radicadoAnexado} fue anexado al expediente ${params.radicadoPrincipal} por ${params.anexadoPor}.`,
+          descripcion_corta: `${params.radicadoAnexado} → ${params.radicadoPrincipal}`,
+          icono: 'Link',
+          color: meta.color,
+          prioridad: 'Media' as const,
+          categoria: meta.categoria,
+          tiene_accion: true,
+          texto_boton_accion: 'Ver expediente principal',
+          url_accion: urlAnexado,
+          datos_adicionales: {
+            modulo: params.modulo,
+            radicadoAnexado: params.radicadoAnexado,
+            radicadoPrincipal: params.radicadoPrincipal,
+            procesoPrincipalId: params.procesoPrincipalId,
+            anexadoPor: params.anexadoPor,
+          },
         },
-      }));
+        `Tu proceso fue anexado — ${params.radicadoAnexado}`,
+        `<p>Tu proceso <strong>${escapeHtml(params.radicadoAnexado)}</strong> fue anexado al expediente <strong>${escapeHtml(params.radicadoPrincipal)}</strong> por ${escapeHtml(params.anexadoPor)}.</p>`,
+        urlAnexado,
+      ));
     }
 
     if (promises.length > 0) {
@@ -613,6 +752,21 @@ export class LegalNotificationsService {
           esReasignacion: params.esReasignacion ?? false,
         },
       });
+
+      const detalleAbogado = await this.notificationClient.getUserDetailsById(params.abogadoId);
+      if (detalleAbogado?.email) {
+        await this.notificationClient.sendEmail(
+          detalleAbogado.email,
+          `Riesgo ${accion} — ${params.codigo}`,
+          buildLegalEmailHtml({
+            headerTitle: `Riesgo ${accion === 'reasignado' ? 'Reasignado' : 'Asignado'}`,
+            headerColor: meta.color,
+            bodyHtml: `<p>Se te ha ${accion} el riesgo <strong>${escapeHtml(params.codigo)}</strong> (${escapeHtml(params.nombreRiesgo)}) en ${escapeHtml(meta.label)}${params.asignadoPor !== params.abogadoId ? ` por ${escapeHtml(params.asignadoPor)}` : ''}.</p>`,
+            ctaLabel: 'Ver Riesgo',
+            url,
+          }),
+        );
+      }
 
       // Notificar al Jefe de Gestión Legal
       await this.notificationClient.notifyByRole(ROLE_JEFE, {
@@ -683,6 +837,20 @@ export class LegalNotificationsService {
       // Notificar al responsable
       if (params.abogadoId) {
         await this.notificationClient.notifyUserById(params.abogadoId, basePayload);
+        const detalleAbogado = await this.notificationClient.getUserDetailsById(params.abogadoId);
+        if (detalleAbogado?.email) {
+          await this.notificationClient.sendEmail(
+            detalleAbogado.email,
+            `Alerta ${nivelAlerta}: Riesgo ${params.codigo} en zona ${params.zonaResidual}`,
+            buildLegalEmailHtml({
+              headerTitle: `Alerta ${nivelAlerta}: Riesgo en Zona Crítica`,
+              headerColor: esExtremo ? '#DC2626' : '#F59E0B',
+              bodyHtml: `<p>El riesgo <strong>${escapeHtml(params.codigo)}</strong> (${escapeHtml(params.nombreRiesgo)}) ha pasado a la zona residual <strong>${escapeHtml(params.zonaResidual)}</strong>. Por favor revise las medidas de mitigación con urgencia.</p>`,
+              ctaLabel: 'Ver Riesgo',
+              url,
+            }),
+          );
+        }
       }
       // Notificar a jefatura
       await this.notificationClient.notifyByRole(ROLE_JEFE, basePayload);
@@ -734,6 +902,20 @@ export class LegalNotificationsService {
     try {
       if (params.abogadoId) {
         await this.notificationClient.notifyUserById(params.abogadoId, basePayload);
+        const detalleAbogado = await this.notificationClient.getUserDetailsById(params.abogadoId);
+        if (detalleAbogado?.email) {
+          await this.notificationClient.sendEmail(
+            detalleAbogado.email,
+            `Provisión contable modificada — Riesgo ${params.codigo}`,
+            buildLegalEmailHtml({
+              headerTitle: 'Provisión Contable Modificada',
+              headerColor: '#059669',
+              bodyHtml: `<p>La provisión contable del riesgo <strong>${escapeHtml(params.codigo)}</strong> (${escapeHtml(params.nombreRiesgo)}) ha ${cambio} a <strong>${formatter.format(params.provisionNueva)}</strong>.</p>`,
+              ctaLabel: 'Ver Riesgo',
+              url,
+            }),
+          );
+        }
       }
       await this.notificationClient.notifyByRole(ROLE_JEFE, basePayload);
     } catch (err: any) {
@@ -811,6 +993,12 @@ export class LegalNotificationsService {
    * Notifica al responsable de un término/informe que su vencimiento está próximo
    * (alerta automática por regla global, por anticipación personalizada del término,
    * o recordatorio programado manualmente por el usuario).
+   *
+   * Retorna `true` si la notificación se pudo despachar (a responsable o, en su defecto,
+   * al rol de respaldo), y `false` si algo falló. El caller (AlertasVencimientoTerminosService)
+   * usa este valor para decidir si marca la alerta como enviada — si retorna `false`, la
+   * alerta NO se marca como enviada y se reintentará en la siguiente corrida del cron, en
+   * vez de perderse silenciosamente.
    */
   async notifyTerminoProximoAVencer(params: {
     terminoId: string;
@@ -819,7 +1007,7 @@ export class LegalNotificationsService {
     numeroRadicado?: string | null;
     horasRestantes: number;
     origen: 'automatica' | 'personalizada' | 'manual';
-  }): Promise<void> {
+  }): Promise<boolean> {
     const meta = MODULE_META.TERMINOS_INFORMES;
     const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
     const diasRestantes = Math.round(params.horasRestantes / 24);
@@ -840,15 +1028,11 @@ export class LegalNotificationsService {
       `[NOTIFY] Vencimiento de término (${params.origen}) — id=${params.terminoId} radicado=${params.numeroRadicado || 'N/A'} horasRestantes=${params.horasRestantes}`,
     );
 
-    if (!params.responsableId) {
-      this.logger.warn(`Término ${params.terminoId} sin responsableId asignado — no se pudo notificar`);
-      return;
-    }
-
+    const mensaje = `El término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''} ${textoAnticipacion}.`;
     const dto = {
       tipo_notificacion: 'TERMINO_PROXIMO_A_VENCER',
       titulo: titulos[params.origen],
-      mensaje: `El término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''} ${textoAnticipacion}.`,
+      mensaje,
       descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${textoAnticipacion}`,
       icono: meta.icon,
       color: params.horasRestantes < 0 ? '#DC2626' : meta.color,
@@ -867,15 +1051,80 @@ export class LegalNotificationsService {
     };
 
     try {
-      await this.notificationClient.notifyUserById(params.responsableId, dto);
-      const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
-      if (detail?.email) {
-        const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
-        const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
-        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      if (params.responsableId) {
+        // El in-app es la parte que determina el resultado (y por tanto si se reintenta o no).
+        // El correo se envía en su propio try/catch: si falla (SMTP caído, no tiene email, etc.)
+        // NO debe hacer que se reintente todo el envío, porque eso duplicaría la notificación
+        // in-app que ya se entregó correctamente.
+        await this.notificationClient.notifyUserById(params.responsableId, dto);
+        try {
+          const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
+          if (detail?.email) {
+            const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
+            const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
+            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+          }
+        } catch (emailErr: any) {
+          this.logger.warn(`In-app entregado, pero falló el correo de vencimiento del término ${params.terminoId}: ${emailErr?.message}`);
+        }
+      } else {
+        // Sin responsable asignado: en vez de descartar la alerta en silencio, se avisa
+        // al Jefe de Gestión Legal para que quede visible y se pueda asignar responsable.
+        this.logger.warn(`Término ${params.terminoId} sin responsableId asignado — notificando al rol ${ROLE_JEFE} como respaldo`);
+        await this.notificationClient.notifyByRole(ROLE_JEFE, {
+          ...dto,
+          titulo: `${titulos[params.origen]} (sin responsable asignado)`,
+          mensaje: `${mensaje} Este término no tiene responsable asignado.`,
+        });
       }
+      return true;
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar vencimiento del término ${params.terminoId}: ${err?.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Notifica al Jefe de Gestión Legal (y a Resuelve) que se creó un nuevo término/informe,
+   * de forma incondicional — igual que `notifyProcesoCreado` en los demás módulos — para que
+   * la creación quede visible dentro de la plataforma incluso cuando el término aún no tiene
+   * responsable asignado (`notifyResponsableAsignadoTermino` solo se dispara cuando sí lo tiene).
+   */
+  async notifyTerminoCreado(params: {
+    terminoId: string;
+    nombreActuacion: string;
+    numeroRadicado?: string | null;
+    origenModulo: string;
+    responsableNombre?: string | null;
+  }): Promise<void> {
+    const meta = MODULE_META.TERMINOS_INFORMES;
+    const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
+    this.logger.log(`[NOTIFY] Término creado — id=${params.terminoId} radicado=${params.numeroRadicado || 'N/A'} origen=${params.origenModulo}`);
+
+    const dto = {
+      tipo_notificacion: 'TERMINO_CREADO',
+      titulo: `Nuevo término en ${meta.label}`,
+      mensaje: `Se creó el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}${params.responsableNombre ? `, asignado a ${params.responsableNombre}` : ', sin responsable asignado'}.`,
+      descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — creado`,
+      icono: meta.icon,
+      color: meta.color,
+      prioridad: 'Media' as const,
+      categoria: meta.categoria,
+      tiene_accion: true,
+      texto_boton_accion: 'Ver término',
+      url_accion: url,
+      datos_adicionales: {
+        modulo: 'TERMINOS_INFORMES',
+        terminoId: params.terminoId,
+        numeroRadicado: params.numeroRadicado,
+        origenModulo: params.origenModulo,
+      },
+    };
+
+    try {
+      await this.notificationClient.notifyByRoles([ROLE_JEFE, ROLE_RESUELVE], dto);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar creación de término ${params.terminoId}: ${err?.message}`);
     }
   }
 }

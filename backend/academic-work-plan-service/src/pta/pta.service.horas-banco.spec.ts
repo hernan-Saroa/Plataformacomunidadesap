@@ -108,6 +108,7 @@ describe('PtaService - horas autoritativas del Banco de Docentes', () => {
         asignatura_id: 'asignatura-1',
         programa_id: 'programa-1',
         asignatura_nombre: 'Economia de lo Publico',
+        pensum: '2026',
         creditos: 3,
         total_horas: 144,
         fecha_inicio: '2026-07-01',

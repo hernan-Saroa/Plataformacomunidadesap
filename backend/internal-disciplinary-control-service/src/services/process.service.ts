@@ -324,6 +324,9 @@ export class ProcessService {
     });
 
     actuaciones.forEach((actuacion) => {
+      if (!actuacion.processId) {
+        return;
+      }
       const actual = resumen.get(actuacion.processId);
 
       if (!actual) {
@@ -1073,6 +1076,20 @@ export class ProcessService {
   /**
    * Cambia la etapa del proceso por aprobación de auto de apertura (sin validación de transición)
    */
+  // Orden real del flujo procesal (coincide con el orden ya usado en el frontend,
+  // ModalCambiarEtapaProcesoDisciplinario.tsx). No es el orden de declaración del enum.
+  private static readonly ORDEN_ETAPAS: Partial<Record<ProcessStage, number>> = {
+    [ProcessStage.RECEPCION]: 1,
+    [ProcessStage.VALORACION]: 2,
+    [ProcessStage.INDAGACION_PREVIA]: 3,
+    [ProcessStage.INVESTIGACION]: 4,
+    [ProcessStage.EVALUACION]: 5,
+    [ProcessStage.JUZGAMIENTO]: 6,
+    [ProcessStage.INDAGACION]: 7,
+    [ProcessStage.FALLO]: 8,
+    [ProcessStage.SEGUNDA_INSTANCIA]: 9,
+  };
+
   async changeStageByAutoApertura(
     id: string,
     nuevaEtapa: ProcessStage,
@@ -1083,6 +1100,31 @@ export class ProcessService {
   ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
     const proceso = await this.findById(id, false);
     const etapaAnterior = proceso.etapaActual;
+
+    // Un auto de apertura (o de pliego de cargos) aprobado tarde no debe retroceder
+    // un proceso que ya avanzó más allá de su etapa destino — solo debe aplicar la
+    // transición si realmente representa un avance.
+    const ordenAnterior = ProcessService.ORDEN_ETAPAS[etapaAnterior];
+    const ordenNuevo = ProcessService.ORDEN_ETAPAS[nuevaEtapa];
+    if (ordenAnterior !== undefined && ordenNuevo !== undefined && ordenNuevo <= ordenAnterior) {
+      console.warn(
+        `[ProcessService] changeStageByAutoApertura: se ignora transición a ${nuevaEtapa} en proceso ${id} porque ya está en ${etapaAnterior} (etapa igual o posterior).`,
+      );
+
+      const profesionalAprobadorOmitido = await this.professionalRepository.findOne({ where: { idUser: aprobadoPorId } });
+      const nombreAprobadorOmitido = profesionalAprobadorOmitido?.nombreCompleto || aprobadoPorNombre || aprobadoPorId;
+      await this.actuacionesRepository.save({
+        processId: id,
+        tipo: 'cambio_etapa',
+        etapa: etapaAnterior,
+        descripcion: `Auto aprobado ${motivo || 'mediante auto de apertura'}, pero el proceso ya se encontraba en ${etapaAnterior} — no se modificó la etapa.`,
+        responsableNombre: nombreAprobadorOmitido,
+        fechaActuacion: fechaAprobacion,
+        observaciones: `Etapa destino solicitada: ${nuevaEtapa} (ignorada, no representa un avance)`,
+      });
+
+      return { proceso, tiempoAcumuladoDias: null };
+    }
 
     let tiempoAcumuladoDias: number | null = null;
     const fechaInicioReferencia =
@@ -1125,6 +1167,52 @@ export class ProcessService {
     });
 
     return { proceso: procesoGuardado, tiempoAcumuladoDias };
+  }
+
+  /**
+   * EFDS-1564: devuelve el proceso a una etapa anterior porque se reversó la
+   * aprobación del auto que lo había hecho avanzar. No valida el orden de la
+   * transición (es un retroceso intencional).
+   */
+  async revertirEtapaProceso(
+    id: string,
+    etapaPrevia: string,
+    revertidoPorId: string,
+  ): Promise<DisciplinaryProcess> {
+    const proceso = await this.findById(id, false);
+
+    if (proceso.etapaActual === etapaPrevia) {
+      return proceso;
+    }
+
+    const etapaAnterior = proceso.etapaActual;
+    const stageConfig = await this.stageConfigurationRepository.findOne({
+      where: { etapa: etapaPrevia, activo: true },
+    });
+
+    const { fechaVencimiento } =
+      await this.terminosService.calculateVencimientoEtapa(etapaPrevia);
+
+    proceso.etapaActual = etapaPrevia;
+    proceso.fechaInicioEtapa = new Date();
+    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (stageConfig) {
+      proceso.kanbanStage = stageConfig.id;
+    }
+
+    const procesoGuardado = await this.processRepository.save(proceso);
+
+    await this.actuacionesRepository.save({
+      processId: id,
+      tipo: 'cambio_etapa',
+      etapa: etapaPrevia,
+      descripcion: `El proceso regresó de la etapa ${etapaAnterior} a ${etapaPrevia} por la reversión de la aprobación de un auto.`,
+      responsableNombre: revertidoPorId,
+      fechaActuacion: new Date(),
+      observaciones: `Etapa anterior: ${etapaAnterior} | Etapa restaurada: ${etapaPrevia}`,
+    });
+
+    return procesoGuardado;
   }
 
   /**

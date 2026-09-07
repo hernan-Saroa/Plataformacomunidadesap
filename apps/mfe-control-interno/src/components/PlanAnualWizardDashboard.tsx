@@ -4278,6 +4278,34 @@ function Paso2({
     setModalPuntosControlAbierto(true);
   };
 
+  const remapearTareasACortes = (
+    tareas: TareaSeguimiento[] = [],
+    puntosViejos: PuntoControl[] = [],
+    puntosNuevos: PuntoControl[] = []
+  ): TareaSeguimiento[] => {
+    if (!puntosNuevos || puntosNuevos.length === 0) return tareas;
+
+    return (tareas || []).map((tarea, tIdx) => {
+      // 1. Si la tarea ya tiene un puntoControlId válido en los nuevos puntos, conservarlo
+      if (tarea.puntoControlId && puntosNuevos.some((p) => p.id === tarea.puntoControlId)) {
+        return tarea;
+      }
+
+      // 2. Si tenía un puntoControlId en los puntos anteriores, buscar su índice de corte (ej: Corte 1 -> index 0)
+      const oldIdx = puntosViejos.findIndex((p) => p.id === tarea.puntoControlId);
+      if (oldIdx !== -1) {
+        if (puntosNuevos[oldIdx]) {
+          return { ...tarea, puntoControlId: puntosNuevos[oldIdx].id };
+        }
+        return { ...tarea, puntoControlId: puntosNuevos[puntosNuevos.length - 1].id };
+      }
+
+      // 3. Fallback: asignar según el índice de la tarea distribuido entre los cortes
+      const fallbackPunto = puntosNuevos[tIdx % puntosNuevos.length];
+      return { ...tarea, puntoControlId: fallbackPunto.id };
+    });
+  };
+
   const guardarPuntosControl = (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl, fechaCorteModal: string) => {
     if (!actividadConfigurando) return;
 
@@ -4291,11 +4319,17 @@ function Paso2({
             ...rol,
             actividadesCustom: rol.actividadesCustom.map((act, i) => {
               if (i === indexCustom) {
+                const tareasActualizadas = remapearTareasACortes(
+                  act.tareasSeguimiento || [],
+                  act.puntosControl || [],
+                  puntos
+                );
                 return {
                   ...act,
                   puntosControl: puntos,
                   frecuenciaPuntosControl: frecuencia,
-                  fechaCorte: fechaCorteModal
+                  fechaCorte: fechaCorteModal,
+                  tareasSeguimiento: tareasActualizadas
                 };
               }
               return act;
@@ -4307,11 +4341,17 @@ function Paso2({
             ...rol,
             actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
               if (act.nombre === nombreActividad) {
+                const tareasActualizadas = remapearTareasACortes(
+                  act.tareasSeguimiento || [],
+                  act.puntosControl || [],
+                  puntos
+                );
                 return {
                   ...act,
                   puntosControl: puntos,
                   frecuenciaPuntosControl: frecuencia,
-                  fechaCorte: fechaCorteModal
+                  fechaCorte: fechaCorteModal,
+                  tareasSeguimiento: tareasActualizadas
                 };
               }
               return act;
@@ -4942,7 +4982,15 @@ function Paso2({
                                                 </div>
                                                 {/* S& Tareas de seguimiento DENTRO del corte  ANCHO COMPLETO */}
                                                 {(() => {
-                                                  const tareasDelCorte = (actividadData?.tareasSeguimiento || []).filter(t => t.puntoControlId === pc.id);
+                                                  const tareasDelCorte = (actividadData?.tareasSeguimiento || []).filter((t, tIdx) => {
+                                                    if (t.puntoControlId === pc.id) return true;
+                                                    const existeEnPuntos = (actividadData?.puntosControl || []).some(p => p.id === t.puntoControlId);
+                                                    if (!existeEnPuntos) {
+                                                      const numCortes = actividadData?.puntosControl?.length || 1;
+                                                      return pcIdx === (tIdx % numCortes);
+                                                    }
+                                                    return false;
+                                                  });
                                                   return (
                                                     <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
                                                       <div className="flex items-center justify-between mb-2">
@@ -5490,7 +5538,15 @@ function Paso2({
 
                                                 {/* S& Tareas de seguimiento DENTRO del corte (custom)  ANCHO COMPLETO */}
                                                 {(() => {
-                                                  const tareasDelCorte = (actividad.tareasSeguimiento || []).filter(t => t.puntoControlId === pc.id);
+                                                  const tareasDelCorte = (actividad.tareasSeguimiento || []).filter((t, tIdx) => {
+                                                    if (t.puntoControlId === pc.id) return true;
+                                                    const existeEnPuntos = (actividad.puntosControl || []).some(p => p.id === t.puntoControlId);
+                                                    if (!existeEnPuntos) {
+                                                      const numCortes = actividad.puntosControl?.length || 1;
+                                                      return pcIdx === (tIdx % numCortes);
+                                                    }
+                                                    return false;
+                                                  });
                                                   return (
                                                     <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2 shadow-sm">
                                                       <div className="flex items-center justify-between mb-2">

@@ -1299,7 +1299,9 @@ export function GestionNoticias() {
         disciplinable: disciplinablesArray,
         disciplinables: disciplinablesArray,
         conducta: data.conducta || data.conductaSeleccionada,
-        conductas: data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
+        conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+          ? data.conductas
+          : (data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : [])),
         fechaHechos: data.fechaHechos || null,
         fechaQueja: data.fechaQueja,
         // ✅ Documentos adjuntos

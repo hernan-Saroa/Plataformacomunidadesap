@@ -14,6 +14,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/auth\/api\/v\d+\/reset-password/i,
     /^\/auth\/api\/v\d+\/verify-reset-code/i,
     /^\/auth\/api\/v\d+\/login-settings/i,
+    // Geopolítica: catálogo público de departamentos/municipios de Colombia
+    // (auth.geopolitica). No requiere JWT; cualquier frontend lo consulta y solo
+    // se usa el catálogo estático del frontend si la API está caída.
+    /^\/auth\/api\/v\d+\/estructura-organizacional\/geopolitica\/.+/i,
     /^\/certificados\/api\/v\d+\/validate/i,
     /^\/certificates\/api\/v\d+\/validate/i,
     // Autoservicio certificados laborales (públicos)
@@ -35,6 +39,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/empresa/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-revision-con-soporte/i,
+    // Catálogo dinámico usado por el selector público de títulos faltantes.
+    /^\/registro-academico\/api\/v\d+\/graduate-programs\/options\/?$/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/qr/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/numero/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/estadisticas/i,

@@ -97,6 +97,15 @@ export class LaborFunctionsController {
     return await this.laborFunctionsService.remove(id);
   }
 
+  @Post('bulk/delete')
+  async removeMany(
+    @Body() body: { ids?: unknown },
+    @Req() req: any,
+  ) {
+    await this.assertCanManage(req);
+    return await this.laborFunctionsService.removeMany(body?.ids);
+  }
+
   @Post('bulk/import')
   async bulk(
     @Body()

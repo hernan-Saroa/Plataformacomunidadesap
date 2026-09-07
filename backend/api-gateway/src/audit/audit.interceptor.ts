@@ -10,6 +10,7 @@ import { tap, catchError } from 'rxjs/operators';
 import { Request, Response } from 'express';
 import { AuditClientService } from './audit-client.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
+import { isRundAuditUrl, redactRundAuditUrl } from './rund-audit-redaction';
 import { getServiceFromUrl, getModuleFromService, getSubmoduleFromUrl, Microservice } from './microservice.enum';
 
 @Injectable()
@@ -24,9 +25,11 @@ export class AuditInterceptor implements NestInterceptor {
     const startTime = Date.now();
 
     const method = request.method;
-    const url = request.originalUrl || request.url;
-    const path = request.path;
-    const queryParams = request.query;
+    const rawUrl = request.originalUrl || request.url;
+    const rund = isRundAuditUrl(rawUrl);
+    const url = redactRundAuditUrl(rawUrl);
+    const path = redactRundAuditUrl(request.path);
+    const queryParams = rund ? {} : request.query;
 
     const shouldAudit = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
     if (!shouldAudit) {
@@ -43,7 +46,7 @@ export class AuditInterceptor implements NestInterceptor {
     const userInfo = this.extractUserInfo(request);
 
     // Capturar body de la petición (solo si es pequeño)
-    const requestBody = this.shouldLogBody(request)
+    const requestBody = !rund && this.shouldLogBody(request)
       ? this.sanitizeBody(request.body)
       : null;
     const requestBodySize = requestBody
@@ -58,7 +61,7 @@ export class AuditInterceptor implements NestInterceptor {
 
         // Leer cuerpo de respuesta desde res.locals (guardado por gateway.service)
         const localsBody = (response as any).locals?.auditResponseBody ?? null;
-        const responseBody = this.shouldLogResponse(localsBody)
+        const responseBody = !rund && this.shouldLogResponse(localsBody)
           ? this.sanitizeBody(localsBody)
           : null;
         const responseBodySize = responseBody
@@ -90,7 +93,7 @@ export class AuditInterceptor implements NestInterceptor {
           ipAddress: clientIp,
           userAgent: request.headers['user-agent'],
           origin: request.headers.origin,
-          referer: request.headers.referer,
+          referer: redactRundAuditUrl(request.headers.referer || ''),
           userId: userInfo.userId,
           userEmail: userInfo.userEmail,
           userRole: userInfo.userRole,
@@ -130,7 +133,7 @@ export class AuditInterceptor implements NestInterceptor {
           ipAddress: clientIp,
           userAgent: request.headers['user-agent'],
           origin: request.headers.origin,
-          referer: request.headers.referer,
+          referer: redactRundAuditUrl(request.headers.referer || ''),
           userId: userInfo.userId,
           userEmail: userInfo.userEmail,
           userRole: userInfo.userRole,
@@ -139,8 +142,8 @@ export class AuditInterceptor implements NestInterceptor {
           requestBody,
           requestBodySize,
           newData: ['POST', 'PUT', 'PATCH'].includes(method) ? requestBody : undefined,
-          errorMessage: this.normalizeAuditMessage(error.message),
-          errorStack: error.stack,
+          errorMessage: rund ? `Error HTTP ${statusCode}` : this.normalizeAuditMessage(error.message),
+          errorStack: rund ? undefined : error.stack,
         };
 
         this.auditClientService.logRequest(logData).catch((err) => {

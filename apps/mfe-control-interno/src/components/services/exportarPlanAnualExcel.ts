@@ -66,7 +66,7 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
 
     // Fila 2
     worksheet.mergeCells('C2:J2');
-    worksheet.getCell('C2').value = 'Oficina de Control Interno de Gestión - OCI';
+    worksheet.getCell('C2').value = 'Oficina de Control Interno';
     worksheet.getCell('C2').font = { size: 10, name: 'Arial' };
     worksheet.getCell('C2').alignment = { horizontal: 'center', vertical: 'middle' };
 

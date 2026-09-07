@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
@@ -31,6 +31,21 @@ export interface EmailClassification {
     moduloSugerido: string;
     urgente: boolean;
     confianza: number;
+}
+
+/** Resultado de copiar los adjuntos de una comunicación a un proceso destino. */
+export interface CopiaAdjuntosResult {
+    copiados: number;
+    total: number;
+}
+
+/** Resultado de derivar una comunicación a un proceso recién creado. */
+export interface DerivarNuevoProcesoResult {
+    correo: CorreoJuridico;
+    /** true si la comunicación quedó efectivamente vinculada al proceso (siempre true si no se lanzó excepción). */
+    vinculado: boolean;
+    documentosCopiados: number;
+    documentosTotal: number;
 }
 
 export interface SendEmailDto {
@@ -1441,6 +1456,9 @@ export class CorreosJuridicosService {
 
         correo.categoria = newCategory;
         correo.isTrained = true;
+        // moduloSugerido debe quedar sincronizado con la categoría corregida — si no,
+        // "Clasificación IA" seguiría mostrando el módulo sugerido viejo (antes de la corrección).
+        correo.moduloSugerido = this.smartService.resolveModuleForCategory(newCategory, correo.asunto, correo.cuerpoTexto || '');
 
         // Also update 'tipo' if necessary mapping is clear
         if (newCategory === 'JUDICIAL') correo.tipo = 'JUDICIAL';
@@ -1476,18 +1494,19 @@ export class CorreosJuridicosService {
      * Copia los adjuntos de una comunicación a la pestaña Documentos del proceso destino.
      * Asesoría Jurídica → tabla `documentos_consulta`; Defensa/Juzgamiento → tabla `documentos`.
      * Reutiliza {@link downloadAttachment} para obtener los bytes (local o Graph con caché).
-     * Devuelve la cantidad de adjuntos copiados. No lanza: los errores por adjunto se registran.
+     * No lanza: los errores por adjunto se registran y se reflejan en el conteo devuelto,
+     * para que el llamador pueda informar al usuario si la copia fue parcial.
      */
     private async copiarAdjuntosADocumentos(
         correo: CorreoJuridico,
         procesoId: string,
         modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO' | 'ASESORIA_JURIDICA',
-    ): Promise<number> {
+    ): Promise<CopiaAdjuntosResult> {
         const fs = require('fs');
         const path = require('path');
 
         const adjuntos = await this.adjuntoRepo.find({ where: { correoId: correo.id } });
-        if (!adjuntos.length) return 0;
+        if (!adjuntos.length) return { copiados: 0, total: 0 };
 
         const uploadsDir = path.join(process.cwd(), 'uploads');
         if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -1532,10 +1551,10 @@ export class CorreosJuridicosService {
                 }
                 copiados++;
             } catch (err) {
-                this.logger.warn(`No se pudo copiar el adjunto ${adj.id} al proceso ${procesoId}: ${err}`);
+                this.logger.warn(`No se pudo copiar el adjunto ${adj.id} (${adj.nombre}) al proceso ${procesoId}: ${err}`);
             }
         }
-        return copiados;
+        return { copiados, total: adjuntos.length };
     }
 
     /**
@@ -1557,7 +1576,10 @@ export class CorreosJuridicosService {
             const savedCorreo = await this.correoRepo.save(correo);
             await this.registrarAccion(correo.id, 'ASOCIADO_PROCESO', `Asociado a consulta de Asesoría Jurídica: ${procesoId}`);
             // Sin concepto de "Actuación" en Asesoría: adjuntamos los documentos a la consulta
-            await this.copiarAdjuntosADocumentos(correo, procesoId, modulo).catch(() => 0);
+            await this.copiarAdjuntosADocumentos(correo, procesoId, modulo).catch((error) => {
+                this.logger.error(`Error copiando adjuntos a la consulta ${procesoId}:`, error);
+                return { copiados: 0, total: 0 };
+            });
             return savedCorreo;
         }
 
@@ -1611,33 +1633,62 @@ export class CorreosJuridicosService {
      * Comunicaciones → Clasificación IA. Además de asociar (módulo destino + relación
      * recíproca), registra la comunicación de origen en el proceso/consulta creado
      * (origen_comunicacion_id) y copia los adjuntos recibidos a su pestaña Documentos.
+     *
+     * El vínculo comunicación → proceso (paso 1) es la operación crítica: se guarda
+     * primero y de forma aislada para que un fallo en los pasos complementarios
+     * (trazabilidad inversa del proceso, copia de adjuntos) nunca deje la comunicación
+     * sin vincular ni oculte al usuario un proceso ya creado pero huérfano.
      */
-    async derivarANuevoProceso(id: string, procesoId: string, targetModule?: string): Promise<CorreoJuridico> {
+    async derivarANuevoProceso(id: string, procesoId: string, targetModule?: string): Promise<DerivarNuevoProcesoResult> {
+        if (!procesoId) throw new BadRequestException('Debe indicar el proceso destino (procesoId)');
+
         const correo = await this.correoRepo.findOne({ where: { id } });
         if (!correo) throw new NotFoundException('Correo no encontrado');
 
         const modulo = this.normalizarModuloDestino(targetModule);
         correo.moduloDestino = modulo;
-
         if (modulo === 'ASESORIA_JURIDICA') {
             correo.consultaId = procesoId;
-            await this.consultaRepo.update({ id: procesoId }, { origenComunicacionId: correo.id });
         } else {
             correo.expedienteId = procesoId;
-            await this.expedienteRepo.update({ id: procesoId }, { origenComunicacionId: correo.id });
         }
+
+        // 1) Vincular: guardar el lado de la comunicación primero. Si esto falla,
+        // sí queremos propagar el error (no hay vínculo que reportar como exitoso).
         const savedCorreo = await this.correoRepo.save(correo);
 
-        // Copiar los documentos recibidos a la pestaña Documentos del proceso creado
-        const copiados = await this.copiarAdjuntosADocumentos(correo, procesoId, modulo).catch(() => 0);
+        // 2) Trazabilidad inversa (proceso → comunicación de origen). Es complementaria
+        // y no debe deshacer ni ocultar el vínculo ya guardado en el paso 1 si falla
+        // (p. ej. por una migración de BD pendiente en el ambiente).
+        try {
+            if (modulo === 'ASESORIA_JURIDICA') {
+                await this.consultaRepo.update({ id: procesoId }, { origenComunicacionId: correo.id });
+            } else {
+                await this.expedienteRepo.update({ id: procesoId }, { origenComunicacionId: correo.id });
+            }
+        } catch (error) {
+            this.logger.error(`No se pudo registrar la trazabilidad inversa (origen_comunicacion_id) en el proceso ${procesoId}:`, error);
+        }
+
+        // 3) Copiar los documentos recibidos a la pestaña Documentos del proceso creado.
+        const { copiados, total } = await this.copiarAdjuntosADocumentos(correo, procesoId, modulo).catch((error) => {
+            this.logger.error(`Error copiando adjuntos al proceso ${procesoId}:`, error);
+            return { copiados: 0, total: 0 };
+        });
+
+        const detalleDocs = total === 0
+            ? ''
+            : copiados === total
+                ? ` — ${copiados} documento(s) adjuntado(s)`
+                : ` — ${copiados}/${total} documento(s) adjuntado(s) (${total - copiados} no se pudo(ieron) copiar, revisar manualmente)`;
 
         await this.registrarAccion(
             correo.id,
             'PROCESO_CREADO',
-            `Proceso creado a partir de esta comunicación (${modulo})${copiados ? ` — ${copiados} documento(s) adjuntado(s)` : ''}`,
+            `Proceso creado a partir de esta comunicación (${modulo})${detalleDocs}`,
         );
 
-        return savedCorreo;
+        return { correo: savedCorreo, vinculado: true, documentosCopiados: copiados, documentosTotal: total };
     }
 
     /**

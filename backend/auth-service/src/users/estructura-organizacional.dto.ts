@@ -127,6 +127,137 @@ export class UpdateSedeDto {
 
 // ==================== ASIGNACIÓN DE USUARIOS DTOs ====================
 
+// ==================== DEPENDENCIA DTOs (transversal) ====================
+
+/**
+ * DTO para crear una dependencia en la tabla maestra
+ * `auth.dependencias`. Los campos base (codDependencia, nomDependencia)
+ * son obligatorios; el resto son opcionales.
+ *
+ * Esta API es transversal: la consumen el módulo de viáticos (cupo
+ * presupuestal de tiquetes), el de estructura organizacional, control
+ * interno, etc.
+ */
+export class CreateDependenciaDto {
+  @IsString()
+  @MaxLength(20, { message: 'El código de dependencia no puede exceder 20 caracteres' })
+  codDependencia: string;
+
+  @IsString()
+  @MaxLength(250, { message: 'El nombre de dependencia no puede exceder 250 caracteres' })
+  nomDependencia: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  dirDependencia?: string;
+
+  @IsOptional()
+  @IsEmail({}, { message: 'El email institucional no es válido' })
+  @MaxLength(250)
+  dirEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  urlDependencia?: string;
+
+  @IsOptional()
+  @IsNumber()
+  idGeopolitica?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idSede?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idCargo?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idTercero?: number;
+
+  @IsOptional()
+  @IsNumber()
+  tipUnidad?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(6)
+  genTipUnidad?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  descripcion?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
+export class UpdateDependenciaDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  codDependencia?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  nomDependencia?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  dirDependencia?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(250)
+  dirEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  urlDependencia?: string;
+
+  @IsOptional()
+  @IsNumber()
+  idGeopolitica?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idSede?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idCargo?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idTercero?: number;
+
+  @IsOptional()
+  @IsNumber()
+  tipUnidad?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(6)
+  genTipUnidad?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  descripcion?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
 export class AsignarUsuariosDto {
   @IsArray()
   @IsNotEmpty({ each: true })

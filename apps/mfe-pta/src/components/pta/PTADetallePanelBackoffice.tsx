@@ -32,13 +32,15 @@ import {
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow, getBancoDocenteById } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
+import { ReportePTAInstitucional } from '../portal/pta/ReportePTAInstitucional';
 import { PTA_COLORS } from './shared/ptaColors';
+import { getPtaComponentDisplayStatus, getPtaApprovalDisplayStatus, getPtaApprovalGroupStatus } from './shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import { resolvePtaFileUrl } from './shared/ptaFiles';
@@ -76,7 +78,7 @@ interface PTADetallePanelProps {
   onAprobar: () => void;
   onDevolver: () => void;
   onConcertar: () => void;
-  onVerReporte: () => void;
+  onVerInformacion: () => void;
   onUpdated?: (updatedPta: any) => void; // Notifica al padre cuando el PTA cambia
   puedeAprobar: boolean;
   nivelAprobacion: number;
@@ -85,6 +87,7 @@ interface PTADetallePanelProps {
   isSuperUser?: boolean;
   actorId?: string;
   actorNombre?: string;
+  periodoAcademico?: any;
 }
 
 type EvidencePreviewFile = {
@@ -361,7 +364,8 @@ function getMimeTypeForExtension(extension: string): string {
 
 // ═══ SUB-COMPONENTS ═══════════════════════════════════════════════════
 
-function ApprovalTracker({
+export function ApprovalTracker({
+  pta,
   estado,
   componentesAprobacion = [],
   isMobile = false,
@@ -370,6 +374,7 @@ function ApprovalTracker({
   componentesRevision = [],
   componentesEstado = [],
 }: {
+  pta?: any;
   estado: string;
   componentesAprobacion?: any[];
   isMobile?: boolean;
@@ -384,6 +389,9 @@ function ApprovalTracker({
   const getStatusForComponent = (compKeys: string[], collapsedKey?: string) => {
     const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
     if (scopedKeys.length === 0) return 'hidden';
+    const source = { ...pta, estado, componentes_estado: componentesEstado };
+    const collapsedStatus = getPtaComponentDisplayStatus(source, collapsedKey || '');
+    if (collapsedStatus === 'no_aplica') return 'no_aplica';
 
     if (modoRevision) {
       const revisiones = componentesRevision.filter(r => scopedKeys.includes(r.componente));
@@ -404,30 +412,14 @@ function ApprovalTracker({
     // "Aprobado" en otras, por la fila territorial que queda sin horas.
     // Con recorte activo se sigue agregando a mano, porque el colapsado del backend
     // no distingue qué sub-componentes le corresponden a este usuario.
-    const estadoBackend = !visibleSet && collapsedKey && Array.isArray(componentesEstado)
+    const estadoBackend = scopedKeys.length === compKeys.length && collapsedKey && Array.isArray(componentesEstado)
       ? componentesEstado.find((c: any) => c?.key === collapsedKey)?.estado
       : undefined;
     if (estadoBackend) {
-      if (estadoBackend === 'devuelto') return 'devuelto';
-      if (estadoBackend === 'aprobado') {
-        // Se conserva el matiz de "No aplica": si todo lo que hay fue auto-aprobado
-        // por el Sistema (componente vacío), no es un aval de nadie.
-        const todoAuto = approvals.length > 0 && approvals.every(a => a.aprobadorNombre === 'Sistema');
-        return todoAuto ? 'no_aplica' : 'aprobado';
-      }
-      return 'pendiente';
+      return collapsedStatus;
     }
 
-    if (approvals.length === 0) return 'pendiente';
-    if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
-    if (approvals.every(a => a.estado === 'aprobado')) {
-      // Un componente SIN actividades lo auto-aprueba el backend con
-      // aprobadorNombre='Sistema'. Mostrarlo como "Aprobado" en verde da a
-      // entender que alguien lo avaló; debe verse en gris como "No aplica".
-      const todoAutoAprobado = approvals.every(a => a.aprobadorNombre === 'Sistema');
-      return todoAutoAprobado ? 'no_aplica' : 'aprobado';
-    }
-    return 'pendiente';
+    return getPtaApprovalGroupStatus(source, approvals);
   };
 
   const steps = [
@@ -524,7 +516,7 @@ function ApprovalTracker({
           bg = '#FFFBEB';
           borderColor = '#FEF3C7';
           statusColor = '#B45309';
-          statusLabel = 'Pendiente';
+          statusLabel = step.status === 'no_iniciado' ? 'No iniciado' : step.status === 'en_revision' ? 'En revisión' : 'Pendiente';
           iconBg = '#FEF3C7';
           iconColor = '#D97706';
         }
@@ -723,13 +715,17 @@ function normalizePTAData(d: any, fallbackPta: any = {}) {
 // ═══ MAIN COMPONENT ═══════════════════════════════════════════════════
 
 export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADetallePanelProps>(({
-  pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
+  pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerInformacion, onUpdated,
   puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId, actorNombre,
+  periodoAcademico,
 }, ref) => {
   const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'concertacion' | 'evidencias' | 'trazabilidad'>('resumen');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   const [aprobacionesJefatura, setAprobacionesJefatura] = useState<any[]>([]);
   const [pta, setPta] = useState<any>(initialPta);
+  const [showReporteInstitucional, setShowReporteInstitucional] = useState(false);
+  const [loadingReporteInstitucional, setLoadingReporteInstitucional] = useState(false);
+  const [reporteDocentePerfil, setReporteDocentePerfil] = useState<any>(null);
   const [loadingExtras, setLoadingExtras] = useState(false);
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loadingEvidencias, setLoadingEvidencias] = useState(false);
@@ -879,6 +875,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  useEffect(() => {
+    setReporteDocentePerfil(null);
+    setShowReporteInstitucional(false);
+  }, [initialPta?.id]);
 
   // Cargar evidencias al activar el tab
   useEffect(() => {
@@ -1821,6 +1822,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
     const estado = approval.estado || 'pendiente';
+    const estadoVisual = getPtaApprovalDisplayStatus(pta, { ...approval, componente: key });
+    const noAplica = estadoVisual === 'no_aplica';
     const isAutoAprobado = estado === 'aprobado' && approval.aprobadorNombre === 'Sistema';
     const isEditing = estado !== 'aprobado' || !!evaluandoComponente[key];
     const isProcessing = !!procesandoAprobacionComponente[key];
@@ -1923,6 +1926,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         badgeText = 'Pendiente (Lectura)';
         badgeIcon = Clock;
       }
+    }
+
+    // Solo presentación: permisos y acciones siguen usando la decisión persistida.
+    if (noAplica) {
+      cardBg = 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)';
+      cardBorder = '1px solid #E2E8F0';
+      badgeBg = '#F1F5F9';
+      badgeColor = '#64748B';
+      badgeBorder = '1px solid #CBD5E1';
+      badgeText = 'No aplica';
+      badgeIcon = Info;
+      dotColor = '#94A3B8';
+      dotPulse = false;
     }
 
     const BadgeIcon = badgeIcon;
@@ -2186,18 +2202,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         {/* Detalle de Aprobación Guardada */}
         {!isEditing && (
           <div style={{
-            background: isAutoAprobado ? 'rgba(241, 245, 249, 0.6)' : 'rgba(240, 253, 244, 0.4)',
+            background: noAplica ? 'rgba(241, 245, 249, 0.6)' : 'rgba(240, 253, 244, 0.4)',
             borderRadius: 10,
             padding: '12px 14px',
             fontSize: '0.74rem',
-            color: isAutoAprobado ? '#475569' : '#15803D',
-            border: isAutoAprobado ? '1px dashed #CBD5E1' : '1px dashed #A7F3D0',
+            color: noAplica ? '#475569' : '#15803D',
+            border: noAplica ? '1px dashed #CBD5E1' : '1px dashed #A7F3D0',
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
             marginLeft: 6
           }}>
-            {isAutoAprobado ? (
+            {noAplica ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#64748B', fontStyle: 'italic' }}>
                 <CheckCircle style={{ width: 13, height: 13, color: '#94A3B8', flexShrink: 0 }} />
                 Sin actividades registradas — no requiere aprobación
@@ -3164,6 +3180,112 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     );
   };
 
+  const abrirReporteInstitucional = async () => {
+    if (loadingReporteInstitucional) return;
+
+    setLoadingReporteInstitucional(true);
+    try {
+      if (!reporteDocentePerfil) {
+        const docenteId = pta?.docente_id || pta?.docenteId || pta?.persona_id || pta?.personaId || pta?.usuario_id;
+        const periodoCodigo = typeof pta?.periodo === 'string'
+          ? pta.periodo
+          : (pta?.periodo?.codigo || periodoAcademico?.codigo);
+
+        if (docenteId) {
+          const perfilRes = await getBancoDocenteById(String(docenteId), periodoCodigo || undefined);
+          if (perfilRes.success && perfilRes.data) setReporteDocentePerfil(perfilRes.data);
+        }
+      }
+    } catch (error) {
+      // El reporte conserva fallbacks con los datos persistidos en el PTA. Un fallo
+      // no crítico del Banco/RUND no debe impedir que el administrador lo consulte.
+      console.warn('[PTA] No se pudo enriquecer el reporte con la ficha RUND:', error);
+    } finally {
+      setLoadingReporteInstitucional(false);
+      setShowReporteInstitucional(true);
+    }
+  };
+
+  const reporteUserPerfil = {
+    ...(pta?.docente && typeof pta.docente === 'object' ? pta.docente : {}),
+    ...(reporteDocentePerfil || {}),
+    nombre_completo: reporteDocentePerfil?.nombre_completo
+      || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre,
+    documento_identidad: reporteDocentePerfil?.documento_identidad
+      || pta?.documento_identidad || pta?.docente_identificacion || pta?.docente_documento || pta?.cedula,
+    correo_institucional: reporteDocentePerfil?.correo_institucional
+      || pta?.correo_institucional || pta?.docente_email,
+    categoria: reporteDocentePerfil?.categoria || pta?.categoria_escalafon || pta?.categoria,
+    territorial: reporteDocentePerfil?.territorial || pta?.territorial,
+    vinculacion: reporteDocentePerfil?.vinculacion || pta?.tipo_vinculacion,
+    dedicacion: reporteDocentePerfil?.dedicacion || pta?.dedicacion,
+    nucleo_tematico: reporteDocentePerfil?.nucleo_tematico || pta?.nucleo_tematico,
+  };
+
+  // normalizePTAData conserva `acad_admin` en la forma legacy usada por el visor
+  // de Información. El reporte institucional consume el arreglo plano del portal.
+  const ptaReporteInstitucional = {
+    ...pta,
+    acad_admin: Array.isArray(pta?.acad_admin)
+      ? pta.acad_admin
+      : (pta?.acad_admin?.actividades || pta?.academico_admin || []),
+  };
+
+  const renderBotonInformacion = (mobile = false) => (
+    <button
+      type="button"
+      onClick={onVerInformacion}
+      style={{
+        ...(mobile ? { flex: 1, padding: '10px 14px', borderRadius: 10 } : { padding: '7px 14px', borderRadius: 8 }),
+        border: '1px solid #BFDBFE', background: '#EFF6FF',
+        color: '#1E40AF', fontWeight: 600, fontSize: mobile ? '0.8rem' : '0.78rem',
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+      }}
+    >
+      <Info style={{ width: 13, height: 13 }} /> Información
+    </button>
+  );
+
+  const renderBotonReporteInstitucional = (mobile = false) => (
+    <button
+      type="button"
+      onClick={abrirReporteInstitucional}
+      disabled={loadingReporteInstitucional}
+      style={{
+        ...(mobile ? { flex: 1, padding: '10px 14px', borderRadius: 10 } : { padding: '7px 14px', borderRadius: 8 }),
+        border: '1px solid #BFDBFE', background: '#EFF6FF',
+        color: '#1E40AF', fontWeight: 600, fontSize: mobile ? '0.8rem' : '0.78rem',
+        cursor: loadingReporteInstitucional ? 'wait' : 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        opacity: loadingReporteInstitucional ? 0.7 : 1,
+      }}
+    >
+      {loadingReporteInstitucional
+        ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
+        : <FileText style={{ width: 13, height: 13 }} />}
+      Reporte
+    </button>
+  );
+
+  // Al abrir el reporte se reemplaza temporalmente el slide-out. Así el mismo
+  // overlay compartido con el portal docente mantiene su comportamiento y estilos.
+  if (showReporteInstitucional) {
+    return createPortal(
+      <ReportePTAInstitucional
+        pta={ptaReporteInstitucional}
+        userPerfil={reporteUserPerfil}
+        onClose={() => setShowReporteInstitucional(false)}
+        isParcial={!['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado)}
+        certificadoId={pta?.certificado_qr}
+        signedAt={pta?.signed_at || pta?.updated_at}
+        periodoAcademico={periodoAcademico}
+        componentesAprobacion={componentesAprobacion}
+        aprobacionTerritorial={aprobacionTerritorial}
+      />,
+      document.body,
+    );
+  }
+
   return (
     <motion.div
       ref={ref}
@@ -3289,6 +3411,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Approval Tracker */}
           <div style={{ marginTop: 4 }}>
             <ApprovalTracker
+              pta={pta}
               estado={pta.estado}
               componentesAprobacion={componentesAprobacion}
               isMobile={isMobile}
@@ -3642,25 +3765,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
                 {/* Progress Stats & Count Badges */}
                 {(() => {
-                  // Componentes fijos (Docencia, Investigación, Complementarias, AADM) = 4
-                  // + sub-componentes de extensión que tengan horas > 0
-                  const extSubKeyMap: Record<string, string> = {
-                    capacitacion: 'ext_capacitacion',
-                    seleccion: 'ext_procesos',
-                    fortalecimiento: 'ext_fortalecimiento',
-                    alto_gobierno: 'ext_gobierno',
-                    otras: 'ext_secciones',
-                  };
-                  const extSubKeys = Object.keys(extSubKeyMap);
-                  const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
-                  const visibleComponenteKeys = new Set([
-                    ...docenciaCards.map(c => c.key),
-                    'investigacion', 'complementarias',
-                    ...extConHoras.map(k => extSubKeyMap[k]),
-                  ].filter(key => shouldShowComponentKey(key)));
-                  const total = visibleComponenteKeys.size;
-                  const aprobados = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
-                  const devueltos = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
+                  const visibleComponenteKeys = new Set(PTA_COMPONENT_PROGRESS_ORDER.filter(key => shouldShowComponentKey(key)));
+                  const estadosAplicables = [...visibleComponenteKeys]
+                    .map(key => getPtaApprovalDisplayStatus(pta, componentesAprobacionVisibles.find(c => c.componente === key) || { componente: key }))
+                    .filter(estado => estado !== 'no_aplica');
+                  const total = estadosAplicables.length;
+                  const aprobados = estadosAplicables.filter(estado => estado === 'aprobado').length;
+                  const devueltos = estadosAplicables.filter(estado => estado === 'devuelto').length;
                   const pendientes = total - aprobados - devueltos;
                   const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
                   return (
@@ -3706,15 +3817,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                           .filter(k => visibleComponenteKeys.has(k))
                           .map(k => {
                             const fila = componentesAprobacionVisibles.find(c => c.componente === k);
-                            const estadoComp = String(fila?.estado || 'pendiente');
-                            const auto = estadoComp === 'aprobado' && fila?.aprobadorNombre === 'Sistema';
+                            const estadoComp = getPtaApprovalDisplayStatus(pta, fila || { componente: k });
+                            const auto = estadoComp === 'no_aplica';
                             const visual = auto
                               ? { label: 'No aplica', color: '#9CA3AF', bg: '#F9FAFB', borde: '#E5E7EB' }
                               : estadoComp === 'aprobado'
                                 ? { label: 'Aprobado', color: '#15803D', bg: '#F0FDF4', borde: '#BBF7D0' }
                                 : estadoComp === 'devuelto'
                                   ? { label: 'Devuelto', color: '#B91C1C', bg: '#FEF2F2', borde: '#FECACA' }
-                                  : { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FEF3C7' };
+                                  : { label: estadoComp === 'no_iniciado' ? 'No iniciado' : estadoComp === 'en_revision' ? 'En revisión' : 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FEF3C7' };
                             return (
                               <div key={k} style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -4325,6 +4436,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {renderBotonInformacion(true)}
+                {renderBotonReporteInstitucional(true)}
+              </div>
               {isPendiente && puedeAprobarNivelActual && (
                 <>
                   {yaAproboEstaJefatura ? (
@@ -4353,19 +4468,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     {procesandoAprobacion ? 'Procesando...' : getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0))}
                   </button>
                   ) : null}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={onVerReporte}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 10,
-                        border: '1px solid #BFDBFE', background: '#EFF6FF',
-                        color: '#1E40AF', fontWeight: 600, fontSize: '0.8rem',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      }}
-                    >
-                      <Eye style={{ width: 13, height: 13 }} /> R-01
-                    </button>
-                  </div>
                 </>
               )}
               {isConcertacion && (
@@ -4381,34 +4483,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   >
                     <MessageSquare style={{ width: 15, height: 15 }} /> Abrir Mesa de Concertación
                   </button>
-                  <button
-                    onClick={onVerReporte}
-                    style={{
-                      width: '100%', padding: '10px 14px', borderRadius: 10,
-                      border: '1px solid #BFDBFE', background: '#EFF6FF',
-                      color: '#1E40AF', fontWeight: 600, fontSize: '0.8rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                    }}
-                  >
-                    <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
-                  </button>
                 </>
               )}
               {!isPendiente && !isConcertacion && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={onVerReporte}
-                    style={{
-                      flex: 1, padding: '11px 14px', borderRadius: 10,
-                      border: '1px solid #BFDBFE', background: '#EFF6FF',
-                      color: '#1E40AF', fontWeight: 600, fontSize: '0.82rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                    }}
-                  >
-                    <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.72rem', color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center',
                   }}>
                     {pta.estado === 'Aprobado' ? '✓ PTA aprobado' :
@@ -4422,17 +4502,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             /* Desktop: fila space-between */
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={onVerReporte}
-                  style={{
-                    padding: '7px 14px', borderRadius: 8,
-                    border: '1px solid #BFDBFE', background: '#EFF6FF',
-                    color: '#1E40AF', fontWeight: 600, fontSize: '0.78rem',
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
-                </button>
+                {renderBotonInformacion()}
+                {renderBotonReporteInstitucional()}
               </div>
 
               {isPendiente && puedeAprobarNivelActual && (

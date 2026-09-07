@@ -16,14 +16,14 @@
  * ═══════════════════════════════════════════════════════════════
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import {
   X, FileText, User, AlertTriangle, ClipboardList, Calendar,
   MapPin, Building2, Paperclip, FileEdit, PlusCircle,
   CheckCircle, Phone, Mail, Briefcase,
-  Scale, Clock, FileWarning, Download, Eye, Users, Gavel, Loader2
+  Scale, Clock, FileWarning, Download, Eye, Users, Gavel, Loader2, History
 } from 'lucide-react';
 import { authService } from '../../../services/api/authService';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
@@ -108,6 +108,7 @@ export interface NoticiaCompleta {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: HechoSeparado[];
@@ -125,7 +126,26 @@ interface ModalDetallesNoticiaProps {
   onDownload?: (url: string, filename: string) => Promise<void>;
 }
 
-type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
+type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos' | 'actuaciones' | 'historial';
+
+interface ActuacionNoticia {
+  id: string;
+  tipo: string;
+  etapa?: string | null;
+  descripcion: string;
+  responsableNombre: string;
+  fechaActuacion: string;
+  observaciones?: string | null;
+  createdAt: string;
+}
+
+interface HistorialEntry {
+  id: string;
+  tipo: string;
+  usuario: string;
+  fecha: string;
+  observaciones?: string;
+}
 
 const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apoderado?.email || '';
 const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
@@ -187,6 +207,67 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     tipo: 'noticia'
   };
 
+  // ✅ Historial de auditoría — se trae aparte porque no viene en el objeto
+  // mapeado que usa el Kanban, solo en la respuesta completa del backend.
+  const [historial, setHistorial] = useState<HistorialEntry[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!n.id) return;
+    let cancelled = false;
+    setHistorialLoading(true);
+    setHistorialError(null);
+    disciplinaryService.getNoticiaById(n.id)
+      .then((data) => {
+        if (cancelled) return;
+        setHistorial(data?.historialAuditoria || []);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesNoticia] Error cargando historial:', error);
+        setHistorialError(error?.message || 'No fue posible cargar el historial');
+      })
+      .finally(() => {
+        if (!cancelled) setHistorialLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [n.id]);
+
+  // ✅ EFDS-1562 — Actuaciones registradas contra la noticia (desde radicación).
+  const [actuaciones, setActuaciones] = useState<ActuacionNoticia[]>([]);
+  const [actuacionesLoading, setActuacionesLoading] = useState(false);
+  const [actuacionesError, setActuacionesError] = useState<string | null>(null);
+  const [refreshActuaciones, setRefreshActuaciones] = useState(0);
+
+  useEffect(() => {
+    if (!n.id) return;
+    let cancelled = false;
+    setActuacionesLoading(true);
+    setActuacionesError(null);
+    disciplinaryService.getActuacionesNoticia(n.id)
+      .then((data) => {
+        if (cancelled) return;
+        setActuaciones(Array.isArray(data) ? data : []);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        console.error('[ModalDetallesNoticia] Error cargando actuaciones:', error);
+        setActuacionesError(error?.message || 'No fue posible cargar las actuaciones');
+      })
+      .finally(() => {
+        if (!cancelled) setActuacionesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [n.id, refreshActuaciones]);
+
+  // El registro de actuaciones desde la noticia lo habilita el permiso de crear
+  // actuaciones (Radicador y Jefe de la OCID). El backend además lo restringe por
+  // rol en el endpoint (@Roles Jefe / Radicador).
+  const puedeAgregarActuacion = authService.hasPermission(
+    Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE,
+  );
+
   // Extraer datos de persona (compatibilidad con formato string o Persona)
   const getDenuncianteNombre = () => {
     if (typeof n.denunciante === 'string') return n.denunciante || 'Sin información';
@@ -238,6 +319,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     { id: 'personas', label: 'Personas', icon: Users, count: cantDenunciados + cantDenunciantes },
     { id: 'hechos', label: 'Hechos', icon: ClipboardList, count: cantHechos },
     { id: 'adjuntos', label: 'Adjuntos', icon: Paperclip, count: cantAdjuntos },
+    { id: 'actuaciones', label: 'Actuaciones', icon: Gavel, count: actuaciones.length },
+    { id: 'historial', label: 'Historial', icon: History, count: historial.length },
   ];
 
   // Fecha de caducidad (5 años desde fecha de hechos)
@@ -594,6 +677,17 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
           )}
           {tabActiva === 'hechos' && <TabHechos n={n} />}
            {tabActiva === 'adjuntos' && <TabAdjuntos n={n} formatFileSize={formatFileSize} onDownload={onDownload} onView={handleViewFile} />}
+           {tabActiva === 'actuaciones' && (
+             <TabActuaciones
+               noticiaId={n.id}
+               actuaciones={actuaciones}
+               loading={actuacionesLoading}
+               error={actuacionesError}
+               puedeAgregar={puedeAgregarActuacion}
+               onCreada={() => setRefreshActuaciones((v) => v + 1)}
+             />
+           )}
+           {tabActiva === 'historial' && <TabHistorial historial={historial} loading={historialLoading} error={historialError} />}
         </div>
 
         {/* ── Footer ── */}
@@ -853,7 +947,16 @@ function TabGeneral({
           <Gavel className="w-4 h-4 text-red-600" />
           <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
         </div>
-        {n.conductaSeleccionada || n.conductaPersonalizada || n.conducta ? (
+        {Array.isArray(n.conductas) && n.conductas.length > 0 ? (
+          <ul className="space-y-1">
+            {n.conductas.map((c, i) => (
+              <li key={i} className="text-sm text-gray-900 flex items-start gap-1.5">
+                <span className="text-red-400 leading-5">•</span>
+                <span className={i === 0 ? 'font-bold' : ''}>{c}</span>
+              </li>
+            ))}
+          </ul>
+        ) : n.conductaSeleccionada || n.conductaPersonalizada || n.conducta ? (
           <>
             {n.conductaSeleccionada && (
               <p className="text-sm font-bold text-gray-900">{n.conductaSeleccionada}</p>
@@ -1238,6 +1341,303 @@ function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaComp
                    </button>
                  )}
                </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const ACTUACION_TIPOS: { value: string; label: string }[] = [
+  { value: 'actuacion', label: 'Actuación' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'oficio', label: 'Oficio' },
+  { value: 'comunicacion', label: 'Comunicación' },
+  { value: 'requerimiento', label: 'Requerimiento' },
+  { value: 'otro', label: 'Otro' },
+];
+
+const hoyISO = (): string => {
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().split('T')[0];
+};
+
+function TabActuaciones({
+  noticiaId,
+  actuaciones,
+  loading,
+  error,
+  puedeAgregar,
+  onCreada,
+}: {
+  noticiaId: string;
+  actuaciones: ActuacionNoticia[];
+  loading: boolean;
+  error: string | null;
+  puedeAgregar: boolean;
+  onCreada: () => void;
+}) {
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [tipo, setTipo] = useState('actuacion');
+  const [descripcion, setDescripcion] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+  const [fecha, setFecha] = useState(hoyISO());
+  const [guardando, setGuardando] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setTipo('actuacion');
+    setDescripcion('');
+    setObservaciones('');
+    setFecha(hoyISO());
+    setFormError(null);
+  };
+
+  const handleGuardar = async () => {
+    if (!descripcion.trim()) {
+      setFormError('La descripción es obligatoria');
+      return;
+    }
+    const currentUser = authService.getCurrentUser();
+    const responsableNombre =
+      currentUser?.fullName || currentUser?.firstName || 'Sin identificar';
+    try {
+      setGuardando(true);
+      setFormError(null);
+      await disciplinaryService.createActuacionNoticia(noticiaId, {
+        tipo,
+        descripcion: descripcion.trim(),
+        responsableNombre,
+        fechaActuacion: fecha || hoyISO(),
+        observaciones: observaciones.trim() || undefined,
+      });
+      resetForm();
+      setMostrarForm(false);
+      onCreada();
+    } catch (e: any) {
+      console.error('[ModalDetallesNoticia] Error creando actuación:', e);
+      setFormError(e?.message || 'No fue posible registrar la actuación');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const ordenado = [...actuaciones].sort(
+    (a, b) => new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime(),
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2">
+          <Gavel className="w-4 h-4 text-gray-600" />
+          <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+            Actuaciones ({ordenado.length})
+          </h3>
+        </div>
+        {puedeAgregar && (
+          <button
+            onClick={() => { setMostrarForm((v) => !v); setFormError(null); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-white transition-all"
+            style={{ background: '#003DA5' }}
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            {mostrarForm ? 'Cancelar' : 'Agregar actuación'}
+          </button>
+        )}
+      </div>
+
+      {puedeAgregar && mostrarForm && (
+        <div className="rounded-xl border-2 border-gray-200 p-3 mb-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-gray-600">Tipo</label>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+              >
+                {ACTUACION_TIPOS.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-gray-600">Fecha</label>
+              <input
+                type="date"
+                value={fecha}
+                max={hoyISO()}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gray-600">Descripción *</label>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={2}
+              className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg resize-none"
+              placeholder="Descripción de la actuación"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gray-600">Observaciones</label>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              rows={2}
+              className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg resize-none"
+              placeholder="Opcional"
+            />
+          </div>
+          {formError && (
+            <div className="text-xs text-red-700 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              {formError}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <button
+              onClick={handleGuardar}
+              disabled={guardando}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-60"
+              style={{ background: '#059669' }}
+            >
+              {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+              Guardar actuación
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-500">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Cargando actuaciones...
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          <span className="font-semibold">{error}</span>
+        </div>
+      ) : ordenado.length === 0 ? (
+        <div className="text-center py-12">
+          <Gavel className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm font-bold text-gray-400">Sin actuaciones registradas</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {ordenado.map((act) => {
+            const tipoLabel = ACTUACION_TIPOS.find((t) => t.value === (act.tipo || '').toLowerCase())?.label
+              || act.tipo || 'Actuación';
+            return (
+              <div key={act.id} className="rounded-xl border-2 border-gray-200 p-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full" style={{ backgroundColor: '#DBEAFE', color: '#2563EB' }}>
+                    {tipoLabel}
+                  </span>
+                  <span className="text-[11px] text-gray-400">{formatFechaHistorial(act.fechaActuacion)}</span>
+                </div>
+                <p className="text-sm text-gray-800 leading-relaxed">{act.descripcion}</p>
+                {act.observaciones && (
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">{act.observaciones}</p>
+                )}
+                <p className="text-[11px] text-gray-400 mt-1">Por: {act.responsableNombre || 'Sin identificar'}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const HISTORIAL_TIPO_META: Record<string, { label: string; color: string; bg: string }> = {
+  radicacion: { label: 'Radicación', color: '#2563EB', bg: '#DBEAFE' },
+  edicion: { label: 'Edición', color: '#7C3AED', bg: '#EDE9FE' },
+  devolucion: { label: 'Devolución', color: '#D97706', bg: '#FEF3C7' },
+  archivo: { label: 'Archivo', color: '#374151', bg: '#F3F4F6' },
+  restauracion: { label: 'Restauración', color: '#059669', bg: '#D1FAE5' },
+  asociacion: { label: 'Asociación', color: '#0891B2', bg: '#CFFAFE' },
+  remision_competencia: { label: 'Remisión por Competencia', color: '#DB2777', bg: '#FCE7F3' },
+};
+
+const formatFechaHistorial = (fecha: string): string => {
+  if (!fecha) return 'Sin fecha';
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return 'Sin fecha';
+  return d.toLocaleString('es-CO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Bogota',
+  });
+};
+
+function TabHistorial({ historial, loading, error }: { historial: HistorialEntry[]; loading: boolean; error: string | null }) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-500">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Cargando historial...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700 flex items-center gap-2">
+        <AlertTriangle className="w-4 h-4" />
+        <span className="font-semibold">{error}</span>
+      </div>
+    );
+  }
+
+  if (historial.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <History className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        <p className="text-sm font-bold text-gray-400">Sin historial registrado</p>
+      </div>
+    );
+  }
+
+  // Más reciente primero
+  const ordenado = [...historial].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <History className="w-4 h-4 text-gray-600" />
+        <h3 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+          Historial ({ordenado.length})
+        </h3>
+      </div>
+      <div className="space-y-2">
+        {ordenado.map((entry) => {
+          const meta = HISTORIAL_TIPO_META[entry.tipo] || { label: entry.tipo, color: '#6B7280', bg: '#F3F4F6' };
+          return (
+            <div key={entry.id} className="rounded-xl border-2 border-gray-200 p-3">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span
+                  className="px-2 py-0.5 text-[10px] font-bold rounded-full"
+                  style={{ backgroundColor: meta.bg, color: meta.color }}
+                >
+                  {meta.label}
+                </span>
+                <span className="text-[11px] text-gray-400">{formatFechaHistorial(entry.fecha)}</span>
+              </div>
+              {entry.observaciones && (
+                <p className="text-sm text-gray-700 leading-relaxed">{entry.observaciones}</p>
+              )}
+              <p className="text-[11px] text-gray-400 mt-1">Por: {entry.usuario || 'Sistema'}</p>
             </div>
           );
         })}

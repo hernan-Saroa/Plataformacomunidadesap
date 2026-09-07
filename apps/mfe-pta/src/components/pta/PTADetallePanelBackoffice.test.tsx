@@ -1,9 +1,22 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
-import { PTADetallePanelBackoffice } from './PTADetallePanelBackoffice';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { PTADetallePanelBackoffice, ApprovalTracker } from './PTADetallePanelBackoffice';
+import { PTA_COMPONENT_KEYS } from './shared/ptaComponentPermissions';
 
 afterEach(cleanup);
+
+describe('tarjetas del detalle administrativo', () => {
+  it('usa No aplica aun cuando los permisos incluyen todos los componentes', () => {
+    const componentesEstado = ['academica', 'investigacion', 'extension', 'complementarias'].map(key => ({
+      key, horas: key === 'extension' ? 0 : 100, estado: key === 'extension' ? 'no_aplica' : 'aprobado',
+    }));
+    render(<ApprovalTracker estado="Aprobado" componentesEstado={componentesEstado} visibleComponentKeys={PTA_COMPONENT_KEYS} />);
+    const extension = screen.getByText('Extensión').parentElement!;
+    expect(within(extension).getByText('No aplica')).toBeTruthy();
+    expect(screen.getAllByText('Aprobado')).toHaveLength(3);
+  });
+});
 
 // EFDS-1531 (Item 49): el Revisor/Aprobador de un componente (p.ej. Docencia -
 // Pregrado) solo veía el nombre de la asignatura/actividad de SU componente;

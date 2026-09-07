@@ -312,6 +312,28 @@ describe('LaborFunctionsService strict association', () => {
     expect(result.items).toHaveLength(1);
   });
 
+  it('lista primero los perfiles creados más recientemente', async () => {
+    const findProfiles = jest.fn().mockResolvedValue([]);
+    const service = new LaborFunctionsService(
+      { find: findProfiles } as any,
+      {} as any,
+      { find: jest.fn().mockResolvedValue([]) } as any,
+      {} as any,
+    );
+
+    await service.list({ page: 1, limit: 15 });
+
+    expect(findProfiles).toHaveBeenCalledWith({
+      relations: ['functions'],
+      order: {
+        created_at: 'DESC',
+        position_code: 'ASC',
+        grade_code: 'ASC',
+        department_name: 'ASC',
+      },
+    });
+  });
+
   it('edita un perfil y reemplaza sus funciones dentro de una transacción', async () => {
     const currentProfile = { ...profile, match_key: 'previous-match-key' };
     const profileRepository = {
@@ -427,5 +449,85 @@ describe('LaborFunctionsService strict association', () => {
       deleted: true,
     });
     expect(profileRepository.remove).toHaveBeenCalledWith(profile);
+  });
+
+  it('elimina múltiples perfiles en una sola transacción y devuelve el resumen', async () => {
+    const ids = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ];
+    const selectedProfiles = [
+      { ...profile, id: ids[0], functions: [{ id: 'f-1' }, { id: 'f-2' }] },
+      { ...profile, id: ids[1], functions: [{ id: 'f-3' }] },
+    ];
+    const profileRepository = {
+      find: jest.fn().mockResolvedValue(selectedProfiles),
+      remove: jest.fn().mockResolvedValue(selectedProfiles),
+    };
+    const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
+    const dataSource = {
+      transaction: jest.fn(async (callback) => callback(manager)),
+    };
+    const service = new LaborFunctionsService(
+      {} as any,
+      {} as any,
+      {} as any,
+      dataSource as any,
+    );
+
+    await expect(service.removeMany([...ids, ids[0]])).resolves.toEqual({
+      deleted: true,
+      deletedCount: 2,
+      functionCount: 3,
+      ids,
+    });
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(profileRepository.find).toHaveBeenCalledWith({
+      where: { id: expect.anything() },
+      relations: ['functions'],
+    });
+    expect(profileRepository.remove).toHaveBeenCalledWith(selectedProfiles);
+  });
+
+  it('rechaza una eliminación múltiple vacía o con identificadores inválidos', async () => {
+    const service = new LaborFunctionsService(
+      {} as any,
+      {} as any,
+      {} as any,
+      { transaction: jest.fn() } as any,
+    );
+
+    await expect(service.removeMany([])).rejects.toThrow(
+      'Selecciona al menos un registro',
+    );
+    await expect(service.removeMany(['registro-invalido'])).rejects.toThrow(
+      'identificadores de registro inválidos',
+    );
+  });
+
+  it('no elimina parcialmente si uno de los perfiles seleccionados ya no existe', async () => {
+    const ids = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ];
+    const profileRepository = {
+      find: jest.fn().mockResolvedValue([{ ...profile, id: ids[0] }]),
+      remove: jest.fn(),
+    };
+    const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
+    const dataSource = {
+      transaction: jest.fn(async (callback) => callback(manager)),
+    };
+    const service = new LaborFunctionsService(
+      {} as any,
+      {} as any,
+      {} as any,
+      dataSource as any,
+    );
+
+    await expect(service.removeMany(ids)).rejects.toThrow(
+      'No se eliminó ningún registro',
+    );
+    expect(profileRepository.remove).not.toHaveBeenCalled();
   });
 });

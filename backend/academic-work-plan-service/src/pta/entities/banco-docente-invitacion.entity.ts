@@ -11,6 +11,12 @@ export class BancoDocenteInvitacionEntity {
   @Column({ name: 'token_acceso', type: 'text', unique: true })
   tokenAcceso: string;
 
+  @Column({ name: 'sesion_token_hash', type: 'text', nullable: true, select: false })
+  sesionTokenHash: string | null;
+
+  @Column({ name: 'sesion_expira_en', type: 'timestamptz', nullable: true })
+  sesionExpiraEn: Date | null;
+
   @Column({ name: 'otp_codigo', type: 'text', nullable: true })
   otpCodigo: string | null;
 

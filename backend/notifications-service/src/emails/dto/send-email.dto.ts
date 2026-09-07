@@ -40,7 +40,7 @@ export class SendEmailDto {
   html?: string;
 
   @IsArray()
-  @ArrayMaxSize(3)
+  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => EmailAttachmentDto)
   @IsOptional()
