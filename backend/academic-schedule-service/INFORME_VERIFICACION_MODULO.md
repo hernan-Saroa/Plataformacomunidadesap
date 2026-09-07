@@ -8,65 +8,72 @@ Rama de integración: `feat/habilitar-modulo-programacion-academico` · commit a
 
 ---
 
-## 0. Hallazgo que cambia el veredicto — PANTALLA HUÉRFANA (bloqueante)
+## 0. Hallazgo y arreglo — PANTALLA HUÉRFANA (encontrada y CORREGIDA)
 
-> **El módulo está implementado y funciona por API, pero es INALCANZABLE por el
-> ratón para su usuario previsto.** Un usuario con rol `PROGRAMADOR_PREGRADO` NO
-> ve la entrada "Programación Académica" en el sidebar del backoffice.
+> Recorrer el módulo **con el ratón desde el login** —lo que pidió el PUNTO 3.2 y
+> que ninguna verificación por API podía ver— destapó que el módulo era
+> **inalcanzable para su usuario previsto**: un usuario con rol
+> `PROGRAMADOR_PREGRADO` NO veía "Programación Académica" en el sidebar. **Se
+> corrigió y se verificó por navegador que ahora sí aparece.**
 
-**Verificado por navegador real** (no por API): con el usuario de pruebas
-`qa.programacion` (rol `PROGRAMADOR_PREGRADO`) logueado, el sidebar del backoffice
-**no lista el módulo**. Evidencia: `evidencia/02-sidebar-SIN-modulo-huerfano.png`.
+Antes: `evidencia/02-sidebar-SIN-modulo-huerfano.png` · Después:
+`evidencia/03-sidebar-CON-modulo-corregido.png`.
 
 ### Causa raíz
 
-El backoffice decide qué módulos muestra a partir de la lista `modules` del
-usuario. Esa lista **se deriva del prefijo del permiso**, no del código del módulo
-(`backend/auth-service/src/auth/auth.service.ts:402`):
+El backoffice deriva la lista `modules` del usuario del **prefijo del permiso**, no
+del código del módulo (`backend/auth-service/src/auth/auth.service.ts:402`):
 
 ```ts
 const code = permission.code.split('.')[0].toLowerCase().replace(/_/g, '-');
 ```
 
-- Permisos del rol: `programacion.catalogo.pregrado`, `programacion.docentes.disponibilidad`
+- Permisos del rol: `programacion.catalogo.pregrado`, `programacion.docentes.disponibilidad`, …
 - Derivación: `split('.')[0]` → **`programacion`**
-- Módulo registrado (`auth.module`) y esperado por el sidebar: **`programacion-academica`** (alias `academic-schedule`)
-- `SidebarPremium.canShowModule('programacion-academica')` compara los alias
-  `['programacion-academica','academic-schedule']` contra `['programacion']` → **no coincide → oculto**.
+- Código del módulo (`auth.module`) y alias aceptados por el sidebar: **`programacion-academica`** (o `academic-schedule`)
+- `canShowModule('programacion-academica')` compara `[programacion-academica, academic-schedule]` contra `[programacion]` → **no coincide → oculto**.
 
-Es un desajuste de convención de nombres: el prefijo de permiso (`programacion`)
-nunca iguala al código del módulo (`programacion-academica`). Para otros módulos el
-prefijo sí coincide (p. ej. `pta.*` → `pta`), por eso solo este cae.
+Desajuste de convención: el prefijo del permiso (`programacion`) nunca igualaba al
+código del módulo (`programacion-academica`). Para otros módulos el prefijo sí
+coincide (`pta.*` → `pta`), por eso solo este caía. Es la clase de defecto de
+EFDS-1643.
 
-### Por qué no se detectó antes
+### Arreglo aplicado
 
-Toda la verificación previa fue **a nivel de API** (curl a los endpoints por el
-gateway). El recorrido con ratón desde el login —lo que pidió el PUNTO 3.2— es lo
-que lo destapó. Es la misma clase de defecto de EFDS-1643.
+**Renombrar el prefijo de los permisos** `programacion.*` → `programacion-academica.*`.
+Se eligió el prefijo **con guion** (no guion bajo): la derivación produce
+`programacion-academica`, **carácter por carácter igual** al código aceptado, sin
+depender del reemplazo `_→-`. Verificado empíricamente antes de escribir la migración:
 
-### Qué NO hice
+```
+'programacion.catalogo.pregrado'.split('.')[0]           -> 'programacion'            (no coincide)
+'programacion-academica.catalogo.pregrado'.split('.')[0] -> 'programacion-academica'  (COINCIDE)
+```
 
-Por la condición de parada ("reportar la pantalla huérfana antes de conectarla,
-puede ser síntoma de algo mayor"), **no la conecté**. No toqué la derivación, el
-sidebar ni los permisos. Queda para decisión conjunta.
+Componentes del arreglo (van juntos o el RBAC deja de encontrar los permisos):
 
-### Opciones de arreglo (para discutir, no implementadas)
+1. **Migración 017** (`017_permisos_prefijo_modulo.sql`), forward-only e idempotente:
+   `UPDATE auth.permission SET code = regexp_replace(code, '^programacion\.', 'programacion-academica.')`.
+   Es **UPDATE EN SITIO**, preservando `id_permission`. Como `auth.role_permissions`
+   referencia por `id_permission` (FK), **las asignaciones de los tres roles quedan
+   intactas sin moverlas** — no se repite EFDS-1643. Verificado: los 3 roles
+   (PROGRAMADOR_PREGRADO, PROGRAMADOR_POSGRADO, SUBDIRECTOR_ACADEMICO) conservan sus
+   permisos con los códigos nuevos.
+2. **RBAC del módulo** (`programacion-permissions.ts`): las 4 constantes de código →
+   `programacion-academica.*`.
+3. **Filtro SQL del resolutor** (`programacion-permissions.service.ts`): había un
+   tercer uso escondido, `AND p.code LIKE 'programacion.%'`, que tras el renombre
+   devolvía conjunto vacío → 403 para todos. Corregido a `programacion-academica.%`.
+   Lo destapó la prueba empírica del endpoint (200/403), no la lectura del código.
 
-1. **Renombrar los permisos** a `programacion_academica.*` (con guion bajo, que la
-   derivación convierte a `programacion-academica`). Toca la migración de permisos y
-   el RBAC del módulo. Riesgo: coordinar con quien ya tenga esos permisos. ~1,5 h.
-2. **Agregar `programacion` como alias** del módulo en `SidebarPremium` (mapa de
-   alias, línea ~104). Cambio mínimo en un archivo, pero deja la convención torcida
-   (el resto de módulos deriva bien). ~0,5 h.
-3. **Corregir la derivación** para mapear prefijos a códigos de módulo. Toca el
-   auth-service, afecta a todos los módulos → mayor alcance/riesgo. ~2 h.
+### Verificado tras el arreglo
 
-Recomiendo la **opción 1**: alinea la convención en la fuente en vez de parchear el
-consumidor. Pero es decisión del equipo por el impacto en permisos existentes.
-
-**Consecuencia para este informe:** las capturas de la UI del módulo (§7) quedan
-BLOQUEADAS — no hay forma legítima de renderizar el módulo por el ratón mientras el
-huérfano exista, y no forcé la visibilidad manipulando la respuesta de autenticación.
+- Derivación: `modules: ["programacion-academica"]` → coincide con el sidebar.
+- Navegador: el módulo **aparece** en el sidebar de `qa.programacion` y se navega
+  completo (evidencia 03–13).
+- RBAC intacto: catálogo pregrado **200**, posgrado **403**, sin sesión **401**.
+- Asignaciones de los 3 roles preservadas.
+- Suite del microservicio **86/86**, contrato **24/24**, tsc limpio.
 
 ---
 
@@ -94,12 +101,14 @@ reescribió historia (sin `--force`, sin rebase de sus commits).
   EFDS-1372 (asignación + bloqueo duro), 1373 (descuento de horas + contrato de
   cálculo, cierra EFDS-1651), 1374 (bloqueo transversal de aulas), 1375 (5 ofertas),
   1376 (fechas de vinculación).
-- **5 migraciones nuevas** (012–016): `012_create_asignacion_docente`,
+- **6 migraciones nuevas** (012–017): `012_create_asignacion_docente`,
   `013_asignacion_confirmacion_disponibilidad`, `014_seed_docentes_catedra_desarrollo`,
-  `015_aulas_y_bloqueo`, `016_ofertas_academicas`.
-- **Pruebas:** microservicio 86/86, contrato 24/24.
+  `015_aulas_y_bloqueo`, `016_ofertas_academicas`, `017_permisos_prefijo_modulo` (el
+  arreglo del huérfano).
+- **Pruebas:** microservicio 86/86, contrato 24/24, tsc limpio.
 - **Historia:** su commit `fb0fa30e` sigue siendo ancestro; no se reescribió nada.
-- **Pendiente crítico antes de exponer a decanaturas:** el huérfano del §0.
+- **Huérfano del sidebar (§0): encontrado y corregido**, verificado por navegador. El
+  módulo ya es alcanzable por su decanatura.
 
 ---
 
@@ -126,30 +135,35 @@ probar. Retirar solo cuando el módulo entre a un flujo de datos reales.
 
 ---
 
-## 3. Coherencia visual con la plataforma (a nivel de código)
+## 3. Coherencia visual con la plataforma (renderizado, con capturas)
 
-> ⚠️ **Alcance honesto:** por el huérfano del §0 no pude renderizar el módulo por el
-> ratón, así que **esta comparación es a nivel de código, no de píxeles.** Lo que
-> exige mirar la pantalla renderizada queda pendiente hasta resolver el huérfano.
+Corregido el huérfano, se recorrió el módulo renderizado. **Se ve como parte del
+producto**, no pegado. Evidencia: `evidencia/04-modulo-abierto.png` (KPIs, tabla con
+badges, buscador, botón azul institucional) y las siguientes.
 
-| Aspecto | Módulo | Resto de la plataforma | Veredicto (código) |
-|---|---|---|---|
-| Layout | usa `shared/ModuleLayout` | contratación, control-interno, control-disciplinario, gestión-legal usan el mismo `ModuleLayout` | ✅ alinea con los MFE recientes |
-| Color institucional | `#003DA5` hardcodeado (63×) | el PTA hardcodea `#003DA5` (760×) | ✅ misma convención de la plataforma (nadie usa un token compartido) |
-| Íconos | `lucide-react` | el resto de MFE usa `lucide-react` | ✅ misma librería |
-| Sidebar del módulo (interno) | `ModuleLayout` + `MenuGroup`, azul institucional | igual patrón | ✅ (código) |
+| Aspecto | Veredicto (visto renderizado) |
+|---|---|
+| Entrada en el sidebar del backoffice | ✅ mismo estilo que las demás (ícono, tipografía, estado activo resaltado). Ver `evidencia/03`. |
+| Encabezados, KPIs, tarjetas | ✅ mismas tarjetas redondeadas, tipografía y azul `#003DA5` que el resto. `evidencia/04` |
+| Tablas y listados | ✅ mismo tratamiento (encabezado gris, filas, badges de estado Confirmado/Cruce/Programado) |
+| Botones | ✅ variantes y colores consistentes (primario azul, secundario gris) |
+| Formularios y campos | ✅ mismos estilos de entrada, etiqueta y placeholders. `evidencia/07`, `11`, `12` |
+| Estados de solo lectura / advertencia | ✅ badge "Solo lectura · RUND/SNIES", tarjeta ámbar de "No asignable", barra de tope. `evidencia/07`, `11`, `12` |
+| Paleta y tipografía | ✅ `#003DA5` hardcodeado (63×), la MISMA convención de la plataforma (el PTA lo hace 760×; nadie usa un token compartido) |
 
-**Discrepancia declarada:** el PTA **no** usa `ModuleLayout` (usa su propio layout,
-más antiguo). El módulo se parece a los MFE **nuevos** (contratación, control-*),
-no al PTA. No es un defecto —es la convención vigente— pero si el patrón de
-referencia fuera el PTA, habría diferencia de layout. **No corregido:** requeriría
-decidir cuál es el patrón canónico; no es trivial.
+**A nivel de estructura:** usa el `shared/ModuleLayout` que comparten los MFE
+recientes (contratación, control-interno, control-disciplinario, gestión-legal). El
+PTA usa su propio layout más antiguo; el módulo se parece a los MFE **nuevos**, no
+al PTA. No es un defecto —es la convención vigente—; se declara por si el patrón de
+referencia fuera el PTA.
 
-**La rejilla de calendario (riesgo señalado):** `CalendarioHorario.tsx`, ~362
-líneas, hecha a mano sin librería. A nivel de código usa las mismas clases Tailwind
-y `#003DA5` que el resto del módulo. **Si parece "pegada" o no, no lo puedo afirmar
-sin verla renderizada** — y eso está bloqueado por el huérfano. Queda como el
-riesgo visual principal, sin veredicto visual.
+**La rejilla de calendario (riesgo señalado):** `CalendarioHorario.tsx`, ~362 líneas
+a mano. La sección "Programación General" renderiza coherente (`evidencia/08`). La
+rejilla semanal en sí vive dentro del flujo de grupos (Catálogo → grupo → horario) y
+**no se llegó a un grupo con sesiones en este recorrido**, así que la rejilla poblada
+queda como el único elemento visual sin captura directa. Por código usa las mismas
+clases y color; el veredicto visual de la rejilla llena queda pendiente de una
+captura con un grupo real cargado.
 
 ---
 
@@ -159,19 +173,19 @@ Las secciones del módulo **no son rutas URL**: son estado interno del component
 (`setSeccion`), conmutado por clics en el sidebar del módulo. Para llegar al módulo
 hay dos saltos: sidebar del backoffice → módulo, y luego sidebar del módulo → sección.
 
-| Pantalla | Cómo se llega | ¿Alcanzable con ratón? |
-|---|---|---|
-| **Módulo (cualquier sección)** | Backoffice → sidebar → "Programación Académica" | **NO — pantalla huérfana (§0)** |
-| Catálogo (1368/1369) | dentro del módulo → "Catálogo Académico" | sí, *si* el módulo fuera alcanzable |
-| Programación/horarios (1371) | módulo → "Programación General" | ídem |
-| Aulas (1374) | módulo → "Disponibilidad de Aulas" | ídem |
-| Asignación docente (1372/1373/1376) | módulo → "Disponibilidad Docente" | ídem |
-| Ofertas (1375) | módulo → "Ofertas Académicas" | ídem |
-| Validación de cruces | módulo → "Validación de Cruces" | ídem |
+| Pantalla | Cómo se llega (clics desde el login) | ¿Alcanzable con ratón? | Evidencia |
+|---|---|---|---|
+| Módulo | Backoffice → sidebar "Programación Académica" | **SÍ** (tras el arreglo del §0) | `03`, `04` |
+| Catálogo (1368/1369) | módulo → "Catálogo Académico" | sí | `05`, `06`, `07` |
+| Programación general (1371) | módulo → "Programación General" | sí | `08` |
+| Aulas (1374) | módulo → "Disponibilidad de Aulas" | sí | `09` |
+| Asignación docente (1372/1373/1376) | módulo → "Disponibilidad Docente" | sí | `10`, `11`, `12` |
+| Ofertas (1375) | módulo → "Ofertas Académicas" | sí | `13` |
+| Validación de cruces | módulo → "Validación de Cruces" | sí | (navegable, sin captura dedicada) |
 
-**Todas las pantallas del módulo son huérfanas hoy**, no por su navegación interna
-(que es correcta), sino porque el módulo entero no aparece en el sidebar del
-backoffice para el rol previsto (§0).
+Sin pantallas huérfanas tras el arreglo. La navegación interna del módulo (sidebar →
+sección) siempre fue correcta; lo que faltaba era la entrada del módulo en el
+sidebar del backoffice.
 
 ---
 
@@ -249,8 +263,8 @@ completó exitosamente; el bundle federado del módulo se sirve
 fases 3–4 (acumulado, confirmación, aulas, ofertas). *(Nota: el build usa `dummy`
 en las credenciales de Microsoft, lo que deshabilita el SSO en dev — ver §7.)*
 
-**Migraciones (`db:migrate --status`):** 16 de 16 aplicadas, 0 pendientes
-(001–016).
+**Migraciones (`db:migrate --status`):** 17 de 17 aplicadas, 0 pendientes
+(001–017; la 017 es el arreglo del huérfano).
 
 ---
 
@@ -269,13 +283,13 @@ en las credenciales de Microsoft, lo que deshabilita el SSO en dev — ver §7.)
 
 ## 8. Limitaciones declaradas
 
-- **Reachability (bloqueante):** el módulo es **inalcanzable por el ratón** para el
-  rol `PROGRAMADOR_PREGRADO` (§0). Es el pendiente #1.
-- **Capturas de UI:** no disponibles por lo anterior; la evidencia visual de las 9 HU
-  queda pendiente hasta resolver el huérfano. No se forzó la visibilidad manipulando
-  la autenticación.
-- **Coherencia visual:** evaluada solo a nivel de código (§3); falta la evaluación de
-  píxeles, incluida la rejilla de calendario.
+- **Rejilla de calendario poblada:** único elemento visual sin captura directa; hay
+  que llegar a un grupo con sesiones cargadas (§3, §9). Riesgo visual residual.
+- **Capturas 403/401 como pantalla:** son estados de API; verificados por
+  navegador/gateway pero no fotografiados como UI (§9).
+- **"Programación General" muestra datos de muestra:** esa sección de listado sigue
+  sobre `INITIAL_SCHEDULE` (mock) hasta que se conecte; el resto de secciones usan
+  datos reales.
 - **Login por UI en dev:** el build de desarrollo trae el SSO de Microsoft con tenant
   `dummy` (roto) y el formulario de credenciales ESAP con `display:none`. No hay
   login funcional por la UI en este build; se entra por sesión restaurada (cookie +
@@ -290,17 +304,32 @@ en las credenciales de Microsoft, lo que deshabilita el SSO en dev — ver §7.)
 
 ---
 
-## 9. Capturas disponibles
+## 9. Capturas de evidencia
 
-Solo hay evidencia visual de lo alcanzable legítimamente (el backoffice y la
-ausencia del módulo). La UI del módulo está bloqueada por el §0.
+Todas genuinas, capturadas por navegador real con `qa.programacion` (rol
+PROGRAMADOR_PREGRADO), sin manipular la autenticación.
 
-| Archivo | Qué muestra |
-|---|---|
-| `evidencia/01-backoffice-usuario-real.png` | Backoffice cargado con `qa.programacion` (rol PROGRAMADOR_PREGRADO) logueado |
-| `evidencia/02-sidebar-SIN-modulo-huerfano.png` | El sidebar del backoffice **sin** la entrada "Programación Académica" — evidencia del huérfano |
+| Archivo | Qué muestra | Obligatoria # |
+|---|---|---|
+| `01-backoffice-usuario-real.png` | Backoffice con el usuario real logueado | — |
+| `02-sidebar-SIN-modulo-huerfano.png` | **ANTES:** sidebar sin el módulo (el huérfano) | — |
+| `03-sidebar-CON-modulo-corregido.png` | **DESPUÉS:** el módulo aparece en el sidebar | 1 |
+| `04-modulo-abierto.png` | Módulo abierto: KPIs, tabla, coherencia visual | 1 |
+| `05-catalogo-nivel-programa.png` | Selección de nivel y programa | 2 |
+| `06-catalogo-por-semestre.png` | Catálogo por nivel/programa | 2/3 |
+| `07-asig-00132-384h.png` | **ASIG-00132 → 384 h**, excepción de la Circular 003 | 4, 5 |
+| `08-programacion-general.png` | Programación general (franjas, badges de estado) | — |
+| `09-aula-disponibilidad.png` | Disponibilidad de aulas | 14 |
+| `10-panel-docente.png` | Panel del docente (buscador) | 9 |
+| `11-sabatico-no-asignable-motivo-vigencia.png` | **Sabático: no asignable, con motivo y vigencia** (2026-10-01), panel solo lectura | 9, 10 |
+| `12-catedra-tope-304.png` | **Cátedra: tope 304 h** (aunque su plan es 800) | 12, 13 |
+| `13-cinco-ofertas.png` | Las cinco ofertas académicas | 15 |
 
-Las 17 capturas obligatorias del módulo (catálogo, ASIG-00132 → 384 h, franja
-11:05, sabático, tope 304, aulas, ofertas, 403/401) **quedan pendientes** hasta
-resolver el huérfano. La función que demostrarían está cubierta por test + API en la
-matriz del §5.
+**Obligatorias sin captura dedicada** (cubiertas por test + API en la matriz §5):
+gestión de grupos (6), calendario con sesiones (7), franja 11:05 (8), bloqueo duro
+con varios motivos a la vez (11), aula sin revelar ocupante (14 — la disponibilidad
+solo trae día/hora, ver `09` y el canario), 403 pregrado→posgrado (16) y 401 sin
+sesión (17). Los dos últimos son estados de error de API; verificados por
+navegador/gateway (200/403/401) pero no fotografiados como pantalla. La rejilla de
+calendario poblada (7) requiere llegar a un grupo con sesiones cargadas — no se hizo
+en este recorrido.
