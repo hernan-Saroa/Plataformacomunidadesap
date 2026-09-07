@@ -48,12 +48,17 @@ describe('EFDS-1372 :: clasificador sobre los 263 docentes reales', () => {
     try {
       ds = await new DataSource(CONFIG).initialize();
       filas = await ds.query(
+        // Se excluyen los docentes sintéticos de HORA CÁTEDRA (EFDS-1374,
+        // migración 014), marcados "(DESARROLLO)": son aprovisionamiento para
+        // ejercer RN-04 por navegador, no parte del RUND. El agregado sigue
+        // afirmando los 263 del RUND, no 263+N sintéticos.
         `SELECT p.num_identificacion AS documento,
                 p.nom_largo          AS nombre,
                 d."situacionAdministrativa" AS situacion,
                 d."situacionCategoria"     AS categoria
            FROM academic_work_plan."Docente" d
-           INNER JOIN auth.personas p ON p.id_person = d."personaId"`,
+           INNER JOIN auth.personas p ON p.id_person = d."personaId"
+          WHERE p.nom_largo NOT LIKE '%(DESARROLLO)%'`,
       );
       hayDatos = filas.length > 0;
     } catch {
