@@ -20,6 +20,7 @@ import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { Modal } from '../shared/Modal';
 import { BloqueDocumento } from './BloqueDocumento';
+import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
 
 interface Props {
   procesoId: string;
@@ -35,6 +36,9 @@ const MIME_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
  * revisor no cambie de contexto: ve el contenido, sus soportes y decide sin
  * salir de la lista de actividades.
  */
+/** La actividad que este panel resuelve. */
+const NUMERAL = '3.1';
+
 export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   const {
     datos,
@@ -96,11 +100,11 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   }, [datos?.definicionCampos]);
 
   if (cargando) {
-    return <p className="text-xs text-slate-500 m-0 py-3">Cargando…</p>;
+    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
   }
   if (!datos) {
     return (
-      <p className="text-xs text-red-600 m-0 py-3">
+      <p className="text-xs text-red-600 m-0 px-4 py-3">
         {mensaje?.texto ?? 'No se pudo cargar el estudio previo'}
       </p>
     );
@@ -122,8 +126,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
     setError(null);
     try {
       await contratacionService.adjuntarDocumento(procesoId, archivo);
-      await cargarAnexos();
-      onCambio?.();
+      // Se relee todo, no solo los anexos: el formulario conserva la version
+      // que leyo al abrirse, y guardar despues con una version vieja provoca
+      // un conflicto contra un cambio del propio usuario.
+      await refrescar();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -153,7 +159,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    // El padding va aquí y no en quien lo monta: el contenedor de la actividad
+    // es una tarjeta a ras de borde, y sin esto los campos quedan pegados.
+    <div className="space-y-4 p-4">
       <AlertaCamposFaltantes faltantes={faltantes} onIrACampo={irACampo} />
 
       {/* Observaciones de la última devolución */}
@@ -242,15 +250,29 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
       {/* El estudio previo firmado: entregable real de esta actividad */}
       {seccion === 'documentos' && (
-        <BloqueDocumento
-          procesoId={procesoId}
-          documentos={documentos}
-          bloqueado={bloqueado}
-          onAdjuntado={async () => {
-            await cargarAnexos();
-            onCambio?.();
-          }}
-        />
+        <div className="space-y-3">
+          {/* Filtrado por la modalidad del proceso: la 3.1 tiene un formato por
+              tipo de contratación —BS-FO-046 para prestación de servicios, 047
+              para las competitivas, 048 para directa con persona natural, 061
+              para TVEC— y solo uno le sirve al gestor. Antes se listaban los
+              cuatro porque la modalidad se daba por indefinida hasta la 3.5,
+              pero el proceso nace con ella: se elige al crearlo, y la 3.5 la
+              ratifica. Ofrecer los cuatro obliga a elegir entre tres formatos
+              que no aplican. */}
+          <FormatosDeLaActividad
+            numeral={NUMERAL}
+            modalidad={datos.proceso.modalidad}
+            instruccion="Descarga el formato oficial del SIG, diligéncialo, fírmalo y adjúntalo aquí."
+            sinFormatos="El estudio previo se diligencia en el formato institucional. Cuando Contratación suba los formatos a la biblioteca de plantillas, podrás descargarlos desde aquí."
+          />
+
+          <BloqueDocumento
+            procesoId={procesoId}
+            documentos={documentos}
+            bloqueado={bloqueado}
+            onAdjuntado={refrescar}
+          />
+        </div>
       )}
 
       {/* Historial de revisión */}
