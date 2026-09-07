@@ -29,7 +29,7 @@ interface ModalCargarAvanceProps {
   isOpen: boolean;
   onClose: () => void;
   indicador: Indicador | null;
-  onGuardar?: (data: any) => void;
+  onGuardar?: (data: any) => void | Promise<void>;
 }
 
 export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: ModalCargarAvanceProps) {
@@ -40,6 +40,7 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
   const evidenciaInputRef = useRef<HTMLInputElement>(null);
   const [avanceCalculado, setAvanceCalculado] = useState(0);
   const [estadoCalculado, setEstadoCalculado] = useState<'EN_TIEMPO' | 'EN_RIESGO' | 'VENCIDO' | 'COMPLETADO'>('EN_TIEMPO');
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (indicador) {
@@ -68,7 +69,7 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
     }
   }, [nuevoValor, indicador]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!nuevoValor || parseFloat(nuevoValor) < 0) {
@@ -92,7 +93,15 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
     };
 
     if (onGuardar) {
-      onGuardar(actualizacion);
+      try {
+        setGuardando(true);
+        await onGuardar(actualizacion);
+      } catch {
+        // El error ya se notifica en el llamador; dejamos el modal abierto para reintentar.
+        return;
+      } finally {
+        setGuardando(false);
+      }
     }
 
     // Check for Celebration 🎉
@@ -396,10 +405,11 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
               </Button>
               <Button
                 type="submit"
-                className="px-6 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold"
+                disabled={guardando}
+                className="px-6 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold disabled:opacity-60"
               >
                 <TrendingUp className="w-4 h-4 mr-2" />
-                Guardar Avance
+                {guardando ? 'Guardando...' : 'Guardar Avance'}
               </Button>
             </div>
           </form>

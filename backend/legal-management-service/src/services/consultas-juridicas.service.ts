@@ -469,7 +469,13 @@ export class ConsultasJuridicasService implements OnModuleInit {
             );
         }
 
-        return this.consultaRepository.save(consulta);
+        const saved = await this.consultaRepository.save(consulta);
+
+        this.notificarAbogadoRevisionResuelta(saved, usuario, 'aprobada').catch(err =>
+            this.logger.warn(`Error enviando notificación de aprobación al abogado: ${err?.message}`)
+        );
+
+        return saved;
     }
 
     async devolverRespuesta(id: string, comentario: string, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
@@ -497,7 +503,88 @@ export class ConsultasJuridicasService implements OnModuleInit {
             );
         }
 
-        return this.consultaRepository.save(consulta);
+        const saved = await this.consultaRepository.save(consulta);
+
+        this.notificarAbogadoRevisionResuelta(saved, usuario, 'devuelta', comentario).catch(err =>
+            this.logger.warn(`Error enviando notificación de devolución al abogado: ${err?.message}`)
+        );
+
+        return saved;
+    }
+
+    /**
+     * Notifica (in-app + correo) al abogado asignado que su respuesta fue aprobada o
+     * devuelta para corrección por el jefe de Gestión Legal.
+     */
+    private async notificarAbogadoRevisionResuelta(
+        consulta: ConsultaJuridica,
+        resuelvePor: string,
+        resultado: 'aprobada' | 'devuelta',
+        comentario?: string
+    ): Promise<void> {
+        if (!consulta.abogadoAsignadoId) return;
+
+        const radicado = consulta.numeroRadicado || consulta.id;
+        const linkConsulta = `${process.env.FRONTEND_URL || 'http://localhost:4200'}/gestion-legal/asesoria-juridica`;
+        const esAprobada = resultado === 'aprobada';
+
+        const titulo = esAprobada ? 'Respuesta aprobada' : 'Respuesta devuelta para corrección';
+        const mensaje = esAprobada
+            ? `${resuelvePor} aprobó y envió tu respuesta del radicado ${radicado}.`
+            : `${resuelvePor} devolvió tu respuesta del radicado ${radicado} para corrección. Motivo: "${comentario || 'Sin motivo especificado'}".`;
+
+        await this.notificationClient.notifyUserById(consulta.abogadoAsignadoId, {
+            tipo_notificacion: esAprobada ? 'RESPUESTA_APROBADA' : 'RESPUESTA_DEVUELTA',
+            titulo,
+            mensaje,
+            descripcion_corta: `Radicado ${radicado} ${resultado}`,
+            icono: esAprobada ? 'CheckCircle' : 'AlertTriangle',
+            color: esAprobada ? '#10B981' : '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'gestion-legal',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver consulta',
+            url_accion: linkConsulta,
+            datos_adicionales: {
+                consultaId: consulta.id,
+                numeroRadicado: radicado,
+                resuelvePor,
+                comentario: comentario || null
+            }
+        });
+
+        const detail = await this.notificationClient.getUserDetailsById(consulta.abogadoAsignadoId);
+        if (detail?.email) {
+            const emailHtml = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <h2 style="color: ${esAprobada ? '#10B981' : '#DC2626'};">${titulo}</h2>
+                    <p>${mensaje}</p>
+                    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee; width: 35%;"><strong>Radicado:</strong></td>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${radicado}</td>
+                        </tr>
+                        ${!esAprobada ? `<tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Observaciones:</strong></td>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${comentario || 'N/A'}</td>
+                        </tr>` : ''}
+                    </table>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${linkConsulta}" style="background-color: ${esAprobada ? '#10B981' : '#DC2626'}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Ver Consulta</a>
+                    </div>
+                    <p style="font-size: 12px; color: #666; margin-top: 30px;">
+                        Este es un mensaje automatizado desde la Plataforma Integrada ESAP. Por favor, no responda a este correo.
+                    </p>
+                </div>
+            `;
+            await this.notificationClient.sendEmail(
+                detail.email,
+                `${titulo} - Radicado ${radicado}`,
+                emailHtml
+            );
+        }
+
+        this.logger.log(`Notificación de respuesta ${resultado} enviada al abogado ${consulta.abogadoAsignadoId} — Radicado: ${radicado}`);
     }
 
     async delete(id: string): Promise<void> {

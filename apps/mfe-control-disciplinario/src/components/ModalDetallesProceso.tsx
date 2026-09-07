@@ -25,6 +25,7 @@ import * as mammoth from 'mammoth';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { ModalPliegoCargos } from './ModalPliegoCargos';
+import { ModalCompartirExpediente } from './ModalCompartirExpediente';
 import { authService } from '../../../services/api';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
@@ -197,6 +198,8 @@ interface Archivo {
   extension: Extension;
   version?: number;
   observacionesDevolucion?: string;
+  archivoDevolucionUrl?: string;
+  archivoDevolucionNombre?: string;
   fechaEnvioRevision?: string;
   etapaProceso?: string;
   downloadUrl?: string | null;
@@ -1128,19 +1131,28 @@ function ModalConfirmarEnvioRevision({
 function formatFechaActuacion(fecha?: string | null, withTime = false): string {
   if (!fecha) return 'Sin fecha';
 
-  // Evita el desfase por zona horaria cuando la fecha viene como YYYY-MM-DD.
+  // Las fechas "solo día" (YYYY-MM-DD) son una fecha civil, no un instante:
+  // anclarlas a mediodía UTC evita que se corran de día al formatear en
+  // America/Bogota. Las fechas con hora (timestamps del backend) se formatean
+  // directamente, pero siempre fijando la zona horaria a America/Bogota (no la
+  // del navegador/servidor donde corre la app, que puede no coincidir con la
+  // hora real de los usuarios y era la causa de que la hora mostrada no
+  // coincidiera con la hora real del registro).
   const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const parsed = soloFecha
-    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
     : new Date(fecha);
 
   if (Number.isNaN(parsed.getTime())) return fecha;
 
   return parsed.toLocaleString(
     'es-CO',
-    withTime
-      ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
-      : { year: 'numeric', month: 'short', day: '2-digit' }
+    {
+      ...(withTime
+        ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+        : { year: 'numeric', month: 'short', day: '2-digit' }),
+      timeZone: 'America/Bogota',
+    }
   );
 }
 
@@ -1150,9 +1162,11 @@ function formatFechaBogota(
 ): string {
   if (!fecha) return '—';
 
-  // Las cadenas YYYY-MM-DD representan una fecha civil, no un instante UTC.
-  // Usar mediodía UTC mantiene el mismo día al presentarlo en America/Bogota.
-  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // Las cadenas de fecha (con o sin componente de hora, p.ej. el timestamp que
+  // devuelve el backend) representan una fecha civil, no un instante preciso.
+  // Usar mediodía UTC del día indicado evita que una medianoche UTC se muestre
+  // como el día anterior al convertir a America/Bogota (UTC-5).
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const parsed = soloFecha
     ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
     : new Date(fecha);
@@ -1167,7 +1181,13 @@ function formatFechaBogota(
 function mapActuacionFromApi(actuacion: DisciplinaryProcessActuacion): ActuacionItem {
   return {
     id: actuacion.id,
-    fecha: actuacion.fechaActuacion ? actuacion.fechaActuacion.split('T')[0] : '',
+    // No truncar a solo-fecha aquí: fechaActuacion es un timestamp UTC completo y
+    // recortarlo con split('T')[0] toma el día calendario en UTC antes de convertir
+    // a America/Bogota (UTC-5) — cualquier actuación registrada después de las 7pm
+    // hora Bogotá cae ya en el día siguiente en UTC y se mostraba con un día de más
+    // en el Historial de Cambios de Etapa. formatFechaActuacion() ya hace la
+    // conversión de zona horaria correctamente a partir del timestamp completo.
+    fecha: actuacion.fechaActuacion || '',
     descripcion: actuacion.descripcion,
     tipo: (actuacion.tipo || 'actuacion').toLowerCase(),
     responsable: actuacion.responsableNombre || 'Sin responsable',
@@ -2075,6 +2095,112 @@ function ModalNuevaTarea({
   );
 }
 
+// ==================== MODAL: DETALLE DE DEVOLUCIÓN (solo lectura) ====================
+// Réplica del cuadro que ve el Jefe OCID al devolver un auto (ModalDevolucion en
+// ModalRevisionAuto.tsx), pero mostrando los datos ya guardados en lugar de un formulario.
+function ModalDetalleDevolucion({
+  archivo,
+  onClose,
+}: {
+  archivo: Archivo;
+  onClose: () => void;
+}) {
+  const texto = archivo.observacionesDevolucion || '';
+  const separador = ' — ';
+  const idxSeparador = texto.indexOf(separador);
+  const motivo = idxSeparador >= 0 ? texto.slice(0, idxSeparador) : texto;
+  const comentarios = idxSeparador >= 0 ? texto.slice(idxSeparador + separador.length) : '';
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto p-6"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: '#FEE2E2' }}>
+            <RotateCcw className="w-6 h-6" style={{ color: '#DC2626' }} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold" style={{ color: '#1F2937' }}>
+              Auto Devuelto
+            </h3>
+            <p className="text-sm" style={{ color: '#6B7280' }}>
+              Motivo de devolución indicado por el Jefe OCID
+            </p>
+          </div>
+        </div>
+
+        {/* Motivo */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
+            Motivo de Devolución
+          </label>
+          <div className="w-full p-3 border-2 rounded-xl" style={{ borderColor: '#E5E7EB', color: '#1F2937', background: '#F9FAFB' }}>
+            {motivo || 'No especificado'}
+          </div>
+        </div>
+
+        {/* Comentarios */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
+            Comentarios Detallados
+          </label>
+          <div className="w-full min-h-[8rem] p-3 border-2 rounded-xl whitespace-pre-wrap" style={{ borderColor: '#E5E7EB', color: '#1F2937', background: '#F9FAFB' }}>
+            {comentarios || 'Sin comentarios adicionales'}
+          </div>
+        </div>
+
+        {/* Archivos */}
+        <div className="mb-6">
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
+            Archivos de Soporte
+          </label>
+          {archivo.archivoDevolucionUrl ? (
+            <a
+              href={resolveControlDisciplinarioUrl(archivo.archivoDevolucionUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-3 rounded-xl hover:opacity-80 transition-opacity"
+              style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#003DA5' }}
+            >
+              <Paperclip className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm font-semibold flex-1 truncate">{archivo.archivoDevolucionNombre || 'Documento de soporte'}</span>
+              <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+            </a>
+          ) : (
+            <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#F9FAFB', border: '1px dashed #E5E7EB', color: '#9CA3AF' }}>
+              <Paperclip className="w-4 h-4" />
+              <span className="text-sm">No se adjuntó ningún documento en la devolución</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity"
+            style={{ background: '#003DA5' }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
 export function ModalDetallesProceso({
   proceso, onClose, onReabrir,
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
@@ -2107,6 +2233,7 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [archivoDetalleDevolucion, setArchivoDetalleDevolucion] = useState<Archivo | null>(null);
   const [noticia, setNoticia] = useState<ApiNoticia | null>(null);
   const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
   const [actuacionesLoading, setActuacionesLoading] = useState(false);
@@ -2124,9 +2251,11 @@ export function ModalDetallesProceso({
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
+  const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
   const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
   const [mostrarModalEnvioJuridica, setMostrarModalEnvioJuridica] = useState(false);
   const [enviandoJuridica, setEnviandoJuridica] = useState(false);
+  const [revirtiendoAprobacion, setRevirtiendoAprobacion] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -2263,6 +2392,9 @@ export function ModalDetallesProceso({
           urlExterna: doc.urlExterna || null,
           archivoNombre: doc.archivoNombre || doc.nombre,
           fileType: doc.fileType || null,
+          observacionesDevolucion: estado === 'devuelto' ? (doc.descripcion || undefined) : undefined,
+          archivoDevolucionUrl: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentUrl || undefined) : undefined,
+          archivoDevolucionNombre: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentName || undefined) : undefined,
         };
       });
 
@@ -3250,7 +3382,7 @@ export function ModalDetallesProceso({
     lines.push('═══ ACTUACIONES ═══');
     lines.push(['Fecha', 'Descripción', 'Tipo', 'Responsable', 'Etapa'].join(sep));
     actuaciones.forEach(a => {
-      lines.push([a.fecha, a.descripcion, a.tipo, a.responsable, a.etapa || '-'].join(sep));
+      lines.push([formatFechaActuacion(a.fecha, true), a.descripcion, a.tipo, a.responsable, a.etapa || '-'].join(sep));
     });
     lines.push(`Total Actuaciones: ${actuaciones.length}`);
     lines.push('');
@@ -3277,7 +3409,7 @@ export function ModalDetallesProceso({
     lines.push('═══ HISTORIAL DE CAMBIOS DE ETAPA ═══');
     lines.push(['Fecha', 'Desde', 'Hacia', 'Responsable', 'Motivo'].join(sep));
     historialEtapas.forEach(h => {
-      lines.push([h.fecha, h.desde, h.hacia, h.responsable, `"${h.motivo.replace(/"/g, '""')}"`].join(sep));
+      lines.push([formatFechaActuacion(h.fecha, true), h.desde, h.hacia, h.responsable, `"${h.motivo.replace(/"/g, '""')}"`].join(sep));
     });
     lines.push(`Total Transiciones: ${historialEtapas.length}`);
     lines.push('');
@@ -3776,9 +3908,27 @@ export function ModalDetallesProceso({
             })()}
             <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full hidden sm:inline"
               style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
-            <span className="flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: est.color }}>
-              {est.icon}{est.text}
-            </span>
+            {fueDevuelto && archivo.observacionesDevolucion ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setArchivoDetalleDevolucion(archivo);
+                }}
+                className="flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-md border text-[9px] font-bold transition-colors"
+                style={{ color: est.color, borderColor: est.color, backgroundColor: `${est.color}14` }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = `${est.color}2A`}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = `${est.color}14`}
+                title="Ver motivo y comentario de la devolución"
+              >
+                {est.icon}{est.text}
+                <Eye className="w-2.5 h-2.5" />
+              </button>
+            ) : (
+              <span className="flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: est.color }}>
+                {est.icon}{est.text}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 ml-1">
             {/* {estaEnRevision && (
@@ -3839,17 +3989,6 @@ export function ModalDetallesProceso({
             )}
           </div>
         </div>
-        {fueDevuelto && archivo.observacionesDevolucion && (
-          <div className="mx-2.5 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[10px] font-bold text-red-800">Observaciones de devolución:</p>
-                <p className="text-[10px] text-red-700 mt-0.5 leading-relaxed">{archivo.observacionesDevolucion}</p>
-              </div>
-            </div>
-          </div>
-        )}
         {estaEnRevision && (
           <div className="mx-2.5 mb-2 px-3 py-2 rounded-lg border" style={{ background: '#EFF6FF', borderColor: '#BFDBFE' }}>
             <div className="flex items-center gap-2">
@@ -4404,11 +4543,15 @@ export function ModalDetallesProceso({
 
                     {/* Acciones del Proceso — botón dinámico según estado del auto de pliego */}
                     {proceso.estadoActual === 'ACTIVO' && (() => {
-                      const autoPliego = archivosBackend.find(a =>
+                      // Preferir el auto real (tipo 'auto'); solo caer a cualquier
+                      // documento con "pliego" en el nombre si no hay auto.
+                      const esPliego = (a: Archivo) =>
                         a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
                         a.nombre?.includes('PLIEGO_CARGOS') ||
-                        a.nombre?.toLowerCase().includes('pliego')
-                      );
+                        a.nombre?.toLowerCase().includes('pliego');
+                      const autoPliego =
+                        archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
+                        archivosBackend.find(esPliego);
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
@@ -4466,21 +4609,55 @@ export function ModalDetallesProceso({
                       }
 
                       if (autoPliego.estado === 'aprobado') {
-                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ? (
-                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
+                        return (
+                          <div className="space-y-2">
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                              <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
+                                <button
+                                  onClick={() => setMostrarModalEnvioJuridica(true)}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                  style={{ background: '#2563EB', color: 'white' }}
+                                >
+                                  <Send className="w-4 h-4" />
+                                  Enviar a Jurídica
+                                </button>
+                                <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
+                                  Auto aprobado — listo para enviar a Oficina Jurídica
+                                </p>
+                              </div>
+                            )}
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
                               <button
-                                onClick={() => setMostrarModalEnvioJuridica(true)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                                style={{ background: '#2563EB', color: 'white' }}
+                                disabled={revirtiendoAprobacion}
+                                onClick={async () => {
+                                  if (!window.confirm('¿Reversar la aprobación de este Pliego de Cargos? Volverá a borrador para que el Profesional lo corrija y lo reenvíe a revisión, y el proceso regresará a la etapa en la que estaba antes de aprobarlo. Esta acción no afecta el envío a Jurídica.')) {
+                                    return;
+                                  }
+                                  try {
+                                    setRevirtiendoAprobacion(true);
+                                    const currentUser = authService.getCurrentUser();
+                                    await disciplinaryService.revertirAprobacionAuto(autoPliego.id, currentUser?.id || '');
+                                    toast.success('Aprobación reversada', {
+                                      description: 'El auto volvió a borrador para corrección.',
+                                    });
+                                    onClose();
+                                  } catch (error: any) {
+                                    toast.error('Error al reversar la aprobación', {
+                                      description: error?.message || 'No se pudo conectar con el servidor.',
+                                    });
+                                  } finally {
+                                    setRevirtiendoAprobacion(false);
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all hover:bg-gray-50 disabled:opacity-50"
+                                style={{ border: '1px solid #D1D5DB', color: '#6B7280' }}
                               >
-                                <Send className="w-4 h-4" />
-                                Enviar a Jurídica
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                {revirtiendoAprobacion ? 'Reversando...' : 'Reversar Aprobación'}
                               </button>
-                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
-                                Auto aprobado — listo para enviar a Oficina Jurídica
-                              </p>
-                            </div>
-                        ) : null;
+                            )}
+                          </div>
+                        );
                       }
 
                       return null;
@@ -6152,8 +6329,7 @@ export function ModalDetallesProceso({
 
             <div className="flex items-center gap-1.5">
               {[
-                { label: 'Notificar', icon: <Bell   className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar', { description: proceso.numeroProceso }) },
-                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir') },
+                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => setMostrarModalCompartir(true) },
               ].map(({ label, icon, fn }) => (
                 <button key={label} onClick={fn}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-white hover:border-gray-400 transition-all">
@@ -6256,6 +6432,15 @@ export function ModalDetallesProceso({
       </AnimatePresence>
 
       <AnimatePresence>
+        {archivoDetalleDevolucion && (
+          <ModalDetalleDevolucion
+            archivo={archivoDetalleDevolucion}
+            onClose={() => setArchivoDetalleDevolucion(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {mostrarModalNuevaActuacion && (
           <ModalNuevaActuacion
             open={mostrarModalNuevaActuacion}
@@ -6296,14 +6481,28 @@ export function ModalDetallesProceso({
         )}
       </AnimatePresence>
 
+      {mostrarModalCompartir && (
+        <ModalCompartirExpediente
+          expediente={{
+            id: proceso.id,
+            radicado: proceso.numeroProceso,
+            nombreDisciplinado: getNombre(proceso.denunciado),
+            estado: proceso.estadoActual,
+          }}
+          onClose={() => setMostrarModalCompartir(false)}
+        />
+      )}
+
       <AnimatePresence>
         {/* Modal confirmación envío a jurídica */}
         {mostrarModalEnvioJuridica && (() => {
-          const autoPliego = archivosBackend.find(a =>
+          const esPliego = (a: Archivo) =>
             a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
             a.nombre?.includes('PLIEGO_CARGOS') ||
-            a.nombre?.toLowerCase().includes('pliego')
-          );
+            a.nombre?.toLowerCase().includes('pliego');
+          const autoPliego =
+            archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
+            archivosBackend.find(esPliego);
           return (
             <motion.div
               initial={{ opacity: 0 }}
@@ -6373,6 +6572,8 @@ export function ModalDetallesProceso({
                             description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
                             duration: 5000,
                           });
+                          // Reflejar el cierre para que salga de Juzgamiento y no se pueda reenviar
+                          onActualizarProceso?.({ estadoActual: 'CERRADO' });
                           setMostrarModalEnvioJuridica(false);
                           onClose();
                         } catch (error: any) {

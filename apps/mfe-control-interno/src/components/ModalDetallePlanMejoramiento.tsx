@@ -3473,7 +3473,7 @@
                                             return (
                                               <div className="space-y-6">
                                                 {/* Banner de Estado */}
-                                                <div className={`rounded-xl p-5 text-white ${planEstaCerrado ? 'bg-gradient-to-r from-gray-700 to-gray-800' : 'bg-gradient-to-r from-amber-600 to-orange-600'}`}>
+                                                <div className={`rounded-xl p-5 text-white ${planEstaCerrado ? 'bg-gradient-to-r from-green-600 to-green-500' : 'bg-gradient-to-r from-amber-600 to-orange-600'}`}>
                                                   <div className="flex items-center gap-3 mb-3">
                                                     <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
                                                       <Lock className="w-6 h-6" />

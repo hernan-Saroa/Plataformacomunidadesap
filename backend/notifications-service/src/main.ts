@@ -6,8 +6,10 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.getHttpAdapter().getInstance().disable?.('x-powered-by');
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  // Dos evidencias de hasta 10 MB viajan en base64 (aprox. 27 MB) y, cuando
+  // se aprueba una corrección, se suma el PDF institucional.
+  app.use(express.json({ limit: '45mb' }));
+  app.use(express.urlencoded({ limit: '45mb', extended: true }));
   app.enableCors({
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

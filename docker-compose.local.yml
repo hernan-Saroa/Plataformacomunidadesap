@@ -273,6 +273,11 @@ services:
     extends:
       file: ./docker-compose.frontend-mfe.yml
       service: frontend-mfe-contratacion
+
+  frontend-mfe-viaticos:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-viaticos
 networks:
   superapp-net:
     driver: bridge

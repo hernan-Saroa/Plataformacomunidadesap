@@ -55,6 +55,24 @@ describe('PtaService - coexistencia de proyecto y actividades de investigacion',
     )).toThrow(/proyecto o actividades/);
   });
 
+  it('rechaza una actividad si ya se empezo a diligenciar el proyecto', () => {
+    const body = {
+      investigacion_proyecto: {
+        nombre: 'Proyecto parcialmente diligenciado',
+        horas_solicitadas: 0,
+      },
+      investigacion_actividades: [{ actividad_id: 'INV_01', horas_total: 80 }],
+    };
+    const hours = service.computeHorasTotales(body);
+
+    expect(() => service.validateInvestigacionComponent(
+      body,
+      hours,
+      720,
+      { ...baseRules, inv_permitir_proyecto_actividades_simultaneos: false },
+    )).toThrow(/proyecto o actividades/);
+  });
+
   it('acepta y suma ambos registros cuando el switch esta activo', () => {
     const body = createBody(200, 80);
     const hours = service.computeHorasTotales(body);

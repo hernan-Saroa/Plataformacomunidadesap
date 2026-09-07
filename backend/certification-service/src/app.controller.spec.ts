@@ -15,8 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should identify the certification microservice', () => {
+      expect(appController.getHello()).toBe(
+        'Running Microservice Certification Service',
+      );
     });
   });
 });

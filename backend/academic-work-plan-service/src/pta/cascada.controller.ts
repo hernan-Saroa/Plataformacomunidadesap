@@ -9,6 +9,7 @@ import { AsignaturaEntity } from './entities/asignatura.entity';
 import { OfertaCetapProgramaEntity } from './entities/oferta-cetap-programa.entity';
 import { PeriodoAcademicoEntity } from './entities/periodo-academico.entity';
 import { HorasPtaCalculator } from './horas-pta.calculator';
+import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
 
 @Public()
 @Controller(['cascada', 'pta/cascada'])
@@ -210,6 +211,7 @@ export class CascadaController {
         id: asig.id,
         codigo: asig.codigo,
         nombre: asig.nombre,
+        nombreVisible: obtenerNombreVisibleAsignatura(asig),
         nombreBase: asig.nombreBase,
         pensum: asig.pensum,
         pensumKey: asig.pensum || CascadaController.SIN_PENSUM,
@@ -256,6 +258,7 @@ export class CascadaController {
       id: asig.id,
       codigo: asig.codigo,
       nombre: asig.nombre,
+      nombreVisible: obtenerNombreVisibleAsignatura(asig),
       nombreBase: asig.nombreBase,
       pensum: asig.pensum,
       pensumKey: asig.pensum || CascadaController.SIN_PENSUM,

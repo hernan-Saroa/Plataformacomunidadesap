@@ -13,6 +13,8 @@ import { Evidencia } from './entities/evidencia.entity';
 import { Acta } from './entities/acta.entity';
 import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { ReglaAlertaTermino } from './entities/regla-alerta-termino.entity';
+import { AlertaTerminoEnviada } from './entities/alerta-termino-enviada.entity';
 import { Actor } from './entities/actor.entity';
 
 // Órganos de Control - Nuevo módulo
@@ -73,6 +75,9 @@ import { OficioEnviado } from './entities/oficio-enviado.entity';
 // Plantillas de Documentos
 import { PlantillaDocumento } from './entities/plantilla-documento.entity';
 
+// Consecutivos (radicados autogenerados)
+import { Sequence } from './entities/sequence.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -88,6 +93,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     entities: [
         Expediente, Actuacion, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
+        ReglaAlertaTermino, AlertaTerminoEnviada,
         Actor,
         // Órganos de Control
         OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo, TipoRequerimientoOC,
@@ -116,7 +122,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Oficios Enviados
         OficioEnviado,
         // Plantillas de Documentos
-        PlantillaDocumento
+        PlantillaDocumento,
+        // Consecutivos
+        Sequence
     ],
     synchronize: process.env.TYPEORM_SYNC === 'true',
     logging: ['error'], // Solo mostrar errores, no queries

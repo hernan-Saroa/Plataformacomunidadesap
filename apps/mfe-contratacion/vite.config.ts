@@ -26,6 +26,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@esap-mfe/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
+      '@esap-mfe/shared-hooks': path.resolve(__dirname, '../../packages/shared-hooks/src'),
       '@esap-mfe/shared-types': path.resolve(__dirname, '../../packages/shared-types/src'),
     },
   },

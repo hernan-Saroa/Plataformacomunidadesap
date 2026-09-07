@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Search, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { PTARules } from '../ConfiguracionReglasPTA';
 
@@ -29,6 +30,9 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
   // ── CRUD helpers ──────────────────────────────────────────────────────────
   const roles: Rol[] = draft.inv_roles || [];
   const actividades: Actividad[] = draft.inv_actividades || [];
+  const permiteProyectoYActividades = Boolean(
+    draft.inv_permitir_proyecto_actividades_simultaneos,
+  );
 
   const updateRol = (idx: number, field: keyof Rol, val: any) => {
     const next = roles.map((r, i) => i === idx ? { ...r, [field]: field === 'nombre' ? val : Number(val) } : r);
@@ -212,8 +216,8 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
             </summary>
 
             <div className="p-4 border-t border-slate-100 bg-purple-50/10">
-              <div className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-purple-200 transition-colors shadow-sm">
-                <div className="flex-1 pr-4">
+              <div className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-emerald-200 transition-colors shadow-sm">
+                <div className="min-w-0 flex-1 pr-4">
                   <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">
                     Permitir proyecto y actividades simultáneamente
                   </h4>
@@ -221,28 +225,43 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                     Al activarlo, el docente puede registrar un Proyecto de Investigación y Actividades de Investigación en el mismo PTA. Las horas de ambos se suman y respetan el tope global del componente.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleChange(
-                    'inv_permitir_proyecto_actividades_simultaneos',
-                    !draft.inv_permitir_proyecto_actividades_simultaneos,
-                  )}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500/30 ${
-                    draft.inv_permitir_proyecto_actividades_simultaneos
-                      ? 'bg-purple-600 border-purple-600'
-                      : 'bg-slate-200 border-slate-200'
-                  }`}
-                  role="switch"
-                  aria-label="Permitir proyecto y actividades de investigación simultáneamente"
-                  aria-checked={draft.inv_permitir_proyecto_actividades_simultaneos}
-                >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    draft.inv_permitir_proyecto_actividades_simultaneos ? 'translate-x-5' : 'translate-x-0.5'
-                  }`} />
-                </button>
-                <span className={`ml-3 text-xs font-bold min-w-[70px] text-right ${draft.inv_permitir_proyecto_actividades_simultaneos ? 'text-purple-700' : 'text-slate-400'}`}>
-                  {draft.inv_permitir_proyecto_actividades_simultaneos ? 'Permitido' : 'Excluyente'}
-                </span>
+                <div className="flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    onClick={() => handleChange(
+                      'inv_permitir_proyecto_actividades_simultaneos',
+                      !permiteProyectoYActividades,
+                    )}
+                    className={`relative inline-flex shrink-0 cursor-pointer items-center overflow-hidden rounded-full border-2 p-0 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
+                      permiteProyectoYActividades
+                        ? 'border-emerald-500 bg-emerald-500'
+                        : 'border-slate-200 bg-slate-200'
+                    }`}
+                    style={{ width: 48, minWidth: 48, height: 28 }}
+                    role="switch"
+                    aria-label="Permitir proyecto y actividades de investigación simultáneamente"
+                    aria-checked={permiteProyectoYActividades}
+                  >
+                    <motion.span
+                      className="pointer-events-none absolute rounded-full bg-white shadow-lg"
+                      style={{ left: 2, top: 2, width: 20, height: 20 }}
+                      initial={false}
+                      animate={{
+                        x: permiteProyectoYActividades ? 20 : 0,
+                      }}
+                      transition={{
+                        x: { type: 'spring', stiffness: 500, damping: 30, mass: 0.7 },
+                      }}
+                    />
+                  </button>
+                  <span
+                    className={`ml-3 min-w-[70px] whitespace-nowrap text-right text-xs font-bold transition-colors duration-200 ${
+                      permiteProyectoYActividades ? 'text-emerald-600' : 'text-slate-400'
+                    }`}
+                  >
+                    {permiteProyectoYActividades ? 'Permitido' : 'Excluyente'}
+                  </span>
+                </div>
               </div>
             </div>
           </details>
@@ -274,7 +293,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 <button
                   type="button"
                   onClick={() => handleChange('inv_resolucion_obligatoria', !draft.inv_resolucion_obligatoria)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
                     draft.inv_resolucion_obligatoria
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-slate-200 border-slate-200'
@@ -302,7 +321,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 <button
                   type="button"
                   onClick={() => handleChange('inv_adjunto_obligatorio', !draft.inv_adjunto_obligatorio)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
                     draft.inv_adjunto_obligatorio
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-slate-200 border-slate-200'

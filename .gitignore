@@ -183,6 +183,7 @@ backend/legal-management-service/uploads/
 backend/internal-institutional-control-service/uploads/control-interno/
 backend/academic-registration-service/uploads/
 backend/academic-work-plan-service/uploads/
+backend/hiring-service/uploads/
 .env.dev
 .env.qa
 .env.pre
@@ -190,7 +191,5 @@ backend/academic-work-plan-service/uploads/
 
 # Package locks local
 package-lock.json
-backend/auth-service/package-lock.json
-backend/internal-disciplinary-control-service/package-lock.json
 
 .claude/

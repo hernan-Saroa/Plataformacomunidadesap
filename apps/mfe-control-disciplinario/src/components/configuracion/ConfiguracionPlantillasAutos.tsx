@@ -315,7 +315,9 @@ export function ConfiguracionPlantillasAutos() {
     setMostrarModalTipoAuto(true);
   };
 
-  const guardarTipoAuto = async (nuevoTipo: NuevoTipoAutoData) => {
+  const guardarTipoAuto = async (nuevoTipo: NuevoTipoAutoData): Promise<boolean> => {
+    let guardadoExitoso = true;
+
     if (tipoAutoEdicion) {
       try {
         const autoActual = tiposAutos.find((t) => t.id === tipoAutoEdicion.id);
@@ -364,7 +366,10 @@ export function ConfiguracionPlantillasAutos() {
         }
       } catch (error) {
         console.error('Error actualizando:', error);
-        toast.error('Error al actualizar');
+        guardadoExitoso = false;
+        toast.error(
+          error instanceof Error ? error.message : 'Error al actualizar el tipo de auto',
+        );
       }
     } else {
       try {
@@ -408,14 +413,21 @@ export function ConfiguracionPlantillasAutos() {
           setTiposAutos((prev) => [...prev, tipoCompleto]);
           toast.success('Tipo de auto creado localmente');
         } else {
-          toast.error('Error al crear el tipo de auto');
+          guardadoExitoso = false;
+          toast.error(
+            error instanceof Error ? error.message : 'Error al crear el tipo de auto',
+          );
         }
       }
     }
 
-    setCambiosPendientes(true);
-    setMostrarModalTipoAuto(false);
-    setTipoAutoEdicion(null);
+    if (guardadoExitoso) {
+      setCambiosPendientes(true);
+      setMostrarModalTipoAuto(false);
+      setTipoAutoEdicion(null);
+    }
+
+    return guardadoExitoso;
   };
 
   const cerrarModalEliminarTipo = () => {

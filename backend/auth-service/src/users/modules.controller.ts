@@ -39,6 +39,7 @@ export class ModulesController {
       filters.include_inactive_permissions = includeInactivePermissions === 'true';
     }
 
+    filters.include_permissions = true;
     if (includePermissions !== undefined) {
       filters.include_permissions = includePermissions === 'true';
     }

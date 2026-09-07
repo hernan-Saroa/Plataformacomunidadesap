@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Columns3, GripVertical, Info, Plus, Tag, X } from 'lucide-react';
+import { Columns3, Info, Lock, Plus, Tag, X } from 'lucide-react';
 
 interface DetailColumnModalProps {
   open: boolean;
@@ -74,8 +74,8 @@ export function DetailColumnModal({
           <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#003DA5]" />
             <p className="text-[11px] leading-4 text-slate-700">
-              <span className="font-bold text-[#003DA5]">La posición define la jerarquía.</span>{' '}
-              Si la ubicas antes de Actividades agrupará filas; si la ubicas después, se anidará en escalera: sus valores pertenecerán a cada valor de la columna anterior.
+              <span className="font-bold text-[#003DA5]">El orden de la jerarquía es fijo.</span>{' '}
+              La columna nueva se agrega al final como detalle del nivel anterior. Después de crearla puede renombrarse, pero no cambiarse de posición.
             </p>
           </div>
 
@@ -83,12 +83,12 @@ export function DetailColumnModal({
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-600">Columnas actuales</span>
-                <span className="text-[10px] text-slate-400">En orden de visualización</span>
+                <span className="flex items-center gap-1 text-[10px] font-medium text-slate-400"><Lock className="h-3 w-3" /> Orden protegido</span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
                 {existingColumns.map((column, index) => (
                   <div key={`${column}-${index}`} className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-600">
-                    <GripVertical className="h-3 w-3 text-slate-400" />
+                    <Lock className="h-3 w-3 text-slate-400" />
                     <span className="flex h-4 min-w-4 items-center justify-center rounded bg-blue-50 px-1 text-[9px] font-bold text-[#003DA5]">{index + 1}</span>
                     {column}
                   </div>

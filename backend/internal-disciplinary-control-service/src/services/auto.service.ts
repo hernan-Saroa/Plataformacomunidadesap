@@ -15,7 +15,7 @@ import { DocumentConversionService } from './document-conversion.service';
 import { PdfModifierService } from './pdf-modifier.service';
 import { ProcessService } from './process.service';
 import { SequenceService } from './sequence.service';
-import { JuridicaEmailService } from './juridica-email.service';
+import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
 import {
   DisciplinaryProcess,
@@ -152,7 +152,7 @@ export class AutoService {
    */
   async findAll(): Promise<LegalAuto[]> {
     return await this.autoRepository.find({
-      relations: ['process', 'process.abogadoAsignado'],
+      relations: ['process', 'process.abogadoAsignado', 'process.news'],
     });
   }
 
@@ -263,6 +263,9 @@ export class AutoService {
         await this.archiveProcess(auto.processId, aprobadoPorId);
       }
 
+      // EFDS-1564: recordar la etapa previa por si luego se reversa la aprobación.
+      const etapaAntesDeAprobar = auto.process?.etapaActual;
+
       // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
       if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
         await this.processService.changeStageByAutoApertura(
@@ -304,6 +307,18 @@ export class AutoService {
               datos_adicionales: { processId: auto.processId, radicadoProceso: auto.process.radicadoProceso, autoId: auto.id },
             })
             .catch(() => {});
+        }
+      }
+
+      // EFDS-1564: si la aprobación efectivamente movió la etapa del proceso, se
+      // guarda la etapa previa para poder devolver el proceso a ella si se reversa.
+      if (etapaAntesDeAprobar) {
+        const procesoTrasAprobar = await this.processService.findById(
+          auto.processId,
+          false,
+        );
+        if (procesoTrasAprobar.etapaActual !== etapaAntesDeAprobar) {
+          auto.etapaPreviaAprobacion = etapaAntesDeAprobar;
         }
       }
 
@@ -375,6 +390,28 @@ export class AutoService {
               `Observaciones: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
             aprobadoPorId,
           );
+        }
+      } else {
+        // Notificación de devolución para el resto de tipos de auto.
+        const proceso = auto.process;
+        if (proceso?.abogadoAsignadoId) {
+          this.notificationClient
+            .send({
+              id_usuario_destinatario: proceso.abogadoAsignadoId,
+              tipo_notificacion: 'AUTO_DEVUELTO',
+              titulo: 'Auto devuelto para corrección',
+              mensaje: `El auto ${auto.tipo} del proceso ${proceso.radicadoProceso} fue devuelto por el Jefe OCID. ` +
+                `Observaciones: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+              descripcion_corta: `Auto devuelto - ${proceso.radicadoProceso}`,
+              icono: 'RotateCcw',
+              color: '#DC2626',
+              prioridad: 'Alta',
+              categoria: 'DISCIPLINARIO',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver auto',
+              datos_adicionales: { processId: auto.processId, radicadoProceso: proceso.radicadoProceso, autoId: auto.id },
+            })
+            .catch(() => {});
         }
       }
 
@@ -641,6 +678,30 @@ export class AutoService {
     return await this.autoRepository.save(auto);
   }
 
+  /**
+   * Adjunta el documento de soporte que el Jefe sube al devolver un auto.
+   * Se llama justo después de approve(RETURN); no cambia el estado del auto.
+   */
+  async uploadRejectionDocument(
+    id: string,
+    documentUrl: string,
+    documentName: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id);
+
+    if (auto.estado !== AutoStatus.DEVUELTO) {
+      throw new HttpException(
+        'Solo se puede adjuntar el documento de soporte a un auto devuelto',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    auto.rejectionDocumentUrl = documentUrl;
+    auto.rejectionDocumentName = documentName;
+
+    return await this.autoRepository.save(auto);
+  }
+
   async getVersions(id: string): Promise<AutoVersion[]> {
     return await this.versionRepository.find({
       where: { auto: { id } },
@@ -843,12 +904,23 @@ export class AutoService {
     enviadoPorEmail?: string, 
     enviadoPorNombre?: string
   ): Promise<void> {
-    const auto = await this.findById(id, ['process']);
+    const auto = await this.findById(id, ['process', 'process.news']);
 
     if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
       throw new HttpException(
         'Esta operación solo aplica para autos de pliego de cargos',
         HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Idempotencia: si el proceso ya fue cerrado (enviado a Jurídica), no
+    // reenviar y devolver un mensaje claro en vez del confuso "el auto debe
+    // estar aprobado". El cierre lo hace cerrarPorPliegoCargos de forma síncrona
+    // en el primer envío, así que un segundo intento lo ve CERRADO.
+    if (auto.process?.estado === ProcessStatus.CERRADO) {
+      throw new HttpException(
+        'Este proceso ya fue enviado a la Oficina Jurídica.',
+        HttpStatus.CONFLICT,
       );
     }
 
@@ -881,14 +953,172 @@ export class AutoService {
       observaciones: `Auto: ${auto.tipo} | Enviado por: ${enviadoPorId} | Etapa al cierre: ${datosConsolidados.etapaAlCierre}`,
     });
 
-    // Enviar correo a jurídica vía notifications-service (async, sin bloquear)
-    this.juridicaEmailService.enviarCorreoJuridica(auto.processId, datosConsolidados).then((enviado) => {
-      if (enviado) {
-        this.processService.marcarCorreoJuridicaEnviado(auto.processId);
+    // Notificar al Radicador que el proceso fue enviado a la Oficina Jurídica
+    const radicadorId = auto.process?.news?.radicadorId;
+    if (radicadorId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: radicadorId,
+          tipo_notificacion: 'PROCESO_ENVIADO_JURIDICA',
+          titulo: 'Proceso enviado a Jurídica',
+          mensaje: `El proceso ${datosConsolidados.radicado} fue enviado a la Oficina Jurídica y el expediente fue cerrado.`,
+          descripcion_corta: `Proceso enviado a Jurídica - ${datosConsolidados.radicado}`,
+          icono: 'Send',
+          color: '#2563EB',
+          prioridad: 'Media',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { processId: auto.processId, radicadoProceso: datosConsolidados.radicado, autoId: auto.id },
+        })
+        .catch(() => {});
+    }
+
+    // Enviar correo a jurídica vía notifications-service (async, sin bloquear).
+    // Adjunta todos los documentos del expediente: autos aprobados/firmados/
+    // notificados + evidencias + adjuntos de la noticia.
+    (async () => {
+      let adjuntos: EmailAdjunto[] = [];
+      try {
+        const [evidencias, autosProceso] = await Promise.all([
+          this.processService.getEvidenceByProcessId(auto.processId),
+          this.findByProcessId(auto.processId),
+        ]);
+        const autosDocumentables = (autosProceso || []).filter((a) =>
+          [AutoStatus.APROBADO, AutoStatus.FIRMADO, AutoStatus.NOTIFICADO].includes(a.estado),
+        );
+        const adjuntosNoticia = Array.isArray((auto.process as any)?.news?.adjuntos)
+          ? (auto.process as any).news.adjuntos
+          : [];
+        adjuntos = await this.juridicaEmailService.recolectarAdjuntosExpediente(
+          evidencias,
+          autosDocumentables,
+          adjuntosNoticia,
+        );
+      } catch (err: any) {
+        console.error(`No se pudieron recolectar los adjuntos del expediente: ${err?.message}`);
       }
-    }).catch((err) => {
+
+      const enviado = await this.juridicaEmailService.enviarCorreoJuridica(
+        auto.processId,
+        datosConsolidados,
+        adjuntos,
+      );
+      if (enviado) {
+        await this.processService.marcarCorreoJuridicaEnviado(auto.processId);
+      }
+    })().catch((err) => {
       console.error(`Error async enviando correo jurídica: ${err.message}`);
     });
+  }
+
+  /**
+   * Reversa la aprobación de un Pliego de Cargos, devolviéndolo a BORRADOR para
+   * que el Profesional lo corrija y lo vuelva a enviar a revisión. Solo aplica
+   * mientras el auto sigue en estado APROBADO — una vez enviado a Jurídica el
+   * auto pasa a NOTIFICADO, así que esta operación queda bloqueada por diseño y
+   * NO afecta en absoluto el envío a Jurídica ni el cierre del proceso.
+   */
+  async revertApproval(
+    id: string,
+    revertidoPorId: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
+      throw new HttpException(
+        'Esta operación solo aplica para autos de pliego de cargos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (auto.estado !== AutoStatus.APROBADO) {
+      throw new HttpException(
+        'Solo se puede reversar la aprobación de un auto que esté APROBADO. Si ya fue enviado a Jurídica, no se puede reversar.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const versionPreviaAprobacion = await this.versionRepository.findOne({
+      where: { auto: { id: auto.id } },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!versionPreviaAprobacion) {
+      throw new HttpException(
+        'No se encontró el historial de versiones del auto, no es posible reversar la aprobación de forma segura',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // NOTA: approve() no incrementa currentVersion (queda con el mismo numero que
+    // ya tenia la fila de historial guardada al aprobar). Por eso, para no chocar
+    // con esa fila (versionPreviaAprobacion), la version restaurada se registra con
+    // un numero nuevo (currentVersion + 1), igual que hace uploadDocumentoDuranteRevision().
+    auto.contenido = versionPreviaAprobacion.contenido;
+    auto.documentUrl = versionPreviaAprobacion.documentUrl ?? auto.documentUrl;
+    auto.documentName = versionPreviaAprobacion.documentName ?? auto.documentName;
+    auto.currentVersion += 1;
+    auto.estado = AutoStatus.BORRADOR;
+
+    // EFDS-1564: devolver el proceso a la etapa en la que estaba antes de aprobar.
+    const etapaADevolver = auto.etapaPreviaAprobacion;
+    let etapaProcesoRevertida: string | null = null;
+    if (etapaADevolver) {
+      const procesoRevertido = await this.processService.revertirEtapaProceso(
+        auto.processId,
+        etapaADevolver,
+        revertidoPorId,
+      );
+      etapaProcesoRevertida = procesoRevertido.etapaActual;
+      auto.etapaPreviaAprobacion = null;
+    }
+
+    const savedAuto = await this.autoRepository.save(auto);
+
+    await this.versionRepository.save({
+      auto: { id: savedAuto.id } as LegalAuto,
+      contenido: savedAuto.contenido,
+      versionNumber: savedAuto.currentVersion,
+      createdBy: revertidoPorId,
+      changeReason: 'Aprobación reversada por el Jefe — auto vuelve a borrador para corrección',
+      documentUrl: savedAuto.documentUrl,
+      documentName: savedAuto.documentName,
+    });
+
+    await this.actuacionesRepository.save({
+      processId: auto.processId,
+      tipo: 'reversion_aprobacion',
+      etapa: etapaProcesoRevertida ?? auto.process?.etapaActual,
+      descripcion: `Se reversó la aprobación del Pliego de Cargos (${auto.numero || 'sin número'}). El auto vuelve a borrador para corrección.`,
+      responsableNombre: revertidoPorId,
+      fechaActuacion: new Date(),
+      observaciones: etapaProcesoRevertida
+        ? `El proceso regresó a la etapa ${etapaProcesoRevertida}.`
+        : 'La etapa del proceso no se modifica; solo se revierte el estado del auto.',
+    });
+
+    const proceso = auto.process;
+    if (proceso?.abogadoAsignadoId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: proceso.abogadoAsignadoId,
+          tipo_notificacion: 'AUTO_APROBACION_REVERSADA',
+          titulo: 'Aprobación de Pliego de Cargos reversada',
+          mensaje: `El Jefe OCID reversó la aprobación del Pliego de Cargos del proceso ${proceso.radicadoProceso}. El auto volvió a borrador para que lo corrijas y lo envíes de nuevo a revisión.`,
+          descripcion_corta: `Aprobación reversada - ${proceso.radicadoProceso}`,
+          icono: 'RotateCcw',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver auto',
+          datos_adicionales: { processId: auto.processId, radicadoProceso: proceso.radicadoProceso, autoId: auto.id },
+        })
+        .catch(() => {});
+    }
+
+    return savedAuto;
   }
 
   private async preparePdfDocumentForSignature(auto: LegalAuto): Promise<void> {

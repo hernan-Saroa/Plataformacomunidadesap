@@ -38,7 +38,7 @@ import { exportarUniversoAuditableExcel, exportarUniversoAuditablePDF } from './
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+type NivelRiesgo = 'Extremo' | 'Alto' | 'Moderado' | 'Bajo' | 'Crítico' | 'Medio';
 type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
 interface ProcesoAuditable {
@@ -142,7 +142,7 @@ function getColorRiesgo(nivel: NivelRiesgo) {
 export function TabUniversoAuditableResponsive({
   procesos,
   estadisticas,
-  vigencia = new Date().getFullYear(),
+  vigencia,
   busqueda,
   filtroRiesgo,
   filtroTipo,
@@ -159,7 +159,8 @@ export function TabUniversoAuditableResponsive({
   puedeEditar = true,
   puedeEliminar = true
 }: TabUniversoAuditableResponsiveProps) {
-  
+  console.log('TabUniversoAuditableResponsive - Vigencia', vigencia);
+
   const { isMobile, isTablet } = useResponsive();
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(!isMobile);
   const [refreshing, setRefreshing] = useState(false);
@@ -902,9 +903,9 @@ export function TabUniversoAuditableResponsive({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none text-sm"
                 >
                   <option value="TODOS">Todos los niveles</option>
-                  <option value="Crítico">🔴 Crítico</option>
+                  <option value="Extremo">🔴 Extremo</option>
                   <option value="Alto">🟠 Alto</option>
-                  <option value="Medio">🟡 Medio</option>
+                  <option value="Moderado">🟡 Moderado</option>
                   <option value="Bajo">🔵 Bajo</option>
                 </select>
               </div>

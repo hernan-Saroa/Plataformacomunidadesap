@@ -65,7 +65,9 @@ export class PdfModifierService {
             const officeText = "JEFE OFICINA CONTROL INTERNO DISCIPLINARIO";
 
             const fontSize = 10;
-            const yPosition = 100; // From bottom
+            // Desde el borde inferior. Debe quedar por encima del pie institucional
+            // que agrega la conversión Word→PDF (margen inferior ~4cm ≈ 113pt).
+            const yPosition = 170;
 
             // Embed signature image if the jefe has configured one
             const pngPath = this.storageService.getFullPath('firma_jefe.png');

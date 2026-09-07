@@ -7,7 +7,7 @@
  *    X indica cuánto falta para el próximo autoguardado.
  */
 
-import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Mail, FileText, User,
@@ -21,6 +21,7 @@ import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService } from '../../../../services/api/legal.service';
+import { EmailTagInput, EMAIL_REGEX } from './EmailTagInput';
 
 interface ModalNuevaComunicacionProps {
   isOpen: boolean;
@@ -70,8 +71,6 @@ export interface DraftSavePayload {
   adjuntos: DraftAdjunto[];
   solicitarAcuse: boolean;
 }
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Segundos entre autoguardados de borrador mientras se redacta.
 const AUTOSAVE_SECONDS = 10;
@@ -155,153 +154,6 @@ function DraftAutosaveIndicator({
   }
 
   return null;
-}
-
-// ── Chip de email individual ──────────────────────────────────────────────────
-function EmailChip({
-  email,
-  onRemove,
-  readOnly = false,
-}: {
-  email: string;
-  onRemove: () => void;
-  readOnly?: boolean;
-}) {
-  const valid = EMAIL_REGEX.test(email);
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border select-none ${
-        valid
-          ? 'bg-blue-50 text-blue-800 border-blue-200'
-          : 'bg-red-50 text-red-700 border-red-300'
-      }`}
-    >
-      {email}
-      {!readOnly && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="ml-0.5 hover:bg-blue-200 rounded-full p-0.5 transition-colors"
-          aria-label={`Eliminar ${email}`}
-        >
-          <X className="w-3 h-3" />
-        </button>
-      )}
-    </span>
-  );
-}
-
-// ── Campo de destinatarios tipo Outlook ───────────────────────────────────────
-function EmailTagInput({
-  id,
-  emails,
-  onEmailsChange,
-  placeholder = 'nombre@ejemplo.com',
-  readOnly = false,
-}: {
-  id: string;
-  emails: string[];
-  onEmailsChange: (emails: string[]) => void;
-  placeholder?: string;
-  readOnly?: boolean;
-}) {
-  const [inputValue, setInputValue] = useState('');
-  const [focused, setFocused] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const commitInput = (raw: string) => {
-    const trimmed = raw.trim().replace(/[,;]+$/, '').trim();
-    if (!trimmed) return;
-    if (!emails.includes(trimmed)) {
-      onEmailsChange([...emails, trimmed]);
-    }
-    setInputValue('');
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (['Enter', ',', ';', 'Tab'].includes(e.key)) {
-      e.preventDefault();
-      commitInput(inputValue);
-      return;
-    }
-    // Backspace sobre campo vacío → elimina el último chip
-    if (e.key === 'Backspace' && inputValue === '' && emails.length > 0) {
-      onEmailsChange(emails.slice(0, -1));
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text');
-    const candidates = pasted.split(/[,;\s\n\r]+/).map((s) => s.trim()).filter(Boolean);
-    const newEmails = [...emails];
-    for (const c of candidates) {
-      if (!newEmails.includes(c)) newEmails.push(c);
-    }
-    onEmailsChange(newEmails);
-    setInputValue('');
-  };
-
-  const handleBlur = () => {
-    commitInput(inputValue);
-    setFocused(false);
-  };
-
-  const removeEmail = (idx: number) => {
-    onEmailsChange(emails.filter((_, i) => i !== idx));
-  };
-
-  const invalidCount = emails.filter((e) => !EMAIL_REGEX.test(e)).length;
-
-  return (
-    <div className="space-y-1">
-      <div
-        ref={containerRef}
-        onClick={() => !readOnly && inputRef.current?.focus()}
-        className={`min-h-[42px] flex flex-wrap gap-1.5 items-center px-3 py-2 rounded-md border bg-white cursor-text transition-colors ${
-          readOnly
-            ? 'bg-gray-100 cursor-not-allowed border-gray-200'
-            : focused
-            ? 'border-blue-500 ring-2 ring-blue-100'
-            : 'border-gray-300 hover:border-gray-400'
-        }`}
-      >
-        {emails.map((email, idx) => (
-          <EmailChip key={idx} email={email} onRemove={() => removeEmail(idx)} readOnly={readOnly} />
-        ))}
-        {!readOnly && (
-          <input
-            ref={inputRef}
-            id={id}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={handleBlur}
-            placeholder={emails.length === 0 ? placeholder : ''}
-            className="flex-1 min-w-[180px] outline-none text-sm bg-transparent placeholder:text-gray-400 text-gray-900"
-          />
-        )}
-      </div>
-      {invalidCount > 0 && (
-        <p className="text-xs text-red-600 flex items-center gap-1">
-          <AlertCircle className="w-3 h-3" />
-          {invalidCount} dirección{invalidCount > 1 ? 'es inválidas' : ' inválida'} (se resaltan en rojo)
-        </p>
-      )}
-      {!readOnly && (
-        <p className="text-xs text-gray-400">
-          Presione <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Enter</kbd>,{' '}
-          <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">,</kbd> o{' '}
-          <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Tab</kbd>{' '}
-          para agregar · Pegue múltiples correos a la vez
-        </p>
-      )}
-    </div>
-  );
 }
 
 // ── Modal principal ───────────────────────────────────────────────────────────
@@ -560,12 +412,13 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
       let isSuccess = false;
 
       if (isForward && originalCorreoId) {
-        // Para reenvío: Graph sólo admite un destinatario principal en forwardEmail
         const result = await correosJuridicosService.forwardEmail(
           originalCorreoId,
-          paraEmails.join(','),
+          paraEmails,
           cuerpo.trim(),
-          attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
+          attachmentsBase64.length > 0 ? attachmentsBase64 : undefined,
+          ccEmails.length > 0 ? ccEmails : undefined,
+          bccEmails.length > 0 ? bccEmails : undefined
         );
         isSuccess = result?.success !== false;
       } else if (isReply && originalCorreoId) {
@@ -804,6 +657,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                       onEmailsChange={(v) => { setParaEmails(v); markDirty(); }}
                       placeholder="destinatario@ejemplo.com"
                       readOnly={isReply}
+                      buzon={buzon}
                     />
                   </div>
 
@@ -835,6 +689,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                         emails={ccEmails}
                         onEmailsChange={(v) => { setCcEmails(v); markDirty(); }}
                         placeholder="copia@ejemplo.com"
+                        buzon={buzon}
                       />
                     </div>
                   )}
@@ -867,6 +722,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                         emails={bccEmails}
                         onEmailsChange={(v) => { setBccEmails(v); markDirty(); }}
                         placeholder="copia.oculta@ejemplo.com"
+                        buzon={buzon}
                       />
                       <p className="text-xs text-gray-400">
                         Los destinatarios en CCO no serán visibles para los demás.

@@ -145,6 +145,27 @@ interface WizardCrearAutoWorldClassProps {
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
+// EFDS-1566: un auto de apertura no puede retroceder la etapa del proceso.
+// El orden de las etapas sale de "Configuracion > Estados Kanban"; ETAPAS_PROCESO es el respaldo.
+const normalizarClaveEtapa = (valor?: string): string =>
+  String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '');
+
+const ORDEN_ETAPA_RESPALDO: Record<string, number> = Object.fromEntries(
+  Object.entries(ETAPAS_PROCESO as Record<string, { orden: number }>).map(
+    ([clave, valor]) => [normalizarClaveEtapa(clave), valor.orden],
+  ),
+);
+
+const esAutoDeApertura = (tipo: { tipo?: string; nombre?: string }): boolean => {
+  const t = (tipo.tipo || '').toUpperCase();
+  if (t.startsWith('AUTO_APERTURA')) return true;
+  return normalizarClaveEtapa(tipo.nombre).includes('APERTURA');
+};
+
 export function WizardCrearAutoWorldClass({
   proceso,
   onClose,
@@ -193,6 +214,7 @@ export function WizardCrearAutoWorldClass({
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoAuto | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<EtapaProcesoId | 'todas'>('todas');
+  const [ordenEtapasConfig, setOrdenEtapasConfig] = useState<Record<string, number>>({});
   const [plantillaDescargada, setPlantillaDescargada] = useState(false);
   const [descargando, setDescargando] = useState(false);
 
@@ -329,6 +351,23 @@ export function WizardCrearAutoWorldClass({
   // Cargar tipos de auto desde el backend
   useEffect(() => {
     cargarTiposAuto();
+  }, []);
+
+  useEffect(() => {
+    let activo = true;
+    disciplinaryService
+      .getStageConfiguration()
+      .then((stages) => {
+        if (!activo || !Array.isArray(stages)) return;
+        const mapa: Record<string, number> = {};
+        stages.forEach((s: any) => {
+          const clave = normalizarClaveEtapa(s?.etapa || s?.id);
+          if (clave && typeof s?.orden === 'number') mapa[clave] = s.orden;
+        });
+        setOrdenEtapasConfig(mapa);
+      })
+      .catch(() => { /* se usa ETAPAS_PROCESO como respaldo */ });
+    return () => { activo = false; };
   }, []);
 
   useEffect(() => {
@@ -674,12 +713,27 @@ export function WizardCrearAutoWorldClass({
     setVistaActual('wizard');
   };
 
+  const ordenEtapaDe = (etapa?: string): number | undefined => {
+    const clave = normalizarClaveEtapa(etapa);
+    return ordenEtapasConfig[clave] ?? ORDEN_ETAPA_RESPALDO[clave];
+  };
+  const ordenEtapaActualProceso = ordenEtapaDe(proceso?.etapaActual);
+
   const tiposFiltrados = tiposAutos.filter(tipo => {
     const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
     const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+    // EFDS-1566: ocultar autos de apertura cuya etapa destino es anterior a la
+    // etapa actual del proceso (no se puede retroceder de etapa).
+    let cumpleOrdenEtapa = true;
+    if (esAutoDeApertura(tipo) && ordenEtapaActualProceso !== undefined) {
+      const ordenDestino = ordenEtapaDe(tipo.etapa);
+      if (ordenDestino !== undefined && ordenDestino < ordenEtapaActualProceso) {
+        cumpleOrdenEtapa = false;
+      }
+    }
     // Permitir autos con o sin plantilla (los del backend pueden no tener plantilla)
-    return cumpleFiltroEtapa && cumpleBusqueda;
+    return cumpleFiltroEtapa && cumpleBusqueda && cumpleOrdenEtapa;
   });
 
   // ==================== RENDER ====================

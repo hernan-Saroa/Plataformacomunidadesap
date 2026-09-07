@@ -7,19 +7,19 @@ import {
   ManyToOne,
   JoinColumn
 } from 'typeorm';
-import { Firmante } from './firmante.entity';
+import { TemplateSigner } from './template-signer.entity';
 
 @Entity('certificate_template_config')
 export class TemplateConfig {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'firmante_id', type: 'uuid', nullable: true })
-  firmanteId: string;
+  @Column({ name: 'signer_id', type: 'uuid', nullable: true })
+  signerId: string;
 
-  @ManyToOne(() => Firmante, { eager: true })
-  @JoinColumn({ name: 'firmante_id' })
-  firmante: Firmante;
+  @ManyToOne(() => TemplateSigner, { eager: true })
+  @JoinColumn({ name: 'signer_id' })
+  signer: TemplateSigner;
 
   @Column({ name: 'entity_logo_url', type: 'text', nullable: true })
   entityLogoUrl: string;
@@ -33,8 +33,8 @@ export class TemplateConfig {
   @Column({ name: 'typography_font', default: 'Arial Narrow, Arial, sans-serif', nullable: true })
   typographyFont: string;
 
-  @Column({ name: 'cargo_title', type: 'text', nullable: true })
-  cargoTitle: string;
+  @Column({ name: 'signer_title', type: 'text', nullable: true })
+  signerTitle: string;
 
   @Column({ name: 'certificate_content_html', type: 'text', nullable: true })
   certificateContentHtml: string;

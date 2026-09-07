@@ -1,4 +1,4 @@
-export type ConfiguredHourMode = 'fija' | 'hasta' | 'intervalo' | 'porcentaje';
+export type ConfiguredHourMode = 'sin_horas' | 'fija' | 'hasta' | 'intervalo' | 'porcentaje';
 
 function normalizedText(value: unknown): string {
   return String(value ?? '')
@@ -78,6 +78,17 @@ export function getConfiguredHourMode(
   const value = normalizedText(raw);
 
   if (
+    value === 'sin horas'
+    || value === 'ninguna'
+    || value === 'ninguno'
+    || value === 'nada'
+    || value === 'informativo'
+    || value === 'informativa'
+    || value === 'none'
+    || value.includes('no suma')
+  ) return 'sin_horas';
+
+  if (
     value === 'porcentaje'
     || value.includes('porcent')
     || value.includes('percent')
@@ -132,6 +143,8 @@ export function normalizeConfiguredHourRow<T extends Record<string, any>>(
   const percentage = getConfiguredPercentageValue(row);
   const normalized: any = { ...row, tipo };
 
+  if (tipo === 'sin_horas') return normalized;
+
   if (tipo === 'porcentaje') {
     if (percentage > 0) normalized.porcentaje_pta = percentage;
     return normalized;
@@ -145,4 +158,41 @@ export function normalizeConfiguredHourRow<T extends Record<string, any>>(
     normalized.horas_min = min;
   }
   return normalized;
+}
+
+/**
+ * Descripción corta y auditable de un reconocimiento configurado. Si se
+ * entrega `assignedHours`, diferencia con claridad el valor elegido del tope
+ * permitido; se reutiliza en consultas, impresiones y exportaciones.
+ */
+export function formatConfiguredHourRecognition(
+  source: any,
+  assignedHours?: number,
+): string {
+  const mode = getConfiguredHourMode(
+    source,
+    getConfiguredMaximumHours(source) > 0 ? 'hasta' : 'sin_horas',
+  );
+  const hasAssignedHours = Number.isFinite(Number(assignedHours));
+  const assigned = hasAssignedHours ? Math.max(0, Number(assignedHours)) : undefined;
+  const maximum = getConfiguredMaximumHours(source);
+  const minimum = getConfiguredMinimumHours(source);
+  const percentage = getConfiguredPercentageValue(source);
+
+  if (mode === 'sin_horas') return 'Informativo · 0h';
+  if (mode === 'porcentaje') {
+    const percentageLabel = percentage > 0 ? `${percentage}% del PTA` : 'Porcentaje del PTA';
+    return assigned !== undefined ? `${percentageLabel} · ${assigned}h` : percentageLabel;
+  }
+  if (mode === 'fija') {
+    const hours = assigned ?? maximum;
+    return `${hours}h fijas`;
+  }
+  if (mode === 'intervalo') {
+    const range = `${minimum || 0}–${maximum || 0}h`;
+    return assigned !== undefined ? `${assigned}h asignadas · rango ${range}` : `Rango ${range}`;
+  }
+  return assigned !== undefined
+    ? `${assigned}h asignadas · máximo ${maximum || 0}h`
+    : `Hasta ${maximum || 0}h`;
 }

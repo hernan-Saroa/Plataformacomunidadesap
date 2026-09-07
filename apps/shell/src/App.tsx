@@ -554,6 +554,41 @@ export default function App() {
     })();
   }, [applySessionFromUser, hasMicrosoftOAuthCallback]);
 
+  useEffect(() => {
+    let active = true;
+
+    const refreshPermissionsAfterRoleUpdate = async () => {
+      if (!isAuthenticated) return;
+
+      try {
+        const user = await authService.verifyToken();
+        if (!active) return;
+
+        authService.setCurrentUserCache(user as any);
+        const { roleCodes, permissions, modules, module } = {
+          ...resolveDestino(user),
+          modules: user?.modules || [],
+        };
+
+        setUserData((current: any) => ({
+          ...current,
+          modules,
+          roles: roleCodes,
+          permissions,
+          module,
+        }));
+      } catch (error) {
+        console.warn('[Auth] No se pudieron sincronizar los permisos actualizados del rol.', error);
+      }
+    };
+
+    window.addEventListener('esap:role-permissions-updated', refreshPermissionsAfterRoleUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener('esap:role-permissions-updated', refreshPermissionsAfterRoleUpdate);
+    };
+  }, [isAuthenticated]);
+
   // Guardar sesión cuando cambie el usuario o vista
   useEffect(() => {
     if (isRestoringSession) {

@@ -575,6 +575,7 @@ export class PlanesMejoramientoController {
     @Param('accionId') accionId: string,
     @Body() body: {
       cantidadImplementada: number;
+      cantidadProgramada?: number;
       observacionCumplimiento?: string;
       responsableSeguimiento?: string;
     },

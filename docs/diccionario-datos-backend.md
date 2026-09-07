@@ -133,16 +133,16 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `ceremony_date` | `ceremonyDate` | date | No |  | Sí | No |  |  |
 | `degree_title` | `degreeTitle` | varchar (length 255) | No |  | No | No |  |  |
 | `diploma_number` | `diplomaNumber` | varchar (length 100) | No |  | Sí | Sí |  |  |
-| `acta_number` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  |  |
+| `registry_reference` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP para la referencia registro/folio/libro. |
 | `resolution_number` | `resolutionNumber` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_acta` | `numActa` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_folio` | `numFolio` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_libro` | `numLibro` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_registro` | `numRegistro` | varchar (length 100) | No |  | Sí | No |  |  |
+| `graduation_record_number` | `numActa` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
+| `folio_number` | `numFolio` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
+| `book_number` | `numLibro` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
+| `registry_number` | `numRegistro` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
 | `status` | `status` | varchar (length 50) | No |  | No | No | ACTIVE |  |
 | `is_verified` | `isVerified` | boolean | No |  | No | No | true |  |
 | `campus` | `campus` | varchar (length 100) | No |  | Sí | No |  |  |
-| `seccional_name` | `seccionalName` | varchar (length 255) | No |  | Sí | No |  |  |
+| `regional_office_name` | `seccionalName` | varchar (length 255) | No |  | Sí | No |  | Alias de compatibilidad HTTP. |
 | `created_at` | `createdAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updatedAt` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 | `created_by` | `createdBy` | varchar (length 255) | No |  | Sí | No |  |  |
@@ -176,7 +176,7 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `requester_email` | `requesterEmail` | varchar (length 255) | No |  | No | No |  |  |
 | `requester_phone` | `requesterPhone` | varchar (length 50) | No |  | Sí | No |  |  |
 | `company_name` | `companyName` | varchar (length 255) | No |  | Sí | No |  |  |
-| `company_nit` | `companyNit` | varchar (length 50) | No |  | Sí | No |  |  |
+| `company_tax_id` | `companyNit` | varchar (length 50) | No |  | Sí | No |  | Alias de compatibilidad para el NIT colombiano. |
 | `contact_person` | `contactPerson` | varchar (length 255) | No |  | Sí | No |  |  |
 | `certificate_type` | `certificateType` | varchar (length 50) | No |  | No | No | STANDARD |  |
 | `validation_code` | `validationCode` | varchar (length 10) | No |  | Sí | No |  |  |
@@ -239,9 +239,9 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `degree_title` | `degreeTitle` | varchar (length 255) | No |  | No | No |  |  |
 | `graduation_date` | `graduationDate` | date | No |  | No | No |  |  |
 | `diploma_number` | `diplomaNumber` | varchar (length 100) | No |  | Sí | No |  |  |
-| `acta_number` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  |  |
+| `registry_reference` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP para la referencia registro/folio/libro. |
 | `campus` | `campus` | varchar (length 100) | No |  | Sí | No |  |  |
-| `seccional_name` | `seccionalName` | varchar (length 150) | No |  | Sí | No |  |  |
+| `regional_office_name` | `seccionalName` | varchar (length 150) | No |  | Sí | No |  | Alias de compatibilidad HTTP. |
 | `signer_name` | `signerName` | varchar (length 255) | No |  | No | No |  |  |
 | `signer_position` | `signerPosition` | varchar (length 255) | No |  | No | No |  |  |
 | `signature_url` | `signatureUrl` | text | No |  | Sí | No |  |  |
@@ -1453,44 +1453,9 @@ MER relacionado: [auth](<mer/06-may-2026/esap_db - auth.png>)
 Diagramas MER relacionados:
 - [certification](<mer/06-may-2026/esap_db - certification.png>)
 
-### Esquema `default`
+### Esquema `certification`
 
 MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
-
-#### Tabla `certificados`
-
-- Entidad/definición: `Certificado`
-- Fuente: `TypeORM`
-- Archivo: `backend/certification-service/src/certificates/certificado.entity.ts`
-- Relaciones declaradas:
-  - `solicitud`: ManyToOne -> `SolicitudCertificado` por `solicitud_id`
-  - `validaciones`: OneToMany -> `ValidacionCertificado`
-
-| Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
-|---|---|---|---|---|---|---|---|---|
-| `id` | `id` | uuid generated | Sí |  | No | No |  |  |
-| `codigo_verificacion` | `codigo_verificacion` | varchar (length 100) | No |  | No | Sí |  |  |
-| `numero_certificado` | `numero_certificado` | varchar (length 50) | No |  | No | Sí |  |  |
-| `solicitud_id` | `solicitud_id` | uuid | No | ManyToOne -> SolicitudCertificado | No | No |  |  |
-| `nombre_completo` | `nombre_completo` | varchar (length 255) | No |  | No | No |  |  |
-| `cedula` | `cedula` | varchar (length 50) | No |  | No | No |  |  |
-| `carrera_categoria` | `carrera_categoria` | varchar (length 100) | No |  | No | No |  |  |
-| `fecha_vinculacion` | `fecha_vinculacion` | date | No |  | No | No |  |  |
-| `categoria_cargo` | `categoria_cargo` | varchar (length 100) | No |  | No | No |  |  |
-| `ubicacion_cargo` | `ubicacion_cargo` | varchar (length 150) | No |  | Sí | No |  |  |
-| `salario_mensual` | `salario_mensual` | decimal (precision 12, scale 2) | No |  | No | No |  |  |
-| `salario_texto` | `salario_texto` | varchar (length 255) | No |  | Sí | No |  |  |
-| `dependencia` | `dependencia` | varchar (length 255) | No |  | Sí | No |  |  |
-| `sede` | `sede` | varchar (length 100) | No |  | Sí | No |  |  |
-| `fecha_emision` | `fecha_emision` | date | No |  | No | No |  |  |
-| `fecha_expedicion` | `fecha_expedicion` | timestamp | No |  | No | No |  |  |
-| `firmante_nombre` | `firmante_nombre` | varchar (length 255) | No |  | No | No |  |  |
-| `firmante_cargo` | `firmante_cargo` | varchar (length 150) | No |  | No | No |  |  |
-| `firmante_dependencia` | `firmante_dependencia` | varchar (length 255) | No |  | No | No |  |  |
-| `pdf_url` | `pdf_url` | varchar (length 255) | No |  | Sí | No |  |  |
-| `estado` | `estado` | varchar (length 50) | No |  | No | No | VIGENTE |  |
-| `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
-| `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 
 #### Tabla `certificate_requests`
 
@@ -1515,8 +1480,8 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `monthly_salary` | `monthly_salary` | decimal (precision 12, scale 2) | No |  | No | No |  |  |
 | `salary_text` | `salary_text` | varchar (length 255) | No |  | Sí | No |  |  |
 | `department` | `department` | varchar (length 255) | No |  | Sí | No |  |  |
-| `cod_cargo` | `cod_cargo` | varchar (length 255) | No |  | Sí | No |  |  |
-| `cod_grade` | `cod_grade` | varchar (length 255) | No |  | Sí | No |  |  |
+| `position_code` | `cod_cargo` | varchar (length 255) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle |
+| `grade_code` | `cod_grade` | varchar (length 255) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle |
 | `campus` | `campus` | varchar (length 100) | No |  | Sí | No |  |  |
 | `email` | `email` | varchar (length 100) | No |  | Sí | No |  |  |
 | `phone` | `phone` | varchar (length 20) | No |  | Sí | No |  |  |
@@ -1534,17 +1499,17 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 - Fuente: `TypeORM`
 - Archivo: `backend/certification-service/src/certificates/template-config.entity.ts`
 - Relaciones declaradas:
-  - `firmante`: ManyToOne -> `Firmante` por `firmante_id`
+  - `signer`: ManyToOne -> `TemplateSigner` por `signer_id`
 
 | Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `id` | integer generated | Sí |  | No | No |  |  |
-| `firmante_id` | `firmanteId` | uuid | No | ManyToOne -> Firmante | Sí | No |  |  |
+| `signer_id` | `signerId` | uuid | No | ManyToOne -> TemplateSigner | Sí | No |  |  |
 | `entity_logo_url` | `entityLogoUrl` | text | No |  | Sí | No |  |  |
 | `entity_logo_filename` | `entityLogoFilename` | varchar | No |  | Sí | No |  |  |
 | `entity_logo_size` | `entityLogoSize` | varchar | No |  | Sí | No |  |  |
 | `typography_font` | `typographyFont` | varchar | No |  | Sí | No | Arial Narrow, Arial, sans-serif |  |
-| `cargo_title` | `cargoTitle` | text | No |  | Sí | No |  |  |
+| `signer_title` | `signerTitle` | text | No |  | Sí | No |  |  |
 | `certificate_content_html` | `certificateContentHtml` | text | No |  | Sí | No |  |  |
 | `version` | `version` | varchar | No |  | No | No | 1.0.0 |  |
 | `status` | `status` | varchar | No |  | No | No | draft |  |
@@ -1630,8 +1595,8 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `include_technical_bonus` | `include_technical_bonus` | boolean | No |  | No | No | false |  |
 | `salary_text` | `salary_text` | varchar (length 255) | No |  | Sí | No |  |  |
 | `department` | `department` | varchar (length 255) | No |  | Sí | No |  |  |
-| `cod_cargo` | `cod_cargo` | varchar (length 255) | No |  | Sí | No |  |  |
-| `cod_grade` | `cod_grade` | varchar (length 255) | No |  | Sí | No |  |  |
+| `position_code` | `cod_cargo` | varchar (length 255) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle |
+| `grade_code` | `cod_grade` | varchar (length 255) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle |
 | `campus` | `campus` | varchar (length 100) | No |  | Sí | No |  |  |
 | `issue_date` | `issue_date` | date | No |  | No | No |  |  |
 | `issuance_timestamp` | `issuance_timestamp` | timestamp | No |  | No | No |  |  |
@@ -1646,39 +1611,21 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 
-#### Tabla `firmantes`
+#### Tabla `template_signers`
 
-- Entidad/definición: `Firmante`
+- Entidad/definición: `TemplateSigner`
 - Fuente: `TypeORM`
-- Archivo: `backend/certification-service/src/certificates/firmante.entity.ts`
+- Archivo: `backend/certification-service/src/certificates/template-signer.entity.ts`
 
 | Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
 |---|---|---|---|---|---|---|---|---|
 | `id` | `id` | uuid generated | Sí |  | No | No |  |  |
-| `nombre_completo` | `nombre_completo` | varchar (length 255) | No |  | No | No |  |  |
-| `cargo` | `cargo` | varchar (length 150) | No |  | No | No |  |  |
-| `dependencia` | `dependencia` | varchar (length 255) | No |  | No | No |  |  |
-| `activo` | `activo` | boolean | No |  | No | No | true |  |
-| `es_principal` | `es_principal` | boolean | No |  | No | No | false |  |
-| `firma_digital_url` | `firma_digital_url` | text | No |  | Sí | No |  |  |
-| `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
-| `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
-
-#### Tabla `plantillas_certificado`
-
-- Entidad/definición: `PlantillaCertificado`
-- Fuente: `TypeORM`
-- Archivo: `backend/certification-service/src/certificates/plantilla-certificado.entity.ts`
-
-| Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
-|---|---|---|---|---|---|---|---|---|
-| `id` | `id` | uuid generated | Sí |  | No | No |  |  |
-| `nombre` | `nombre` | varchar (length 100) | No |  | No | No |  |  |
-| `descripcion` | `descripcion` | text | No |  | Sí | No |  |  |
-| `contenido_html` | `contenido_html` | text | No |  | No | No |  |  |
-| `tipo_certificado` | `tipo_certificado` | varchar (length 50) | No |  | No | No |  |  |
-| `activa` | `activa` | boolean | No |  | No | No | true |  |
-| `version` | `version` | int | No |  | No | No | 1 |  |
+| `full_name` | `full_name` | varchar (length 255) | No |  | No | No |  |  |
+| `position` | `position` | varchar (length 150) | No |  | No | No |  |  |
+| `department` | `department` | varchar (length 255) | No |  | No | No |  |  |
+| `is_active` | `is_active` | boolean | No |  | No | No | true |  |
+| `is_primary` | `is_primary` | boolean | No |  | No | No | false |  |
+| `signature_url` | `signature_url` | text | No |  | Sí | No |  |  |
 | `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 
@@ -1697,37 +1644,6 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `is_active` | `is_active` | boolean | No |  | No | No | true |  |
 | `is_primary` | `is_primary` | boolean | No |  | No | No | false |  |
 | `signature_url` | `signature_url` | text | No |  | Sí | No |  |  |
-| `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
-| `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
-
-#### Tabla `solicitudes_certificado`
-
-- Entidad/definición: `SolicitudCertificado`
-- Fuente: `TypeORM`
-- Archivo: `backend/certification-service/src/certificates/solicitud-certificado.entity.ts`
-- Relaciones declaradas:
-  - `certificados`: OneToMany -> `Certificado`
-
-| Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
-|---|---|---|---|---|---|---|---|---|
-| `id` | `id` | uuid generated | Sí |  | No | No |  |  |
-| `numero_solicitud` | `numero_solicitud` | varchar (length 50) | No |  | No | Sí |  |  |
-| `person_id` | `person_id` | uuid | No |  | Sí | No |  |  |
-| `nombre_completo` | `nombre_completo` | varchar (length 255) | No |  | No | No |  |  |
-| `cedula` | `cedula` | varchar (length 50) | No |  | No | No |  |  |
-| `carrera_categoria` | `carrera_categoria` | varchar (length 100) | No |  | No | No |  |  |
-| `fecha_vinculacion` | `fecha_vinculacion` | date | No |  | No | No |  |  |
-| `categoria_cargo` | `categoria_cargo` | varchar (length 100) | No |  | No | No |  |  |
-| `ubicacion_cargo` | `ubicacion_cargo` | varchar (length 150) | No |  | Sí | No |  |  |
-| `salario_mensual` | `salario_mensual` | decimal (precision 12, scale 2) | No |  | No | No |  |  |
-| `salario_texto` | `salario_texto` | varchar (length 255) | No |  | Sí | No |  |  |
-| `dependencia` | `dependencia` | varchar (length 255) | No |  | Sí | No |  |  |
-| `sede` | `sede` | varchar (length 100) | No |  | Sí | No |  |  |
-| `email` | `email` | varchar (length 100) | No |  | Sí | No |  |  |
-| `telefono` | `telefono` | varchar (length 20) | No |  | Sí | No |  |  |
-| `estado` | `estado` | varchar (length 50) | No |  | No | No | PENDIENTE |  |
-| `fecha_solicitud` | `fecha_solicitud` | timestamp | No |  | Sí | No |  |  |
-| `observaciones` | `observaciones` | text | No |  | Sí | No |  |  |
 | `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 
@@ -1751,6 +1667,27 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 
+#### Tabla `technical_bonus_templates`
+
+- Entidad/definición: `TechnicalBonusTemplate`
+- Fuente: `TypeORM`
+- Archivo: `backend/certification-service/src/certificates/technical-bonus-template.entity.ts`
+- Restricción de entidad: categoría única mediante `uq_technical_bonus_template_category`
+
+| Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
+|---|---|---|---|---|---|---|---|---|
+| `id` | `id` | uuid generated | Sí |  | No | No |  |  |
+| `category` | `category` | varchar (length 80) | No |  | No | Sí |  |  |
+| `label` | `label` | varchar (length 120) | No |  | Sí | No |  |  |
+| `description` | `description` | varchar (length 255) | No |  | Sí | No |  |  |
+| `template_text` | `template_text` | text | No |  | No | No |  |  |
+| `display_order` | `display_order` | int | No |  | No | No | 0 |  |
+| `is_system` | `is_system` | boolean | No |  | No | No | false |  |
+| `is_active` | `is_active` | boolean | No |  | No | No | true |  |
+| `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
+| `updated_at` | `updated_at` | timestamp | No |  | No | No |  | Fecha de actualización automática |
+| `updated_by` | `updated_by` | varchar (length 255) | No |  | Sí | No |  |  |
+
 #### Tabla `template_config_changes`
 
 - Entidad/definición: `TemplateConfigChange`
@@ -1770,25 +1707,6 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `metadata` | `metadata` | jsonb | No |  | Sí | No |  |  |
 | `changed_at` | `changedAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `changed_by` | `changedBy` | varchar | No |  | Sí | No |  |  |
-
-#### Tabla `validaciones_certificado`
-
-- Entidad/definición: `ValidacionCertificado`
-- Fuente: `TypeORM`
-- Archivo: `backend/certification-service/src/certificates/validacion-certificado.entity.ts`
-- Relaciones declaradas:
-  - `certificado`: ManyToOne -> `Certificado` por `certificado_id`
-
-| Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
-|---|---|---|---|---|---|---|---|---|
-| `id` | `id` | uuid generated | Sí |  | No | No |  |  |
-| `certificado_id` | `certificado_id` | uuid | No | ManyToOne -> Certificado | No | No |  |  |
-| `codigo_verificacion` | `codigo_verificacion` | varchar (length 100) | No |  | No | No |  |  |
-| `fecha_validacion` | `fecha_validacion` | timestamp | No |  | No | No |  |  |
-| `ip_validacion` | `ip_validacion` | varchar (length 50) | No |  | Sí | No |  |  |
-| `user_agent` | `user_agent` | varchar (length 200) | No |  | Sí | No |  |  |
-| `created_at` | `created_at` | timestamp | No |  | No | No |  | Fecha de creación automática |
-
 
 ## internal-disciplinary-control-service
 

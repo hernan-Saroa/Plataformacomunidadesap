@@ -2100,6 +2100,7 @@ export class PlanesMejoramientoService {
     accionId: string,
     data: {
       cantidadImplementada: number;
+      cantidadProgramada?: number;
       observacionCumplimiento?: string;
       responsableSeguimiento?: string;
     },
@@ -2109,7 +2110,13 @@ export class PlanesMejoramientoService {
       throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
     }
 
-    const programadas = accion.cantidadAccionesProgramadas ?? 0;
+    if (data.cantidadProgramada && data.cantidadProgramada > 0) {
+      accion.cantidadAccionesProgramadas = data.cantidadProgramada;
+    } else if (!accion.cantidadAccionesProgramadas || accion.cantidadAccionesProgramadas <= 0) {
+      accion.cantidadAccionesProgramadas = Math.max(1, data.cantidadImplementada);
+    }
+
+    const programadas = accion.cantidadAccionesProgramadas;
     const cumplimiento = calcularCumplimiento(data.cantidadImplementada, programadas);
 
     accion.cantidadAccionesImplementadas = data.cantidadImplementada;
@@ -2119,10 +2126,12 @@ export class PlanesMejoramientoService {
 
     if (cumplimiento === 2) {
       accion.estadoAccionSeguimiento = 'cerrada';
+    } else {
+      accion.estadoAccionSeguimiento = 'abierta';
     }
 
     const saved = await this.accionRepository.save(accion);
-    console.log(`[Seguimiento] Acción ${accionId}: implementadas=${data.cantidadImplementada}, cumplimiento=${cumplimiento}`);
+    console.log(`[Seguimiento] Acción ${accionId}: programadas=${programadas}, implementadas=${data.cantidadImplementada}, cumplimiento=${cumplimiento}`);
     return saved;
   }
 

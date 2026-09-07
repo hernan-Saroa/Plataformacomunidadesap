@@ -7,7 +7,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 
  * EM-PT-002 act. 5 — Seguimiento periódico.
  * EM-PT-002 act. 7 — Informe de seguimiento.
  */
-@Entity('seguimiento_plan')
+@Entity('seguimiento_plan', { schema: 'control_interno' })
 @Index('IDX_seguimiento_plan_planId', ['planId'])
 export class SeguimientoPlan {
   @PrimaryGeneratedColumn('uuid')

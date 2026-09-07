@@ -31,7 +31,7 @@ import { TabGenerales } from "./config-tabs/TabGenerales";
 // Ítem dentro de una actividad de extensión (etapa)
 export interface ExtItem {
   nombre: string;
-  tipo: 'fija' | 'por_unidad' | 'hasta' | 'intervalo' | 'porcentaje';
+  tipo: 'sin_horas' | 'fija' | 'por_unidad' | 'hasta' | 'intervalo' | 'porcentaje';
   horas: number;
   horas_min?: number;   // minimum hours (used when tipo='intervalo')
   porcentaje_pta?: number;
@@ -42,6 +42,13 @@ export interface ExtItem {
   // col_parents[col][i] = índice del valor padre en la columna de detalle ANTERIOR.
   // Ausente → emparejamiento legacy por orden (valor i cuelga del padre i).
   col_parents?: Record<string, number[]>;
+  // Metadatos de reconocimiento alineados con cada valor de col_valores.
+  col_meta?: Record<string, Array<{
+    tipo?: 'sin_horas' | 'fija' | 'hasta' | 'intervalo' | 'porcentaje';
+    horas?: number;
+    horas_min?: number;
+    porcentaje_pta?: number;
+  }>>;
   parent_col_idx?: number; // index of the first-column value this item belongs to
 }
 
@@ -240,9 +247,9 @@ export interface PTARules {
     evidencias?: string[]; // backward-compat: evidencias requeridas
     columnas?: Array<{ nombre: string; valores: string[] }>; // backward-compat: per-activity columns
     columnas_valores?: Record<string, string[]>; // valores por columna (columnas definidas en ext_secciones)
-    columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_min?: number; horas_en?: string; porcentaje_pta?: number }>>; // metadata (tipo/horas) per column value — applies to 1st column
+    columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_min?: number; horas_en?: string; porcentaje_pta?: number }>>; // metadatos de reconocimiento por valor de columna superior
     horas_en_etapa?: boolean;  // true = horas assigned directly on the etapa, false = distributed in items/columns below
-    tipo?: string;        // tipo de horas del bloque cuando la estructura es solo columna raíz (fija|hasta|intervalo)
+    tipo?: string;        // reconocimiento del bloque raíz (sin_horas|fija|hasta|intervalo|porcentaje)
     max_horas?: number;   // tope total opcional (o valor directo para actividades planas)
     min_horas?: number;   // valor mínimo para actividades planas (backward-compat)
     porcentaje_pta?: number;
@@ -273,11 +280,15 @@ export interface PTARules {
     columnas_valores?: Record<string, string[]>;
     columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_min?: number; horas_en?: string; porcentaje_pta?: number }>>;
     horas_en_etapa?: boolean;
-    tipo?: string;        // tipo de horas del bloque cuando la estructura es solo columna raíz (fija|hasta|intervalo)
+    tipo?: string;        // reconocimiento del bloque raíz (sin_horas|fija|hasta|intervalo|porcentaje)
     max_horas?: number;
     min_horas?: number;
     porcentaje_pta?: number;
     consumeTotalidad?: boolean;
+    // Programa asociado a este TIPO de actividad (no por instancia): enruta su
+    // aprobación/revisión a Complementarias Pregrado/Posgrado (mismo aprobador que
+    // Docencia por nivel) en vez del componente "Complementarias" sin programa.
+    nivel_programa?: 'pregrado' | 'posgrado' | null;
   }>>;
 
   // Actividades Académico-Administrativas (configurables)

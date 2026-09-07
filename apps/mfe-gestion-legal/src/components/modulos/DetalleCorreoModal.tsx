@@ -185,34 +185,34 @@ export function DetalleCorreoModal({ isOpen, onClose, notificacion, onVerAdjunto
                     {/* Cabecera del mensaje */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                         <div className="p-4 bg-gray-50/50 border-b border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="flex items-start gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
                                 <User className="w-4 h-4 text-gray-400 mt-1" />
-                                <div>
+                                <div className="min-w-0">
                                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Remitente</span>
-                                    <p className="font-semibold text-gray-900">{data.remitente}</p>
+                                    <p className="font-semibold text-gray-900 break-words">{data.remitente}</p>
                                     <p className="text-xs text-gray-500">{data.despacho}</p>
                                 </div>
                             </div>
-                            <div className="flex items-start gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
                                 <User className="w-4 h-4 text-gray-400 mt-1" />
-                                <div>
+                                <div className="min-w-0">
                                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Destinatario</span>
-                                    <p className="font-semibold text-gray-900">{data.destinatario}</p>
+                                    <p className="font-semibold text-gray-900 break-words">{data.destinatario}</p>
                                 </div>
                             </div>
                             {data.cc && (
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
                                     <User className="w-4 h-4 text-gray-400 mt-1" />
-                                    <div>
+                                    <div className="min-w-0">
                                         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">CC</span>
                                         <p className="font-semibold text-gray-900 break-words">{data.cc}</p>
                                     </div>
                                 </div>
                             )}
                             {data.cco && (
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
                                     <User className="w-4 h-4 text-amber-500 mt-1" />
-                                    <div>
+                                    <div className="min-w-0">
                                         <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">CCO (Copia Oculta)</span>
                                         <p className="font-semibold text-gray-900 break-words">{data.cco}</p>
                                         <p className="text-xs text-gray-400">No visible para los demás destinatarios.</p>

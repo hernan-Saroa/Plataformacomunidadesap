@@ -314,6 +314,7 @@ export const actividadesApi = {
    * Eliminar actividad
    */
   delete: async (actividadId: string): Promise<ApiResponse<void>> => {
+    invalidatePlanAnualListCache();
     return apiRequest<void>(`${PLAN_ANUAL_ENDPOINT}/actividades/${actividadId}`, {
       method: 'DELETE',
     });

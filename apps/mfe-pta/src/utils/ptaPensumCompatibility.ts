@@ -1,6 +1,8 @@
 export const SIN_PENSUM_KEY = '__SIN_PENSUM__';
 
 const text = (value: unknown) => String(value ?? '').trim();
+const displayText = (value: unknown) => text(value).replace(/\s+/g, ' ');
+const TECHNICAL_SCHEDULE_SUFFIX = /\s*\(\s*AP\s*[_-]?\s*(?:D[IÍ]A|NOCHE)\s*\)\s*$/iu;
 const normalizedText = (value: unknown) => text(value).toLocaleLowerCase('es');
 const normalizedIdentity = (value: unknown) => normalizedText(value)
   .normalize('NFD')
@@ -30,6 +32,25 @@ export function formatPtaPensum(value: unknown): string {
   const pensum = text(value);
   if (!pensum) return '—';
   return pensum === SIN_PENSUM_KEY ? 'Sin pensum registrado' : pensum;
+}
+
+/**
+ * Nombre de asignatura para interfaces. La plantilla nueva aporta nombre_base;
+ * el reemplazo final mantiene compatibles los catálogos legacy.
+ */
+export function formatPtaAssignmentName(item: any): string {
+  const raw = typeof item === 'object' && item !== null
+    ? [
+        item?.nombreBase,
+        item?.nombre_base,
+        item?.nombreVisible,
+        item?.asignatura_nombre_base,
+        item?.asignatura_nombre,
+        item?.nombre,
+        item?.asignatura,
+      ].map(displayText).find(Boolean) || ''
+    : displayText(item);
+  return raw.replace(TECHNICAL_SCHEDULE_SUFFIX, '').trim() || raw;
 }
 
 export function mergeAssignmentCatalog(
@@ -125,7 +146,7 @@ export function reconcileLegacyAssignment(item: any, catalog: any[]) {
     programa_id: text(item?.programa_id) || catalogProgramId(match),
     pensum: catalogPensumKey(match),
     asignatura_id: text(match?.id),
-    asignatura_nombre: match?.nombre || item?.asignatura_nombre,
+    asignatura_nombre: formatPtaAssignmentName(match) || formatPtaAssignmentName(item),
     asignatura_codigo: match?.codigo || item?.asignatura_codigo,
     nucleo_tematico: match?.nucleo ?? match?.nucleoTematico ?? item?.nucleo_tematico,
     creditos: match?.creditos ?? item?.creditos,

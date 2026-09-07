@@ -2421,12 +2421,30 @@ class ControlInternoService {
    * Crea una nueva auditoría
    */
   async validarDisponibilidadEquipoAuditor(data: {
-    equipoAuditores: string[];
+    equipoAuditores: any[];
     fechaInicio: string;
     fechaFin: string;
     excludeAuditoriaId?: string;
   }): Promise<DisponibilidadEquipoAuditorResponse> {
-    return client.post<DisponibilidadEquipoAuditorResponse>('/auditorias/validar-disponibilidad-equipo', data);
+    const equipoSanitizado = Array.from(
+      new Set(
+        (data.equipoAuditores || [])
+          .map((item: any) => {
+            if (!item) return '';
+            if (typeof item === 'string') return item.trim();
+            if (typeof item === 'object') {
+              return String(item.personaId || item.id || item.idTercero || item.idPerson || '').trim();
+            }
+            return String(item).trim();
+          })
+          .filter((id): id is string => Boolean(id && id.length > 0))
+      )
+    );
+
+    return client.post<DisponibilidadEquipoAuditorResponse>('/auditorias/validar-disponibilidad-equipo', {
+      ...data,
+      equipoAuditores: equipoSanitizado,
+    });
   }
 
   async createAuditoria(data: any): Promise<any> {

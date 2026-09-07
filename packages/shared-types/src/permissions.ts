@@ -297,6 +297,15 @@ export enum Permissions {
   CONTROL_INTERNO_AUDITORIA_VIEW = 'control-interno.auditoria.view',
   CONTROL_INTERNO_AUDITORIA_CREATE = 'control-interno.auditoria.create',
   CONTROL_INTERNO_AUDITORIA_EDIT = 'control-interno.auditoria.edit',
+  CONTROL_INTERNO_AUDITORIA_EDIT_INFORMACION_BASICA = 'control-interno.auditoria.edit.informacion-basica',
+  CONTROL_INTERNO_AUDITORIA_EDIT_CLASIFICACION_ALCANCE = 'control-interno.auditoria.edit.clasificacion-alcance',
+  CONTROL_INTERNO_AUDITORIA_EDIT_EQUIPO_AUDITOR = 'control-interno.auditoria.edit.equipo-auditor',
+  CONTROL_INTERNO_AUDITORIA_EDIT_PROGRAMACION = 'control-interno.auditoria.edit.programacion',
+  CONTROL_INTERNO_AUDITORIA_EDIT_OBJETIVOS_CRITERIOS = 'control-interno.auditoria.edit.objetivos-criterios',
+  CONTROL_INTERNO_AUDITORIA_EDIT_RECURSOS_PRODUCTOS = 'control-interno.auditoria.edit.recursos-productos',
+  CONTROL_INTERNO_AUDITORIA_EDIT_RIESGOS_CONTROLES = 'control-interno.auditoria.edit.riesgos-controles',
+  CONTROL_INTERNO_AUDITORIA_EDIT_HALLAZGOS_PRELIMINARES = 'control-interno.auditoria.edit.hallazgos-preliminares',
+  CONTROL_INTERNO_AUDITORIA_EDIT_VINCULACION_PLAN = 'control-interno.auditoria.edit.vinculacion-plan',
   CONTROL_INTERNO_AUDITORIA_ADD_AMPLIACION = 'control-interno.auditoria.add.ampliacion',
   CONTROL_INTERNO_AUDITORIA_STATE_CHANGE = 'control-interno.auditoria.state.change',
   CONTROL_INTERNO_AUDITORIA_AUDIT = 'control-interno.auditoria.audit',
@@ -402,6 +411,7 @@ export enum Permissions {
   BANCO_DOCENTES_RUND_IMPORT = 'banco-docentes.rund.import',
   BANCO_DOCENTES_RUND_EXPORT = 'banco-docentes.rund.export',
   BANCO_DOCENTES_RUND_INVITE = 'banco-docentes.rund.invite',
+  BANCO_DOCENTES_RUND_DOCUMENTS_MANAGE = 'banco-docentes.rund.documents.manage',
 
   // Programación Académica (PTA)
   PTA_PROGRAMACION_ACADEMICA_MANAGE = 'pta.programacion-academica.manage',
