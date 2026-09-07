@@ -34,7 +34,8 @@ export type RundProfileDocument = {
   estado: 'ACTIVO' | 'REEMPLAZADO' | 'ELIMINADO';
   creadoPor?: string;
   creadoEn?: string;
-  contenidoUrl: string;
+  contenidoUrl: string | null;
+  contenidoRestringido?: boolean;
 };
 
 type Props = {
@@ -158,6 +159,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
   };
 
   const download = async (document: RundProfileDocument) => {
+    if (!document.contenidoUrl || document.contenidoRestringido) return;
     setBusy(`download-${document.id}`);
     try {
       const blob = await apiClient.getBlob(`${document.contenidoUrl}?download=true`);
@@ -258,8 +260,9 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
               <div>{document.creadoEn ? new Date(document.creadoEn).toLocaleString('es-CO') : 'Sin fecha'}</div>
             </div>
             <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-              {document.estado !== 'ELIMINADO' && <IconButton title="Visualizar" onClick={() => onView(document.contenidoUrl, document.nombreArchivo, document.categoriaNombre)}><Eye size={14} /></IconButton>}
-              {document.estado !== 'ELIMINADO' && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
+              {document.contenidoRestringido && <span style={{ fontSize: 11, color: '#64748B' }}>Original restringido</span>}
+              {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Visualizar" onClick={() => onView(document.contenidoUrl!, document.nombreArchivo, document.categoriaNombre)}><Eye size={14} /></IconButton>}
+              {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
               {canManage && document.estado === 'ACTIVO' && (
                 <label title="Reemplazar" style={iconButtonStyle}>
                   <Replace size={14} />

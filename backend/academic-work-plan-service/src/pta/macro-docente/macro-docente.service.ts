@@ -361,10 +361,9 @@ export class MacroDocenteService {
    * con qué filtros y cuántos resultados obtuvo (BR análoga a BR-056, pero
    * a nivel de reporte en lugar de a nivel de un solo docente).
    *
-   * Las consultas de entes externos fallan cerrado: si no se puede dejar
-   * registro de auditoría, no se entregan datos. Las consultas internas
-   * (ya autenticadas y validadas por rol) son tolerantes a fallos del log,
-   * igual que el resto de logAudit operativo del RUND.
+   * Las rutas de consulta internas y externas solicitan failClosed: si no
+   * se puede auditar, no entregan datos. Otros eventos operativos pueden
+   * seguir usando el modo tolerante sin revelar datos de una consulta.
    */
   async logConsulta(entry: {
     tipoConsulta: string;

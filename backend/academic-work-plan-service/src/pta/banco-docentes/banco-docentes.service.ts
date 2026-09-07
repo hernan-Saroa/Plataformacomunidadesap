@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { DocenteEntity } from '../entities/docente.entity';
 import { PersonaEntity } from '../entities/persona.entity';
 import { UsuarioEntity } from '../entities/usuario.entity';
@@ -10,7 +10,8 @@ import { BancoDocenteInvitacionEntity } from '../entities/banco-docente-invitaci
 import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
-import { findRundSensitiveFields, protectRundSensitiveData } from './banco-docentes-sensitive-data';
+import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
+import { recordRundAccess } from './rund-access-audit';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -28,6 +29,7 @@ type PerfilAuditContext = {
   soporteId?: string;
   ip?: string;
   metadata?: Record<string, any>;
+  sensitiveAccess?: { roles: string[]; fullAccess: boolean; endpoint: string };
   requiredSupport?: {
     id: string;
     type: 'soporte_edicion_perfil';
@@ -1843,6 +1845,12 @@ export class BancoDocentesService implements OnModuleInit {
         }
       }
 
+      if (options.audit?.sensitiveAccess) {
+        await recordRundAccess(manager, {
+          ...options.audit.sensitiveAccess, actorId: options.audit.actorId, ip: options.audit.ip,
+          docenteIds: [docente.id], fields: ['DOCUMENTO_IDENTIDAD'],
+        });
+      }
       return {
         action,
         previewId: rawPayload?.__previewId || null,
@@ -2257,11 +2265,14 @@ export class BancoDocentesService implements OnModuleInit {
     const currentDocument = String(authRows[0]?.document_number || '');
     if (!currentDocument) throw new NotFoundException(`No se encontro la cedula del docente ${id}`);
     const normalizedCurrentDocument = currentDocument.trim().replace(/\./g, '').toUpperCase();
-    const normalizedRequestedDocument = body.documentNumber
-      ? String(body.documentNumber).trim().replace(/\./g, '').toUpperCase()
-      : null;
-    if (normalizedRequestedDocument && normalizedRequestedDocument !== normalizedCurrentDocument) {
-      throw new BadRequestException('La cedula es el identificador unico del perfil y no se puede modificar.');
+    const safeBody = { ...body };
+    for (const key of Object.keys(safeBody)) {
+      if (!findRundSensitiveFields({ [key]: true }).includes('DOCUMENTO_IDENTIDAD')) continue;
+      const requested = String(safeBody[key] || '').trim().replace(/\./g, '').toUpperCase();
+      if (requested && requested !== normalizedCurrentDocument && requested !== maskIdentityDocument(normalizedCurrentDocument)) {
+        throw new BadRequestException('La cedula es el identificador unico del perfil y no se puede modificar.');
+      }
+      delete safeBody[key];
     }
     const requestedPeriod = body.periodoCarga || body.periodo_carga || null;
     if (!d.periodoCarga) {
@@ -2280,10 +2291,10 @@ export class BancoDocentesService implements OnModuleInit {
       );
     }
 
-    const ignoredAuditKeys = new Set(['soporteEdicionId', 'justificacionEdicion', 'actorId', 'cargadoPor', 'canal_origen']);
+    const ignoredAuditKeys = new Set(['soporteEdicionId', 'justificacionEdicion', 'actorId', 'cargadoPor', 'canal_origen', 'rundSensitiveAccess']);
     const changedFields = Object.keys(body).filter((key) => !ignoredAuditKeys.has(key));
     const result = await this.upsertDocente({
-      ...body,
+      ...safeBody,
       canal_origen: 'MODAL',
       periodoCarga: d.periodoCarga,
       // La cedula siempre se obtiene de auth.personas; nunca se acepta del body al editar.
@@ -2297,6 +2308,7 @@ export class BancoDocentesService implements OnModuleInit {
         soporteId: String(body.soporteEdicionId),
         ip: body?.ip,
         metadata: { camposEnviados: changedFields },
+        sensitiveAccess: body.rundSensitiveAccess,
         requiredSupport: {
           id: String(body.soporteEdicionId),
           type: 'soporte_edicion_perfil',
@@ -2563,6 +2575,8 @@ export class BancoDocentesService implements OnModuleInit {
       invitacion.estado = 'Enviada';
       invitacion.intentosOtp = 0;
       invitacion.otpCodigo = null;
+      invitacion.sesionTokenHash = null;
+      invitacion.sesionExpiraEn = null;
     }
     
     await this.invitacionRepo.save(invitacion);
@@ -2588,7 +2602,7 @@ export class BancoDocentesService implements OnModuleInit {
       <p>Este enlace expira el ${fechaExpiracion.toLocaleDateString('es-CO')}.</p>
     `;
     const emailResult = await this.sendEmail(correoInstitucional, subject, text, html);
-    this.logger.log(`[RUND] Invitación para ${correoInstitucional} (enviada=${emailResult.sent}). Token: ${token}`);
+    this.logger.log(`[RUND] Invitación procesada (enviada=${emailResult.sent}).`);
 
     const isDev = (process.env.NODE_ENV || 'development') !== 'production';
     return {
@@ -2601,7 +2615,14 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async getInvitaciones() {
-    return await this.invitacionRepo.find({ order: { updatedAt: 'DESC' } });
+    const invitations = await this.invitacionRepo.find({ order: { updatedAt: 'DESC' } });
+    // El enlace invita a iniciar OTP; nunca es la sesión autenticada ni incluye el borrador.
+    return invitations.map((inv) => ({
+      id: inv.id, correoInstitucional: inv.correoInstitucional, tokenAcceso: inv.tokenAcceso,
+      estado: inv.estado, fechaExpiracion: inv.fechaExpiracion,
+      createdAt: inv.createdAt, updatedAt: inv.updatedAt,
+      borradorJson: { nombreCompleto: inv.borradorJson?.nombreCompleto || null },
+    }));
   }
 
   async requestOtpByEmail(email: string) {
@@ -2639,12 +2660,14 @@ export class BancoDocentesService implements OnModuleInit {
       invitacion.estado = 'Abierta';
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     invitacion.otpCodigo = otp;
     invitacion.otpExpiraEn = expiresAt;
     invitacion.estado = 'Abierta';
+    invitacion.sesionTokenHash = null;
+    invitacion.sesionExpiraEn = null;
     invitacion.intentosOtp = 0; // reset attempts
     await this.invitacionRepo.save(invitacion);
 
@@ -2658,22 +2681,25 @@ export class BancoDocentesService implements OnModuleInit {
     `;
     const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html);
 
-    this.logger.log(`[RUND][OTP] Código para ${invitacion.correoInstitucional}: ${otp} (enviado=${emailResult.sent})`);
+    this.logger.log(`[RUND][OTP] Solicitud procesada (enviado=${emailResult.sent}).`);
 
-    const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+    const isDev = ['development', 'test'].includes(process.env.NODE_ENV || 'development')
+      && process.env.RUND_ENABLE_DEV_OTP === 'true';
     return {
-      success: true,
-      message: emailResult.sent ? 'Código OTP enviado al correo.' : 'No se pudo enviar el correo; usa el código mostrado (modo dev).',
+      success: emailResult.sent || isDev,
+      message: emailResult.sent ? 'Código OTP enviado al correo.' : 'No se pudo enviar el código. Intente nuevamente.',
       expiresAt,
       emailSent: emailResult.sent,
-      // Solo exponer el OTP fuera de producción o si el correo falló (para no bloquear pruebas).
-      ...(isDev || !emailResult.sent ? { devOtp: otp } : {}),
+      ...(isDev ? { devOtp: otp } : {}),
     };
   }
 
   async verifyOtpForEmail(email: string, otp: string) {
     const invitacion = await this.invitacionRepo.findOne({ where: { correoInstitucional: email } });
     if (!invitacion) throw new NotFoundException('Correo inválido o no existe.');
+    if (!invitacion.fechaExpiracion || new Date(invitacion.fechaExpiracion).getTime() <= Date.now()) {
+      throw new ForbiddenException('La invitación ha expirado. Solicite un nuevo código.');
+    }
     
     if (invitacion.intentosOtp >= 5) {
       throw new BadRequestException('Demasiados intentos fallidos. Solicite un nuevo código OTP.');
@@ -2693,30 +2719,62 @@ export class BancoDocentesService implements OnModuleInit {
     invitacion.otpExpiraEn = null;
     invitacion.intentosOtp = 0;
     invitacion.estado = 'OTP validado';
+    const sessionToken = randomBytes(32).toString('hex');
+    invitacion.sesionTokenHash = createHash('sha256').update(sessionToken).digest('hex');
+    invitacion.sesionExpiraEn = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await this.invitacionRepo.save(invitacion);
 
-    return { success: true, sessionToken: invitacion.tokenAcceso };
+    return { success: true, sessionToken };
+  }
+
+  private async requireAutogestionSession(token: string): Promise<BancoDocenteInvitacionEntity> {
+    if (!/^[a-f0-9]{64}$/.test(String(token || ''))) throw new ForbiddenException('Valide su identidad con un código OTP.');
+    const invitacion = await this.invitacionRepo.findOne({
+      where: { sesionTokenHash: createHash('sha256').update(token).digest('hex') },
+    });
+    if (!invitacion || !['OTP validado', 'En proceso', 'Gestionada'].includes(invitacion.estado)
+      || !(new Date(invitacion.fechaExpiracion).getTime() > Date.now())
+      || !(new Date(invitacion.sesionExpiraEn!).getTime() > Date.now())) {
+      throw new ForbiddenException('La sesión de autogestión ha expirado. Solicite un nuevo código OTP.');
+    }
+    return invitacion;
+  }
+
+  private restoreDraftDocument(draft: any, previous: any): any {
+    const result = { ...(draft || {}) };
+    for (const key of Object.keys(result)) {
+      const fields = findRundSensitiveFields({ [key]: true });
+      if (fields.includes('PUNTAJE_SALARIAL')) delete result[key];
+      if (fields.includes('DOCUMENTO_IDENTIDAD') && String(result[key] || '').includes('*')) {
+        const original = normalizeBancoDocentePayload(previous || {}).documentNumber;
+        if (original && maskIdentityDocument(original) === result[key]) result[key] = original;
+        else delete result[key];
+      }
+    }
+    return result;
   }
 
   async saveDraft(token: string, draft: any) {
-    const invitacion = await this.invitacionRepo.findOne({ where: { tokenAcceso: token } });
-    if (!invitacion) throw new NotFoundException('Token inválido.');
+    const invitacion = await this.requireAutogestionSession(token);
     
-    invitacion.borradorJson = draft;
+    invitacion.borradorJson = this.restoreDraftDocument(draft, invitacion.borradorJson);
     invitacion.estado = 'En proceso';
     await this.invitacionRepo.save(invitacion);
     return { success: true };
   }
 
   async getDraft(token: string) {
-    const invitacion = await this.invitacionRepo.findOne({ where: { tokenAcceso: token } });
-    if (!invitacion) throw new NotFoundException('Token inválido.');
-    return { draft: invitacion.borradorJson || {} };
+    const invitacion = await this.requireAutogestionSession(token);
+    const draft = invitacion.borradorJson || {};
+    await recordRundAccess(this.dataSource, {
+      actorId: `AUTOGESTION:${invitacion.id}`, roles: ['DOCENTE_AUTOGESTION'], fullAccess: false,
+      endpoint: 'AUTOGESTION_BORRADOR', resourceId: invitacion.id, fields: findRundSensitiveFields(draft),
+    });
+    return { draft: protectRundSensitiveData(draft, false) };
   }
 
   async getAutogestionInfo(token: string) {
-    const invitacion = await this.invitacionRepo.findOne({ where: { tokenAcceso: token } });
-    if (!invitacion) throw new NotFoundException('Token inválido.');
+    const invitacion = await this.requireAutogestionSession(token);
 
     const email = invitacion.correoInstitucional;
 
@@ -2805,10 +2863,14 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async submitFromToken(token: string, data: any) {
-    const invitacion = await this.invitacionRepo.findOne({ where: { tokenAcceso: token } });
-    if (!invitacion) throw new NotFoundException('Token invÃ¡lido.');
+    const invitacion = await this.requireAutogestionSession(token);
     
-    const submissionData = { ...(data || {}) };
+    const submissionData = this.restoreDraftDocument(data, invitacion.borradorJson);
+    for (const key of Object.keys(submissionData)) {
+      if (/correo.*institucional|correoinst|email/i.test(key.replace(/[^a-z]/gi, ''))) delete submissionData[key];
+    }
+    submissionData.CORREO_INSTITUCIONAL = invitacion.correoInstitucional;
+    submissionData.correoInstitucional = invitacion.correoInstitucional;
     const existingDocente = await this.docenteRepo.findOne({
       where: [
         { correoInstitucional: invitacion.correoInstitucional },
@@ -2816,7 +2878,21 @@ export class BancoDocentesService implements OnModuleInit {
       ],
       order: { updatedAt: 'DESC' },
     });
+    if (!existingDocente) {
+      const document = normalizeBancoDocentePayload(submissionData).documentNumber;
+      if (document) {
+        const owners = await this.dataSource.query(
+          `SELECT d.id FROM academic_work_plan."Docente" d
+           JOIN auth.personas p ON p.id_person = d."personaId"
+           WHERE p.num_identificacion = $1 LIMIT 1`, [document],
+        );
+        if (owners.length) throw new ForbiddenException('El documento ya está vinculado a otro perfil. Contacte a Gestión Profesoral.');
+      }
+    }
     if (existingDocente?.personaId) {
+      // Si la invitación llegó al correo alternativo, conservar el institucional registrado.
+      submissionData.CORREO_INSTITUCIONAL = existingDocente.correoInstitucional || invitacion.correoInstitucional;
+      submissionData.correoInstitucional = submissionData.CORREO_INSTITUCIONAL;
       const identityRows = await this.dataSource.query(
         `SELECT num_identificacion AS document_number
            FROM auth.personas
@@ -2826,6 +2902,9 @@ export class BancoDocentesService implements OnModuleInit {
       );
       const trustedDocument = String(identityRows[0]?.document_number || '').trim();
       if (trustedDocument) {
+        for (const key of Object.keys(submissionData)) {
+          if (findRundSensitiveFields({ [key]: submissionData[key] }).includes('DOCUMENTO_IDENTIDAD')) delete submissionData[key];
+        }
         submissionData.documentNumber = trustedDocument;
         submissionData.documento_identidad = trustedDocument;
       }
@@ -2848,20 +2927,19 @@ export class BancoDocentesService implements OnModuleInit {
         soporteId: invitacion.id,
         observacion: 'Información enviada mediante invitación y OTP verificado',
         metadata: { invitacionId: invitacion.id, correoVerificado: true },
+        sensitiveAccess: { roles: ['DOCENTE_AUTOGESTION'], fullAccess: false, endpoint: 'AUTOGESTION_ENVIAR_PERFIL' },
       },
     });
 
     invitacion.estado = 'Gestionada';
     await this.invitacionRepo.save(invitacion);
 
-    return result;
+    return protectRundSensitiveData(result, false);
   }
 
   /** Autoriza exclusivamente la carga documental posterior a una autogestión validada por OTP. */
   async authorizeAutogestionDocumentUpload(docenteId: string, token: string): Promise<string> {
-    const invitacion = token
-      ? await this.invitacionRepo.findOne({ where: { tokenAcceso: token } })
-      : null;
+    const invitacion = await this.requireAutogestionSession(token);
     if (!invitacion || invitacion.estado !== 'Gestionada' || invitacion.fechaExpiracion < new Date()) {
       throw new ForbiddenException('La sesión de autogestión no autoriza la carga documental.');
     }
@@ -3523,10 +3601,15 @@ export class BancoDocentesService implements OnModuleInit {
     endpoint: string;
     fullAccess: boolean;
     ip?: string;
+    resourceId?: string;
   }>): Promise<void> {
     const uniqueEntries = new Map<string, typeof entries[number]>();
     for (const entry of entries) {
-      if (!entry.docenteId || entry.fields.length === 0) continue;
+      if (entry.fields.length === 0) continue;
+      if (!entry.docenteId) {
+        await recordRundAccess(this.dataSource, entry);
+        continue;
+      }
       const key = `${entry.docenteId}:${entry.endpoint}:${entry.fullAccess}:${entry.fields.slice().sort().join(',')}`;
       uniqueEntries.set(key, entry);
     }
@@ -3553,6 +3636,10 @@ export class BancoDocentesService implements OnModuleInit {
       },
     }));
     await this.auditLogRepo.save(logs);
+  }
+
+  async logSensitiveResourceAccess(entry: Parameters<typeof recordRundAccess>[1]): Promise<void> {
+    await recordRundAccess(this.dataSource, entry);
   }
 
   /**
