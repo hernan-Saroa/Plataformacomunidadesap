@@ -223,16 +223,15 @@ export class AssignmentsService {
         );
       }
 
-      // 3. Validar que el analista exista y esté activo en el módulo
+      // 3. Validar que el analista exista en el módulo
       const analista = await manager
         .getRepository(AnalistaEntity)
         .createQueryBuilder('a')
         .where('a.usuario_id = :id', { id: analistaId })
-        .andWhere('a.activo = true')
         .getOne();
 
       if (!analista) {
-        throw new BadRequestException(`El analista ${analistaId} no existe o no está activo en el módulo de viáticos.`);
+        throw new BadRequestException(`El analista ${analistaId} no existe en el módulo de viáticos.`);
       }
 
       const estadoAnterior = solicitud.estadoSolicitud;

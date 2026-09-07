@@ -952,14 +952,18 @@ export default function ViaticosModulePremium() {
                             analistaAsignadoId={solicitudSeleccionada.analistaAsignadoId}
                             solicitudId={solicitudSeleccionada.id}
                           />
-                         <button
-                           type="button"
-                           onClick={handleConfirmarAsignacion}
-                           disabled={asignando || !analistaSeleccionadoId}
-                           className="mt-3 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
-                         >
-                           {asignando ? 'Asignando...' : 'Confirmar Asignación'}
-                         </button>
+                          <button
+                            type="button"
+                            onClick={handleConfirmarAsignacion}
+                            style={
+                              asignando || !analistaSeleccionadoId
+                                ? { backgroundColor: '#e2e8f0', color: '#475569', cursor: 'not-allowed', pointerEvents: 'none' }
+                                : { backgroundColor: '#4f46e5', color: '#ffffff', cursor: 'pointer' }
+                            }
+                            className="mt-3 w-full px-3 py-2 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            {asignando ? 'Asignando...' : 'Confirmar Asignación'}
+                          </button>
                        </div>
                      </div>
                    )}
