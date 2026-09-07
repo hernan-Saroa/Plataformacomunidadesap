@@ -71,6 +71,7 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-pta
     frontend-mfe-contratacion
     frontend-mfe-viaticos
+    frontend-mfe-programacion-academica
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -89,6 +90,7 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-pta
     frontend-mfe-contratacion
     frontend-mfe-viaticos
+    frontend-mfe-programacion-academica
 )
 BACKEND_ENV_SERVICES=(
     api-gateway
@@ -104,6 +106,7 @@ BACKEND_ENV_SERVICES=(
     travel-expenses-service
     audit-service
     hiring-service
+    academic-schedule-service
 )
 
 compose_env() {
@@ -385,6 +388,10 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-viaticos"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-programacion-academica/*)
+                service_name="frontend-mfe-programacion-academica"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -420,8 +427,10 @@ cmd_rebuild_changed() {
         for service_name in "${backend_services[@]}"; do
             echo -e "${YELLOW}Construyendo backend: ${service_name}${NC}"
             compose_env build "$service_name"
+            compose_env up -d --no-deps "$service_name"
+            echo -e "${YELLOW}Ejecutando migraciones para: ${service_name}...${NC}"
+            cmd_db_migrate "$service_name" || echo -e "${YELLOW}Advertencia: Algunas migraciones de ${service_name} pueden haber fallado${NC}"
         done
-        compose_env up -d --no-deps "${backend_services[@]}"
     fi
 
     if [ ${#frontend_services[@]} -gt 0 ]; then
@@ -435,9 +444,9 @@ cmd_rebuild_changed() {
         restart_frontend_nginx
     fi
 
-    if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
-        echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
-        cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    if [ $run_migrations -eq 1 ]; then
+        echo -e "${YELLOW}Ejecutando migraciones generales de base de datos (db/migrations)...${NC}"
+        cmd_db_migrate "global" || echo -e "${YELLOW}Advertencia: Algunas migraciones globales pueden haber fallado${NC}"
     fi
 
     echo -e "${GREEN}Deploy inteligente completado.${NC}"
@@ -462,6 +471,7 @@ resolve_mfe_service() {
         pta|mfe-pta|frontend-mfe-pta) echo "frontend-mfe-pta" ;;
         contratacion|mfe-contratacion|frontend-mfe-contratacion) echo "frontend-mfe-contratacion" ;;
         viaticos|mfe-viaticos|frontend-mfe-viaticos) echo "frontend-mfe-viaticos" ;;
+        programacion-academica|mfe-programacion-academica|frontend-mfe-programacion-academica) echo "frontend-mfe-programacion-academica" ;;
         *) return 1 ;;
     esac
 }
@@ -549,10 +559,14 @@ cmd_rebuild() {
     # Publicar nueva versión una vez terminado el build.
     compose_env up -d
     restart_frontend_nginx
-    # Ejecutar migraciones automáticamente
-    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
-    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
-    echo -e "${GREEN}Nueva versión publicada. Servicios QA reconstruidos y reiniciados.${NC}"
+    # Ejecutar migraciones por microservicio y globales
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos por microservicio...${NC}"
+    for svc in "${BACKEND_ENV_SERVICES[@]}"; do
+        cmd_db_migrate "$svc" || true
+    done
+    echo -e "${YELLOW}Ejecutando migraciones globales...${NC}"
+    cmd_db_migrate "global" || true
+    echo -e "${GREEN}Nueva versión QA publicada. Servicios reconstruidos y reiniciados.${NC}"
 }
 
 cmd_rebuild_fresh() {
@@ -593,11 +607,15 @@ cmd_rebuild_fresh() {
     echo -e "${YELLOW}Esperando a que la base de datos esté lista...${NC}"
     sleep 5
 
-    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
-    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos por microservicio...${NC}"
+    for svc in "${BACKEND_ENV_SERVICES[@]}"; do
+        cmd_db_migrate "$svc" || true
+    done
+    echo -e "${YELLOW}Ejecutando migraciones globales...${NC}"
+    cmd_db_migrate "global" || true
 
     restart_frontend_nginx
-    echo -e "${GREEN}Reconstrucción fresca QA completada sin borrar la DB.${NC}"
+    echo -e "${GREEN}App completa QA publicada: microservicios + microfrontends.${NC}"
 }
 
 cmd_rebuild_all_mfe() {
@@ -634,8 +652,13 @@ cmd_rebuild_all_mfe() {
         compose_env_mfe up -d
     fi
 
-    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
-    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos por microservicio...${NC}"
+    for svc in "${BACKEND_ENV_SERVICES[@]}"; do
+        cmd_db_migrate "$svc" || true
+    done
+    echo -e "${YELLOW}Ejecutando migraciones globales...${NC}"
+    cmd_db_migrate "global" || true
+
     restart_frontend_nginx
     echo -e "${GREEN}App completa QA publicada: microservicios + microfrontends.${NC}"
 }
@@ -663,6 +686,8 @@ cmd_rebuild_service() {
     ensure_docker_disk_space
     compose_env build "$service"
     compose_env up -d --no-deps "$service"
+    echo -e "${YELLOW}Ejecutando migraciones asociadas al servicio ${service}...${NC}"
+    cmd_db_migrate "$service" || echo -e "${YELLOW}Advertencia: Algunas migraciones del servicio pueden haber fallado${NC}"
     echo -e "${GREEN}Servicio QA ${service} reconstruido y reiniciado${NC}"
 }
 
@@ -696,27 +721,27 @@ cmd_up_mfe() {
         exit 1
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado QA...${NC}"
-    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
+    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE QA iniciado exitosamente${NC}"
 }
 
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado QA...${NC}"
-    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
+    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
     echo -e "${GREEN}Frontend MFE QA detenido${NC}"
 }
 
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado QA...${NC}"
-    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
+    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE QA reiniciado${NC}"
 }
 
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado QA:${NC}"
-    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
+    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
 }
 
 cmd_logs_mfe() {
@@ -730,7 +755,7 @@ cmd_logs_mfe() {
         compose_env_mfe logs -f "$resolved_service"
         return
     fi
-    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
+    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
 }
 
 cmd_rebuild_mfe() {
@@ -775,6 +800,7 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-pta"
         "frontend-mfe-contratacion"
         "frontend-mfe-viaticos"
+        "frontend-mfe-programacion-academica"
     )
     echo -e "${GREEN}Selecciona un servicio frontend MFE QA para rebuild:${NC}"
     PS3="Ingresa el número (o Ctrl+C para cancelar): "
@@ -847,7 +873,12 @@ cmd_db_backup() {
 
 # Comando: db-migrate
 cmd_db_migrate() {
+    local target_service="${1:-}"
+
     echo -e "${YELLOW}Ejecutando migraciones de base de datos QA...${NC}"
+    if [ -n "$target_service" ] && [ "$target_service" != "all" ]; then
+        echo -e "${CYAN}Filtro aplicado: microservicio ${target_service}${NC}"
+    fi
 
     # Verificar que el contenedor de la base de datos está corriendo
     if ! docker ps --format '{{.Names}}' | grep -q "superapp-db-qa"; then
@@ -855,27 +886,76 @@ cmd_db_migrate() {
         return 1
     fi
 
-    # Verificar que existe la carpeta de migraciones
-    if [ ! -d "./db/migrations" ]; then
-        echo -e "${YELLOW}No existe la carpeta db/migrations, saltando migraciones${NC}"
-        return 0
-    fi
+    # Preparar carpeta temporal limpia en el contenedor
+    docker exec superapp-db-qa rm -rf /tmp/migrations
+    docker exec superapp-db-qa mkdir -p /tmp/migrations
 
-    # Verificar si hay archivos SQL en la carpeta (incluyendo subcarpetas, excluyendo 'old' y 'archive')
-    if [ -z "$(find ./db/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null)" ]; then
-        echo -e "${YELLOW}No hay archivos de migración en db/migrations${NC}"
-        return 0
-    fi
+    local found_migrations=0
 
-    # Copiar migraciones al contenedor
-    echo -e "${YELLOW}Copiando migraciones al contenedor...${NC}"
-    docker cp ./db/migrations superapp-db-qa:/tmp/migrations
+    if [ -n "$target_service" ] && [ "$target_service" != "all" ]; then
+        if [ "$target_service" = "global" ] || [ "$target_service" = "root" ]; then
+            echo -e "${YELLOW}Copiando migraciones globales (./db/migrations)...${NC}"
+            if [ -d "./db/migrations" ]; then
+                docker cp ./db/migrations/. superapp-db-qa:/tmp/migrations/global/
+                docker exec superapp-db-qa sh -c "find /tmp/migrations/global -mindepth 2 -type f -delete 2>/dev/null || true"
+                found_migrations=1
+            fi
+        else
+            # Caso 1: Migración para un servicio específico
+            echo -e "${YELLOW}Buscando migraciones para servicio: ${target_service}...${NC}"
+
+            local possible_dirs=("$target_service")
+            if [[ "$target_service" == *-service ]]; then
+                possible_dirs+=("${target_service%-service}")
+            else
+                possible_dirs+=("${target_service}-service")
+            fi
+
+            for dir in "${possible_dirs[@]}"; do
+                if [ -d "./backend/$dir/db/migrations" ] && [ -n "$(find "./backend/$dir/db/migrations" -maxdepth 2 -type f -name '*.sql' 2>/dev/null)" ]; then
+                    echo -e "${GREEN}  Encontrado en backend/${dir}/db/migrations${NC}"
+                    docker exec superapp-db-qa mkdir -p "/tmp/migrations/backend-$dir"
+                    docker cp "./backend/$dir/db/migrations/." "superapp-db-qa:/tmp/migrations/backend-$dir/"
+                    found_migrations=1
+                fi
+                if [ -d "./db/migrations/$dir" ] && [ -n "$(find "./db/migrations/$dir" -maxdepth 2 -type f -name '*.sql' 2>/dev/null)" ]; then
+                    echo -e "${GREEN}  Encontrado en db/migrations/${dir}${NC}"
+                    docker exec superapp-db-qa mkdir -p "/tmp/migrations/db-$dir"
+                    docker cp "./db/migrations/$dir/." "superapp-db-qa:/tmp/migrations/db-$dir/"
+                    found_migrations=1
+                fi
+            done
+
+            if [ $found_migrations -eq 0 ]; then
+                echo -e "${YELLOW}No se encontraron archivos de migración específicos para el servicio: ${target_service}${NC}"
+                docker exec superapp-db-qa rm -rf /tmp/migrations
+                return 0
+            fi
+        fi
+    else
+        # Caso 2: Migraciones globales + todos los microservicios
+        if [ -d "./db/migrations" ]; then
+            docker cp ./db/migrations/. superapp-db-qa:/tmp/migrations/global/
+            found_migrations=1
+        fi
+
+        for svc_dir in ./backend/*/db/migrations; do
+            if [ -d "$svc_dir" ] && [ -n "$(find "$svc_dir" -maxdepth 2 -type f -name '*.sql' 2>/dev/null)" ]; then
+                svc_name=$(basename "$(dirname "$svc_dir")")
+                echo -e "${GREEN}  Incluyendo migraciones de: backend/${svc_name}/db/migrations${NC}"
+                docker exec superapp-db-qa mkdir -p "/tmp/migrations/services/$svc_name"
+                docker cp "$svc_dir/." "superapp-db-qa:/tmp/migrations/services/$svc_name/"
+                found_migrations=1
+            fi
+        done
+    fi
 
     # Obtener lista de archivos SQL ordenados recursivamente (excluyendo la carpeta 'old' y 'archive')
     MIGRATION_FILES=$(docker exec superapp-db-qa sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null | sort")
 
     if [ -z "$MIGRATION_FILES" ]; then
         echo -e "${YELLOW}No se encontraron archivos de migración${NC}"
+        docker exec superapp-db-qa rm -rf /tmp/migrations
         return 0
     fi
 
@@ -894,7 +974,7 @@ cmd_db_migrate() {
 
         # Saltar migraciones ya aplicadas (buscando por ruta relativa o por nombre de archivo)
         if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$relpath" || echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
-            echo -e "${YELLOW}Saltando (ya aplicada): $relpath${NC}"
+            echo -e "${YELLOW}Saltando (ya aplicada): $relpath ($filename)${NC}"
             continue
         fi
 
@@ -905,7 +985,9 @@ cmd_db_migrate() {
             echo -e "${GREEN}✓ $relpath ejecutado exitosamente${NC}"
             MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
             escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+            escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
             docker exec superapp-db-qa psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+            docker exec superapp-db-qa psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
         else
             echo -e "${RED}✗ Error ejecutando $relpath${NC}"
             MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
@@ -1014,7 +1096,7 @@ case "$1" in
         cmd_db_backup
         ;;
     db-migrate)
-        cmd_db_migrate
+        cmd_db_migrate "$2"
         ;;
     db-reset)
         cmd_db_reset
