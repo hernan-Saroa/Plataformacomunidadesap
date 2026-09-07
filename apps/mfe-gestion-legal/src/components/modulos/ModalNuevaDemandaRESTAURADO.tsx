@@ -814,6 +814,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
+  const [verificandoRadicado, setVerificandoRadicado] = useState(false);
 
   // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
@@ -1199,7 +1200,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   // ==================== VALIDACIONES POR PASO ====================
 
-  const validarPasoActual = (): boolean => {
+  const validarPasoActual = async (): Promise<boolean> => {
     // Validar campos adicionales dinámicos para el paso actual
     if (activeTipoProceso?.camposAdicionalesConfig) {
       const camposDelPaso = activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === pasoActual);
@@ -1334,31 +1335,35 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           return false;
         }
 
-        // Validar si el radicado ya existe en la plataforma (evitar duplicados antes de avanzar en el wizard)
+        // Validar en vivo contra el backend si el radicado ya existe, antes de dejar avanzar
+        // a "Demandantes". No se usa el listado cacheado en el cliente (todosLosExpedientes)
+        // porque para la mayoría de usuarios ese listado viene recortado a "solo mis
+        // expedientes", lo que dejaba pasar duplicados reales hasta el envío final.
         const isEdit = !!expedienteEdit;
         const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
-        const radicadoDuplicado = todosLosExpedientes.some(exp => {
-          const expId = exp.uuid || exp.id;
-          if (isEdit && expId === currentId) return false;
-          
-          const expRadicado = exp.radicado || exp.numeroRadicado || exp.id;
-          return expRadicado && String(expRadicado).trim().toLowerCase() === String(formData.numeroRadicado).trim().toLowerCase();
-        });
 
-        console.log('🔍 [DEBUG] validarPasoActual Case 1:', {
-          numeroRadicado: formData.numeroRadicado,
-          totalExpedientes: todosLosExpedientes.length,
-          isEdit,
-          currentId,
-          radicadoDuplicado
-        });
+        setVerificandoRadicado(true);
+        try {
+          const radicadoDuplicado = await legalService.existeRadicado(
+            formData.numeroRadicado,
+            isEdit ? currentId : undefined
+          );
 
-        if (radicadoDuplicado) {
-          setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
-          toast.error('⚠️ Radicado duplicado', {
-            description: `El número de radicado "${formData.numeroRadicado}" ya está registrado en la plataforma. Use un número único.`
+          if (radicadoDuplicado) {
+            setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
+            toast.error('⚠️ Radicado duplicado', {
+              description: `El número de radicado "${formData.numeroRadicado}" ya está registrado en la plataforma. Use un número único.`
+            });
+            return false;
+          }
+        } catch (error) {
+          setErroresCampos(prev => ({ ...prev, numeroRadicado: 'No se pudo verificar el radicado, intente nuevamente' }));
+          toast.error('⚠️ No se pudo verificar el radicado', {
+            description: 'Ocurrió un error validando el número de radicado. Intente nuevamente antes de continuar.'
           });
           return false;
+        } finally {
+          setVerificandoRadicado(false);
         }
 
         return true;
@@ -1645,8 +1650,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     }
   };
 
-  const siguiente = () => {
-    if (validarPasoActual()) {
+  const siguiente = async () => {
+    if (await validarPasoActual()) {
       const siguientePaso = pasosActivos[indicePasoActual + 1];
       if (siguientePaso !== undefined) setPasoActual(siguientePaso);
     }
@@ -1658,18 +1663,26 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   };
 
   const handleSubmit = async () => {
-    if (!validarPasoActual()) return;
+    if (!(await validarPasoActual())) return;
 
-    // Validación transversal: El número de radicado debe ser único
+    // Re-validación transversal (defensa en profundidad): el paso 1 ya validó en vivo el
+    // radicado al avanzar, pero se vuelve a chequear contra el backend por si otro usuario
+    // registró el mismo radicado mientras se diligenciaban los pasos 2 a 7.
     const isEdit = !!expedienteEdit;
     const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
-    const radicadoDuplicado = todosLosExpedientes.some(exp => {
-      const expId = exp.uuid || exp.id;
-      if (isEdit && expId === currentId) return false;
-      
-      const expRadicado = exp.radicado || exp.numeroRadicado || exp.id;
-      return expRadicado && String(expRadicado).trim().toLowerCase() === String(formData.numeroRadicado).trim().toLowerCase();
-    });
+    let radicadoDuplicado = false;
+    setVerificandoRadicado(true);
+    try {
+      radicadoDuplicado = await legalService.existeRadicado(formData.numeroRadicado, isEdit ? currentId : undefined);
+    } catch (error) {
+      setPasoActual(1);
+      toast.error('⚠️ No se pudo verificar el radicado', {
+        description: 'Ocurrió un error validando el número de radicado. Intente nuevamente antes de continuar.'
+      });
+      return;
+    } finally {
+      setVerificandoRadicado(false);
+    }
 
     if (radicadoDuplicado) {
       setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
@@ -3246,20 +3259,34 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
               <Button
                 type="button"
                 onClick={siguiente}
-                disabled={enviando}
+                disabled={enviando || verificandoRadicado}
                 style={{ background: '#2962FF', color: '#FFFFFF' }}
               >
-                Siguiente
-                <ChevronRight className="w-4 h-4 ml-2" />
+                {verificandoRadicado ? (
+                  <>
+                    <Clock className="w-4 h-4 mr-2 animate-spin" />
+                    Verificando radicado...
+                  </>
+                ) : (
+                  <>
+                    Siguiente
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
               </Button>
             ) : (
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={enviando}
+                disabled={enviando || verificandoRadicado}
                 style={{ background: '#10b981', color: '#FFFFFF' }}
               >
-                {enviando ? (
+                {verificandoRadicado ? (
+                  <>
+                    <Clock className="w-4 h-4 mr-2 animate-spin" />
+                    Verificando radicado...
+                  </>
+                ) : enviando ? (
                   <>
                     <Clock className="w-4 h-4 mr-2 animate-spin" />
                     {expedienteEdit ? 'Guardando...' : 'Registrando...'}

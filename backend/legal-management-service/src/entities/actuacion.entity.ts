@@ -32,6 +32,12 @@ export class Actuacion {
     @Column({ name: 'usuario_responsable', default: 'Sistema' })
     usuarioResponsable: string;
 
+    // Id del usuario (auth."user") asignado como responsable de la actuación, usado para
+    // notificarle que tiene una nueva actividad pendiente. `usuarioResponsable` arriba solo
+    // guarda el nombre para mostrar y no basta para resolver a quién notificar.
+    @Column({ name: 'responsable_id', type: 'varchar', length: 255, nullable: true })
+    responsableId?: string;
+
     @Column({ default: 'MANUAL' })
     origen: string; // 'MANUAL', 'AUDIENCIA', 'AUTO', 'ACTA', 'EVIDENCIA', 'OFICIO'
 

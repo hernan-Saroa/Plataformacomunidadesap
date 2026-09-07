@@ -129,6 +129,229 @@
   }
 }
 
+/* ------------------------------------------- decisión de aprobación ------- */
+
+/*
+ * La decisión, en columna propia y a la vista.
+ *
+ * Aprobar o devolver no es un paso más del recorrido vertical: es lo que el
+ * aprobador viene a hacer. Al final de la pila quedaba tan abajo que había que
+ * buscarla con scroll, y pegada al bloque de documentos se leía como un anexo
+ * más del expediente.
+ *
+ * Se convierte en columna desde 1280px, el mismo umbral en el que el riel y
+ * el formulario ya se reparten el ancho: pedir más era dejarla en el flujo
+ * vertical en la mayoría de pantallas reales, que es justo lo que se quería
+ * evitar. La columna es estrecha —15rem— porque solo lleva dos botones y una
+ * línea de aviso.
+ */
+@media (min-width: 1280px) {
+  .detalle-proceso.con-decision {
+    grid-template-columns: 15rem minmax(0, 1fr) 15rem;
+  }
+
+  /*
+   * Con el expediente abierto son cuatro columnas y no caben: el formulario se
+   * quedaría sin ancho. Se mantienen las tres del expediente y la decisión
+   * pasa a la fila siguiente, completa, en vez de desaparecer: esconderla sin
+   * que el gestor lo haya pedido le quitaría de la vista lo que vino a
+   * resolver.
+   *
+   * Las dos filas se declaran juntas y no por separado porque esta regla llega
+   * después de la del expediente y redefine las columnas: sin repetir aquí su
+   * `grid-column`, el expediente perdía su sitio y caía estrecho bajo el riel.
+   */
+  .detalle-proceso.con-decision.con-expediente {
+    grid-template-columns: 15rem minmax(0, 1fr) 19rem;
+  }
+
+  .detalle-proceso.con-decision.con-expediente > .panel-expediente {
+    grid-column: 1 / -1;
+  }
+
+  .detalle-proceso.con-decision.con-expediente > .panel-decision {
+    grid-column: 1 / -1;
+    position: static;
+  }
+
+  /*
+   * Fija al desplazar: la decisión sigue al gestor mientras revisa los
+   * documentos, que es justo lo que tiene que leer antes de resolver.
+   */
+  .panel-decision {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+/*
+ * Por debajo de 1280px no hay columnas: la decisión es la última franja del
+ * flujo, a todo el ancho. Sin `position: sticky`, que en una sola columna solo
+ * taparía contenido.
+ *
+ * El `grid-column` es imprescindible: sin él la tarjeta caía en la primera
+ * pista de la rejilla, debajo del riel de actividades y a media anchura, lejos
+ * del trabajo al que se refiere.
+ */
+@media (max-width: 1279px) {
+  .panel-decision {
+    grid-column: 1 / -1;
+  }
+}
+
+/*
+ * El botón flotante que devuelve la decisión escondida.
+ *
+ * Vive fuera de la rejilla, anclado a la ventana: si estuviera dentro se iría
+ * con el scroll y dejaría de cumplir su función, que es decir «hay algo
+ * pendiente aquí» en cualquier punto de la página.
+ */
+.burbuja-decision {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 40;
+}
+
+/*
+ * Todo el aspecto de la burbuja se escribe aquí y no con utilidades de
+ * Tailwind por la razón del bloque de abajo: el CSS se compila escaneando solo
+ * el shell, y una clase que únicamente usa este microfrontend se descarta sin
+ * avisar. Con la burbuja eso no sería un detalle: quedaría un botón sin forma.
+ */
+.burbuja-boton {
+  display: flex;
+  align-items: center;
+  height: 3rem;
+  padding: 0 0.875rem;
+  border: none;
+  border-radius: 9999px;
+  background: #003da5;
+  color: #fff;
+  cursor: pointer;
+  position: relative;
+  box-shadow:
+    0 10px 15px -3px rgb(0 61 165 / 0.25),
+    0 4px 6px -4px rgb(0 61 165 / 0.25);
+  transition:
+    background-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.burbuja-boton:hover {
+  background: #00307f;
+}
+
+.burbuja-boton:active {
+  transform: scale(0.95);
+}
+
+.burbuja-boton:focus-visible {
+  outline: 2px solid #003da5;
+  outline-offset: 2px;
+}
+
+.burbuja-icono {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+}
+
+/*
+ * El nombre solo al acercarse. En reposo la burbuja es un círculo limpio que
+ * no tapa la pantalla; al pasar por encima dice de qué actividad se trata, sin
+ * obligar a pulsarla para averiguarlo.
+ *
+ * Se anima `grid-template-columns` y no el ancho porque así el texto ocupa
+ * exactamente lo que necesita, sea «3.2» o «10.4», sin fijar medidas a mano.
+ */
+.burbuja-texto {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns 0.2s ease-out;
+}
+
+.burbuja-boton:hover .burbuja-texto,
+.burbuja-boton:focus-visible .burbuja-texto {
+  grid-template-columns: 1fr;
+}
+
+.burbuja-texto-interior {
+  overflow: hidden;
+  white-space: nowrap;
+  padding-left: 0.5rem;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/*
+ * El punto de aviso. Ámbar cuando faltan formatos y verde cuando ya se puede
+ * aprobar: el color adelanta si la decisión está lista o si primero hay algo
+ * que resolver, antes de abrir la tarjeta.
+ */
+.burbuja-punto {
+  position: absolute;
+  top: -0.125rem;
+  right: -0.125rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid #fff;
+  border-radius: 9999px;
+}
+
+.burbuja-punto.es-pendiente {
+  background: #fbbf24;
+}
+
+.burbuja-punto.es-lista {
+  background: #34d399;
+}
+
+.burbuja-pulso {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: inherit;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .burbuja-decision {
+    animation: burbuja-entra 0.28s ease-out;
+  }
+
+  /*
+   * El punto que late sobre el botón. Es lo único que se mueve en la pantalla,
+   * así que se reserva para el caso que lo merece: una actividad esperando tu
+   * decisión.
+   */
+  .burbuja-pulso {
+    animation: burbuja-late 2s ease-in-out infinite;
+  }
+}
+
+@keyframes burbuja-entra {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes burbuja-late {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.35);
+  }
+}
+
 /* ======================================================================
    Utilidades con valor arbitrario que el shell no genera
 
@@ -260,6 +483,15 @@
 .focus\:border-\[\#003DA5\]:focus     { border-color: rgb(0 61 165); }
 .hover\:bg-\[\#002e7d\]:hover         { background-color: rgb(0 46 125); }
 .hover\:bg-\[\#E0EDFF\]:hover         { background-color: rgb(224 237 255); }
+
+/* La tarjeta de decisión: su borde, su cabecera y el botón de esconderla. */
+.border-\[\#003DA5\]\/25            { border-color: rgb(0 61 165 / .25); }
+.border-\[\#003DA5\]\/15            { border-color: rgb(0 61 165 / .15); }
+.bg-\[\#EFF5FF\]                    { background-color: rgb(239 245 255); }
+.text-\[\#00307f\]                  { color: rgb(0 48 127); }
+.text-\[\#003DA5\]\/60              { color: rgb(0 61 165 / .6); }
+.hover\:bg-\[\#003DA5\]\/10:hover   { background-color: rgb(0 61 165 / .1); }
+.text-\[\#1E40AF\]\/80              { color: rgb(30 64 175 / .8); }
 
 /* Solo el color: el grosor del anillo lo pone `ring-2`, que sí existe. */
 .focus\:ring-\[\#003DA5\]\/15:focus                 { --tw-ring-color: rgb(0 61 165 / .15); }

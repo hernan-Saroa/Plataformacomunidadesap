@@ -1025,7 +1025,7 @@ function VistaLista({ comunicaciones }: VistaListaProps) {
                   <td className="px-4 py-3 text-sm font-bold" style={{ color: '#003DA5' }}>
                     {com.id}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">
+                  <td className="px-4 py-3 text-sm text-gray-900 truncate max-w-xs" title={com.remitenteNombre || com.remitenteEmail}>
                     {com.remitenteNombre || com.remitenteEmail}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 truncate max-w-xs">

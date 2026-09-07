@@ -50,8 +50,8 @@ export class ModulesService {
     const query = this.moduleRepo
       .createQueryBuilder('module')
       .leftJoinAndSelect('module.permissions', 'permission')
-      .orderBy('module.display_order', 'ASC')
-      .addOrderBy('permission.name', 'ASC');
+      .orderBy('LOWER(module.name)', 'ASC')
+      .addOrderBy('LOWER(permission.name)', 'ASC');
 
     if (filters.category) {
       query.andWhere('module.category = :category', { category: filters.category });

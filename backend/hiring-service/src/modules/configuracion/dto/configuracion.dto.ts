@@ -21,6 +21,15 @@ export const TIPOS_REGLA = [
   'PLAZO_MINIMO',
   'BLOQUEA_AVANCE',
   'REGLA_DERIVADA',
+  /**
+   * La actividad no se cierra sin que alguien la apruebe (EFDS-1183).
+   *
+   * `config` lleva `{ roles: [...], personas: [...] }` y basta con que apruebe
+   * uno de los dos conjuntos. Se declara aquí y no en el código de cada panel
+   * porque qué actividad exige aprobación es una decisión del área que cambia,
+   * y hasta ahora obligaba a un despliegue.
+   */
+  'EXIGE_APROBACION',
 ] as const;
 
 /** Texto de la actividad: nombre, descripción y si sigue vigente. */
@@ -373,4 +382,29 @@ export class GuardarTipologiaDto {
   @IsInt()
   @Min(1)
   orden?: number;
+}
+
+/**
+ * Quién aprueba una actividad (EFDS-1183).
+ *
+ * Roles y personas juntos porque el área elige indistintamente: lo normal es un
+ * rol —sobrevive a que cambie quien ocupa el cargo— y la persona queda para
+ * cuando el formato nombra a alguien en concreto.
+ */
+export class GuardarAprobacionDto {
+  @ApiProperty({ description: 'False retira la exigencia de aprobación.' })
+  @IsBoolean()
+  requiereAprobacion: boolean;
+
+  @ApiPropertyOptional({ type: [String], example: ['DIRECTOR_CONTRATACION'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roles?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Ids de persona.' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  personas?: string[];
 }

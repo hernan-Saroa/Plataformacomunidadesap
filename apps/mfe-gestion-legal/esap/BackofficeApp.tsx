@@ -165,6 +165,7 @@ interface BackofficeAppProps {
     restrictedAccess?: boolean;
     roles?: string[];
     modules?: string[];
+    permissions?: string[];
   };
   userRoles?: string[];
 }
@@ -428,6 +429,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             <CertificadosLaboralesRouter 
               userRoles={userRoles || []}
               userEmail={currentUser.email}
+              userPermissions={userData?.permissions || []}
             />
           </Suspense>
         );

@@ -11,6 +11,7 @@ import {
   CondicionesMipymeConfig,
   ConflictoError,
   EstadoDocumentos,
+  EstadoDocumentosActividad,
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
@@ -1237,6 +1238,47 @@ export const contratacionService = {
     ),
 
   /**
+   * Los documentos que una actividad entrega, según sus formatos asignados.
+   *
+   * Sirve a cualquier actividad, a diferencia de `documentosProceso`, que
+   * resuelve la lista fija de la 5.1: aquí las filas salen de la biblioteca,
+   * y por eso una actividad empieza a pedir documentos sin desplegar nada.
+   */
+  documentosDeActividad: (procesoId: string, numeral: string) =>
+    pedir<EstadoDocumentosActividad>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos`,
+    ),
+
+  /**
+   * Carga un documento de la actividad.
+   *
+   * Con `plantillaId` cumple el requisito de ese formato; sin él queda como
+   * anexo adicional, que se guarda pero no se exige.
+   */
+  cargarDocumentoDeActividad: (
+    procesoId: string,
+    numeral: string,
+    archivo: File,
+    plantillaId?: string,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    if (plantillaId) cuerpo.append('plantillaId', plantillaId);
+
+    return pedir<{ id: string; nombre: string }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Retira un documento de la actividad; la traza queda. */
+  retirarDocumentoDeActividad: (procesoId: string, numeral: string, documentoId: string) =>
+    pedir<{ retirado: boolean }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${documentoId}`,
+      { method: 'DELETE' },
+    ),
+
+  /**
    * Carga uno de los documentos que la actividad exige.
    *
    * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,
@@ -2200,5 +2242,82 @@ export const contratacionService = {
   urlEstadisticasCsv: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
     `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/estadisticas/csv${consultaEstadisticas(filtros)}`,
 
-  urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
+  // ------------------------------------ aprobación de actividades (EFDS-1183)
+  //
+  // Un solo juego de métodos para las 63 actividades: el numeral viaja en la
+  // ruta y la regla configurada dice quién aprueba, así que marcar una
+  // actividad nueva no exige tocar el servicio.
+
+  /** Cómo está configurada la aprobación de una actividad, para el panel de configuración. */
+  aprobacionDeActividad: (numeral: string) =>
+    pedir<{
+      requiereAprobacion: boolean;
+      aprobadores: { clase: 'rol' | 'persona'; id: string; nombre: string }[];
+    }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
+
+  guardarAprobacionDeActividad: (
+    numeral: string,
+    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[] },
+  ) =>
+    pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Roles que pueden aparecer como aprobadores: los que trabajan en el módulo. */
+  rolesAprobadores: () =>
+    pedir<{ code: string; name: string }[]>('/configuracion/roles-aprobadores'),
+
+  /** Si la actividad requiere aprobación y si quien mira puede darla. */
+  aprobadoresDeActividad: (procesoId: string, numeral: string) =>
+    pedir<{
+      requiereAprobacion: boolean;
+      aprobadores: { roles: string[]; personas: string[] } | null;
+      puedoAprobar: boolean;
+      estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+      esMia: boolean;
+      observaciones: string | null;
+      decididaPor: string | null;
+    }>(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/aprobadores`),
+
+  enviarAprobacion: (procesoId: string, numeral: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/enviar-aprobacion`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  retirarAprobacion: (procesoId: string, numeral: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/retirar-aprobacion`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  aprobarActividad: (procesoId: string, numeral: string, observaciones?: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  devolverActividad: (procesoId: string, numeral: string, observaciones: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  /**
+   * La dirección desde la que el navegador descarga un adjunto.
+   *
+   * Lo que llega no tiene una sola forma: la columna guarda `/files/<archivo>`
+   * donde escribió la biblioteca de formatos y `hiring/files/<archivo>` donde
+   * escribieron los paneles, y solo unos pocos servicios la rearman antes de
+   * responder. Concatenar la segunda daría `/hiring/api/v1hiring/files/…`, un
+   * 404 que el usuario no puede distinguir de un documento borrado.
+   *
+   * Se resuelve aquí, que es por donde pasan las cuarenta descargas del
+   * módulo, quedándose con el nombre: es lo único que el controlador necesita.
+   */
+  urlDescarga: (descargaUrl: string) => {
+    const nombre = descargaUrl.split('/').pop() ?? '';
+    return `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/files/${nombre}`;
+  },
 };

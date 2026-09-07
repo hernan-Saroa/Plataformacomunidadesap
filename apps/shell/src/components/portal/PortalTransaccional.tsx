@@ -444,7 +444,6 @@ export function PortalTransaccional({
         categoria: 'Académico',
         badges: [
           { label: 'Periodo 2026-1', color: '#2563EB', bgColor: '#EFF6FF' },
-          { label: 'En plazo', color: '#059669', bgColor: '#ECFDF5' },
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',

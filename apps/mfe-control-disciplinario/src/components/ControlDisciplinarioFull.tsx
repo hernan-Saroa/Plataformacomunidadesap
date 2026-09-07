@@ -38,6 +38,19 @@ export interface ResultadoRevision {
   fecha: string;
 }
 
+const getDenunciadoNombre = (disciplinable: any): string => {
+  if (Array.isArray(disciplinable) && disciplinable.length > 0) {
+    return disciplinable[0]?.nombre || 'Sin información';
+  }
+  if (typeof disciplinable === 'object' && disciplinable?.nombre) {
+    return disciplinable.nombre;
+  }
+  if (typeof disciplinable === 'string' && disciplinable) {
+    return disciplinable;
+  }
+  return 'Sin información';
+};
+
 const BORRADORES_INICIALES: BorradorPendiente[] = [];
 const getAuthUserRenderKey = () => {
   const user = authService.getCurrentUser() as any;
@@ -168,7 +181,7 @@ export function ControlDisciplinarioFull() {
           },
           observacionesProfesional: auto.comentarios || '',
           contenido: auto.contenido || '',
-          denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
+          denunciado: getDenunciadoNombre(auto.process?.news?.disciplinable),
           etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
           prioridad: 'media' as const,
           estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
@@ -362,7 +375,7 @@ export function ControlDisciplinarioFull() {
     });
   }, [borradores]);
 
-  const handleDevolverBorrador = useCallback(async (borradorId: string, motivo: string, comentarios: string, _archivos: File[]) => {
+  const handleDevolverBorrador = useCallback(async (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => {
     const borrador = borradores.find(b => b.id === borradorId);
 
     if (borrador?.autoId) {
@@ -370,6 +383,16 @@ export function ControlDisciplinarioFull() {
         const userId = authService.getCurrentUser()?.id || '';
         const observaciones = `${motivo}${comentarios ? ` — ${comentarios}` : ''}`;
         await disciplinaryService.devolverAuto(borrador.autoId, userId, observaciones);
+
+        if (archivos.length > 0) {
+          try {
+            await disciplinaryService.uploadRejectionDocument(borrador.autoId, archivos[0]);
+          } catch {
+            toast.warning('El auto se devolvió, pero no se pudo adjuntar el documento', {
+              description: 'Intenta subirlo de nuevo desde la devolución si es necesario.',
+            });
+          }
+        }
       } catch {
         toast.error('Error al devolver el auto', {
           description: 'No se pudo conectar con el servidor. Intente nuevamente.',

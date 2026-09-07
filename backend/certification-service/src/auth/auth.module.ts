@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
+import { LaborCertificatePermissionsService } from './labor-certificate-permissions.service';
 
 @Module({
   imports: [
@@ -11,7 +12,7 @@ import { JwtStrategy } from './jwt.strategy';
       signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [JwtStrategy],
-  exports: [PassportModule, JwtModule],
+  providers: [JwtStrategy, LaborCertificatePermissionsService],
+  exports: [PassportModule, JwtModule, LaborCertificatePermissionsService],
 })
 export class AuthModule {}

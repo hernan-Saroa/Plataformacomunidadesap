@@ -16,9 +16,15 @@ export type EstadoActividadUI = 'aprobada' | 'en_curso' | 'pendiente' | 'no_apli
 export function estadoDeActividad(
   aplica: boolean,
   estadoBackend: string | null | undefined,
+  /** Si la secuencia ya llegó hasta ella. Una bloqueada no está en curso. */
+  alcanzada = true,
 ): EstadoActividadUI {
   if (!aplica) return 'no_aplica';
   if (estadoBackend === 'APROBADO') return 'aprobada';
+  // El proceso instancia las sesenta y tres al crearse, así que todas tienen
+  // estado desde el primer día: sin esto el riel las encendería todas en azul
+  // y el color dejaría de decir por dónde va el proceso.
+  if (!alcanzada) return 'pendiente';
   // BORRADOR, EN_REVISION y DEVUELTO son trabajo empezado: la actividad existe
   // porque alguien la tocó. DEVUELTO sobre todo, que además pide volver a ella.
   if (estadoBackend) return 'en_curso';

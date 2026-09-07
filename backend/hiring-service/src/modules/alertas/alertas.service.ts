@@ -18,7 +18,15 @@ export type TipoAlerta =
   | 'AMPARO'
   | 'CDP'
   | 'REGISTRO_PRESUPUESTAL'
-  | 'LIQUIDACION';
+  | 'LIQUIDACION'
+  /**
+   * Una actividad esperando que la apruebe quien está leyendo (EFDS-1183).
+   *
+   * Va en la misma lista que los vencimientos y no en una pantalla aparte: son
+   * las dos cosas que le reclaman atención al usuario, y separarlas lo
+   * obligaría a mirar en dos sitios para saber qué le espera.
+   */
+  | 'APROBACION_PENDIENTE';
 
 /**
  * Días que faltan para la fecha. Negativo si ya pasó.
@@ -108,16 +116,17 @@ export class AlertasService {
    * Una sola consulta por tipo y no una por proceso: quien vigila los
    * vencimientos los mira todos juntos, no proceso por proceso.
    */
-  async listar(anticipacion: number, _acceso: HiringAccess): Promise<Alerta[]> {
+  async listar(anticipacion: number, acceso: HiringAccess): Promise<Alerta[]> {
     const hoy = this.hoy();
 
-    const [amparos, presupuestales, liquidaciones] = await Promise.all([
+    const [amparos, presupuestales, liquidaciones, aprobaciones] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
       this.liquidacionesPendientes(),
+      this.aprobacionesPendientes(acceso),
     ]);
 
-    return [...amparos, ...presupuestales, ...liquidaciones]
+    const vencimientos = [...amparos, ...presupuestales, ...liquidaciones]
       .map((fila) => {
         // pg devuelve las columnas `date` como Date; aquí todo es AAAA-MM-DD.
         const vence =
@@ -127,10 +136,86 @@ export class AlertasService {
         const diasRestantes = diasParaVencer(vence, hoy);
         return { ...fila, vence, diasRestantes, estado: estadoAlerta(diasRestantes, anticipacion) };
       })
-      .filter((a) => a.estado !== 'VIGENTE')
+      .filter((a) => a.estado !== 'VIGENTE');
+
+    return [...aprobaciones, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
-      // más tiempo vencido.
+      // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
+      // —los días que llevan esperando—, así que una que lleva una semana sin
+      // resolverse sube por encima de una póliza que vence dentro de un mes.
       .sort((a, b) => a.diasRestantes - b.diasRestantes);
+  }
+
+  /**
+   * Actividades esperando la aprobación de quien consulta (EFDS-1183).
+   *
+   * Solo las suyas: se cruzan las reglas `EXIGE_APROBACION` vigentes con los
+   * roles del usuario y con su id, que es como la configuración declara a los
+   * aprobadores. Ver las de los demás no le sirve de nada y le escondería las
+   * propias.
+   *
+   * Quien envió la actividad no la ve aquí aunque tenga el rol: no puede
+   * aprobar lo que él mismo trabajó, así que ofrecérsela sería ofrecerle un
+   * botón que va a rechazarle el servicio.
+   */
+  private async aprobacionesPendientes(
+    acceso: HiringAccess,
+  ): Promise<Omit<Alerta, never>[]> {
+    const roles = acceso.roles ?? [];
+    const esSuperAdmin = roles.includes('SUPER_ADMIN');
+
+    const filas = await this.dataSource.query(
+      `
+      SELECT p.id                AS proceso_id,
+             p.radicado          AS radicado,
+             pa.numeral          AS numeral,
+             a.nombre            AS actividad,
+             pa.enviado_por      AS enviado_por,
+             pa.updated_at       AS desde
+        FROM hiring.proceso_actividades pa
+        JOIN hiring.procesos p ON p.id = pa.proceso_id
+        JOIN hiring.actividades a ON a.numeral = pa.numeral
+        JOIN hiring.reglas_actividad r
+              ON r.numeral = pa.numeral
+             AND r.tipo = 'EXIGE_APROBACION'
+             AND r.vigente_hasta IS NULL
+             AND (r.modalidad IS NULL OR r.modalidad = p.modalidad)
+       WHERE pa.estado = 'EN_REVISION'
+         -- Quien la envió no la aprueba, así que no se le ofrece.
+         AND ($3 = true OR pa.enviado_por_id IS DISTINCT FROM $2)
+         AND (
+           $3 = true
+           OR (r.config -> 'personas') ? $2
+           OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements_text(COALESCE(r.config -> 'roles', '[]'::jsonb)) rol
+              WHERE rol = ANY($1::text[])
+           )
+         )
+       ORDER BY pa.updated_at ASC
+      `,
+      [roles, acceso.userId ?? '', esSuperAdmin],
+    );
+
+    return filas.map((f: any) => {
+      const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
+      const diasEsperando = Math.floor((Date.now() - desde.getTime()) / (24 * 60 * 60 * 1000));
+
+      return {
+        tipo: 'APROBACION_PENDIENTE' as TipoAlerta,
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `${f.numeral} · ${f.actividad}`,
+        vence: desde.toISOString().slice(0, 10),
+        // En negativo, como lo vencido: es lo que la ordena arriba y crece con
+        // los días que lleva esperando.
+        diasRestantes: -diasEsperando,
+        estado: 'POR_VENCER' as EstadoAlerta,
+        responsable: f.enviado_por ?? null,
+        responsableEmail: null,
+        responsableId: null,
+      };
+    });
   }
 
   /**

@@ -62,6 +62,20 @@ export function FormatosActividad({ numeral, modalidad, modalidades }: Props) {
         </p>
       </div>
 
+      {/* Lo que implica asignar, dicho donde se asigna: sin esto habría que
+          crear además una regla de documento requerido, y ese segundo paso es
+          justo el que no se daba. */}
+      {vigentes.length > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 flex items-start gap-2.5">
+          <FileText className="w-4 h-4 text-[#003DA5] mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p className="text-[11px] text-blue-900 m-0 leading-relaxed">
+            Con un formato asignado, esta actividad{' '}
+            <strong className="font-semibold">exige adjuntar el documento</strong> para poder
+            cerrarse. No hace falta crear además una regla de documento requerido.
+          </p>
+        </div>
+      )}
+
       {vigentes.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-center">
           <FileText className="w-5 h-5 text-gray-400 mx-auto" />

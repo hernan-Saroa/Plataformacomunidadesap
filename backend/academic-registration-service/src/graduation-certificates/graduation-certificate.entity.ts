@@ -56,14 +56,28 @@ export class GraduationCertificate {
   @Column({ name: 'diploma_number', length: 100, nullable: true })
   diplomaNumber: string;
 
-  @Column({ name: 'acta_number', length: 100, nullable: true })
+  // Legacy API alias; the physical PostgreSQL name describes the composite
+  // registry/folio/book reference stored in issued certificates.
+  @Column({
+    name: 'registry_reference',
+    length: 100,
+    nullable: true,
+    comment:
+      'Composite registry, folio and book reference stored when the certificate is issued',
+  })
   actaNumber: string;
 
   // Información adicional
   @Column({ length: 100, nullable: true })
   campus: string;
 
-  @Column({ name: 'seccional_name', length: 150, nullable: true })
+  @Column({
+    name: 'regional_office_name',
+    length: 150,
+    nullable: true,
+    comment:
+      'Regional office associated with the certificate and persisted from manual approvals',
+  })
   seccionalName: string;
 
   // Datos del firmante

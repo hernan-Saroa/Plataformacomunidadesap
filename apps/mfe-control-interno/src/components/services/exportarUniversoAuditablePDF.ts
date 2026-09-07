@@ -71,6 +71,7 @@ export interface ProcesoAuditableExport {
   frecuenciaSugerida?: string;
   ultimaAuditoria?: string;
   auditable?: boolean;
+  tiempoUltimaAuditoria?: number;
 }
 
 export interface EstadisticasExport {
@@ -260,7 +261,7 @@ function crearEncabezadoFormulario(doc: jsPDF, vigencia: number, logoBase64?: st
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Oficina de Control Interno de Gestión - OCI', tituloCentro, margen + 19, { align: 'center' });
+  doc.text('Oficina de Control Interno', tituloCentro, margen + 19, { align: 'center' });
   
   doc.setFontSize(10);
   doc.setTextColor(0, 61, 165);
@@ -614,7 +615,7 @@ function agregarHeaderFooterTodasPaginas(doc: jsPDF, vigencia: number, startPage
     // Footer
     doc.line(10, pageHeight - 15, pageWidth - 10, pageHeight - 15);
     doc.setTextColor(...COLORES_ESAP.gris);
-    doc.text('Oficina de Control Interno de Gestión - OCI', 10, pageHeight - 10);
+    doc.text('Oficina de Control Interno', 10, pageHeight - 10);
     doc.text(`Página ${i - startPage + 1} de ${pageCount - startPage + 1}`, pageWidth - 10, pageHeight - 10, { align: 'right' });
   }
 }
@@ -640,8 +641,10 @@ const EXCEL_COLORS = {
 
 // Colores para niveles de riesgo
 const RISK_COLORS: Record<string, string> = {
+  'EXTREMO': EXCEL_COLORS.danger,
   'CRÍTICO': EXCEL_COLORS.danger,
   'ALTO': 'FFFF6B6B',
+  'MODERADO': EXCEL_COLORS.warning,
   'MEDIO': EXCEL_COLORS.warning,
   'BAJO': EXCEL_COLORS.success,
   'MUY BAJO': 'FF00D4AA',
@@ -737,7 +740,7 @@ export async function exportarUniversoAuditableExcel(
     
     wsUniverso.mergeCells('C2:H2');
     const subtitleCell = wsUniverso.getCell('C2');
-    subtitleCell.value = 'Oficina de Control Interno de Gestión - OCI';
+    subtitleCell.value = 'Oficina de Control Interno';
     subtitleCell.font = { name: 'Calibri', size: 10, color: { argb: '444444' } };
     subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     subtitleCell.border = {
@@ -849,6 +852,23 @@ export async function exportarUniversoAuditableExcel(
       { width: 12 },  // Auditable
     ];
 
+    const getUltimaAuditoria = (option?: number): string => {
+      switch (option) {
+        case 1:
+          return '<= 1 año';
+        case 2:
+          return '> 1 año y <= 2 años';
+        case 3:
+          return '> 2 años y <= 3 años';
+        case 4:
+          return '> 3 años y <= 4 años';
+        case 5:
+          return '> 4 años';
+        default:
+          return 'Sin registro';
+      }
+    };
+
     // --- Datos de procesos (empiezan en fila 8) ---
     procesos.forEach((proceso, idx) => {
       const rowNum = 8 + idx;
@@ -868,7 +888,7 @@ export async function exportarUniversoAuditableExcel(
         proceso.nivelRiesgo || 'BAJO',
         proceso.scoreRiesgo ?? proceso.puntajeRiesgo ?? 0,
         proceso.frecuenciaAuditoria || proceso.frecuenciaSugerida || '-',
-        proceso.ultimaAuditoria || 'Sin registro',
+        getUltimaAuditoria(proceso.tiempoUltimaAuditoria),
         proceso.auditable !== undefined ? (proceso.auditable ? 'Sí' : 'No') : 'Sí'
       ];
 

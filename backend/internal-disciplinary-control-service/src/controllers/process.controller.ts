@@ -27,6 +27,7 @@ import {
 import { ProcessService } from '../services/process.service';
 import { NewsService } from '../services/news.service';
 import { AutoService } from '../services/auto.service';
+import { ProcessExportService } from '../services/process-export.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
@@ -107,6 +108,7 @@ export class ProcessController {
     private autoService: AutoService,
     private httpService: HttpService,
     private permissionsService: PermissionsService,
+    private processExportService: ProcessExportService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -1253,6 +1255,33 @@ export class ProcessController {
       return [];
     }
     return await this.processService.findRadicatedNewsWithDocuments();
+  }
+
+  /**
+   * Exportar informe de vencimientos de los procesos disciplinarios (Excel)
+   * Solo disponible para el Radicador (rol SECRETARIA_RADICADOR)
+   */
+  @Get('export')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR')
+  @ApiOperation({
+    summary: 'Exportar informe de vencimientos',
+    description: 'Genera y descarga el informe de vencimientos de los procesos disciplinarios en formato Excel',
+  })
+  async exportVencimientos(@Res() res: Response): Promise<void> {
+    const workbook = await this.processExportService.generateVencimientosReport();
+    const fecha = new Date().toISOString().split('T')[0];
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="Informe_Vencimientos_OCID_${fecha}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   }
 
   /**

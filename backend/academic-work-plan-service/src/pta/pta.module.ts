@@ -5,6 +5,7 @@ import { PtaController } from './pta.controller';
 import { PtaService } from './pta.service';
 import { PtaPermissionsService } from './auth/pta-permissions.service';
 import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaRundSensitiveInterceptor } from './banco-docentes/pta-rund-sensitive.interceptor';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './entities/historial-estado-pta.entity';
@@ -23,6 +24,8 @@ import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity'
 import { PtaEventoEntity } from './entities/pta-evento.entity';
 import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
 import { PtaComponentReviewEntity } from './entities/pta-component-review.entity';
+import { PtaTerritorialApprovalEntity } from './entities/pta-territorial-approval.entity';
+import { PtaTerritorialReviewEntity } from './entities/pta-territorial-review.entity';
 
 // New entities
 import { FacultadEntity } from './entities/facultad.entity';
@@ -74,11 +77,16 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
       OfertaCetapProgramaEntity,
       PtaComponentApprovalEntity,
       PtaComponentReviewEntity,
+      PtaTerritorialApprovalEntity,
+      PtaTerritorialReviewEntity,
       RundCampoEstadoEntity,
       RundSoporteCampoEntity,
     ]),
   ],
   controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController],
-  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaNotificationsService],
+  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaNotificationsService, PtaRundSensitiveInterceptor],
+  // PtaPermissionsService/PtaNotificationsService se reutilizan desde MacroDocenteModule
+  // (permisos granulares pta.macro_docente.* y correo de acceso externo otorgado).
+  exports: [PtaPermissionsService, PtaNotificationsService],
 })
 export class PtaModule {}

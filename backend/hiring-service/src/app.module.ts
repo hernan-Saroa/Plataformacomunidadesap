@@ -39,6 +39,8 @@ import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
 import { RegistroActividadModule } from './modules/registro-actividad/registro-actividad.module';
 import { AlertasModule } from './modules/alertas/alertas.module';
 import { EstadisticasModule } from './modules/estadisticas/estadisticas.module';
+import { AprobacionModule } from './modules/aprobacion/aprobacion.module';
+import { DocumentosActividadModule } from './modules/documentos-actividad/documentos-actividad.module';
 import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -179,6 +181,8 @@ import {
     RegistroActividadModule,
     AlertasModule,
     EstadisticasModule,
+    AprobacionModule,
+    DocumentosActividadModule,
     IncumplimientoModule,
   ],
   controllers: [HealthController],

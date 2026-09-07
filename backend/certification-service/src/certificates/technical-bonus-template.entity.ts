@@ -14,13 +14,13 @@ export const DEFAULT_TECHNICAL_BONUS_TEMPLATES: Record<
   string
 > = {
   DIRECTIVOS:
-    'Percibe una prima t\u00e9cnica en un porcentaje igual al ({porcentaje}%) sobre la asignaci\u00f3n b\u00e1sica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+    'Percibe una prima t\u00e9cnica en un porcentaje igual al ({porcentaje}%) sobre la asignaci\u00f3n b\u00e1sica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
   COORDINADORES:
-    'Percibe una prima de coordinaci\u00f3n en un porcentaje igual al ({porcentaje}%) sobre la asignaci\u00f3n b\u00e1sica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+    'Percibe una prima de coordinaci\u00f3n en un porcentaje igual al ({porcentaje}%) sobre la asignaci\u00f3n b\u00e1sica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
 };
 
 export const DEFAULT_DYNAMIC_TECHNICAL_BONUS_TEMPLATE =
-  'Percibe una prima en un porcentaje igual al ({porcentaje}%) sobre la asignaci\u00f3n b\u00e1sica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.';
+  'Percibe una prima en un porcentaje igual al ({porcentaje}%) sobre la asignaci\u00f3n b\u00e1sica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.';
 
 @Entity({ name: 'technical_bonus_templates', schema: 'certification' })
 @Unique('uq_technical_bonus_template_category', ['category'])

@@ -127,15 +127,19 @@ export default function ContratacionModulePremium() {
           icon: <FileSignature className="w-5 h-5" />,
           color: '#003DA5',
         },
-        {
-          id: 'revision',
-          label: 'Revisión',
-          subtitle: 'Aprobación de documentos',
-          icon: <ClipboardCheck className="w-5 h-5" />,
-          color: '#10B981',
-          disabled: true,
-          tag: 'Próx.',
-        },
+        /*
+         * Aquí había una sección «Revisión · Aprobación de documentos» marcada
+         * como «Próx.». Se creó con la UI de aprobar y devolver del estudio
+         * previo (EFDS-1202/1246) pensada como bandeja del revisor, y nunca se
+         * construyó: entonces la 3.1 era la única actividad aprobable y se
+         * resolvió dentro del riel.
+         *
+         * Era esta misma necesidad. Las aprobaciones pendientes se ven ahora en
+         * Alertas, junto a los vencimientos —son las dos cosas que le reclaman
+         * atención al usuario, y separarlas lo obligaría a mirar en dos
+         * sitios—, así que la entrada se retira en vez de quedarse prometiendo
+         * algo que ya está en otro lado.
+         */
         {
           // Tab propio y no un botón dentro del detalle: el expediente se
           // consulta sin estar trabajando un proceso —es lo que abre un
@@ -197,7 +201,7 @@ export default function ContratacionModulePremium() {
           // parámetros del flujo, no en el trabajo diario.
           id: 'alertas',
           label: 'Alertas',
-          subtitle: 'Vencimientos y plazos',
+          subtitle: 'Vencimientos y aprobaciones',
           icon: <BellRing className="w-5 h-5" />,
           color: '#DC2626',
         },
@@ -270,7 +274,18 @@ export default function ContratacionModulePremium() {
       );
     }
 
-    if (seccion === 'alertas') return <VistaAlertas />;
+    if (seccion === 'alertas')
+      return (
+        // La alerta lleva al proceso y, si es una aprobación, a la actividad
+        // concreta: quien recibe el aviso quiere resolverlo, no buscarlo.
+        <VistaAlertas
+          onAbrir={(id, numeral) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(numeral ?? null);
+          }}
+        />
+      );
     if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;

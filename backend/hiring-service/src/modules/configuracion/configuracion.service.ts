@@ -12,12 +12,16 @@ import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.enti
 import { Plantilla } from '../../entities/plantilla.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Documento } from '../../entities/documento.entity';
-import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  NUMERAL_ESTUDIO_PREVIO,
+  ProcesoActividad,
+} from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import {
   ActualizarActividadDto,
   AplicabilidadDto,
   GuardarReglaDto,
+  GuardarAprobacionDto,
   ActualizarCampoDto,
   CrearCampoDto,
   EstadoPlantillaDto,
@@ -719,6 +723,133 @@ export class ConfiguracionService {
       where: { numeral },
       order: { orden: 'ASC' },
     });
+  }
+
+  // ------------------------------------------- aprobación de la actividad ---
+
+  /**
+   * Si la actividad requiere aprobación y quién la da (EFDS-1183).
+   *
+   * Devuelve los aprobadores con su nombre legible y no solo el código: la
+   * pantalla los pinta y no debería tener que resolver un `DIRECTOR_CONTRATACION`
+   * a «Director de Contratación» por su cuenta.
+   */
+  async aprobacionDe(numeral: string) {
+    const regla = await this.dataSource.getRepository(ReglaActividad).findOne({
+      where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
+    });
+
+    if (!regla) return { requiereAprobacion: false, aprobadores: [] };
+
+    const config = (regla.config ?? {}) as Record<string, unknown>;
+    const codigos = Array.isArray(config.roles) ? (config.roles as string[]) : [];
+    const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
+
+    const nombres: { code: string; name: string }[] = codigos.length
+      ? await this.dataSource.query(
+          `SELECT code, name FROM auth.role WHERE code = ANY($1::text[])`,
+          [codigos],
+        )
+      : [];
+
+    // La pantalla listaba el identificador de la persona, que no dice nada:
+    // quien administra no puede comprobar a quién designó.
+    const quienes: { id: string; nombre: string }[] = personas.length
+      ? await this.dataSource.query(
+          `SELECT p.id_person AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
+             FROM auth.personas p
+            WHERE p.id_person = ANY($1::uuid[])`,
+          [personas],
+        )
+      : [];
+
+    return {
+      requiereAprobacion: true,
+      aprobadores: [
+        ...codigos.map((code) => ({
+          clase: 'rol' as const,
+          id: code,
+          // Si el rol se borró después de configurarlo, se muestra su código en
+          // vez de nada: quien administra necesita ver que ahí hay algo roto.
+          nombre: nombres.find((n) => n.code === code)?.name ?? code,
+        })),
+        ...personas.map((id) => ({
+          clase: 'persona' as const,
+          id,
+          nombre: quienes.find((q) => q.id === id)?.nombre ?? id,
+        })),
+      ],
+    };
+  }
+
+  /**
+   * Fija quién aprueba la actividad, o retira la exigencia.
+   *
+   * La regla anterior se deroga con `vigenteHasta` en vez de borrarse: un
+   * proceso aprobado en marzo debe seguir auditándose con la regla de marzo, y
+   * borrar el registro haría que la trazabilidad apuntara a algo que ya no
+   * existe.
+   */
+  async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto) {
+    /*
+     * El estudio previo ya se aprueba, y con su propio ciclo: se envía, se
+     * revisa y se devuelve con observaciones desde su panel, guardando el
+     * estado en la misma columna que usaría esta regla. Configurar aquí una
+     * segunda aprobación sobre la 3.1 crearía dos trámites peleándose por un
+     * único estado, y el que perdiera quedaría mostrando algo falso.
+     *
+     * Se rechaza al configurar y no al aprobar: descubrirlo cuando el gestor
+     * ya envió la actividad sería descubrirlo tarde.
+     */
+    if (numeral === NUMERAL_ESTUDIO_PREVIO && dto.requiereAprobacion) {
+      throw new BadRequestException(
+        'El estudio previo ya tiene su propia aprobación: se configura quién revisa desde los permisos del módulo, no desde aquí',
+      );
+    }
+
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ReglaActividad);
+
+      const vigente = await repo.findOne({
+        where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
+      });
+
+      if (vigente) {
+        vigente.vigenteHasta = new Date();
+        await repo.save(vigente);
+      }
+
+      if (!dto.requiereAprobacion) {
+        return { requiereAprobacion: false, aprobadores: [] };
+      }
+
+      await repo.save(
+        repo.create({
+          numeral,
+          modalidad: null,
+          tipo: 'EXIGE_APROBACION',
+          config: { roles: dto.roles ?? [], personas: dto.personas ?? [] },
+          mensaje: 'Esta actividad requiere aprobación antes de darse por terminada',
+          orden: 100,
+        } as Partial<ReglaActividad>),
+      );
+
+      return this.aprobacionDe(numeral);
+    });
+  }
+
+  /**
+   * Roles que pueden aparecer como aprobadores.
+   *
+   * Los que tienen algún permiso del módulo, resueltos por la vista
+   * `hiring.roles_del_modulo`. Sin ese filtro el selector mostraría los cuarenta
+   * y un roles del sistema —incluidos «Revisor Verificacion Titulos» y uno
+   * llamado «asd»— y quien configura tendría que distinguirlos.
+   */
+  rolesDelModulo(): Promise<{ code: string; name: string }[]> {
+    return this.dataSource.query(
+      `SELECT code, name FROM hiring.roles_del_modulo ORDER BY name`,
+    );
   }
 
   /**

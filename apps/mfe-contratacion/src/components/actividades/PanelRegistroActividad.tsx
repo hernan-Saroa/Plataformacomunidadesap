@@ -19,8 +19,15 @@ import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 interface Props {
   procesoId: string;
   numeral: string;
-  nombre: string;
   onCambio?: () => void;
+  /**
+   * Si la actividad tiene aprobadores configurados.
+   *
+   * Cambia el nombre del boton, no lo que hace: donde alguien revisa, el
+   * registro deja la actividad esperando visto bueno en vez de cerrarla, y el
+   * gestor tiene que saberlo antes de pulsar, no despues.
+   */
+  requiereAprobacion?: boolean;
 }
 
 /**
@@ -31,7 +38,12 @@ interface Props {
  * es lo mismo: cuándo pasó, qué pasó y con qué se respalda. La pantalla lo dice
  * en vez de aparentar que el dato viene de SECOP II o de Active Document.
  */
-export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }: Props) {
+export function PanelRegistroActividad({
+  procesoId,
+  numeral,
+  onCambio,
+  requiereAprobacion = false,
+}: Props) {
   const [estado, setEstado] = useState<EstadoRegistroActividad | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,9 +130,6 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
   if (!estado.aplica) {
     return (
       <Marco>
-        <Titulo>
-          {numeral} · {nombre}
-        </Titulo>
         <Aviso tono="aviso" titulo="Esta modalidad no adelanta la actividad">
           {estado.motivoNoAplica ?? 'La matriz de flujo la excluye para esta modalidad.'}
         </Aviso>
@@ -132,10 +141,8 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
 
   return (
     <Marco>
-      <Titulo>
-        {numeral} · {nombre}
-      </Titulo>
-
+      {/* El numeral y el nombre los pinta el contenedor, para las sesenta y
+          tres actividades por igual: repetirlos aquí sería un título doble. */}
       {estado.notaFuente && <Ayuda>{estado.notaFuente}</Ayuda>}
 
       <Ayuda>
@@ -242,18 +249,22 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
             }
           />
 
-          <Boton
-            icono={<FilePlus2 className="w-3.5 h-3.5" />}
-            onClick={registrar}
-            disabled={
-              guardando ||
-              nota.trim().length < 10 ||
-              !fecha ||
-              (estado.exigeSoporte && archivo === null)
-            }
-          >
-            Registrar la actividad
-          </Boton>
+          {/* Este boton es el unico punto que sabe si el trabajo esta hecho
+              —comprueba la fecha, la nota y el soporte—, asi que es el que
+              cierra la actividad o la manda a revision. Antes habia ademas un
+              envio suelto arriba que no comprobaba nada: se podia mandar a
+              aprobacion una actividad vacia, y las dos formas de cerrarla se
+              ignoraban entre si. A la derecha porque es donde termina la
+              lectura del formulario. */}
+          <div className="flex justify-end">
+            <Boton
+              icono={<FilePlus2 className="w-3.5 h-3.5" />}
+              onClick={registrar}
+              disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
+            >
+              {requiereAprobacion ? 'Registrar y enviar a aprobación' : 'Registrar la actividad'}
+            </Boton>
+          </div>
         </>
       )}
 

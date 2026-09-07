@@ -6,7 +6,9 @@ export type TipoRegla =
   | 'RANGO_VALOR'
   | 'PLAZO_MINIMO'
   | 'BLOQUEA_AVANCE'
-  | 'REGLA_DERIVADA';
+  | 'REGLA_DERIVADA'
+  /** La actividad no se cierra sin que alguien la apruebe (EFDS-1183). */
+  | 'EXIGE_APROBACION';
 
 
 /** Como se compara un dato del formulario con un valor esperado. */

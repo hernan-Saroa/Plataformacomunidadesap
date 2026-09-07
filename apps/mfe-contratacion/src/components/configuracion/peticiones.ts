@@ -102,12 +102,24 @@ export const PETICIONES: Record<Peticion, FormaPeticion> = {
  * pero pedir «un dato» o «una cantidad» sin decir de qué obliga a inventarse la
  * etiqueta desde cero, y eso lo resuelve mejor quien construye la etapa.
  */
+/**
+ * Lo que se ofrece al configurar una actividad.
+ *
+ * `APROBACION_RESPONSABLE` quedó fuera: pedía escribir el nombre de quien da el
+ * visto bueno, pero no aprobaba nada —era un texto que el propio gestor
+ * diligenciaba, así que se nombraba a sí mismo su aprobador y la actividad se
+ * cerraba igual—. Esa necesidad la cubre ahora la pestaña «Aprobación»
+ * (EFDS-1183), que sí bloquea la actividad, exige que decida alguien distinto y
+ * deja constancia de quién lo hizo.
+ *
+ * Su definición se conserva en PETICIONES para que los campos ya guardados de
+ * ese tipo se sigan mostrando; lo que se retira es la posibilidad de crear más.
+ */
 export const ORDEN_PETICIONES: Peticion[] = [
   'ADJUNTAR_DOCUMENTO',
   'ESCRIBIR_JUSTIFICACION',
   'REGISTRAR_FECHA',
   'MARCAR_CASILLA',
-  'APROBACION_RESPONSABLE',
 ];
 
 /** De qué petición viene un campo ya guardado. */

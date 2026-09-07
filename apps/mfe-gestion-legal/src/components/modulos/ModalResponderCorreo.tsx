@@ -1,6 +1,7 @@
 /**
  * ModalResponderCorreo - Modal dedicado para RESPONDER correos
- * Pre-carga destinatario (read-only), asunto con "RE:" y cuerpo citado.
+ * Pre-carga el remitente original como destinatario (editable, admite múltiples
+ * destinatarios y CC/CCO opcionales), asunto con "RE:" y cuerpo citado.
  */
 
 import { useState, useEffect } from 'react';
@@ -17,6 +18,7 @@ import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService } from '../../../../services/api/legal.service';
+import { EmailTagInput, EMAIL_REGEX } from './EmailTagInput';
 
 export interface CorreoOriginalData {
   id: string;
@@ -40,8 +42,13 @@ export function ModalResponderCorreo({ isOpen, onClose, correoOriginal, onSucces
   const [enviando, setEnviando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [paraEmails, setParaEmails] = useState<string[]>([]);
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [bccEmails, setBccEmails] = useState<string[]>([]);
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
 
-  // Construir cuerpo citado cuando se abre el modal
+  // Construir cuerpo citado y precargar destinatario cuando se abre el modal
   useEffect(() => {
     if (isOpen && correoOriginal) {
       const fecha = new Date(correoOriginal.fechaRecepcion).toLocaleString('es-CO', {
@@ -52,6 +59,11 @@ export function ModalResponderCorreo({ isOpen, onClose, correoOriginal, onSucces
       const citaHtml = `\n\n---\n\nEl ${fecha}, ${correoOriginal.remitenteNombre || correoOriginal.remitenteEmail} escribió:\n\n${correoOriginal.cuerpoTexto || '(sin contenido)'}`;
       setCuerpo(citaHtml);
       setArchivos([]);
+      setParaEmails(correoOriginal.remitenteEmail ? [correoOriginal.remitenteEmail] : []);
+      setCcEmails([]);
+      setBccEmails([]);
+      setShowCc(false);
+      setShowBcc(false);
     }
   }, [isOpen, correoOriginal?.id]);
 
@@ -68,6 +80,19 @@ export function ModalResponderCorreo({ isOpen, onClose, correoOriginal, onSucces
     const cuerpoCompleto = cuerpo.trim();
     if (!cuerpoCompleto || cuerpoCompleto === '') {
       toast.error('⚠️ Error de validación', { description: 'Debe escribir un mensaje antes de enviar' });
+      return;
+    }
+
+    if (paraEmails.length === 0) {
+      toast.error('⚠️ Error de validación', { description: 'Debe indicar al menos un destinatario' });
+      return;
+    }
+
+    const invalidosPara = paraEmails.filter((em) => !EMAIL_REGEX.test(em));
+    const invalidosCc = ccEmails.filter((em) => !EMAIL_REGEX.test(em));
+    const invalidosBcc = bccEmails.filter((em) => !EMAIL_REGEX.test(em));
+    if (invalidosPara.length > 0 || invalidosCc.length > 0 || invalidosBcc.length > 0) {
+      toast.error('⚠️ Error de validación', { description: 'Hay direcciones de correo inválidas' });
       return;
     }
 
@@ -120,12 +145,15 @@ export function ModalResponderCorreo({ isOpen, onClose, correoOriginal, onSucces
       const result = await correosJuridicosService.replyEmail(
         correoOriginal.id,
         cuerpoHtmlFinal,
-        attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
+        attachmentsBase64.length > 0 ? attachmentsBase64 : undefined,
+        paraEmails,
+        ccEmails.length > 0 ? ccEmails : undefined,
+        bccEmails.length > 0 ? bccEmails : undefined
       );
 
       if (result?.success !== false) {
         toast.success('✅ Respuesta enviada exitosamente', {
-          description: `Para: ${correoOriginal.remitenteEmail}`,
+          description: `Para: ${paraEmails.join(', ')}`,
           duration: 4000
         });
         setCuerpo('');
@@ -199,23 +227,68 @@ export function ModalResponderCorreo({ isOpen, onClose, correoOriginal, onSucces
           <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
             <form onSubmit={handleSubmit} className="space-y-5">
 
-              {/* Destinatario (read-only) */}
+              {/* Destinatarios */}
               <Card className="p-4 bg-gray-50 border-gray-200">
-                <div className="flex items-center gap-3 mb-3">
-                  <User className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-sm">Destinatario</h3>
-                    <p className="text-xs text-gray-500">Se responde directamente al remitente original</p>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <User className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-sm">Destinatarios</h3>
+                      <p className="text-xs text-gray-500">Puede agregar más destinatarios además del remitente original</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {!showCc && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCc(true)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                      >
+                        CC
+                      </button>
+                    )}
+                    {!showBcc && (
+                      <button
+                        type="button"
+                        onClick={() => setShowBcc(true)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                      >
+                        CCO
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-bold text-gray-700">Para</Label>
-                  <Input
-                    value={correoOriginal.remitenteEmail}
-                    readOnly
-                    className="bg-gray-100 cursor-not-allowed text-gray-600"
+                  <Label htmlFor="para-respuesta" className="text-sm font-bold text-gray-700">Para</Label>
+                  <EmailTagInput
+                    id="para-respuesta"
+                    emails={paraEmails}
+                    onEmailsChange={setParaEmails}
+                    placeholder="destinatario@ejemplo.com"
                   />
                 </div>
+                {showCc && (
+                  <div className="space-y-2 mt-3">
+                    <Label htmlFor="cc-respuesta" className="text-sm font-bold text-gray-700">CC</Label>
+                    <EmailTagInput
+                      id="cc-respuesta"
+                      emails={ccEmails}
+                      onEmailsChange={setCcEmails}
+                      placeholder="cc@ejemplo.com"
+                    />
+                  </div>
+                )}
+                {showBcc && (
+                  <div className="space-y-2 mt-3">
+                    <Label htmlFor="cco-respuesta" className="text-sm font-bold text-gray-700">CCO</Label>
+                    <EmailTagInput
+                      id="cco-respuesta"
+                      emails={bccEmails}
+                      onEmailsChange={setBccEmails}
+                      placeholder="cco@ejemplo.com"
+                    />
+                  </div>
+                )}
                 <div className="space-y-2 mt-3">
                   <Label className="text-sm font-bold text-gray-700">Asunto</Label>
                   <Input

@@ -35,6 +35,8 @@ services:
       - frontend-mfe-gestion-legal
       - frontend-mfe-pta
       - frontend-mfe-contratacion
+      - frontend-mfe-viaticos
+      - frontend-mfe-programacion-academica
       - api-gateway
       - onlyoffice
     volumes:
@@ -219,5 +221,29 @@ services:
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-contratacion
         FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-contratacion
     container_name: superapp-mfe-contratacion${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+
+  frontend-mfe-viaticos:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-viaticos
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-viaticos
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-viaticos
+    container_name: superapp-mfe-viaticos${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+
+  frontend-mfe-programacion-academica:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-programacion-academica
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-programacion-academica
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-programacion-academica
+    container_name: superapp-mfe-programacion-academica${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 

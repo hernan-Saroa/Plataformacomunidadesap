@@ -103,6 +103,9 @@ const ProgramasAcademicosModule = lazyRemote(() => import('programas_academicos/
 const GestionUsuariosPasswordTracking = lazyRemote(() => import('gestion_personas/Passwords'), ['GestionUsuariosPasswordTracking']);
 const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'), ['GestionProfesoralApp']);
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
+const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
+const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
+const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 
 // ✅ Loading Spinner Component
@@ -156,7 +159,10 @@ type ModuleView =
   | 'banco-docentes-pta'
   | 'gestion-profesoral'
   | 'contratacion'
-  | 'modules';
+  | 'viaticos'
+  | 'programacion-academica'
+  | 'modules'
+  | 'dependencias';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -229,11 +235,16 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'gestion-legal': 'gestion-legal',
   'pta': 'pta',
   'contratacion': 'contratacion',
+  'viaticos': 'viaticos',
+  'programacion-academica': 'programacion-academica',
+  'academic-schedule': 'programacion-academica',
   'banco-docentes-pta': 'banco-docentes-pta',
+  'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
   'gestion-profesoral': 'gestion-profesoral',
   'registro-academico': 'graduates',
-  'modules': 'modules'
+  'modules': 'modules',
+  'dependencias': 'dependencias'
 };
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
@@ -249,11 +260,13 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'graduates-verification',
   'graduates-certificates',
   'pta',
+  'programacion-academica',
   'certificados-laborales',
   'control-interno',
   'control-disciplinario',
   'gestion-legal',
   'contratacion',
+  'viaticos',
 ];
 
 const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
@@ -276,6 +289,7 @@ const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   'programas-academicos': 'programas-academicos',
   'gestion-passwords': 'gestion-passwords',
   pta: 'pta',
+  'programacion-academica': 'programacion-academica',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-profesoral': 'gestion-profesoral',
 };
@@ -815,6 +829,20 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           </Suspense>
         );
 
+      case 'viaticos':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ViaticosModulePremium />
+          </Suspense>
+        );
+
+      case 'programacion-academica':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ProgramacionAcademicaModule />
+          </Suspense>
+        );
+
       case 'modules':
         return (
           <Suspense fallback={<ModuleLoader />}>
@@ -822,6 +850,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               onModuleUpdated={loadActiveModules}
               userRoles={(userData?.roles || (usuario?.rol ? [usuario.rol] : [])) as string[]}
             />
+          </Suspense>
+        );
+
+      case 'dependencias':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <DependenciasPage />
           </Suspense>
         );
 
@@ -835,7 +870,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   };
 
   return (
-    <NotificationsProvider>
+    <NotificationsProvider currentModule={currentModule}>
       <TourProvider>
         {/* ✅ APP LAYOUT - Mobile First */}
         <div className="backoffice-shell-layout min-h-screen bg-gray-50">

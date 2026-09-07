@@ -205,10 +205,18 @@ export function ModalExpedienteComunicacion({
     }
     setDerivando(true);
     try {
-      await correosJuridicosService.derivarNuevoProceso(comunicacion.id, procesoId, modulo);
-      toast.success('✅ Proceso creado y comunicación derivada', {
-        description: 'Los documentos de la comunicación se agregaron al proceso',
-      });
+      const { documentosCopiados, documentosTotal } = await correosJuridicosService.derivarNuevoProceso(comunicacion.id, procesoId, modulo);
+      if (documentosTotal > 0 && documentosCopiados < documentosTotal) {
+        toast.warning('⚠️ Proceso creado y comunicación vinculada', {
+          description: `Solo se pudieron copiar ${documentosCopiados} de ${documentosTotal} documento(s) adjunto(s). Adjunte los faltantes manualmente en el proceso.`,
+        });
+      } else {
+        toast.success('✅ Proceso creado y comunicación derivada', {
+          description: documentosTotal > 0
+            ? `${documentosCopiados} documento(s) de la comunicación se agregaron al proceso`
+            : 'La comunicación quedó vinculada al proceso',
+        });
+      }
       setCreando(null);
       onDerivado?.();
       onClose();
@@ -548,9 +556,9 @@ export function ModalExpedienteComunicacion({
                 <div className="p-2 rounded-lg bg-white shadow-sm">
                   <Building2 className="w-5 h-5 text-indigo-600" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xs text-gray-600">Remitente</p>
-                  <p className="text-sm font-bold text-gray-900 truncate">{comunicacion.remitente}</p>
+                  <p className="text-sm font-bold text-gray-900 truncate" title={comunicacion.remitente}>{comunicacion.remitente}</p>
                 </div>
               </div>
 
@@ -619,7 +627,7 @@ export function ModalExpedienteComunicacion({
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs text-gray-600">Remitente</p>
-                          <p className="text-sm font-bold text-gray-900">{comunicacion.remitente}</p>
+                          <p className="text-sm font-bold text-gray-900 break-words">{comunicacion.remitente}</p>
                         </div>
                         {comunicacion.despachoOrigen && (
                           <div>
@@ -970,6 +978,14 @@ export function ModalExpedienteComunicacion({
                         </div>
                         {/* SECCIÓN DE DERIVACIÓN MANUAL END */}
                       </div>
+                    </Card>
+                  ) : comunicacion.tipo === 'ENVIADO' ? (
+                    <Card className="p-6 bg-gray-50 border-gray-200 text-center">
+                      <Send className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+                      <p className="text-gray-600 font-medium">No aplica para correos enviados</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        La clasificación automática solo se calcula para comunicaciones recibidas, no para las que ustedes envían.
+                      </p>
                     </Card>
                   ) : (
                     <Card className="p-6 bg-gray-50 border-gray-200">

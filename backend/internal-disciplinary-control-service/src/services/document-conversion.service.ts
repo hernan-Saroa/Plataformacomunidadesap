@@ -341,21 +341,64 @@ export class DocumentConversionService {
       this.logger.log(`[Mammoth] HTML content length: ${htmlContent.length}`);
 
       // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
-      // así que el membrete institucional insertado como encabezado de Word se pierde
-      // en la conversión. Se extrae aparte (imágenes y texto) y se antepone al contenido.
+      // así que el membrete y el pie de página insertados como encabezado/pie de
+      // Word se pierden en la conversión. Se extraen aparte (imágenes y texto) y
+      // se inyectan como encabezado/pie de página REALES de Puppeteer, para que
+      // queden fijos en el margen y se repitan en todas las páginas, tal como en
+      // el documento original (antes se anteponían al cuerpo y salían en línea a
+      // mitad de página, en desorden).
       const headerContent = await this.extractHeaderContent(inputPath);
+      const footerContent = await this.extractFooterContent(inputPath);
+
+      // El membrete y el pie de ESAP son imágenes tipo "banner" que ocupan todo el
+      // ancho de la página (el logo queda a la izquierda; "www.esap.edu.co" a la
+      // derecha). Se renderizan a ancho completo, no centradas ni encogidas.
       const headerImagesHtml = headerContent.images
-        .map(
-          (src) =>
-            `<img src="${src}" style="max-width:100%; display:block; margin: 0 0 12pt 0;" />`,
-        )
+        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
       const headerTextHtml = headerContent.textBlocks
         .map(
           (texto) =>
-            `<p style="text-align:center; font-size:10pt; margin: 0 0 4pt 0;">${this.escapeHtmlText(texto)}</p>`,
+            `<div style="text-align:center; font-size:8pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
+      const footerImagesHtml = footerContent.images
+        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
+        .join('');
+      const footerTextHtml = footerContent.textBlocks
+        .map(
+          (texto) =>
+            `<div style="text-align:left; font-size:7pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
+        )
+        .join('');
+
+      const hasHeader = headerImagesHtml.length > 0 || headerTextHtml.length > 0;
+      const hasFooter = footerImagesHtml.length > 0 || footerTextHtml.length > 0;
+
+      // Puppeteer no hereda los estilos de la página en las plantillas de
+      // encabezado/pie y fija un tamaño de fuente diminuto por defecto: se fuerzan
+      // los estilos en línea y se deja padding lateral igual al margen del cuerpo.
+      // El "Página X de Y" del pie original es un campo de Word (no <w:t>), así que
+      // no lo trae la extracción: se reconstruye con los contadores de Puppeteer.
+      const footerPageNumberHtml =
+        '<div style="text-align:center; font-size:7pt; line-height:1.3;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+
+      // La imagen del membrete va a sangre (ancho completo). El texto del pie
+      // (dirección) se superpone sobre el banner por la izquierda, como en el
+      // documento original; si no hay imagen, simplemente se apila.
+      const headerTemplate = hasHeader
+        ? `<div style="width:100%; -webkit-print-color-adjust:exact;">${headerImagesHtml}${
+            headerTextHtml
+              ? `<div style="padding:1mm 2cm 0; box-sizing:border-box;">${headerTextHtml}</div>`
+              : ''
+          }</div>`
+        : '<div></div>';
+      const footerBodyHtml = footerImagesHtml
+        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:0; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
+        : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
+      const footerTemplate = hasFooter
+        ? `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact;">${footerPageNumberHtml}${footerBodyHtml}</div>`
+        : '<div></div>';
 
       // Crear HTML completo con estilos básicos
       const fullHtml = `
@@ -381,8 +424,6 @@ export class DocumentConversionService {
         </head>
         <body>
           <div class="mammoth-style-wrapper">
-            ${headerImagesHtml}
-            ${headerTextHtml}
             ${htmlContent}
           </div>
         </body>
@@ -410,16 +451,25 @@ export class DocumentConversionService {
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
-      // Generar PDF
+      // Generar PDF. Cuando hay membrete/pie se activa displayHeaderFooter y se
+      // amplía el margen superior/inferior para que las plantillas quepan sin
+      // solaparse con el cuerpo.
       this.logger.log(`[Mammoth] Generating PDF...`);
       await page.pdf({
         path: outputPath,
         format: 'A4',
         printBackground: true,
+        displayHeaderFooter: hasHeader || hasFooter,
+        headerTemplate,
+        footerTemplate,
         margin: {
-          top: '2cm',
+          top: hasHeader ? '3.8cm' : '2cm',
           right: '2cm',
-          bottom: '2cm',
+          // El pie institucional es alto (banner a ancho completo + varias líneas
+          // de dirección superpuestas): necesita un margen inferior generoso o se
+          // recorta. Debe coincidir con el yPosition de la firma en
+          // pdf-modifier.service para que no se solapen.
+          bottom: hasFooter ? '4cm' : '2cm',
           left: '2cm'
         }
       });
@@ -535,6 +585,107 @@ export class DocumentConversionService {
     } catch (error) {
       this.logger.warn(
         `[Conversion] No se pudo extraer el contenido del encabezado del documento: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { images: [], textBlocks: [] };
+    }
+  }
+
+  private async extractFooterContent(
+    inputPath: string,
+  ): Promise<{ images: string[]; textBlocks: string[] }> {
+    try {
+      const docxBuffer = await fs.readFile(inputPath);
+      const zip = await JSZip.loadAsync(docxBuffer);
+
+      const footerFiles = Object.keys(zip.files).filter((fileName) =>
+        /^word\/footer\d*\.xml$/i.test(fileName),
+      );
+
+      const images: string[] = [];
+      const textBlocks: string[] = [];
+      const seenMediaPaths = new Set<string>();
+      const seenText = new Set<string>();
+
+      for (const footerFile of footerFiles) {
+        const footerXml = await zip.file(footerFile)?.async('string');
+        if (!footerXml) {
+          continue;
+        }
+
+        const relsPath = `word/_rels/${path.basename(footerFile)}.rels`;
+        const relsXml = await zip.file(relsPath)?.async('string');
+
+        const relsMap = new Map<string, string>();
+        if (relsXml) {
+          const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
+          let relMatch: RegExpExecArray | null;
+
+          while ((relMatch = relRegex.exec(relsXml)) !== null) {
+            relsMap.set(relMatch[1], relMatch[2]);
+          }
+
+          const embedRegex = /r:embed="([^"]+)"/g;
+          let embedMatch: RegExpExecArray | null;
+
+          while ((embedMatch = embedRegex.exec(footerXml)) !== null) {
+            const target = relsMap.get(embedMatch[1]);
+            if (!target) {
+              continue;
+            }
+
+            const mediaPath = path.posix.normalize(`word/${target}`);
+            if (seenMediaPaths.has(mediaPath)) {
+              continue;
+            }
+            seenMediaPaths.add(mediaPath);
+
+            const mediaFile = zip.file(mediaPath);
+            if (!mediaFile) {
+              continue;
+            }
+
+            const mimeType = this.getImageMimeType(mediaPath);
+            if (!mimeType) {
+              this.logger.warn(
+                `[Conversion] Imagen de pie de página con formato no soportado para vista web: ${mediaPath}`,
+              );
+              continue;
+            }
+
+            const mediaBuffer = await mediaFile.async('nodebuffer');
+            images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
+          }
+        }
+
+        // Igual que con el encabezado, Mammoth no lee el texto del pie de página
+        // (ej. dirección, notas legales, numeración) del word/footer*.xml.
+        const paragraphRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
+        let paragraphMatch: RegExpExecArray | null;
+
+        while ((paragraphMatch = paragraphRegex.exec(footerXml)) !== null) {
+          const paragraphXml = paragraphMatch[1];
+          const textRegex = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+          let textMatch: RegExpExecArray | null;
+          let paragraphText = '';
+
+          while ((textMatch = textRegex.exec(paragraphXml)) !== null) {
+            paragraphText += textMatch[1];
+          }
+
+          const decodedText = this.decodeXmlEntities(paragraphText).trim();
+          if (decodedText && !seenText.has(decodedText)) {
+            seenText.add(decodedText);
+            textBlocks.push(decodedText);
+          }
+        }
+      }
+
+      return { images, textBlocks };
+    } catch (error) {
+      this.logger.warn(
+        `[Conversion] No se pudo extraer el contenido del pie de página del documento: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

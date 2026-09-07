@@ -12,7 +12,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Calendar, Clock, FileText, FileCheck2, Upload, Download, Trash2,
+  Calendar, Clock, FileText, Upload, Download, Trash2,
   BarChart3, TrendingUp, Target, Award, Shield, Settings,
   Bell, Eye, Palette, Globe, ChevronRight, CheckCircle,
   AlertTriangle, Paperclip, FileImage, File, BookOpen,
@@ -21,12 +21,14 @@ import {
 } from 'lucide-react';
 import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { agruparEvidenciasPorJustificacion, ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import {
   registrarEvidenciaPTA, getEvidenciasPTA, eliminarEvidenciaPTA, uploadEvidenciaFile,
 } from '../../../services/api/ptaApi';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../../utils/officePreview';
 
 // ═══ V11: Calendario Académico Personal ══════════════════════════════
 
@@ -375,7 +377,31 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
+  // HTML del documento de Office convertido en el navegador (null = cargando).
+  const [officeHtml, setOfficeHtml] = useState<string | null>(null);
+  const [officeError, setOfficeError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Convierte el adjunto al abrir la previsualización. El flag `cancelado` evita
+  // pintar el resultado de un documento que el usuario ya cerró (o cambió por otro).
+  useEffect(() => {
+    if (!previewFile || !puedePrevisualizarOffice(previewFile.nombre)) {
+      setOfficeHtml(null);
+      setOfficeError('');
+      return;
+    }
+    let cancelado = false;
+    setOfficeHtml(null);
+    setOfficeError('');
+    cargarPreviewOffice(previewFile.url, previewFile.nombre)
+      .then(res => { if (!cancelado) setOfficeHtml(res.html); })
+      .catch(err => {
+        if (cancelado) return;
+        console.error('[mfe-pta] No se pudo previsualizar el documento:', err);
+        setOfficeError(err?.message || 'No se pudo previsualizar este documento.');
+      });
+    return () => { cancelado = true; };
+  }, [previewFile?.url, previewFile?.nombre]);
 
   // Botones Ver/Descargar por archivo (mismo patrón que el Seguimiento del backoffice).
   const renderBotonesArchivo = (ev: any, compacto = false) => {
@@ -482,7 +508,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       if (!isApprovedEvidence(e) || !e.componente_pta) return;
       const key = evidenciaHorasKey(e.componente_pta, e.seccion_extension ?? e.seccionExtension);
       if (acc[key] !== undefined) acc[key] += Number(e.horas_avance) || 0;
-      if (e.componente_pta === 'extension') acc.extension += Number(e.horas_avance) || 0;
+      if (e.componente_pta === 'extension' && key !== 'extension') acc.extension += Number(e.horas_avance) || 0;
     });
     return acc;
   }, [evidencias]);
@@ -493,7 +519,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       if (!isReservedEvidence(e) || !e.componente_pta) return;
       const key = evidenciaHorasKey(e.componente_pta, e.seccion_extension ?? e.seccionExtension);
       if (acc[key] !== undefined) acc[key] += Number(e.horas_avance) || 0;
-      if (e.componente_pta === 'extension') acc.extension += Number(e.horas_avance) || 0;
+      if (e.componente_pta === 'extension' && key !== 'extension') acc.extension += Number(e.horas_avance) || 0;
     });
     return acc;
   }, [evidencias]);
@@ -607,16 +633,20 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     // Cupo POR SECCIÓN cuando es extensión; por componente en el resto.
     const cupoKey = evidenciaHorasKey(formComponente, formSeccionExtension);
     const maxHoras = horasPorComponente[cupoKey] || 0;
+    if (maxHoras <= 0) {
+      toast.error('Este componente o sección no aplica: no tiene horas asignadas para justificar.');
+      return;
+    }
     const yaRegistradas = (evidencias
       .filter(e => evidenciaHorasKey(e.componente_pta, e.seccion_extension ?? e.seccionExtension) === cupoKey && isReservedEvidence(e))
       .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0));
     const disponibles = Math.max(maxHoras - yaRegistradas, 0);
-    if (maxHoras > 0 && disponibles <= 0) {
+    if (disponibles <= 0) {
       toast.error('Esta sección/componente ya no tiene horas disponibles para nuevos soportes.');
       return;
     }
     if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
-    if (maxHoras > 0 && formHoras > disponibles) {
+    if (!Number.isFinite(formHoras) || formHoras > disponibles) {
       toast.error(`Superas las horas disponibles (${maxHoras}h). Tienes ${yaRegistradas}h aprobadas o pendientes; disponibles: ${disponibles}h.`);
       return;
     }
@@ -683,22 +713,8 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     : evidencias;
   // Clave de cupo activa del formulario (extensión → por sección).
   const formCupoKey = evidenciaHorasKey(formComponente, formSeccionExtension);
-  // Secciones de extensión que el PTA REALMENTE tiene (según sus actividades de
-  // extensión). Solo estas se ofrecen en el selector; las que el PTA no tiene ni
-  // aparecen. Fallback: si el PTA no trae actividades detalladas pero sí horas de
-  // extensión, se muestran las 4 (no se puede determinar la sección, no bloquear).
-  const seccionesDelPta = useMemo<Set<string>>(() => {
-    const set = new Set<string>();
-    const acts = Array.isArray(activePta?.extension_actividades) ? activePta.extension_actividades : [];
-    for (const a of acts) {
-      const sec = normalizarSeccionExtension(a?.seccion);
-      if (sec) set.add(sec);
-    }
-    return set;
-  }, [activePta]);
-  const seccionesExtensionDisponibles = seccionesDelPta.size > 0
-    ? SECCIONES_EXTENSION.filter(s => seccionesDelPta.has(s.key))
-    : ((activePta?.horas_extension || 0) > 0 ? [...SECCIONES_EXTENSION] : []);
+  // No ofrecer secciones vacías ni inferir cupos desde el total de Extensión.
+  const seccionesExtensionDisponibles = SECCIONES_EXTENSION.filter(s => (horasExtensionPorSeccion[s.key] || 0) > 0);
   // Horas disponibles para la carga actual: si es extensión sin sección elegida aún, 0
   // (el docente debe elegir sección primero, pues cada una tiene su propio cupo).
   const horasDisponiblesForm = (formComponente === 'extension' && !formSeccionExtension)
@@ -734,7 +750,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       ? COMPONENTES_PTA.map(componente => ({
           key: componente.key,
           label: componente.label,
-          estado: 'no_iniciado',
+          estado: getPtaComponentDisplayStatus(activePta, componente.key === 'docencia' ? 'academica' : componente.key),
         }))
       : (Array.isArray(activePta?.componentes_estado)
           ? [...activePta.componentes_estado]
@@ -799,7 +815,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
               }).map((c: any) => {
                 const aprobado = c.estado === 'aprobado';
                 const devuelto = c.estado === 'devuelto';
-                const noIniciado = c.estado === 'no_iniciado';
+                const noIniciado = c.estado === 'no_iniciado' || c.estado === 'no_aplica';
                 const label = c.label === 'Investigacion' ? 'Investigación' : c.label === 'Extension' ? 'Extensión' : c.label;
                 const background = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : noIniciado ? '#F1F5F9' : '#FEF3C7';
                 const color = aprobado ? '#047857' : devuelto ? '#B91C1C' : noIniciado ? '#475569' : '#92400E';
@@ -807,7 +823,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 return (
                   <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background, color, fontSize: '0.64rem', fontWeight: 700, border: `1px solid ${border}` }}>
                     {aprobado ? <CheckCircle2 style={{ width: 10, height: 10 }} /> : devuelto ? <XCircle style={{ width: 10, height: 10 }} /> : <Clock style={{ width: 10, height: 10 }} />}
-                    {label}{noIniciado ? ' · No iniciado' : ''}
+                    {label}{c.estado === 'no_aplica' ? ' · No aplica' : noIniciado ? ' · No iniciado' : c.estado === 'en_revision' ? ' · En revisión' : ''}
                   </span>
                 );
               })}
@@ -817,7 +833,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
             <div style={{ fontSize: '0.68rem', color: bloqueoSinProceso ? '#475569' : '#92400E', fontWeight: 700, marginTop: 10 }}>
               {esPtaBorrador
                 ? 'Aprobación de componentes no iniciada'
-                : `${componentesAprobadosBloqueo} de ${Number(activePta?.componentes_total) || componentesEstadoBloqueo.length} componentes aprobados`}
+                : `${componentesAprobadosBloqueo} de ${activePta?.componentes_total ?? componentesEstadoBloqueo.filter((c: any) => c.estado !== 'no_aplica').length} componentes aprobados`}
             </div>
           )}
         </div>
@@ -843,81 +859,12 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: comp.color, transition: 'width 0.4s' }} />
               </div>
               <span style={{ fontSize: '0.65rem', fontWeight: 700, color: comp.color, width: 70, textAlign: 'right', flexShrink: 0 }}>
-                {aprobadas}h / {total}h
+                {total > 0 ? `${aprobadas}h / ${total}h` : 'No aplica'}
               </span>
             </div>
           );
         })}
       </div>
-      )}
-
-      {/* Compromiso documental definido en el proyecto de investigación. */}
-      {!seguimientoBloqueado && horasResolucionObjetivo > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 14, flexWrap: 'wrap', marginBottom: 16, padding: '14px 16px',
-          borderRadius: 12, border: `1px solid ${horasResolucionAprobadas >= horasResolucionObjetivo ? '#86EFAC' : '#FED7AA'}`,
-          background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#F0FDF4' : '#FFF7ED',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0, flex: 1 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#DCFCE7' : '#FFEDD5',
-            }}>
-              <FileCheck2 style={{
-                width: 16, height: 16,
-                color: horasResolucionAprobadas >= horasResolucionObjetivo ? '#15803D' : PTA_COLORS.INVESTIGACION,
-              }} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#111827' }}>
-                Resolución del proyecto de investigación
-              </div>
-              <div style={{
-                marginTop: 2, fontSize: '0.68rem', color: '#64748B',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {[proyectoInvestigacion?.nombre, proyectoInvestigacion?.resolucion_nombre]
-                  .filter(Boolean).join(' · ') || 'Documento de respaldo del proyecto'}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FFEDD5', color: '#C2410C', fontSize: '0.62rem', fontWeight: 800 }}>
-                  {horasResolucionObjetivo}h del proyecto
-                </span>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1D4ED8', fontSize: '0.62rem', fontWeight: 800 }}>
-                  {horasResolucionAprobadas}h aprobadas
-                </span>
-                {horasResolucionReservadas > horasResolucionAprobadas && (
-                  <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontSize: '0.62rem', fontWeight: 800 }}>
-                    {horasResolucionReservadas - horasResolucionAprobadas}h en revisión
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          {horasResolucionPendientes > 0 ? (
-            <button
-              type="button"
-              onClick={iniciarCargaResolucionProyecto}
-              disabled={horasDisponiblesResolucion <= 0}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
-                borderRadius: 8, border: 'none', color: 'white', fontSize: '0.7rem',
-                fontWeight: 800, background: horasDisponiblesResolucion > 0 ? PTA_COLORS.INVESTIGACION : '#9CA3AF',
-                cursor: horasDisponiblesResolucion > 0 ? 'pointer' : 'not-allowed', flexShrink: 0,
-              }}
-            >
-              <Upload style={{ width: 13, height: 13 }} />
-              Adjuntar resolución ({horasDisponiblesResolucion}h)
-            </button>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#15803D', fontSize: '0.7rem', fontWeight: 800 }}>
-              <CheckCircle2 style={{ width: 14, height: 14 }} />
-              Evidencia registrada
-            </span>
-          )}
-        </div>
       )}
 
       {/* Upload form (modal inline) */}
@@ -969,7 +916,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 >
                   {COMPONENTES_PTA.map(c => (
                     <option key={c.key} value={c.key} disabled={(horasDisponiblesPorComponente[c.key] || 0) <= 0}>
-                      {c.label} ({horasDisponiblesPorComponente[c.key] || 0}h)
+                      {c.label} — {(horasPorComponente[c.key] || 0) <= 0 ? 'No aplica' : (horasDisponiblesPorComponente[c.key] || 0) <= 0 ? 'Sin horas disponibles' : `${horasDisponiblesPorComponente[c.key]}h disponibles`}
                     </option>
                   ))}
                 </select>
@@ -985,7 +932,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                   >
                     <option value="">{seccionesExtensionDisponibles.length === 0 ? 'Sin secciones con horas' : 'Selecciona la sección…'}</option>
                     {seccionesExtensionDisponibles.map(s => (
-                      <option key={s.key} value={s.key}>{s.label} ({horasDisponiblesPorComponente[`extension:${s.key}`] || 0}h)</option>
+                      <option key={s.key} value={s.key} disabled={(horasDisponiblesPorComponente[`extension:${s.key}`] || 0) <= 0}>{s.label} ({horasDisponiblesPorComponente[`extension:${s.key}`] || 0}h disponibles)</option>
                     ))}
                   </select>
                 </div>
@@ -1103,7 +1050,9 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         seguimientoBloqueado ? null : (
         <div style={{ textAlign: 'center', padding: '30px 20px', background: '#F9FAFB', borderRadius: 12 }}>
           <Paperclip style={{ width: 32, height: 32, color: '#D1D5DB', margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.82rem', color: '#9CA3AF', margin: 0 }}>Sin documentos registrados{filtroComponente ? ` en ${COMPONENTES_PTA.find(c => c.key === filtroComponente)?.label}` : ''}</p>
+          <p style={{ fontSize: '0.82rem', color: '#9CA3AF', margin: 0 }}>{filtroComponente && (horasPorComponente[filtroComponente] || 0) <= 0
+            ? `${COMPONENTES_PTA.find(c => c.key === filtroComponente)?.label}: No aplica. No hay horas asignadas para justificar.`
+            : `Sin documentos registrados${filtroComponente ? ` en ${COMPONENTES_PTA.find(c => c.key === filtroComponente)?.label}` : ''}`}</p>
         </div>
         )
       ) : (
@@ -1239,6 +1188,27 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <img src={previewFile.url} alt={previewFile.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }} />
               ) : previewFile.tipo === 'pdf' ? (
                 <iframe src={previewFile.url} title={previewFile.nombre} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }} />
+              ) : puedePrevisualizarOffice(previewFile.nombre) ? (
+                /* Word/Excel: se convierten a HTML en el navegador (ver
+                   utils/officePreview). No se usa el visor de Microsoft porque
+                   descarga el archivo desde sus servidores y no puede alcanzar
+                   un despliegue interno. */
+                officeError ? (
+                  <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+                    <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
+                    <p style={{ fontSize: '0.85rem', color: '#B91C1C' }}>{officeError}</p>
+                    <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
+                  </div>
+                ) : officeHtml === null ? (
+                  <div style={{ textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                    <p style={{ fontSize: '0.85rem' }}>Cargando documento…</p>
+                  </div>
+                ) : (
+                  <div style={{ width: '100%', maxHeight: '70vh', overflow: 'auto', background: 'white', borderRadius: 8, padding: 20, textAlign: 'left' }}>
+                    <style>{ESTILOS_PREVIEW_OFFICE}</style>
+                    <div className="pta-office-preview" dangerouslySetInnerHTML={{ __html: officeHtml }} />
+                  </div>
+                )
               ) : (
                 <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
                   <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />

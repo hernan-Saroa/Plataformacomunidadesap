@@ -3,6 +3,7 @@ import {
   Activity,
   Check,
   CheckCircle2,
+  ClipboardCheck,
   ChevronDown,
   ChevronRight,
   Download,
@@ -338,6 +339,30 @@ export function PanelAuditoria({ procesoId }: Props) {
    * poder afirmar que en una etapa no se archivó nada, y una carpeta ausente no
    * distingue «sin documentos» de «no existe esa etapa».
    */
+  /**
+   * Las revisiones, siempre como lista.
+   *
+   * Se normaliza en vez de leer `datos.revisiones` directamente porque el campo
+   * es nuevo: un servidor que aún no se ha reiniciado responde sin él, y la
+   * pantalla entera reventaba al pedirle el `length` a un `undefined`. El
+   * expediente no puede caerse por un dato que solo añade detalle.
+   */
+  const revisiones = datos?.revisiones ?? [];
+
+  /**
+   * Agrupadas por actividad, para contarlas en la lista.
+   *
+   * Se agrupa aquí y no se pide agrupado al servidor porque la respuesta ya
+   * trae todas: recorrerlas una vez cuesta menos que una segunda consulta.
+   */
+  const revisionesPorNumeral = useMemo(() => {
+    const mapa: Record<string, typeof revisiones> = {};
+    for (const r of datos?.revisiones ?? []) {
+      (mapa[r.numeral] ??= []).push(r);
+    }
+    return mapa;
+  }, [datos]);
+
   const carpetas = useMemo(() => {
     const docs = datos?.documentos ?? [];
     const porEtapa = ETAPAS.map((e) => ({
@@ -454,6 +479,14 @@ export function PanelAuditoria({ procesoId }: Props) {
             >
               <span className="font-bold text-slate-500 w-8 flex-shrink-0">{a.numeral}</span>
               <span className="flex-1 min-w-0 truncate">{a.nombre}</span>
+              {/* Cuántas vueltas dio antes de quedar así: una actividad
+                  aprobada a la primera y otra devuelta tres veces figuraban
+                  igual, y para el auditor no son lo mismo. */}
+              {(revisionesPorNumeral[a.numeral]?.length ?? 0) > 1 ? (
+                <span className="text-[10px] font-bold text-amber-700 flex-shrink-0">
+                  {revisionesPorNumeral[a.numeral].length} revisiones
+                </span>
+              ) : null}
               <span className="text-[10px] font-bold text-slate-400 flex-shrink-0">
                 {a.estado}
               </span>
@@ -461,6 +494,49 @@ export function PanelAuditoria({ procesoId }: Props) {
           ))}
         </ul>
       </BloqueColapsable>
+
+      {/*
+        El recorrido de cada aprobación, con el motivo de cada devolución.
+        Vive en su propio bloque y no dentro de la lista de actividades porque
+        es lo que un ente de control viene a leer: quién firmó qué, cuándo, y
+        qué se pidió corregir por el camino.
+      */}
+      {revisiones.length > 0 ? (
+        <BloqueColapsable
+          icono={<ClipboardCheck className="w-4 h-4 text-slate-400" />}
+          titulo="Historial de aprobaciones"
+          cuantos={revisiones.length}
+        >
+          <ul className="m-0 p-0 list-none space-y-2.5">
+            {revisiones.map((r, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span
+                  className={`text-[10px] font-bold rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5 ${
+                    r.decision === 'APROBADO'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'bg-amber-50 text-amber-700'
+                  }`}
+                >
+                  {r.decision === 'APROBADO' ? 'Aprobó' : 'Devolvió'}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11.5px] text-slate-700 m-0 leading-snug">
+                    <span className="font-bold">{r.numeral}</span> · {r.revisado_por}
+                  </p>
+                  <p className="text-[10.5px] text-slate-400 m-0 tabular-nums">
+                    {momento(r.created_at)} · versión {r.version_revisada}
+                  </p>
+                  {r.observaciones ? (
+                    <p className="text-[11px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
+                      {r.observaciones}
+                    </p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </BloqueColapsable>
+      ) : null}
 
       <Bloque
         icono={<UserCog className="w-4 h-4 text-slate-400" />}

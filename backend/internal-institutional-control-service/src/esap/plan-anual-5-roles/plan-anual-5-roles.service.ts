@@ -103,7 +103,7 @@ export class PlanAnual5RolesService {
     const query = this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
-      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('roles.actividades', 'actividades', 'actividades.activo IS NOT FALSE')
       .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
@@ -150,7 +150,7 @@ export class PlanAnual5RolesService {
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
-      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('roles.actividades', 'actividades', 'actividades.activo IS NOT FALSE')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
       .andWhere('plan.año > 0')
@@ -184,7 +184,7 @@ export class PlanAnual5RolesService {
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
-      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('roles.actividades', 'actividades', 'actividades.activo IS NOT FALSE')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
       .andWhere('plan.año > 0')
@@ -360,6 +360,7 @@ export class PlanAnual5RolesService {
       }
     }
 
+    delete (plan as any).roles;
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
 
     // Propagar fechas del plan a actividades que aún tienen las fechas anteriores

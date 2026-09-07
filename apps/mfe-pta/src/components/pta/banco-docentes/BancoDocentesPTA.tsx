@@ -6,11 +6,12 @@ import {
   Filter, ExternalLink, MapPin, ArrowRight, RotateCcw, ChevronDown
 } from 'lucide-react';
 import {
-  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, toggleBancoDocenteEstado, bulkUploadBancoDocentes
+  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, bulkUploadBancoDocentes
 } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
+import { BancoDocenteEstadoModal } from './BancoDocenteEstadoModal';
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -164,6 +165,7 @@ export function BancoDocentesPTA() {
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [selectedDocente, setSelectedDocente] = useState<string | null>(null);
   const [editDocente, setEditDocente] = useState<any>(null);
+  const [estadoDocente, setEstadoDocente] = useState<any>(null);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<any>(null);
@@ -296,12 +298,6 @@ export function BancoDocentesPTA() {
     return () => clearTimeout(searchTimeout.current);
   }, [search]);
   useEffect(() => { loadData(page); }, [page]);
-
-  const handleToggleEstado = async (id: string) => {
-    await toggleBancoDocenteEstado(id);
-    loadData();
-    showToast('Estado actualizado');
-  };
 
   const handleBulkUpload = async () => {
     if (!bulkFile) return;
@@ -681,13 +677,16 @@ export function BancoDocentesPTA() {
 
                         {/* ── Celda DOCUMENTO ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle' }}>
-                          <p style={{ margin: 0, fontSize: '13px', color: '#374151', fontFamily: 'ui-monospace, monospace' }}>
+                          <p title={d.proteccion_datos?.acceso_completo === false ? 'Cédula enmascarada según su rol' : undefined} style={{ margin: 0, fontSize: '13px', color: '#374151', fontFamily: 'ui-monospace, monospace' }}>
                             {d.documento_identidad}
                           </p>
                           {d.tipo_documento && (
                             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#9CA3AF' }}>
                               {d.tipo_documento}
                             </p>
+                          )}
+                          {d.proteccion_datos?.acceso_completo === false && (
+                            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#64748B' }}>Dato protegido</p>
                           )}
                         </td>
 
@@ -808,7 +807,7 @@ export function BancoDocentesPTA() {
                             {/* Botón Toggle Estado */}
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
-                                onClick={() => handleToggleEstado(d.docente_id || d.id)}
+                                onClick={() => setEstadoDocente(d)}
                                 title={getDocenteEstadoKey(d) === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
                                 style={{
                                   width: 32, height: 32, borderRadius: 8,
@@ -1366,6 +1365,18 @@ export function BancoDocentesPTA() {
           periodoSeleccionado={filterPeriodo || undefined}
           onClose={() => setEditDocente(null)}
           onSaved={() => { setEditDocente(null); loadData(); showToast('Docente guardado correctamente'); }}
+        />
+      )}
+
+      {estadoDocente !== null && (
+        <BancoDocenteEstadoModal
+          docente={estadoDocente}
+          onClose={() => setEstadoDocente(null)}
+          onSaved={(estado) => {
+            setEstadoDocente(null);
+            loadData();
+            showToast(estado === 'ACTIVO' ? 'Perfil docente activado correctamente' : 'Perfil docente inactivado correctamente');
+          }}
         />
       )}
 

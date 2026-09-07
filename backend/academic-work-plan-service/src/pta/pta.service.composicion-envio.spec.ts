@@ -15,6 +15,7 @@ describe('PtaService - composicion permitida al enviar el PTA', () => {
     asignatura_id: 'asignatura-1',
     asignatura_nombre: 'Administracion Publica',
     programa_id: 'programa-1',
+    pensum: 'pensum-1',
     creditos: 3,
     total_horas: 600,
     fecha_inicio: '2026-07-01',
@@ -48,7 +49,7 @@ describe('PtaService - composicion permitida al enviar el PTA', () => {
       .not.toThrow();
   });
 
-  it('conserva la validacion de Actividades Complementarias obligatorias', () => {
+  it('permite enviar un PTA compuesto unicamente por Docencia, sin Complementarias', () => {
     const body = {
       tipo_vinculacion: 'CARRERA',
       asignaturas: [{ ...asignatura, total_horas: 800 }],
@@ -59,9 +60,12 @@ describe('PtaService - composicion permitida al enviar el PTA', () => {
     };
     const hours = service.computeHorasTotales(body);
 
+    expect(hours).toMatchObject({
+      sumDocencia: 800,
+      sumComp: 0,
+      total: 800,
+    });
     expect(() => service.validatePtaForSubmission(body, hours, 800, rules))
-      .toThrow(BadRequestException);
-    expect(() => service.validatePtaForSubmission(body, hours, 800, rules))
-      .toThrow(/actividades complementarias/i);
+      .not.toThrow();
   });
 });

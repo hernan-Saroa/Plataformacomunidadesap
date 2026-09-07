@@ -17,8 +17,11 @@ const buildDateValue = Number.isNaN(buildDateSource.getTime()) ? new Date() : bu
 const buildDate = new Intl.DateTimeFormat('es-CO', {
   timeZone: 'America/Bogota',
   day: 'numeric',
-  month: 'long',
+  month: 'short',
   year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
 }).format(buildDateValue);
 
 const externalRedirectPlugin = () => ({

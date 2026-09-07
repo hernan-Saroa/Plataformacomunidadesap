@@ -251,14 +251,17 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
       {/* El estudio previo firmado: entregable real de esta actividad */}
       {seccion === 'documentos' && (
         <div className="space-y-3">
-          {/* Sin filtrar por modalidad: la 3.1 tiene un formato por tipo de
-              contratación —BS-FO-046 para prestación de servicios, 047 para las
-              competitivas, 048 para directa con persona natural, 061 para
-              TVEC— y el gestor elige el que corresponde a su caso. Filtrar
-              exigiría que la modalidad esté definida, y en la 3.1 todavía no
-              lo está: se ratifica en la 3.5. */}
+          {/* Filtrado por la modalidad del proceso: la 3.1 tiene un formato por
+              tipo de contratación —BS-FO-046 para prestación de servicios, 047
+              para las competitivas, 048 para directa con persona natural, 061
+              para TVEC— y solo uno le sirve al gestor. Antes se listaban los
+              cuatro porque la modalidad se daba por indefinida hasta la 3.5,
+              pero el proceso nace con ella: se elige al crearlo, y la 3.5 la
+              ratifica. Ofrecer los cuatro obliga a elegir entre tres formatos
+              que no aplican. */}
           <FormatosDeLaActividad
             numeral={NUMERAL}
+            modalidad={datos.proceso.modalidad}
             instruccion="Descarga el formato oficial del SIG, diligéncialo, fírmalo y adjúntalo aquí."
             sinFormatos="El estudio previo se diligencia en el formato institucional. Cuando Contratación suba los formatos a la biblioteca de plantillas, podrás descargarlos desde aquí."
           />
