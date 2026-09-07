@@ -13,6 +13,7 @@
 import { Printer, Download, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
@@ -59,12 +60,12 @@ const SUBCOMP_LABELS: Record<string, string> = {
  * El backend auto-aprueba con aprobadorNombre='Sistema' los componentes que no
  * tienen actividades, para no bloquear el flujo. Mostrar "Sistema" en el detalle
  * hacía parecer que alguien lo avaló; para el lector no está aprobado por nadie,
- * así que se rotula como pendiente.
+ * y no se presenta como una firma humana ni como una tarea pendiente.
  */
 const NOMBRE_APROBADOR_AUTOMATICO = 'Sistema';
 function nombreAprobadorVisible(nombre?: string | null): string | null {
   if (!nombre) return null;
-  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? 'Pendiente' : nombre;
+  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? null : nombre;
 }
 const coarseKeyDe = (key: string): string => {
   if (key.startsWith('academica')) return 'academica';
@@ -118,12 +119,7 @@ const rangoF = (i?: string, f?: string) => {
 };
 
 /** Estado real de aprobación por componente (componentes_estado del DTO). */
-function estadoComp(pta: any, key: string): string | null {
-  if (['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado)) return 'aprobado';
-  if (pta?.estado === 'Borrador') return null;
-  const arr = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
-  return arr.find((c: any) => c?.key === key)?.estado || null;
-}
+const estadoComp = getPtaComponentDisplayStatus;
 
 /** Horas ya aprobadas de un componente (mismo criterio que ReportePTAInstitucional). */
 function horasAprobadasComp(pta: any, key: string, horasTotales: number): number {
@@ -135,6 +131,9 @@ function horasAprobadasComp(pta: any, key: string, horasTotales: number): number
 }
 
 const ESTADO_COMP_CFG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  no_aplica: { label: 'No aplica', color: '#64748B', bg: '#F1F5F9', icon: Clock },
+  no_iniciado: { label: 'No iniciado', color: '#64748B', bg: '#F1F5F9', icon: Clock },
+  en_revision: { label: 'En revisión', color: '#92400E', bg: '#FEF3C7', icon: Clock },
   aprobado: { label: 'Aprobado', color: '#047857', bg: '#D1FAE5', icon: CheckCircle2 },
   devuelto: { label: 'Devuelto', color: '#B91C1C', bg: '#FEE2E2', icon: RotateCcw },
   pendiente: { label: 'Pendiente', color: '#92400E', bg: '#FEF3C7', icon: Clock },
@@ -568,7 +567,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
                     {resumenComponentes.map((c, i) => (
                       <tr key={c.key} style={zebra(i)}>
                         <td style={{ ...TD, fontWeight: 700, borderLeft: `4px solid ${c.color}` }}>{c.label}</td>
-                        <td style={TDC}>{c.horas > 0 ? <ChipEstadoComp estado={estadoComp(pta, c.key)} /> : <span style={{ color: '#9CA3AF', fontSize: '0.66rem' }}>Sin horas</span>}</td>
+                        <td style={TDC}><ChipEstadoComp estado={c.horas > 0 ? estadoComp(pta, c.key) : 'no_aplica'} /></td>
                         <td style={{ ...TDC, fontWeight: 800 }}>{c.horas}</td>
                         <td style={{ ...TDC, background: '#F0FDF4' }}>{c.aprobadas}</td>
                         <td style={{ ...TDC, background: '#FEF9C3' }}>{c.pendientes}</td>

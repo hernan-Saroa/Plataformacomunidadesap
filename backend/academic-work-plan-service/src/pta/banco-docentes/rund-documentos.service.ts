@@ -3,11 +3,14 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { extname } from 'path';
 import { DataSource, QueryRunner } from 'typeorm';
 import { RundDocumentStorageService } from './rund-document-storage.service';
+import { recordRundAccess, RundAccessActor } from './rund-access-audit';
+import { RUND_SENSITIVE_FIELDS } from './banco-docentes-sensitive-data';
 
 type DocumentUploadData = {
   categoria: string;
@@ -258,14 +261,28 @@ export class RundDocumentosService {
     }
   }
 
-  async content(docenteId: string, documentId: string) {
+  async content(docenteId: string, documentId: string, actor: RundAccessActor = { actorId: 'NO_AUTENTICADO', roles: [], fullAccess: false }) {
     const docente = await this.requireDocente(docenteId);
     const document = await this.requireDocument(docente.id, documentId, false);
     if (document.estado === 'ELIMINADO') throw new NotFoundException('El documento fue eliminado.');
+    await recordRundAccess(this.dataSource, { ...actor, endpoint: 'CONSULTAR_ORIGINAL_PERFIL',
+      resourceId: document.id, docenteIds: [docente.id], fields: RUND_SENSITIVE_FIELDS,
+      result: actor.fullAccess ? 'COMPLETO' : 'DENEGADO',
+    });
+    if (!actor.fullAccess) throw new ForbiddenException('El documento original puede contener datos sensibles y está restringido para su rol.');
     return {
       buffer: await this.storage.read(document.proveedor_almacenamiento, document.almacenamiento_ruta),
       fileName: document.nombre_archivo,
       mimeType: document.mime_type || 'application/pdf',
+    };
+  }
+
+  protectMetadata<T extends { nombreArchivo?: string; descripcion?: string | null; contenidoUrl?: string }>(document: T, fullAccess: boolean) {
+    return { ...document,
+      nombreArchivo: fullAccess ? document.nombreArchivo : 'Documento del perfil.pdf',
+      descripcion: fullAccess ? document.descripcion : null,
+      contenidoUrl: fullAccess ? document.contenidoUrl : null,
+      contenidoRestringido: !fullAccess,
     };
   }
 

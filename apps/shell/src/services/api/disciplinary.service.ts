@@ -517,6 +517,8 @@ class DisciplinaryService {
                 estado: auto.estado,
                 tipoAuto: auto.tipo,
                 numero: auto.numero,
+                rejectionDocumentUrl: auto.rejectionDocumentUrl || null,
+                rejectionDocumentName: auto.rejectionDocumentName || null,
             },
         };
     }
@@ -1088,6 +1090,12 @@ class DisciplinaryService {
             action: 'RETURN',
             observaciones
         });
+    }
+
+    async uploadRejectionDocument(id: string, file: File): Promise<LegalAuto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-rejection-document`, formData);
     }
 
     async registrarNotificacion(id: string, fecha: string, evidencia?: string): Promise<LegalAuto> {

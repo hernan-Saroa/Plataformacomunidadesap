@@ -12,8 +12,6 @@
  * 4. Responsive
  */
 
-import { motion } from 'motion/react';
-
 // ============ COMPONENTE BASE ============
 
 export interface SkeletonProps {
@@ -44,26 +42,15 @@ export function Skeleton({
     height: height ? (typeof height === 'number' ? `${height}px` : height) : undefined
   };
 
-  if (animation) {
-    return (
-      <motion.div
-        className={`${baseClasses} ${variantClasses[variant]} ${className}`}
-        style={style}
-        animate={{
-          opacity: [0.5, 0.8, 0.5]
-        }}
-        transition={{
-          duration: 1.5,
-          repeat: Infinity,
-          ease: 'easeInOut'
-        }}
-      />
-    );
-  }
-
+  // El pulso va por CSS y no por `motion`: el array de keyframes
+  // (`animate={{ opacity: [...] }}`) hacía que React tratara cada valor como un
+  // hijo de lista y avisara por las `key` que faltaban. Una tabla en carga monta
+  // decenas de estos, así que además evita un rAF por celda.
   return (
     <div
-      className={`${baseClasses} ${variantClasses[variant]} ${className}`}
+      className={`${baseClasses} ${variantClasses[variant]} ${className} ${
+        animation ? 'animate-pulse' : ''
+      }`}
       style={style}
     />
   );

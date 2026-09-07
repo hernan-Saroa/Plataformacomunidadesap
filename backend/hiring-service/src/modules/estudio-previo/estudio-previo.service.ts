@@ -19,7 +19,10 @@ import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
+import { UmbralesService } from '../umbrales/umbrales.service';
+import { ConfiguracionService } from '../configuracion/configuracion.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -43,8 +46,24 @@ export function esVacio(tipo: TipoCampo, valor: unknown): boolean {
   }
 }
 
+/**
+ * Un campo bloquea el envío solo si es obligatorio, se diligencia en el
+ * formulario y está vacío.
+ *
+ * Los de solo lectura quedan fuera aunque sean obligatorios: su valor vive en
+ * el proceso y nunca aparece en el JSON de la actividad, así que contarlos los
+ * dejaría como faltantes para siempre y ningún estudio previo podría enviarse.
+ */
+export function esFaltante(
+  campo: Pick<CampoFormulario, 'codigo' | 'tipo' | 'obligatorio' | 'soloLectura'>,
+  datos: Record<string, any> | null | undefined,
+): boolean {
+  if (!campo.obligatorio || campo.soloLectura) return false;
+  return esVacio(campo.tipo, datos?.[campo.codigo]);
+}
+
 /** JSON con claves ordenadas: el hash de un mismo contenido no debe variar. */
-function jsonCanonico(valor: any): string {
+export function jsonCanonico(valor: any): string {
   if (valor === null || typeof valor !== 'object') return JSON.stringify(valor);
   if (Array.isArray(valor)) return `[${valor.map(jsonCanonico).join(',')}]`;
   const claves = Object.keys(valor).sort();
@@ -57,7 +76,11 @@ function sha256(texto: string): string {
 
 @Injectable()
 export class EstudioPrevioService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly umbrales: UmbralesService,
+    private readonly configuracionService: ConfiguracionService,
+  ) {}
 
   // ------------------------------------------------------------- proceso ---
 
@@ -83,6 +106,12 @@ export class EstudioPrevioService {
         );
       }
 
+      // Antes de gastar consecutivos: si la cuantía obliga a licitación
+      // pública, el proceso no puede nacer con una modalidad de menor cuantía
+      // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
+      // regla de negocio, no una ayuda de interfaz.
+      await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
+
       // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
       const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
       const [{ n: nExp }] = await em.query(`SELECT nextval('hiring.expediente_seq') AS n`);
@@ -91,6 +120,7 @@ export class EstudioPrevioService {
         radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
         objeto: dto.objeto,
         modalidad: modalidad.codigo,
+        valorEstimado: dto.valorEstimado,
         etapa: ETAPA_ESTUDIOS_PREVIOS,
         createdBy: acceso.userName,
       } as Partial<Proceso>);
@@ -100,13 +130,15 @@ export class EstudioPrevioService {
         numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
       } as Partial<Expediente>);
 
-      // El estudio previo nace como borrador vacío junto con el proceso.
-      const actividad = await em.save(ProcesoActividad, {
-        procesoId: proceso.id,
-        numeral: NUMERAL_ESTUDIO_PREVIO,
-        estado: 'BORRADOR',
-        datos: {},
-      } as Partial<ProcesoActividad>);
+      // Instancia las 63 actividades de la matriz según la modalidad: las que
+      // no aplican quedan en NO_APLICA en vez de omitirse, para que el
+      // expediente deje constancia de por qué el proceso tuvo menos pasos.
+      await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
+
+      // El estudio previo (3.1) es la primera con la que trabaja el gestor.
+      const actividad = await em.findOneOrFail(ProcesoActividad, {
+        where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
+      });
 
       // La modalidad queda en la traza: si el catálogo cambia, el expediente
       // sigue mostrando con cuál nació el proceso.
@@ -131,13 +163,29 @@ export class EstudioPrevioService {
   }
 
   /**
-   * Listado con el avance de cada proceso: sin esto la vista solo podría
-   * mostrar en qué etapa está, que es lo menos útil para el gestor —
-   * lo que importa es qué actividades le faltan y qué lo bloquea.
+   * Los procesos que le corresponde ver a quien consulta, con su avance.
+   *
+   * El listado trae qué actividades faltan y qué bloquea cada proceso: en qué
+   * etapa está es lo menos útil para el gestor.
+   *
+   * Y trae solo los suyos, salvo que tenga «ver todos» (EFDS-1183). El formato
+   * de roles marca «Visualizar todos los procesos» con una sola X —el Jefe de
+   * Oficina—, y sin este filtro cualquiera con acceso al módulo veía el
+   * expediente de toda la entidad.
+   *
+   * `acceso` es opcional para no romper a quien ya llamaba sin él; sin acceso
+   * se devuelve todo, que es el comportamiento anterior.
    */
-  async listarProcesos() {
+  async listarProcesos(acceso?: HiringAccess) {
+    const verTodos =
+      !acceso || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+
     const procesos = await this.dataSource.getRepository(Proceso).find({
       relations: ['expediente'],
+      // `createdBy` guarda el nombre de usuario de quien radicó: es lo que hoy
+      // relaciona un proceso con una persona, porque la asignación a un abogado
+      // todavía no existe.
+      where: verTodos ? {} : { createdBy: acceso!.userName },
       order: { createdAt: 'DESC' },
       take: 100,
     });
@@ -147,9 +195,22 @@ export class EstudioPrevioService {
     const actividades = await this.dataSource.getRepository(ProcesoActividad).find({
       where: { procesoId: In(ids) },
     });
+    // Los de solo lectura se llenan desde el proceso y nunca están en el JSON
+    // de la actividad; contarlos los dejaría como faltantes para siempre.
     const obligatorios = await this.dataSource.getRepository(CampoFormulario).find({
-      where: { numeral: NUMERAL_ESTUDIO_PREVIO, obligatorio: true, activo: true },
+      where: {
+        numeral: NUMERAL_ESTUDIO_PREVIO,
+        obligatorio: true,
+        activo: true,
+        soloLectura: false,
+      },
     });
+
+    // Una sola lectura del catálogo para todo el listado, en vez de una por
+    // proceso: son once filas y no cambian dentro de la misma respuesta.
+    const nombreModalidad = new Map(
+      (await this.dataSource.getRepository(Modalidad).find()).map((m) => [m.codigo, m.nombre]),
+    );
 
     const porProceso = new Map<string, ProcesoActividad[]>();
     for (const a of actividades) {
@@ -167,6 +228,9 @@ export class EstudioPrevioService {
 
       return {
         ...proceso,
+        modalidadNombre: proceso.modalidad
+          ? (nombreModalidad.get(proceso.modalidad) ?? proceso.modalidad)
+          : null,
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
         estudioPrevio: estudioPrevio
           ? {
@@ -190,17 +254,32 @@ export class EstudioPrevioService {
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
     const campos = await this.camposDe(this.dataSource.manager);
 
+    // El nombre y no solo el código: la pantalla debe decir "Mínima Cuantía",
+    // no "MINIMA_CUANTIA", y resolverlo en el cliente obligaría a pedir el
+    // catálogo entero solo para traducir una palabra.
+    const modalidad = proceso.modalidad
+      ? await this.dataSource
+          .getRepository(Modalidad)
+          .findOne({ where: { codigo: proceso.modalidad } })
+      : null;
+
     return {
       proceso: {
         id: proceso.id,
         radicado: proceso.radicado,
         objeto: proceso.objeto,
+        modalidad: proceso.modalidad,
+        modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
+        valorEstimado: proceso.valorEstimado,
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,
       },
       estado: actividad.estado,
       version: actividad.version,
-      datos: actividad.datos,
+      // El valor estimado vive en el proceso desde EFDS-1147. Se inyecta aquí
+      // para que el estudio previo lo siga mostrando en su sitio sin duplicar
+      // el dato en el JSON de la actividad.
+      datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado } as Record<string, any>,
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
     };
@@ -225,7 +304,7 @@ export class EstudioPrevioService {
       }
 
       const campos = await this.camposDe(em);
-      actividad.datos = this.filtrarYValidar(dto.datos, campos);
+      actividad.datos = await this.filtrarYValidar(em, dto.datos, campos);
       actividad.version += 1;
       await em.save(ProcesoActividad, actividad);
 
@@ -258,7 +337,7 @@ export class EstudioPrevioService {
 
       const campos = await this.camposDe(em);
       const faltantes = campos
-        .filter((c) => c.obligatorio && esVacio(c.tipo, actividad.datos?.[c.codigo]))
+        .filter((c) => esFaltante(c, actividad.datos))
         .map((c) => ({ codigo: c.codigo, etiqueta: c.etiqueta, grupo: c.grupo }));
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -333,12 +412,15 @@ export class EstudioPrevioService {
 
     if (!modalidad) return todas;
 
-    const aplicables = todas.filter(
+    // La misma regla que aplica el cliente: alcance vacío significa todas, y
+    // si el formato declara modalidades, la de este proceso tiene que estar.
+    // El antiguo «si ninguna casa se devuelven todas» existía porque la
+    // siembra escribía nombres donde el filtro esperaba códigos y nada casaba
+    // nunca; la migración 034 unificó la convención y el parche sobra — y
+    // ofrecería el pliego de licitación en una contratación directa.
+    return todas.filter(
       (p) => p.modalidades.length === 0 || p.modalidades.includes(modalidad),
     );
-    // Si ninguna declara la modalidad se devuelven todas, para no dejar al
-    // usuario sin formato por un dato aún no parametrizado.
-    return aplicables.length > 0 ? aplicables : todas;
   }
 
   // ------------------------------------------------------------- revisión ---
@@ -529,19 +611,45 @@ export class EstudioPrevioService {
    * Solo entran códigos definidos en la configuración, con el tipo correcto.
    * Evita que el expediente termine guardando basura enviada por el cliente.
    */
-  private filtrarYValidar(datos: Record<string, any>, campos: CampoFormulario[]) {
+  private async filtrarYValidar(
+    em: EntityManager,
+    datos: Record<string, any>,
+    campos: CampoFormulario[],
+  ) {
     const porCodigo = new Map(campos.map((c) => [c.codigo, c]));
     const desconocidos = Object.keys(datos ?? {}).filter((k) => !porCodigo.has(k));
+
     if (desconocidos.length > 0) {
-      throw new BadRequestException(
-        `Campos no definidos para el estudio previo: ${desconocidos.join(', ')}`,
-      );
+      // Un código que existe pero está desactivado es un campo retirado del
+      // formulario: los procesos que alcanzaron a diligenciarlo siguen
+      // enviándolo, y rechazarlos los dejaría sin poder guardar. Se descarta.
+      // Uno que no existe en absoluto sí es un cliente inventando claves, y
+      // ahí el rechazo protege el expediente.
+      const retirados = await em.find(CampoFormulario, {
+        where: { numeral: NUMERAL_ESTUDIO_PREVIO, codigo: In(desconocidos) },
+        select: ['codigo'],
+      });
+      const conocidos = new Set(retirados.map((c) => c.codigo));
+      const inventados = desconocidos.filter((c) => !conocidos.has(c));
+
+      if (inventados.length > 0) {
+        throw new BadRequestException(
+          `Campos no definidos para el estudio previo: ${inventados.join(', ')}`,
+        );
+      }
+
+      for (const codigo of desconocidos) delete datos[codigo];
     }
 
     const limpio: Record<string, any> = {};
     for (const [codigo, valor] of Object.entries(datos ?? {})) {
       const campo = porCodigo.get(codigo)!;
       if (valor === null || valor === undefined) continue;
+
+      // Los campos de solo lectura se devuelven al front para que los muestre,
+      // así que vuelven en el guardado. No se persisten aquí: su origen es el
+      // proceso, y guardarlos crearía una segunda copia que puede divergir.
+      if (campo.soloLectura) continue;
 
       switch (campo.tipo) {
         case 'numero':
