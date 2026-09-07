@@ -12,6 +12,7 @@ import {
 import { ComisionadoEntity } from './comisionado.entity';
 import { DocumentoSoporteEntity } from './documento-soporte.entity';
 import { EstadoSolicitud, ESTADOS_SOLICITUD } from './estado-solicitud.enum';
+import { UsuarioEntity } from './usuario.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'solicitudes_comision' })
 @Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], {
@@ -140,6 +141,13 @@ export class SolicitudComisionEntity {
 
   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
   creadoPorUsuarioId: string;
+
+  @Column({ name: 'analista_asignado_id', type: 'uuid', nullable: true })
+  analistaAsignadoId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'analista_asignado_id' })
+  analistaAsignado: UsuarioEntity;
 
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;

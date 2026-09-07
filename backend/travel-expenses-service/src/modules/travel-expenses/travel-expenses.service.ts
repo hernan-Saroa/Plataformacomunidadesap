@@ -186,6 +186,7 @@ export class TravelExpensesService {
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
+      analistaAsignadoId: s.analistaAsignadoId,
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
@@ -294,6 +295,7 @@ export class TravelExpensesService {
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
+      analistaAsignadoId: s.analistaAsignadoId,
     }));
 
     return { data, total, page, limit };
@@ -498,17 +500,24 @@ export class TravelExpensesService {
 
   async obtenerSolicitudCompleta(
     solicitudId: string,
-  ): Promise<SolicitudComisionEntity> {
+  ): Promise<SolicitudComisionEntity & { documentosSoporte: DocumentoSoporteEntity[] }> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
-      relations: ['comisionado', 'documentosSoporte'],
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    return solicitud;
+    const documentos = await this.documentoRepo.find({
+      where: { solicitudId: solicitud.id },
+    });
+
+    return {
+      ...solicitud,
+      documentosSoporte: documentos,
+    };
   }
 
   async crearSolicitud(

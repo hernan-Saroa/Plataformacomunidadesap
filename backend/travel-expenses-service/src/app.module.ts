@@ -6,9 +6,11 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { TravelExpensesModule } from './modules/travel-expenses/travel-expenses.module';
 import { ConfigModule as ConfigParamModule } from './modules/config/config.module';
+import { AnalistaEntity } from './entities/analista.entity';
 import { ComisionadoEntity } from './entities/comisionado.entity';
 import { SolicitudComisionEntity } from './entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from './entities/documento-soporte.entity';
+import { UsuarioEntity } from './entities/usuario.entity';
 import { CampoFormularioEntity } from './entities/config/campo-formulario.entity';
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
@@ -40,9 +42,11 @@ import { CommonModule } from './common/common.module';
       database: process.env.DB_NAME,
       schema: 'travel_expenses',
       entities: [
+        AnalistaEntity,
         ComisionadoEntity,
         SolicitudComisionEntity,
         DocumentoSoporteEntity,
+        UsuarioEntity,
         CampoFormularioEntity,
         ConfigTipoComisionadoEntity,
         TipoDocumentoSoporteEntity,

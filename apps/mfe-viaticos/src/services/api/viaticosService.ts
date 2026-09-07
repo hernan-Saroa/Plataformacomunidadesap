@@ -11,22 +11,25 @@ import {
   EstadoSolicitudViatico,
   Geopolitica,
    ChecklistDocumentosResponse,
-    FinalizarSolicitudResponse,
-    LiquidacionResponse,
-    CalcularLiquidacionRequest,
-    CategoriaInvestigador,
-    TicketValidationResult,
-    ValidateTicketRequest,
-    SaldoTiquete,
-    RutaRestringida,
-    ExcepcionTiquete,
-    CreateExcepcionTiqueteRequest,
-    ResumenConsolidacion,
-    ResultadoConsolidacion,
-    BandejaSecretarioResponse,
-    PrioridadUpdateResponse,
-    ReturnRequestResponse,
-  } from '../../types/viaticos';
+     FinalizarSolicitudResponse,
+     LiquidacionResponse,
+     CalcularLiquidacionRequest,
+     CategoriaInvestigador,
+     TicketValidationResult,
+     ValidateTicketRequest,
+     SaldoTiquete,
+     RutaRestringida,
+     ExcepcionTiquete,
+     CreateExcepcionTiqueteRequest,
+     ResumenConsolidacion,
+     ResultadoConsolidacion,
+     BandejaSecretarioResponse,
+     PrioridadUpdateResponse,
+     ReturnRequestResponse,
+     CargaAnalista,
+     AsignacionAnalistaRequest,
+     AsignacionAnalistaResponse,
+   } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -179,6 +182,7 @@ export class ViaticosService {
       creadoEn: s.creadoEn.slice(0, 10),
       actualizadoEn: s.actualizadoEn.slice(0, 10),
       esCreadoPorMi: s.esCreadoPorMi,
+      analistaAsignadoId: s.analistaAsignadoId || null,
     };
   }
 
@@ -1105,6 +1109,47 @@ export class ViaticosService {
     } catch (error) {
       console.error('[viaticos] Error devolviendo solicitud:', error);
       throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REC-002 — Tablero de carga y asignación de analistas (Etapa 4)
+  // ========================================================================
+
+  async obtenerCargaAnalistas(solicitudId?: string): Promise<{ data: CargaAnalista[]; total: number }> {
+    try {
+      const params = solicitudId ? `?solicitudId=${encodeURIComponent(solicitudId)}` : '';
+      const response = await apiClient.get<{ data: CargaAnalista[]; total: number }>(
+        `/viaticos/api/v1/assignments/workload${params}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo carga de analistas:', error);
+      return { data: [], total: 0 };
+    }
+  }
+
+  async asignarAnalista(data: AsignacionAnalistaRequest): Promise<AsignacionAnalistaResponse> {
+    try {
+      return await apiClient.post<AsignacionAnalistaResponse>(
+        '/viaticos/api/v1/assignments/assign',
+        data,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error asignando analista:', error);
+      throw error;
+    }
+  }
+
+  async obtenerSolicitudesAsignadas(): Promise<SolicitudListaResponse[]> {
+    try {
+      const response = await apiClient.get<{ data: SolicitudListaResponse[]; total: number }>(
+        '/viaticos/api/v1/assignments/my-requests',
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitudes asignadas:', error);
+      return [];
     }
   }
 }

@@ -22,6 +22,8 @@ import {
   Flag,
   Undo2,
 } from 'lucide-react';
+import TableroCargaAnalistas from './TableroCargaAnalistas';
+import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
@@ -37,6 +39,8 @@ const Permissions = {
   VIATICOS_SOLICITUDES_READ_INBOX: 'travel_expenses:read_inbox',
   VIATICOS_SOLICITUDES_SET_PRIORITY: 'travel_expenses:set_priority',
   VIATICOS_SOLICITUDES_RETURN: 'travel_expenses:return_request',
+  VIATICOS_SOLICITUDES_ASSIGN_ANALYST: 'travel_expenses:assign_analyst',
+  VIATICOS_SOLICITUDES_VIEW_ASSIGNED: 'travel_expenses:view_assigned_requests',
   VIATICOS_TIQUETES_VIEW: 'travel_expenses:tickets.view',
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
@@ -46,7 +50,7 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   DEVUELTA: 1,
@@ -79,6 +83,8 @@ export default function ViaticosModulePremium() {
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
   const [guardandoPrioridad, setGuardandoPrioridad] = useState(false);
   const [devolviendo, setDevolviendo] = useState(false);
+  const [analistaSeleccionadoId, setAnalistaSeleccionadoId] = useState<string | null>(null);
+  const [asignando, setAsignando] = useState(false);
 
   const grupos: MenuGroup[] = [
     {
@@ -90,6 +96,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Comisiones de servicios oficiales',
           icon: <Plane className="w-5 h-5" />,
           color: '#003DA5',
+        },
+        {
+          id: 'mis-solicitudes',
+          label: 'Mis Solicitudes Asignadas',
+          subtitle: 'Solicitudes pendientes de revisión',
+          icon: <UserCheck className="w-5 h-5" />,
+          color: '#10B981',
         },
         {
           id: 'tiquetes',
@@ -227,6 +240,7 @@ export default function ViaticosModulePremium() {
       setDocumentosSoporte(completa.documentosSoporte || []);
     } catch (e) {
       console.error('Error cargando documentos de soporte:', e);
+      setMensajeExito('No fue posible cargar los documentos de soporte de esta solicitud.');
     } finally {
       setCargandoDocumentos(false);
     }
@@ -281,6 +295,26 @@ export default function ViaticosModulePremium() {
     }
   };
 
+  const handleConfirmarAsignacion = async () => {
+    if (!solicitudSeleccionada || !analistaSeleccionadoId) return;
+    setAsignando(true);
+    try {
+      await viaticosService.asignarAnalista({
+        solicitudId: solicitudSeleccionada.id,
+        analistaId: analistaSeleccionadoId,
+      });
+      setMensajeExito('Comisión asignada al analista correctamente.');
+      setAnalistaSeleccionadoId(null);
+      cargarDatos();
+      setSolicitudSeleccionada(null);
+    } catch (error) {
+      console.error('Error asignando analista:', error);
+      setMensajeExito('No fue posible asignar la comisión al analista.');
+    } finally {
+      setAsignando(false);
+    }
+  };
+
   const puedeVerSolicitudes =
     esSuperAdmin ||
     authService.hasAnyPermission([
@@ -312,12 +346,15 @@ export default function ViaticosModulePremium() {
     ]);
   const puedeVerConfiguracion =
     esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
+  const puedeVerSolicitudesAsignadas =
+    esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => ({
       ...grupo,
       items: grupo.items.filter((item) => {
         if (item.id === 'solicitudes') return puedeVerSolicitudes;
+        if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
@@ -701,8 +738,13 @@ export default function ViaticosModulePremium() {
              </div>
            )}
 
-            {/* ── CONFIGURACIÓN ── */}
-            {seccion === 'configuracion' && puedeVerConfiguracion && (
+             {/* ── MIS SOLICITUDES ASIGNADAS ── */}
+             {seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
+               <SolicitudesAsignadasAnalista />
+             )}
+
+             {/* ── CONFIGURACIÓN ── */}
+             {seccion === 'configuracion' && puedeVerConfiguracion && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
                  <div>
@@ -785,120 +827,142 @@ export default function ViaticosModulePremium() {
                     </p>
                   </div>
 
+                   <div>
+                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Archivos adjuntos</span>
+                     {cargandoDocumentos ? (
+                       <div className="py-2 text-xs text-slate-400">Cargando archivos...</div>
+                     ) : documentosSoporte.length === 0 ? (
+                       <p className="text-xs text-slate-500 italic">No hay documentos adjuntos.</p>
+                     ) : (
+                       <div className="space-y-1.5">
+                         {documentosSoporte.map((doc) => {
+                           const urlArchivo = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
+                           return (
+                             <div
+                               key={doc.id}
+                               className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100"
+                             >
+                               <div className="min-w-0 flex-1">
+                                 <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
+                                 <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
+                               </div>
+                               <div className="shrink-0 ml-2">
+                                 <button
+                                   type="button"
+                                   onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
+                                   className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
+                                   title="Abrir en nueva pestaña"
+                                 >
+                                   <Eye className="w-3.5 h-3.5" />
+                                 </button>
+                               </div>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     )}
+                   </div>
+
                    {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
-                    <div className="mt-4 space-y-3">
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-                        <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Flag className="w-4 h-4 text-blue-600" />
-                          <span className="text-xs font-bold text-slate-700">Prioridad</span>
-                        </div>
-                        <select
-                          value={prioridadSeleccionada}
-                          onChange={(e) => setPrioridadSeleccionada(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="ALTA">Alta</option>
-                          <option value="MEDIA">Media</option>
-                          <option value="BAJA">Baja</option>
-                        </select>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!solicitudSeleccionada) return;
-                            setGuardandoPrioridad(true);
-                            try {
-                              await viaticosService.actualizarPrioridad(solicitudSeleccionada.id, prioridadSeleccionada);
-                              setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
-                              cargarDatos();
-                            } catch (error) {
-                              console.error('Error guardando prioridad:', error);
-                              setMensajeExito('No fue posible actualizar la prioridad.');
-                            } finally {
-                              setGuardandoPrioridad(false);
-                            }
-                          }}
-                          disabled={guardandoPrioridad}
-                          className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
-                        >
-                          {guardandoPrioridad ? 'Guardando...' : 'Guardar Prioridad'}
-                        </button>
-                      </div>
+                     <div className="mt-4 space-y-3">
+                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                         <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>
+                         <div className="flex items-center gap-2 mb-2">
+                           <Flag className="w-4 h-4 text-blue-600" />
+                           <span className="text-xs font-bold text-slate-700">Prioridad</span>
+                         </div>
+                         <select
+                           value={prioridadSeleccionada}
+                           onChange={(e) => setPrioridadSeleccionada(e.target.value)}
+                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         >
+                           <option value="ALTA">Alta</option>
+                           <option value="MEDIA">Media</option>
+                           <option value="BAJA">Baja</option>
+                         </select>
+                         <button
+                           type="button"
+                           onClick={async () => {
+                             if (!solicitudSeleccionada) return;
+                             setGuardandoPrioridad(true);
+                             try {
+                               await viaticosService.actualizarPrioridad(solicitudSeleccionada.id, prioridadSeleccionada);
+                               setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
+                               cargarDatos();
+                             } catch (error) {
+                               console.error('Error guardando prioridad:', error);
+                               setMensajeExito('No fue posible actualizar la prioridad.');
+                             } finally {
+                               setGuardandoPrioridad(false);
+                             }
+                           }}
+                           disabled={guardandoPrioridad}
+                           className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {guardandoPrioridad ? 'Guardando...' : 'Guardar Prioridad'}
+                         </button>
+                       </div>
 
-                      <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Undo2 className="w-4 h-4 text-red-600" />
-                          <span className="text-xs font-bold text-slate-700">Devolver a Dependencia</span>
-                        </div>
-                        <textarea
-                          value={motivoDevolucion}
-                          onChange={(e) => setMotivoDevolucion(e.target.value)}
-                          placeholder="Escriba el motivo detallado de la devolución..."
-                          rows={3}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!solicitudSeleccionada || !motivoDevolucion.trim()) return;
-                            setDevolviendo(true);
-                            try {
-                              await viaticosService.devolverSolicitud(solicitudSeleccionada.id, motivoDevolucion.trim());
-                              setMensajeExito('Solicitud devuelta a la dependencia correctamente.');
-                              setMotivoDevolucion('');
-                              cargarDatos();
-                              setSolicitudSeleccionada(null);
-                            } catch (error) {
-                              console.error('Error devolviendo solicitud:', error);
-                              setMensajeExito('No fue posible devolver la solicitud.');
-                            } finally {
-                              setDevolviendo(false);
-                            }
-                          }}
-                          disabled={devolviendo || !motivoDevolucion.trim()}
-                          className="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
-                        >
-                          {devolviendo ? 'Devolviendo...' : 'Confirmar Devolución'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                       <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                         <div className="flex items-center gap-2 mb-2">
+                           <Undo2 className="w-4 h-4 text-red-600" />
+                           <span className="text-xs font-bold text-slate-700">Devolver a Dependencia</span>
+                         </div>
+                         <textarea
+                           value={motivoDevolucion}
+                           onChange={(e) => setMotivoDevolucion(e.target.value)}
+                           placeholder="Escriba el motivo detallado de la devolución..."
+                           rows={3}
+                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                         />
+                         <button
+                           type="button"
+                           onClick={async () => {
+                             if (!solicitudSeleccionada || !motivoDevolucion.trim()) return;
+                             setDevolviendo(true);
+                             try {
+                               await viaticosService.devolverSolicitud(solicitudSeleccionada.id, motivoDevolucion.trim());
+                               setMensajeExito('Solicitud devuelta a la dependencia correctamente.');
+                               setMotivoDevolucion('');
+                               cargarDatos();
+                               setSolicitudSeleccionada(null);
+                             } catch (error) {
+                               console.error('Error devolviendo solicitud:', error);
+                               setMensajeExito('No fue posible devolver la solicitud.');
+                             } finally {
+                               setDevolviendo(false);
+                             }
+                           }}
+                           disabled={devolviendo || !motivoDevolucion.trim()}
+                           className="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {devolviendo ? 'Devolviendo...' : 'Confirmar Devolución'}
+                         </button>
+                       </div>
+                     </div>
+                   )}
 
-                  <div>
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Archivos adjuntos</span>
-                    {cargandoDocumentos ? (
-                      <div className="py-2 text-xs text-slate-400">Cargando archivos...</div>
-                    ) : documentosSoporte.length === 0 ? (
-                      <p className="text-xs text-slate-500 italic">No hay documentos adjuntos.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {documentosSoporte.map((doc) => {
-                          const urlArchivo = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
-                          return (
-                            <div
-                              key={doc.id}
-                              className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
-                                <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
-                              </div>
-                              <div className="shrink-0 ml-2">
-                                <button
-                                  type="button"
-                                  onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
-                                  className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
-                                  title="Abrir en nueva pestaña"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                   {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && solicitudSeleccionada.estado === 'SOLICITADO' && (
+                     <div className="mt-4 space-y-3">
+                       <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                         <span className="text-[10px] uppercase tracking-wider text-indigo-600 font-bold block mb-2">Asignar Solicitud a Analista (RF-REC-002)</span>
+                          <TableroCargaAnalistas
+                            analistaSeleccionadoId={analistaSeleccionadoId}
+                            onSeleccionarAnalista={setAnalistaSeleccionadoId}
+                            analistaAsignadoId={solicitudSeleccionada.analistaAsignadoId}
+                            solicitudId={solicitudSeleccionada.id}
+                          />
+                         <button
+                           type="button"
+                           onClick={handleConfirmarAsignacion}
+                           disabled={asignando || !analistaSeleccionadoId}
+                           className="mt-3 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {asignando ? 'Asignando...' : 'Confirmar Asignación'}
+                         </button>
+                       </div>
+                     </div>
+                   )}
                 </div>
                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button

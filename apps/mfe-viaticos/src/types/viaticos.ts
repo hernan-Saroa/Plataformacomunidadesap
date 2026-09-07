@@ -154,6 +154,7 @@ export interface SolicitudComisionResponse {
    warningMessage?: string;
    salarioBasico?: number;
    costoEstimadoTiquete?: number;
+   analistaAsignadoId?: string | null;
 }
 
 /**
@@ -233,6 +234,7 @@ export interface SolicitudListaResponse {
   fechaRevision?: string | null;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  analistaAsignadoId?: string | null;
 }
 
 export interface BandejaSecretarioResponse {
@@ -284,6 +286,7 @@ export interface SolicitudViatico {
   creadoEn: string;
   actualizadoEn: string;
   esCreadoPorMi?: boolean;
+  analistaAsignadoId?: string | null;
 }
 
 export interface TiqueteAereo {
@@ -520,4 +523,39 @@ export interface ResultadoConsolidacion {
   estadoAnterior: string;
   estadoSolicitud: EstadoSolicitudViatico;
   mensaje: string;
+}
+
+// =========================================================================
+// RF-REC-002 — Tablero de carga y asignación de analistas (Etapa 4)
+// =========================================================================
+
+export type ColorSemaforoAnalista = 'VERDE' | 'AMARILLO' | 'ROJO';
+
+export interface CargaAnalista {
+  usuarioId: string;
+  nombreCompleto: string;
+  username: string;
+  identificacion: string | null;
+  asignacionesActivas: number;
+  altas: number;
+  medias: number;
+  bajas: number;
+  puntajeTotal: number;
+  colorSemaforo: ColorSemaforoAnalista;
+}
+
+export interface AsignacionAnalistaRequest {
+  solicitudId: string;
+  analistaId: string;
+}
+
+export interface AsignacionAnalistaResponse {
+  success: boolean;
+  message: string;
+  data: {
+    solicitudId: string;
+    estadoSolicitud: string;
+    analistaAsignadoId: string | null;
+    historialId: string;
+  };
 }
