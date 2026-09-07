@@ -34,8 +34,10 @@ describe('TareasNotasService', () => {
         };
         mockExpedienteRepo = { findOne: jest.fn() };
         mockNotificationClient = {
-            sendMany: jest.fn(),
-            notifyByRoles: jest.fn(),
+            sendMany: jest.fn().mockResolvedValue(undefined),
+            notifyByRoles: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'resuelve-1', email: 'resuelve@esap.edu.co' }),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
         };
         mockLegalNotifications = { notifyObservacionAgregada: jest.fn() };
 
@@ -88,6 +90,53 @@ describe('TareasNotasService', () => {
             expect(mockTareaRepo.update).toHaveBeenCalledWith('tarea-3', expect.objectContaining({ estado: 'completada', fechaCompletada: expect.any(Date) }));
             expect(notifySpy).toHaveBeenCalled();
         });
+
+        it('debe llamar notificarTareaAsignada(updated, true) cuando responsableId cambia (reasignación)', async () => {
+            const notifySpy = jest.spyOn(service as any, 'notificarTareaAsignada').mockResolvedValue(undefined);
+            mockTareaRepo.findOne
+                .mockResolvedValueOnce({ id: 'tarea-6', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'antiguo-resuelve' })
+                .mockResolvedValueOnce({ id: 'tarea-6', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'nuevo-resuelve' });
+
+            await service.updateTarea('tarea-6', { responsableId: 'nuevo-resuelve' });
+
+            expect(notifySpy).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'tarea-6', responsableId: 'nuevo-resuelve' }),
+                true,
+            );
+        });
+
+        it('NO debe notificar reasignación si responsableId no cambia', async () => {
+            const notifySpy = jest.spyOn(service as any, 'notificarTareaAsignada').mockResolvedValue(undefined);
+            mockTareaRepo.findOne
+                .mockResolvedValueOnce({ id: 'tarea-7', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'resuelve-1' })
+                .mockResolvedValueOnce({ id: 'tarea-7', estado: 'pendiente', titulo: 'Revisar actualizada', expedienteId: 'exp-1', responsableId: 'resuelve-1' });
+
+            await service.updateTarea('tarea-7', { titulo: 'Revisar actualizada' });
+
+            expect(notifySpy).not.toHaveBeenCalled();
+        });
+
+        it('NO debe notificar reasignación si responsableId se envía pero es el mismo valor', async () => {
+            const notifySpy = jest.spyOn(service as any, 'notificarTareaAsignada').mockResolvedValue(undefined);
+            mockTareaRepo.findOne
+                .mockResolvedValueOnce({ id: 'tarea-8', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'resuelve-1' })
+                .mockResolvedValueOnce({ id: 'tarea-8', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'resuelve-1' });
+
+            await service.updateTarea('tarea-8', { responsableId: 'resuelve-1' });
+
+            expect(notifySpy).not.toHaveBeenCalled();
+        });
+
+        it('debe seguir el flujo normal aunque falle notificarTareaAsignada en una reasignación (no debe propagar el error)', async () => {
+            jest.spyOn(service as any, 'notificarTareaAsignada').mockRejectedValue(new Error('notifications-service caído'));
+            mockTareaRepo.findOne
+                .mockResolvedValueOnce({ id: 'tarea-9', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'antiguo-resuelve' })
+                .mockResolvedValueOnce({ id: 'tarea-9', estado: 'pendiente', titulo: 'Revisar', expedienteId: 'exp-1', responsableId: 'nuevo-resuelve' });
+
+            await expect(service.updateTarea('tarea-9', { responsableId: 'nuevo-resuelve' })).resolves.toEqual(
+                expect.objectContaining({ id: 'tarea-9' }),
+            );
+        });
     });
 
     describe('createNota()', () => {
@@ -131,12 +180,85 @@ describe('TareasNotasService', () => {
         });
     });
 
-    describe('notificarTareaAsignada() - fallback', () => {
+    describe('notificarTareaAsignada()', () => {
         it('debe retornar sin hacer nada si tarea.responsableId es falsy', async () => {
             await expect((service as any).notificarTareaAsignada({ id: 'tarea-5', expedienteId: 'exp-1', responsableId: null })).resolves.toBeUndefined();
 
             expect(mockExpedienteRepo.findOne).not.toHaveBeenCalled();
             expect(mockNotificationClient.sendMany).not.toHaveBeenCalled();
+            expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        });
+
+        it('debe enviar la notificación in-app con categoria "gestion-legal" (la única que el bell del shell reconoce para el módulo)', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100', jurisdiccion: 'CIVIL', tipoProceso: 'Ordinario' });
+
+            await (service as any).notificarTareaAsignada({
+                id: 'tarea-10',
+                expedienteId: 'exp-1',
+                titulo: 'Contestar demanda',
+                responsableId: 'resuelve-1',
+                prioridad: 'alta',
+            });
+
+            expect(mockNotificationClient.sendMany).toHaveBeenCalledWith([
+                expect.objectContaining({
+                    id_usuario_destinatario: 'resuelve-1',
+                    tipo_notificacion: 'TAREA_ASIGNADA',
+                    categoria: 'gestion-legal',
+                    prioridad: 'Alta',
+                }),
+            ]);
+        });
+
+        it('debe enviar también un correo electrónico al responsable cuando tiene email registrado', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100' });
+
+            await (service as any).notificarTareaAsignada({
+                id: 'tarea-11',
+                expedienteId: 'exp-1',
+                titulo: 'Contestar demanda',
+                responsableId: 'resuelve-1',
+            });
+
+            expect(mockNotificationClient.getUserDetailsById).toHaveBeenCalledWith('resuelve-1');
+            expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+                'resuelve@esap.edu.co',
+                expect.stringContaining('Contestar demanda'),
+                expect.stringContaining('RAD-100'),
+            );
+        });
+
+        it('NO debe enviar correo si el responsable no tiene email registrado (pero sí debe notificar in-app)', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100' });
+            mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'resuelve-1', email: null });
+
+            await (service as any).notificarTareaAsignada({
+                id: 'tarea-12',
+                expedienteId: 'exp-1',
+                titulo: 'Contestar demanda',
+                responsableId: 'resuelve-1',
+            });
+
+            expect(mockNotificationClient.sendMany).toHaveBeenCalled();
+            expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        });
+
+        it('usa tipo_notificacion TAREA_REASIGNADA y el texto "reasignó" cuando esReasignacion=true', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100' });
+
+            await (service as any).notificarTareaAsignada({
+                id: 'tarea-13',
+                expedienteId: 'exp-1',
+                titulo: 'Contestar demanda',
+                responsableId: 'resuelve-1',
+            }, true);
+
+            const dto = mockNotificationClient.sendMany.mock.calls[0][0][0];
+            expect(dto.tipo_notificacion).toBe('TAREA_REASIGNADA');
+            expect(dto.mensaje).toContain('reasignó');
+
+            const emailHtml = mockNotificationClient.sendEmail.mock.calls[0][2];
+            expect(emailHtml).toContain('reasignó');
         });
     });
 });

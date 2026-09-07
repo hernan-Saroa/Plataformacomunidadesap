@@ -50,6 +50,24 @@ export class CertificateRequest {
   @Column({ name: 'grade_code', length: 255, nullable: true })
   cod_grade: string;
 
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  base_position_code: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  hierarchical_level: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  position_name: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  organization_department: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  internal_group: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  cost_center: string | null;
+
   @Column({ length: 100, nullable: true })
   campus: string;
 

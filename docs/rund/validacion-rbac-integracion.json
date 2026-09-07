@@ -1,0 +1,39 @@
+{
+  "executedAt": "2026-09-07T14:02:48.030Z",
+  "database": "PostgreSQL local, base temporal vacía",
+  "businessDataModified": false,
+  "results": [
+    {
+      "name": "migración idempotente y columnas de sesión",
+      "passed": true
+    },
+    {
+      "name": "auditoría persistida con actor, campos, fecha y hora sin valores originales",
+      "passed": true
+    },
+    {
+      "name": "bitácora rechaza UPDATE",
+      "passed": true
+    },
+    {
+      "name": "bitácora rechaza DELETE",
+      "passed": true
+    },
+    {
+      "name": "bitácora rechaza TRUNCATE",
+      "passed": true
+    },
+    {
+      "name": "fallo de auditoría revierte una modificación en la misma transacción",
+      "passed": true
+    },
+    {
+      "name": "descarga HTTP con JWT real: denegada a docente, completa a GGP y ambas auditadas",
+      "passed": true
+    },
+    {
+      "name": "URL histórica de Carpeta Digital sigue protegida después de retirar el registro documental",
+      "passed": true
+    }
+  ]
+}

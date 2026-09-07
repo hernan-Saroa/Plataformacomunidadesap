@@ -19,24 +19,70 @@ import {
   FlaskConical, Globe, ListChecks, Award, QrCode, Loader2, Briefcase,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 import { PTA_COLORS } from './shared/ptaColors';
+import { PTA_COMPONENT_PROGRESS_ORDER, labelDeComponente } from './shared/ptaComponentPermissions';
+import { getPtaApprovalDisplayStatus } from './shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 
+/**
+ * html2canvas 1.x no reconoce funciones de color CSS modernas como oklch()
+ * (usadas por las clases de Tailwind v4, p. ej. en HierarchySelectionSummary)
+ * y lanza una excepción silenciosa al recorrer el árbol clonado. Se convierten
+ * a rgba() dentro del clon usado para la captura, sin afectar la vista real.
+ */
+const normalizarColoresParaCaptura = (documentoClonado: Document, elementoClonado: HTMLElement) => {
+  const vista = documentoClonado.defaultView;
+  if (!vista) return;
+
+  const patronColorModerno = /(?:oklch|oklab|lab|lch|color)\((?:[^()]|\([^()]*\))*\)/gi;
+  const propiedadesColor = [
+    'background-color', 'background-image',
+    'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+    'box-shadow', 'caret-color', 'color', 'fill', 'outline-color', 'stroke',
+    'text-decoration-color', 'text-shadow', '-webkit-text-stroke-color',
+  ];
+  const cacheColores = new Map<string, string>();
+  const canvasColor = documentoClonado.createElement('canvas');
+  canvasColor.width = 1;
+  canvasColor.height = 1;
+  const contextoColor = canvasColor.getContext('2d', { willReadFrequently: true });
+
+  const convertirColor = (colorCss: string): string => {
+    const cacheado = cacheColores.get(colorCss);
+    if (cacheado) return cacheado;
+    if (!contextoColor) return 'rgba(0, 0, 0, 1)';
+    try {
+      contextoColor.clearRect(0, 0, 1, 1);
+      contextoColor.fillStyle = '#010203';
+      contextoColor.fillStyle = colorCss;
+      contextoColor.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = contextoColor.getImageData(0, 0, 1, 1).data;
+      const convertido = `rgba(${r}, ${g}, ${b}, ${(alpha / 255).toFixed(4)})`;
+      cacheColores.set(colorCss, convertido);
+      return convertido;
+    } catch {
+      return 'rgba(0, 0, 0, 1)';
+    }
+  };
+
+  const elementos = [elementoClonado, ...Array.from(elementoClonado.querySelectorAll<HTMLElement>('*'))];
+  for (const elemento of elementos) {
+    const estiloCalculado = vista.getComputedStyle(elemento);
+    for (const propiedad of propiedadesColor) {
+      const valor = estiloCalculado.getPropertyValue(propiedad);
+      if (!valor || !/(?:oklch|oklab|lab|lch|color)\(/i.test(valor)) continue;
+      elemento.style.setProperty(propiedad, valor.replace(patronColorModerno, convertirColor), 'important');
+    }
+  }
+};
+
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
-// 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
-// Las claves coinciden con auth.permission (migración 327) y con el panel de aprobación.
-const COMPONENTE_APROBACION_SLOTS: { key: string; label: string }[] = [
-  { key: 'academica', label: 'Docencia' },
-  { key: 'investigacion', label: 'Investigación' },
-  { key: 'ext_capacitacion', label: 'Ext. Capacitación' },
-  { key: 'ext_procesos', label: 'Ext. Procesos Selección' },
-  { key: 'ext_fortalecimiento', label: 'Ext. Fortalecimiento' },
-  { key: 'ext_gobierno', label: 'Ext. Alto Gobierno' },
-  { key: 'complementarias', label: 'Complementarias' },
-];
+// Comparte los ámbitos vigentes con el panel; incluye Territorial y Gestión Profesoral.
+const COMPONENTE_APROBACION_SLOTS = PTA_COMPONENT_PROGRESS_ORDER.map(key => ({ key, label: labelDeComponente(key) }));
 
 interface ReporteIndividualPTAProps {
   pta: any;
@@ -224,6 +270,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         backgroundColor: '#ffffff',
         logging: false,
         windowWidth: 900,
+        onclone: normalizarColoresParaCaptura,
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -244,6 +291,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       pdf.save(`${versionLabel}_${nombre.replace(/\s+/g, '_')}_${pta.periodo || '2025-2'}.pdf`);
     } catch (err) {
       console.error('PDF export error:', err);
+      toast.error('No fue posible generar el PDF del reporte. Intente nuevamente.');
     } finally {
       setExportingPdf(false);
     }
@@ -383,7 +431,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         <SectionHeader icon={User} label="1. IDENTIFICACION DEL DOCENTE" />
         <div style={{ padding: '16px 32px 20px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: '0.85rem' }}>
-            <Field label="Documento" value={pta.docente_identificacion || pta.cedula || pta.numero_documento || 'N/A'} />
+            <Field label="Documento" value={pta.documento_identidad || pta.docente_identificacion || pta.cedula || pta.numero_documento || 'N/A'} />
             <Field label="Nombre Completo" value={pta.docente_nombre || pta.nombre_docente || 'N/A'} bold />
             <Field label="Territorial" value={pta.territorial || pta.sede || 'SEDE CENTRAL'} />
             <Field label="Tipo Vinculacion" value={pta.tipo_vinculacion || 'Profesor de Carrera'} />
@@ -391,6 +439,9 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             <Field label="Categoria Escalafon" value={pta.categoria_escalafon || pta.escalafon || 'Asociado'} />
             <Field label="Nucleo Tematico" value={pta.nucleo_tematico || 'Administracion Publica'} />
             <Field label="Horas a Programar" value={`${horasProgramables} horas`} bold />
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginTop: 10 }}>
+            Información proveniente de la ficha institucional del docente (Banco de Docentes / RUND). Este bloque no modifica los datos del PTA.
           </div>
         </div>
 
@@ -794,28 +845,49 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         {/* Section 7: Firmas y Aprobaciones */}
         <SectionHeader icon={Award} label="7. FIRMAS Y APROBACIONES" color="#003DA5" />
         <div style={{ padding: '16px 32px 28px' }}>
-          {/* Firma del docente (concertación) */}
-          <div style={{
-            padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
-          }}>
-            <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
-              {pta.docente_nombre || 'N/A'}
-            </div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '3px 10px', borderRadius: 6,
-              background: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#D1FAE5' : '#FEF3C7',
-              color: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#065F46' : '#92400E',
-              fontSize: '0.72rem', fontWeight: 600,
-            }}>
-              {pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? (
-                <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
-              ) : (
-                <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
-              )}
-            </div>
-          </div>
+          {/* Firma del docente (concertación): el docente firma al ENVIAR el PTA para
+              aprobación; lo que ocurre después (revisión y aprobación) es firma del
+              aprobador, no suya. Gatear esto por pta.estado==='Aprobado' hacía que
+              Revisor y Aprobador vieran "Pendiente" mientras revisaban un PTA que el
+              docente ya había enviado y firmado.
+              Fuente de verdad: fecha_envio_revision, que el backend deriva del
+              historial (transición hacia un estado "Pendiente ..."; ver
+              attachPtaReferenceDates). Si no está —snapshots históricos, PTAs sin
+              historial— se cae a la misma regla que usa el backend para saber si un
+              PTA ya salió del borrador. */}
+          {(() => {
+            const fechaFirmaDocente = pta.fecha_envio_revision || null;
+            const estadoNorm = String(pta.estado || '').trim().toLowerCase();
+            const docenteFirmo = Boolean(fechaFirmaDocente) || (estadoNorm !== '' && estadoNorm !== 'borrador');
+            return (
+              <div style={{
+                padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                  {pta.docente_nombre || 'N/A'}
+                </div>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 10px', borderRadius: 6,
+                  background: docenteFirmo ? '#D1FAE5' : '#FEF3C7',
+                  color: docenteFirmo ? '#065F46' : '#92400E',
+                  fontSize: '0.72rem', fontWeight: 600,
+                }}>
+                  {docenteFirmo ? (
+                    <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
+                  ) : (
+                    <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
+                  )}
+                </div>
+                {docenteFirmo && fechaFirmaDocente && (
+                  <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 5 }}>
+                    Enviado y firmado el {fmtFecha(fechaFirmaDocente)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Aprobación por COMPONENTE — flujo paralelo (no lineal). Un slot por
               componente / sección de extensión (7 en total). Al firmarse aparece
@@ -828,12 +900,13 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           }}>
             {COMPONENTE_APROBACION_SLOTS.map(slot => {
               const apr = componentesAprobacion.find((c: any) => c.componente === slot.key);
-              const estado = apr?.estado || 'pendiente';
+              const estado = getPtaApprovalDisplayStatus(pta, apr || { componente: slot.key });
+              const noAplica = estado === 'no_aplica';
               const aprobado = estado === 'aprobado';
               const devuelto = estado === 'devuelto';
               const badgeBg = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#F3F4F6';
               const badgeColor = aprobado ? '#065F46' : devuelto ? '#991B1B' : '#9CA3AF';
-              const fecha = apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
+              const fecha = !noAplica && apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
               return (
                 <div key={slot.key} style={{
                   padding: 12, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center',
@@ -843,14 +916,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     {slot.label}
                   </div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: aprobado || devuelto ? '#111827' : '#9CA3AF', marginBottom: 5, minHeight: 18 }}>
-                    {aprobado || devuelto ? (apr?.aprobadorNombre || 'Revisor Autorizado') : '—'}
+                    {(aprobado || devuelto) && apr?.aprobadorNombre !== 'Sistema' ? (apr?.aprobadorNombre || '—') : '—'}
                   </div>
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '3px 10px', borderRadius: 6,
                     background: badgeBg, color: badgeColor, fontSize: '0.66rem', fontWeight: 600,
                   }}>
-                    {aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
+                    {noAplica ? 'No aplica' : estado === 'no_iniciado' ? 'No iniciado' : estado === 'en_revision' ? 'En revisión' : aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
                       : devuelto ? (<><Clock style={{ width: 11, height: 11 }} /> Devuelto</>)
                         : (<><Clock style={{ width: 11, height: 11 }} /> Pendiente por firmar</>)}
                   </div>

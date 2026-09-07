@@ -109,7 +109,19 @@ export class AuditoriasService {
         if (check?.length > 0 && check[0].id_person) {
           return String(check[0].id_person);
         }
-        console.warn('[mapIdTerceroToIdPerson] UUID no encontrado en auth.personas:', idTercero);
+
+        // Buscar si es el ID de un registro en control_interno.configuracion_profesionales_ocig
+        try {
+          const cfg = await this.auditoriaRepository.query(
+            `SELECT id_tercero FROM control_interno.configuracion_profesionales_ocig WHERE id = $1::uuid`,
+            [idTercero],
+          );
+          if (cfg?.length > 0 && cfg[0].id_tercero) {
+            return this.mapIdTerceroToIdPerson(cfg[0].id_tercero);
+          }
+        } catch (_) {}
+
+        console.warn('[mapIdTerceroToIdPerson] UUID no encontrado en auth.personas ni en profesionales OCI:', idTercero);
         return null;
       }
 
@@ -564,18 +576,21 @@ export class AuditoriasService {
     }
 
     if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
-      serialized.equipoAuditores = auditoria.equipoAuditores.map(eq => {
+      serialized.equipoAuditores = auditoria.equipoAuditores
+        .filter(eq => eq.activo !== false)
+        .map(eq => {
         const personaId = eq.personaId ? String(eq.personaId).toLowerCase() : null;
         const nombre = personaId ? namesMap?.get(personaId) : null;
         
         // Si tenemos el nombre resuelto, lo devolvemos como string para el DTO
-        if (nombre) return nombre;
+        // if (nombre) return nombre;
 
         return {
           ...eq,
           // ✅ FIX: id y personaId son UUIDs en la DB — NO convertir con Number() (daría NaN→null)
           id: eq.id ? String(eq.id) : null,
           personaId: eq.personaId ? String(eq.personaId) : null,
+          nombre: nombre || '',
         };
       });
     }

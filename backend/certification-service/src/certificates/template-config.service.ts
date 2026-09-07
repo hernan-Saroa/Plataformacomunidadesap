@@ -56,15 +56,16 @@ export class TemplateConfigService {
 
   private getDefaultContent(templateType: string): string {
     if (templateType === 'administrador') {
-      return 'Que [NOMBRE_EMPLEADO] identificado con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administraci\u00F3n P\u00FAblica - ESAP mediante nombramiento [TIPO_DATO] desde el [FECHA_INICIO], desempe\u00F1ando el cargo de [CARGO] ubicado en [DEPENDENCIA].<br><br><div>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.<br><br></div><div>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</div>';
+      return '<p>Que [NOMBRE_EMPLEADO] identificado con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administraci\u00F3n P\u00FAblica - ESAP mediante nombramiento [TIPO_DATO] desde el [FECHA_INICIO].</p><p>Actualmente, desempe\u00F1a el cargo de [CARGO] ubicado en [DEPENDENCIA].</p><section class="labor-functions-template-block" data-functions-template="true"><p>Conforme lo establece <em>el Manual Espec\u00EDfico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP -.</em></p><p>Las funciones para el cargo de son:</p><p>[FUNCIONES]</p></section><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</p>';
     }
-    return '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [DEPENDENCIA].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
+    return '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO].</p><p>Actualmente desempe\u00F1a la categor\u00EDa de [CARGO] ubicado en [DEPENDENCIA].</p><section class="labor-functions-template-block" data-functions-template="true"><p>Conforme lo establece <em>el Manual Espec\u00EDfico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP -.</em></p><p>Las funciones para el cargo de son:</p><p>[FUNCIONES]</p></section><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
   }
 
   private async getOrCreateConfig(templateType: string): Promise<TemplateConfig> {
     let config = await this.templateConfigRepository.findOne({
       where: { isActive: true, templateType },
       relations: ['signer'],
+      order: { updatedAt: 'DESC', id: 'DESC' },
     });
 
     if (!config) {

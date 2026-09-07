@@ -35,13 +35,18 @@ export class CreatePersonDto {
   @IsNumber()
   idSeccional?: number;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  idSede?: number;
+   @IsOptional()
+   @Type(() => Number)
+   @IsNumber()
+   idSede?: number;
 
-  @IsDateString()
-  birth_date?: string;
+   @IsOptional()
+   @Type(() => Number)
+   @IsNumber()
+   idDependencia?: number;
+
+   @IsDateString()
+   birth_date?: string;
 
   @IsOptional()
   @IsString()

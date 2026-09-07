@@ -231,7 +231,16 @@ export function UsersPersonsModulePremium() {
           type: role.type,
           code: role.code
         })),
-        location: item.seccional?.ubicacion || item.sede?.ubicacion || 'Sin ubicación',
+        // "Sin ubicación" aparecía incluso con la territorial asignada porque solo
+        // se miraba `ubicacion`, un campo que el backend no envía en seccional/sede:
+        // lo que llega es nomSeccional / nomSede (es lo que muestra la columna
+        // TERRITORIAL). Se usan como respaldo antes de darla por desconocida, y se
+        // prefiere el CETAP (sede) por ser la ubicación más específica.
+        location: item.sede?.ubicacion
+          || item.seccional?.ubicacion
+          || item.sede?.nomSede
+          || item.seccional?.nomSeccional
+          || 'Sin ubicación',
         lastActivity: item.user.updated_at,
         avatar: '',
         person: {
@@ -250,6 +259,9 @@ export function UsersPersonsModulePremium() {
         // IDs para el modal de edición
         idSeccional: item.seccional?.idSeccional || item.idSeccional || undefined,
         idSede: item.sede?.idSede || item.idSede || undefined,
+        idDependencia:
+          item.idDependencia || item.person?.idDependencia || undefined,
+        dependencia: item.dependencia,
         sedes: [], // Mantener para compatibilidad
         enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
       }));
@@ -651,11 +663,12 @@ export function UsersPersonsModulePremium() {
         roleIds: mappedRoleIds,
         status: userData.status,
         // Agregar seccional y sede si están definidos
-        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
-        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
-      };
+         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
+         idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
+       };
 
-      await usersService.updateUser(userId, updateUserData);
+       await usersService.updateUser(userId, updateUserData);
 
       // Si el estado cambió, actualizarlo usando el endpoint específico
       const wasActive = selectedUser?.status === 'active' || selectedUser?.is_active === true;
@@ -964,11 +977,12 @@ export function UsersPersonsModulePremium() {
         puntaje_salarial: userData.puntajeSalarial,
         roleIds: mappedRoleIds,
         // Agregar seccional y sede si están definidos
-        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
-        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
-      };
+         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
+         idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
+       };
 
-      const newUser = await usersService.createUser(createUserData);
+       const newUser = await usersService.createUser(createUserData);
 
       // Si se creó con rol DOCENTE, sincronizar con banco de docentes
       if (createUserData.roleIds?.length) {

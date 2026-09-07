@@ -306,6 +306,13 @@ describe('PtaService - solicitudes de edición parcial', () => {
 
   it('impide aprobar un componente antes de que el docente envíe la edición', async () => {
     const service = Object.create(PtaService.prototype) as any;
+    const approval = {
+      ptaId: 'pta-1',
+      componente: 'investigacion',
+      estado: 'devuelto',
+      scope: 'solicitud_edicion',
+      scopeId: 'sol-1',
+    };
     service.ptaRepo = {
       findOne: jest.fn().mockResolvedValue({
         id: 'pta-1',
@@ -314,14 +321,10 @@ describe('PtaService - solicitudes de edición parcial', () => {
       }),
     };
     service.ptaComponentApprovalRepo = {
-      findOne: jest.fn().mockResolvedValue({
-        ptaId: 'pta-1',
-        componente: 'investigacion',
-        estado: 'devuelto',
-        scope: 'solicitud_edicion',
-        scopeId: 'sol-1',
-      }),
+      find: jest.fn().mockResolvedValue([approval]),
+      findOne: jest.fn().mockResolvedValue(approval),
     };
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([approval]);
     service.solicitudRepo = {
       findOne: jest.fn().mockResolvedValue({
         id: 'sol-1',
@@ -341,6 +344,73 @@ describe('PtaService - solicitudes de edición parcial', () => {
       },
       authAdmin,
     )).rejects.toThrow(/todavía no ha enviado los cambios/i);
+  });
+
+  it('impide revisar un componente antes de que el docente envíe la edición', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const approval = {
+      ptaId: 'pta-1',
+      componente: 'investigacion',
+      estado: 'devuelto',
+      scope: 'solicitud_edicion',
+      scopeId: 'sol-1',
+    };
+    service.ptaRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'pta-1',
+        docenteId: 'docente-1',
+        estado: 'REVISION_DOCENTE_N2',
+      }),
+    };
+    service.ptaComponentApprovalRepo = {
+      find: jest.fn().mockResolvedValue([approval]),
+    };
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([approval]);
+    service.solicitudRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'sol-1',
+        ptaId: 'pta-1',
+        tipoSolicitud: 'edicion_componentes',
+        estado: 'aprobado',
+        componentes: ['investigacion'],
+      }),
+    };
+
+    await expect(service.revisarComponente(
+      'pta-1',
+      {
+        componente: 'investigacion',
+        subseccion: 'general',
+        estado: 'revisado',
+      },
+      authAdmin,
+    )).rejects.toThrow(/todavía no ha enviado los cambios/i);
+  });
+
+  it('habilita las decisiones solo después del reenvío de la edición autorizada', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([
+      {
+        ptaId: 'pta-1',
+        componente: 'investigacion',
+        estado: 'pendiente',
+        scope: 'solicitud_edicion',
+        scopeId: 'sol-1',
+      },
+      { ptaId: 'pta-1', componente: 'complementarias', estado: 'pendiente' },
+    ]);
+    service.solicitudRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'sol-1',
+        ptaId: 'pta-1',
+        tipoSolicitud: 'edicion_componentes',
+        estado: 'en_aprobacion',
+        componentes: ['investigacion'],
+      }),
+    };
+
+    await expect(service.assertComponenteDisponibleParaDecision('pta-1', 'investigacion'))
+      .resolves.toBeUndefined();
   });
 
   it('deniega la solicitud y su traza dentro de una única transacción', async () => {

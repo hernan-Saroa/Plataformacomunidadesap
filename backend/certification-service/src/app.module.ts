@@ -17,6 +17,9 @@ import { TechnicalBonusAssignment } from './certificates/technical-bonus-assignm
 import { TechnicalBonusTemplate } from './certificates/technical-bonus-template.entity';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { CertificateCorrectionRequest } from './certificates/certificate-correction-request.entity';
+import { LaborFunctionProfile } from './certificates/labor-function-profile.entity';
+import { LaborFunction } from './certificates/labor-function.entity';
 
 @Module({
   imports: [
@@ -40,6 +43,9 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
         TemplateSigner,
         TechnicalBonusAssignment,
         TechnicalBonusTemplate,
+        CertificateCorrectionRequest,
+        LaborFunctionProfile,
+        LaborFunction,
       ],
       synchronize: false, // Using existing schema
     }),

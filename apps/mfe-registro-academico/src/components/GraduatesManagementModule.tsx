@@ -44,7 +44,8 @@ import {
   Building2,  // ✅ NUEVO: Para filtro de sedes
   Database,
   FileCheck2,
-  Loader2
+  Loader2,
+  BookOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -68,11 +69,13 @@ import graduadosService, {
   CertificadoGraduado,
   GraduadoArchivo,
   GraduadoData,
+  GraduateProgramCatalogItem,
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
 import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
+import { GraduateProgramsModal } from './GraduateProgramsModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
@@ -114,7 +117,7 @@ type GraduateRow = {
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
-const INTEGRATION_PROGRAM_SOURCE_LABEL = 'graduados integrados';
+const PROGRAM_CATALOG_SOURCE_LABEL = 'catálogo de programas de graduados';
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -158,6 +161,10 @@ export function GraduatesManagementModule() {
   const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
   const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
+  const [isProgramsModalOpen, setIsProgramsModalOpen] = useState(false);
+  const [programCatalog, setProgramCatalog] = useState<
+    GraduateProgramCatalogItem[]
+  >([]);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
@@ -180,7 +187,7 @@ export function GraduatesManagementModule() {
   const REGISTRY_NUMBER_MAX_LENGTH = 20;
   const FOLIO_BOOK_MAX_LENGTH = 10;
   const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
-  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
+  const DOCUMENT_ALLOWED_REGEX = /^\d+$/;
   const getCurrentActorName = () => {
     const user = authService.getCurrentUser() as any;
     const fullName =
@@ -209,6 +216,12 @@ export function GraduatesManagementModule() {
     numRegistro: '',
     numFolio: '',
     numLibro: '',
+  });
+  const [editRejectedCharacters, setEditRejectedCharacters] = useState({
+    firstName: false,
+    lastName: false,
+    document: false,
+    email: false,
   });
 
   const [emailForm, setEmailForm] = useState({
@@ -255,7 +268,10 @@ export function GraduatesManagementModule() {
   const sanitizeAlphanumeric = (value: string, maxLength: number) =>
     value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
   const sanitizePersonName = (value: string) =>
-    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
+    value
+      .normalize('NFC')
+      .replace(/[^\p{L}\s'’-]+/gu, '')
+      .slice(0, PERSON_NAME_MAX_LENGTH);
   const getPersonNameValidationError = (value: string, label: string) => {
     if (!value) return `${label} es obligatorio`;
     if (value.length > PERSON_NAME_MAX_LENGTH) {
@@ -266,6 +282,73 @@ export function GraduatesManagementModule() {
       return `${label} solo puede contener letras, espacios, apóstrofes o guiones`;
     }
     return '';
+  };
+  const getDocumentValidationError = (value: string) => {
+    if (!value) return 'El documento es obligatorio';
+    if (!DOCUMENT_ALLOWED_REGEX.test(value)) {
+      return 'El documento solo puede contener números';
+    }
+    if (
+      value.length < DOCUMENT_MIN_LENGTH ||
+      value.length > DOCUMENT_MAX_LENGTH
+    ) {
+      return `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`;
+    }
+    return '';
+  };
+  const getEmailValidationError = (value: string) => {
+    if (!value) return 'El correo electrónico es obligatorio';
+    if (value.length < EMAIL_MIN_LENGTH || value.length > EMAIL_MAX_LENGTH) {
+      return `El correo electrónico debe tener entre ${EMAIL_MIN_LENGTH} y ${EMAIL_MAX_LENGTH} caracteres`;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return 'Ingrese un correo válido, por ejemplo: nombre@dominio.com';
+    }
+    return '';
+  };
+  const getRequiredSelectionError = (value: string, label: string) =>
+    value.trim() ? '' : `${label} es obligatorio`;
+  const getRequiredDigitsError = (
+    value: string,
+    label: string,
+    maxLength: number,
+  ) => {
+    if (!value) return `${label} es obligatorio`;
+    if (!/^\d+$/.test(value)) return `${label} solo puede contener números`;
+    if (value.length > maxLength) {
+      return `${label} no puede superar ${maxLength} dígitos`;
+    }
+    return '';
+  };
+  const editValidationErrors = {
+    firstName: getPersonNameValidationError(
+      normalizeSpaces(editForm.firstName),
+      'El nombre',
+    ),
+    lastName: getPersonNameValidationError(
+      normalizeSpaces(editForm.lastName),
+      'El apellido',
+    ),
+    document: getDocumentValidationError(editForm.document.trim()),
+    email: getEmailValidationError(editForm.email.trim()),
+    program: getRequiredSelectionError(editForm.program, 'El programa académico'),
+    territorial: getRequiredSelectionError(editForm.territorial, 'La territorial'),
+    location: getRequiredSelectionError(editForm.location, 'La sede'),
+    numRegistro: getRequiredDigitsError(
+      editForm.numRegistro,
+      'El número de registro',
+      REGISTRY_NUMBER_MAX_LENGTH,
+    ),
+    numFolio: getRequiredDigitsError(
+      editForm.numFolio,
+      'El número de folio',
+      FOLIO_BOOK_MAX_LENGTH,
+    ),
+    numLibro: getRequiredDigitsError(
+      editForm.numLibro,
+      'El número de libro',
+      FOLIO_BOOK_MAX_LENGTH,
+    ),
   };
   const sanitizeRegistryInput = (value: string, maxLength: number) =>
     sanitizeDigits(value, maxLength);
@@ -843,9 +926,13 @@ export function GraduatesManagementModule() {
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse, programsResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
+          graduadosService.programas.listar().catch((error) => {
+            console.warn('No se pudo cargar el catálogo de programas:', error);
+            return [] as GraduateProgramCatalogItem[];
+          }),
         ]);
 
         const { sedes: estructuraSedesMaestras, seccionales: estructuraSeccionalesMaestras } =
@@ -857,6 +944,7 @@ export function GraduatesManagementModule() {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
           setEstructuraPeriodoCatalogo('catálogo maestro');
+          setProgramCatalog(programsResponse || []);
         }
 
         const seccionalByName = new Map<string, Seccional>();
@@ -1016,23 +1104,24 @@ export function GraduatesManagementModule() {
     };
   }, [graduatesOnly]);
 
-  // Programas provenientes de la integración: se toman de los graduados creados
-  // por ese medio (enrollmentMethod === 'integration'), se descartan los vacíos
-  // y "No especificado", y se muestran sin repetidos. Son la fuente dinámica de
-  // los selects de programa (filtro y edición). En local, donde normalmente no
-  // hay integración, esta lista queda vacía; en los servidores se llena sola.
+  // El catálogo administrable es la fuente principal. Se conserva como respaldo
+  // la derivación desde integraciones para despliegues en transición y para que
+  // ningún valor histórico deje de aparecer en los formularios.
   const integrationProgramOptions = useMemo(
     () =>
       uniqueSortedText(
-        graduatesOnly
-          .filter((graduate) => graduate.enrollmentMethod === 'integration')
-          .flatMap((graduate) => [
-            graduate.programName,
-            graduate.degreeTitle,
-            graduate.program,
-          ]),
+        [
+          ...programCatalog.map((program) => program.name),
+          ...graduatesOnly
+            .filter((graduate) => graduate.enrollmentMethod === 'integration')
+            .flatMap((graduate) => [
+              graduate.programName,
+              graduate.degreeTitle,
+              graduate.program,
+            ]),
+        ],
       ).filter((programa) => normalizeKey(programa) !== 'no especificado'),
-    [graduatesOnly, normalizeKey],
+    [graduatesOnly, normalizeKey, programCatalog],
   );
   const selectedIntegrationProgram = useMemo(
     () =>
@@ -1509,6 +1598,12 @@ export function GraduatesManagementModule() {
       numFolio: sanitizeRegistryInput(user.numFolio || '', FOLIO_BOOK_MAX_LENGTH),
       numLibro: sanitizeRegistryInput(user.numLibro || '', FOLIO_BOOK_MAX_LENGTH),
     });
+    setEditRejectedCharacters({
+      firstName: false,
+      lastName: false,
+      document: false,
+      email: false,
+    });
     setIsEditModalOpen(true);
   };
 
@@ -1608,6 +1703,19 @@ export function GraduatesManagementModule() {
     setIsBulkUploadModalOpen(true);
   };
 
+  const refreshProgramCatalog = async () => {
+    const programs = await graduadosService.programas.listar();
+    setProgramCatalog(programs || []);
+  };
+
+  const handleOpenProgramsModal = () => {
+    setIsProgramsModalOpen(true);
+    void refreshProgramCatalog().catch((error) => {
+      console.warn('No se pudo actualizar el catálogo de programas:', error);
+      toast.error('No se pudo actualizar el catálogo de programas');
+    });
+  };
+
   const handleBulkGraduatesImported = (createdGraduates: GraduadoData[]) => {
     if (!createdGraduates.length) return;
 
@@ -1671,6 +1779,9 @@ export function GraduatesManagementModule() {
       return [...newRows, ...prev];
     });
     setCurrentPage(1);
+    void refreshProgramCatalog().catch((error) => {
+      console.warn('No se pudo refrescar el uso de programas:', error);
+    });
   };
 
   // Handlers para confirmar acciones en modales
@@ -1679,6 +1790,16 @@ export function GraduatesManagementModule() {
     if (!canEditGraduates) {
       toast.error('Permiso requerido', {
         description: 'Se requiere el permiso Editar Graduado para guardar cambios.',
+      });
+      return;
+    }
+
+    const firstValidationError = Object.values(editValidationErrors).find(
+      Boolean,
+    );
+    if (firstValidationError) {
+      toast.error('Revise los campos del formulario', {
+        description: firstValidationError,
       });
       return;
     }
@@ -1727,7 +1848,7 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!DOCUMENT_ALLOWED_REGEX.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener letras y números');
+      toast.error('El documento solo puede contener números');
       return;
     }
     if (
@@ -1797,6 +1918,7 @@ export function GraduatesManagementModule() {
         email: trimmedEmail,
         idNumber: trimmedDocument,
         programName: trimmedProgram,
+        degreeTitle: trimmedProgram,
         campus: trimmedLocation || undefined,
         seccionalName: effectiveTerritorial,
         numRegistro: cleanNumRegistro,
@@ -1819,6 +1941,8 @@ export function GraduatesManagementModule() {
                 numFolio: cleanNumFolio,
                 numLibro: cleanNumLibro,
                 program: trimmedProgram,
+                programName: trimmedProgram,
+                degreeTitle: trimmedProgram,
                 location: trimmedLocation || graduate.location,
                 territorial: effectiveTerritorial,
                 sourceTerritorial: effectiveTerritorial,
@@ -1829,6 +1953,9 @@ export function GraduatesManagementModule() {
 
       toast.success('Graduado Actualizado', {
         description: `Los datos de ${trimmedFirstName} ${trimmedLastName} han sido actualizados exitosamente.`,
+      });
+      void refreshProgramCatalog().catch((error) => {
+        console.warn('No se pudo refrescar el uso de programas:', error);
       });
       setIsEditModalOpen(false);
     } catch (error: any) {
@@ -1856,6 +1983,9 @@ export function GraduatesManagementModule() {
       await graduadosService.graduados.eliminar(selectedUser.id);
 
       setGraduates((prev) => prev.filter((graduate) => graduate.id !== selectedUser.id));
+      void refreshProgramCatalog().catch((error) => {
+        console.warn('No se pudo refrescar el uso de programas:', error);
+      });
       setExpandedUserId((current) => (current === selectedUser.id ? null : current));
       toast.success('Graduado eliminado', {
         description: `Se eliminó: ${selectedUser.firstName} ${selectedUser.lastName}`,
@@ -2061,8 +2191,15 @@ export function GraduatesManagementModule() {
         programOptions={integrationProgramOptions}
         territorialOptions={territorialOptions}
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
-        programsPeriod={INTEGRATION_PROGRAM_SOURCE_LABEL}
+        programsPeriod={PROGRAM_CATALOG_SOURCE_LABEL}
         structurePeriod={estructuraPeriodoCatalogo}
+      />
+
+      <GraduateProgramsModal
+        open={isProgramsModalOpen}
+        onOpenChange={setIsProgramsModalOpen}
+        programs={programCatalog}
+        onProgramsChange={setProgramCatalog}
       />
 
       {/* Header propio de esta vista (responsive con wrap natural, sin colapsar a iconos/menú) */}
@@ -2087,6 +2224,17 @@ export function GraduatesManagementModule() {
 
         {/* Derecha: acciones — mantienen su etiqueta y hacen wrap cuando falta espacio */}
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:justify-end lg:flex-shrink-0">
+          {canEditGraduates && (
+            <button
+              type="button"
+              onClick={handleOpenProgramsModal}
+              aria-label="Administrar programas académicos"
+              className="graduate-programs-trigger w-full sm:w-auto"
+            >
+              <BookOpen aria-hidden="true" />
+              <span>Programas</span>
+            </button>
+          )}
           {canBulkUploadGraduates && (
             <button
               onClick={handleOpenBulkUploadModal}
@@ -3402,7 +3550,7 @@ export function GraduatesManagementModule() {
       </AnimatePresence>
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="w-[92vw] max-w-xl">
+        <DialogContent className="max-h-[90vh] w-[92vw] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -3413,7 +3561,7 @@ export function GraduatesManagementModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4 py-4">
+          <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2">
 
             <div className="space-y-2">
 
@@ -3431,9 +3579,17 @@ export function GraduatesManagementModule() {
 
                 value={editForm.firstName}
 
-                onChange={(e) =>
-                  setEditForm({ ...editForm, firstName: sanitizePersonName(e.target.value) })
-                }
+                onChange={(e) => {
+                  const rawValue = e.target.value;
+                  setEditRejectedCharacters((current) => ({
+                    ...current,
+                    firstName: /[^\p{L}\s'’-]/u.test(rawValue),
+                  }));
+                  setEditForm((current) => ({
+                    ...current,
+                    firstName: sanitizePersonName(rawValue),
+                  }));
+                }}
                 onBlur={() =>
                   setEditForm((current) => ({
                     ...current,
@@ -3445,9 +3601,41 @@ export function GraduatesManagementModule() {
 
                 maxLength={PERSON_NAME_MAX_LENGTH}
 
+                aria-invalid={
+                  !!editValidationErrors.firstName ||
+                  editRejectedCharacters.firstName
+                }
+
+                aria-describedby="edit-firstName-message"
+
+                className={
+                  editValidationErrors.firstName || editRejectedCharacters.firstName
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : undefined
+                }
+
                 required
 
               />
+
+              <p
+                id="edit-firstName-message"
+                className={`text-xs ${
+                  editValidationErrors.firstName || editRejectedCharacters.firstName
+                    ? 'text-red-600'
+                    : 'text-gray-500'
+                }`}
+                role={
+                  editValidationErrors.firstName || editRejectedCharacters.firstName
+                    ? 'alert'
+                    : undefined
+                }
+              >
+                {editRejectedCharacters.firstName
+                  ? 'El nombre no permite números ni caracteres especiales.'
+                  : editValidationErrors.firstName ||
+                    'Solo letras, espacios, apóstrofes y guiones.'}
+              </p>
 
             </div>
 
@@ -3468,9 +3656,17 @@ export function GraduatesManagementModule() {
 
                 value={editForm.lastName}
 
-                onChange={(e) =>
-                  setEditForm({ ...editForm, lastName: sanitizePersonName(e.target.value) })
-                }
+                onChange={(e) => {
+                  const rawValue = e.target.value;
+                  setEditRejectedCharacters((current) => ({
+                    ...current,
+                    lastName: /[^\p{L}\s'’-]/u.test(rawValue),
+                  }));
+                  setEditForm((current) => ({
+                    ...current,
+                    lastName: sanitizePersonName(rawValue),
+                  }));
+                }}
                 onBlur={() =>
                   setEditForm((current) => ({
                     ...current,
@@ -3482,9 +3678,41 @@ export function GraduatesManagementModule() {
 
                 maxLength={PERSON_NAME_MAX_LENGTH}
 
+                aria-invalid={
+                  !!editValidationErrors.lastName ||
+                  editRejectedCharacters.lastName
+                }
+
+                aria-describedby="edit-lastName-message"
+
+                className={
+                  editValidationErrors.lastName || editRejectedCharacters.lastName
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : undefined
+                }
+
                 required
 
               />
+
+              <p
+                id="edit-lastName-message"
+                className={`text-xs ${
+                  editValidationErrors.lastName || editRejectedCharacters.lastName
+                    ? 'text-red-600'
+                    : 'text-gray-500'
+                }`}
+                role={
+                  editValidationErrors.lastName || editRejectedCharacters.lastName
+                    ? 'alert'
+                    : undefined
+                }
+              >
+                {editRejectedCharacters.lastName
+                  ? 'El apellido no permite números ni caracteres especiales.'
+                  : editValidationErrors.lastName ||
+                    'Solo letras, espacios, apóstrofes y guiones.'}
+              </p>
 
             </div>
 
@@ -3505,23 +3733,62 @@ export function GraduatesManagementModule() {
 
                 value={editForm.document}
 
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    document: e.target.value.slice(0, DOCUMENT_MAX_LENGTH),
-                  })
-                }
+                onChange={(e) => {
+                  const rawValue = e.target.value;
+                  setEditRejectedCharacters((current) => ({
+                    ...current,
+                    document: /\D/.test(rawValue),
+                  }));
+                  setEditForm((current) => ({
+                    ...current,
+                    document: sanitizeDigits(rawValue, DOCUMENT_MAX_LENGTH),
+                  }));
+                }}
 
                 placeholder="Número de documento"
 
-                inputMode="text"
+                inputMode="numeric"
+
+                pattern="[0-9]*"
 
                 minLength={DOCUMENT_MIN_LENGTH}
                 maxLength={DOCUMENT_MAX_LENGTH}
 
+                aria-invalid={
+                  !!editValidationErrors.document ||
+                  editRejectedCharacters.document
+                }
+
+                aria-describedby="edit-document-message"
+
+                className={
+                  editValidationErrors.document || editRejectedCharacters.document
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : undefined
+                }
+
                 required
 
               />
+
+              <p
+                id="edit-document-message"
+                className={`text-xs ${
+                  editValidationErrors.document || editRejectedCharacters.document
+                    ? 'text-red-600'
+                    : 'text-gray-500'
+                }`}
+                role={
+                  editValidationErrors.document || editRejectedCharacters.document
+                    ? 'alert'
+                    : undefined
+                }
+              >
+                {editRejectedCharacters.document
+                  ? 'El documento solo permite números.'
+                  : editValidationErrors.document ||
+                    `Entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos, sin puntos ni espacios.`}
+              </p>
 
             </div>
 
@@ -3546,7 +3813,15 @@ export function GraduatesManagementModule() {
 
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
 
-                style={{ borderColor: '#D1D5DB' }}
+                style={{
+                  borderColor: editValidationErrors.program
+                    ? '#EF4444'
+                    : '#D1D5DB',
+                }}
+
+                aria-invalid={!!editValidationErrors.program}
+
+                aria-describedby="edit-program-message"
 
                 required
 
@@ -3562,6 +3837,16 @@ export function GraduatesManagementModule() {
 
               </select>
 
+              {editValidationErrors.program && (
+                <p
+                  id="edit-program-message"
+                  className="text-xs text-red-600"
+                  role="alert"
+                >
+                  {editValidationErrors.program}
+                </p>
+              )}
+
               {externalEditProgram && externalEditProgram !== 'No especificado' && (
                 <p className="text-xs text-gray-500">
                   Este programa no está dentro de los programas integrados; se conserva el valor actual del graduado.
@@ -3571,7 +3856,7 @@ export function GraduatesManagementModule() {
             </div>
 
 
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2 sm:col-span-2">
 
               <Label htmlFor="edit-email">
 
@@ -3589,9 +3874,17 @@ export function GraduatesManagementModule() {
 
                 value={editForm.email}
 
-                onChange={(e) =>
-                  setEditForm({ ...editForm, email: e.target.value.slice(0, EMAIL_MAX_LENGTH) })
-                }
+                onChange={(e) => {
+                  const rawValue = e.target.value;
+                  setEditRejectedCharacters((current) => ({
+                    ...current,
+                    email: /\s/.test(rawValue),
+                  }));
+                  setEditForm((current) => ({
+                    ...current,
+                    email: rawValue.replace(/\s+/g, '').slice(0, EMAIL_MAX_LENGTH),
+                  }));
+                }}
                 onBlur={() =>
                   setEditForm((current) => ({
                     ...current,
@@ -3605,9 +3898,41 @@ export function GraduatesManagementModule() {
 
                 maxLength={EMAIL_MAX_LENGTH}
 
+                autoComplete="email"
+
+                aria-invalid={
+                  !!editValidationErrors.email || editRejectedCharacters.email
+                }
+
+                aria-describedby="edit-email-message"
+
+                className={
+                  editValidationErrors.email || editRejectedCharacters.email
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : undefined
+                }
+
                 required
 
               />
+
+              <p
+                id="edit-email-message"
+                className={`text-xs ${
+                  editValidationErrors.email || editRejectedCharacters.email
+                    ? 'text-red-600'
+                    : 'text-gray-500'
+                }`}
+                role={
+                  editValidationErrors.email || editRejectedCharacters.email
+                    ? 'alert'
+                    : undefined
+                }
+              >
+                {editRejectedCharacters.email
+                  ? 'El correo no permite espacios.'
+                  : editValidationErrors.email || 'Ejemplo: nombre@dominio.com'}
+              </p>
 
             </div>
 
@@ -3632,7 +3957,15 @@ export function GraduatesManagementModule() {
 
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
 
-                style={{ borderColor: '#D1D5DB' }}
+                style={{
+                  borderColor: editValidationErrors.territorial
+                    ? '#EF4444'
+                    : '#D1D5DB',
+                }}
+
+                aria-invalid={!!editValidationErrors.territorial}
+
+                aria-describedby="edit-territorial-message"
 
                 required
 
@@ -3649,8 +3982,12 @@ export function GraduatesManagementModule() {
               </select>
 
               {!editForm.territorial && (
-                <p className="text-xs text-gray-500">
-                  Debe seleccionar una territorial válida para guardar cambios.
+                <p
+                  id="edit-territorial-message"
+                  className="text-xs text-red-600"
+                  role="alert"
+                >
+                  {editValidationErrors.territorial}
                 </p>
               )}
 
@@ -3677,7 +4014,15 @@ export function GraduatesManagementModule() {
 
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
 
-                style={{ borderColor: '#D1D5DB' }}
+                style={{
+                  borderColor: editValidationErrors.location
+                    ? '#EF4444'
+                    : '#D1D5DB',
+                }}
+
+                aria-invalid={!!editValidationErrors.location}
+
+                aria-describedby="edit-location-message"
 
                 required
 
@@ -3693,10 +4038,20 @@ export function GraduatesManagementModule() {
 
               </select>
 
+              {editValidationErrors.location && (
+                <p
+                  id="edit-location-message"
+                  className="text-xs text-red-600"
+                  role="alert"
+                >
+                  {editValidationErrors.location}
+                </p>
+              )}
+
             </div>
 
 
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
@@ -3739,9 +4094,32 @@ export function GraduatesManagementModule() {
                       Math.floor((REGISTRY_NUMBER_MAX_LENGTH - 1) / 4)
                     }
 
+                    aria-invalid={!!editValidationErrors.numRegistro}
+
+                    aria-describedby="edit-numRegistro-message"
+
+                    className={
+                      editValidationErrors.numRegistro
+                        ? 'border-red-500 focus-visible:ring-red-500'
+                        : undefined
+                    }
+
                     required
 
                   />
+
+                  <p
+                    id="edit-numRegistro-message"
+                    className={`text-xs ${
+                      editValidationErrors.numRegistro
+                        ? 'text-red-600'
+                        : 'text-gray-500'
+                    }`}
+                    role={editValidationErrors.numRegistro ? 'alert' : undefined}
+                  >
+                    {editValidationErrors.numRegistro ||
+                      `Solo números, máximo ${REGISTRY_NUMBER_MAX_LENGTH} dígitos.`}
+                  </p>
 
                 </div>
 
@@ -3782,9 +4160,32 @@ export function GraduatesManagementModule() {
                       Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
                     }
 
+                    aria-invalid={!!editValidationErrors.numFolio}
+
+                    aria-describedby="edit-numFolio-message"
+
+                    className={
+                      editValidationErrors.numFolio
+                        ? 'border-red-500 focus-visible:ring-red-500'
+                        : undefined
+                    }
+
                     required
 
                   />
+
+                  <p
+                    id="edit-numFolio-message"
+                    className={`text-xs ${
+                      editValidationErrors.numFolio
+                        ? 'text-red-600'
+                        : 'text-gray-500'
+                    }`}
+                    role={editValidationErrors.numFolio ? 'alert' : undefined}
+                  >
+                    {editValidationErrors.numFolio ||
+                      `Solo números, máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos.`}
+                  </p>
 
                 </div>
 
@@ -3825,9 +4226,32 @@ export function GraduatesManagementModule() {
                       Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
                     }
 
+                    aria-invalid={!!editValidationErrors.numLibro}
+
+                    aria-describedby="edit-numLibro-message"
+
+                    className={
+                      editValidationErrors.numLibro
+                        ? 'border-red-500 focus-visible:ring-red-500'
+                        : undefined
+                    }
+
                     required
 
                   />
+
+                  <p
+                    id="edit-numLibro-message"
+                    className={`text-xs ${
+                      editValidationErrors.numLibro
+                        ? 'text-red-600'
+                        : 'text-gray-500'
+                    }`}
+                    role={editValidationErrors.numLibro ? 'alert' : undefined}
+                  >
+                    {editValidationErrors.numLibro ||
+                      `Solo números, máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos.`}
+                  </p>
 
                 </div>
 

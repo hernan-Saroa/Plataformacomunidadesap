@@ -10,6 +10,8 @@ import { useRoles } from '../../hooks/useRoles';
 import { TERRITORIALES_ESAP } from '../../data/territoriales-cetap-completo';
 import { PROGRAMAS_ESAP } from '../../../../mfe-programas-academicos/src/data/oferta-academica-esap';
 import { estructuraService } from '../../services/estructuraService';
+import { dependenciasService } from '../../services/api/dependencias.service';
+import type { Dependencia } from '../../services/api/dependencias.service';
 
 // Reusable Modal Header from the platform
 function ModalHeaderClean({ icono: Icon, titulo, subtitulo, onClose, colorIcono }: any) {
@@ -55,12 +57,15 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
     asignacionesSedes: [] as any[],
     sedePrincipalId: undefined as string | undefined,
     idSeccional: undefined as number | undefined,
-    idSede: undefined as number | undefined
+    idSede: undefined as number | undefined,
+    idDependencia: undefined as number | null,
   });
 
   const [seccionales, setSeccionales] = useState<any[]>([]);
   const [sedes, setSedes] = useState<any[]>([]);
+  const [dependencias, setDependencias] = useState<Dependencia[]>([]);
   const [isLoadingEstructura, setIsLoadingEstructura] = useState(false);
+  const [isLoadingDependencias, setIsLoadingDependencias] = useState(false);
 
   useEffect(() => {
     setIsLoadingEstructura(true);
@@ -71,6 +76,14 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
       console.error('Error cargando estructura organizacional:', err);
     }).finally(() => {
       setIsLoadingEstructura(false);
+    });
+
+    setIsLoadingDependencias(true);
+    dependenciasService.listar().then(setDependencias).catch(err => {
+      console.error('Error cargando dependencias:', err);
+      setDependencias([]);
+    }).finally(() => {
+      setIsLoadingDependencias(false);
     });
   }, []);
 
@@ -139,6 +152,9 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         sedePrincipalId,
         idSeccional: idSeccional ? Number(idSeccional) : undefined,
         idSede: idSede ? Number(idSede) : undefined,
+        idDependencia: initialData.idDependencia || initialData.person?.idDependencia
+          ? Number(initialData.idDependencia || initialData.person?.idDependencia)
+          : null,
       });
       setPasoActual(1);
     }
@@ -500,7 +516,22 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-white p-5 rounded-lg border border-purple-100 shadow-sm">
                       <div><InputLabel label="Empresa Contratista" /><input type="text" value={formData.empresaContratista} onChange={(e) => handleChange('empresaContratista', e.target.value)} className={inputClass(false)} /></div>
-                      <div><InputLabel label="Dependencia / Grupo" /><input type="text" value={formData.dependenciaGrupoPrograma} onChange={(e) => handleChange('dependenciaGrupoPrograma', e.target.value)} className={inputClass(false)} /></div>
+                      <div>
+                        <InputLabel label="Dependencia" />
+                        <select
+                          value={formData.idDependencia ?? ''}
+                          onChange={(e) => handleChange('idDependencia', e.target.value ? Number(e.target.value) : null)}
+                          className={inputClass(false)}
+                          disabled={isLoadingDependencias}
+                        >
+                          <option value="">Seleccionar dependencia...</option>
+                          {dependencias.map(dep => (
+                            <option key={dep.idDependencia} value={dep.idDependencia}>
+                              {dep.codDependencia} - {dep.nomDependencia}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div><InputLabel label="Cargo / Semestre" /><input type="text" value={formData.cargoSemestre} onChange={(e) => handleChange('cargoSemestre', e.target.value)} className={inputClass(false)} /></div>
                       <div><InputLabel label="Contrato" /><input type="text" value={formData.contrato} onChange={(e) => handleChange('contrato', e.target.value)} className={inputClass(false)} /></div>
                       <div><InputLabel label="Fecha Ingreso" /><input type="date" value={formData.enrollmentDate} onChange={(e) => handleChange('enrollmentDate', e.target.value)} className={inputClass(false)} /></div>

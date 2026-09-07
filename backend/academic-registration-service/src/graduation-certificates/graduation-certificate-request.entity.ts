@@ -80,7 +80,14 @@ export class GraduationCertificateRequest {
   @Column({ name: 'company_name', length: 255, nullable: true })
   companyName: string;
 
-  @Column({ name: 'company_nit', length: 50, nullable: true })
+  // Keep companyNit as the public Colombian-domain alias while standardizing
+  // the physical database identifier.
+  @Column({
+    name: 'company_tax_id',
+    length: 50,
+    nullable: true,
+    comment: 'Company tax identifier supplied by the requester',
+  })
   companyNit: string;
 
   @Column({ name: 'contact_person', length: 255, nullable: true })

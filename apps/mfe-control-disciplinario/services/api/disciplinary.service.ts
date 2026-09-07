@@ -71,6 +71,13 @@ export interface DisciplinaryNews {
     radicadorEmail?: string;
     createdAt: string;
     updatedAt: string;
+    historialAuditoria?: {
+        id: string;
+        tipo: string;
+        usuario: string;
+        fecha: string;
+        observaciones?: string;
+    }[];
 }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
@@ -173,7 +180,8 @@ export interface ProcessStatistics {
 
 export interface DisciplinaryProcessActuacion {
     id: string;
-    processId: string;
+    processId: string | null;
+    newsId?: string | null;
     tipo: string;
     etapa?: string | null;
     descripcion: string;
@@ -559,12 +567,36 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    async getNoticiaById(id: string): Promise<DisciplinaryNews> {
+        return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
+    async getActuacionesNoticia(newsId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`
+        );
+    }
+
+    async createActuacionNoticia(
+        newsId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`,
+            data
+        );
+    }
+
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
     }
 
     async restoreNews(id: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
+    }
+
+    async deleteNews(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
     }
 
     /**
@@ -576,6 +608,10 @@ class DisciplinaryService {
 
     async returnNews(id: string, observaciones: string, radicadorId?: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones, radicadorId });
+    }
+
+    async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/resubmit`, { observaciones });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
@@ -765,10 +801,101 @@ class DisciplinaryService {
         proceso: { id: string; radicadoProceso: string };
         documentos: any[]; // El backend devuelve el formato completo ya mapeado
     }> {
-        return apiClient.get<{
+        const response = await apiClient.get<{
             proceso: { id: string; radicadoProceso: string };
             documentos: any[];
         }>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`);
+
+        // El endpoint de documentos del expediente solo devuelve autos ya
+        // APROBADO/FIRMADO/NOTIFICADO/DEVUELTO_* (filtro pensado para Expediente
+        // Electrónico). Se complementa aquí con los autos en BORRADOR/REVISION_JEFE
+        // para que la vista de Autos del proceso los siga mostrando.
+        const documentosBase = Array.isArray(response?.documentos)
+            ? response.documentos
+            : [];
+
+        try {
+            const autos = await this.getAutosByProceso(processId);
+            const documentosPorId = new Map<string, any>(
+                documentosBase.map((documento: any) => [documento.id, documento]),
+            );
+
+            for (const auto of autos || []) {
+                if (!documentosPorId.has(auto.id)) {
+                    documentosPorId.set(
+                        auto.id,
+                        this.mapAutoToExpedienteDocumento(auto, processId),
+                    );
+                }
+            }
+
+            const documentos = Array.from(documentosPorId.values()).sort((a: any, b: any) => {
+                const fechaA = new Date(a?.fechaCarga || 0).getTime();
+                const fechaB = new Date(b?.fechaCarga || 0).getTime();
+                return fechaB - fechaA;
+            });
+
+            return {
+                ...response,
+                documentos,
+            };
+        } catch (error) {
+            console.warn('getDocumentosExpediente: no se pudieron complementar los autos reales', error);
+            return response;
+        }
+    }
+
+    private formatExpedienteFileSize(bytes: number): string {
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    }
+
+    private mapAutoToExpedienteDocumento(auto: any, processId: string): any {
+        const sizeBytes = auto.documentSize || new TextEncoder().encode(auto.contenido || '').length;
+        const tamano = this.formatExpedienteFileSize(sizeBytes);
+
+        return {
+            id: auto.id,
+            nombre: `${auto.tipo || 'Auto'} ${auto.numero || ''}`.trim(),
+            archivoNombre: auto.documentName || `Auto-${auto.numero || 'borrador'}.${auto.documentUrl ? 'pdf' : 'html'}`,
+            tipo: 'auto',
+            etapa: auto.process?.etapaActual || auto.process?.currentKanbanStage || auto.etapaDestino || 'Sin etapa',
+            version: auto.currentVersion || 1,
+            tamano,
+            tamaño: tamano,
+            fechaCarga: auto.createdAt || new Date().toISOString(),
+            usuarioCarga: auto.createdBy || 'Sistema',
+            descripcion: auto.comentarios || '',
+            url: auto.documentUrl || null,
+            urlExterna: null,
+            downloadUrl: auto.documentUrl || `/disciplinary-autos/${auto.id}/pdf`,
+            processId,
+            fileType: auto.documentUrl ? (auto.documentType || 'application/pdf') : 'text/html',
+            fileSize: auto.documentSize || sizeBytes,
+            versiones: [
+                {
+                    numero: auto.currentVersion || 1,
+                    fecha: auto.updatedAt || auto.createdAt || new Date().toISOString(),
+                    usuario: auto.createdBy || 'Sistema',
+                    cambios: 'Versión actual',
+                    tamaño: tamano,
+                    downloadUrl: auto.documentUrl || `/disciplinary-autos/${auto.id}/pdf`,
+                },
+            ],
+            metadatos: {
+                firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
+                notificado: auto.estado === 'NOTIFICADO',
+                esAutoDigital: true,
+                estado: auto.estado,
+                tipoAuto: auto.tipo,
+                numero: auto.numero,
+                rejectionDocumentUrl: auto.rejectionDocumentUrl || null,
+                rejectionDocumentName: auto.rejectionDocumentName || null,
+            },
+        };
     }
 
     /**
@@ -988,10 +1115,16 @@ class DisciplinaryService {
         });
     }
 
+    async uploadRejectionDocument(id: string, file: File): Promise<LegalAuto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-rejection-document`, formData);
+    }
+
     async sendJuridica(
-        id: string, 
-        enviadoPorId: string, 
-        enviadoPorEmail?: string, 
+        id: string,
+        enviadoPorId: string,
+        enviadoPorEmail?: string,
         enviadoPorNombre?: string
     ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
@@ -999,6 +1132,10 @@ class DisciplinaryService {
             enviadoPorEmail,
             enviadoPorNombre,
         });
+    }
+
+    async revertirAprobacionAuto(id: string, revertidoPorId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/revert-approval?revertidoPorId=${revertidoPorId}`, {});
     }
 
     async registrarNotificacion(id: string, fecha: string, evidencia?: string): Promise<LegalAuto> {

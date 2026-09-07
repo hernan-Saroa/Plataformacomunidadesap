@@ -3,6 +3,7 @@ import { serviceMap } from './proxy.config';
 import { HttpService } from '@nestjs/axios';
 import type { Request, Response } from 'express';
 import { lastValueFrom } from 'rxjs';
+import { isRundAuditUrl, redactRundAuditUrl } from '../audit/rund-audit-redaction';
 
 const parseIpHeader = (value?: string | string[]): string[] => {
   const raw = Array.isArray(value) ? value.join(',') : value || '';
@@ -184,7 +185,7 @@ export class GatewayService {
         ? { authorization: `Bearer ${cookieToken}` }
         : {};
 
-    const forwardHeaders = {
+    const forwardHeaders: Record<string, any> = {
       ...req.headers,
       ...userHeaders,
       ...authHeaderFromCookie,
@@ -192,6 +193,16 @@ export class GatewayService {
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
     };
+
+    // Express ya transformó los cuerpos JSON en un objeto. Axios los serializa
+    // nuevamente y debe calcular su propia longitud: reenviar la longitud del
+    // request original puede dejar al microservicio esperando bytes que nunca
+    // llegarán. En multipart conservamos los headers originales porque el cuerpo
+    // se transmite como stream y el boundary forma parte del Content-Type.
+    if (!isMultipart) {
+      delete forwardHeaders['content-length'];
+      delete forwardHeaders['transfer-encoding'];
+    }
 
     try {
       // Detectar si se espera un archivo binario basándose en el Accept header
@@ -204,7 +215,7 @@ export class GatewayService {
                                 acceptHeader.includes('image/') ||
                                 isBinaryFileRoute;
 
-      console.log(`[Gateway] Forwarding to: ${targetUrl}`);
+      console.log(`[Gateway] Forwarding to: ${redactRundAuditUrl(targetUrl)}`);
       console.log(`[Gateway] Expects binary: ${expectsBinaryFile}`);
       console.log(`[Gateway] Accept header: ${acceptHeader}`);
 
@@ -213,7 +224,7 @@ export class GatewayService {
           method: req.method,
           url: targetUrl,
           data: isMultipart ? req : req.body,
-          headers: isMultipart ? forwardHeaders : forwardHeaders,
+          headers: forwardHeaders,
           ...(isMultipart
             ? {
               maxContentLength: Infinity,
@@ -274,11 +285,11 @@ export class GatewayService {
       return res.status(response.status).send(response.data);
     } catch (error: any) {
       console.error(`[Gateway] Error caught:`, {
-        message: error.message,
+        message: isRundAuditUrl(req.originalUrl || req.url) ? 'Error al consultar RUND' : error.message,
         code: error.code,
         responseStatus: error.response?.status,
         config: {
-          url: error.config?.url,
+          url: redactRundAuditUrl(error.config?.url || ''),
           method: error.config?.method,
           responseType: error.config?.responseType,
         }

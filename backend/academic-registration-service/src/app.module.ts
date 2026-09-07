@@ -14,6 +14,7 @@ import { TemplateConfig } from './graduation-certificates/template-config.entity
 import { TemplateConfigChange } from './graduation-certificates/template-config-change.entity';
 import { GraduateFile } from './graduation-certificates/graduate-file.entity';
 import { GraduationRequestReviewFile } from './graduation-certificates/graduation-request-review-file.entity';
+import { GraduateProgram } from './graduation-certificates/graduate-program.entity';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -38,6 +39,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
         TemplateConfigChange,
         GraduateFile,
         GraduationRequestReviewFile,
+        GraduateProgram,
       ],
       synchronize: false, // Using existing schema from migrations
     }),

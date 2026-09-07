@@ -208,6 +208,7 @@ export class AutoController {
    * Enviar auto pliego de cargos aprobado a Oficina Jurídica
    */
   @Patch(':id/send-juridica')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID', 'JEFE_OCID')
   @ApiOperation({
     summary: 'Enviar Pliego de Cargos a Jurídica',
     description: 'Envía el auto pliego de cargos aprobado a la Oficina Jurídica, cerrando el proceso',
@@ -221,6 +222,24 @@ export class AutoController {
       throw new Error('enviadoPorId es requerido');
     }
     return await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
+  }
+
+  /**
+   * Reversar la aprobación de un Pliego de Cargos (solo mientras no se haya enviado a Jurídica)
+   */
+  @Patch(':id/revert-approval')
+  @ApiOperation({
+    summary: 'Reversar Aprobación de Pliego de Cargos',
+    description: 'El Jefe reversa la aprobación de un pliego de cargos aprobado, volviéndolo a borrador para corrección. No aplica si ya fue enviado a Jurídica.',
+  })
+  async revertApproval(
+    @Param('id') id: string,
+    @Query('revertidoPorId') revertidoPorId: string,
+  ): Promise<LegalAuto> {
+    if (!revertidoPorId) {
+      throw new Error('revertidoPorId es requerido');
+    }
+    return await this.autoService.revertApproval(id, revertidoPorId);
   }
 
   /**
@@ -306,6 +325,56 @@ export class AutoController {
       file.size,
       comentario,
       userId,
+    );
+  }
+
+  /**
+   * Adjuntar documento de soporte a la devolución de un auto (llamado justo
+   * después de PATCH :id/approve con action RETURN).
+   */
+  @Patch(':id/upload-rejection-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Adjuntar documento de soporte a la devolución del auto' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = join(process.cwd(), 'uploads');
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `auto-${req.params.id}-devolucion-${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+        const ext = extname(file.originalname).toLowerCase();
+        if (allowed.includes(ext)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Solo se permiten archivos PDF, Word o imágenes'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async uploadRejectionDocument(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<LegalAuto> {
+    if (!file) {
+      throw new BadRequestException('No se ha subido ningún archivo');
+    }
+    const documentUrl = `/files/${file.filename}`;
+    return await this.autoService.uploadRejectionDocument(
+      id,
+      documentUrl,
+      file.originalname,
     );
   }
 

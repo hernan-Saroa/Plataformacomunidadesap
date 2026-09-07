@@ -289,7 +289,7 @@ export function BancoDocenteDetalle({ docente, onClose, onEdit }: Props) {
               <Field checklist={checklist} targetId={targetId} label="Acto Administrativo" value={docente.acto_administrativo_vinculacion} campoRund="ACTO_ADMINISTRATIVO" />
               <Field checklist={checklist} targetId={targetId} label="Situación Administrativa" value={docente.situacion_administrativa} campoRund="SITUACION_ADMINISTRATIVA" />
               <Field checklist={checklist} targetId={targetId} label="Categoría Situación" value={docente.situacion_categoria} badge color="#0284c7" />
-              <Field checklist={checklist} targetId={targetId} label="Puntaje Salarial" value={docente.puntaje_salarial} campoRund="PUNTAJE_SALARIAL" />
+              <Field checklist={checklist} targetId={targetId} label="Puntaje Salarial" value={docente.proteccion_datos?.acceso_completo === false ? 'Información restringida' : docente.puntaje_salarial} campoRund="PUNTAJE_SALARIAL" />
               <Field checklist={checklist} targetId={targetId} label="Última Evaluación" value={docente.ultima_evaluacion} campoRund="ULTIMA_EVALUACION" />
               <Field checklist={checklist} targetId={targetId} label="Estructura Organizacional (Territorial)" value={docente.territorial} badge color="#059669" campoRund="TERRITORIAL" />
               <Field checklist={checklist} targetId={targetId} label="Ubicación CETAP" value="CETAP no es del docente (Se asigna por asignatura - BR-026)" />

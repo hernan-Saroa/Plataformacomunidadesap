@@ -27,14 +27,15 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
   User, Calendar, Target, FileText, Shield, Info, Users, Building2,
   ClipboardCheck, DollarSign, TrendingUp, FileCheck, MapPin, Clock,
-  AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings
+  AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings, Lock
 } from 'lucide-react';
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Input } from '@esap-mfe/shared-ui/input';
@@ -175,6 +176,8 @@ interface FormularioAuditoriaUnificadoProps {
   onSubmit: (data: AuditoriaUnificadaFormData) => void | boolean | Promise<void | boolean>;
   initialData?: Partial<AuditoriaUnificadaFormData>;
   mode: 'create' | 'edit';
+  userRoles?: string[];
+  userData?: { roles?: string[]; permissions?: string[] };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -224,14 +227,7 @@ const PROCESOS_INSTITUCIONALES_FALLBACK = [
 ];
 
 // Datos fallback si no se cargan del backend
-const AUDITORES_FALLBACK = [
-  { id: 'aud-001', nombre: 'Juan Pérez Gómez', cargo: 'Auditor Senior' },
-  { id: 'aud-002', nombre: 'Ana María López Silva', cargo: 'Auditor Junior' },
-  { id: 'aud-003', nombre: 'Carlos Ramírez Díaz', cargo: 'Auditor Senior' },
-  { id: 'aud-004', nombre: 'Diana López Vargas', cargo: 'Auditor Senior' },
-  { id: 'aud-005', nombre: 'Roberto Torres Sánchez', cargo: 'Auditor Líder' },
-  { id: 'aud-006', nombre: 'Fernando Ávila García', cargo: 'Jefe OCI' }
-];
+const AUDITORES_FALLBACK: AuditorOption[] = [];
 
 // Tipo para auditor
 interface AuditorOption {
@@ -250,6 +246,13 @@ const ROLES_DECRETO_648 = [
 
 const fourWeek = 4 * 7;
 const fiveWeek = 5 * 7;
+
+const formatMiles = (val: string | number | undefined | null): string => {
+  if (val === undefined || val === null) return '';
+  const soloNumeros = String(val).replace(/\D/g, '');
+  if (!soloNumeros) return '';
+  return new Intl.NumberFormat('es-CO').format(parseInt(soloNumeros, 10));
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENTE AUXILIAR: FIELD WRAPPER
@@ -324,69 +327,156 @@ const formatDateLabel = (dateString?: string) => {
   return `${day}/${month}/${year}`;
 };
 
+// Helper para formatear fechas a YYYY-MM-DD requeridas por HTML5 <input type="date">
+const formatDateForInput = (d: any): string => {
+  if (!d) return '';
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    // Soporte para formato DD/MM/YYYY
+    if (trimmed.includes('/')) {
+      const parts = trimmed.split('/');
+      if (parts.length === 3) {
+        const [day, month, year] = parts;
+        if (year && year.length === 4) {
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+      }
+    }
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  if (d instanceof Date && !isNaN(d.getTime())) {
+    return d.toISOString().split('T')[0];
+  }
+  return '';
+};
+
 export function FormularioAuditoriaUnificado({
   open,
   onClose,
   onSubmit,
   initialData,
-  mode
+  mode,
+  userRoles,
+  userData
 }: FormularioAuditoriaUnificadoProps) {
   const vigenciaPlanCtx = usePlanAnualVigenciaContextOptional();
   const [pasoActual, setPasoActual] = useState(1);
-  const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
-    codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || '',
-    titulo: initialData?.titulo || '',
-    descripcion: initialData?.descripcion || '',
-    territorial: initialData?.territorial || '',
-    areaObjetivo: initialData?.areaObjetivo || '',
-    procesoAuditado: initialData?.procesoAuditado || '',
-    alcance: initialData?.alcance || '',
-    responsableArea: initialData?.responsableArea,
-    auditorLider: initialData?.auditorLider || '',
-    auditorAsignado: initialData?.auditorAsignado || '',
-    equipoAuditores: initialData?.equipoAuditores || [],
-    supervisorAsignado: initialData?.supervisorAsignado || '',
-    // Etapas del cronograma
-    fechaInicioPlaneacion: initialData?.fechaInicioPlaneacion || initialData?.fechaInicio || '',
-    fechaFinPlaneacion: initialData?.fechaFinPlaneacion || '',
-    fechaInicioEjecucion: initialData?.fechaInicioEjecucion || '',
-    fechaFinEjecucion: initialData?.fechaFinEjecucion || '',
-    fechaInicioComunicacion: initialData?.fechaInicioComunicacion || '',
-    fechaFinComunicacion: initialData?.fechaFinComunicacion || initialData?.fechaFin || '',
-    // Legacy
-    fechaInicio: initialData?.fechaInicio || '',
-    fechaFin: initialData?.fechaFin || '',
-    hitos: initialData?.hitos || [],
-    objetivos: initialData?.objetivos || [],
-    criteriosAuditoria: initialData?.criteriosAuditoria || [],
-    normatividadAplicable: initialData?.normatividadAplicable || [],
-    metodologia: initialData?.metodologia || '',
-    recursos: initialData?.recursos || [],
-    presupuestoEstimado: initialData?.presupuestoEstimado || '',
-    productosEsperados: initialData?.productosEsperados || [],
-    nivelRiesgo: initialData?.nivelRiesgo || 'Medio',
-    riesgosIdentificados: initialData?.riesgosIdentificados || [],
-    riesgosAsociados: initialData?.riesgosAsociados || [],
-    controlesAplicar: initialData?.controlesAplicar || [],
-    hallazgos: initialData?.hallazgos || [],
-    incluirHallazgosPreliminares: initialData?.incluirHallazgosPreliminares || false,
-    vinculadaPlanAnual: initialData?.vinculadaPlanAnual || false,
-    planAnualId: initialData?.planAnualId || '',
-    planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
-    rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
-    estadoKanban: initialData?.estadoKanban || 'Programa Anual' // Por defecto crear en Plan Anual
-  });
+  const { tienePermiso, esSuperUsuario } = useControlInternoPermissions(userRoles, userData);
 
+  // Mapeo de cada paso a su código de permiso requerido en modo edición
+  const PERMISOS_PASOS_EDICION: Record<number, string> = {
+    1: 'control-interno.auditoria.edit.informacion-basica',
+    2: 'control-interno.auditoria.edit.clasificacion-alcance',
+    3: 'control-interno.auditoria.edit.equipo-auditor',
+    4: 'control-interno.auditoria.edit.programacion',
+    5: 'control-interno.auditoria.edit.objetivos-criterios',
+    6: 'control-interno.auditoria.edit.recursos-productos',
+    7: 'control-interno.auditoria.edit.riesgos-controles',
+    8: 'control-interno.auditoria.edit.hallazgos-preliminares',
+    9: 'control-interno.auditoria.edit.vinculacion-plan',
+  };
+
+  // Función para determinar si el usuario autenticado tiene permiso para editar el paso actual
+  const puedeEditarPaso = (numeroPaso: number): boolean => {
+    // Al crear una nueva auditoría no aplica restricción por pasos
+    if (mode === 'create') return true;
+    if (esSuperUsuario) return true;
+
+    const codigoPermiso = PERMISOS_PASOS_EDICION[numeroPaso];
+    if (!codigoPermiso) return true;
+
+    // Permiso específico del paso
+    return tienePermiso(codigoPermiso);
+  };
+
+  const buildInitialState = (data?: Partial<AuditoriaUnificadaFormData>): AuditoriaUnificadaFormData => {
+    let inicioP = formatDateForInput(data?.fechaInicioPlaneacion || data?.fechaInicio);
+    let finP = formatDateForInput(data?.fechaFinPlaneacion);
+    let inicioE = formatDateForInput(data?.fechaInicioEjecucion);
+    let finE = formatDateForInput(data?.fechaFinEjecucion);
+    let inicioC = formatDateForInput(data?.fechaInicioComunicacion);
+    let finC = formatDateForInput(data?.fechaFinComunicacion || data?.fechaFin);
+
+    // Auto-calcular etapas restantes si existe inicio de planeación pero no fin de planeación
+    if (inicioP && !finP) {
+      finP = addDaysToDateString(inicioP, 27); // 4 semanas
+      if (!inicioE) inicioE = addDaysToDateString(finP, 1);
+      if (!finE) finE = addDaysToDateString(inicioE, 27); // 4 semanas
+      if (!inicioC) inicioC = addDaysToDateString(finE, 1);
+      if (!finC) finC = addDaysToDateString(inicioC, 34); // 5 semanas
+    }
+
+    return {
+      codigo: data?.codigo || '',
+      tipoAuditoria: data?.tipoAuditoria || '',
+      titulo: data?.titulo || '',
+      descripcion: data?.descripcion || '',
+      territorial: data?.territorial || '',
+      areaObjetivo: data?.areaObjetivo || '',
+      procesoAuditado: data?.procesoAuditado || '',
+      alcance: data?.alcance || '',
+      responsableArea: data?.responsableArea,
+      auditorLider: data?.auditorLider || '',
+      auditorAsignado: data?.auditorAsignado || '',
+      equipoAuditores: Array.from(
+        new Set(
+          (data?.equipoAuditores || [])
+            .filter((e: any) => typeof e === 'string' || e?.activo !== false)
+            .map((e: any) => {
+              if (!e) return '';
+              if (typeof e === 'string') return e.trim();
+              if (typeof e === 'object') {
+                return String(e.personaId || e.id || e.idTercero || e.idPerson || '').trim();
+              }
+              return String(e).trim();
+            })
+            .filter((id): id is string => Boolean(id && id.length > 0))
+        )
+      ),
+      supervisorAsignado: data?.supervisorAsignado || '',
+      // Etapas del cronograma formateadas para input type="date" (YYYY-MM-DD)
+      fechaInicioPlaneacion: inicioP,
+      fechaFinPlaneacion: finP,
+      fechaInicioEjecucion: inicioE,
+      fechaFinEjecucion: finE,
+      fechaInicioComunicacion: inicioC,
+      fechaFinComunicacion: finC,
+      fechaInicio: inicioP || formatDateForInput(data?.fechaInicio),
+      fechaFin: finC || formatDateForInput(data?.fechaFin),
+      hitos: data?.hitos || [],
+      objetivos: data?.objetivos || [],
+      criteriosAuditoria: data?.criteriosAuditoria || [],
+      normatividadAplicable: data?.normatividadAplicable || [],
+      metodologia: data?.metodologia || '',
+      recursos: data?.recursos || [],
+      presupuestoEstimado: data?.presupuestoEstimado ? formatMiles(data.presupuestoEstimado) : '',
+      productosEsperados: data?.productosEsperados || [],
+      nivelRiesgo: data?.nivelRiesgo || 'Medio',
+      riesgosIdentificados: data?.riesgosIdentificados || [],
+      riesgosAsociados: data?.riesgosAsociados || [],
+      controlesAplicar: data?.controlesAplicar || [],
+      hallazgos: data?.hallazgos || [],
+      focos: data?.focos || [],
+      incluirHallazgosPreliminares: data?.incluirHallazgosPreliminares || false,
+      vinculadaPlanAnual: data?.vinculadaPlanAnual || false,
+      planAnualId: data?.planAnualId || '',
+      planAnualAño: data?.planAnualAño || new Date().getFullYear(),
+      rolDecretoAsociado: data?.rolDecretoAsociado || '',
+      estadoKanban: data?.estadoKanban || 'Programa Anual',
+    };
+  };
+
+  const [formData, setFormData] = useState<AuditoriaUnificadaFormData>(() => buildInitialState(initialData));
+
+  const prevOpenRef = useRef(open);
   useEffect(() => {
-    if (!open || !vigenciaPlanCtx) return;
-    setFormData((prev) => ({
-      ...prev,
-      vinculadaPlanAnual: initialData?.vinculadaPlanAnual ?? true,
-      planAnualId: initialData?.planAnualId ?? vigenciaPlanCtx.planActivoId ?? prev.planAnualId,
-      planAnualAño: initialData?.planAnualAño ?? vigenciaPlanCtx.vigencia,
-    }));
-  }, [open, vigenciaPlanCtx?.planActivoId, vigenciaPlanCtx?.vigencia, initialData?.vinculadaPlanAnual, initialData?.planAnualId, initialData?.planAnualAño]);
+    if (open && !prevOpenRef.current) {
+      setFormData(buildInitialState(initialData));
+      setPasoActual(1);
+    }
+    prevOpenRef.current = open;
+  }, [open, initialData]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
@@ -435,7 +525,7 @@ export function FormularioAuditoriaUnificado({
   const [seccionalesDisponibles, setSeccionalesDisponibles] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
   const [cargandoSeccionales, setCargandoSeccionales] = useState(false);
 
-  const TOTAL_PASOS = 9;
+  const TOTAL_PASOS = mode === 'create' ? 2 : 9;
   
   // Precargar todas las personas disponibles al abrir el formulario
   useEffect(() => {
@@ -899,103 +989,114 @@ export function FormularioAuditoriaUnificado({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validar tipo de auditoría
-    if (!formData.tipoAuditoria) {
+    // Validar tipo de auditoría (Paso 1)
+    if ((mode === 'create' || puedeEditarPaso(1)) && !formData.tipoAuditoria) {
       toast.error('Debe seleccionar un tipo de auditoría');
       setPasoActual(1);
       return;
     }
 
-    // Validaciones básicas - titulo contiene el proceso seleccionado
-    if (!formData.titulo || formData.titulo.length < 5) {
+    // Validaciones básicas - titulo contiene el proceso seleccionado (Paso 1)
+    if ((mode === 'create' || puedeEditarPaso(1)) && (!formData.titulo || formData.titulo.length < 5)) {
       toast.error('Debe seleccionar un proceso auditable como título');
       setPasoActual(1);
       return;
     }
 
-    // Validar Responsable del Área Auditada (Paso 2). Es obligatorio porque define
-    // quién recibe el informe preliminar y entra al portal del auditado.
-    if (!formData.responsableArea || !formData.responsableArea.idPersona) {
-      toast.error('Debe seleccionar el responsable del área auditada');
-      setPasoActual(2);
-      return;
-    }
-    if (!formData.responsableArea.email || !formData.responsableArea.email.includes('@')) {
-      toast.error('La persona seleccionada como responsable del área no tiene un correo válido');
-      setPasoActual(2);
-      return;
-    }
-
-    if (!formData.auditorLider) {
-      toast.error('Debe asignar un auditor líder');
-      setPasoActual(3);
-      return;
-    }
-
-    // Validar Etapa 1: Planeación (obligatoria)
-    if (!formData.fechaInicioPlaneacion || !formData.fechaFinPlaneacion) {
-      toast.error('Debe especificar las fechas de inicio y fin de la etapa de Planeación');
-      setPasoActual(4);
-      return;
-    }
-    
-    const inicioPlaneacion = parseLocalDate(formData.fechaInicioPlaneacion);
-    const finPlaneacion = parseLocalDate(formData.fechaFinPlaneacion);
-    if (finPlaneacion <= inicioPlaneacion) {
-      toast.error('La fecha de fin de Planeación debe ser posterior a la fecha de inicio');
-      setPasoActual(4);
-      return;
-    }
-    
-    // Validar Etapa 2: Ejecución (obligatoria si Planeación está completa)
-    if (formData.fechaInicioEjecucion || formData.fechaFinEjecucion) {
-      if (!formData.fechaInicioEjecucion || !formData.fechaFinEjecucion) {
-        toast.error('Debe especificar ambas fechas (inicio y fin) para la etapa de Ejecución');
-        setPasoActual(4);
+    // Validaciones de Responsable del Área (Paso 2) sólo aplican en modo edición si tiene permiso
+    if (mode === 'edit' && puedeEditarPaso(2)) {
+      const resp = formData.responsableArea;
+      const tieneResponsable = resp && (resp.idPersona || resp.nombre || (resp as any).id);
+      if (!resp || !tieneResponsable) {
+        toast.error('Debe seleccionar el responsable del área auditada');
+        setPasoActual(2);
         return;
       }
-      const inicioEjecucion = parseLocalDate(formData.fechaInicioEjecucion);
-      const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
-      if (inicioEjecucion < finPlaneacion) {
-        toast.error('La fecha de inicio de Ejecución debe ser igual o posterior al fin de Planeación');
-        setPasoActual(4);
-        return;
-      }
-      if (finEjecucion <= inicioEjecucion) {
-        toast.error('La fecha de fin de Ejecución debe ser posterior a la fecha de inicio');
-        setPasoActual(4);
-        return;
-      }
-    }
-    
-    // Validar Etapa 3: Comunicación (obligatoria si Ejecución está completa)
-    if (formData.fechaInicioComunicacion || formData.fechaFinComunicacion) {
-      if (!formData.fechaInicioEjecucion || !formData.fechaFinEjecucion) {
-        toast.error('Debe completar la etapa de Ejecución antes de la etapa de Comunicación');
-        setPasoActual(4);
-        return;
-      }
-      if (!formData.fechaInicioComunicacion || !formData.fechaFinComunicacion) {
-        toast.error('Debe especificar ambas fechas (inicio y fin) para la etapa de Comunicación');
-        setPasoActual(4);
-        return;
-      }
-      const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
-      const inicioComunicacion = parseLocalDate(formData.fechaInicioComunicacion);
-      const finComunicacion = parseLocalDate(formData.fechaFinComunicacion);
-      if (inicioComunicacion < finEjecucion) {
-        toast.error('La fecha de inicio de Comunicación debe ser igual o posterior al fin de Ejecución');
-        setPasoActual(4);
-        return;
-      }
-      if (finComunicacion <= inicioComunicacion) {
-        toast.error('La fecha de fin de Comunicación debe ser posterior a la fecha de inicio');
-        setPasoActual(4);
+      if (!resp.email || !resp.email.includes('@')) {
+        toast.error('La persona seleccionada como responsable del área no tiene un correo válido');
+        setPasoActual(2);
         return;
       }
     }
 
-    if (formData.equipoAuditores.length > 0) {
+    // Validaciones de Auditor Líder (Paso 3) sólo aplican en modo edición si tiene permiso
+    if (mode === 'edit' && puedeEditarPaso(3)) {
+      if (!formData.auditorLider) {
+        toast.error('Debe asignar un auditor líder');
+        setPasoActual(3);
+        return;
+      }
+    }
+
+    // Validar Etapa 1: Planeación (obligatoria si puede editar programación)
+    const pasoProg = mode === 'create' ? 2 : 4;
+    const puedeEditarProgramacion = mode === 'create' || puedeEditarPaso(4);
+
+    if (puedeEditarProgramacion) {
+      if (!formData.fechaInicioPlaneacion || !formData.fechaFinPlaneacion) {
+        toast.error('Debe especificar las fechas de inicio y fin de la etapa de Planeación');
+        setPasoActual(pasoProg);
+        return;
+      }
+      
+      const inicioPlaneacion = parseLocalDate(formData.fechaInicioPlaneacion);
+      const finPlaneacion = parseLocalDate(formData.fechaFinPlaneacion);
+      if (finPlaneacion <= inicioPlaneacion) {
+        toast.error('La fecha de fin de Planeación debe ser posterior a la fecha de inicio');
+        setPasoActual(pasoProg);
+        return;
+      }
+      
+      // Validar Etapa 2: Ejecución (obligatoria si Planeación está completa)
+      if (formData.fechaInicioEjecucion || formData.fechaFinEjecucion) {
+        if (!formData.fechaInicioEjecucion || !formData.fechaFinEjecucion) {
+          toast.error('Debe especificar ambas fechas (inicio y fin) para la etapa de Ejecución');
+          setPasoActual(pasoProg);
+          return;
+        }
+        const inicioEjecucion = parseLocalDate(formData.fechaInicioEjecucion);
+        const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
+        if (inicioEjecucion < finPlaneacion) {
+          toast.error('La fecha de inicio de Ejecución debe ser igual o posterior al fin de Planeación');
+          setPasoActual(pasoProg);
+          return;
+        }
+        if (finEjecucion <= inicioEjecucion) {
+          toast.error('La fecha de fin de Ejecución debe ser posterior a la fecha de inicio');
+          setPasoActual(pasoProg);
+          return;
+        }
+      }
+      
+      // Validar Etapa 3: Comunicación (obligatoria si Ejecución está completa)
+      if (formData.fechaInicioComunicacion || formData.fechaFinComunicacion) {
+        if (!formData.fechaInicioEjecucion || !formData.fechaFinEjecucion) {
+          toast.error('Debe completar la etapa de Ejecución antes de la etapa de Comunicación');
+          setPasoActual(pasoProg);
+          return;
+        }
+        if (!formData.fechaInicioComunicacion || !formData.fechaFinComunicacion) {
+          toast.error('Debe especificar ambas fechas (inicio y fin) para la etapa de Comunicación');
+          setPasoActual(pasoProg);
+          return;
+        }
+        const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
+        const inicioComunicacion = parseLocalDate(formData.fechaInicioComunicacion);
+        const finComunicacion = parseLocalDate(formData.fechaFinComunicacion);
+        if (inicioComunicacion < finEjecucion) {
+          toast.error('La fecha de inicio de Comunicación debe ser igual o posterior al fin de Ejecución');
+          setPasoActual(pasoProg);
+          return;
+        }
+        if (finComunicacion <= inicioComunicacion) {
+          toast.error('La fecha de fin de Comunicación debe ser posterior a la fecha de inicio');
+          setPasoActual(pasoProg);
+          return;
+        }
+      }
+    }
+
+    if ((mode === 'create' || puedeEditarPaso(3) || puedeEditarPaso(4)) && formData.equipoAuditores.length > 0) {
       const fechaInicioEquipo = formData.fechaInicioPlaneacion || formData.fechaInicio || '';
       const fechaFinEquipo = formData.fechaFinComunicacion || formData.fechaFin || '';
 
@@ -1014,7 +1115,7 @@ export function FormularioAuditoriaUnificado({
             toast.error('Equipo auditor adicional no disponible', {
               description: disponibilidad.mensaje || 'Uno o mas auditores adicionales tienen cruces de fechas.',
             });
-            setPasoActual(3);
+            setPasoActual(mode === 'create' ? 2 : 3);
             return;
           }
 
@@ -1022,7 +1123,7 @@ export function FormularioAuditoriaUnificado({
         } catch (error) {
           console.error('[FormularioAuditoria] Error validando disponibilidad del equipo auditor:', error);
           toast.error('No se pudo validar la disponibilidad del equipo auditor adicional');
-          setPasoActual(3);
+          setPasoActual(mode === 'create' ? 2 : 3);
           return;
         } finally {
           setValidandoDisponibilidadEquipo(false);
@@ -1030,7 +1131,7 @@ export function FormularioAuditoriaUnificado({
       }
     }
 
-    if (formData.objetivos.length === 0) {
+    if (mode === 'edit' && puedeEditarPaso(5) && formData.objetivos.length === 0) {
       toast.error('Debe agregar al menos un objetivo');
       setPasoActual(5);
       return;
@@ -1039,21 +1140,6 @@ export function FormularioAuditoriaUnificado({
     setIsSubmitting(true);
 
     try {
-      // 🔍 DEBUG: Log de fechas antes de enviar
-      console.log('═══════════════════════════════════════════════════════════════');
-      console.log('📤 FormularioAuditoriaUnificado - DATOS A ENVIAR:');
-      console.log('   fechaInicioPlaneacion:', formData.fechaInicioPlaneacion);
-      console.log('   fechaFinPlaneacion:', formData.fechaFinPlaneacion);
-      console.log('   fechaInicioEjecucion:', formData.fechaInicioEjecucion);
-      console.log('   fechaFinEjecucion:', formData.fechaFinEjecucion);
-      console.log('   fechaInicioComunicacion:', formData.fechaInicioComunicacion);
-      console.log('   fechaFinComunicacion:', formData.fechaFinComunicacion);
-      console.log('   auditorLider:', formData.auditorLider);
-      console.log('   supervisorAsignado:', formData.supervisorAsignado);
-      console.log('   equipoAuditores:', formData.equipoAuditores);
-      console.log('   titulo:', formData.titulo);
-      console.log('   tipoAuditoria:', formData.tipoAuditoria);
-      console.log('═══════════════════════════════════════════════════════════════');
       
       const dataToSubmit = { ...formData };
       
@@ -1068,12 +1154,7 @@ export function FormularioAuditoriaUnificado({
       
       // Log detallado en consola si incluye hallazgos preliminares
       if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('✅ AUDITORÍA GUARDADA CON HALLAZGOS PRELIMINARES');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log(`📋 Auditoría: ${formData.titulo}`);
-        console.log(`⚠️  Hallazgos preliminares: ${formData.hallazgos.length}`);
-        console.log('');
+        
         formData.hallazgos.forEach((h, idx) => {
           console.log(`   ${idx + 1}. ${h.tipo.toUpperCase()}: ${h.descripcion.substring(0, 60)}...`);
         });
@@ -1111,7 +1192,8 @@ export function FormularioAuditoriaUnificado({
   };
 
   const handleSiguiente = () => {
-    if (pasoActual >= 4 && disponibilidadEquipoAuditor?.disponible === false) {
+    const pasoProg = mode === 'create' ? 2 : 4;
+    if (pasoActual >= pasoProg && disponibilidadEquipoAuditor?.disponible === false) {
       toast.error('Equipo auditor adicional no disponible', {
         description: disponibilidadEquipoAuditor.mensaje || 'Ajuste las fechas o el equipo adicional antes de continuar.',
       });
@@ -1130,6 +1212,38 @@ export function FormularioAuditoriaUnificado({
   };
 
   const renderPaso = () => {
+    if (mode === 'create') {
+      switch (pasoActual) {
+        case 1:
+          return (
+            <Paso1InformacionBasica 
+              formData={formData} 
+              onChange={handleChange} 
+              procesos={procesosAuditables} 
+              cargandoProcesos={cargandoProcesos}
+              busquedaProceso={busquedaProceso}
+              setBusquedaProceso={setBusquedaProceso}
+              mostrarSugerenciasProcesos={mostrarSugerenciasProcesos}
+              setMostrarSugerenciasProcesos={setMostrarSugerenciasProcesos}
+              evaluaciones={evaluacionesDisponibles}
+              tiposAuditoria={tiposAuditoria}
+              cargandoTipos={cargandoTipos}
+            />
+          );
+        case 2:
+          return (
+            <Paso4Programacion
+              formData={formData}
+              onChange={handleChange}
+              disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
+              validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+            />
+          );
+        default:
+          return null;
+      }
+    }
+
     switch (pasoActual) {
       case 1:
         return (
@@ -1240,17 +1354,22 @@ export function FormularioAuditoriaUnificado({
     }
   };
 
-  const pasos = [
-    { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
-    { numero: 2, titulo: 'Clasificación y Alcance', icono: <Building2 className="w-4 h-4" /> },
-    { numero: 3, titulo: 'Equipo Auditor', icono: <Users className="w-4 h-4" /> },
-    { numero: 4, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
-    { numero: 5, titulo: 'Objetivos y Criterios', icono: <Target className="w-4 h-4" /> },
-    { numero: 6, titulo: 'Recursos y Productos', icono: <DollarSign className="w-4 h-4" /> },
-    { numero: 7, titulo: 'Riesgos y Controles', icono: <Shield className="w-4 h-4" /> },
-    { numero: 8, titulo: 'Hallazgos Preliminares', icono: <AlertTriangle className="w-4 h-4" /> },
-    { numero: 9, titulo: 'Vinculación Plan', icono: <ClipboardCheck className="w-4 h-4" /> }
-  ];
+  const pasos = mode === 'create'
+    ? [
+        { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
+        { numero: 2, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
+      ]
+    : [
+        { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
+        { numero: 2, titulo: 'Clasificación y Alcance', icono: <Building2 className="w-4 h-4" /> },
+        { numero: 3, titulo: 'Equipo Auditor', icono: <Users className="w-4 h-4" /> },
+        { numero: 4, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
+        { numero: 5, titulo: 'Objetivos y Criterios', icono: <Target className="w-4 h-4" /> },
+        { numero: 6, titulo: 'Recursos y Productos', icono: <DollarSign className="w-4 h-4" /> },
+        { numero: 7, titulo: 'Riesgos y Controles', icono: <Shield className="w-4 h-4" /> },
+        { numero: 8, titulo: 'Hallazgos Preliminares', icono: <AlertTriangle className="w-4 h-4" /> },
+        { numero: 9, titulo: 'Vinculación Plan', icono: <ClipboardCheck className="w-4 h-4" /> },
+      ];
 
   return (
           <Dialog open={open} onOpenChange={onClose}>
@@ -1298,51 +1417,78 @@ export function FormularioAuditoriaUnificado({
                 </div>
 
                 {/* Breadcrumb de pasos - Solo móvil */}
-                <div className="mt-2 lg:hidden">
+                <div className="mt-2 lg:hidden flex items-center justify-between">
                   <p className="text-[11px] text-gray-600 flex items-center gap-1">
                     {pasos[pasoActual - 1].icono}
                     {pasos[pasoActual - 1].titulo}
                   </p>
+                  {mode === 'edit' && !puedeEditarPaso(pasoActual) && (
+                    <span className="flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded font-medium">
+                      <Lock className="w-3 h-3 text-amber-600" />
+                      Solo lectura
+                    </span>
+                  )}
                 </div>
 
                 {/* Tabs de pasos - Desktop */}
                 <div className="hidden lg:flex gap-1.5 mt-2 overflow-x-auto pb-1 custom-scrollbar">
-                  {pasos.map((paso) => (
-                    <button
-                      key={paso.numero}
-                      onClick={() => setPasoActual(paso.numero)}
-                      className={`
-                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium
-                        transition-all whitespace-nowrap
-                        ${
-                          pasoActual === paso.numero
-                            ? 'bg-blue-600 text-white'
-                            : pasoActual > paso.numero
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }
-                      `}
-                    >
-                      {paso.icono}
-                      {paso.titulo}
-                    </button>
-                  ))}
+                  {pasos.map((paso) => {
+                    const editable = puedeEditarPaso(paso.numero);
+                    return (
+                      <button
+                        key={paso.numero}
+                        onClick={() => setPasoActual(paso.numero)}
+                        title={mode === 'edit' && !editable ? 'Paso en modo de solo lectura (sin permiso de edición)' : undefined}
+                        className={`
+                          flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium
+                          transition-all whitespace-nowrap
+                          ${
+                            pasoActual === paso.numero
+                              ? 'bg-blue-600 text-white'
+                              : pasoActual > paso.numero
+                              ? (mode === 'edit' && !editable ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700')
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }
+                        `}
+                      >
+                        {paso.icono}
+                        {paso.titulo}
+                        {mode === 'edit' && !editable && (
+                          <Lock className="w-4 h-4 text-amber-700 opacity-90 ml-0.5 inline-block" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* CONTENIDO DEL PASO */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={pasoActual}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {renderPaso()}
-                  </motion.div>
-                </AnimatePresence>
+                {mode === 'edit' && !puedeEditarPaso(pasoActual) && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2.5 text-amber-800 text-xs font-medium animate-fadeIn">
+                    <Lock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <div className="flex-1">
+                      <span className="font-semibold">No cuentas con el permiso requerido para editar los campos de este paso.</span>
+                    </div>
+                  </div>
+                )}
+                <fieldset
+                  disabled={mode === 'edit' && !puedeEditarPaso(pasoActual)}
+                  className={`border-0 p-0 m-0 min-w-0 ${mode === 'edit' && !puedeEditarPaso(pasoActual) ? 'opacity-85 pointer-events-none select-text' : ''}`}
+                  style={mode === 'edit' && !puedeEditarPaso(pasoActual) ? { opacity: '0.25' } : {}}
+                >
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={pasoActual}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {renderPaso()}
+                    </motion.div>
+                  </AnimatePresence>
+                </fieldset>
               </div>
 
               {/* FOOTER */}
@@ -1392,7 +1538,7 @@ export function FormularioAuditoriaUnificado({
                   ) : (
                     <Button
                       onClick={handleSubmit}
-                      disabled={isSubmitting || validandoDisponibilidadEquipo || disponibilidadEquipoAuditor?.disponible === false}
+                      disabled={isSubmitting || ((puedeEditarPaso(3) || puedeEditarPaso(4)) && validandoDisponibilidadEquipo) || ((puedeEditarPaso(3) || puedeEditarPaso(4)) && disponibilidadEquipoAuditor?.disponible === false)}
                       style={{ background: '#10B981' }}
                       className="gap-2"
                     >
@@ -2322,12 +2468,40 @@ function Paso3EquipoAuditor({
   disponibilidadEquipoAuditor,
   validandoDisponibilidadEquipo,
 }: Paso3Props) {
-  const handleToggleAuditor = (auditorId: string) => {
-    const existe = formData.equipoAuditores.includes(auditorId);
-    if (existe) {
-      onChange('equipoAuditores', formData.equipoAuditores.filter(id => id !== auditorId));
+  const getAuditorIds = (auditor: AuditorOption): string[] => {
+    return [
+      auditor.id,
+      (auditor as any).idPerson,
+      (auditor as any).idTercero,
+      (auditor as any).idConfig,
+      auditor.nombre,
+    ]
+      .filter((v): v is string => Boolean(v && String(v).trim().length > 0))
+      .map((v) => String(v).trim().toLowerCase());
+  };
+
+  const isAuditorEnEquipo = (auditor: AuditorOption): boolean => {
+    if (!formData.equipoAuditores || formData.equipoAuditores.length === 0) return false;
+    const auditorIds = getAuditorIds(auditor);
+    return formData.equipoAuditores.some((eqId) =>
+      auditorIds.includes(String(eqId).trim().toLowerCase())
+    );
+  };
+
+  const handleToggleAuditor = (auditor: AuditorOption) => {
+    const auditorIds = getAuditorIds(auditor);
+    const estaEnEquipo = isAuditorEnEquipo(auditor);
+
+    if (estaEnEquipo) {
+      // Remover todas las posibles variantes de ID de este auditor
+      const nuevoEquipo = formData.equipoAuditores.filter(
+        (eqId) => !auditorIds.includes(String(eqId).trim().toLowerCase())
+      );
+      onChange('equipoAuditores', nuevoEquipo);
     } else {
-      onChange('equipoAuditores', [...formData.equipoAuditores, auditorId]);
+      // Agregar la mejor variante de ID (idPerson o id)
+      const targetId = (auditor as any).idPerson || auditor.id;
+      onChange('equipoAuditores', [...formData.equipoAuditores, targetId]);
     }
   };
 
@@ -2389,41 +2563,44 @@ function Paso3EquipoAuditor({
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
                 REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo)
-              ).map(auditor => (
-                <button
-                  key={auditor.id}
-                  type="button"
-                  onClick={() => handleToggleAuditor(auditor.id)}
-                  className={`
-                    p-3 rounded-lg border-2 transition-all text-left
-                    ${
-                      formData.equipoAuditores.includes(auditor.id)
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-gray-300 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`
-                        w-5 h-5 rounded border-2 flex items-center justify-center
-                        ${
-                          formData.equipoAuditores.includes(auditor.id)
-                            ? 'border-blue-600 bg-blue-600'
-                            : 'border-gray-400'
-                        }
-                      `}
-                    >
-                      {formData.equipoAuditores.includes(auditor.id) && (
-                        <CheckSquare className="w-3 h-3 text-white" />
-                      )}
+              ).map(auditor => {
+                const seleccionado = isAuditorEnEquipo(auditor);
+                return (
+                  <button
+                    key={auditor.id}
+                    type="button"
+                    onClick={() => handleToggleAuditor(auditor)}
+                    className={`
+                      p-3 rounded-lg border-2 transition-all text-left
+                      ${
+                        seleccionado
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-gray-300 hover:border-blue-400'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`
+                          w-5 h-5 rounded border-2 flex items-center justify-center
+                          ${
+                            seleccionado
+                              ? 'border-blue-600 bg-blue-600'
+                              : 'border-gray-400'
+                          }
+                        `}
+                      >
+                        {seleccionado && (
+                          <CheckSquare className="w-3 h-3 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-gray-900">{auditor.nombre}</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-gray-900">{auditor.nombre}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
             {formData.equipoAuditores.length > 0 && (
               <p className="text-xs text-blue-600 mt-2">
@@ -3075,8 +3252,11 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
           >
             <Input
               type="text"
-              value={formData.presupuestoEstimado}
-              onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
+              value={formatMiles(formData.presupuestoEstimado)}
+              onChange={(e) => {
+                const soloNumeros = e.target.value.replace(/\D/g, '');
+                onChange('presupuestoEstimado', soloNumeros ? formatMiles(soloNumeros) : '');
+              }}
               placeholder="Ej: $5,000,000 COP"
               className="border-gray-300"
             />

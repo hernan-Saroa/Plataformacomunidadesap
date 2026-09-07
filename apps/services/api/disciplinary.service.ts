@@ -54,6 +54,13 @@ export interface DisciplinaryNews {
     kanbanStage?: string;
     createdAt: string;
     updatedAt: string;
+    historialAuditoria?: {
+        id: string;
+        tipo: string;
+        usuario: string;
+        fecha: string;
+        observaciones?: string;
+    }[];
 }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
@@ -157,7 +164,8 @@ export interface ProcessStatistics {
 
 export interface DisciplinaryProcessActuacion {
     id: string;
-    processId: string;
+    processId: string | null;
+    newsId?: string | null;
     tipo: string;
     etapa?: string | null;
     descripcion: string;
@@ -614,12 +622,36 @@ if (fechaQuejaRaw) {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    async getNoticiaById(id: string): Promise<DisciplinaryNews> {
+        return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
+    async getActuacionesNoticia(newsId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`
+        );
+    }
+
+    async createActuacionNoticia(
+        newsId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`,
+            data
+        );
+    }
+
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
     }
 
     async restoreNews(id: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
+    }
+
+    async deleteNews(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
     }
 
     /**
@@ -631,6 +663,10 @@ if (fechaQuejaRaw) {
 
     async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
+    }
+
+    async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/resubmit`, { observaciones });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
@@ -1214,6 +1250,39 @@ if (fechaQuejaRaw) {
         const link = document.createElement('a');
         link.href = downloadUrl;
         link.download = `Expedientes_Disciplinarios_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Descargar el informe de vencimientos de los procesos disciplinarios (Excel)
+     * Disponible solo para el rol Radicador (SECRETARIA_RADICADOR)
+     */
+    async exportarInformeVencimientos(): Promise<void> {
+        const endpoint = `/api/v1/disciplinary-processes/export`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const headers: HeadersInit = {
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        };
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `Informe_Vencimientos_OCID_${new Date().toISOString().split('T')[0]}.xlsx`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

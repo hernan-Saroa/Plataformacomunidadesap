@@ -117,6 +117,12 @@ export class LegalAuto {
   @Column({ type: 'varchar', length: 50, nullable: true })
   etapaDestino: string;
 
+  // EFDS-1564: etapa en la que estaba el proceso justo antes de aprobar este auto.
+  // Solo se guarda si la aprobacion efectivamente cambio la etapa; sirve para que
+  // "Reversar aprobacion" devuelva el proceso a esa etapa.
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  etapaPreviaAprobacion: string | null;
+
   @Column({ type: 'text', nullable: true })
   notificationEvidence: string; // URL del archivo de prueba de notificación
 
@@ -125,6 +131,12 @@ export class LegalAuto {
 
   @Column({ type: 'text', nullable: true })
   rejection_comments: string;
+
+  @Column({ type: 'text', nullable: true })
+  rejectionDocumentUrl: string; // Documento de soporte adjuntado por el Jefe al devolver el auto
+
+  @Column({ type: 'text', nullable: true })
+  rejectionDocumentName: string;
 
   @Column({ type: 'int', nullable: true })
   prorrogaMeses: number | null; // 3 o 6 — Solo aplica para AUTO_PRORROGA
