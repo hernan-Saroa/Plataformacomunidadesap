@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -11,6 +12,7 @@ import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
+import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
 import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
@@ -23,6 +25,7 @@ import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
+import { NotificationClientService } from '../../common/notification-client.service';
 
 function esDiaHabil(fecha: Date): boolean {
   const dia = fecha.getDay();
@@ -81,6 +84,8 @@ function etiquetaEstadoHumana(estado?: string): string {
 
 @Injectable()
 export class TravelExpensesService {
+  private readonly logger = new Logger(TravelExpensesService.name);
+
   constructor(
     @InjectRepository(ComisionadoEntity)
     private readonly comisionadoRepo: Repository<ComisionadoEntity>,
@@ -90,6 +95,7 @@ export class TravelExpensesService {
     private readonly documentoRepo: Repository<DocumentoSoporteEntity>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    private readonly notificationClient: NotificationClientService,
   ) {}
 
   async obtenerSolicitudes(
@@ -180,12 +186,230 @@ export class TravelExpensesService {
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
+      analistaAsignadoId: s.analistaAsignadoId,
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
     }));
 
     return { data, total, page, limit };
+  }
+
+  async obtenerBandejaSecretario(
+    filtros: {
+      dependenciaId?: string;
+      prioridad?: string;
+      extemporanea?: boolean;
+      comisionadoDocumento?: string;
+      fechaInicio?: string;
+      fechaFin?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    const {
+      dependenciaId,
+      prioridad,
+      extemporanea,
+      comisionadoDocumento,
+      fechaInicio,
+      fechaFin,
+      page = 1,
+      limit = 20,
+    } = filtros;
+
+    const query = this.solicitudRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'comisionado')
+      .where('s.estado_solicitud IN (:...estados)', { estados: ['SOLICITADO', 'EXTEMPORANEA'] });
+
+    if (dependenciaId) {
+      query.andWhere('comisionado.id_dependencia = :dependenciaId', { dependenciaId });
+    }
+
+    if (prioridad) {
+      query.andWhere('s.prioridad = :prioridad', { prioridad });
+    }
+
+    if (typeof extemporanea === 'boolean') {
+      query.andWhere('s.extemporanea = :extemporanea', { extemporanea });
+    }
+
+    if (comisionadoDocumento) {
+      query.andWhere('comisionado.numero_documento = :documento', { documento: comisionadoDocumento });
+    }
+
+    if (fechaInicio) {
+      query.andWhere('s.fecha_inicio >= :fechaInicio', { fechaInicio: new Date(fechaInicio) });
+    }
+
+    if (fechaFin) {
+      query.andWhere('s.fecha_fin <= :fechaFin', { fechaFin: new Date(fechaFin) });
+    }
+
+    query
+      .orderBy('s.creado_en', 'DESC')
+      .addOrderBy('s.consecutivo_unico', 'ASC');
+
+    const total = await query.getCount();
+    const solicitudes = await query
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+
+    const data = solicitudes.map((s) => ({
+      id: s.id,
+      consecutivoUnico: s.consecutivoUnico,
+      comisionadoId: s.comisionadoId,
+      comisionado: s.comisionado
+        ? {
+            id: s.comisionado.id,
+            numeroDocumento: s.comisionado.numeroDocumento,
+            primerNombre: s.comisionado.primerNombre,
+            segundoNombre: s.comisionado.segundoNombre,
+            primerApellido: s.comisionado.primerApellido,
+            segundoApellido: s.comisionado.segundoApellido,
+            tipoComisionado: s.comisionado.tipoComisionado,
+            email: s.comisionado.email,
+            telefonoContacto: s.comisionado.telefonoContacto,
+            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+            idDependencia: s.comisionado.idDependencia,
+          }
+        : null,
+      destinoCiudad: s.destinoCiudad,
+      destinoDepartamento: s.destinoDepartamento,
+      fechaInicio: s.fechaInicio.toISOString(),
+      fechaFin: s.fechaFin.toISOString(),
+      objetoComision: s.objetoComision,
+      prioridad: s.prioridad,
+      rubroPresupuestal: s.rubroPresupuestal,
+      requiereTiquetes: s.requiereTiquetes,
+      montoViaticos: Number(s.montoViaticos || 0),
+      montoGastosViaje: Number(s.montoGastosViaje || 0),
+      diasComision: s.diasComision ?? 1,
+      estadoSolicitud: s.estadoSolicitud,
+      radicadoFueraJornada: s.radicadoFueraJornada,
+      extemporanea: s.extemporanea,
+      motivoDevolucion: s.motivoDevolucion,
+      fechaRevision: s.fechaRevision?.toISOString() ?? null,
+      creadoEn: s.creadoEn.toISOString(),
+      actualizadoEn: s.actualizadoEn.toISOString(),
+      creadoPorUsuarioId: s.creadoPorUsuarioId,
+      analistaAsignadoId: s.analistaAsignadoId,
+    }));
+
+    return { data, total, page, limit };
+  }
+
+  async actualizarPrioridad(
+    solicitudId: string,
+    prioridad: string,
+    usuarioId: string,
+    isSuperAdmin = false,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    if (!isSuperAdmin && solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO) {
+      throw new BadRequestException(
+        `Solo se puede actualizar la prioridad de solicitudes en estado SOLICITADO. Estado actual: ${solicitud.estadoSolicitud}`,
+      );
+    }
+
+    solicitud.prioridad = prioridad;
+    if (!solicitud.fechaRevision) {
+      solicitud.fechaRevision = new Date();
+    }
+
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    this.notificationClient
+      .archiveNotificacionesPorSolicitud(solicitud.id)
+      .catch((err) =>
+        this.logger.warn(
+          `[notify] No se pudieron archivar notificaciones para solicitud ${solicitud.id}: ${err?.message}`,
+        ),
+      );
+
+    return saved;
+  }
+
+  async devolverSolicitud(
+    solicitudId: string,
+    motivo: string,
+    usuarioId: string,
+    isSuperAdmin = false,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    if (!isSuperAdmin && ![EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA].includes(solicitud.estadoSolicitud)) {
+      throw new BadRequestException(
+        `Solo se pueden devolver solicitudes en estado SOLICITADO o EXTEMPORANEA. Estado actual: ${solicitud.estadoSolicitud}`,
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+
+    await this.dataSource.transaction(async (manager) => {
+      solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
+      solicitud.motivoDevolucion = motivo;
+      solicitud.fechaRevision = new Date();
+
+      await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.DEVUELTA,
+        usuarioId,
+        comentarios: motivo,
+      });
+    });
+
+    this.notificationClient
+      .deleteNotificacionesPorSolicitud(solicitud.id)
+      .catch((err) =>
+        this.logger.warn(
+          `[notify] No se pudieron eliminar notificaciones para solicitud ${solicitud.id}: ${err?.message}`,
+        ),
+      );
+
+    if (solicitud.creadoPorUsuarioId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+          tipo_notificacion: 'VIATICOS_DEVOLUCION',
+          titulo: `Solicitud devuelta: ${solicitud.consecutivoUnico}`,
+          mensaje: `Su solicitud ${solicitud.consecutivoUnico} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
+          descripcion_corta: `Devolución · ${solicitud.consecutivoUnico}`,
+          icono: 'AlertTriangle',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver solicitud',
+          url_accion: '/viaticos',
+          datos_adicionales: { solicitudId: solicitud.id, consecutivoUnico: solicitud.consecutivoUnico },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `[notify] No se pudo notificar devolución a usuario ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
+          ),
+        );
+    }
+
+    return solicitud;
   }
 
   async consultarComisionado(
@@ -276,17 +500,24 @@ export class TravelExpensesService {
 
   async obtenerSolicitudCompleta(
     solicitudId: string,
-  ): Promise<SolicitudComisionEntity> {
+  ): Promise<SolicitudComisionEntity & { documentosSoporte: DocumentoSoporteEntity[] }> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
-      relations: ['comisionado', 'documentosSoporte'],
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    return solicitud;
+    const documentos = await this.documentoRepo.find({
+      where: { solicitudId: solicitud.id },
+    });
+
+    return {
+      ...solicitud,
+      documentosSoporte: documentos,
+    };
   }
 
   async crearSolicitud(
@@ -405,14 +636,8 @@ export class TravelExpensesService {
       const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
       radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
 
-      const diasHabilesAnticipacion = contarDiasHabilesEntre(
-        ahora,
-        fechaInicio,
-      );
-      extemporanea = diasHabilesAnticipacion < 14;
-      estadoSolicitud = extemporanea
-        ? EstadoSolicitud.EXTEMPORANEA
-        : EstadoSolicitud.RADICADA;
+      estadoSolicitud = EstadoSolicitud.RADICADA;
+      extemporanea = false;
     } else {
       estadoSolicitud = EstadoSolicitud.PENDIENTE;
     }
@@ -451,6 +676,8 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
       diasComision: dto.diasComision ?? 1,
+      salarioBasico: dto.salarioBasico ?? 0,
+      costoEstimadoTiquete: dto.costoEstimadoTiquete ?? 0,
       estadoSolicitud,
       radicadoFueraJornada,
       extemporanea,
@@ -496,6 +723,7 @@ export class TravelExpensesService {
   async actualizarSolicitud(
     solicitudId: string,
     dto: UpdateSolicitudDto,
+    isSuperAdmin = false,
   ): Promise<SolicitudComisionEntity> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
@@ -505,7 +733,7 @@ export class TravelExpensesService {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {
+    if (!isSuperAdmin && solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {
       throw new BadRequestException(
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede editarse.`,
       );
@@ -556,6 +784,12 @@ export class TravelExpensesService {
     if (dto.diasComision !== undefined) {
       solicitud.diasComision = dto.diasComision;
     }
+    if (dto.salarioBasico !== undefined) {
+      solicitud.salarioBasico = dto.salarioBasico;
+    }
+    if (dto.costoEstimadoTiquete !== undefined) {
+      solicitud.costoEstimadoTiquete = dto.costoEstimadoTiquete;
+    }
     if (dto.tipoComision !== undefined) {
       solicitud.tipoComision = dto.tipoComision;
     }
@@ -578,9 +812,7 @@ export class TravelExpensesService {
       throw new BadRequestException('Solicitud no encontrada.');
     }
 
-    // RF-LIQ-004 — Inmutabilidad: un expediente ya consolidado (SOLICITADO o
-    // superior) está en modo solo lectura y no admite subida de nuevos PDFs.
-    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte');
+    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte', dto?.isSuperAdmin ?? false);
 
     const file = dto.file;
     const nombreArchivoOriginal =
@@ -623,6 +855,7 @@ export class TravelExpensesService {
   async eliminarDocumento(
     solicitudId: string,
     documentoId: string,
+    isSuperAdmin = false,
   ): Promise<{ success: boolean; message: string }> {
     // RF-LIQ-004 — Inmutabilidad: bloquea la eliminación de soportes cuando el
     // expediente ya fue consolidado (modo solo lectura).
@@ -633,6 +866,7 @@ export class TravelExpensesService {
       this.verificarExpedienteModificable(
         solicitud,
         'eliminar documentos de soporte',
+        isSuperAdmin,
       );
     }
 
@@ -777,13 +1011,8 @@ export class TravelExpensesService {
     const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
     const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
 
-    const diasHabilesAnticipacion = contarDiasHabilesEntre(ahora, fechaInicio);
-    const extemporanea = diasHabilesAnticipacion < 14;
-
-    solicitud.estadoSolicitud = extemporanea
-      ? EstadoSolicitud.EXTEMPORANEA
-      : EstadoSolicitud.RADICADA;
-    solicitud.extemporanea = extemporanea;
+    solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
+    solicitud.extemporanea = false;
     solicitud.radicadoFueraJornada = radicadoFueraJornada;
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -888,7 +1117,11 @@ export class TravelExpensesService {
   private verificarExpedienteModificable(
     solicitud: SolicitudComisionEntity,
     accion: string,
+    isSuperAdmin = false,
   ): void {
+    if (isSuperAdmin) {
+      return;
+    }
     const estado = solicitud.estadoSolicitud as EstadoSolicitud;
     if (ESTADOS_SOLO_LECTURA.has(estado)) {
       throw new BadRequestException(

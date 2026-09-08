@@ -12,6 +12,7 @@ import {
 import { ComisionadoEntity } from './comisionado.entity';
 import { DocumentoSoporteEntity } from './documento-soporte.entity';
 import { EstadoSolicitud, ESTADOS_SOLICITUD } from './estado-solicitud.enum';
+import { UsuarioEntity } from './usuario.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'solicitudes_comision' })
 @Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], {
@@ -103,6 +104,12 @@ export class SolicitudComisionEntity {
   @Column({ name: 'extemporanea', type: 'boolean', default: false })
   extemporanea: boolean;
 
+  @Column({ name: 'motivo_devolucion', type: 'text', nullable: true })
+  motivoDevolucion: string | null;
+
+  @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
+  fechaRevision: Date | null;
+
   @Column({
     name: 'tipo_comision',
     type: 'varchar',
@@ -114,8 +121,33 @@ export class SolicitudComisionEntity {
   @Column({ name: 'es_internacional', type: 'boolean', default: false })
   esInternacional: boolean;
 
+  @Column({
+    name: 'salario_basico',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
+  salarioBasico: number;
+
+  @Column({
+    name: 'costo_estimado_tiquete',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
+  costoEstimadoTiquete: number;
+
   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
   creadoPorUsuarioId: string;
+
+  @Column({ name: 'analista_asignado_id', type: 'uuid', nullable: true })
+  analistaAsignadoId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'analista_asignado_id' })
+  analistaAsignado: UsuarioEntity;
 
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;

@@ -11,6 +11,7 @@ import { ComisionadoEntity } from '../../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../../entities/documento-soporte.entity';
 import { ConfigService } from '../../config/config.service';
+import { NotificationClientService } from '../../../common/notification-client.service';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -38,6 +39,7 @@ describe('TravelExpensesService', () => {
       documentoRepo?: any;
       dataSource?: any;
       configService?: any;
+      notificationClient?: any;
     } = {},
   ) => {
     const {
@@ -58,6 +60,10 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+      },
+      notificationClient = {
+        archiveNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
       },
     } = overrides;
 
@@ -83,6 +89,10 @@ describe('TravelExpensesService', () => {
         {
           provide: ConfigService,
           useValue: configService,
+        },
+        {
+          provide: NotificationClientService,
+          useValue: notificationClient,
         },
       ],
     }).compile();
@@ -808,7 +818,7 @@ describe('TravelExpensesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('debe marcar como EXTEMPORANEA cuando la anticipación es menor a 14 días hábiles', async () => {
+    it('debe radicar como RADICADA sin evaluar anticipación en la creación', async () => {
       const comisionado = {
         ...mockComisionado,
         autorizacionHabeasData: true,
@@ -879,8 +889,8 @@ describe('TravelExpensesService', () => {
       });
 
       expect(result).toBeDefined();
-      expect(result.extemporanea).toBe(true);
-      expect(result.estadoSolicitud).toBe('EXTEMPORANEA');
+      expect(result.extemporanea).toBe(false);
+      expect(result.estadoSolicitud).toBe('RADICADA');
     });
   });
 

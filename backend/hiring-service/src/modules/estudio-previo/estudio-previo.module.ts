@@ -5,6 +5,8 @@ import { EstudioPrevioController } from './estudio-previo.controller';
 import { EstudioPrevioService } from './estudio-previo.service';
 import { FilesController } from './files.controller';
 import { ModalidadesController } from './modalidades.controller';
+import { PersonasController } from './personas.controller';
+import { ConfiguracionModule } from '../configuracion/configuracion.module';
 
 import { Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -15,17 +17,21 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
+import { UmbralesModule } from '../umbrales/umbrales.module';
 
 @Module({
   imports: [
+    // La creación del proceso valida la modalidad contra los umbrales vigentes.
+    UmbralesModule,
     TypeOrmModule.forFeature([
       Proceso,
       Expediente,
       ProcesoActividad,
       CampoFormulario,
       Documento, Trazabilidad, Revision, Plantilla, Modalidad]),
+    ConfiguracionModule,
   ],
-  controllers: [EstudioPrevioController, ModalidadesController, FilesController],
+  controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],
 })
 export class EstudioPrevioModule {}

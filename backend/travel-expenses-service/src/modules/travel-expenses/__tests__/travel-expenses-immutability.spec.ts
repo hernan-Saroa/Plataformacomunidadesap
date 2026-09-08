@@ -6,6 +6,7 @@ import { ComisionadoEntity } from '../../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../../entities/documento-soporte.entity';
 import { ConfigService } from '../../config/config.service';
+import { NotificationClientService } from '../../../common/notification-client.service';
 
 /**
  * Pruebas de inmutabilidad del expediente (RF-LIQ-004).
@@ -22,6 +23,7 @@ describe('TravelExpensesService — Inmutabilidad del expediente consolidado', (
     documentoRepo?: any;
     dataSource?: any;
     configService?: any;
+    notificationClient?: any;
   } = {}) => {
     const {
       solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) },
@@ -33,6 +35,11 @@ describe('TravelExpensesService — Inmutabilidad del expediente consolidado', (
       },
       dataSource = { transaction: jest.fn() },
       configService = { obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue(null) },
+      notificationClient = {
+        archiveNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+        send: jest.fn().mockResolvedValue(undefined),
+      },
     } = overrides;
 
     return Test.createTestingModule({
@@ -46,6 +53,10 @@ describe('TravelExpensesService — Inmutabilidad del expediente consolidado', (
         { provide: getRepositoryToken(DocumentoSoporteEntity), useValue: documentoRepo },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: ConfigService, useValue: configService },
+        {
+          provide: NotificationClientService,
+          useValue: notificationClient,
+        },
       ],
     }).compile();
   };

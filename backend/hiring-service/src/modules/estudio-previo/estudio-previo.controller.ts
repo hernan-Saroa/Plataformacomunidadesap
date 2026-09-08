@@ -22,13 +22,18 @@ import { createReadStream } from 'fs';
 
 import { EstudioPrevioService } from './estudio-previo.service';
 import { CrearProcesoDto, GuardarBorradorDto, RevisarDto } from './dto/estudio-previo.dto';
-import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
+import { Permisos } from '../../auth/permisos.decorator';
 import {
-  getHiringAccess,
-  ROLES_ESCRITURA_ESTUDIO_PREVIO,
-  ROLES_REVISION_ESTUDIO_PREVIO,
-} from '../../auth/hiring-access';
+  PERMISO_ACTIVIDAD_APROBAR,
+  PERMISO_ACTIVIDAD_EDITAR,
+  PERMISO_ACTIVIDAD_ENVIAR,
+  PERMISO_DOCUMENTO_ADJUNTAR,
+  PERMISO_EXPEDIENTE_VER,
+  PERMISO_PROCESO_CREAR,
+} from '../../auth/permisos';
+import { getHiringAccess } from '../../auth/hiring-access';
+
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
 const MIME_PERMITIDOS = [
@@ -55,8 +60,8 @@ export class EstudioPrevioController {
   constructor(private readonly service: EstudioPrevioService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ESCRITURA_ESTUDIO_PREVIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_PROCESO_CREAR)
   @ApiOperation({ summary: 'Crear proceso en etapa 3 y abrir su expediente electrónico' })
   crearProceso(@Body() dto: CrearProcesoDto, @Req() req: any) {
     return this.service.crearProceso(dto, getHiringAccess(req));
@@ -64,8 +69,8 @@ export class EstudioPrevioController {
 
   @Get()
   @ApiOperation({ summary: 'Listar procesos' })
-  listar() {
-    return this.service.listarProcesos();
+  listar(@Req() req: any) {
+    return this.service.listarProcesos(getHiringAccess(req));
   }
 
   @Get(':id')
@@ -81,8 +86,8 @@ export class EstudioPrevioController {
   }
 
   @Put(':id/estudio-previo')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ESCRITURA_ESTUDIO_PREVIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_ACTIVIDAD_EDITAR)
   @ApiOperation({ summary: 'Guardar borrador (no valida campos obligatorios)' })
   guardar(
     @Param('id', ParseUUIDPipe) id: string,
@@ -93,8 +98,8 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/enviar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ESCRITURA_ESTUDIO_PREVIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_ACTIVIDAD_ENVIAR)
   @ApiOperation({
     summary: 'Enviar a revisión',
     description:
@@ -106,8 +111,8 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/aprobar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_REVISION_ESTUDIO_PREVIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
   @ApiOperation({
     summary: 'Aprobar el estudio previo (numeral 3.4)',
     description: 'Solo aplica si está en revisión. Tras aprobarlo no admite cambios.',
@@ -121,8 +126,8 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/devolver')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_REVISION_ESTUDIO_PREVIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
   @ApiOperation({
     summary: 'Devolver el estudio previo con observaciones (numeral 3.4)',
     description: 'Regresa a borrador para que el gestor corrija y lo reenvíe.',
@@ -142,6 +147,8 @@ export class EstudioPrevioController {
   }
 
   @Get('plantillas/:numeral')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_EXPEDIENTE_VER)
   @ApiOperation({ summary: 'Formatos oficiales aplicables a la actividad' })
   plantillas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
     return this.service.plantillas(numeral, modalidad);
@@ -154,8 +161,8 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/documentos')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ESCRITURA_ESTUDIO_PREVIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({

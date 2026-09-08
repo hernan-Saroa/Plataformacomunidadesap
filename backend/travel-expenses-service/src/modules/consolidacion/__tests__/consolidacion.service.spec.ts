@@ -14,6 +14,7 @@ import { ExcepcionTiqueteEntity } from '../../../entities/tickets/excepcion-tiqu
 import { SaldoTiqueteEntity } from '../../../entities/tickets/saldo-tiquete.entity';
 import { SolicitudHistorialEstadoEntity } from '../../../entities/solicitud-historial-estado.entity';
 import { ConfigService } from '../../config/config.service';
+import { NotificationClientService } from '../../../common/notification-client.service';
 
 /**
  * Suite de pruebas de la consolidación y cierre de expediente (RF-LIQ-004).
@@ -136,6 +137,7 @@ describe('ConsolidacionService', () => {
     historialRepo?: any;
     dataSource?: any;
     configService?: any;
+    notificationClient?: any;
   } = {}) => {
     const {
       solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) },
@@ -146,6 +148,9 @@ describe('ConsolidacionService', () => {
       historialRepo = { create: jest.fn(), save: jest.fn() },
       dataSource = { transaction: jest.fn() },
       configService = configServiceMock('FUNCIONARIO'),
+      notificationClient = {
+        notifyByRole: jest.fn().mockResolvedValue(undefined),
+      },
     } = overrides;
 
     return Test.createTestingModule({
@@ -162,6 +167,7 @@ describe('ConsolidacionService', () => {
         },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: ConfigService, useValue: configService },
+        { provide: NotificationClientService, useValue: notificationClient },
       ],
     }).compile();
   };
@@ -356,6 +362,40 @@ describe('ConsolidacionService', () => {
       const resultado = await svc.consolidarExpediente('sol-001', 'user-enlace-1');
       expect(resultado.estadoSolicitud).toBe('SOLICITADO');
       expect(expediente.estadoSolicitud).toBe('SOLICITADO');
+    });
+  });
+
+  describe('consolidarExpediente — Escenario 4: Consolidación extemporánea', () => {
+    it('debe transicionar a EXTEMPORANEA cuando la anticipación es menor a 14 días hábiles', async () => {
+      const expediente = crearExpedienteBase({
+        fechaInicio: new Date('2026-09-10T00:00:00'),
+        documentosSoporte: [pdf('CDP')],
+      });
+
+      const onSave = jest.fn().mockImplementation(async (_e: any, ent: any) => ent);
+      const manager = crearManager({ expediente, onSave });
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+      };
+
+      const module = await createModule({ dataSource });
+      const svc = module.get<ConsolidacionService>(ConsolidacionService);
+
+      const resultado = await svc.consolidarExpediente('sol-001', 'user-enlace-1');
+
+      expect(resultado.success).toBe(true);
+      expect(resultado.estadoSolicitud).toBe('EXTEMPORANEA');
+      expect(resultado.estadoAnterior).toBe('RADICADA');
+      expect(expediente.estadoSolicitud).toBe('EXTEMPORANEA');
+      expect(expediente.extemporanea).toBe(true);
+
+      const historialGuardado = manager.save.mock.calls.find(
+        (call: any[]) => call[0] === SolicitudHistorialEstadoEntity,
+      )?.[1];
+      expect(historialGuardado).toBeDefined();
+      expect(historialGuardado.estadoAnterior).toBe('RADICADA');
+      expect(historialGuardado.estadoNuevo).toBe('EXTEMPORANEA');
+      expect(historialGuardado.comentarios).toContain('anticipación menor a 14 días hábiles');
     });
   });
 

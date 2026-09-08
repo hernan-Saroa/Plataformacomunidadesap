@@ -429,4 +429,15 @@ export enum Permissions {
   ESTRUCTURA_ORGANIZACIONAL_NODE_DELETE = 'estructura-organizacional.node.delete',
   ESTRUCTURA_ORGANIZACIONAL_IMPORT = 'estructura-organizacional.import',
   ESTRUCTURA_ORGANIZACIONAL_EXPORT = 'estructura-organizacional.export',
+
+  // Viáticos y Gastos de Viaje
+  VIATICOS_SOLICITUDES_VIEW = 'travel_expenses:read',
+  VIATICOS_SOLICITUDES_CREATE = 'travel_expenses:create_request',
+  VIATICOS_SOLICITUDES_READ_INBOX = 'travel_expenses:read_inbox',
+  VIATICOS_SOLICITUDES_SET_PRIORITY = 'travel_expenses:set_priority',
+  VIATICOS_SOLICITUDES_RETURN = 'travel_expenses:return_request',
+  VIATICOS_TIQUETES_VIEW = 'travel_expenses:tickets.view',
+  VIATICOS_LEGALIZACIONES_VIEW = 'travel_expenses:legalizations.view',
+  VIATICOS_RESOLUCIONES_VIEW = 'travel_expenses:resolutions.view',
+  VIATICOS_CONFIG_MANAGE = 'travel_expenses:manage_config',
 }
