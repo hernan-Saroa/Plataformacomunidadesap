@@ -1,4 +1,10 @@
-import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 /**
  * Entidad de lectura que representa un usuario del esquema auth.

@@ -3,10 +3,11 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
@@ -20,6 +21,7 @@ import {
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
+import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { sanitizeObjetoComision } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
@@ -97,6 +99,27 @@ export class TravelExpensesService {
     private readonly configService: ConfigService,
     private readonly notificationClient: NotificationClientService,
   ) {}
+
+  private readonly SUPER_ADMIN_ROLES = [
+    'ADMIN',
+    'SUPER_ADMIN',
+    'ADMINISTRATIVO',
+    'SUPER_ADMINISTRADOR',
+    'super_administrador',
+    'SUPERUSER',
+    'superuser',
+  ];
+
+  private esSuperAdmin(rolesUsuario: string[]): boolean {
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.SUPER_ADMIN_ROLES.includes(normalized) ||
+        this.SUPER_ADMIN_ROLES.includes(r.toUpperCase())
+      );
+    });
+  }
 
   async obtenerSolicitudes(
     usuarioId?: string,
@@ -221,10 +244,14 @@ export class TravelExpensesService {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado')
-      .where('s.estado_solicitud IN (:...estados)', { estados: ['SOLICITADO', 'EXTEMPORANEA'] });
+      .where('s.estado_solicitud IN (:...estados)', {
+        estados: ['SOLICITADO', 'EXTEMPORANEA'],
+      });
 
     if (dependenciaId) {
-      query.andWhere('comisionado.id_dependencia = :dependenciaId', { dependenciaId });
+      query.andWhere('comisionado.id_dependencia = :dependenciaId', {
+        dependenciaId,
+      });
     }
 
     if (prioridad) {
@@ -236,15 +263,21 @@ export class TravelExpensesService {
     }
 
     if (comisionadoDocumento) {
-      query.andWhere('comisionado.numero_documento = :documento', { documento: comisionadoDocumento });
+      query.andWhere('comisionado.numero_documento = :documento', {
+        documento: comisionadoDocumento,
+      });
     }
 
     if (fechaInicio) {
-      query.andWhere('s.fecha_inicio >= :fechaInicio', { fechaInicio: new Date(fechaInicio) });
+      query.andWhere('s.fecha_inicio >= :fechaInicio', {
+        fechaInicio: new Date(fechaInicio),
+      });
     }
 
     if (fechaFin) {
-      query.andWhere('s.fecha_fin <= :fechaFin', { fechaFin: new Date(fechaFin) });
+      query.andWhere('s.fecha_fin <= :fechaFin', {
+        fechaFin: new Date(fechaFin),
+      });
     }
 
     query
@@ -315,7 +348,10 @@ export class TravelExpensesService {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    if (!isSuperAdmin && solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO) {
+    if (
+      !isSuperAdmin &&
+      solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO
+    ) {
       throw new BadRequestException(
         `Solo se puede actualizar la prioridad de solicitudes en estado SOLICITADO. Estado actual: ${solicitud.estadoSolicitud}`,
       );
@@ -353,7 +389,12 @@ export class TravelExpensesService {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    if (!isSuperAdmin && ![EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA].includes(solicitud.estadoSolicitud)) {
+    if (
+      !isSuperAdmin &&
+      ![EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA].includes(
+        solicitud.estadoSolicitud,
+      )
+    ) {
       throw new BadRequestException(
         `Solo se pueden devolver solicitudes en estado SOLICITADO o EXTEMPORANEA. Estado actual: ${solicitud.estadoSolicitud}`,
       );
@@ -400,7 +441,10 @@ export class TravelExpensesService {
           tiene_accion: true,
           texto_boton_accion: 'Ver solicitud',
           url_accion: '/viaticos',
-          datos_adicionales: { solicitudId: solicitud.id, consecutivoUnico: solicitud.consecutivoUnico },
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: solicitud.consecutivoUnico,
+          },
         })
         .catch((err) =>
           this.logger.warn(
@@ -412,9 +456,7 @@ export class TravelExpensesService {
     return solicitud;
   }
 
-  async consultarComisionado(
-    documento: string,
-  ): Promise<ComisionadoEntity> {
+  async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
       throw new BadRequestException(
@@ -473,13 +515,12 @@ export class TravelExpensesService {
     const apellidos = (persona.pri_apellido || '').trim().split(/\s+/);
     const primerNombre = nombres.shift() || persona.nom_tercero || 'SIN NOMBRE';
     const segundoNombre = nombres.join(' ') || null;
-    const primerApellido = apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
+    const primerApellido =
+      apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
     const segundoApellido = apellidos.join(' ') || null;
 
     const idDependencia =
-      persona.id_dependencia != null
-        ? Number(persona.id_dependencia)
-        : null;
+      persona.id_dependencia != null ? Number(persona.id_dependencia) : null;
 
     const nuevo = this.comisionadoRepo.create({
       numeroDocumento: doc,
@@ -495,12 +536,14 @@ export class TravelExpensesService {
       idDependencia,
     } as Partial<ComisionadoEntity>);
 
-    return this.comisionadoRepo.save(nuevo as ComisionadoEntity);
+    return this.comisionadoRepo.save(nuevo);
   }
 
   async obtenerSolicitudCompleta(
     solicitudId: string,
-  ): Promise<SolicitudComisionEntity & { documentosSoporte: DocumentoSoporteEntity[] }> {
+  ): Promise<
+    SolicitudComisionEntity & { documentosSoporte: DocumentoSoporteEntity[] }
+  > {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
       relations: ['comisionado'],
@@ -733,7 +776,10 @@ export class TravelExpensesService {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
-    if (!isSuperAdmin && solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {
+    if (
+      !isSuperAdmin &&
+      solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE
+    ) {
       throw new BadRequestException(
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede editarse.`,
       );
@@ -812,7 +858,11 @@ export class TravelExpensesService {
       throw new BadRequestException('Solicitud no encontrada.');
     }
 
-    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte', dto?.isSuperAdmin ?? false);
+    this.verificarExpedienteModificable(
+      solicitud,
+      'subir documentos de soporte',
+      dto?.isSuperAdmin ?? false,
+    );
 
     const file = dto.file;
     const nombreArchivoOriginal =
@@ -1122,7 +1172,7 @@ export class TravelExpensesService {
     if (isSuperAdmin) {
       return;
     }
-    const estado = solicitud.estadoSolicitud as EstadoSolicitud;
+    const estado = solicitud.estadoSolicitud;
     if (ESTADOS_SOLO_LECTURA.has(estado)) {
       throw new BadRequestException(
         `El expediente ${solicitud.consecutivoUnico ?? solicitud.id} tiene estado ${solicitud.estadoSolicitud} (solo lectura). No puede ${accion} en un expediente ya consolidado.`,
@@ -1448,5 +1498,341 @@ export class TravelExpensesService {
 
       doc.end();
     });
+  }
+
+  // ==========================================================================
+  // Etapa 5 — Verificar y crear comision en SIIF Nacion
+  // ==========================================================================
+
+  /**
+   * RF-REC-002 Etapa 5 — Obtiene las solicitudes asignadas al analista
+   * autenticado filtradas por estados activos: SOLICITADO, EN_VERIFICACION,
+   * VERIFICADA (misma lógica que la bandeja del asignador).
+   */
+  async obtenerSolicitudesAsignadasAnalista(
+    analistaId: string,
+    rolesUsuario: string[] = [],
+  ): Promise<SolicitudComisionEntity[]> {
+    if (!analistaId) {
+      throw new BadRequestException('analistaId es obligatorio.');
+    }
+
+    const esSuperAdmin = this.esSuperAdmin(rolesUsuario);
+
+    const whereCondition: any = esSuperAdmin
+      ? {
+          estadoSolicitud: In([
+            EstadoSolicitud.SOLICITADO,
+            EstadoSolicitud.EN_VERIFICACION,
+            EstadoSolicitud.VERIFICADA,
+          ]),
+        }
+      : {
+          analistaAsignadoId: analistaId,
+          estadoSolicitud: In([
+            EstadoSolicitud.SOLICITADO,
+            EstadoSolicitud.EN_VERIFICACION,
+            EstadoSolicitud.VERIFICADA,
+          ]),
+        };
+
+    return this.solicitudRepo.find({
+      where: whereCondition,
+      order: { creadoEn: 'DESC' },
+      relations: ['comisionado'],
+    });
+  }
+
+  /**
+   * RF-REC-002 Etapa 5 — Registra el checklist de verificacion del analista.
+   * Valida Segregacion de Funciones y estado de la solicitud. Almacena el
+   * resultado del checklist en el historial y actualiza el flag de consulta RUT.
+   */
+  async verificarAuditoria(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: VerifyAuditDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoD(solicitud, usuarioId, rolesUsuario);
+
+      if (
+        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
+        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
+      ) {
+        throw new BadRequestException(
+          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+        );
+      }
+
+      const comentarioChecklist = JSON.stringify({
+        tipo: 'VERIFICACION_ANALISTA',
+        seguridad_social_vigente: dto.seguridadSocialVigente ?? null,
+        consulta_rut_facturador: dto.consultaRutFacturador ?? false,
+      });
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior: solicitud.estadoSolicitud,
+        estadoNuevo: solicitud.estadoSolicitud,
+        usuarioId: usuarioId,
+        comentarios:
+          comentarioChecklist.length > 255
+            ? comentarioChecklist.slice(0, 252) + '...'
+            : comentarioChecklist,
+      });
+
+      solicitud.consultaRutFacturador = dto.consultaRutFacturador ?? false;
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      this.logger.log(
+        `[etapa5] Verificacion registrada para solicitud ${solicitud.consecutivoUnico} por usuario ${usuarioId}`,
+      );
+
+      return saved;
+    });
+  }
+
+  /**
+   * RF-REC-002 Etapa 5 — Devuelve una solicitud asignada desde el analista.
+   * Transiciona el estado a DEVUELTA y registra la novedad en el historial.
+   */
+  async devolverAnalista(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    motivo: string,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+    if (!motivo || motivo.trim().length === 0) {
+      throw new BadRequestException('El motivo de devolucion es obligatorio.');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoD(solicitud, usuarioId, rolesUsuario);
+
+      if (
+        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
+        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
+      ) {
+        throw new BadRequestException(
+          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
+      solicitud.motivoDevolucion = motivo.trim().slice(0, 1000);
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.DEVUELTA,
+        usuarioId: usuarioId,
+        comentarios: motivo.trim().slice(0, 255),
+      });
+
+      this.logger.log(
+        `[etapa5] Solicitud ${solicitud.consecutivoUnico} devuelta por usuario ${usuarioId}. Motivo: ${motivo.trim().slice(0, 100)}`,
+      );
+
+      return saved;
+    });
+  }
+
+  /**
+   * RF-REC-002 Etapa 5 — Genera el CSV de exportacion SIIF y transiciona
+   * la solicitud al estado SOLICITADA_SIIF.
+   */
+  async exportarSIIF(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+  ): Promise<{
+    csvContent: string;
+    fileName: string;
+    solicitud: SolicitudComisionEntity;
+  }> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoD(solicitud, usuarioId, rolesUsuario);
+
+      const estadosPermitidos = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.VERIFICADA,
+      ];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION o VERIFICADA.`,
+        );
+      }
+
+      if (solicitud.siifExportado) {
+        throw new BadRequestException(
+          'Esta solicitud ya fue exportada a SIIF.',
+        );
+      }
+
+      const comisionado = await manager
+        .getRepository(ComisionadoEntity)
+        .findOne({
+          where: { id: solicitud.comisionadoId },
+        });
+
+      const nombreComisionado = comisionado
+        ? [
+            comisionado.primerNombre,
+            comisionado.segundoNombre,
+            comisionado.primerApellido,
+            comisionado.segundoApellido,
+          ]
+            .filter(Boolean)
+            .join(' ')
+        : '';
+
+      const objetoSanitizado = sanitizeObjetoComision(
+        solicitud.objetoComision || '',
+      );
+      const rubroSanitizado = sanitizeObjetoComision(
+        solicitud.rubroPresupuestal || '',
+      );
+
+      const valorNeto =
+        Number(solicitud.montoViaticos || 0) +
+        Number(solicitud.montoGastosViaje || 0);
+
+      const headers = [
+        'Cedula',
+        'Nombre',
+        'Objeto',
+        'ValorNeto',
+        'RubroPresupuestal',
+      ];
+      const row = [
+        comisionado?.numeroDocumento || '',
+        `"${nombreComisionado}"`,
+        `"${objetoSanitizado}"`,
+        valorNeto.toFixed(2),
+        `"${rubroSanitizado}"`,
+      ];
+      const csvContent = headers.join(';') + '\n' + row.join(';') + '\n';
+      const fechaCorta = new Date().toISOString().slice(0, 10);
+      const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
+
+      solicitud.siifExportado = true;
+      solicitud.fechaExportacionSiif = new Date();
+      solicitud.usuarioExportadorId = usuarioId;
+      solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior: EstadoSolicitud.SOLICITADO,
+        estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+        usuarioId: usuarioId,
+        comentarios: 'Exportado a SIIF Nacion',
+      });
+
+      this.logger.log(
+        `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
+      );
+
+      return { csvContent, fileName, solicitud: saved };
+    });
+  }
+
+  /**
+   * Valida Segregacion de Funciones (SoD): un comisionado o creador de
+   * solicitud no puede auto-auditarse, excepto si tiene rol de super admin.
+   */
+  private validarSoD(
+    solicitud: SolicitudComisionEntity,
+    usuarioId: string,
+    rolesUsuario: string[],
+  ): void {
+    const superAdminRoles = [
+      'ADMIN',
+      'SUPER_ADMIN',
+      'ADMINISTRATIVO',
+      'SUPER_ADMINISTRADOR',
+      'super_administrador',
+      'SUPERUSER',
+      'superuser',
+    ];
+
+    const esSuperAdmin = rolesUsuario.some((r: any) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        superAdminRoles.includes(normalized) ||
+        superAdminRoles.includes(r.toUpperCase())
+      );
+    });
+
+    if (esSuperAdmin) {
+      return;
+    }
+
+    if (
+      solicitud.comisionadoId === usuarioId ||
+      solicitud.creadoPorUsuarioId === usuarioId
+    ) {
+      throw new ForbiddenException(
+        'Infraccion de Segregacion de Funciones: Un comisionado o creador de solicitud no puede auto-auditarse',
+      );
+    }
   }
 }

@@ -108,7 +108,9 @@ describe('AssignmentsController — RF-REC-002', () => {
         },
       ];
 
-      jest.spyOn(service, 'obtenerSolicitudesAsignadas').mockResolvedValue(mockData as any);
+      jest
+        .spyOn(service, 'obtenerSolicitudesAsignadas')
+        .mockResolvedValue(mockData as any);
 
       const result = await controller.obtenerMisSolicitudes({
         user: { userId: 'user-1' },
@@ -119,13 +121,15 @@ describe('AssignmentsController — RF-REC-002', () => {
         total: 1,
         timestamp: expect.any(String),
       });
-      expect(service.obtenerSolicitudesAsignadas).toHaveBeenCalledWith('user-1');
+      expect(service.obtenerSolicitudesAsignadas).toHaveBeenCalledWith(
+        'user-1',
+      );
     });
 
     it('debe lanzar 400 si no hay usuario autenticado', async () => {
-      await expect(
-        controller.obtenerMisSolicitudes({} as any),
-      ).rejects.toThrow(BadRequestException);
+      await expect(controller.obtenerMisSolicitudes({} as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -140,7 +144,9 @@ describe('AssignmentsController — RF-REC-002', () => {
         historial: { id: 'hist-001' },
       };
 
-      jest.spyOn(service, 'asignarAnalista').mockResolvedValue(mockResult as any);
+      jest
+        .spyOn(service, 'asignarAnalista')
+        .mockResolvedValue(mockResult as any);
 
       const result = await controller.asignarAnalista(
         { user: { userId: 'secretario-1' } } as any,
@@ -157,7 +163,11 @@ describe('AssignmentsController — RF-REC-002', () => {
           historialId: 'hist-001',
         },
       });
-      expect(service.asignarAnalista).toHaveBeenCalledWith('sol-001', 'user-1', 'secretario-1');
+      expect(service.asignarAnalista).toHaveBeenCalledWith(
+        'sol-001',
+        'user-1',
+        'secretario-1',
+      );
     });
 
     it('debe lanzar 400 si faltan campos en el body', async () => {
@@ -171,10 +181,10 @@ describe('AssignmentsController — RF-REC-002', () => {
 
     it('debe lanzar 400 si no hay usuario autenticado', async () => {
       await expect(
-        controller.asignarAnalista(
-          {} as any,
-          { solicitudId: 'sol-001', analistaId: 'user-1' },
-        ),
+        controller.asignarAnalista({} as any, {
+          solicitudId: 'sol-001',
+          analistaId: 'user-1',
+        }),
       ).rejects.toThrow(BadRequestException);
     });
   });

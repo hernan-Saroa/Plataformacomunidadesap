@@ -31,6 +31,7 @@ export enum EstadoSolicitud {
   PENDIENTE_LEGALIZACION = 'PENDIENTE_LEGALIZACION',
   LEGALIZADO = 'LEGALIZADO',
   RECHAZADO = 'RECHAZADO',
+  SOLICITADA_SIIF = 'SOLICITADA_SIIF',
 }
 
 export const ESTADOS_SOLICITUD = Object.values(EstadoSolicitud);

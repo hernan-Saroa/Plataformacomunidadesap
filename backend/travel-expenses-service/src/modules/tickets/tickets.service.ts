@@ -78,15 +78,17 @@ export class TicketsService {
    * `rutas_restringidas`: mayúsculas, sin acentos, sin prefijos (D.C., etc.).
    */
   private normalizarCiudad(ciudad: string): string {
-    return (ciudad || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .replace(/\s+/g, ' ')
-      // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
-      // para que coincida con las rutas restringidas registradas como BOGOTA.
-      .replace(/\s*,?\s*D\.?C\.?$/i, '')
-      .trim();
+    return (
+      (ciudad || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/\s+/g, ' ')
+        // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
+        // para que coincida con las rutas restringidas registradas como BOGOTA.
+        .replace(/\s*,?\s*D\.?C\.?$/i, '')
+        .trim()
+    );
   }
 
   private calcularNivelAlerta(
@@ -533,7 +535,8 @@ export class TicketsService {
     }
     if (dto.descripcionRestriccion !== undefined) {
       entity.descripcionRestriccion =
-        dto.descripcionRestriccion && dto.descripcionRestriccion.trim().length > 0
+        dto.descripcionRestriccion &&
+        dto.descripcionRestriccion.trim().length > 0
           ? dto.descripcionRestriccion.trim()
           : this.DESCRIPCION_RUTA_POR_DEFECTO;
     }

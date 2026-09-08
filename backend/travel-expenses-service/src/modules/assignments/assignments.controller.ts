@@ -15,7 +15,12 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { Permissions } from '../../common/permissions.decorator';
 import { AssignmentsService } from './assignments.service';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -52,8 +57,12 @@ export class AssignmentsController {
     description: 'Tablero de carga calculado correctamente.',
   })
   @ApiBearerAuth()
-  async obtenerCargaAnalistas(@Req() req: AuthenticatedRequest, @Query('solicitudId') solicitudId?: string) {
-    const data = await this.assignmentsService.obtenerCargaAnalistas(solicitudId);
+  async obtenerCargaAnalistas(
+    @Req() req: AuthenticatedRequest,
+    @Query('solicitudId') solicitudId?: string,
+  ) {
+    const data =
+      await this.assignmentsService.obtenerCargaAnalistas(solicitudId);
     return {
       data,
       total: data.length,
@@ -83,7 +92,8 @@ export class AssignmentsController {
       throw new BadRequestException('Usuario no autenticado.');
     }
 
-    const data = await this.assignmentsService.obtenerSolicitudesAsignadas(analistaId);
+    const data =
+      await this.assignmentsService.obtenerSolicitudesAsignadas(analistaId);
 
     return {
       data,
@@ -118,7 +128,9 @@ export class AssignmentsController {
     @Body() body: { solicitudId: string; analistaId: string },
   ) {
     if (!body?.solicitudId || !body?.analistaId) {
-      throw new BadRequestException('solicitudId y analistaId son obligatorios.');
+      throw new BadRequestException(
+        'solicitudId y analistaId son obligatorios.',
+      );
     }
 
     const secretarioId = req.user?.userId;

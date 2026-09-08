@@ -12,7 +12,8 @@ export type EstadoSolicitudViatico =
   | 'RECHAZADO'
   | 'RADICADA'
   | 'EXTEMPORANEA'
-  | 'DEVUELTA';
+  | 'DEVUELTA'
+  | 'SOLICITADA_SIIF';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -154,7 +155,10 @@ export interface SolicitudComisionResponse {
    warningMessage?: string;
    salarioBasico?: number;
    costoEstimadoTiquete?: number;
-   analistaAsignadoId?: string | null;
+  analistaAsignadoId?: string | null;
+  siifExportado?: boolean;
+  fechaExportacionSiif?: string | null;
+  consultaRutFacturador?: boolean;
 }
 
 /**
@@ -558,4 +562,34 @@ export interface AsignacionAnalistaResponse {
     analistaAsignadoId: string | null;
     historialId: string;
   };
+}
+
+// =========================================================================
+// RF-VER-SIIF — Verificar y crear comisión en SIIF Nación (Etapa 5)
+// =========================================================================
+
+export interface VerifyAuditResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    consultaRutFacturador: boolean;
+  };
+  timestamp: string;
+}
+
+export interface DevolverAnalistaResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    motivoDevolucion: string;
+  };
+  timestamp: string;
+}
+
+export interface SolicitudAsignadaAnalistaResponse {
+  data: SolicitudListaResponse[];
+  total: number;
+  timestamp: string;
 }
