@@ -114,6 +114,28 @@ export class BancoDocentesController {
     }
   }
 
+  /**
+   * Misma regla de propiedad, pero comparando la persona del perfil. La usan
+   * las vistas consolidadas (perfil por cédula y cabezote) porque un registro
+   * histórico puede no tener aún fila en `Docente`.
+   */
+  private async assertOwnProfileByPersona(personaId: string | null | undefined, periodoCarga: string | undefined, req: any): Promise<void> {
+    const roles = getRequestRoleCodes(req?.user);
+    const permissions: Set<string> = req?.rundPermissions instanceof Set
+      ? req.rundPermissions
+      : new Set<string>();
+    const canReadOtherProfiles = roles.some((role) => ['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN'].includes(role))
+      || permissions.has(RUND_PERMISSIONS.VIEW)
+      || permissions.has(RUND_PERMISSIONS.MANAGE);
+    if (canReadOtherProfiles || !roles.includes('DOCENTE')) return;
+
+    const authenticatedProfile = await this.service.getById(String(req?.user?.userId || ''), periodoCarga);
+    const propia = authenticatedProfile?.persona_id ? String(authenticatedProfile.persona_id) : '';
+    if (!personaId || !propia || String(personaId) !== propia) {
+      throw new ForbiddenException('El docente solo puede consultar su propio perfil RUND.');
+    }
+  }
+
   @Get()
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
@@ -911,6 +933,25 @@ export class BancoDocentesController {
     await this.assertOwnProfileForDocente(id, undefined, req);
     const result = await this.service.verificarActivacion(id);
     return { success: true, data: result };
+  }
+
+  /**
+   * REQ-RUND-F002 — Cabezote del perfil docente.
+   * Solo lectura para todos los roles con acceso al perfil. El docente solo
+   * consulta el suyo. El puntaje salarial se enmascara con el mismo catálogo
+   * central de datos sensibles y el acceso queda auditado.
+   */
+  @Get(':id/cabezote')
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  async getPerfilCabezote(
+    @Param('id') id: string,
+    @Query('periodoCarga') periodoCarga: string | undefined,
+    @Req() req: any,
+  ) {
+    const cabezote = await this.service.getPerfilCabezote(id, periodoCarga);
+    await this.assertOwnProfileByPersona(cabezote.persona_id, periodoCarga, req);
+    return { success: true, data: await this.protectSensitiveResponse(cabezote, req, 'CABEZOTE_PERFIL_RUND') };
   }
 
   /** §6.3 / BR-059 — Tarjeta RUND para Carpeta Digital */

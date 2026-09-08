@@ -3,6 +3,7 @@ import { Mail, ShieldCheck, ChevronRight, CheckCircle, Save, Loader2, User, Brie
 import { apiClient } from '../../../../../shell/src/services/api';
 import { ESAPLogo } from '../../../../../shell/src/components/assets/ESAPLogo';
 import { vincularRundSoporte } from '../../../services/api/ptaApi';
+import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
 
 // Catálogo de soportes por bloque RUND (alineado con BancoDocentesService.CATALOGO_SOPORTE).
 // Se presenta un subconjunto curado con etiquetas amigables para la autogestión del docente.
@@ -61,6 +62,8 @@ export function AutogestionDocenteRUND() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
   const [isExistingDocente, setIsExistingDocente] = useState(false);
+  /** REQ-RUND-F002 — Perfil RUND persistido, fuente del cabezote de solo lectura. */
+  const [perfilRund, setPerfilRund] = useState<any>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(false);
   // §Paso 2 — Soportes documentales retenidos en el cliente (key: `${bloque}__${tipoSoporte}`)
@@ -207,6 +210,10 @@ export function AutogestionDocenteRUND() {
       }
 
       setIsExistingDocente(true);
+      // REQ-RUND-F002 — El cabezote se pinta con el perfil tal como llega del
+      // servidor, no con el formulario: el borrador puede sobrescribir valores
+      // y el puntaje ya viene enmascarado para la sesión de autogestión.
+      setPerfilRund(match);
       // Pre-fill fields from existing record
       setForm((prev: any) => ({
           ...prev,
@@ -621,6 +628,13 @@ export function AutogestionDocenteRUND() {
 
           {/* ═══════════════ STEP 3: FORM ═══════════════ */}
           {step === 'FORM' && (
+            <>
+            {/* REQ-RUND-F002 — Cabezote del perfil docente, fuera del área editable */}
+            {perfilRund && (
+              <div style={{ marginBottom: 20 }}>
+                <PerfilDocenteCabezote docente={perfilRund} />
+              </div>
+            )}
             <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
               {/* Form Header */}
               <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9' }}>
@@ -821,6 +835,7 @@ export function AutogestionDocenteRUND() {
                 </button>
               </div>
             </div>
+            </>
           )}
 
           {/* ═══════════════ STEP 4: DOCUMENTOS ═══════════════ */}

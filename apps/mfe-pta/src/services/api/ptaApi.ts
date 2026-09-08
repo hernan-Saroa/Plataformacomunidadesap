@@ -1933,6 +1933,18 @@ export async function getBancoDocenteById(id: string, periodoCarga?: string) {
   }
 }
 
+export async function getBancoDocenteCabezote(id: string, periodoCarga?: string) {
+  try {
+    const raw = await apiClient.get<any>(
+      `${BD_BASE}/${encodeURIComponent(id)}/cabezote`,
+      periodoCarga ? { periodoCarga } : undefined,
+    );
+    return normalizeResult<any>(raw, null);
+  } catch {
+    return { success: false, data: null };
+  }
+}
+
 export async function createBancoDocente(body: any) {
   try {
     const raw = await apiClient.post<any>(BD_BASE, body);

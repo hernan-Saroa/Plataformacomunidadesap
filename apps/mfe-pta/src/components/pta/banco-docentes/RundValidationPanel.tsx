@@ -11,6 +11,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { RundDocumentManager } from './RundDocumentManager';
+import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -195,9 +196,10 @@ const cleanRundDisplayText = (value: unknown): string => {
     .replace(/mÃƒÂ¡s/g, 'm\u00e1s');
 };
 
-const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any) => {
+export const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any) => {
   const campos = tarjetaRund?.bloques?.[bloqueId]?.campos || [];
   const lowerLabel = campoLabel.toLowerCase();
+  const normalLabel = campoLabel.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
   const formatValue = (value: any) => {
     if (value === undefined || value === null || value === '') return null;
@@ -209,7 +211,18 @@ const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any)
     return value;
   };
 
-  const findValue = (key: string) => formatValue(campos.find((c: any) => c.campo === key)?.valor);
+  const findValue = (key: string) => {
+    const field = campos.find((c: any) => c.campo === key);
+    if (key === 'PUNTAJE_SALARIAL' && (field?.restringido || tarjetaRund?.proteccion_datos?.acceso_completo !== true)) return 'Información restringida';
+    return formatValue(field?.valor);
+  };
+
+  if (normalLabel.includes('tipo y numero')) return [findValue('TIPO_DOCUMENTO'), findValue('DOCUMENTO_IDENTIDAD')].filter(Boolean).join(' · ') || null;
+  if (normalLabel.includes('nivel de formacion')) return findValue('NIVEL_FORMACION');
+  if (normalLabel.includes('regimen')) return findValue('REGIMEN_NORMATIVO');
+  if (normalLabel.includes('situacion categoria')) return findValue('SITUACION_CATEGORIA');
+  if (normalLabel.includes('investigacion')) return findValue('INVESTIGACION_ACTIVA');
+  if (normalLabel.includes('ultima evaluacion')) return findValue('ULTIMA_EVALUACION');
 
   if (lowerLabel.includes('edad')) {
     const edad = findValue('EDAD');
@@ -306,7 +319,7 @@ function mergeRecordValues<T extends string>(
   return changed ? next : previous;
 }
 
-export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { docenteId: string, cleanPersonaId?: string, docente?: any }) {
+export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpdated }: { docenteId: string, cleanPersonaId?: string, docente?: any, onUpdated?: () => void }) {
   const [tarjetaRund, setTarjetaRund] = useState<any | null>(null);
   const [rundBloques, setRundBloques] = useState<any[]>([]);
   const [rundAuditLog, setRundAuditLog] = useState<any[]>([]);
@@ -1179,6 +1192,12 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                   </div>
                 )}
 
+                <RundDatosCargaOriginal
+                  bloque={b.bloque}
+                  datos={tarjetaRund.datos_carga_masiva}
+                  accesoCompleto={tarjetaRund.proteccion_datos?.acceso_completo === true}
+                />
+
                 {/* Unified Validation List */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', marginBottom: 16, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1207,7 +1226,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                           {/* Col 1: Dato */}
                           <div style={{ width: '30%', padding: '16px 20px', borderRight: '1px solid #F1F5F9', background: '#FAFBFC' }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>{c.campo}</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: datoExtraido ? '#0F172A' : '#94A3B8' }}>{datoExtraido || 'No registrado / Auto'}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: datoExtraido !== null ? '#0F172A' : '#94A3B8', overflowWrap: 'anywhere' }}>{datoExtraido ?? 'No registrado / Auto'}</div>
                           </div>
 
                           {/* Col 2: Soporte Documental */}
@@ -1496,6 +1515,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           onSaved={() => {
             setIsEditing(false);
             fetchRundData();
+            onUpdated?.();
           }}
         />
       )}
