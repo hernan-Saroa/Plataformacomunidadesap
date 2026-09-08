@@ -27,7 +27,7 @@ import {
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
   getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada,
-  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA
+  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA, validarReenvioPTA
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -5167,6 +5167,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     requestingFirmaCodeRef.current = true;
     setRequestingFirmaCode(true);
     try {
+      if (accion === 'via_save' && isEnRevisionDocente) {
+        if (!currentPtaId) throw new Error('No se pudo identificar el PTA para validar el reenvío.');
+        // Ambos botones de reaprobación pasan por aquí. Se comprueba la versión
+        // guardada con las mismas reglas del envío antes de solicitar el OTP.
+        if (savingRef.current) throw new Error('Espera a que termine de guardar el PTA e intenta nuevamente.');
+        const saved = await handleSaveRef.current?.(false, true);
+        if (!saved) return false;
+        const validation = await validarReenvioPTA(currentPtaId);
+        if (!validation.success) {
+          throw new Error(validation.message || 'Revisa las actividades del PTA antes de enviarlo a reaprobación.');
+        }
+      }
       const etapaLabel = getFirmaEtapaLabel();
       const res = await requestPTAFirmaDocenteCode({
         ptaId: currentPtaId,
@@ -5195,7 +5207,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       requestingFirmaCodeRef.current = false;
       setRequestingFirmaCode(false);
     }
-  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, userPersonId, validateEnvioDocente]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, isEnRevisionDocente, periodo, userPersonId, validateEnvioDocente]);
 
   const closeConfirmResumen = useCallback((afterClose?: () => void) => {
     if (confirmResumenClosingRef.current) return;

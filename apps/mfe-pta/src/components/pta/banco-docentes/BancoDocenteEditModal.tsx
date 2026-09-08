@@ -620,6 +620,9 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                       <FloatingField label="Territorial" required error={fieldErrors.territorialNombre}>
                         <select className="wizard-field wizard-select" style={fieldStyle} value={form.territorialNombre} onChange={set('territorialNombre')} aria-invalid={Boolean(fieldErrors.territorialNombre)}>
                           <option value="">Seleccionar...</option>
+                          {docente && form.territorialNombre && !TERRITORIALES.includes(form.territorialNombre) && (
+                            <option value={form.territorialNombre}>{form.territorialNombre} (reportada)</option>
+                          )}
                           {TERRITORIALES.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </FloatingField>
