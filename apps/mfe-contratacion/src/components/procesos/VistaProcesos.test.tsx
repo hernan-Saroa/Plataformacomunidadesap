@@ -111,3 +111,52 @@ describe('VistaProcesos · selector de modalidad', () => {
     );
   });
 });
+
+/**
+ * Qué botones ve cada rol (EFDS-1183).
+ *
+ * El menú lateral ya se filtraba por permisos, pero los botones de acción no:
+ * a un ente de control —que solo consulta— se le ofrecía «Nuevo proceso», y al
+ * pulsarlo recibía un 403 que no puede interpretar.
+ */
+describe('VistaProcesos · acciones según el permiso', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    servicio.listarProcesos.mockResolvedValue([]);
+    servicio.modalidades.mockResolvedValue(MODALIDADES);
+  });
+
+  const sesionCon = (...permisos: string[]) =>
+    localStorage.setItem('user', JSON.stringify({ roles: [], permissions: permisos }));
+
+  it('ofrece crear a quien radica', async () => {
+    sesionCon('contratacion.proceso.create');
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();
+  });
+
+  it('no se lo ofrece a quien solo consulta', async () => {
+    sesionCon('contratacion.expediente.auditar');
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    await waitFor(() => expect(servicio.listarProcesos).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /Nuevo proceso/ })).toBeNull();
+  });
+
+  it('a quien solo consulta le explica el vacío sin pedirle que cree', async () => {
+    // «Crea el primero» sobre una lista vacía es una instrucción que ese rol
+    // no puede seguir.
+    sesionCon('contratacion.expediente.auditar');
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/cuando haya alguno radicado/)).toBeInTheDocument();
+  });
+
+  it('sin sesión no esconde nada', async () => {
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();
+  });
+});

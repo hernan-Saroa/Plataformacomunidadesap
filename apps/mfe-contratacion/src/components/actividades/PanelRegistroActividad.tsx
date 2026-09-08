@@ -14,6 +14,8 @@ import {
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
+import { Permitido } from '../shared/Permitido';
+import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 
 interface Props {
@@ -205,12 +207,17 @@ export function PanelRegistroActividad({
               </div>
             </>
           ) : (
-            <BotonSecundario
-              icono={<CircleSlash className="w-3.5 h-3.5" />}
-              onClick={() => setAnulando(true)}
-            >
-              Anular y registrar de nuevo
-            </BotonSecundario>
+            /* Consultar el registro es de todos; rehacerlo, de quien lo
+               trabaja. Sin `quien`: el bloque de arriba ya dice qué se
+               registró y quién, así que un aviso más sobraría. */
+            <Permitido permiso={PERMISOS.actividadEditar}>
+              <BotonSecundario
+                icono={<CircleSlash className="w-3.5 h-3.5" />}
+                onClick={() => setAnulando(true)}
+              >
+                Anular y registrar de nuevo
+              </BotonSecundario>
+            </Permitido>
           )}
         </>
       ) : (
@@ -256,15 +263,17 @@ export function PanelRegistroActividad({
               aprobacion una actividad vacia, y las dos formas de cerrarla se
               ignoraban entre si. A la derecha porque es donde termina la
               lectura del formulario. */}
-          <div className="flex justify-end">
-            <Boton
-              icono={<FilePlus2 className="w-3.5 h-3.5" />}
-              onClick={registrar}
-              disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
-            >
-              {requiereAprobacion ? 'Registrar y enviar a aprobación' : 'Registrar la actividad'}
-            </Boton>
-          </div>
+          <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+            <div className="flex justify-end">
+              <Boton
+                icono={<FilePlus2 className="w-3.5 h-3.5" />}
+                onClick={registrar}
+                disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
+              >
+                {requiereAprobacion ? 'Registrar y enviar a aprobación' : 'Registrar la actividad'}
+              </Boton>
+            </div>
+          </Permitido>
         </>
       )}
 
