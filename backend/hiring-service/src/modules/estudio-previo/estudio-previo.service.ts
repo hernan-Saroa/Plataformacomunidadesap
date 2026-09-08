@@ -155,12 +155,44 @@ export class EstudioPrevioService {
     });
   }
 
-  async obtenerProceso(procesoId: string) {
+  /**
+   * Si le corresponde ver los procesos de toda la entidad.
+   *
+   * El permiso se resuelve también contra la base, no solo contra la tabla de
+   * roles del código: el JWT lleva los roles pero no los permisos —se mantiene
+   * compacto a propósito— así que `tienePermiso` cae en `ROLES_QUE_OTORGAN`,
+   * que solo conoce los roles previstos al escribirla. Un rol creado después
+   * desde la administración quedaba sin ninguno.
+   */
+  private async puedeVerTodos(acceso?: HiringAccess): Promise<boolean> {
+    if (!acceso) return true;
+    if (tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS)) return true;
+
+    const suyos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
+    return suyos.includes(PERMISO_PROCESO_VER_TODOS);
+  }
+
+  /**
+   * Un proceso, si a quien pregunta le corresponde verlo.
+   *
+   * Filtrar solo el listado no basta: con el id a la mano se entraba igual al
+   * expediente de otra dependencia, y el id viaja en cada enlace que se
+   * comparte. Se responde 404 y no 403 para no confirmar que el proceso
+   * existe a quien no debe verlo.
+   */
+  async obtenerProceso(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.dataSource.getRepository(Proceso).findOne({
       where: { id: procesoId },
       relations: ['expediente'],
     });
     if (!proceso) throw new NotFoundException('Proceso no encontrado');
+
+    if (acceso && proceso.createdBy !== acceso.userName) {
+      if (!(await this.puedeVerTodos(acceso))) {
+        throw new NotFoundException('Proceso no encontrado');
+      }
+    }
+
     return proceso;
   }
 
@@ -179,22 +211,7 @@ export class EstudioPrevioService {
    * se devuelve todo, que es el comportamiento anterior.
    */
   async listarProcesos(acceso?: HiringAccess) {
-    /*
-     * El permiso se resuelve contra la base, no solo contra la tabla de roles
-     * del código.
-     *
-     * El JWT lleva los roles pero no los permisos —se mantiene compacto a
-     * propósito— así que `tienePermiso` cae en `ROLES_QUE_OTORGAN`, que solo
-     * conoce los roles previstos al escribirla. Un rol creado después desde
-     * la administración quedaba sin ninguno, y quien lo tuviera no veía nada
-     * aunque se le hubiera concedido «ver todos los procesos».
-     */
-    const verTodos =
-      !acceso ||
-      tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS) ||
-      (await this.permisos.permisosDeRoles(acceso.roles ?? [])).includes(
-        PERMISO_PROCESO_VER_TODOS,
-      );
+    const verTodos = await this.puedeVerTodos(acceso);
 
     const procesos = await this.dataSource.getRepository(Proceso).find({
       relations: ['expediente'],
