@@ -33,8 +33,21 @@ interface Sesion {
   permissions?: unknown[];
 }
 
+/**
+ * La sesión que dejó el shell.
+ *
+ * Primero `window.__esap_auth_cache`, que es donde el shell la publica de
+ * verdad: la restaura del backend y la guarda en memoria, no en disco. Las
+ * claves de almacenamiento quedan como respaldo por si otro host la deja ahí.
+ * Buscar solo en `localStorage` era el fallo: la sesión nunca estaba, así que
+ * `tienePermiso` respondía que sí a todo y no se escondía nada.
+ */
 function leerSesion(): Sesion | null {
   try {
+    const enMemoria = (window as unknown as { __esap_auth_cache?: Sesion })
+      .__esap_auth_cache;
+    if (enMemoria) return enMemoria;
+
     const crudo =
       localStorage.getItem('user') ??
       localStorage.getItem('esap_user') ??

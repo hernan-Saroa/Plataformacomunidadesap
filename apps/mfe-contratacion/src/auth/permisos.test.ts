@@ -13,7 +13,10 @@ describe('tienePermiso', () => {
   const sesion = (datos: unknown) =>
     localStorage.setItem('user', JSON.stringify(datos));
 
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    delete (window as any).__esap_auth_cache;
+  });
 
   it('deja pasar el permiso que la sesión trae', () => {
     sesion({ roles: [], permissions: ['contratacion.proceso.create'] });
@@ -66,5 +69,25 @@ describe('tienePermiso', () => {
 
     expect(tieneAlguno(PERMISOS.procesoCrear, PERMISOS.actividadAprobar)).toBe(true);
     expect(tieneAlguno(PERMISOS.procesoCrear, PERMISOS.configurar)).toBe(false);
+  });
+  it('lee la sesion del cache en memoria del shell', () => {
+    // Donde el shell la publica de verdad: la restaura del backend y la deja
+    // en memoria. Buscarla solo en localStorage la daba siempre por ausente,
+    // asi que no se escondia nada.
+    (window as any).__esap_auth_cache = {
+      roles: [],
+      permissions: ['contratacion.expediente.auditar'],
+    };
+
+    expect(tienePermiso(PERMISOS.procesoCrear)).toBe(false);
+    expect(tienePermiso('contratacion.expediente.auditar')).toBe(true);
+  });
+
+  it('el cache en memoria manda sobre el almacenamiento', () => {
+    // Si quedo una sesion vieja en disco, la del shell es la que vale.
+    localStorage.setItem('user', JSON.stringify({ roles: [], permissions: ['contratacion.proceso.create'] }));
+    (window as any).__esap_auth_cache = { roles: [], permissions: ['contratacion.proceso.view'] };
+
+    expect(tienePermiso(PERMISOS.procesoCrear)).toBe(false);
   });
 });
