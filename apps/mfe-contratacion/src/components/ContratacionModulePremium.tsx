@@ -29,6 +29,7 @@ import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
+import { PERMISOS, tienePermiso } from '../auth/permisos';
 
 type Seccion =
   | 'estudios-previos'
@@ -51,49 +52,6 @@ type Seccion =
  * Implementado: etapa 3, numeral 3.1 (estudio previo). Las demás actividades
  * se muestran en el detalle para dejar visible el flujo, sin simular datos.
  */
-/**
- * Si el usuario tiene un permiso, leyéndolo de la sesión que dejó el shell.
- *
- * El menú se filtra con esto porque ofrecer una pantalla que la API va a
- * rechazar con 403 no es seguridad —el guard ya la protege—, es una puerta
- * pintada: el usuario la abre, se estrella y no entiende por qué.
- *
- * Se lee del almacenamiento y no de un servicio del shell para no acoplar el
- * microfrontend a su host; si mañana la sesión deja de estar ahí, el menú se
- * muestra completo y el backend sigue negando lo que corresponda.
- */
-function tienePermiso(codigo: string): boolean {
-  try {
-    const crudo =
-      localStorage.getItem('user') ??
-      localStorage.getItem('esap_user') ??
-      sessionStorage.getItem('user');
-    if (!crudo) return true;
-
-    const usuario = JSON.parse(crudo);
-    const roles: any[] = Array.isArray(usuario?.roles) ? usuario.roles : [];
-    const esSuperAdmin = roles.some((rol) =>
-      typeof rol === 'string' ? rol === 'SUPER_ADMIN' : rol?.code === 'SUPER_ADMIN',
-    );
-    if (esSuperAdmin) return true;
-
-    const permisos: string[] = Array.isArray(usuario?.permissions)
-      ? usuario.permissions.map((p: any) => (typeof p === 'string' ? p : p?.code)).filter(Boolean)
-      : [];
-
-    // Sin permisos en la sesión no se esconde nada: es más probable que la
-    // sesión venga incompleta a que el usuario no tenga ninguno.
-    if (permisos.length === 0) return true;
-
-    return permisos.includes(codigo);
-  } catch {
-    return true;
-  }
-}
-
-/** Administrar umbrales, plazos, MIPYME, plantillas y la matriz de etapas. */
-const PERMISO_CONFIGURAR = 'contratacion.config.manage';
-
 /** Las que exigen `config.manage`: escriben parámetros, no trabajan un proceso. */
 const SECCIONES_DE_CONFIGURACION: Seccion[] = [
   'umbrales',
@@ -108,7 +66,7 @@ export default function ContratacionModulePremium() {
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
-  const puedeConfigurar = tienePermiso(PERMISO_CONFIGURAR);
+  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
 
   const grupos: MenuGroup[] = [
     {
