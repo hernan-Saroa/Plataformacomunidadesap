@@ -17,6 +17,11 @@
 -- sin situación en el RUND es asignable es decisión de negocio, no mía.
 --
 -- Forward-only e idempotente (solo toca filas con la categoría en NULL).
+--
+-- ⚠️ APROVISIONAMIENTO DE DATOS DE DESARROLLO, no el mecanismo de producción.
+-- Escribe fuera del esquema del módulo (academic_work_plan / auth) siguiendo el
+-- precedente de las migraciones 007 y 011. No toca código del PTA.
+-- RN-09 sigue vigente: el RUND es de solo lectura para las decanaturas.
 -- ============================================================================
 
 UPDATE academic_work_plan."Docente" d SET "situacionCategoria" = 'No Aplica'

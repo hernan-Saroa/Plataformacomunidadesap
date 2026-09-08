@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-import { resolverSituacion, extraerVigencia, sigueVigente } from './situacion-docente.js';
+import { resolverSituacion, extraerVigencia, sigueVigente , SIN_DATO_ASIGNABLE } from './situacion-docente.js';
 
 /**
  * EFDS-1372 :: subtarea 8 :: resolución de situación administrativa.
@@ -147,8 +147,14 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
       // Todos no asignables, y todos por la MISMA razón: sin situación en el
       // RUND. Si alguno pasara a asignable, alguien les inventó una situación.
       const resueltos = rows.map((r) => resolverSituacion(r.categoria, r.descripcion, HOY));
+      // Bloqueados por defecto, y todos por la MISMA razon: falta el dato.
       expect(resueltos.every((r) => !r.asignable)).toBe(true);
-      expect([...new Set(resueltos.map((r) => r.categoria))]).toEqual([null]);
+      expect([...new Set(resueltos.map((r) => r.categoria))]).toEqual(['sin_dato']);
+      // El motivo distingue "falta informacion" de "su situacion lo impide":
+      // conflacionarlos hacia que la decanatura leyera un motivo enganoso.
+      expect(resueltos.every((r) => /Falta informaci/.test(String(r.motivo)))).toBe(true);
+      // Y el parametro esta apagado por defecto: nadie les invento una situacion.
+      expect(SIN_DATO_ASIGNABLE).toBe(false);
     },
   );
 });

@@ -22,6 +22,11 @@
 -- borrado deja asignaciones huérfanas.
 --
 -- Forward-only e idempotente. SQL puro.
+--
+-- ⚠️ APROVISIONAMIENTO DE DATOS DE DESARROLLO, no el mecanismo de producción.
+-- Escribe fuera del esquema del módulo (academic_work_plan / auth) siguiendo el
+-- precedente de las migraciones 007 y 011. No toca código del PTA.
+-- RN-09 sigue vigente: el RUND es de solo lectura para las decanaturas.
 -- ============================================================================
 
 -- 1) Docentes de desarrollo (14 de la siembra + 2 sintéticos de cátedra).
