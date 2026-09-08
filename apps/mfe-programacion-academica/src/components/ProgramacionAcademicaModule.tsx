@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calendar,
   Clock,
@@ -22,6 +22,8 @@ import {
   Award,
   Layers3
 } from 'lucide-react';
+
+import { getTodasLasSesiones, getAulas, type Sesion } from '../services/api/catalogoApi';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
@@ -47,79 +49,55 @@ interface FranjaHoraria {
 
 type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas';
 
-const INITIAL_SCHEDULE: FranjaHoraria[] = [
-  {
-    id: '1',
-    codigo: 'PA-2026-001',
-    programa: 'Administración Pública Territorial (APT)',
-    asignatura: 'Derecho Constitucional I',
-    grupo: 'G01',
-    docente: 'Dr. Roberto Mendoza',
-    sede: 'Sede Central - Bogotá',
-    aula: 'Aula 204 (Bloque B)',
-    dia: 'Lunes',
-    horaInicio: '08:00',
-    horaFin: '11:00',
-    jornada: 'Diurna',
-    cupos: 35,
-    estado: 'CONFIRMADO'
-  },
-  {
-    id: '2',
-    codigo: 'PA-2026-002',
-    programa: 'Maestría en Administración Pública',
-    asignatura: 'Políticas Públicas y Gestión Estatal',
-    grupo: 'G02',
-    docente: 'Dra. María Fernanda Silva',
-    sede: 'Territorial Cundinamarca - Cetap Soacha',
-    aula: 'Auditorio Principal',
-    dia: 'Martes',
-    horaInicio: '18:00',
-    horaFin: '21:00',
-    jornada: 'Nocturna',
-    cupos: 25,
-    estado: 'CONFIRMADO'
-  },
-  {
-    id: '3',
-    codigo: 'PA-2026-003',
-    programa: 'Especialización en Gestión Pública',
-    asignatura: 'Finanzas Públicas y Presupuesto',
-    grupo: 'G01',
-    docente: 'Mg. Carlos Eduardo Gómez',
-    sede: 'Sede Central - Bogotá',
-    aula: 'Laboratorio de Cómputo 1',
-    dia: 'Miércoles',
-    horaInicio: '07:00',
-    horaFin: '10:00',
-    jornada: 'Diurna',
-    cupos: 30,
-    estado: 'CONFLICTO'
-  },
-  {
-    id: '4',
-    codigo: 'PA-2026-004',
-    programa: 'Administración Pública Territorial (APT)',
-    asignatura: 'Economía de lo Público',
-    grupo: 'G03',
-    docente: 'Dra. Ana Lucía Ramírez',
-    sede: 'Territorial Meta - Villavicencio',
-    aula: 'Aula 102',
-    dia: 'Sábado',
-    horaInicio: '08:00',
-    horaFin: '14:00',
-    jornada: 'Fin de Semana',
-    cupos: 40,
-    estado: 'PROGRAMADO'
-  }
-];
+
+/**
+ * El endpoint de horarios devuelve la SESIÓN, no el nombre del programa, la
+ * asignatura ni el docente: esos viven en otras tablas y aún no se unen en esta
+ * consulta. Se dejan vacíos a propósito en vez de inventarlos — que es
+ * exactamente lo que hacía la constante que se retiró.
+ */
+function sesionAFranja(s: Sesion): FranjaHoraria {
+  return {
+    id: s.idFranja,
+    codigo: s.idFranja.slice(0, 8),
+    programa: '',
+    asignatura: '',
+    grupo: s.idGrupo ?? '',
+    docente: '',
+    sede: '',
+    aula: s.aulaCodigo ?? '',
+    dia: s.diaSemana,
+    horaInicio: s.horaInicio,
+    horaFin: s.horaFin,
+    jornada: (s.jornada as FranjaHoraria['jornada']) ?? 'Diurna',
+    cupos: 0,
+    estado: (s.estado as FranjaHoraria['estado']) ?? 'PROGRAMADO',
+  };
+}
 
 export function ProgramacionAcademicaModule() {
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
   const [showNewModal, setShowNewModal] = useState(false);
-  const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>(INITIAL_SCHEDULE);
+  // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
+  // front, así que el panel decía "4 franjas activas" con la base en 0.
+  const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
+  const [totalAulas, setTotalAulas] = useState<number | null>(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([getTodasLasSesiones(), getAulas()])
+      .then(([sesiones, aulas]) => {
+        if (!vivo) return;
+        setScheduleList(sesiones.map(sesionAFranja));
+        setTotalAulas(aulas.length);
+      })
+      .catch(() => { if (vivo) setTotalAulas(null); })
+      .finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, []);
 
   // Form state
   const [newPrograma, setNewPrograma] = useState('');
@@ -278,7 +256,7 @@ export function ProgramacionAcademicaModule() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Aulas Asignadas</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">18</h3>
+            <h3 className="text-2xl font-black text-slate-800 mt-1">{totalAulas ?? '—'}</h3>
             <p className="text-xs text-purple-600 font-medium mt-1">Sedes y Territoriales</p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
@@ -332,8 +310,9 @@ export function ProgramacionAcademicaModule() {
       </div>
 
       {/* ── VISTAS POR SECCIÓN ── */}
-      {/* Catálogo: única sección conectada al backend real. Las demás siguen
-          sobre INITIAL_SCHEDULE hasta que se implementen sus HUs. */}
+      {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
+          que el endpoint de horarios devuelva programa, asignatura y docente:
+          hoy solo trae la sesión, así que esas columnas van vacías. */}
       {seccion === 'catalogo' && <SelectorCatalogo />}
 
       {seccion === 'horarios' && (

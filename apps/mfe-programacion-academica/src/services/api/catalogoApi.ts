@@ -149,6 +149,15 @@ export interface Sesion {
 
 const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
 
+/**
+ * TODAS las sesiones programadas, sin filtrar por grupo. Es lo que alimenta los
+ * contadores del panel: antes salían de una constante en el front y mostraban
+ * "4 franjas activas" con la base vacía.
+ */
+export function getTodasLasSesiones(): Promise<Sesion[]> {
+  return pedirJson<Sesion[]>(BASE_HORARIOS, { method: 'GET' });
+}
+
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
   return pedirJson<Sesion[]>(`${BASE_HORARIOS}?grupo=${encodeURIComponent(idGrupo)}`, { method: 'GET' });
 }
