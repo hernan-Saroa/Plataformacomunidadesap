@@ -20,6 +20,7 @@ import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import { PermisosService } from '../../auth/permisos.service';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
@@ -80,6 +81,7 @@ export class EstudioPrevioService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
     private readonly configuracionService: ConfiguracionService,
+    private readonly permisos: PermisosService,
   ) {}
 
   // ------------------------------------------------------------- proceso ---
@@ -177,8 +179,22 @@ export class EstudioPrevioService {
    * se devuelve todo, que es el comportamiento anterior.
    */
   async listarProcesos(acceso?: HiringAccess) {
+    /*
+     * El permiso se resuelve contra la base, no solo contra la tabla de roles
+     * del código.
+     *
+     * El JWT lleva los roles pero no los permisos —se mantiene compacto a
+     * propósito— así que `tienePermiso` cae en `ROLES_QUE_OTORGAN`, que solo
+     * conoce los roles previstos al escribirla. Un rol creado después desde
+     * la administración quedaba sin ninguno, y quien lo tuviera no veía nada
+     * aunque se le hubiera concedido «ver todos los procesos».
+     */
     const verTodos =
-      !acceso || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+      !acceso ||
+      tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS) ||
+      (await this.permisos.permisosDeRoles(acceso.roles ?? [])).includes(
+        PERMISO_PROCESO_VER_TODOS,
+      );
 
     const procesos = await this.dataSource.getRepository(Proceso).find({
       relations: ['expediente'],
