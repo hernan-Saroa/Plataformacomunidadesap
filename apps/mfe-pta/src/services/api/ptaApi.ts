@@ -452,6 +452,19 @@ export async function seedPTAs() {
   }
 }
 
+export async function validarReenvioPTA(ptaId: string) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/validar-reenvio`, {});
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      success: normalized.success && normalized.data?.valido === true,
+      message: asObject(raw).message as string | undefined,
+    };
+  } catch (error: any) {
+    return { success: false, message: error?.message || 'No se pudo validar el PTA antes del reenvío.' };
+  }
+}
+
 export async function updatePTAStatus(
   ptaId: string,
   data: {
