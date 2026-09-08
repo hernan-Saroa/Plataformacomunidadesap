@@ -103,9 +103,14 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
   siHayBase(
     'sobre la planta completa, exactamente 9 no asignables y son sabático + comisión',
     async () => {
+      // Acotado a la planta con situación registrada en el RUND. Desde el Lote 1
+      // conviven 80 catedráticos extraídos del histórico que NO traen situación
+      // administrativa: son no asignables por fail-closed y por falta de dato,
+      // no por sabático ni comisión. Se verifican aparte, en el canario de abajo.
       const { rows } = await client!.query(
         `SELECT "situacionCategoria" AS categoria, "situacionAdministrativa" AS descripcion
-           FROM academic_work_plan."Docente"`,
+           FROM academic_work_plan."Docente"
+          WHERE "tipoVinculacion" <> 'Cátedra'`,
       );
       expect(rows.length).toBeGreaterThan(0);
 
@@ -126,6 +131,24 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
         String(r.categoria).toLowerCase().includes('directivo'),
       );
       expect(directivosBloqueados).toHaveLength(0);
+    },
+  );
+
+  siHayBase(
+    'los 80 catedraticos del historico: no asignables por falta de dato, no por situacion',
+    async () => {
+      const { rows } = await client!.query(
+        `SELECT "situacionCategoria" AS categoria, "situacionAdministrativa" AS descripcion
+           FROM academic_work_plan."Docente"
+          WHERE "tipoVinculacion" = 'Cátedra'`,
+      );
+      expect(rows).toHaveLength(80);
+
+      // Todos no asignables, y todos por la MISMA razón: sin situación en el
+      // RUND. Si alguno pasara a asignable, alguien les inventó una situación.
+      const resueltos = rows.map((r) => resolverSituacion(r.categoria, r.descripcion, HOY));
+      expect(resueltos.every((r) => !r.asignable)).toBe(true);
+      expect([...new Set(resueltos.map((r) => r.categoria))]).toEqual([null]);
     },
   );
 });
