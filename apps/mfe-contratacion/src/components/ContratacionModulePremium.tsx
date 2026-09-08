@@ -29,7 +29,7 @@ import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
-import { PERMISOS, tienePermiso } from '../auth/permisos';
+import { PERMISOS, tieneAlguno, tienePermiso } from '../auth/permisos';
 
 type Seccion =
   | 'estudios-previos'
@@ -67,6 +67,16 @@ export default function ContratacionModulePremium() {
   const [actividad, setActividad] = useState<string | null>(null);
 
   const puedeConfigurar = tienePermiso(PERMISOS.configurar);
+  /*
+   * El expediente lo consulta quien lo audita, no cualquiera con acceso al
+   * módulo: reúne todo lo que se cargó en el proceso. Basta uno de los dos
+   * permisos —verlo o auditarlo— porque el Archivo de Gestión tiene el
+   * segundo sin el primero.
+   */
+  const puedeVerExpedientes = tieneAlguno(
+    PERMISOS.expedienteVer,
+    PERMISOS.expedienteAuditar,
+  );
 
   const grupos: MenuGroup[] = [
     {
@@ -91,18 +101,22 @@ export default function ContratacionModulePremium() {
          * sitios—, así que la entrada se retira en vez de quedarse prometiendo
          * algo que ya está en otro lado.
          */
-        {
-          // Tab propio y no un botón dentro del detalle: el expediente se
-          // consulta sin estar trabajando un proceso —es lo que abre un
-          // organismo de control—, y llegar a él pasando por lista y detalle
-          // lo escondía. Mismo sitio y mismo cian que en control interno y
-          // gestión legal.
-          id: 'expedientes',
-          label: 'Expedientes',
-          subtitle: 'Consulta y auditoría',
-          icon: <FolderOpen className="w-5 h-5" />,
-          color: '#0891B2',
-        },
+        ...(!puedeVerExpedientes
+          ? []
+          : [
+              {
+                // Tab propio y no un botón dentro del detalle: el expediente se
+                // consulta sin estar trabajando un proceso —es lo que abre un
+                // organismo de control—, y llegar a él pasando por lista y
+                // detalle lo escondía. Mismo sitio y mismo cian que en control
+                // interno y gestión legal.
+                id: 'expedientes' as Seccion,
+                label: 'Expedientes',
+                subtitle: 'Consulta y auditoría',
+                icon: <FolderOpen className="w-5 h-5" />,
+                color: '#0891B2',
+              },
+            ]),
       ],
     },
     {
@@ -175,9 +189,23 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
-    // Las de configuración se comprueban aunque el menú ya las esconda: la
-    // sección sobrevive en el estado, y quien tenía la pantalla abierta cuando
-    // le retiraron el permiso seguiría dentro de ella.
+    // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
+    // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
+    // seguiría dentro de ella.
+    if (seccion === 'expedientes' && !puedeVerExpedientes) {
+      return (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
+          <p className="text-[13px] font-bold text-slate-700 m-0">
+            No tienes acceso al expediente
+          </p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+            Lo consultan la Dirección de Contratación, el Archivo de Gestión y los organismos de
+            control.
+          </p>
+        </div>
+      );
+    }
+
     const esDeConfiguracion = SECCIONES_DE_CONFIGURACION.includes(seccion);
     if (esDeConfiguracion && !puedeConfigurar) {
       return (

@@ -24,6 +24,7 @@ export const PERMISOS = {
   documentoEliminar: 'contratacion.documento.delete',
   expedienteVer: 'contratacion.expediente.view',
   expedienteArchivar: 'contratacion.expediente.archivar',
+  expedienteAuditar: 'contratacion.expediente.auditar',
   alertaVer: 'contratacion.alerta.ver',
 } as const;
 
