@@ -20,6 +20,22 @@ import {
   formatearNombreComisionado,
 } from '../utils/viaticosUtils';
 
+const DEPENDENCIA_LOOKUP = new Map<number, string>();
+
+async function cargarCatalogoDependencias() {
+  if (DEPENDENCIA_LOOKUP.size > 0) return;
+  try {
+    const data = await viaticosService.obtenerDependencias();
+    data.forEach((d) => {
+      if (d.idDependencia != null) {
+        DEPENDENCIA_LOOKUP.set(Number(d.idDependencia), d.nomDependencia);
+      }
+    });
+  } catch {
+    // si no está disponible, se muestra el ID como fallback
+  }
+}
+
 function fmtFecha(fecha: Date | string | undefined): string {
   if (!fecha) return 'N/A';
   try {
@@ -157,6 +173,7 @@ export default function VerificacionSIIFModal({
       setDevolviendo(false);
       setErrorDevolucion(null);
       setCopied(null);
+      void cargarCatalogoDependencias();
     }
   }, [abierta]);
 
@@ -167,7 +184,18 @@ export default function VerificacionSIIFModal({
   const montoViaticos = Number(solicitud?.montoViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
   const valorNeto = montoViaticos + montoGastosViaje;
-  const semaforo = calcularSemaforo(valorNeto);
+
+  const resumenPresupuestal = (solicitud as any)?.resumenPresupuestal as
+    | {
+        totalGastado: number;
+        cantidadSolicitudes: number;
+        limitePresupuesto: number;
+        porcentajeUso: number;
+        semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+      }
+    | undefined;
+
+  const semaforo = resumenPresupuestal?.semaforo || calcularSemaforo(valorNeto);
 
   const documentosPdf = (solicitud?.documentosSoporte || []).filter((d) =>
     esPdfMime(d.tipoMime),
@@ -251,7 +279,7 @@ export default function VerificacionSIIFModal({
 
   return createPortal(
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[70vh] overflow-y-auto mt-16">
         <div className="p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
             <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
@@ -281,34 +309,45 @@ export default function VerificacionSIIFModal({
                   Revisión de Fondo
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-400 uppercase">Consecutivo</label>
-                      <div className="text-slate-800 font-mono">{solicitud.consecutivoUnico}</div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-400 uppercase">Comisionado</label>
-                      <div className="text-slate-800">
-                        {nombreCompleto || 'N/A'}
+                   <div className="space-y-2">
+                     <div>
+                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Consecutivo</label>
+                       <div className="text-slate-800 font-mono">{solicitud.consecutivoUnico}</div>
+                     </div>
+                     <div>
+                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Comisionado</label>
+                       <div className="text-slate-800">
+                         {nombreCompleto || 'N/A'}
+                       </div>
+                       <div className="text-slate-500">
+                         {comisionado?.numeroDocumento || 'N/A'}
+                       </div>
+                     </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Dependencia</label>
+                        <div className="text-slate-800">
+                          {(() => {
+                            const idDep = comisionado?.idDependencia ?? (solicitud as any)?.idDependencia;
+                            if (idDep == null) return 'N/A';
+                            const nombre = DEPENDENCIA_LOOKUP.get(Number(idDep));
+                            return nombre || `Dependencia #${idDep}`;
+                          })()}
+                        </div>
                       </div>
-                      <div className="text-slate-500">
-                        {comisionado?.numeroDocumento || 'N/A'}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-400 uppercase">Destino</label>
-                      <div className="text-slate-800">
-                        {solicitud.destinoCiudad}, {solicitud.destinoDepartamento}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-400 uppercase">Fechas del viaje</label>
-                      <div className="text-slate-800">
-                        {fmtFecha(solicitud.fechaInicio)} – {fmtFecha(solicitud.fechaFin)}
-                        {' '}({solicitud.diasComision || 1} días)
-                      </div>
-                    </div>
-                  </div>
+                     <div>
+                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Destino</label>
+                       <div className="text-slate-800">
+                         {solicitud.destinoCiudad}, {solicitud.destinoDepartamento}
+                       </div>
+                     </div>
+                     <div>
+                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Fechas del viaje</label>
+                       <div className="text-slate-800">
+                         {fmtFecha(solicitud.fechaInicio)} – {fmtFecha(solicitud.fechaFin)}
+                         {' '}({solicitud.diasComision || 1} días)
+                       </div>
+                     </div>
+                   </div>
                   <div className="space-y-2">
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Objeto de comisión</label>
@@ -318,18 +357,25 @@ export default function VerificacionSIIFModal({
                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Rubro presupuestal</label>
                       <div className="text-slate-800 font-mono">{solicitud.rubroPresupuestal || 'N/A'}</div>
                     </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <label className="text-[10px] font-semibold text-slate-400 uppercase">Semáforo presupuestal</label>
-                      {(() => {
-                        const cfg = SEMAFORO_CONFIG[semaforo];
-                        return (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>
-                            <span className={`w-2 h-2 rounded-full ${cfg.bg.replace('bg-', 'bg-').replace('-100', '-500')}`}></span>
-                            {cfg.label}
-                          </span>
-                        );
-                      })()}
-                    </div>
+                     <div className="flex items-center gap-2 pt-1">
+                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Semáforo presupuestal</label>
+                       {(() => {
+                         const cfg = SEMAFORO_CONFIG[semaforo];
+                         return (
+                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>
+                             <span className={`w-2 h-2 rounded-full ${cfg.bg.replace('bg-', 'bg-').replace('-100', '-500')}`}></span>
+                             {cfg.label}
+                           </span>
+                         );
+                       })()}
+                     </div>
+                     {resumenPresupuestal && (
+                       <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+                         <div>Total gastado dependencia: ${resumenPresupuestal.totalGastado.toLocaleString('es-CO')}</div>
+                         <div>Solicitudes aprobadas: {resumenPresupuestal.cantidadSolicitudes}</div>
+                         <div>Límite: ${resumenPresupuestal.limitePresupuesto.toLocaleString('es-CO')} ({resumenPresupuestal.porcentajeUso.toFixed(1)}%)</div>
+                       </div>
+                     )}
                   </div>
                 </div>
 

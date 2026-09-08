@@ -542,7 +542,16 @@ export class TravelExpensesService {
   async obtenerSolicitudCompleta(
     solicitudId: string,
   ): Promise<
-    SolicitudComisionEntity & { documentosSoporte: DocumentoSoporteEntity[] }
+    SolicitudComisionEntity & {
+      documentosSoporte: DocumentoSoporteEntity[];
+      resumenPresupuestal?: {
+        totalGastado: number;
+        cantidadSolicitudes: number;
+        limitePresupuesto: number;
+        porcentajeUso: number;
+        semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+      };
+    }
   > {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
@@ -557,9 +566,67 @@ export class TravelExpensesService {
       where: { solicitudId: solicitud.id },
     });
 
+    const idDependencia = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia;
+    const resumenPresupuestal =
+      idDependencia != null
+        ? await this.calcularResumenPresupuestalDependencia(Number(idDependencia))
+        : undefined;
+
     return {
       ...solicitud,
       documentosSoporte: documentos,
+      resumenPresupuestal,
+    };
+  }
+
+  async calcularResumenPresupuestalDependencia(
+    idDependencia: number,
+  ): Promise<{
+    totalGastado: number;
+    cantidadSolicitudes: number;
+    limitePresupuesto: number;
+    porcentajeUso: number;
+    semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+  }> {
+    const ESTADOS_APROBADOS = [
+      'APROBADO_JEFE',
+      'APROBADO_TALENTO_HUMANO',
+      'RESOLUCION_EMITIDA',
+      'TIQUETES_COMPRADOS',
+      'EN_COMISION',
+      'PENDIENTE_LEGALIZACION',
+      'LEGALIZADO',
+      'SOLICITADA_SIIF',
+    ];
+
+    const result = await this.solicitudRepo
+      .createQueryBuilder('s')
+      .where('s.id_dependencia = :idDependencia', { idDependencia })
+      .andWhere('s.estado_solicitud IN (:...estados)', {
+        estados: ESTADOS_APROBADOS,
+      })
+      .select('COALESCE(SUM(s.monto_viaticos + s.monto_gastos_viaje), 0)', 'total')
+      .addSelect('COUNT(s.id)', 'cantidad')
+      .getRawOne<{ total: string; cantidad: string }>();
+
+    const totalGastado = Number(result?.total || 0);
+    const cantidadSolicitudes = Number(result?.cantidad || 0);
+    const limitePresupuesto = Number(process.env.PRESUPUESTO_DEPENDENCIA_LIMITE || '10000000');
+    const porcentajeUso = Math.min((totalGastado / limitePresupuesto) * 100, 100);
+
+    let semaforo: 'VERDE' | 'AMARILLO' | 'ROJO' = 'VERDE';
+    if (porcentajeUso >= 80) {
+      semaforo = 'ROJO';
+    } else if (porcentajeUso >= 50) {
+      semaforo = 'AMARILLO';
+    }
+
+    return {
+      totalGastado,
+      cantidadSolicitudes,
+      limitePresupuesto,
+      porcentajeUso,
+      semaforo,
     };
   }
 
@@ -708,6 +775,7 @@ export class TravelExpensesService {
     const solicitud = this.solicitudRepo.create({
       consecutivoUnico,
       comisionadoId: dto.comisionadoId,
+      idDependencia: dto.idDependencia ?? null,
       destinoCiudad: dto.destinoCiudad ?? '',
       destinoDepartamento: dto.destinoDepartamento ?? '',
       fechaInicio,

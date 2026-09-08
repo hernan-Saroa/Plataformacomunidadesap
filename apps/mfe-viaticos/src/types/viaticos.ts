@@ -159,6 +159,13 @@ export interface SolicitudComisionResponse {
   siifExportado?: boolean;
   fechaExportacionSiif?: string | null;
   consultaRutFacturador?: boolean;
+  resumenPresupuestal?: {
+    totalGastado: number;
+    cantidadSolicitudes: number;
+    limitePresupuesto: number;
+    porcentajeUso: number;
+    semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+  };
 }
 
 /**
@@ -215,6 +222,7 @@ export interface SolicitudListaResponse {
     | 'email'
     | 'telefonoContacto'
     | 'autorizacionHabeasData'
+    | 'idDependencia'
   > | null;
   destinoCiudad: string;
   destinoDepartamento: string;
@@ -239,6 +247,7 @@ export interface SolicitudListaResponse {
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
 }
 
 export interface BandejaSecretarioResponse {
@@ -291,6 +300,7 @@ export interface SolicitudViatico {
   actualizadoEn: string;
   esCreadoPorMi?: boolean;
   analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
 }
 
 export interface TiqueteAereo {

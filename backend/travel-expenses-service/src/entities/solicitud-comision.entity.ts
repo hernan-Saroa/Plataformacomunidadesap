@@ -146,6 +146,9 @@ export class SolicitudComisionEntity {
   @Column({ name: 'analista_asignado_id', type: 'uuid', nullable: true })
   analistaAsignadoId: string | null;
 
+  @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
+  idDependencia: number | null;
+
   @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'analista_asignado_id' })
   analistaAsignado: UsuarioEntity;

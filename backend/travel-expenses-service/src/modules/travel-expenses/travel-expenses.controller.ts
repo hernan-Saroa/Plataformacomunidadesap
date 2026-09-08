@@ -225,6 +225,7 @@ export class TravelExpensesController {
     'travel_expenses:read_inbox',
     'travel_expenses:set_priority',
     'travel_expenses:return_request',
+    'travel_expenses:read_assigned',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);

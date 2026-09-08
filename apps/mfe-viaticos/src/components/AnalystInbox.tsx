@@ -80,8 +80,11 @@ export default function AnalystInbox() {
   }, []);
 
   const dependenciaLookup = useMemo(() => {
-    const map = new Map<number, string>();
-    dependencias.forEach((d) => map.set(d.idDependencia, d.nomDependencia));
+    const map = new Map<string, string>();
+    dependencias.forEach((d) => {
+      const key = String(d.idDependencia ?? '');
+      if (key) map.set(key, d.nomDependencia);
+    });
     return map;
   }, [dependencias]);
 
@@ -102,9 +105,9 @@ export default function AnalystInbox() {
     s.comisionado ? formatearNombreComisionado(s.comisionado as Comisionado) : 'N/A';
 
   const dependenciaOrigen = (s: SolicitudListaResponse): string => {
-    const idDep = (s.comisionado as Comisionado | null | undefined)?.idDependencia;
+    const idDep = (s as any)?.idDependencia ?? (s.comisionado as Comisionado | null | undefined)?.idDependencia;
     if (idDep != null) {
-      const nombre = dependenciaLookup.get(Number(idDep));
+      const nombre = dependenciaLookup.get(String(idDep));
       if (nombre) return nombre;
     }
     return 'N/A';
