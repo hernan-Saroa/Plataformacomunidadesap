@@ -32,6 +32,8 @@ export type RundProfileDocument = {
   nombreArchivo: string;
   tamanoBytes: number;
   estado: 'ACTIVO' | 'REEMPLAZADO' | 'ELIMINADO';
+  estadoRevision?: string;
+  observacionRevision?: string;
   creadoPor?: string;
   creadoEn?: string;
   contenidoUrl: string | null;
@@ -41,6 +43,8 @@ export type RundProfileDocument = {
 type Props = {
   docenteId: string;
   canManage: boolean;
+  revision?: number;
+  evidenceOptions?: { block: string; type: string; label: string }[];
   onView: (url: string, name: string, label: string) => void;
   onChanged?: () => Promise<void> | void;
 };
@@ -57,10 +61,11 @@ const fileSize = (bytes: number) => {
     : `${Math.ceil(bytes / 1024)} KB`;
 };
 
-export function RundDocumentManager({ docenteId, canManage, onView, onChanged }: Props) {
+export function RundDocumentManager({ docenteId, canManage, onView, onChanged, revision = 0, evidenceOptions = [] }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [documents, setDocuments] = useState<RundProfileDocument[]>([]);
   const [category, setCategory] = useState('');
+  const [evidenceType, setEvidenceType] = useState('');
   const [filterCategory, setFilterCategory] = useState('TODAS');
   const [description, setDescription] = useState('');
   const [history, setHistory] = useState(false);
@@ -99,7 +104,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, revision]);
 
   const validateClientFile = (file: File, maxBytes?: number) => {
     if (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf') {
@@ -114,6 +119,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
   };
 
   const upload = async (file: File) => {
+    if (busy) return;
     const maxBytes = Number(selectedCategory?.tamano_maximo_bytes || 10 * 1024 * 1024);
     if (!validateClientFile(file, maxBytes)) return;
     setBusy('upload');
@@ -121,6 +127,11 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
       const formData = new FormData();
       formData.append('file', file);
       formData.append('categoria', category);
+      const evidence = evidenceOptions.find(option => option.type === evidenceType);
+      if (evidence) {
+        formData.append('bloque', evidence.block);
+        formData.append('tipoSoporte', evidence.type);
+      }
       formData.append('descripcion', description.trim());
       await apiClient.upload(`/pta/api/v1/pta/banco-docentes/${docenteId}/documentos`, formData);
       toast.success('Documento PDF cargado y vinculado al perfil.');
@@ -151,6 +162,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
       toast.success(`Documento reemplazado. Se creó la versión ${document.version + 1}.`);
       await load();
       await onChanged?.();
+      window.dispatchEvent(new CustomEvent('rund:soporte-uploaded', { detail: { docenteId, accion: 'DOCUMENTO_ACTUALIZADO' } }));
     } catch (error: any) {
       toast.error(error?.message || 'No fue posible reemplazar el documento.');
     } finally {
@@ -186,6 +198,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
       toast.success('Documento eliminado del perfil.');
       await load();
       await onChanged?.();
+      window.dispatchEvent(new CustomEvent('rund:soporte-uploaded', { detail: { docenteId, accion: 'DOCUMENTO_ACTUALIZADO' } }));
     } catch (error: any) {
       toast.error(error?.message || 'No fue posible eliminar el documento.');
     } finally {
@@ -204,7 +217,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
             </span>
           </div>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748B' }}>
-            PDFs organizados por categoría, con versión y trazabilidad de cada acción.
+            Cada soporte conserva sus versiones y su revisión. Seleccione qué información acredita al cargarlo.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -221,6 +234,13 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
         </div>
       </div>
 
+      {canManage && <div style={{ marginTop: 14 }}>
+        <label htmlFor={`evidence-purpose-${docenteId}`} style={{ fontSize: 12, color: '#475569', marginRight: 10 }}>Información que acredita</label>
+        <select id={`evidence-purpose-${docenteId}`} value={evidenceType} onChange={e => setEvidenceType(e.target.value)} style={{ ...inputStyle, maxWidth: '100%' }}>
+          <option value="">Anexo general (no acredita un punto de control)</option>
+          {evidenceOptions.map(option => <option key={option.type} value={option.type}>{option.label}</option>)}
+        </select>
+      </div>}
       {canManage && (
         <div style={{ marginTop: 14, padding: 12, border: '1px solid #DBEAFE', borderRadius: 10, background: '#F8FBFF', display: 'grid', gridTemplateColumns: 'minmax(150px, 210px) minmax(220px, 1fr) auto', gap: 10 }}>
           <select value={category} onChange={(event) => setCategory(event.target.value)} style={inputStyle} aria-label="Categoría documental">
@@ -235,11 +255,14 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
               event.target.value = '';
             }} />
           </label>
+          <span style={{ gridColumn: '1 / -1', color: '#64748B', fontSize: 11 }}>
+            Formato permitido: PDF · Máximo {fileSize(Number(selectedCategory?.tamano_maximo_bytes || 10 * 1024 * 1024))} por archivo.
+          </span>
         </div>
       )}
 
-      <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
-        {loading ? (
+      <div aria-busy={loading} style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+        {loading && documents.length === 0 ? (
           <div style={emptyStyle}>Consultando documentos…</div>
         ) : visibleDocuments.length === 0 ? (
           <div style={emptyStyle}>{documents.length === 0 ? 'Este perfil aún no tiene documentos cargados.' : 'No hay documentos en esta categoría.'}</div>
@@ -256,6 +279,10 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
               </div>
             </div>
             <div style={{ fontSize: 10, color: '#64748B' }}>
+              {document.estado === 'ACTIVO' && <div style={{ marginBottom: 5, color: document.estadoRevision === 'Aprobado' ? '#047857' : document.estadoRevision === 'Rechazado' ? '#B91C1C' : '#92400E', fontWeight: 700, fontSize: 11 }}>
+                {document.estadoRevision === 'Aprobado' ? '✓ Soporte aprobado' : document.estadoRevision === 'Rechazado' ? 'Devuelto para corrección' : document.tipoSoporte ? 'Pendiente de revisión' : 'Anexo general'}
+              </div>}
+              {document.observacionRevision && <div style={{ color: '#B91C1C', fontSize: 11 }}>{document.observacionRevision}</div>}
               <div style={{ fontWeight: 700, color: '#334155' }}>{document.creadoPor || 'Sistema'}</div>
               <div>{document.creadoEn ? new Date(document.creadoEn).toLocaleString('es-CO') : 'Sin fecha'}</div>
             </div>
@@ -264,7 +291,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged }:
               {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Visualizar" onClick={() => onView(document.contenidoUrl!, document.nombreArchivo, document.categoriaNombre)}><Eye size={14} /></IconButton>}
               {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
               {canManage && document.estado === 'ACTIVO' && (
-                <label title="Reemplazar" style={iconButtonStyle}>
+                <label title={`Reemplazar (PDF, máximo ${fileSize(Number(categories.find(item => item.codigo === document.categoria)?.tamano_maximo_bytes || 10 * 1024 * 1024))})`} style={iconButtonStyle}>
                   <Replace size={14} />
                   <input type="file" accept="application/pdf,.pdf" hidden disabled={busy === `replace-${document.id}`} onChange={(event) => {
                     const file = event.target.files?.[0];

@@ -13,6 +13,7 @@ import { Public } from '../../auth/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentosService } from './rund-documentos.service';
+import { validateEvidenceType } from './rund-evidence-workflow';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import {
   canViewRundSensitiveData,
@@ -762,13 +763,9 @@ export class BancoDocentesController {
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   async getBloques(@Param('id') id: string, @Req() req: any) {
-    try {
-      await this.assertOwnProfileForDocente(id, undefined, req);
-      const result = await this.service.getBloques(id);
-      return { success: true, data: await this.protectSensitiveResponse(result, req, 'BLOQUES_PERFIL_RUND') };
-    } catch (e: any) {
-      return { success: true, data: [], message: e.message };
-    }
+    await this.assertOwnProfileForDocente(id, undefined, req);
+    const result = await this.service.getBloques(id);
+    return { success: true, data: await this.protectSensitiveResponse(result, req, 'BLOQUES_PERFIL_RUND') };
   }
 
   /** BR-043 — Aprobar un bloque (maker-checker) */
@@ -778,10 +775,10 @@ export class BancoDocentesController {
   async aprobarBloque(
     @Param('id') id: string,
     @Param('bloque') bloque: string,
-    @Body('aprobadorId') aprobadorId: string,
+    @Req() req: any,
   ) {
-    if (!aprobadorId) return { success: false, message: 'aprobadorId es requerido' };
-    const result = await this.service.aprobarBloque(id, bloque, aprobadorId);
+    const actor = this.requestActor(req);
+    const result = await this.service.aprobarBloque(id, bloque, actor.actorId, actor.ip);
     return { success: true, data: result };
   }
 
@@ -792,17 +789,28 @@ export class BancoDocentesController {
   async devolverBloque(
     @Param('id') id: string,
     @Param('bloque') bloque: string,
-    @Body('aprobadorId') aprobadorId: string,
+    @Req() req: any,
     @Body('observacion') observacion: string,
   ) {
-    if (!aprobadorId) return { success: false, message: 'aprobadorId es requerido' };
-    const result = await this.service.devolverBloque(id, bloque, aprobadorId, observacion);
+    const actor = this.requestActor(req);
+    const result = await this.service.devolverBloque(id, bloque, actor.actorId, observacion, actor.ip);
     return { success: true, data: result };
+  }
+
+  @Post(':id/bloques/:bloque/soportes/:soporteId/revision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  async revisarSoporte(@Param('id') id: string, @Param('bloque') bloque: string,
+    @Param('soporteId') soporteId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    if (!actor.fullAccess) throw new ForbiddenException('La revisión requiere acceso al contenido original del soporte.');
+    return { success: true, data: await this.service.revisarSoporte(id, bloque, soporteId, body, actor.actorId, actor.ip) };
   }
 
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
   @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     storage: diskStorage({
       destination: (req, file, cb) => {
         const docenteId = req.params.id || 'desconocido';
@@ -829,6 +837,8 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     try {
+      validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
+      if (!file) throw new BadRequestException('Adjunte el archivo de soporte para registrar una carga documental.');
       if (['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(body.tipoSoporte)) {
         const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
         if (!file) {
@@ -888,7 +898,7 @@ export class BancoDocentesController {
           if ((file as any).path && fs.existsSync((file as any).path)) fs.unlinkSync((file as any).path);
         }
       }
-      const result = await this.service.vincularSoporte(id, bloque, body);
+      const result = await this.service.vincularSoporte(id, bloque, { ...body, cargadoPor: this.requestActor(req).actorId });
       // validacionTipo se EMBEBE en data porque el apiClient del shell desenvuelve
       // {success, data} y descartaría cualquier campo hermano de data.
       const data = (result && typeof result === 'object' && !Array.isArray(result))
@@ -913,6 +923,7 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     const actorId = await this.service.authorizeAutogestionDocumentUpload(id, String(body.autogestionToken || ''));
+    validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
     const existing = (await this.documentos.list(id))
       .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
     const document = existing

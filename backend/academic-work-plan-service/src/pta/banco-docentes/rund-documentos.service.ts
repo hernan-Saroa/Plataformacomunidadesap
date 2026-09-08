@@ -1,3 +1,4 @@
+import { lockEvidenceProfile, resetEvidenceBlock, validateEvidenceType } from './rund-evidence-workflow';
 import {
   BadRequestException,
   ConflictException,
@@ -49,12 +50,16 @@ export class RundDocumentosService {
               c.nombre AS categoria_nombre, d.bloque, d.tipo_soporte, d.descripcion,
               d.version, d.nombre_archivo, d.mime_type, d.tamano_bytes,
               d.estado, d.creado_por, d.eliminado_por, d.eliminado_en, d."createdAt",
-              d.rund_soporte_id,
+              d.rund_soporte_id, s.estado AS estado_revision, s.observacion AS observacion_revision,
+              (SELECT l.actor_id FROM academic_work_plan."RundAprobacionLog" l
+               WHERE l.soporte_id = s.id::text AND l.accion IN ('APROBAR_SOPORTE','DEVOLVER_SOPORTE')
+               AND l.metadata->>'documentoVersionId' = d.id::text ORDER BY l."createdAt" DESC LIMIT 1) AS revisado_por,
               (SELECT COUNT(*)::int
                  FROM academic_work_plan."RundDocumentoPerfil" v
                 WHERE v.documento_logico_id = d.documento_logico_id) AS total_versiones
        FROM academic_work_plan."RundDocumentoPerfil" d
        JOIN academic_work_plan."RundDocumentoCategoria" c ON c.codigo = d.categoria_codigo
+       LEFT JOIN academic_work_plan."RundSoporteCampo" s ON s.documento_perfil_id = d.id
        WHERE ${filters.join(' AND ')}
        ORDER BY c.orden, d."createdAt" DESC`,
       params,
@@ -72,6 +77,10 @@ export class RundDocumentosService {
     const docente = await this.requireDocente(docenteId);
     const category = await this.requireCategory(data.categoria);
     this.validatePdf(file, category);
+    if (data.tipoSoporte) {
+      data = { ...data, bloque: String(data.bloque || this.categoryBlock(category.codigo)).toUpperCase() };
+      validateEvidenceType(data.bloque!, data.tipoSoporte!);
+    }
 
     if (data.tipoSoporte) {
       const existing = await this.dataSource.query(
@@ -99,6 +108,12 @@ export class RundDocumentosService {
     await runner.connect();
     await runner.startTransaction();
     try {
+      await lockEvidenceProfile(runner, docente.id);
+      if (data.tipoSoporte) {
+        const duplicates = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil"
+          WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'`, [docente.id, data.tipoSoporte]);
+        if (duplicates.length) throw new ConflictException('Ya existe un soporte vigente. Actualice y use Reemplazar.');
+      }
       const soporteId = data.tipoSoporte
         ? await this.upsertRundSupport(runner, {
             docenteId: docente.id,
@@ -124,6 +139,7 @@ export class RundDocumentosService {
           soporteId, actorId,
         ],
       );
+      if (soporteId) await resetEvidenceBlock(runner, docente.id, data.bloque!, actorId);
       await this.insertAudit(runner, {
         docenteId: docente.id,
         bloque: data.bloque || 'DOCUMENTAL',
@@ -158,17 +174,22 @@ export class RundDocumentosService {
     this.validatePdf(file, category);
     const nextVersion = Number(current.version) + 1;
     const nextId = randomUUID();
-    const stored = await this.storage.store({
-      content: file!.buffer,
-      documentNumber: docente.document_number,
-      category: current.categoria_codigo,
-      logicalId: current.documento_logico_id,
-      version: nextVersion,
-    });
+    let stored: Awaited<ReturnType<RundDocumentStorageService['store']>> | undefined;
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
     try {
+      await lockEvidenceProfile(runner, docente.id);
+      const [active] = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil" WHERE id = $1 AND estado = 'ACTIVO'`, [current.id]);
+      if (!active) throw new ConflictException('El documento fue reemplazado o eliminado. Actualice el listado.');
+      stored = await this.storage.store({
+        content: file!.buffer,
+        documentNumber: docente.document_number,
+        category: current.categoria_codigo,
+        logicalId: current.documento_logico_id,
+        version: nextVersion,
+      });
+
       await runner.query(
         `UPDATE academic_work_plan."RundDocumentoPerfil" SET estado = 'REEMPLAZADO' WHERE id = $1 AND estado = 'ACTIVO'`,
         [current.id],
@@ -193,11 +214,12 @@ export class RundDocumentosService {
         await runner.query(
           `UPDATE academic_work_plan."RundSoporteCampo"
            SET documento_perfil_id = $1, documento_carpeta_id = $2,
-               nombre_archivo = $3, estado = 'Pendiente', cargado_por = $4
+               nombre_archivo = $3, estado = 'Pendiente', observacion = NULL, cargado_por = $4
            WHERE id = $5`,
           [nextId, this.contentUrl(docente.id, nextId), file!.originalname, actorId, current.rund_soporte_id],
         );
       }
+      if (current.rund_soporte_id) await resetEvidenceBlock(runner, docente.id, current.bloque, actorId);
       await this.insertAudit(runner, {
         docenteId: docente.id,
         bloque: current.bloque || 'DOCUMENTAL',
@@ -218,7 +240,7 @@ export class RundDocumentosService {
       return this.toResponse({ ...created, categoria_nombre: category.nombre, total_versiones: nextVersion });
     } catch (error) {
       await runner.rollbackTransaction();
-      await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
+      if (stored) await this.storage.remove(stored.provider, stored.storagePath).catch(() => undefined);
       throw error;
     } finally {
       await runner.release();
@@ -228,11 +250,14 @@ export class RundDocumentosService {
   async remove(docenteId: string, documentId: string, actorId: string, ip?: string) {
     const docente = await this.requireDocente(docenteId);
     const current = await this.requireDocument(docente.id, documentId, true);
-    await this.storage.remove(current.proveedor_almacenamiento, current.almacenamiento_ruta);
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
     try {
+      await lockEvidenceProfile(runner, docente.id);
+      const [active] = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil" WHERE id = $1 AND estado = 'ACTIVO'`, [current.id]);
+      if (!active) throw new ConflictException('El documento ya cambió. Actualice el listado.');
+
       await runner.query(
         `UPDATE academic_work_plan."RundDocumentoPerfil"
          SET estado = 'ELIMINADO', eliminado_por = $1, eliminado_en = NOW()
@@ -240,7 +265,8 @@ export class RundDocumentosService {
         [actorId, current.id],
       );
       if (current.rund_soporte_id) {
-        await runner.query(`DELETE FROM academic_work_plan."RundSoporteCampo" WHERE id = $1`, [current.rund_soporte_id]);
+        await runner.query(`DELETE FROM academic_work_plan."RundSoporteCampo" WHERE id = $1 AND documento_perfil_id = $2`, [current.rund_soporte_id, current.id]);
+        await resetEvidenceBlock(runner, docente.id, current.bloque, actorId, true);
       }
       await this.insertAudit(runner, {
         docenteId: docente.id,
@@ -359,7 +385,7 @@ export class RundDocumentosService {
       await runner.query(
         `UPDATE academic_work_plan."RundSoporteCampo"
          SET bloque = $1, documento_perfil_id = $2, documento_carpeta_id = $3,
-             nombre_archivo = $4, estado = 'Pendiente', cargado_por = $5
+             nombre_archivo = $4, estado = 'Pendiente', observacion = NULL, cargado_por = $5
          WHERE id = $6`,
         [input.bloque, input.documentId, contentUrl, input.fileName, input.actorId, existing[0].id],
       );
@@ -407,6 +433,9 @@ export class RundDocumentosService {
       eliminadoEn: row.eliminado_en,
       contenidoUrl: this.contentUrl(row.docente_id, row.id),
       rundSoporteId: row.rund_soporte_id,
+      estadoRevision: row.estado_revision || null,
+      observacionRevision: row.observacion_revision || null,
+      revisadoPor: row.revisado_por || null,
     };
   }
 
