@@ -4657,8 +4657,8 @@ export function DashboardKanbanOperativo({
     profesionalId: string;
     profesionalNombre: string;
     observaciones: string;
-  }) => {
-    if (!itemSeleccionado) return;
+  }): Promise<{ radicadoProceso: string }> => {
+    if (!itemSeleccionado) return { radicadoProceso: '' };
 
     // Indicador visual de persistencia
     const toastId = toast.loading('Asignando profesional y creando proceso...');
@@ -4688,12 +4688,15 @@ export function DashboardKanbanOperativo({
 
       setModalActivo(null);
       setItemSeleccionado(null);
+
+      return { radicadoProceso: procesoApi.radicadoProceso || nuevoProceso.numeroProceso || '' };
     } catch (err: any) {
       console.error('[DashboardKanban] Error al crear proceso en la API:', err);
       toast.error('Error al crear el proceso disciplinario', {
         id: toastId,
         description: err.message || 'Error de conexión con el servidor',
       });
+      return { radicadoProceso: '' };
     }
   };
 
