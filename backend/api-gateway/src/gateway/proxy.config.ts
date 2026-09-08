@@ -108,12 +108,23 @@ export const serviceMap = {
     'http://hiring-service:3012',
   ),
 
-  // rogramación Académica - Puerto 3013
+  // Programación Académica - Puerto 3013
   'programacion-academica': serviceUrl(
     'ACADEMIC_SCHEDULE_SERVICE_URL',
     'http://localhost:3013',
     'http://academic-schedule-service:3013',
-  )
-  
+  ),
+
+  // Gestión de Infraestructura - Puerto 3014
+  infraestructura: serviceUrl(
+    'INFRASTRUCTURE_MANAGEMENT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://infrastructure-management-service:3014',
+  ),
+  'gestion-infraestructura': serviceUrl(
+    'INFRASTRUCTURE_MANAGEMENT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://infrastructure-management-service:3014',
+  ),
 };
 

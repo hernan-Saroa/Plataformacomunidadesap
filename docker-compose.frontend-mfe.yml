@@ -37,6 +37,7 @@ services:
       - frontend-mfe-contratacion
       - frontend-mfe-viaticos
       - frontend-mfe-programacion-academica
+      - frontend-mfe-gestion-infraestructura
       - api-gateway
       - onlyoffice
     volumes:
@@ -246,4 +247,17 @@ services:
         FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-programacion-academica
     container_name: superapp-mfe-programacion-academica${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
+
+  frontend-mfe-gestion-infraestructura:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-gestion-infraestructura
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-gestion-infraestructura
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-gestion-infraestructura
+    container_name: superapp-mfe-gestion-infraestructura${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+
 

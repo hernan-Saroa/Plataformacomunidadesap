@@ -377,7 +377,7 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
-      permissions: permissionCodes,
+      // permissions: permissionCodes,
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {

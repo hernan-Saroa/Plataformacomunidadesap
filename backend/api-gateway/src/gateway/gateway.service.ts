@@ -225,6 +225,7 @@ export class GatewayService {
           url: targetUrl,
           data: isMultipart ? req : req.body,
           headers: forwardHeaders,
+          maxHeaderSize: 80000,
           ...(isMultipart
             ? {
               maxContentLength: Infinity,

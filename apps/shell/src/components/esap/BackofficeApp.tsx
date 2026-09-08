@@ -105,6 +105,7 @@ const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
 const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
+const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestructura/Module'), ['GestionInfraestructuraModule']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 
@@ -161,6 +162,7 @@ type ModuleView =
   | 'contratacion'
   | 'viaticos'
   | 'programacion-academica'
+  | 'gestion-infraestructura'
   | 'modules'
   | 'dependencias';
 
@@ -238,6 +240,8 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'viaticos': 'viaticos',
   'programacion-academica': 'programacion-academica',
   'academic-schedule': 'programacion-academica',
+  'gestion-infraestructura': 'gestion-infraestructura',
+  'infraestructura': 'gestion-infraestructura',
   'banco-docentes-pta': 'banco-docentes-pta',
   'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
@@ -261,6 +265,7 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'graduates-certificates',
   'pta',
   'programacion-academica',
+  'gestion-infraestructura',
   'certificados-laborales',
   'control-interno',
   'control-disciplinario',
@@ -290,6 +295,7 @@ const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   'gestion-passwords': 'gestion-passwords',
   pta: 'pta',
   'programacion-academica': 'programacion-academica',
+  'gestion-infraestructura': 'gestion-infraestructura',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-profesoral': 'gestion-profesoral',
 };
@@ -840,6 +846,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <ProgramacionAcademicaModule />
+          </Suspense>
+        );
+
+      case 'gestion-infraestructura':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GestionInfraestructuraModule />
           </Suspense>
         );
 

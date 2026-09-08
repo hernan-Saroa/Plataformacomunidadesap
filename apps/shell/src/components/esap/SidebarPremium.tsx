@@ -35,6 +35,7 @@ import {
   TrendingUp,
   FileCheck,
   Layout,
+  Building,
   Building2,
   BarChart3,
   Gavel,
@@ -48,7 +49,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'dependencias';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias';
 
 export interface ActiveModuleItem {
   code: string;
@@ -104,6 +105,8 @@ function getModuleAliases(module: string): string[] {
     'viaticos': ['viaticos', 'travel-expenses'],
     'programacion-academica': ['programacion-academica', 'academic-schedule'],
     'academic-schedule': ['programacion-academica', 'academic-schedule'],
+    'gestion-infraestructura': ['gestion-infraestructura', 'infraestructura', 'infrastructure'],
+    'infraestructura': ['gestion-infraestructura', 'infraestructura', 'infrastructure'],
     'users-management': ['users-management', 'users'],
     'roles-administration': ['roles-administration', 'roles'],
     'graduates': ['graduates'],
@@ -138,6 +141,7 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'contratacion': { name: 'Contratación', description: 'Licitaciones y Contratos' },
   'viaticos': { name: 'Viáticos y Gastos de Viaje', description: 'Comisiones de Servicios y Tiquetes' },
   'programacion-academica': { name: 'Programación Académica', description: 'Gestión de franjas horarias y aulas' },
+  'gestion-infraestructura': { name: 'Gestión de Infraestructura', description: 'Sedes, espacios físicos y mantenimiento' },
   'dependencias': { name: 'Dependencias', description: 'Catálogo transversal ESAP' },
 };
 
@@ -267,6 +271,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     'gestion-legal',
     'centro-alertas',
     'programacion-academica',
+    'gestion-infraestructura',
     'contratacion',
     'viaticos',
   ];
@@ -1284,6 +1289,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
                   {renderMenuItem('pta', <Briefcase className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('programacion-academica', <Calendar className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('gestion-infraestructura', <Building className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('certificados-laborales', <FileCheck className="w-5 h-5" strokeWidth={2} />)}
 
                   {/* Separador visual - Módulos de Control y Gestión Legal */}
