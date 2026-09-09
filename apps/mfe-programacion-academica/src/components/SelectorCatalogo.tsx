@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronRight, Layers, Loader2, Lock, Search } from 'lucide-react';
+import { BookOpen, ChevronRight, Layers, Loader2, Lock, Search, X } from 'lucide-react';
 
 import {
   getCatalogoPorSemestre,
@@ -38,8 +38,16 @@ export function SelectorCatalogo() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState('');
   const [busqueda, setBusqueda] = useState('');
-  // EFDS-1370: la asignatura elegida abre su gestión de grupos debajo del plan.
+  // EFDS-1370 / 3.1: la asignatura elegida abre su gestión de grupos en modal.
   const [asignaturaSel, setAsignaturaSel] = useState<AsignaturaCatalogo | null>(null);
+
+  // Escape cierra el modal, como cualquier diálogo de la plataforma.
+  useEffect(() => {
+    if (!asignaturaSel) return;
+    const alTeclear = (e: KeyboardEvent) => { if (e.key === 'Escape') setAsignaturaSel(null); };
+    window.addEventListener('keydown', alTeclear);
+    return () => window.removeEventListener('keydown', alTeclear);
+  }, [asignaturaSel]);
 
   // Un solo llamado sin `nivel`: el backend ya devuelve únicamente los programas
   // de los niveles autorizados, y de ahí se derivan las opciones del selector.
@@ -257,12 +265,37 @@ export function SelectorCatalogo() {
 
       {/* EFDS-1370: los grupos cuelgan de la asignatura elegida. El horario, a su
           vez, colgará del grupo — no de la asignatura (RN-11). */}
+      {/* 3.1 — La gestión de grupos abre en MODAL, no debajo del plan.
+          Antes se renderizaba al final de la página: con 74 asignaturas quedaba
+          fuera de pantalla y el clic parecía no hacer nada. La funcionalidad
+          estaba; lo que faltaba era que se viera. */}
       {asignaturaSel && (
-        <GestionGrupos
-          idAsignatura={asignaturaSel.id}
-          nombreAsignatura={asignaturaSel.nombre}
-          codigoAsignatura={asignaturaSel.codigo}
-        />
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Grupos de ${asignaturaSel.nombre}`}
+          onClick={() => setAsignaturaSel(null)}
+        >
+          <div
+            className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setAsignaturaSel(null)}
+              aria-label="Cerrar"
+              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <GestionGrupos
+              idAsignatura={asignaturaSel.id}
+              nombreAsignatura={asignaturaSel.nombre}
+              codigoAsignatura={asignaturaSel.codigo}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

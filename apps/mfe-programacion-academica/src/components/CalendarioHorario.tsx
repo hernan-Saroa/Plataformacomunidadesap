@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Clock, Loader2, MapPin, Monitor, Trash2, X } from 'lucide-react';
 
 import {
-  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo,
-  type Sesion, type TipoSesion,
+  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getAulas,
+  type Sesion, type TipoSesion, type Aula,
 } from '../services/api/catalogoApi';
 
 /**
@@ -64,6 +64,10 @@ export function CalendarioHorario({ idGrupo, numeroGrupo, nombreAsignatura }: Pr
   const [nueva, setNueva] = useState<null | {
     diaSemana: string; horaInicio: string; horaFin: string; tipoSesion: TipoSesion; aulaCodigo: string;
   }>(null);
+  // Lista CERRADA de salones (3.4): no se puede escribir uno que no exista.
+  const [aulas, setAulas] = useState<Aula[]>([]);
+  useEffect(() => { getAulas().then(setAulas).catch(() => setAulas([])); }, []);
+
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const recargar = () => {
@@ -108,7 +112,8 @@ export function CalendarioHorario({ idGrupo, numeroGrupo, nombreAsignatura }: Pr
         horaInicio: nueva.horaInicio,
         horaFin: nueva.horaFin,
         tipoSesion: nueva.tipoSesion,
-        aulaCodigo: nueva.aulaCodigo || null,
+        // Sin aula si no es presencial: el espacio físico no aplica.
+        aulaCodigo: nueva.tipoSesion === 'presencial' ? (nueva.aulaCodigo || null) : null,
       });
       setNueva(null);
       recargar();
@@ -334,13 +339,26 @@ export function CalendarioHorario({ idGrupo, numeroGrupo, nombreAsignatura }: Pr
                 <option value="mediada_tecnologia">Mediada por tecnología</option>
               </select>
             </label>
+            {/* 3.4 — El salón SOLO aplica a sesiones presenciales, y sale de la
+                lista cerrada de aulas: nunca texto libre. Una sesión mediada por
+                tecnología no ocupa espacio físico, así que el campo se apaga y
+                se limpia para no arrastrar un aula fantasma al backend. */}
             <label className="flex flex-col gap-1.5">
               <span className="text-[0.62rem] font-bold text-slate-500 uppercase flex items-center gap-1">
                 <MapPin className="w-3 h-3" /> Aula
               </span>
-              <input value={nueva.aulaCodigo} placeholder="Opcional"
+              <select
+                value={nueva.tipoSesion === 'presencial' ? nueva.aulaCodigo : ''}
+                disabled={nueva.tipoSesion !== 'presencial'}
                 onChange={(e) => setNueva({ ...nueva, aulaCodigo: e.target.value })}
-                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 disabled:text-slate-400">
+                <option value="">
+                  {nueva.tipoSesion === 'presencial' ? 'Sin asignar' : 'No aplica (mediada por tecnología)'}
+                </option>
+                {nueva.tipoSesion === 'presencial' && aulas.map((a) => (
+                  <option key={a.codigo} value={a.codigo}>{a.nombre}</option>
+                ))}
+              </select>
             </label>
           </div>
 

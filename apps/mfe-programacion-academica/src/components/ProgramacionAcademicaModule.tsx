@@ -78,7 +78,6 @@ export function ProgramacionAcademicaModule() {
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
-  const [showNewModal, setShowNewModal] = useState(false);
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
   // front, así que el panel decía "4 franjas activas" con la base en 0.
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
@@ -99,15 +98,6 @@ export function ProgramacionAcademicaModule() {
   }, []);
 
   // Form state
-  const [newPrograma, setNewPrograma] = useState('');
-  const [newAsignatura, setNewAsignatura] = useState('');
-  const [newDocente, setNewDocente] = useState('');
-  const [newSede, setNewSede] = useState('Sede Central - Bogotá');
-  const [newAula, setNewAula] = useState('');
-  const [newDia, setNewDia] = useState('Lunes');
-  const [newHoraInicio, setNewHoraInicio] = useState('08:00');
-  const [newHoraFin, setNewHoraFin] = useState('10:00');
-  const [newJornada, setNewJornada] = useState<'Diurna' | 'Nocturna' | 'Fin de Semana'>('Diurna');
 
   const totalFranjas = scheduleList.length;
   const totalConfirmados = scheduleList.filter(s => s.estado === 'CONFIRMADO').length;
@@ -177,35 +167,6 @@ export function ProgramacionAcademicaModule() {
     const matchesJornada = selectedJornada === 'TODAS' || item.jornada === selectedJornada;
     return matchesSearch && matchesJornada;
   });
-
-  const handleCreateFranja = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPrograma || !newAsignatura || !newDocente || !newAula) return;
-
-    const newItem: FranjaHoraria = {
-      id: String(Date.now()),
-      codigo: `PA-2026-0${scheduleList.length + 1}`,
-      programa: newPrograma,
-      asignatura: newAsignatura,
-      grupo: 'G01',
-      docente: newDocente,
-      sede: newSede,
-      aula: newAula,
-      dia: newDia,
-      horaInicio: newHoraInicio,
-      horaFin: newHoraFin,
-      jornada: newJornada,
-      cupos: 30,
-      estado: 'PROGRAMADO'
-    };
-
-    setScheduleList([newItem, ...scheduleList]);
-    setShowNewModal(false);
-    setNewPrograma('');
-    setNewAsignatura('');
-    setNewDocente('');
-    setNewAula('');
-  };
 
   return (
     <ModuleLayout
@@ -294,7 +255,7 @@ export function ProgramacionAcademicaModule() {
           </div>
 
           <button
-            onClick={() => setShowNewModal(true)}
+            onClick={() => setSeccion('catalogo')}
             className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 font-semibold text-xs rounded-xl shadow-md transition-all"
           >
             <Plus className="w-4 h-4" />
@@ -437,128 +398,6 @@ export function ProgramacionAcademicaModule() {
         </div>
       )}
 
-      {/* Modal Nueva Franja Lectiva */}
-      {showNewModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6 border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">Nueva Franja Académica</h3>
-                <p className="text-xs text-slate-500">Registrar franja horaria en la oferta institucional</p>
-              </div>
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateFranja} className="space-y-4 text-sm">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Programa Académico</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Administración Pública Territorial"
-                  value={newPrograma}
-                  onChange={(e) => setNewPrograma(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Asignatura</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Finanzas Públicas"
-                  value={newAsignatura}
-                  onChange={(e) => setNewAsignatura(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Docente Asignado</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nombre del docente"
-                    value={newDocente}
-                    onChange={(e) => setNewDocente(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Aula / Espacio</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Aula 201"
-                    value={newAula}
-                    onChange={(e) => setNewAula(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Día</label>
-                  <select
-                    value={newDia}
-                    onChange={(e) => setNewDia(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  >
-                    <option value="Lunes">Lunes</option>
-                    <option value="Martes">Martes</option>
-                    <option value="Miércoles">Miércoles</option>
-                    <option value="Jueves">Jueves</option>
-                    <option value="Viernes">Viernes</option>
-                    <option value="Sábado">Sábado</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Hora Inicio</label>
-                  <input
-                    type="time"
-                    value={newHoraInicio}
-                    onChange={(e) => setNewHoraInicio(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Hora Fin</label>
-                  <input
-                    type="time"
-                    value={newHoraFin}
-                    onChange={(e) => setNewHoraFin(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowNewModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 font-medium text-xs"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-[#003DA5] hover:bg-blue-800 text-white rounded-xl font-semibold text-xs shadow-md"
-                >
-                  Guardar Franja
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </ModuleLayout>
   );
 }
