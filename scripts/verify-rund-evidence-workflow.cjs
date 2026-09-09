@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '../backend/academic-work-plan-service');
 require(path.join(root, 'node_modules/ts-node')).register({ transpileOnly: true, project: path.join(root, 'tsconfig.json') });
 const { RundDocumentosService } = require(path.join(root, 'src/pta/banco-docentes/rund-documentos.service.ts'));
 const { BancoDocentesService } = require(path.join(root, 'src/pta/banco-docentes/banco-docentes.service.ts'));
-const { RundEvidenceWorkflow, requiredEvidence, invalidateEditedEvidence } = require(path.join(root, 'src/pta/banco-docentes/rund-evidence-workflow.ts'));
+const { RundEvidenceWorkflow, requiredEvidence, invalidateEditedEvidence, evidenceFields } = require(path.join(root, 'src/pta/banco-docentes/rund-evidence-workflow.ts'));
 
 (async () => {
   const client = new Client({ ...config, connectionTimeoutMillis: 8000 });
@@ -18,16 +18,17 @@ const { RundEvidenceWorkflow, requiredEvidence, invalidateEditedEvidence } = req
     for (const table of ['Docente', 'RundCampoEstado', 'RundSoporteCampo', 'RundDocumentoPerfil', 'RundDocumentoCategoria', 'RundAprobacionLog']) {
       await client.query(`CREATE TEMP TABLE "${table}" (LIKE academic_work_plan."${table}" INCLUDING DEFAULTS) ON COMMIT DROP`);
     }
-    await client.query('CREATE TEMP TABLE personas (id_person uuid, num_identificacion text) ON COMMIT DROP');
+    await client.query(`ALTER TABLE pg_temp."RundSoporteCampo" ADD COLUMN IF NOT EXISTS revisiones_campos jsonb NOT NULL DEFAULT '{}'::jsonb`);
+    await client.query('CREATE TEMP TABLE personas (id_person uuid, num_identificacion text, nom_largo text, gen_tercero text, fec_nacimiento date) ON COMMIT DROP');
     const id = randomUUID();
     const persona = randomUUID();
     // Build a synthetic fixture compatible with current non-null columns; never copy personal data.
     const columns = (await client.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'academic_work_plan'
       AND table_name = 'Docente' AND is_nullable = 'NO' AND column_default IS NULL`)).rows;
-    const values = { id, personaId: persona, territorialId: 'TEST', dedicacion: 'TC', tipoVinculacion: 'TEST' };
+    const values = { id, personaId: persona, territorialId: 'TEST', dedicacion: 'TC', tipoVinculacion: 'TEST', pregrado: 'Titulo de prueba', perfilAcademicoPro: 'Perfil de prueba', origenVinculacion: 'Convocatoria', actoAdministrativoVinculacion: 'Acto de prueba', fechaInicioVinculacion: '2026-01-01', situacionAdministrativa: 'Servicio activo', escalafon: 'Asociado', puntajeSalarial: 0, nucleoTematico: 'Administracion', ultimaEvaluacion: 'Satisfactoria' };
     for (const col of columns) if (!(col.column_name in values)) values[col.column_name] = col.data_type === 'uuid' ? randomUUID() : ['integer','numeric','double precision'].includes(col.data_type) ? 0 : col.data_type.includes('timestamp') ? new Date() : 'TEST';
     await client.query(`INSERT INTO pg_temp."Docente" (${Object.keys(values).map(k => `"${k}"`).join(',')}) VALUES (${Object.keys(values).map((_, i) => `$${i+1}`).join(',')})`, Object.values(values));
-    await client.query('INSERT INTO pg_temp.personas VALUES ($1,$2)', [persona, 'TEST-EVIDENCE']);
+    await client.query('INSERT INTO pg_temp.personas VALUES ($1,$2,$3,$4,$5)', [persona, 'TEST-EVIDENCE', 'PERSONA DE PRUEBA', 'M', '1980-01-01']);
     await client.query(`INSERT INTO pg_temp."RundDocumentoCategoria" SELECT * FROM academic_work_plan."RundDocumentoCategoria"`);
     const files = new Map();
     const storage = {
@@ -57,17 +58,56 @@ const { RundEvidenceWorkflow, requiredEvidence, invalidateEditedEvidence } = req
     const block = async code => (await query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2', [id, code]))[0];
     const review = async (type, estado = 'Aprobado', observacion) => {
       const s = await support(type);
-      return workflow.reviewSupport(id, s.bloque, s.id, { estado, observacion, documentoVersionId: s.documento_perfil_id, blockVersion: Number((await block(s.bloque)).version) }, 'REVISOR', '127.0.0.1');
+      for (const campo of evidenceFields(type)) await workflow.reviewSupport(id, s.bloque, s.id, { estado, campo, observacion, documentoVersionId: s.documento_perfil_id, blockVersion: Number((await block(s.bloque)).version) }, 'REVISOR', '127.0.0.1');
     };
+    const verifyIndividualRows = async type => {
+      const s = await support(type);
+      const fields = evidenceFields(type);
+      const decide = async (campo, estado, observacion) => workflow.reviewSupport(id, s.bloque, s.id,
+        { campo, estado, observacion, documentoVersionId: s.documento_perfil_id, blockVersion: Number((await block(s.bloque)).version) }, 'REVISOR');
+      await assert.rejects(decide(undefined, 'Aprobado'), /fila/);
+      await assert.rejects(decide('CAMPO_INVALIDO', 'Aprobado'), /fila/);
+      await decide(fields[fields.length - 1], 'Aprobado');
+      let saved = await support(type);
+      assert.equal(saved.estado, 'Pendiente');
+      assert.deepEqual(Object.keys(saved.revisiones_campos), [fields[fields.length - 1]]);
+      await assert.rejects(workflow.reviewBlock(id, s.bloque, 'REVISOR'), /Revise y apruebe|Faltan soportes/);
+      await decide(fields[0], 'Rechazado', 'Corrija solo la primera fila.');
+      saved = await support(type);
+      assert.equal(saved.revisiones_campos[fields[fields.length - 1]].estado, 'Aprobado');
+      assert.equal(saved.revisiones_campos[fields[0]].estado, 'Rechazado');
+      assert.equal(saved.estado, 'Rechazado');
+      assert.equal((await block(s.bloque)).estado, 'Devuelto');
+      checks.push(`Decisiones independientes persistidas y bloqueo del espacio: ${type}`);
+    };
+    // Empty fields cannot create an attachment, even through the document-library API.
+    await assert.rejects(documents.create(id, { categoria: 'TITULOS', bloque: 'FORMACION', tipoSoporte: 'diploma_doctorado' }, file, 'CARGADOR'), /Registre primero/);
+    assert.equal(files.size, 0);
+    assert.equal((await documents.list(id)).length, 0);
+    await query('UPDATE auth.personas SET fec_nacimiento = NULL WHERE id_person = $1', [persona]);
+    await assert.rejects(documents.create(id, { categoria: 'IDENTIDAD', bloque: 'IDENTIDAD', tipoSoporte: 'documento_identidad', campo: 'FECHA_NACIMIENTO' }, file, 'CARGADOR'), /Registre primero/);
+    assert.equal(files.size, 0);
+    await query('UPDATE auth.personas SET fec_nacimiento = $1 WHERE id_person = $2', ['1980-01-01', persona]);
+    checks.push('Rechaza cargas sin datos y filas vacias que comparten soporte; no guarda archivos');
     const first = await documents.create(id, { categoria: 'IDENTIDAD', bloque: 'IDENTIDAD', tipoSoporte: 'documento_identidad' }, file, 'CARGADOR');
     assert.equal((await block('IDENTIDAD')).estado, 'En revisión');
     await assert.rejects(workflow.reviewBlock(id, 'IDENTIDAD', 'REVISOR'), /Revise y apruebe/);
+    await verifyIndividualRows('documento_identidad');
     const s1 = await support('documento_identidad');
     await assert.rejects(workflow.reviewSupport(id, 'IDENTIDAD', s1.id, { estado: 'Aprobado', documentoVersionId: first.id }, 'CARGADOR'), /distinta/);
     await assert.rejects(review('documento_identidad', 'Rechazado', '  '), /motivo/);
     checks.push('Carga pendiente, segregación de funciones y motivo obligatorio');
     await review('documento_identidad', 'Rechazado', 'El documento no corresponde. Adjunte su identificación.');
     assert.equal((await block('IDENTIDAD')).estado, 'Devuelto');
+    const filesBefore = files.size;
+    const supportBefore = await support('documento_identidad');
+    await query('UPDATE auth.personas SET fec_nacimiento = NULL WHERE id_person = $1', [persona]);
+    await assert.rejects(documents.replace(id, first.id, file, 'CARGADOR', undefined, undefined, 'FECHA_NACIMIENTO'), /Registre primero/);
+    assert.equal(files.size, filesBefore);
+    assert.deepEqual(await support('documento_identidad'), supportBefore);
+    assert.equal((await documents.list(id))[0].version, 1);
+    await query('UPDATE auth.personas SET fec_nacimiento = $1 WHERE id_person = $2', ['1980-01-01', persona]);
+    checks.push('Reemplazo sin dato rechazado; conserva version, archivo y decisiones anteriores');
     const second = await documents.replace(id, first.id, file, 'CARGADOR');
     assert.equal((await support('documento_identidad')).estado, 'Pendiente');
     assert.equal((await support('documento_identidad')).observacion, null);
@@ -99,6 +139,7 @@ const { RundEvidenceWorkflow, requiredEvidence, invalidateEditedEvidence } = req
       for (const group of requiredEvidence(code, { maestria: 'Maestría de prueba' })) {
         if (await support(group[0])) continue;
         await documents.create(id, { categoria: code === 'FORMACION' ? 'TITULOS' : 'OTROS', bloque: code, tipoSoporte: group[0] }, file, 'CARGADOR');
+        if (evidenceFields(group[0]).length > 1) await verifyIndividualRows(group[0]);
         await review(group[0]);
       }
       await workflow.reviewBlock(id, code, 'REVISOR');
@@ -146,6 +187,19 @@ const { RundEvidenceWorkflow, requiredEvidence, invalidateEditedEvidence } = req
     assert(logs.some(l => l.accion === 'DEVOLVER_SOPORTE' && l.metadata.documentoVersionId === first.id));
     assert(logs.every(l => l.actor_id && l.createdAt));
     checks.push('Eliminación lógica, versiones conservadas y trazabilidad de actor/fecha/decisión');
+    // An old document-wide approval cannot become approvals of every row.
+    await query(`UPDATE academic_work_plan."RundSoporteCampo" SET estado = 'Aprobado', revisiones_campos = '{}'::jsonb WHERE docente_id = $1 AND tipo_soporte = 'contrato'`, [id]);
+    await query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = 'Aprobado' WHERE docente_id::text = $1 AND bloque = 'VINCULACION'`, [id]);
+    const beforeAcademic = await block('ACADEMICO');
+    const migration = require('node:fs').readFileSync(path.resolve(__dirname, '../db/migrations/430_rund_individual_row_reviews.sql'), 'utf8').replaceAll('academic_work_plan.', 'pg_temp.');
+    await client.query(migration);
+    assert.equal((await support('contrato')).estado, 'Pendiente');
+    assert.equal((await block('VINCULACION')).estado, 'En revisi\u00f3n');
+    const [summary] = await query('SELECT completitud FROM academic_work_plan."Docente" WHERE id = $1', [id]);
+    assert.equal(summary.completitud.VINCULACION, 'En revisi\u00f3n');
+    assert.deepEqual(await block('ACADEMICO'), beforeAcademic);
+    assert.equal((await client.query(migration))[1].rowCount, 0);
+    checks.push('Migraci\u00f3n idempotente: reabre aprobaciones compartidas antiguas y conserva los otros bloques');
     console.log(JSON.stringify({ success: true, isolatedTemporaryTables: true, checks, auditEntries: logs.length }, null, 2));
   } finally {
     await client.query('ROLLBACK');
