@@ -24,11 +24,21 @@ export type TipoCampo =
  * BORRADOR → EN_REVISION → APROBADO
  *                        ↘ DEVUELTO → BORRADOR (el gestor corrige y reenvía)
  */
-export type EstadoActividad = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+/**
+ * `NEGADO` no es `DEVUELTO` (EFDS-1183): devuelta, la actividad vuelve a
+ * borrador y el área la corrige; negada, no se toca más y el proceso termina.
+ */
+export type EstadoActividad =
+  | 'BORRADOR'
+  | 'EN_REVISION'
+  | 'APROBADO'
+  | 'DEVUELTO'
+  | 'NO_APLICA'
+  | 'NEGADO';
 
 export interface RevisionEstudioPrevio {
   id: string;
-  decision: 'APROBADO' | 'DEVUELTO';
+  decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO';
   observaciones?: string;
   versionRevisada: number;
   revisadoPor: string;
@@ -391,6 +401,22 @@ export interface ProcesoResumen {
   actividades?: { numeral: string; estado: EstadoActividad }[];
 }
 
+/**
+ * Por qué quien mira no puede resolver la 3.4 (EFDS-1183).
+ *
+ * - `SIN_PERMISO`: su rol no aprueba actividades.
+ * - `SIN_ABOGADO`: nadie ha repartido el proceso todavía; se hace en la 3.3.
+ * - `NO_ES_TUYO`: lo revisa otro abogado, el que lo recibió.
+ */
+export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
+
+/** Quién resuelve la 3.4 de este proceso y si le toca a quien mira. */
+export interface RevisionDelProceso {
+  abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
+  puedeDecidir: boolean;
+  motivo: MotivoNoDecide | null;
+}
+
 export interface EstudioPrevio {
   proceso: {
     id: string;
@@ -408,6 +434,14 @@ export interface EstudioPrevio {
   datos: Record<string, any>;
   definicionCampos: CampoFormulario[];
   editable: boolean;
+  /**
+   * Quién resuelve la 3.4 y si le toca a quien está mirando.
+   *
+   * Viene con el estudio previo y no en otra consulta porque la pantalla lo
+   * necesita en el mismo momento en que dibuja los botones: pedirlo después
+   * deja un instante en que ofrece decidir a quien no puede.
+   */
+  revision?: RevisionDelProceso | null;
 }
 
 /** Campo obligatorio sin diligenciar (criterio 2 del HU). */

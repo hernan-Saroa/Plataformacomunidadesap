@@ -1561,6 +1561,18 @@ export const contratacionService = {
       { method: 'POST', body: JSON.stringify({ observaciones }) },
     ),
 
+  /**
+   * Numeral 3.4: niega el proceso. No es devolver.
+   *
+   * Devolver espera una corrección y deja el proceso vivo; negar lo cierra y no
+   * admite reenvío. El motivo es obligatorio y no se puede deshacer.
+   */
+  negar: (procesoId: string, observaciones: string) =>
+    pedir<{ estado: string; decision: string; revisadoPor: string }>(
+      `/procesos/${procesoId}/estudio-previo/negar`,
+      { method: 'POST', body: JSON.stringify({ observaciones }) },
+    ),
+
   revisiones: (procesoId: string) =>
     pedir<RevisionEstudioPrevio[]>(`/procesos/${procesoId}/estudio-previo/revisiones`),
 
