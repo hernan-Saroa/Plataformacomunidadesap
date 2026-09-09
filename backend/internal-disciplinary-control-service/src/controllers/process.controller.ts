@@ -29,6 +29,11 @@ import { NewsService } from '../services/news.service';
 import { AutoService } from '../services/auto.service';
 import { ProcessExportService } from '../services/process-export.service';
 import {
+  IndiceElectronicoExportService,
+  IndiceElectronicoDocumentoDto,
+  IndiceElectronicoExpedienteDto,
+} from '../services/indice-electronico-export.service';
+import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
@@ -109,6 +114,7 @@ export class ProcessController {
     private httpService: HttpService,
     private permissionsService: PermissionsService,
     private processExportService: ProcessExportService,
+    private indiceElectronicoExportService: IndiceElectronicoExportService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -1064,6 +1070,40 @@ export class ProcessController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Descargar el Índice Electrónico del expediente en el formato oficial EI-FO-020 (Excel).
+   * Recibe el mismo listado de documentos que ya se muestra en la pestaña Índice Electrónico
+   * (calculado por el frontend con getDocuments) para garantizar que el archivo generado
+   * corresponda exactamente a lo que el usuario está viendo en pantalla.
+   */
+  @Post(':id/indice-electronico')
+  @ApiOperation({
+    summary: 'Descargar Índice Electrónico (EI-FO-020)',
+    description: 'Genera el Índice Electrónico del expediente en el formato oficial EI-FO-020, a partir de los documentos visibles en la pestaña Índice Electrónico',
+  })
+  async descargarIndiceElectronico(
+    @Param('id') id: string,
+    @Body() body: { expediente: IndiceElectronicoExpedienteDto; documentos: IndiceElectronicoDocumentoDto[] },
+    @Res() res: Response,
+  ): Promise<void> {
+    const workbook = await this.indiceElectronicoExportService.generar(
+      body.expediente,
+      body.documentos || [],
+    );
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="IndiceElectronico_${body.expediente?.radicado || id}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   }
 
   /**
