@@ -75,6 +75,8 @@ function mapEtapa(etapa: string): string {
     'JUZGAMIENTO': 'Juzgamiento',
     'FALLO': 'Fallo',
     'SEGUNDA_INSTANCIA': 'Segunda Instancia',
+    'INHIBITORIO': 'Inhibido',
+    'ARCHIVO': 'Archivo'
   };
   return MAP[etapa] || etapa;
 }
