@@ -285,7 +285,10 @@ function resolveDestino(user: any): {
     .filter(Boolean) as string[];
 
   // Módulo principal para backoffice
-  const hasGestionLegal = roleCodes.some(c => ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL', 'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(c));
+  // NOTA: cualquier rol nuevo de acceso exclusivo a Gestión Legal (aunque solo
+  // vea un subconjunto de submódulos vía permisos `gestion-legal.*.ver`) debe
+  // agregarse aquí para que el login lo enrute directo al SIGL en modo restringido.
+  const hasGestionLegal = roleCodes.some(c => ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL', 'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL', 'CONSULTA_SEGUIMIENTO_GESTION_LEGAL'].includes(c));
   const hasControlInterno = roleCodes.some(c => ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(c));
   const module = roleCodes.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
     : hasGestionLegal ? 'gestion-legal'
