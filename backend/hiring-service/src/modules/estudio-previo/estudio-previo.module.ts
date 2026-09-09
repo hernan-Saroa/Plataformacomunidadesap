@@ -18,11 +18,14 @@ import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { UmbralesModule } from '../umbrales/umbrales.module';
+import { AprobacionModule } from '../aprobacion/aprobacion.module';
 
 @Module({
   imports: [
     // La creación del proceso valida la modalidad contra los umbrales vigentes.
     UmbralesModule,
+    // El envio consulta si alguien revisa la 3.1 antes de dejarla en revision.
+    AprobacionModule,
     TypeOrmModule.forFeature([
       Proceso,
       Expediente,

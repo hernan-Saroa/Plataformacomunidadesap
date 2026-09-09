@@ -21,6 +21,7 @@ import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { Modal } from '../shared/Modal';
 import { BloqueDocumento } from './BloqueDocumento';
 import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
+import { PERMISOS, tienePermiso } from '../../auth/permisos';
 
 interface Props {
   procesoId: string;
@@ -112,6 +113,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
   const enRevision = datos.estado === 'EN_REVISION';
   const aprobado = datos.estado === 'APROBADO';
+  // Aprobar y devolver son de quien revisa, no de quien envió: el servicio
+  // exige `actividad.approve` en las dos rutas.
+  const puedeAprobar = tienePermiso(PERMISOS.actividadAprobar);
   const bloqueado = enRevision || aprobado;
   const ultimaDevolucion = revisiones.find((r) => r.decision === 'DEVUELTO');
 
@@ -342,31 +346,38 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
               Pendiente de revisión
             </span>
             <span className="flex-1" />
-            <button
-              type="button"
-              onClick={() => {
-                setAccion('devolver');
-                setObservaciones('');
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold
-                rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 transition-all"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-              Devolver
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAccion('aprobar');
-                setObservaciones('');
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
-                rounded-md text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm
-                active:scale-95 transition-all"
-            >
-              <Check className="w-3.5 h-3.5" strokeWidth={3} />
-              Aprobar
-            </button>
+            {/* Quien lo envió ve que está pendiente, pero no lo resuelve: el
+                servicio exige `actividad.approve` en las dos rutas, así que
+                ofrecerle los botones era llevarlo a un 403. */}
+            {puedeAprobar ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccion('devolver');
+                    setObservaciones('');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold
+                    rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 transition-all"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  Devolver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccion('aprobar');
+                    setObservaciones('');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
+                    rounded-md text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm
+                    active:scale-95 transition-all"
+                >
+                  <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                  Aprobar
+                </button>
+              </>
+            ) : null}
           </>
         ) : (
           <>

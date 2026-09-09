@@ -21,6 +21,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
+import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
@@ -82,6 +83,7 @@ export class EstudioPrevioService {
     private readonly umbrales: UmbralesService,
     private readonly configuracionService: ConfiguracionService,
     private readonly permisos: PermisosService,
+    private readonly aprobacion: AprobacionService,
   ) {}
 
   // ------------------------------------------------------------- proceso ---
@@ -412,7 +414,28 @@ export class EstudioPrevioService {
         subidoPor: acceso.userName,
       } as Partial<Documento>);
 
-      actividad.estado = 'EN_REVISION';
+      /*
+       * Entra en revisión solo si alguien la revisa.
+       *
+       * Antes se forzaba EN_REVISION siempre, aunque nadie estuviera
+       * configurado para aprobarla: el estudio previo quedaba «pendiente de
+       * revisión» sin que existiera revisor, y a quien lo envió se le ofrecían
+       * los botones de aprobar y devolver que el servicio le iba a rechazar.
+       *
+       * La matriz pone la revisión del estudio previo en la 3.4 —«revisiones,
+       * mesas de trabajo y observaciones al estudio previo»—, no aquí. Si el
+       * área decide además revisarlo en la 3.1, lo configura y esto lo respeta,
+       * igual que en las otras treinta y siete actividades.
+       */
+      // La modalidad importa: una regla puede exigir revisión solo en algunas.
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      const revisan = await this.aprobacion.aprobadoresDe(
+        NUMERAL_ESTUDIO_PREVIO,
+        proceso?.modalidad ?? null,
+        em,
+      );
+
+      actividad.estado = revisan ? 'EN_REVISION' : 'APROBADO';
       actividad.enviadoPor = acceso.userName;
       actividad.enviadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
