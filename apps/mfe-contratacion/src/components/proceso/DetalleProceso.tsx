@@ -437,6 +437,9 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    * envia a aprobacion en vez de cerrar.
    */
   const [pideAprobacion, setPideAprobacion] = useState(false);
+  /** Si la aprobacion la devolvio: el panel de abajo no la consulta y sin esto
+      le seguia mostrando «Registrada» sin camino para corregirla. */
+  const [fueDevuelta, setFueDevuelta] = useState(false);
   /**
    * La decisión apartada a la burbuja, por voluntad de quien mira.
    *
@@ -798,6 +801,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             setFaltanFormatos(0);
             setHayDecision(false);
             setPideAprobacion(false);
+            setFueDevuelta(false);
             setExpandida(numeral);
           }}
         />
@@ -814,6 +818,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               onCambio={() => setTokenExpediente((t) => t + 1)}
               parte="aviso"
               onRequiereAprobacion={setPideAprobacion}
+              onDevuelta={setFueDevuelta}
+              /* Sin esto el aviso se quedaba con el estado anterior: tras
+                 corregir y reenviar seguía diciendo «devuelta» y volvía a
+                 ofrecer corregir sobre un registro ya vigente. */
+              recargarToken={tokenExpediente}
             />
           ) : null}
 
@@ -953,6 +962,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 numeral={actividadSeleccionada.numeral}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
                 requiereAprobacion={pideAprobacion}
+                devuelta={fueDevuelta}
               />
             ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
               actividadSeleccionada?.numeral === NUMERAL_ARL ? (
@@ -1072,6 +1082,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               numeral={actividadSeleccionada.numeral}
               onCambio={() => setTokenExpediente((t) => t + 1)}
               parte="decision"
+              recargarToken={tokenExpediente}
               faltanDocumentos={faltanFormatos}
               onHayDecision={setHayDecision}
               onEsconder={() => setDecisionEscondida(actividadSeleccionada.numeral)}

@@ -282,3 +282,126 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
     expect(screen.queryByRole('button', { name: /Esconder/ })).toBeNull();
   });
 });
+
+/**
+ * El aviso releyendo cuando el panel de abajo cambia el trámite (EFDS-1183).
+ *
+ * Son dos montajes con su propio estado. Al corregir una actividad devuelta y
+ * reenviarla desde el panel, este bloque seguía creyéndola devuelta y volvía a
+ * ofrecer corregir sobre un registro ya vigente; el servicio lo rechazaba con
+ * «ya tiene un registro vigente», que es cierto pero no explica nada a quien
+ * acaba de guardar bien.
+ */
+describe('AprobacionDeLaActividad · relee cuando el panel cambia el trámite', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('deja de decir «devuelta» cuando la actividad vuelve a revisión', async () => {
+    const consulta = vi
+      .spyOn(contratacionService, 'aprobadoresDeActividad')
+      .mockResolvedValue(
+        estado({ estado: 'DEVUELTO', observaciones: 'Faltan las fichas técnicas.' }) as never,
+      );
+
+    const { rerender } = render(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="aviso"
+        recargarToken={0}
+      />,
+    );
+
+    expect(await screen.findByText(/Devuelta/)).toBeInTheDocument();
+
+    // El panel de abajo guardó la corrección: la actividad ya está en revisión.
+    consulta.mockResolvedValue(estado({ estado: 'EN_REVISION' }) as never);
+    rerender(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="aviso"
+        recargarToken={1}
+      />,
+    );
+
+    // Se espera al texto nuevo y no solo a que desaparezca el viejo: entre una
+    // cosa y otra el bloque no pinta nada mientras relee.
+    expect(
+      await screen.findByText('En revisión · pendiente de aprobación'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Devuelta/)).toBeNull();
+  });
+
+  it('avisa al contenedor de que ya no está devuelta', async () => {
+    // Es lo que apaga el botón de corregir en el panel de abajo.
+    const consulta = vi
+      .spyOn(contratacionService, 'aprobadoresDeActividad')
+      .mockResolvedValue(estado({ estado: 'DEVUELTO' }) as never);
+    const onDevuelta = vi.fn();
+
+    const { rerender } = render(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="aviso"
+        onDevuelta={onDevuelta}
+        recargarToken={0}
+      />,
+    );
+
+    await waitFor(() => expect(onDevuelta).toHaveBeenCalledWith(true));
+
+    consulta.mockResolvedValue(estado({ estado: 'EN_REVISION' }) as never);
+    rerender(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="aviso"
+        onDevuelta={onDevuelta}
+        recargarToken={1}
+      />,
+    );
+
+    await waitFor(() => expect(onDevuelta).toHaveBeenLastCalledWith(false));
+  });
+});
+
+/**
+ * Aprobar lo que uno mismo trabajó (EFDS-1183).
+ *
+ * Estaba prohibido, copiando la regla de las garantías: allí quien carga la
+ * póliza y quien la revisa son papeles distintos y nunca coinciden. En las
+ * actividades sí coinciden —la 3.3 y la 3.4 las ejecuta la Dirección de
+ * Contratación y las aprueba su director—, y el bloqueo lo dejaba esperándose
+ * a sí mismo con la actividad sin salida. El control que queda es el rol.
+ */
+describe('AprobacionDeLaActividad · quien la trabajó también decide', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('le ofrece resolverla aunque la haya enviado él', async () => {
+    montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: true }));
+
+    expect(await screen.findByText('Te toca resolverla.')).toBeInTheDocument();
+  });
+
+  it('y le da los botones de decidir', async () => {
+    montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: true }), 'decision');
+
+    expect(await screen.findByRole('button', { name: /^Aprobar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Devolver con observaciones/ })).toBeInTheDocument();
+  });
+
+  it('sigue pudiendo retirarla en vez de decidir', async () => {
+    // Retirar no desaparece: corregir antes de que nadie la mire sigue siendo
+    // la salida limpia cuando uno mismo ve el error.
+    montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: true }));
+
+    expect(await screen.findByRole('button', { name: /Retirar de aprobación/ })).toBeInTheDocument();
+  });
+
+  it('a quien no tiene el rol le sigue diciendo a quién espera', async () => {
+    montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: false }));
+
+    expect(await screen.findByText(/Espera a Director de Contratación/)).toBeInTheDocument();
+  });
+});
