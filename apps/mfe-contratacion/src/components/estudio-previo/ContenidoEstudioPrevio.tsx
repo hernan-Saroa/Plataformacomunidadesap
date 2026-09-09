@@ -22,6 +22,7 @@ import { Modal } from '../shared/Modal';
 import { BloqueDocumento } from './BloqueDocumento';
 import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
 import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { usarAprobacion } from '../shared/usarAprobacion';
 
 interface Props {
   procesoId: string;
@@ -67,6 +68,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Si alguien revisa esta actividad, para no llamar «aprobado» a lo que se
+  // cerró sin que nadie decidiera.
+  const revision = usarAprobacion(procesoId, NUMERAL);
 
   const cargarAnexos = () =>
     Promise.all([
@@ -335,9 +340,15 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
       {/* Acciones */}
       <div className="flex items-center gap-2 flex-wrap pt-3 border-t border-gray-200">
         {aprobado ? (
+          /* «Aprobado» solo donde alguien aprobó. Sin revisor configurado la
+             actividad se cierra al enviarla, y decir que fue aprobada nombra
+             una decisión que nadie tomó: la revisión del estudio previo la
+             hace la 3.4, no esta actividad. */
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-700">
             <Lock className="w-3.5 h-3.5" />
-            Aprobado · registrado en el expediente
+            {revision.requiereAprobacion
+              ? 'Aprobado · registrado en el expediente'
+              : 'Terminado · registrado en el expediente'}
           </span>
         ) : enRevision ? (
           <>

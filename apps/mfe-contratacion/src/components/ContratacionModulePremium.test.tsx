@@ -79,4 +79,22 @@ describe('ContratacionModulePremium · menú según el permiso', () => {
     expect(screen.getByText('Expedientes')).toBeInTheDocument();
     expect(screen.getByText('Umbrales')).toBeInTheDocument();
   });
+
+  it('ofrece Alertas a quien trabaja procesos, no solo a quien configura', () => {
+    // Estaba dentro de Configuracion, que exige el permiso de administrar: el
+    // gestor tenia «ver alertas» y aun asi no veia la entrada donde le llegan
+    // sus aprobaciones pendientes.
+    sesionCon('contratacion.proceso.view', 'contratacion.alerta.ver');
+    render(<ContratacionModulePremium />);
+
+    expect(screen.getByText('Alertas')).toBeInTheDocument();
+    expect(screen.queryByText('Umbrales')).toBeNull();
+  });
+
+  it('no se la ofrece a quien no tiene ese permiso', () => {
+    sesionCon('contratacion.proceso.view');
+    render(<ContratacionModulePremium />);
+
+    expect(screen.queryByText('Alertas')).toBeNull();
+  });
 });

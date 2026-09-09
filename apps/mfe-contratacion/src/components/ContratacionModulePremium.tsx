@@ -101,6 +101,21 @@ export default function ContratacionModulePremium() {
          * sitios—, así que la entrada se retira en vez de quedarse prometiendo
          * algo que ya está en otro lado.
          */
+        /* Alertas estaba dentro de Configuración, que exige `config.manage`:
+           el gestor tenía «ver alertas de vencimiento» y aun así nunca veía la
+           entrada, aunque ahí es donde le llegan sus aprobaciones pendientes.
+           Va con el trabajo diario y se rige por su propio permiso. */
+        ...(!tienePermiso(PERMISOS.alertaVer)
+          ? []
+          : [
+              {
+                id: 'alertas' as Seccion,
+                label: 'Alertas',
+                subtitle: 'Vencimientos y aprobaciones',
+                icon: <BellRing className="w-5 h-5" />,
+                color: '#DC2626',
+              },
+            ]),
         ...(!puedeVerExpedientes
           ? []
           : [
@@ -148,15 +163,6 @@ export default function ContratacionModulePremium() {
           color: '#B45309',
         },
         {
-          // En Configuración por pedido del área: se revisa junto a los demás
-          // parámetros del flujo, no en el trabajo diario.
-          id: 'alertas',
-          label: 'Alertas',
-          subtitle: 'Vencimientos y aprobaciones',
-          icon: <BellRing className="w-5 h-5" />,
-          color: '#DC2626',
-        },
-        {
           id: 'mipyme',
           label: 'MIPYME',
           subtitle: 'Condiciones de limitación',
@@ -192,6 +198,17 @@ export default function ContratacionModulePremium() {
     // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
     // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
     // seguiría dentro de ella.
+    if (seccion === 'alertas' && !tienePermiso(PERMISOS.alertaVer)) {
+      return (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
+          <p className="text-[13px] font-bold text-slate-700 m-0">No tienes acceso a las alertas</p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+            Las consultan quienes trabajan los procesos y quienes los aprueban.
+          </p>
+        </div>
+      );
+    }
+
     if (seccion === 'expedientes' && !puedeVerExpedientes) {
       return (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
