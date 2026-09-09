@@ -374,7 +374,10 @@ describe('PanelModificaciones · respuestas incompletas', () => {
   it('aguanta que falten las dos listas a la vez', async () => {
     // Es la forma exacta que devolvía el servidor: sin `tipos` y, en versiones
     // viejas del expediente, tampoco `modificaciones`.
-    const { tipos, modificaciones, ...resto } = { ...sinContrato(), tipos: undefined } as never;
+    const { tipos, modificaciones, ...resto } = {
+      ...sinContrato(),
+      tipos: undefined,
+    } as Record<string, unknown>;
     servicio.modificaciones.mockResolvedValue(resto as never);
     pintar();
 

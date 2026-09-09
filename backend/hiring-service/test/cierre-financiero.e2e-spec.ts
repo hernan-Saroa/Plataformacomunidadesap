@@ -409,7 +409,7 @@ describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
 
     await actaInicio.suscribir(
       proceso.id,
-      { fechaReunion: haceDias(30), fechaInicio } as any,
+      { fechaInicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
       supervisor,
@@ -473,7 +473,7 @@ describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
 
     await actaInicio.suscribir(
       proceso.id,
-      { fechaReunion: inicio, fechaInicio: inicio } as any,
+      { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
       supervisor,
@@ -545,7 +545,7 @@ describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
     const inicio = haceDias(200);
     await actaInicio.suscribir(
       proceso.id,
-      { fechaReunion: inicio, fechaInicio: inicio } as any,
+      { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
       supervisor,
@@ -622,7 +622,7 @@ describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
       const inicio = haceDias(200);
       await actaInicio.suscribir(
         proceso.id,
-        { fechaReunion: inicio, fechaInicio: inicio } as any,
+        { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
         archivo('acta-inicio.pdf'),
         'k'.repeat(64),
         supervisor,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  BarChart3,
   BellRing,
   Handshake,
   Coins,
@@ -29,6 +30,7 @@ import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
+import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
 import { PERMISOS, tieneAlguno, tienePermiso } from '../auth/permisos';
 
 type Seccion =
@@ -36,6 +38,7 @@ type Seccion =
   | 'revision'
   | 'alertas'
   | 'expedientes'
+  | 'estadisticas'
   | 'umbrales'
   | 'plazos'
   | 'mipyme'
@@ -67,6 +70,7 @@ export default function ContratacionModulePremium() {
   const [actividad, setActividad] = useState<string | null>(null);
 
   const puedeConfigurar = tienePermiso(PERMISOS.configurar);
+  const puedeVerReportes = tienePermiso(PERMISOS.reporteVer);
   /*
    * El expediente lo consulta quien lo audita, no cualquiera con acceso al
    * módulo: reúne todo lo que se cargó en el proceso. Basta uno de los dos
@@ -130,6 +134,20 @@ export default function ContratacionModulePremium() {
                 subtitle: 'Consulta y auditoría',
                 icon: <FolderOpen className="w-5 h-5" />,
                 color: '#0891B2',
+              },
+            ]),
+        // Con Expedientes y no en Configuración: las dos se consultan sin estar
+        // trabajando un proceso, y los indicadores no son un parámetro del
+        // flujo sino su resultado. Quien no pueda generarlos no ve el tab.
+        ...(!puedeVerReportes
+          ? []
+          : [
+              {
+                id: 'estadisticas' as Seccion,
+                label: 'Estadísticas',
+                subtitle: 'Indicadores de gestión',
+                icon: <BarChart3 className="w-5 h-5" />,
+                color: '#0E7490',
               },
             ]),
       ],
@@ -232,6 +250,25 @@ export default function ContratacionModulePremium() {
           </p>
           <p className="text-[11.5px] text-slate-500 m-0 mt-1">
             La administran la Dirección de Contratación y el administrador del módulo.
+          </p>
+        </div>
+      );
+    }
+
+    // Se comprueba aunque el menú ya lo esconda, por lo mismo que arriba: la
+    // sección sobrevive en el estado si le retiran el permiso con la pantalla
+    // abierta.
+    if (seccion === 'estadisticas') {
+      return puedeVerReportes ? (
+        <VistaEstadisticas />
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
+          <p className="text-[13px] font-bold text-slate-700 m-0">
+            No tienes acceso a los reportes de gestión
+          </p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+            Los consultan la Dirección de Contratación, el administrador del módulo y el
+            apoyo a la supervisión.
           </p>
         </div>
       );

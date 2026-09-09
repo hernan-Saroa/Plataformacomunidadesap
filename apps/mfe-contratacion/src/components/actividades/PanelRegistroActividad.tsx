@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CircleSlash, Eye, FilePlus2, History, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,6 +39,14 @@ interface Props {
    * había dónde: quien la trabajó se quedaba sin camino para corregirla.
    */
   devuelta?: boolean;
+  /**
+   * Cambia cuando el bloque de documentos carga o retira un adjunto.
+   *
+   * Donde el soporte lo recibe ese bloque, `exigeSoporte` deja de ser cierto en
+   * cuanto el formato se entrega, y sin volver a leer el boton de registrar se
+   * quedaba bloqueado pidiendo un documento que ya estaba cargado.
+   */
+  recargarToken?: number;
 }
 
 /**
@@ -55,6 +63,7 @@ export function PanelRegistroActividad({
   onCambio,
   requiereAprobacion = false,
   devuelta = false,
+  recargarToken,
 }: Props) {
   const [estado, setEstado] = useState<EstadoRegistroActividad | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -83,6 +92,24 @@ export function PanelRegistroActividad({
     setCargando(true);
     leer();
   }, [procesoId, numeral]);
+
+  /*
+   * Relectura cuando el bloque de documentos carga o retira un adjunto.
+   *
+   * Solo a los cambios del token y no tambien al montar, que es cuando el
+   * efecto de arriba ya lee: sin el `ref` la pantalla pedia el estado dos veces
+   * cada vez que se abria una actividad.
+   *
+   * Sin `setCargando`: el bloque ya se pinta a si mismo mientras carga, y
+   * vaciar el formulario a cada adjunto perderia lo que el gestor lleva escrito
+   * en la nota.
+   */
+  const tokenLeido = useRef(recargarToken);
+  useEffect(() => {
+    if (recargarToken === tokenLeido.current) return;
+    tokenLeido.current = recargarToken;
+    leer();
+  }, [recargarToken]);
 
   const limpiar = () => {
     setFecha(hoyEnBogota());
@@ -174,6 +201,17 @@ export function PanelRegistroActividad({
   }
 
   const registro = estado.registro;
+
+  /*
+   * Si todavia falta el documento que respalda la actividad.
+   *
+   * Donde lo recibe el bloque de documentos no hay archivo que mirar en el
+   * formulario: lo que falta lo dice el propio `exigeSoporte`, que ya deja de
+   * ser cierto en cuanto el formato se entrega alli.
+   */
+  const faltaSoporte = estado.tieneFormatos
+    ? estado.exigeSoporte
+    : estado.exigeSoporte && !archivo;
 
   return (
     <Marco>
@@ -306,17 +344,33 @@ export function PanelRegistroActividad({
             />
           </label>
 
-          <SelectorArchivo
-            etiqueta="Soporte de la actividad"
-            archivo={archivo}
-            onElegir={setArchivo}
-            obligatorio={estado.exigeSoporte}
-            ayuda={
-              estado.exigeSoporte
-                ? 'Obligatorio para esta actividad.'
-                : 'Opcional: adjúntalo si la actividad dejó un documento.'
-            }
-          />
+          {/* El soporte se pide una sola vez.
+
+              Con formatos asignados lo recibe el bloque de documentos de abajo
+              —los dos escriben el mismo adjunto desde que el soporte cumple el
+              formato pendiente, así que ofrecer los dos era pedir el papel dos
+              veces— y aquí solo se dice dónde está. El bloque además nombra el
+              formato y presta la plantilla en blanco, que es lo que este
+              selector genérico nunca pudo hacer. */}
+          {estado.tieneFormatos ? (
+            <Ayuda>
+              {estado.exigeSoporte
+                ? 'El soporte se carga abajo, en «Documentos de esta actividad»: ahí se dice qué formato es y se descarga la plantilla en blanco.'
+                : 'El soporte ya está cargado en «Documentos de esta actividad», abajo.'}
+            </Ayuda>
+          ) : (
+            <SelectorArchivo
+              etiqueta="Soporte de la actividad"
+              archivo={archivo}
+              onElegir={setArchivo}
+              obligatorio={estado.exigeSoporte}
+              ayuda={
+                estado.exigeSoporte
+                  ? 'Obligatorio para esta actividad.'
+                  : 'Opcional: adjúntalo si la actividad dejó un documento.'
+              }
+            />
+          )}
 
           {/* Este boton es el unico punto que sabe si el trabajo esta hecho
               —comprueba la fecha, la nota y el soporte—, asi que es el que
@@ -343,7 +397,7 @@ export function PanelRegistroActividad({
               <Boton
                 icono={<FilePlus2 className="w-3.5 h-3.5" />}
                 onClick={registrar}
-                disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
+                disabled={guardando || nota.trim().length < 10 || faltaSoporte}
               >
                 {corrigiendo
                   ? 'Guardar y volver a enviar'

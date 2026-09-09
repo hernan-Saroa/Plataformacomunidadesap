@@ -438,6 +438,14 @@
 .min-h-\[72px\]   { min-height: 72px; }
 .min-h-\[110px\]  { min-height: 110px; }
 .max-h-\[85vh\]   { max-height: 85vh; }
+
+/* La rejilla de roles y permisos (EFDS-1183): catorce columnas de sigla y una
+   primera columna que tiene que caber el nombre del permiso con su columna del
+   formato debajo. Por debajo de 900px la tabla se desplaza dentro de su caja. */
+.max-h-\[560px\]  { max-height: 560px; }
+.min-w-\[900px\]  { min-width: 900px; }
+.min-w-\[260px\]  { min-width: 260px; }
+.w-\[46px\]       { width: 46px; }
 .max-w-\[220px\]  { max-width: 220px; }
 .pl-\[52px\]      { padding-left: 52px; }
 .left-\[27px\]    { left: 27px; }

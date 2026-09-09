@@ -963,6 +963,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
                 requiereAprobacion={pideAprobacion}
                 devuelta={fueDevuelta}
+                /* Donde el bloque de documentos recibe el soporte, cargarlo
+                   ahi es lo que desbloquea el boton de registrar: sin este
+                   token el formulario no se enteraba. */
+                recargarToken={tokenExpediente}
               />
             ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
               actividadSeleccionada?.numeral === NUMERAL_ARL ? (

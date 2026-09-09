@@ -26,6 +26,8 @@ export const PERMISOS = {
   expedienteArchivar: 'contratacion.expediente.archivar',
   expedienteAuditar: 'contratacion.expediente.auditar',
   alertaVer: 'contratacion.alerta.ver',
+  /** Consultar los indicadores de gestión (EFDS-1189). */
+  reporteVer: 'contratacion.reporte.view',
 } as const;
 
 /** La sesión tal como la deja el shell; de ahí solo interesan dos campos. */

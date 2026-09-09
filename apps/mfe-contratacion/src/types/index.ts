@@ -2284,6 +2284,14 @@ export interface EstadoRegistroActividad {
   numeral: string;
   etapa: number;
   exigeSoporte: boolean;
+  /**
+   * Si la actividad tiene formatos asignados en la biblioteca.
+   *
+   * Donde los hay, el soporte se carga en el bloque de documentos y no en el
+   * formulario: los dos escriben el mismo adjunto, y ofrecer los dos era pedir
+   * el documento dos veces.
+   */
+  tieneFormatos: boolean;
   /** Si la exigencia sale de la matriz o es suposicion del equipo. */
   exigenciaConfirmada: boolean;
   /** Lo que la matriz dice de esta actividad, para mostrarlo en la pantalla. */
@@ -2658,6 +2666,57 @@ export interface AlertaVencimiento {
 }
 
 /**
+ * Estadísticas y reportes de gestión (EFDS-1189, numeral 3.1.a).
+ *
+ * Los cinco estados que informa no son los diez del ciclo del contrato: son el
+ * vocabulario con el que la entidad rinde cuentas. Quien pide el reporte
+ * pregunta cuántos contratos se suscribieron, no cuántos están perfeccionados
+ * y cuántos legalizados.
+ */
+export type EstadoDeGestion =
+  | 'SUSCRITO'
+  | 'EJECUCION'
+  | 'TERMINADO'
+  | 'LIQUIDADO'
+  | 'CERRADO';
+
+/** Cuántos y por cuánto. Es la forma de todos los cortes del reporte. */
+export interface ConteoValor {
+  /** Código con el que se agrupó: el estado, la modalidad o la tipología. */
+  clave: string;
+  /** Cómo se llama en la pantalla y en el archivo descargable. */
+  etiqueta: string;
+  cuantos: number;
+  valor: number;
+}
+
+export interface EstadisticasGestion {
+  /** Momento del corte: un informe sin fecha no se puede citar. */
+  generadoEn: string;
+  filtros: { vigencia: number | null; modalidad: string | null };
+  contratos: {
+    total: number;
+    valorTotal: number;
+    porEstado: ConteoValor[];
+    porModalidad: ConteoValor[];
+    porTipologia: ConteoValor[];
+  };
+  procesos: {
+    total: number;
+    porDesenlace: ConteoValor[];
+  };
+  presupuesto: {
+    contratado: number;
+    pagado: number;
+    porPagar: number;
+    /** Porcentaje de lo contratado que ya se pagó, con un decimal. */
+    porcentajeEjecutado: number;
+  };
+  /** Los años en que hay contratos, para que la pantalla ofrezca solo esos. */
+  vigenciasDisponibles: number[];
+}
+
+/**
  * Expediente completo del proceso para auditoría (EFDS-1186).
  *
  * Del incumplimiento solo llega el conteo: el detalle está bajo reserva legal
@@ -2755,4 +2814,61 @@ export interface ExpedienteAuditoria {
     detalle: Record<string, unknown> | null;
     created_at: string;
   }[];
+}
+
+// ------------------------ matriz de roles y permisos (EFDS-1183) ----------
+
+/** Una de las diez columnas de permiso del formato de roles. */
+export type ColumnaDelFormato =
+  | 'Radicar'
+  | 'Editar'
+  | 'Adjuntar'
+  | 'Visualizar todos los procesos'
+  | 'Asignar / Reasignar'
+  | 'Aprobar'
+  | 'Archivar'
+  | 'Borrar'
+  | 'Generar informes'
+  | 'Configurar';
+
+/** Una columna de la rejilla: lo que se puede hacer. */
+export interface PermisoDelCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  /** El segmento central del código; agrupa la rejilla. */
+  recurso: string;
+  /** La columna de la Hoja1 que realiza, o `null` si el formato no la tenía. */
+  columna: ColumnaDelFormato | null;
+}
+
+/** Una fila de la rejilla: quién puede hacerlo. */
+export interface RolDelCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  /** Quién lo ejerce en la ESAP, según la Hoja2 del formato. */
+  quienLoEjerce: string;
+  procedencia: 'INTERNA' | 'EXTERNA';
+  /** Si la fila sale del anexo o la fijaron las historias del módulo. */
+  origen: 'FORMATO' | 'MODULO';
+  /** Lo que el rol hace y la rejilla todavía no puede mostrar. */
+  nota?: string;
+  permisos: string[];
+}
+
+export interface MatrizDeRoles {
+  /** Si la Dirección de Contratación ya la ratificó. */
+  confirmada: boolean;
+  permisos: PermisoDelCatalogo[];
+  roles: RolDelCatalogo[];
+  /** Los que lo otorgan todo sin ser del módulo. */
+  transversales: string[];
+}
+
+/** Lo que puede hacer quien está mirando la pantalla. */
+export interface MisPermisos {
+  roles: string[];
+  rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
+  permisos: string[];
 }
