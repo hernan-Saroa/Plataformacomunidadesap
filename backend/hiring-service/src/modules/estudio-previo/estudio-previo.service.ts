@@ -9,13 +9,17 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { createHash } from 'crypto';
 
-import { Proceso } from '../../entities/proceso.entity';
+import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { NUMERAL_ESTUDIO_PREVIO, ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  EstadoActividad,
+  NUMERAL_ESTUDIO_PREVIO,
+  ProcesoActividad,
+} from '../../entities/proceso-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
-import { Revision } from '../../entities/revision.entity';
+import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
@@ -25,6 +29,32 @@ import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
+
+/**
+ * En qué queda la actividad según lo que decidió el revisor (EFDS-1183).
+ *
+ * Devolver la regresa a BORRADOR para que el área corrija y reenvíe. Negar la
+ * deja NEGADA, que no vuelve a ser editable: si negar reusara DEVUELTO, el riel
+ * le ofrecería al área editar y reenviar algo que ya nadie va a mirar.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad {
+  if (decision === 'APROBADO') return 'APROBADO';
+  if (decision === 'NEGADO') return 'NEGADO';
+  return 'BORRADOR';
+}
+
+/**
+ * Si la decisión termina el proceso, y con qué desenlace.
+ *
+ * Solo negar. Dejar el proceso EN_CURSO con su estudio previo negado haría que
+ * el listado y las estadísticas contaran como vivo un expediente que nadie va a
+ * volver a tocar.
+ */
+export function desenlaceTrasDecision(decision: DecisionRevision): EstadoProceso | null {
+  return decision === 'NEGADO' ? 'NEGADO' : null;
+}
 
 /**
  * "Vacío" depende del tipo: un 0 en un campo numérico está diligenciado,
@@ -446,9 +476,34 @@ export class EstudioPrevioService {
     return this.decidirRevision(procesoId, 'DEVUELTO', observaciones, acceso);
   }
 
+  /**
+   * Niega el proceso: la contratación no procede (EFDS-1183).
+   *
+   * No es devolver. Devolver es «corrígelo y vuelve» y deja el proceso vivo
+   * esperando una corrección; negar cierra el expediente y no admite reenvío.
+   * Antes solo existía la primera, así que un proceso rechazado de plano se
+   * devolvía —y el área se quedaba esperando saber qué corregir— o se quedaba
+   * en revisión para siempre.
+   *
+   * El desenlace es del proceso y no solo de la actividad: si la Dirección dice
+   * que la contratación no procede, lo que termina es la contratación.
+   *
+   * No se puede deshacer mientras la Dirección de Contratación no diga lo
+   * contrario: reabrir un proceso negado es una actuación con su propia
+   * justificación, no un botón de «me equivoqué».
+   */
+  async negar(procesoId: string, observaciones: string, acceso: HiringAccess) {
+    if (!observaciones?.trim()) {
+      throw new BadRequestException(
+        'El motivo es obligatorio al negar: a quien le niegan un proceso hay que decirle por qué, y no va a tener ocasión de preguntarlo corrigiendo',
+      );
+    }
+    return this.decidirRevision(procesoId, 'NEGADO', observaciones, acceso);
+  }
+
   private async decidirRevision(
     procesoId: string,
-    decision: 'APROBADO' | 'DEVUELTO',
+    decision: DecisionRevision,
     observaciones: string | undefined,
     acceso: HiringAccess,
   ) {
@@ -474,18 +529,23 @@ export class EstudioPrevioService {
         revisadoPorId: acceso.userId,
       } as Partial<Revision>);
 
-      // Devolver lo regresa a BORRADOR para que el gestor pueda editarlo.
-      actividad.estado = decision === 'APROBADO' ? 'APROBADO' : 'BORRADOR';
+      actividad.estado = estadoTrasDecision(decision);
       actividad.revisadoPor = acceso.userName;
       actividad.revisadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
+
+      // El proceso termina con la actividad cuando la decisión lo cierra.
+      const desenlace = desenlaceTrasDecision(decision);
+      if (desenlace) {
+        await em.update(Proceso, { id: procesoId }, { estado: desenlace });
+      }
 
       await this.traza(
         em,
         procesoId,
         'estudio_previo',
         actividad.id,
-        decision === 'APROBADO' ? 'APROBAR' : 'DEVOLVER',
+        decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'RECHAZAR' : 'DEVOLVER',
         acceso,
         { version: actividad.version, observaciones },
       );

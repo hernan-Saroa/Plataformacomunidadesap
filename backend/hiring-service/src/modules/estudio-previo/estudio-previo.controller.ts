@@ -140,8 +140,20 @@ export class EstudioPrevioController {
     return this.service.devolver(id, dto.observaciones ?? '', getHiringAccess(req));
   }
 
+  @Post(':id/estudio-previo/negar')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @ApiOperation({
+    summary: 'Negar el proceso (numeral 3.4)',
+    description:
+      'La contratación no procede. No es devolver: no hay corrección que esperar, el proceso termina y no admite reenvío. El motivo es obligatorio y no se puede deshacer.',
+  })
+  negar(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RevisarDto, @Req() req: any) {
+    return this.service.negar(id, dto.observaciones ?? '', getHiringAccess(req));
+  }
+
   @Get(':id/estudio-previo/revisiones')
-  @ApiOperation({ summary: 'Historial de aprobaciones y devoluciones' })
+  @ApiOperation({ summary: 'Historial de aprobaciones, devoluciones y negativas' })
   revisiones(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.revisiones(id);
   }

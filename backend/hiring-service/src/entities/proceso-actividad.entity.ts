@@ -8,7 +8,18 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, Updat
  * recorre el ciclo anterior. Se instancia igual, en vez de omitirse, para que
  * el expediente deje constancia de por qué el proceso tuvo menos pasos.
  */
-export type EstadoActividad = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO' | 'NO_APLICA';
+/**
+ * `NEGADO` no reusa `DEVUELTO` (EFDS-1183): devuelta, la actividad vuelve a
+ * BORRADOR y se puede corregir y reenviar; negada, no se toca más. Con un solo
+ * estado el riel ofrecería editar algo que ya nadie va a mirar.
+ */
+export type EstadoActividad =
+  | 'BORRADOR'
+  | 'EN_REVISION'
+  | 'APROBADO'
+  | 'DEVUELTO'
+  | 'NO_APLICA'
+  | 'NEGADO';
 
 /** Numeral 3.1 de la matriz: elaboración del estudio previo. */
 export const NUMERAL_ESTUDIO_PREVIO = '3.1';
