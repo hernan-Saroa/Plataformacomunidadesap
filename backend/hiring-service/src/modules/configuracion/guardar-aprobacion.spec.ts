@@ -16,24 +16,20 @@ describe('ConfiguracionService · guardarAprobacion', () => {
    */
   const servicio = () => new ConfiguracionService({} as never);
 
-  it('rechaza configurarle aprobación al estudio previo', async () => {
-    await expect(
-      servicio().guardarAprobacion('3.1', {
-        requiereAprobacion: true,
-        roles: ['DIRECTOR_CONTRATACION'],
-      } as never),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
+  it('deja configurarle aprobación al estudio previo, como a las demás', async () => {
+    // Antes se rechazaba: su ciclo estaba escrito en el código y el envío la
+    // dejaba en revisión siempre, así que una segunda aprobación habría creado
+    // dos trámites sobre la misma columna de estado. Ya no: el envío consulta
+    // esta configuración, de modo que el trámite es uno solo.
+    const transaccion = jest.fn().mockResolvedValue({ requiereAprobacion: true });
+    const srv = new ConfiguracionService({ transaction: transaccion } as never);
 
-  it('lo explica en vez de fallar sin más', async () => {
-    // Quien configura tiene que entender que la 3.1 no está sin revisión, sino
-    // revisada de otra forma; si no, lo intentará otra vez por otro camino.
-    await expect(
-      servicio().guardarAprobacion('3.1', {
-        requiereAprobacion: true,
-        roles: ['DIRECTOR_CONTRATACION'],
-      } as never),
-    ).rejects.toThrow(/ya tiene su propia aprobación/);
+    await srv.guardarAprobacion('3.1', {
+      requiereAprobacion: true,
+      roles: ['DIRECTOR_CONTRATACION'],
+    } as never);
+
+    expect(transaccion).toHaveBeenCalled();
   });
 
   it('deja retirarla, que no crea ningún conflicto', async () => {

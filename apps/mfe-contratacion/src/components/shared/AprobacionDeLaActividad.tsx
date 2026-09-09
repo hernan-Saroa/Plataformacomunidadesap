@@ -282,9 +282,14 @@ export function AprobacionDeLaActividad({
             ? // Ya no se dice dónde está la decisión: la tarjeta la acompaña
               // a la vista, y si la esconde, la burbuja se la devuelve.
               'Te toca resolverla.'
-            : a.quienAprueba.length
-              ? `Espera a ${a.quienAprueba.join(' o ')}.`
-              : undefined,
+            : a.esMia
+              ? // Quien la trabajó no la aprueba, aunque tenga el rol. Sin esto
+                // se le decía «espera a Director de Contratación» siendo él
+                // mismo el director: quedaba esperándose y sin salida.
+                'La resuelve otra persona con ese rol: quien trabaja la actividad no la aprueba. Puedes retirarla si necesitas corregir algo.'
+              : a.quienAprueba.length
+                ? `Espera a ${a.quienAprueba.join(' o ')}.`
+                : undefined,
         )}
 
         {/* Quien la envió puede retirarla mientras nadie la ha resuelto: sin

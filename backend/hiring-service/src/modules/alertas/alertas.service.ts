@@ -158,11 +158,31 @@ export class AlertasService {
    * aprobar lo que él mismo trabajó, así que ofrecérsela sería ofrecerle un
    * botón que va a rechazarle el servicio.
    */
+  /**
+   * La persona del directorio a la que pertenece la cuenta.
+   *
+   * `auth.user.id_person` es lo que enlaza una con otra, y es el identificador
+   * que notifications-service usa como destinatario.
+   */
+  private async personaDe(userId: string | undefined): Promise<string | null> {
+    if (!userId) return null;
+
+    const [fila] = await this.dataSource.query(
+      `SELECT id_person FROM auth."user" WHERE id_user = $1`,
+      [userId],
+    );
+    return fila?.id_person ?? null;
+  }
+
   private async aprobacionesPendientes(
     acceso: HiringAccess,
   ): Promise<Omit<Alerta, never>[]> {
     const roles = acceso.roles ?? [];
     const esSuperAdmin = roles.includes('SUPER_ADMIN');
+
+    // `id_person` y no `id_user`: es lo que notifications-service espera como
+    // destinatario, igual que en las alertas de vencimiento.
+    const personaId = await this.personaDe(acceso.userId);
 
     const filas = await this.dataSource.query(
       `
@@ -213,7 +233,15 @@ export class AlertasService {
         estado: 'POR_VENCER' as EstadoAlerta,
         responsable: f.enviado_por ?? null,
         responsableEmail: null,
-        responsableId: null,
+        /*
+         * A quien consulta, que es justamente quien tiene que resolverla: la
+         * consulta ya filtra por su rol aprobador y descarta lo que él mismo
+         * envió. Sin esto la alerta se veía en pantalla pero nunca se
+         * notificaba, porque `notificar` descarta lo que no tiene
+         * destinatario, y la aprobación llegaba solo si el usuario entraba a
+         * mirar.
+         */
+        responsableId: personaId ?? null,
       };
     });
   }
@@ -364,16 +392,29 @@ export class AlertasService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          notifications: conDestinatario.map((a) => ({
-            id_usuario_destinatario: a.responsableId,
-            tipo_notificacion: 'contratacion_vencimiento',
-            titulo: a.estado === 'VENCIDO' ? 'Vencimiento cumplido' : 'Vencimiento próximo',
-            mensaje: `${a.descripcion} del contrato ${a.contrato ?? a.radicado}: ${
-              a.estado === 'VENCIDO'
-                ? `vencido hace ${Math.abs(a.diasRestantes)} días`
-                : `vence en ${a.diasRestantes} días`
-            } (${a.vence})`,
-          })),
+          // La aprobación no es un vencimiento: mezclarlas dejaría al
+          // aprobador leyendo «vence en -3 días» sobre algo que no vence.
+          notifications: conDestinatario.map((a) =>
+            a.tipo === 'APROBACION_PENDIENTE'
+              ? {
+                  id_usuario_destinatario: a.responsableId,
+                  tipo_notificacion: 'contratacion_aprobacion',
+                  titulo: 'Tienes una actividad por aprobar',
+                  mensaje: `${a.descripcion} del proceso ${a.radicado} espera tu decisión${
+                    a.responsable ? `, enviada por ${a.responsable}` : ''
+                  }.`,
+                }
+              : {
+                  id_usuario_destinatario: a.responsableId,
+                  tipo_notificacion: 'contratacion_vencimiento',
+                  titulo: a.estado === 'VENCIDO' ? 'Vencimiento cumplido' : 'Vencimiento próximo',
+                  mensaje: `${a.descripcion} del contrato ${a.contrato ?? a.radicado}: ${
+                    a.estado === 'VENCIDO'
+                      ? `vencido hace ${Math.abs(a.diasRestantes)} días`
+                      : `vence en ${a.diasRestantes} días`
+                  } (${a.vence})`,
+                },
+          ),
         }),
       });
 
