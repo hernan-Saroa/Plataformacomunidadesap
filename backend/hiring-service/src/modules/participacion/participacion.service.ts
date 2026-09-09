@@ -58,6 +58,35 @@ export function esSuya(
   );
 }
 
+/** Por qué alguien no puede decidir sobre este proceso, o `null` si sí puede. */
+export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
+
+/**
+ * Quién puede resolver una revisión del proceso (EFDS-1183).
+ *
+ * El abogado repartido en la 3.3, y nadie más. No basta con tener el permiso de
+ * aprobar: eso lo tienen todos los revisores de la Dirección, y el flujo dice
+ * que de este expediente responde el que lo recibió. El Director que quiera
+ * decidir se lo reasigna a sí mismo, que deja constancia de quién lo hizo.
+ *
+ * Sin abogado repartido no se decide. Es deliberado y no un descuido: el
+ * reparto es lo que pone a alguien a responder por el proceso, y aprobar
+ * saltándoselo dejaría el expediente sin decir quién revisó. Un proceso en
+ * revisión y sin abogado aparece en las alertas para que se reparta.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function motivoParaNoDecidir(
+  tienePermisoDeAprobar: boolean,
+  hayAbogado: boolean,
+  esElAbogado: boolean,
+): MotivoNoDecide | null {
+  if (!tienePermisoDeAprobar) return 'SIN_PERMISO';
+  if (!hayAbogado) return 'SIN_ABOGADO';
+  if (!esElAbogado) return 'NO_ES_TUYO';
+  return null;
+}
+
 /**
  * Quién está en cada proceso (EFDS-1183).
  *
@@ -275,6 +304,24 @@ export class ParticipacionService {
   }
 
   // ------------------------------------------------ lo que consumen otras --
+
+  /**
+   * Quién resuelve las revisiones de este proceso, y si le toca a quien
+   * pregunta.
+   *
+   * Vive aquí y no en el estudio previo porque ya son dos las actividades que
+   * lo preguntan —la revisión del estudio previo y la de la modalidad— y con
+   * una copia en cada una acabarían discrepando sobre el mismo proceso.
+   */
+  async quienDecide(procesoId: string, acceso: HiringAccess) {
+    const abogado = await this.vigente(procesoId, 'ABOGADO');
+    const motivo = motivoParaNoDecidir(
+      tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR),
+      !!abogado,
+      !!abogado && esSuya(abogado, acceso),
+    );
+    return { abogado, motivo };
+  }
 
   /** Quién ocupa ese papel en el proceso, o nulo si nadie. */
   vigente(procesoId: string, papel: PapelEnProceso, em?: EntityManager) {

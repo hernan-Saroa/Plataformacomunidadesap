@@ -26,6 +26,7 @@ import { ContratosModule } from './modules/contratos/contratos.module';
 import { LegalizacionModule } from './modules/legalizacion/legalizacion.module';
 import { SupervisionModule } from './modules/supervision/supervision.module';
 import { ParticipacionModule } from './modules/participacion/participacion.module';
+import { ModalidadProcesoModule } from './modules/modalidad-proceso/modalidad-proceso.module';
 import { RegistroPresupuestalModule } from './modules/registro-presupuestal/registro-presupuestal.module';
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
@@ -170,6 +171,7 @@ import {
     LegalizacionModule,
     SupervisionModule,
     ParticipacionModule,
+    ModalidadProcesoModule,
     RegistroPresupuestalModule,
     PublicacionContratoModule,
     ActaInicioModule,

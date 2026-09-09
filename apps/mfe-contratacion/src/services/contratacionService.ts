@@ -35,6 +35,7 @@ import {
   DatosSupervisor,
   CuentaCandidata,
   EstadoParticipacion,
+  EstadoModalidadProceso,
   EstadoActaInicio,
   DatosActaInicio,
   DatosReasignacion,
@@ -582,6 +583,36 @@ export const contratacionService = {
     pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
+    }),
+
+  // ------------------- modalidad del proceso · 3.5 (EFDS-1183) --------------
+
+  /** Qué modalidad tiene el proceso, si está ratificada y qué se dijo de ella. */
+  modalidadDelProceso: (procesoId: string) =>
+    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`),
+
+  /**
+   * Propone la modalidad, o la corrige tras una devolución.
+   *
+   * La cambia y la manda a revisar de una vez: corregir es volver a proponer, y
+   * dejarla cambiada sin mandar haría que el abogado viera una modalidad
+   * distinta de la que aprobó sin que nada dijera que estaba pendiente.
+   */
+  proponerModalidad: (procesoId: string, modalidad: string) =>
+    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`, {
+      method: 'PUT',
+      body: JSON.stringify({ modalidad }),
+    }),
+
+  /** El abogado la ratifica, o la devuelve diciendo cuál corresponde. */
+  decidirModalidad: (
+    procesoId: string,
+    decision: 'APROBADO' | 'DEVUELTO',
+    observaciones?: string,
+  ) =>
+    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad/decidir`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, observaciones }),
     }),
 
   // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------

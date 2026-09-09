@@ -48,6 +48,7 @@ import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
+import { PanelModalidad } from '../modalidad/PanelModalidad';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -65,6 +66,9 @@ const NUMERAL_RADICACION = '3.3';
  * se retira es la fila del carril.
  */
 const NUMERAL_REVISION = '3.4';
+
+/** Actividad 3.5: la modalidad que el área eligió, que el abogado ratifica. */
+const NUMERAL_MODALIDAD = '3.5';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -322,7 +326,6 @@ const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
   // en la Dirección y ponerle responsable, y la 3.4 es la decisión del abogado,
   // que se toma leyendo el estudio previo y por eso vive en su panel.
-  '3.5': 'Definir modalidad de contratación',
   '3.6': 'Causal de contratación',
   '3.7': 'Comité de contratación',
   '5.9': 'Manifestación de interés',
@@ -348,6 +351,7 @@ const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
 const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
   numeral === NUMERAL_RADICACION ||
+  numeral === NUMERAL_MODALIDAD ||
   NUMERALES_CDP.includes(numeral) ||
   NUMERALES_ETAPA_5.includes(numeral) ||
   NUMERALES_ETAPA_6.includes(numeral) ||
@@ -884,7 +888,14 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               />
             ) : null}
 
-            {actividadSeleccionada?.numeral === NUMERAL_RADICACION ? (
+            {actividadSeleccionada?.numeral === NUMERAL_MODALIDAD ? (
+              // La 3.5 deja de ser constancia: definir la modalidad es
+              // ratificar la que el área eligió, o devolverla para corregirla.
+              <PanelModalidad
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            ) : actividadSeleccionada?.numeral === NUMERAL_RADICACION ? (
               // La 3.3 deja de ser el panel genérico de constancia: radicar es
               // recibir el proceso y ponerle responsable, no anotar una fecha.
               <PanelRadicacion

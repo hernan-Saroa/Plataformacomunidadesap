@@ -93,35 +93,6 @@ export function esSuElEstudioPrevio(loRadico: boolean, estaEnElProceso: boolean)
   return loRadico || estaEnElProceso;
 }
 
-/** Por qué alguien no puede decidir sobre este proceso, o `null` si sí puede. */
-export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
-
-/**
- * Quién puede resolver la revisión de la 3.4 (EFDS-1183).
- *
- * El abogado asignado en la 3.3, y nadie más. No basta con tener el permiso de
- * aprobar: eso lo tienen todos los revisores de la Dirección, y el flujo dice
- * que de este expediente responde el que lo recibió. El Director que quiera
- * decidirlo se lo reasigna a sí mismo, que deja constancia de quién lo hizo.
- *
- * Sin abogado asignado no se decide. Es deliberado y no un descuido: el reparto
- * de la 3.3 es lo que pone a alguien a responder por el proceso, y aprobar
- * saltándoselo dejaría el expediente sin decir quién lo revisó. Un proceso en
- * revisión y sin abogado aparece en las alertas para que se reparta.
- *
- * Función pura para poder fijar la regla sin base de datos.
- */
-export function motivoParaNoDecidir(
-  tienePermisoDeAprobar: boolean,
-  hayAbogado: boolean,
-  esElAbogado: boolean,
-): MotivoNoDecide | null {
-  if (!tienePermisoDeAprobar) return 'SIN_PERMISO';
-  if (!hayAbogado) return 'SIN_ABOGADO';
-  if (!esElAbogado) return 'NO_ES_TUYO';
-  return null;
-}
-
 /**
  * Si la decisión termina el proceso, y con qué desenlace.
  *
@@ -229,14 +200,8 @@ export class EstudioPrevioService {
     }
   }
 
-  private async quienDecide(procesoId: string, acceso: HiringAccess) {
-    const abogado = await this.participacion.vigente(procesoId, 'ABOGADO');
-    const motivo = motivoParaNoDecidir(
-      tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR),
-      !!abogado,
-      !!abogado && esSuya(abogado, acceso),
-    );
-    return { abogado, motivo };
+  private quienDecide(procesoId: string, acceso: HiringAccess) {
+    return this.participacion.quienDecide(procesoId, acceso);
   }
 
   // ------------------------------------------------------------- proceso ---

@@ -1,7 +1,8 @@
-import { motivoParaNoDecidir } from './estudio-previo.service';
+import { motivoParaNoDecidir } from './participacion.service';
 
 /**
- * EFDS-1183. La 3.4 la resuelve el abogado que recibió el proceso en la 3.3.
+ * EFDS-1183. Las revisiones del proceso las resuelve el abogado que lo recibió
+ * en la 3.3: la del estudio previo y la de la modalidad preguntan lo mismo.
  *
  * Antes bastaba con tener `contratacion.actividad.approve`, que lo tienen todos
  * los revisores de la Dirección: cualquiera de ellos podía aprobar o devolver

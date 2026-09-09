@@ -419,6 +419,31 @@ export interface RevisionDelProceso {
   motivo: MotivoNoDecide | null;
 }
 
+// --------------------- modalidad del proceso · 3.5 (EFDS-1183) -------------
+
+/** Lo que el abogado dijo de la modalidad cada vez. */
+export interface RevisionModalidad {
+  decision: 'APROBADO' | 'DEVUELTO';
+  observaciones: string | null;
+  revisadoPor: string;
+  createdAt: string;
+}
+
+export interface EstadoModalidadProceso {
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  /** La cuantía, que es contra lo que se comprueba cuál corresponde. */
+  valorEstimado: number | null;
+  estado: EstadoActividad;
+  /** El área puede cambiarla y mandarla: en borrador o devuelta. */
+  puedeCorregir: boolean;
+  /** A quien mira le toca ratificarla. */
+  puedeDecidir: boolean;
+  abogado: { nombre: string; usuarioNombre: string } | null;
+  motivoNoDecide: MotivoNoDecide | null;
+  revisiones: RevisionModalidad[];
+}
+
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
