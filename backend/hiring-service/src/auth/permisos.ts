@@ -320,11 +320,15 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'APOYO_SUPERVISION',
     'SUPER_ADMIN',
   ],
-  [PERMISO_PROCESO_VER_TODOS]: [
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
+  // Una sola X en la Hoja1 del formato, la del Jefe de Oficina: ver toda la
+  // entidad es la excepción y no el modo de trabajo de la Dirección.
+  //
+  // El revisor lo tenía porque cuando se escribió esta tabla el reparto no
+  // existía y sin «ver todos» no habría alcanzado los expedientes que le tocaba
+  // revisar. Desde que la 3.3 reparte (EFDS-1183) llega a los suyos por su
+  // participación, así que esto solo le enseñaba de más: al abogado le salían
+  // los procesos de toda la entidad y no los que le asignaron.
+  [PERMISO_PROCESO_VER_TODOS]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   // Todo el equipo de la Dirección, porque la bandeja es compartida: quien
   // llega primero se queda con el proceso. El estructurador técnico no entra

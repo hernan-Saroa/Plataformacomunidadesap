@@ -3,11 +3,14 @@ import {
   permisosDelPerfil,
   permisosDelRol,
   rolDelCatalogo,
+  rolesQueOtorgan,
 } from './matriz-roles';
 import {
   PERMISO_ACTIVIDAD_APROBAR,
   PERMISO_ACTIVIDAD_EDITAR,
   PERMISO_PROCESO_TOMAR,
+  PERMISO_PROCESO_VER,
+  PERMISO_PROCESO_VER_TODOS,
 } from './permisos';
 
 /**
@@ -60,6 +63,18 @@ describe('perfiles por defecto', () => {
   it('contratación recibe de la bandeja; el abogado resuelve', () => {
     expect(permisosDelPerfil('CONTRATACION')).toContain(PERMISO_PROCESO_TOMAR);
     expect(permisosDelPerfil('ABOGADO')).toContain(PERMISO_ACTIVIDAD_APROBAR);
+  });
+
+  it('el abogado ve los que le repartieron, no los de toda la entidad', () => {
+    // Llega a los suyos por su participación en el proceso, que es lo que la
+    // 3.3 reparte. «Ver todos» lo tenía de cuando el reparto no existía, y con
+    // él la pantalla le devolvía el expediente de la entidad entera.
+    const suyos = permisosDelPerfil('ABOGADO');
+
+    expect(suyos).toContain(PERMISO_PROCESO_VER);
+    expect(suyos).not.toContain(PERMISO_PROCESO_VER_TODOS);
+    // La Hoja1 marca esa columna con una sola X, la del Jefe de Oficina.
+    expect(rolesQueOtorgan(PERMISO_PROCESO_VER_TODOS)).toEqual(['DIRECTOR_CONTRATACION']);
   });
 
   it('consulta no puede tocar nada', () => {
