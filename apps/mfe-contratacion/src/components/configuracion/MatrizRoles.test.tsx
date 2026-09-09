@@ -174,3 +174,50 @@ describe('MatrizRoles', () => {
     );
   });
 });
+
+/**
+ * Los cuatro perfiles por defecto (EFDS-1183).
+ *
+ * Quien abre esta pantalla lo hace casi siempre para responder «¿qué le pongo a
+ * esta persona?», y la rejilla sola contesta con treinta y cinco casillas. Los
+ * perfiles contestan con cuatro nombres.
+ */
+describe('MatrizRoles · perfiles por defecto', () => {
+  const PERFILES = [
+    {
+      codigo: 'AREA_SOLICITANTE',
+      nombre: 'Área solicitante',
+      descripcion: 'Diligencia el estudio previo y el análisis del sector.',
+      quienLoEjerce: 'Áreas de la entidad que piden una contratación',
+      roles: ['ESTRUCTURADOR_TECNICO'],
+    },
+    {
+      codigo: 'CONSULTA',
+      nombre: 'Consulta',
+      descripcion: 'Ve los procesos sin intervenir en ninguno.',
+      quienLoEjerce: 'Control interno y organismos de control',
+      roles: ['APOYO_SUPERVISION', 'ENTE_DE_CONTROL'],
+    },
+  ];
+
+  it('los enseña con los roles que hay que marcar en el backoffice', async () => {
+    servicio.matrizDeRoles.mockResolvedValue({ ...MATRIZ, perfiles: PERFILES } as MatrizDeRoles);
+
+    render(<MatrizRoles />);
+
+    expect(await screen.findByText('Área solicitante')).toBeInTheDocument();
+    // Asignarlos se hace en el backoffice de la plataforma, así que sin los
+    // códigos de rol el perfil no le sirve de nada a quien da de alta.
+    expect(screen.getByText('APOYO_SUPERVISION + ENTE_DE_CONTROL')).toBeInTheDocument();
+  });
+
+  it('sin perfiles la pantalla sigue siendo la matriz de siempre', async () => {
+    // Un servidor que aún no los manda no debe dejar la pantalla a medias.
+    servicio.matrizDeRoles.mockResolvedValue(MATRIZ);
+
+    render(<MatrizRoles />);
+
+    expect(await screen.findByText(/Lo que se puede hacer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Perfiles por defecto/)).toBeNull();
+  });
+});

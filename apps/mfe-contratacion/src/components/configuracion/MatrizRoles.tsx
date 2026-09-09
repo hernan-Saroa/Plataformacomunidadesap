@@ -10,7 +10,7 @@ import { MatrizDeRoles, RolDelCatalogo } from '../../types';
  * El formato de roles llegó en dos hojas que no se tocan: una rejilla de diez
  * permisos marcada solo para cuatro perfiles genéricos, y un catálogo de
  * catorce roles reales sin rejilla. Cruzarlas era el trabajo, y esta pantalla
- * es donde se puede verificar el resultado: catorce filas contra veintinueve
+ * es donde se puede verificar el resultado: catorce filas contra treinta y cinco
  * columnas, que es la única forma de ver si un rol quedó ancho o estrecho.
  *
  * **Enseña lo que el módulo aplica, no lo que la base guarda.** Mientras el
@@ -234,6 +234,41 @@ export function MatrizRoles() {
           </div>
         )}
       </div>
+
+      {/* Los cuatro perfiles, antes de la rejilla (EFDS-1183).
+
+          Quien abre esta pantalla lo hace casi siempre para responder «¿qué le
+          pongo a esta persona?», y la rejilla sola contesta con treinta y cinco
+          casillas. Los perfiles contestan con cuatro nombres; la rejilla queda
+          debajo para quien necesite el detalle o un reparto distinto. */}
+      {datos.perfiles && datos.perfiles.length > 0 && (
+        <div className="space-y-2">
+          <p className="m-0 text-[11.5px] font-bold uppercase tracking-wide text-gray-500">
+            Perfiles por defecto
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {datos.perfiles.map((perfil) => (
+              <div
+                key={perfil.codigo}
+                className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-1"
+              >
+                <p className="m-0 text-[13px] font-bold text-slate-800">{perfil.nombre}</p>
+                <p className="m-0 text-[11.5px] text-slate-600 leading-relaxed">
+                  {perfil.descripcion}
+                </p>
+                <p className="m-0 text-[11px] text-gray-400 leading-relaxed">
+                  {perfil.quienLoEjerce}
+                </p>
+                {/* Los roles que lo componen, porque asignarlos se hace en el
+                    backoffice de la plataforma y hay que saber cuáles marcar. */}
+                <p className="m-0 pt-1 text-[10.5px] font-mono text-[#003DA5]">
+                  {perfil.roles.join(' + ')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="overflow-auto rounded-xl border border-gray-200 bg-white max-h-[560px]">
         <table className="w-full border-collapse text-sm min-w-[900px]">

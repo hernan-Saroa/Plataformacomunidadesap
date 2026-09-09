@@ -351,7 +351,7 @@ export class ConfiguracionController {
   @ApiOperation({
     summary: 'Los catorce roles del módulo con lo que cada uno puede hacer',
     description:
-      'Las filas son el catálogo del formato de roles y las columnas los veintiocho ' +
+      'Las filas son el catálogo del formato de roles y las columnas los treinta y cinco ' +
       'permisos del módulo. Viene sin confirmar mientras la Dirección de Contratación ' +
       'no la ratifique.',
   })

@@ -58,6 +58,28 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
  */
 export const NUMERAL_ANALISIS_SECTOR = '3.2';
 
+/**
+ * Si el estudio previo de este proceso es de quien intenta tocarlo (EFDS-1183).
+ *
+ * `contratacion.actividad.edit` dice que alguien diligencia estudios previos, no
+ * que diligencie el de cualquier expediente de la entidad. Hasta ahora era lo
+ * segundo: un estructurador de un área podía abrir y reescribir el estudio
+ * previo que otra área había radicado.
+ *
+ * Es suyo si lo radicó —el área responde por lo que cargó— o si está en el
+ * proceso, que es el caso de la Dirección cuando lo recibe y tiene que
+ * completar algo antes de repartirlo.
+ *
+ * Tener «ver todos» no basta: ver el expediente de toda la entidad y poder
+ * reescribirlo son cosas distintas, y confundirlas convierte un permiso de
+ * consulta en uno de edición.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function esSuElEstudioPrevio(loRadico: boolean, estaEnElProceso: boolean): boolean {
+  return loRadico || estaEnElProceso;
+}
+
 /** Por qué alguien no puede decidir sobre este proceso, o `null` si sí puede. */
 export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
 
@@ -163,6 +185,33 @@ export class EstudioPrevioService {
    * impide que el aviso de la pantalla y el rechazo del servidor digan cosas
    * distintas sobre el mismo proceso.
    */
+  /**
+   * Exige que el estudio previo sea de quien lo está tocando.
+   *
+   * Se comprueba en guardar y en enviar, que son los dos puntos por donde entra
+   * contenido. Leerlo sigue abierto a quien tenga acceso al proceso: el
+   * problema nunca fue que se viera, sino que cualquiera pudiera reescribirlo.
+   */
+  private async exigirQueSeaSuyo(procesoId: string, acceso: HiringAccess) {
+    const proceso = await this.dataSource.getRepository(Proceso).findOne({
+      where: { id: procesoId },
+    });
+    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+
+    const loRadico =
+      !!proceso.createdBy &&
+      !!acceso.userName &&
+      proceso.createdBy.trim().toLowerCase() === acceso.userName.trim().toLowerCase();
+
+    const enElProceso = (await this.participacion.procesosDe(acceso)).includes(procesoId);
+
+    if (!esSuElEstudioPrevio(loRadico, enElProceso)) {
+      throw new ForbiddenException(
+        'Este estudio previo lo diligencia el área que radicó el proceso: tener permiso de editar no da acceso a los expedientes de otras áreas',
+      );
+    }
+  }
+
   private async quienDecide(procesoId: string, acceso: HiringAccess) {
     const abogado = await this.participacion.vigente(procesoId, 'ABOGADO');
     const motivo = motivoParaNoDecidir(
@@ -445,6 +494,8 @@ export class EstudioPrevioService {
 
   /** Guarda sin validar obligatorios: el usuario puede dejarlo a medias. */
   async guardarBorrador(procesoId: string, dto: GuardarBorradorDto, acceso: HiringAccess) {
+    await this.exigirQueSeaSuyo(procesoId, acceso);
+
     return this.dataSource.transaction(async (em) => {
       await this.validarEtapa(em, procesoId);
 
@@ -480,6 +531,8 @@ export class EstudioPrevioService {
    * del expediente electrónico.
    */
   async enviar(procesoId: string, acceso: HiringAccess) {
+    await this.exigirQueSeaSuyo(procesoId, acceso);
+
     return this.dataSource.transaction(async (em) => {
       await this.validarEtapa(em, procesoId);
 

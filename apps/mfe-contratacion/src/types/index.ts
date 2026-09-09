@@ -2952,9 +2952,20 @@ export interface RolDelCatalogo {
   permisos: string[];
 }
 
+/** Una combinación de roles que se entrega armada (EFDS-1183). */
+export interface PerfilPorDefecto {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  quienLoEjerce: string;
+  roles: string[];
+}
+
 export interface MatrizDeRoles {
   /** Si la Dirección de Contratación ya la ratificó. */
   confirmada: boolean;
+  /** Los cuatro que responden «¿qué le pongo a esta persona?». */
+  perfiles?: PerfilPorDefecto[];
   permisos: PermisoDelCatalogo[];
   roles: RolDelCatalogo[];
   /** Los que lo otorgan todo sin ser del módulo. */
