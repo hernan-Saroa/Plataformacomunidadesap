@@ -4,7 +4,7 @@
  * INTEGRACIÓN COMPLETA: Editor de Documentos + Gestión Documental
  */
 
-import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -73,6 +73,15 @@ import { entidadesRemisionService, EntidadRemision } from '../../../services/api
 // ✅ IMPORTAR SERVICIOS DE SUPABASE PARA PERSISTENCIA LOCAL (solo uso interno, datos principales vienen del backend)
 import { noticiasService } from '../../../services/api/esapDataService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { PanelEstadoProcesos } from './PanelEstadoProcesos';
+import { ModalResumenProcesos } from './ModalResumenProcesos';
+import {
+  EstadoAutoUI,
+  ESTADO_UI_META,
+  construirMapaEstadoPorProceso,
+  contarEstados,
+  CONTEOS_VACIOS,
+} from './estadoAutos';
 import { authService } from '../../../services/api/authService';
 import {
   KanbanButtonPrimary,
@@ -3195,6 +3204,12 @@ export function DashboardKanbanOperativo({
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
 
+  // ✅ HU: panel visual + alerta emergente por estado de procesos (Pendientes / En revisión / Aprobados / Devueltos)
+  const [autos, setAutos] = useState<any[]>([]);
+  const [filtroEstadoAuto, setFiltroEstadoAuto] = useState<EstadoAutoUI | null>(null);
+  const [showResumenProcesos, setShowResumenProcesos] = useState(true);
+  const [showPanelEstados, setShowPanelEstados] = useState(false);
+
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
 
@@ -3473,23 +3488,26 @@ export function DashboardKanbanOperativo({
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
       // Para superadmin o jefe ocid, mostrar todas las noticias y procesos sin filtrar
-      const [noticiasRaw, procesosRaw] = await Promise.all([
+      const [noticiasRaw, procesosRaw, autosRaw] = await Promise.all([
         // esJefe || hasNoticiaView
-        //   ? disciplinaryService.getAllNoticias() 
+        //   ? disciplinaryService.getAllNoticias()
         //   : hasNoticiaViewMine ? disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
         //   : [],
 
         esJefe || hasNoticiaView || hasNoticiaViewMine
-          ? disciplinaryService.getAllNoticias() 
+          ? disciplinaryService.getAllNoticias()
           : [],
         esJefe || canViewAll
           ? disciplinaryService.getAllProcesos()
           : canViewMine ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
-          : []
+          : [],
+        // ✅ HU panel/alerta por estado: autos para consolidar Pendientes/En revisión/Aprobados/Devueltos
+        disciplinaryService.getAllAutos().catch(() => [])
       ]);
 
       const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);
       const procesosData = getDataArray<ApiProceso>(procesosRaw);
+      setAutos(getDataArray<any>(autosRaw));
 
       
  
@@ -5966,6 +5984,22 @@ export function DashboardKanbanOperativo({
   // Filtrar por profesional si está activo el filtro
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
+  // ✅ HU panel/alerta: estado consolidado (Pendientes/En revisión/Aprobados/Devueltos) por proceso
+  const esJefeVista = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const procesoIdsVisibles = useMemo(
+    () => new Set(procesos.map(p => p.id)),
+    [procesos],
+  );
+  // Se cuenta siempre sobre los procesos visibles en el tablero (ya vienen filtrados
+  // por rol desde el backend: getMisProcesos para Profesional, getAllProcesos para Jefe).
+  const procesoEstadoMap = useMemo(
+    () => construirMapaEstadoPorProceso(autos, procesoIdsVisibles),
+    [autos, procesoIdsVisibles],
+  );
+  const conteosEstadoProcesos = useMemo(
+    () => (procesoEstadoMap.size ? contarEstados(procesoEstadoMap) : { ...CONTEOS_VACIOS }),
+    [procesoEstadoMap],
+  );
 
   const itemsFiltrados = (filtroProfesionalId
     ? items.filter(item => {
@@ -5978,6 +6012,11 @@ export function DashboardKanbanOperativo({
   ).filter(item => {
     // Filtro por tipo
     if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
+    // ✅ HU: filtro por estado de proceso (clic en la dona / tarjetas del panel izquierdo)
+    if (filtroEstadoAuto !== null) {
+      if (item.tipo !== 'proceso') return false;
+      if (procesoEstadoMap.get(item.id) !== filtroEstadoAuto) return false;
+    }
     // Filtro por búsqueda
     return itemMatchesSearch(item, normalizedGlobalQuery);
   });
@@ -6030,7 +6069,65 @@ export function DashboardKanbanOperativo({
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div ref={containerRef} className="space-y-4 w-full max-w-full" style={{ minWidth: 0 }}>
+      {/* ✅ HU: alerta emergente con el resumen del estado de los procesos al ingresar */}
+      <ModalResumenProcesos
+        open={showResumenProcesos && !loading && !dataError}
+        esJefe={esJefeVista}
+        conteos={conteosEstadoProcesos}
+        onClose={() => setShowResumenProcesos(false)}
+        onIrAEstado={(estado) => { setFiltroEstadoAuto(estado); setShowResumenProcesos(false); setShowPanelEstados(true); }}
+      />
+      {/* ✅ HU: botón para mostrar/ocultar el resumen visual de estados sin alterar la vista por defecto */}
+      <div className="w-full flex justify-end mb-2">
+        <button
+          onClick={() => setShowPanelEstados((prev) => !prev)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl border-2 transition-colors"
+          style={
+            showPanelEstados
+              ? { background: '#003DA5', borderColor: '#003DA5', color: '#fff' }
+              : { background: '#fff', borderColor: '#003DA5', color: '#003DA5' }
+          }
+        >
+          <Activity className="w-4 h-4" />
+          {showPanelEstados ? 'Ocultar resumen de estados' : 'Ver resumen de estados'}
+          {showPanelEstados ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
+      <div className="flex flex-col lg:flex-row gap-4 items-start w-full max-w-full" style={{ minWidth: 0 }}>
+        {/* ✅ HU: panel visual + gráfica de torta interactiva (columna izquierda) — oculto por defecto */}
+        {showPanelEstados && (
+          <PanelEstadoProcesos
+            autos={autos}
+            procesoIdsVisibles={procesoIdsVisibles}
+            esJefe={esJefeVista}
+            filtroEstado={filtroEstadoAuto}
+            onFiltrarEstado={setFiltroEstadoAuto}
+          />
+        )}
+      <div ref={containerRef} className="space-y-4 flex-1 min-w-0" style={{ minWidth: 0 }}>
+        {/* ✅ HU: banner de filtro activo por estado de proceso */}
+        {filtroEstadoAuto !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-3 rounded-xl border-2 flex items-center justify-between gap-3"
+            style={{
+              background: ESTADO_UI_META[filtroEstadoAuto].colorSuave,
+              borderColor: ESTADO_UI_META[filtroEstadoAuto].color,
+            }}
+          >
+            <p className="text-sm font-bold" style={{ color: ESTADO_UI_META[filtroEstadoAuto].color }}>
+              Mostrando solo procesos: {ESTADO_UI_META[filtroEstadoAuto].label}
+            </p>
+            <button
+              onClick={() => setFiltroEstadoAuto(null)}
+              className="text-xs font-semibold underline"
+              style={{ color: ESTADO_UI_META[filtroEstadoAuto].color }}
+            >
+              Quitar filtro
+            </button>
+          </motion.div>
+        )}
         {/* Banner de Filtro Activo por Profesional */}
         {filtroProfesionalId && profesionalFiltrado && (
           <motion.div
@@ -7640,6 +7737,7 @@ export function DashboardKanbanOperativo({
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
       </div>
     </DndProvider>
   );

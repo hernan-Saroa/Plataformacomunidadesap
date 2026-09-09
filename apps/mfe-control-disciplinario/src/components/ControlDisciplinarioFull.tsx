@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale } from 'lucide-react';
+import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale, BarChart3 } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -23,6 +23,7 @@ import { RevisionAprobacionJefe } from './RevisionAprobacionJefe'; // ✅ RF004 
 import { ExpedientesElectronicosWorldClass } from './ExpedientesElectronicosWorldClass'; // ✅ RF005 100% Funcional - DISEÑO WORLD-CLASS
 import { GestionTerminosAlertas } from './GestionTerminosAlertas'; // ✅ RF006 - Vista alineada con diseño esperado
 import { GestionTerminosAlertasWorldClass } from './GestionTerminosAlertasWorldClass';
+import { ReportesJefe } from './ReportesJefe';
 import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Kanban Operativo Completo
 import type { BorradorPendiente } from './ModalRevisionAuto';
 import { authService } from '../services/api/authService';
@@ -134,7 +135,7 @@ export function ControlDisciplinarioFull() {
   console.log('  → VERIFICACION_MODULO.md');
   console.log('  → GUIA_RAPIDA.md');
   
-  type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'config';
+  type Section = 'dashboard' | 'aprobacion' | 'expediente' | 'terminos' | 'profesionales' | 'reportes' | 'config';
   const [currentSection, setCurrentSection] = useState<Section>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [navegandoDesdeProfesional, setNavegandoDesdeProfesional] = useState(false);
@@ -284,11 +285,12 @@ export function ControlDisciplinarioFull() {
     expediente: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE),
     terminos: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE),
     profesionales: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE),
+    reportes: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REPORTES_MANAGE),
     config: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE)
   };
 
   const getFirstAllowedSection = (): Section => {
-    const order: Section[] = ['dashboard', 'aprobacion', 'expediente', 'terminos', 'profesionales', 'config'];
+    const order: Section[] = ['dashboard', 'aprobacion', 'expediente', 'terminos', 'profesionales', 'reportes', 'config'];
     return order.find((section) => hasPermissionBySection[section]) || 'dashboard';
   };
 
@@ -311,6 +313,7 @@ export function ControlDisciplinarioFull() {
     { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
     { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
     { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.profesionales },
+    { id: 'reportes', label: 'Reportes', icon: <BarChart3 className="w-5 h-5" />, color: '#0891B2', visible: hasPermissionBySection.reportes },
     { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: hasPermissionBySection.config }
   ];
 
@@ -648,6 +651,7 @@ export function ControlDisciplinarioFull() {
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
       {/* {currentSection === 'terminos' && <GestionTerminosAlertasWorldClass />} */}
       {currentSection === 'profesionales' && <GestionProfesionalesWorldClass onVerProcesos={handleVerProcesosProfesional} />}
+      {currentSection === 'reportes' && <ReportesJefe />}
       {currentSection === 'config' && <ModuloConfiguracionPremium />}
     </ModuleLayout>
     </>

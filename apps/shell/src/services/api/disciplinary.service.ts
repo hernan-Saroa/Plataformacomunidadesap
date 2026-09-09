@@ -879,6 +879,67 @@ class DisciplinaryService {
     }
 
     /**
+     * Descargar el Índice Electrónico del expediente en el formato oficial EI-FO-020 (Excel).
+     * `documentos` debe ser exactamente el listado que ya se muestra en la pestaña Índice
+     * Electrónico, para que el archivo generado corresponda a lo que el usuario está viendo.
+     */
+    async descargarIndiceElectronico(
+        processId: string,
+        expediente: { radicado: string; asunto?: string; responsable?: string },
+        documentos: Array<{
+            descripcionPrincipal?: string;
+            tipologiaDocumental?: string;
+            anexos?: string;
+            fechaCreacion?: string;
+            fechaIncorporacion?: string;
+            paginaInicio?: number | string;
+            paginaFinal?: number | string;
+            formato?: string;
+            tamanoKB?: string;
+            archivoAcceso?: string;
+        }>,
+        filename: string,
+    ): Promise<void> {
+        const restPath = `/disciplinary-processes/${processId}/indice-electronico`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/octet-stream',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ expediente, documentos }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {
+                // Si no es JSON, usar el texto del error
+            }
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
      * Descargar documento del expediente
      */
     async downloadDocument(processId: string, documentId: string, filename: string): Promise<void> {
