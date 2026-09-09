@@ -111,3 +111,74 @@ describe('VistaProcesos · selector de modalidad', () => {
     );
   });
 });
+
+/**
+ * La bandeja en el listado (EFDS-1183).
+ *
+ * El reparto es por bandeja compartida: quien llega primero se queda con el
+ * proceso. Para que eso funcione la lista tiene que distinguir un proceso que
+ * alguien lleva de uno que llegó a la Dirección y nadie ha recibido — si los
+ * dos se ven igual, el segundo se queda ahí semanas.
+ */
+describe('VistaProcesos · la bandeja', () => {
+  const proceso = (participacion: unknown) => ({
+    id: 'p-1',
+    radicado: 'CTO-2026-0014',
+    objeto: 'Servicio de vigilancia para la sede central',
+    modalidad: 'MINIMA_CUANTIA',
+    modalidadNombre: 'Mínima Cuantía',
+    valorEstimado: 30000000,
+    etapa: 3,
+    fechaRadicacion: '2026-09-09T00:00:00.000Z',
+    estudioPrevio: null,
+    actividades: [],
+    participacion,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.modalidades.mockResolvedValue(MODALIDADES);
+    servicio.sugerenciaModalidad.mockResolvedValue({ modalidad: null, forzosa: false });
+  });
+
+  it('señala los que llegaron y nadie ha recibido', async () => {
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({ contratacion: null, abogado: null, enBandeja: true }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/En bandeja · sin recibir/)).toBeInTheDocument();
+  });
+
+  it('en los recibidos dice quién los lleva y quién los revisa', async () => {
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({
+        contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: true },
+        abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
+        enBandeja: false,
+      }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/Laura Pineda \(tú\)/)).toBeInTheDocument();
+    expect(screen.getByText(/revisa Andrés Rojas/)).toBeInTheDocument();
+  });
+
+  it('avisa cuando un proceso recibido se quedó sin abogado', async () => {
+    // Es el estado que nadie pide pero ocurre: quitar sin poner otro. Mientras
+    // dure, la 3.4 no la puede resolver nadie.
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({
+        contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
+        abogado: null,
+        enBandeja: false,
+      }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/sin abogado/)).toBeInTheDocument();
+  });
+});

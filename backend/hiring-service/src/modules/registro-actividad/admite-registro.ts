@@ -15,7 +15,11 @@
 export const NUMERALES_CON_REGISTRO = [
   // Etapa 3 · lo que acompaña al estudio previo
   '3.2',
-  '3.3',
+  // La 3.3 salió de la lista con EFDS-1183. Era el caso más claro de lo que el
+  // comentario de arriba anticipaba: no es que nadie la recogiera, es que
+  // radicar —recibir el proceso en la Dirección y ponerle responsable— no cabe
+  // en una fecha y un documento. Ahora tiene pantalla propia y se cumple al
+  // tomar el proceso de la bandeja.
   '3.4',
   '3.5',
   // La causal la elige el abogado leyendo el Decreto 1082/2015 contra el

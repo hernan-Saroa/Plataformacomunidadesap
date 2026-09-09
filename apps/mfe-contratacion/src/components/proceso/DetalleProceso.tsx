@@ -47,6 +47,10 @@ import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
+import { PanelRadicacion } from '../participacion/PanelRadicacion';
+
+/** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
+const NUMERAL_RADICACION = '3.3';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -300,7 +304,10 @@ const ACTIVIDADES_ETAPA_3 = [
  */
 const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   '3.2': 'Análisis del sector y estudio de mercado',
-  '3.3': 'Radicación en la Dirección de Contratación',
+  // La 3.3 salió de aquí con EFDS-1183: radicar es recibir el proceso y
+  // ponerle responsable, y eso no cabe en fecha, documento y observaciones.
+  // La 3.4 se queda de momento: la decisión del abogado se toma sobre el
+  // contenido de la 3.1, en su propio panel, y esta fila solo deja constancia.
   '3.4': 'Revisión y reparto',
   '3.5': 'Definir modalidad de contratación',
   '3.6': 'Causal de contratación',
@@ -327,6 +334,7 @@ const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
  */
 const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
+  numeral === NUMERAL_RADICACION ||
   NUMERALES_CDP.includes(numeral) ||
   NUMERALES_ETAPA_5.includes(numeral) ||
   NUMERALES_ETAPA_6.includes(numeral) ||
@@ -834,7 +842,14 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               />
             ) : null}
 
-            {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
+            {actividadSeleccionada?.numeral === NUMERAL_RADICACION ? (
+              // La 3.3 deja de ser el panel genérico de constancia: radicar es
+              // recibir el proceso y ponerle responsable, no anotar una fecha.
+              <PanelRadicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            ) : actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
               <PanelCdp
                 numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}

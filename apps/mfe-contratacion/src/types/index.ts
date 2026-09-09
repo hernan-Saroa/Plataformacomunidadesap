@@ -399,6 +399,8 @@ export interface ProcesoResumen {
     actualizadoEn: string;
   } | null;
   actividades?: { numeral: string; estado: EstadoActividad }[];
+  /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
+  participacion?: ParticipacionEnLista;
 }
 
 /**
@@ -415,6 +417,64 @@ export interface RevisionDelProceso {
   abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
   puedeDecidir: boolean;
   motivo: MotivoNoDecide | null;
+}
+
+// ------------------------- quién está en el proceso (EFDS-1183) ------------
+
+/** Una cuenta a la que se le puede dar un papel en un proceso. */
+export interface CuentaCandidata {
+  usuarioId: string;
+  usuarioNombre: string;
+  personaId: string | null;
+  nombre: string;
+  cargo: string | null;
+  email: string | null;
+}
+
+/** Quien ocupa un papel ahora mismo. */
+export interface Participante {
+  id: string;
+  usuarioId: string | null;
+  usuarioNombre: string;
+  nombre: string;
+  cargo: string | null;
+  email: string | null;
+  asignadoPor: string | null;
+  asignadoAt: string;
+  /** Si le toca a quien está mirando. */
+  esMio: boolean;
+}
+
+/** Uno de los que estuvieron antes, con el motivo de su salida. */
+export interface ParticipacionRelevada {
+  papel: 'CONTRATACION' | 'ABOGADO';
+  nombre: string;
+  cargo: string | null;
+  asignadoAt: string;
+  asignadoPor: string | null;
+  relevadoAt: string | null;
+  relevadoPor: string | null;
+  motivoRelevo: string | null;
+}
+
+export interface EstadoParticipacion {
+  /** El proceso está en la bandeja y quien mira puede recibirlo. */
+  puedeTomar: boolean;
+  /** Quien lo tomó reparte el abogado; el Director también. */
+  puedeRepartir: boolean;
+  contratacion: Participante | null;
+  abogado: Participante | null;
+  /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
+  sinAbogado: boolean;
+  historial: ParticipacionRelevada[];
+}
+
+/** Lo que la fila del listado dice sobre quién lleva el proceso. */
+export interface ParticipacionEnLista {
+  contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  /** Llegó a la Dirección y nadie lo ha recibido. */
+  enBandeja: boolean;
 }
 
 export interface EstudioPrevio {

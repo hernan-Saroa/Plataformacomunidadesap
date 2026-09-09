@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
 import { createHash } from 'crypto';
 
 import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
@@ -26,6 +26,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
   PERMISO_ACTIVIDAD_APROBAR,
+  PERMISO_PROCESO_TOMAR,
   PERMISO_PROCESO_VER_TODOS,
   tienePermiso,
 } from '../../auth/permisos';
@@ -270,12 +271,34 @@ export class EstudioPrevioService {
     const verTodos =
       !acceso || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
 
+    /**
+     * «Los míos» son tres cosas y no una (EFDS-1183): los que radiqué, los que
+     * me repartieron, y —si puedo tomar— los que están en la bandeja esperando
+     * que alguien los reciba.
+     *
+     * La tercera es la que hace posible el reparto por bandeja compartida: sin
+     * ella el listado solo devuelve procesos en los que ya estás, así que nadie
+     * podría ver, ni mucho menos tomar, uno que todavía no es de nadie.
+     *
+     * Las condiciones se construyen en vez de meter siempre un `In`: con la
+     * lista vacía —un abogado al que aún no le han repartido nada— el `IN ()`
+     * que genera TypeORM no es el filtro que uno espera, y aquí el error se
+     * pagaría enseñando procesos ajenos.
+     */
+    const mios: FindOptionsWhere<Proceso>[] = [];
+    if (!verTodos) {
+      mios.push({ createdBy: acceso!.userName });
+
+      const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
+      if (tienePermiso(acceso!, PERMISO_PROCESO_TOMAR)) {
+        for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
+      }
+      if (alcanzables.size) mios.push({ id: In([...alcanzables]) });
+    }
+
     const procesos = await this.dataSource.getRepository(Proceso).find({
       relations: ['expediente'],
-      // `createdBy` guarda el nombre de usuario de quien radicó: es lo que hoy
-      // relaciona un proceso con una persona, porque la asignación a un abogado
-      // todavía no existe.
-      where: verTodos ? {} : { createdBy: acceso!.userName },
+      where: verTodos ? {} : mios,
       order: { createdAt: 'DESC' },
       take: 100,
     });
@@ -302,6 +325,11 @@ export class EstudioPrevioService {
       (await this.dataSource.getRepository(Modalidad).find()).map((m) => [m.codigo, m.nombre]),
     );
 
+    // Quién está en cada proceso, en una sola consulta para todo el listado.
+    // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
+    // uno que sigue en la bandeja esperando que lo reciban.
+    const participantes = await this.participacion.vigentesDe(ids);
+
     const porProceso = new Map<string, ProcesoActividad[]>();
     for (const a of actividades) {
       if (!porProceso.has(a.procesoId)) porProceso.set(a.procesoId, []);
@@ -316,11 +344,30 @@ export class EstudioPrevioService {
         ? obligatorios.filter((c) => esVacio(c.tipo, estudioPrevio.datos?.[c.codigo])).length
         : obligatorios.length;
 
+      const enElProceso = participantes.get(proceso.id) ?? [];
+      const quien = (papel: 'CONTRATACION' | 'ABOGADO') => {
+        const p = enElProceso.find((x) => x.papel === papel);
+        return p
+          ? { nombre: p.nombre, usuarioNombre: p.usuarioNombre, esMio: acceso ? esSuya(p, acceso) : false }
+          : null;
+      };
+      const contratacion = quien('CONTRATACION');
+
       return {
         ...proceso,
         modalidadNombre: proceso.modalidad
           ? (nombreModalidad.get(proceso.modalidad) ?? proceso.modalidad)
           : null,
+        /**
+         * Quién lo lleva. `enBandeja` no es «falta un dato»: es un proceso que
+         * llegó a la Dirección y que nadie ha recibido, y decirlo es lo único
+         * que impide que se quede ahí semanas.
+         */
+        participacion: {
+          contratacion,
+          abogado: quien('ABOGADO'),
+          enBandeja: !contratacion && estudioPrevio?.estado === 'EN_REVISION',
+        },
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
         estudioPrevio: estudioPrevio
           ? {

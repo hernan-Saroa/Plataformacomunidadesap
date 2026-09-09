@@ -13,6 +13,7 @@ import {
   List as ListIcon,
   Columns3,
   Lightbulb,
+  Inbox,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@esap-mfe/shared-ui/empty-state';
@@ -596,6 +597,35 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                       Radicado {new Date(p.fechaRadicacion).toLocaleDateString('es-CO')}
                       {p.expediente ? ` · ${p.expediente.numeroExpediente}` : ''}
                     </p>
+
+                    {/* Quién lo lleva (EFDS-1183).
+
+                        Va bajo el objeto y no en columna propia a propósito:
+                        la rejilla ya reparte cinco columnas a 1280px y meter
+                        una sexta le quitaría al objeto del contrato el ancho
+                        que necesita, que es lo que de verdad se lee. */}
+                    {p.participacion?.enBandeja ? (
+                      // En la bandeja no es «falta un dato»: es un proceso que
+                      // llegó a la Dirección y nadie ha recibido. Decirlo es lo
+                      // único que impide que se quede ahí semanas.
+                      <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                        <Inbox className="w-3.5 h-3.5" />
+                        En bandeja · sin recibir
+                      </span>
+                    ) : p.participacion?.contratacion ? (
+                      <p className="text-[11px] text-gray-400 m-0 mt-1.5">
+                        Lo lleva{' '}
+                        <span className="font-bold text-slate-500">
+                          {p.participacion.contratacion.nombre}
+                          {p.participacion.contratacion.esMio ? ' (tú)' : ''}
+                        </span>
+                        {p.participacion.abogado
+                          ? ` · revisa ${p.participacion.abogado.nombre}${
+                              p.participacion.abogado.esMio ? ' (tú)' : ''
+                            }`
+                          : ' · sin abogado'}
+                      </p>
+                    ) : null}
                   </div>
 
                   {/* Etapa */}

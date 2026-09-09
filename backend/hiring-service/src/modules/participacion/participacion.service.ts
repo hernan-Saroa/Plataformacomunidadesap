@@ -6,6 +6,13 @@ import {
   PapelEnProceso,
 } from '../../entities/participacion-proceso.entity';
 import { Proceso } from '../../entities/proceso.entity';
+import {
+  NUMERAL_ESTUDIO_PREVIO,
+  ProcesoActividad,
+} from '../../entities/proceso-actividad.entity';
+
+/** Actividad 3.3 de la matriz: la radicación en la Dirección. */
+export const NUMERAL_RADICACION = '3.3';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
@@ -156,6 +163,11 @@ export class ParticipacionService {
 
       const cuenta = await this.exigirCuenta(acceso.userId, acceso.userName);
       const nueva = await this.guardar(em, procesoId, 'CONTRATACION', cuenta, acceso);
+
+      // Tomarlo **es** cumplir la 3.3: sin esto la actividad se quedaría en
+      // BORRADOR para siempre y el riel no dejaría pasar a la 3.4, que es lo
+      // que ocurría cuando la 3.3 se cumplía dejando una constancia.
+      await this.marcarRadicacion(em, procesoId, acceso);
 
       await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
         papel: 'CONTRATACION',
@@ -308,6 +320,35 @@ export class ParticipacionService {
     return [...new Set(suyas.filter((p) => esSuya(p, acceso)).map((p) => p.procesoId))];
   }
 
+  /**
+   * Los procesos que están en la bandeja: llegaron y nadie los ha tomado.
+   *
+   * «Llegaron» es que el área los envió a revisión, no que existan: un estudio
+   * previo a medio diligenciar sigue siendo del área y no tiene nada que hacer
+   * en la bandeja de la Dirección.
+   *
+   * Es lo que hace posible el reparto por bandeja compartida: sin esto el
+   * listado solo devuelve los procesos en los que ya estás, así que nadie podría
+   * ver —ni tomar— uno que todavía no es de nadie.
+   */
+  async idsEnBandeja(): Promise<string[]> {
+    const filas: { id: string }[] = await this.dataSource.query(
+      `SELECT p.id
+         FROM hiring.procesos p
+         JOIN hiring.proceso_actividades a
+           ON a.proceso_id = p.id AND a.numeral = $1 AND a.estado = 'EN_REVISION'
+        WHERE p.estado = 'EN_CURSO'
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.participaciones_proceso pp
+             WHERE pp.proceso_id = p.id
+               AND pp.papel = 'CONTRATACION'
+               AND pp.estado = 'VIGENTE'
+          )`,
+      [NUMERAL_ESTUDIO_PREVIO],
+    );
+    return filas.map((f) => f.id);
+  }
+
   /** Quién está en cada proceso del listado, en una sola consulta. */
   async vigentesDe(procesoIds: string[]): Promise<Map<string, ParticipacionProceso[]>> {
     if (procesoIds.length === 0) return new Map();
@@ -369,6 +410,45 @@ export class ParticipacionService {
         `Este proceso lo lleva ${contratacion.nombre}: el abogado lo reparte quien lo tomó`,
       );
     }
+  }
+
+  /**
+   * Deja la 3.3 cumplida al tomar el proceso.
+   *
+   * La actividad ya no se cierra registrando fecha y documento: se cierra
+   * cuando alguien de la Dirección la recibe, que es lo que la matriz llama
+   * radicar. Quien la cumple queda sellado como revisor porque no hay nadie más
+   * a quien esperar: aquí no hay envío ni aprobación, el acto es uno solo.
+   */
+  private async marcarRadicacion(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral: NUMERAL_RADICACION } });
+
+    // Una 3.3 que la modalidad excluyó no se toca: NO_APLICA no es un estado
+    // del que se pueda salir cumpliendo.
+    if (actividad?.estado === 'NO_APLICA') return;
+
+    if (!actividad) {
+      await em.save(
+        em.create(ProcesoActividad, {
+          procesoId,
+          numeral: NUMERAL_RADICACION,
+          estado: 'APROBADO' as const,
+          datos: {},
+          enviadoPor: acceso.userName,
+          revisadoPor: acceso.userName,
+          revisadoAt: new Date(),
+        } as Partial<ProcesoActividad>),
+      );
+      return;
+    }
+
+    actividad.estado = 'APROBADO';
+    actividad.enviadoPor = acceso.userName;
+    actividad.revisadoPor = acceso.userName;
+    actividad.revisadoAt = new Date();
+    await em.save(ProcesoActividad, actividad);
   }
 
   private async exigirProceso(em: EntityManager, procesoId: string, bloquear = false) {

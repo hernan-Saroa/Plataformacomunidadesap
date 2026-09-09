@@ -33,6 +33,8 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
+  CuentaCandidata,
+  EstadoParticipacion,
   EstadoActaInicio,
   DatosActaInicio,
   DatosReasignacion,
@@ -580,6 +582,49 @@ export const contratacionService = {
     pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
+    }),
+
+  // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------
+
+  /** Quién lo tomó, qué abogado lo revisa y quiénes estuvieron antes. */
+  participacion: (procesoId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion`),
+
+  /**
+   * Actividad 3.3: toma el proceso de la bandeja.
+   *
+   * Nadie lo entrega: el primero que llega se lo queda. Si otro lo tomó antes,
+   * responde 409 diciendo quién.
+   */
+  tomarProceso: (procesoId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/tomar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  /** A quién se le puede dar el papel de abogado. */
+  abogados: (q = '') =>
+    pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
+
+  /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
+  asignarAbogado: (procesoId: string, usuarioId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
+      method: 'POST',
+      body: JSON.stringify({ usuarioId }),
+    }),
+
+  /** Releva al vigente y asigna al nuevo de una vez, para no dejarlo sin revisor. */
+  reasignarAbogado: (procesoId: string, usuarioId: string, motivo: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/reasignar`, {
+      method: 'POST',
+      body: JSON.stringify({ usuarioId, motivo }),
+    }),
+
+  /** Lo quita sin poner otro. El proceso queda pendiente de reasignar. */
+  quitarAbogado: (procesoId: string, motivo: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/quitar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
   // ---------------------- etapa 8 · supervisión del contrato (8.2) ----------

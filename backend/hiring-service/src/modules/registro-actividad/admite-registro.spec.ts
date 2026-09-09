@@ -15,10 +15,12 @@ const base = {
 };
 
 describe('admiteRegistro · qué actividades se cumplen dejando constancia', () => {
-  it('son las catorce que ninguna historia recogió', () => {
+  it('son las trece que ninguna historia recogió y siguen sin pantalla propia', () => {
+    // Eran catorce. La 3.3 salió con EFDS-1183: radicar en la Dirección
+    // —recibir el proceso y ponerle responsable— no cabe en una fecha y un
+    // documento, así que tiene pantalla propia y se cumple al tomarlo.
     expect([...NUMERALES_CON_REGISTRO]).toEqual([
       '3.2',
-      '3.3',
       '3.4',
       '3.5',
       '3.6',
@@ -35,10 +37,16 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
   });
 
   it('acepta una de cada etapa', () => {
-    expect(admiteRegistro('3.3')).toBe(true);
+    expect(admiteRegistro('3.5')).toBe(true);
     expect(admiteRegistro('5.10')).toBe(true);
     expect(admiteRegistro('6.10')).toBe(true);
     expect(admiteRegistro('8.6')).toBe(true);
+  });
+
+  it('la 3.3 ya no: tiene su propia pantalla', () => {
+    // Y no por conveniencia: mientras estuvo aquí, radicar era anotar una
+    // fecha, y el proceso no cambiaba de manos por eso.
+    expect(admiteRegistro('3.3')).toBe(false);
   });
 
   it('no se lleva por delante las vecinas de la etapa 8', () => {
