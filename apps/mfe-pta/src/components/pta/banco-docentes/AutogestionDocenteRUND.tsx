@@ -769,7 +769,7 @@ export function AutogestionDocenteRUND() {
                       <input style={{ ...inputStyle, ...(isExistingDocente ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}) }} type="email" value={form.correoInstitucional} onChange={set('correoInstitucional')} placeholder="docente@esap.edu.co" readOnly={isExistingDocente} />
                     </Field>
                     <Field label="Correo Alternativo"><input style={inputStyle} type="email" value={form.correoAlternativo} onChange={set('correoAlternativo')} /></Field>
-                    <Field label="Teléfono"><input style={inputStyle} value={form.telefono} onChange={set('telefono')} /></Field>
+                    <Field label="Teléfono(s)"><input style={inputStyle} value={form.telefono} onChange={set('telefono')} inputMode="tel" maxLength={255} placeholder="3106791787 - 6723168" /></Field>
                   </div>
                 </div>
 

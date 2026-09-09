@@ -1,3 +1,5 @@
+import { assertRundEvidenceData } from './rund-evidence-data';
+import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -175,17 +177,12 @@ function extractFirstEmail(value: any): string | null {
   return match ? match[0].toLowerCase() : null;
 }
 
-function normalizePhoneForAuth(value: any): string | null {
-  const text = toCleanString(value);
-  if (!text) return null;
-  const candidates = text.match(/\+?\d[\d\s().-]{5,}\d/g) || [];
-  const normalizedCandidates = candidates
-    .map((candidate) => candidate.replace(/[^\d+]/g, ''))
-    .filter(Boolean);
-  const preferred = normalizedCandidates.find((candidate) => candidate.replace(/\D/g, '').length >= 10)
-    || normalizedCandidates[0]
-    || text.replace(/[^\d+]/g, '');
-  return (preferred || text.replace(/\s+/g, ' ').trim()).slice(0, 20);
+export function normalizePhoneForAuth(value: any, preserveImportedText = false): string | null {
+  const normalized = normalizeRundPhones(value);
+  // Bulk files may include extensions or location notes. Preserve them for review.
+  if (normalized === null && preserveImportedText && String(value).trim().length <= RUND_PHONE_MAX_LENGTH) return String(value).trim();
+  if (normalized === null) throw new BadRequestException({ message: RUND_PHONE_ERROR, columna: 'TELEFONO', valorEsperado: RUND_PHONE_ERROR });
+  return normalized || null;
 }
 
 // â”€â”€â”€ dedican / vinculacion codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -687,8 +684,8 @@ export function validateManualBancoDocentePayload(
       && rawAlternativeEmail.toLowerCase() === rawInstitutionalEmail.toLowerCase()) {
       fail('El correo personal debe ser diferente del institucional.', 'CORREO_PERSONAL', rawAlternativeEmail, 'Un correo diferente del institucional');
     }
-    if (rawPhone && !/^\d{7,15}$/.test(rawPhone)) {
-      fail('El telefono o celular debe contener entre 7 y 15 digitos.', 'TELEFONO', rawPhone, 'Solo numeros, entre 7 y 15 digitos');
+    if (rawPhone && normalizeRundPhones(rawPhone) === null) {
+      fail(RUND_PHONE_ERROR, 'TELEFONO', rawPhone, RUND_PHONE_ERROR);
     }
     if (rawHours !== undefined && rawHours !== null && rawHours !== '' && !/^\d+$/.test(String(rawHours))) {
       fail('Las horas PTA deben ser un numero entero.', 'HORAS_PTA', rawHours, 'Numero entero entre 0 y 2000');
@@ -704,8 +701,8 @@ export function validateManualBancoDocentePayload(
     }
   }
 
-  if (payload.telefono && !/^\d{7,15}$/.test(String(payload.telefono))) {
-    fail('El telefono o celular debe contener entre 7 y 15 digitos.', 'TELEFONO', payload.telefono, 'Solo numeros, entre 7 y 15 digitos');
+  if (payload.telefono && normalizeRundPhones(payload.telefono) === null) {
+    fail(RUND_PHONE_ERROR, 'TELEFONO', payload.telefono, RUND_PHONE_ERROR);
   }
   if (!isSupportedTipoVinculacion(payload.tipoVinculacion)) {
     fail('El tipo de vinculacion no corresponde al catalogo RUND.', 'VINCULACION', payload.tipoVinculacion, 'Vinculacion valida');
@@ -778,7 +775,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
   const nombreCompleto = [persona?.primer_nombre, persona?.segundo_nombre, persona?.primer_apellido, persona?.segundo_apellido].filter(Boolean).join(' ').trim() || usuario?.nombre || 'Sin nombre';
 
   const genUpper = (persona?.genero || '').toUpperCase();
-  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
 
   return {
     id: docente.id,
@@ -859,7 +856,7 @@ function buildAuthBancoDocenteResponse(row: any) {
   const email = row.email || row.username || null;
 
   const genUpper = (row.genero || '').toUpperCase();
-  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
 
   return {
     id: row.docente_id || row.usuario_id,
@@ -1458,7 +1455,10 @@ export class BancoDocentesService implements OnModuleInit {
 
     const runWithManager = async (manager: any) => {
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
-      const phoneFinal = normalizePhoneForAuth(payload.telefono);
+      const phoneFinal = normalizePhoneForAuth(payload.telefono, options.bulkImport === true);
+      if (options.bulkImport && normalizeRundPhones(payload.telefono) === null) {
+        payload.observaciones = [payload.observaciones, 'Telefono conservado como se reporto en el archivo; requiere revision de formato.'].filter(Boolean).join('. ');
+      }
       const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
       if (!finalFullName) throw new BadRequestException({
         message: `No se pudo construir el nombre del docente ${payload.documentNumber}.`,
@@ -3242,6 +3242,7 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async vincularSoporte(docenteId: string, bloque: string, data: {
     tipoSoporte: string;
+    campo?: string;
     documentoCarpetaId?: string;
     nombreArchivo?: string;
     fechaVencimiento?: string;
@@ -3264,6 +3265,8 @@ export class BancoDocentesService implements OnModuleInit {
       });
     }
 
+    await assertRundEvidenceData(this.dataSource, docenteId, data.tipoSoporte, data.campo);
+
     const { randomUUID } = require('crypto');
     const newId = randomUUID();
 
@@ -3278,7 +3281,7 @@ export class BancoDocentesService implements OnModuleInit {
       id = existing[0].id;
       await this.dataSource.query(
         `UPDATE academic_work_plan."RundSoporteCampo" 
-         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', "updatedAt" = NOW()
+         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, "updatedAt" = NOW()
          WHERE id = $4`,
         [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
       );
@@ -3649,7 +3652,7 @@ export class BancoDocentesService implements OnModuleInit {
     const edad = computeEdad(fechaNacimiento, (docente as any).edadReferencia);
     const rangoEdad = computeRangoEdad(edad, (docente as any).rangoEdad);
     const genUpper = (p.gen_tercero || '').toUpperCase();
-    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
     const territorialNombre = docente.territorialReportada || await this.getTerritoriales()
       .then((territoriales) => territoriales.find((t) => String(t.id) === String(docente.territorialId))?.nombre || null)
       .catch(() => null);

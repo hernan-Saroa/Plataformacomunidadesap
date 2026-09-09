@@ -11,6 +11,22 @@ export const EVIDENCE_TYPES: Record<string, string[]> = {
   TRANSVERSAL: ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'],
 };
 export const isReviewableEvidence = (type: string) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type);
+export function evidenceFields(type: string): string[] {
+  if (['documento_identidad', 'cedula_extranjeria', 'pasaporte'].includes(type)) {
+    return ['DOCUMENTO_IDENTIDAD', 'NOMBRE_COMPLETO', 'GENERO', 'SEXO_BIOLOGICO', 'FECHA_NACIMIENTO'];
+  }
+  if (type === 'contrato') return ['ACTO_ADMINISTRATIVO', 'FECHAS_VINCULACION'];
+  if (type === 'acto_administrativo_dedicacion') return ['DEDICACION', 'HORAS_PTA'];
+  return [type];
+}
+
+export function evidenceFieldDecision(support: any, campo: string) {
+  const decision = support.revisiones_campos?.[campo];
+  if (decision && decision.documentoVersionId === (support.documento_perfil_id || support.documento_carpeta_id)) return decision;
+  // Historical decisions are unambiguous only for documents covering one row.
+  if (evidenceFields(support.tipo_soporte).length === 1 && !decision) return { estado: support.estado, observacion: support.observacion };
+  return { estado: 'Pendiente' };
+}
 export function validateEvidenceType(block: string, type: string) {
   if (!EVIDENCE_TYPES[block]?.includes(type)) throw new BadRequestException('El tipo de soporte no corresponde al bloque seleccionado.');
 }
@@ -47,8 +63,8 @@ export async function invalidateEditedEvidence(manager: Pick<QueryRunner, 'query
     const rows = await manager.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2', [docenteId, block]);
     if (!rows.length) continue;
     await manager.query('SELECT id FROM academic_work_plan."Docente" WHERE id = $1 FOR UPDATE', [docenteId]);
-    await manager.query(`UPDATE academic_work_plan."RundSoporteCampo" SET estado = 'Pendiente', observacion = NULL
-      WHERE docente_id = $1 AND bloque = $2 AND estado = 'Aprobado'`, [docenteId, block]);
+    await manager.query(`UPDATE academic_work_plan."RundSoporteCampo" SET estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb
+      WHERE docente_id = $1 AND bloque = $2`, [docenteId, block]);
     await resetEvidenceBlock(manager, docenteId, block, actorId);
     await evidenceAudit(manager, docenteId, block, 'REABRIR_POR_EDICION', actorId,
       { camposModificados: fields, estadoAnterior: rows[0].estado }, 'La información cambió. Revise de nuevo la correspondencia de sus soportes.', ip);
@@ -111,7 +127,7 @@ export class RundEvidenceWorkflow {
     } finally { await runner.release(); }
   }
 
-  async reviewSupport(docenteId: string, block: string, supportId: string, data: { estado: string; observacion?: string; documentoVersionId: string; blockVersion?: number }, actorId: string, ip?: string) {
+  async reviewSupport(docenteId: string, block: string, supportId: string, data: { estado: string; campo?: string; observacion?: string; documentoVersionId: string; blockVersion?: number }, actorId: string, ip?: string) {
     block = block.toUpperCase();
     if (!['Aprobado', 'Rechazado'].includes(data.estado)) throw new BadRequestException('Decisión documental inválida.');
     if (data.estado === 'Rechazado' && (typeof data.observacion !== 'string' || !data.observacion.trim())) throw new BadRequestException('Indique el motivo de devolución y la corrección requerida.');
@@ -125,17 +141,28 @@ export class RundEvidenceWorkflow {
       const [currentBlock] = await runner.query('SELECT version FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block]);
       if (!currentBlock || data.blockVersion !== Number(currentBlock.version)) throw new ConflictException('La información del espacio cambió. Actualice los datos antes de revisar el soporte.');
       if (data.estado === 'Aprobado' && support.fecha_vencimiento && new Date(support.fecha_vencimiento) < new Date()) throw new BadRequestException('El soporte está vencido. Cargue una versión vigente.');
-      if (support.estado === data.estado && (data.estado === 'Aprobado' || support.observacion === data.observacion!.trim())) return { id: supportId, estado: support.estado };
-      await runner.query('UPDATE academic_work_plan."RundSoporteCampo" SET estado = $1, observacion = $2 WHERE id = $3', [data.estado, data.estado === 'Rechazado' ? data.observacion!.trim() : null, supportId]);
+      const fields = evidenceFields(support.tipo_soporte);
+      const campo = data.campo || (fields.length === 1 ? fields[0] : '');
+      if (!fields.includes(campo)) throw new BadRequestException('Seleccione una fila válida del soporte para revisarla individualmente.');
+      const previous = evidenceFieldDecision(support, campo);
+      if (previous.estado === data.estado && (data.estado === 'Aprobado' || previous.observacion === data.observacion!.trim())) return { id: supportId, campo, estado: data.estado };
+      const decisions = { ...(support.revisiones_campos || {}), [campo]: {
+        estado: data.estado, observacion: data.estado === 'Rechazado' ? data.observacion!.trim() : null,
+        documentoVersionId: data.documentoVersionId, revisadoPor: actorId, fechaRevision: new Date().toISOString(),
+      } };
+      const rowDecisions = fields.map(field => evidenceFieldDecision({ ...support, revisiones_campos: decisions }, field));
+      const returned = rowDecisions.find(decision => decision.estado === 'Rechazado');
+      const supportState = returned ? 'Rechazado' : rowDecisions.every(decision => decision.estado === 'Aprobado') ? 'Aprobado' : 'Pendiente';
+      await runner.query('UPDATE academic_work_plan."RundSoporteCampo" SET estado = $1, observacion = $2, revisiones_campos = $4::jsonb WHERE id = $3', [supportState, returned?.observacion || null, supportId, JSON.stringify(decisions)]);
       await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = $1, revisado_por = $2,
         fecha_revision = NOW(), observacion = $3, version = version + 1, "updatedAt" = NOW() WHERE docente_id::text = $4 AND bloque = $5`,
         [data.estado === 'Rechazado' ? 'Devuelto' : 'En revisión', actorId, data.estado === 'Rechazado' ? data.observacion!.trim() : null, docenteId, block]);
       await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = 'Devuelto' WHERE docente_id::text = $1 AND bloque = $2
         AND EXISTS (SELECT 1 FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2 AND estado = 'Rechazado')`, [docenteId, block]);
       await evidenceAudit(runner, docenteId, block, data.estado === 'Aprobado' ? 'APROBAR_SOPORTE' : 'DEVOLVER_SOPORTE', actorId,
-        { estadoAnterior: support.estado, estadoNuevo: data.estado, documentoVersionId: data.documentoVersionId, blockVersion: data.blockVersion, tipoSoporte: support.tipo_soporte, nombreArchivo: support.nombre_archivo }, data.estado === 'Rechazado' ? data.observacion!.trim() : undefined, ip, supportId);
+        { campo, estadoAnterior: previous.estado, estadoNuevo: data.estado, documentoVersionId: data.documentoVersionId, blockVersion: data.blockVersion, tipoSoporte: support.tipo_soporte, nombreArchivo: support.nombre_archivo }, data.estado === 'Rechazado' ? data.observacion!.trim() : undefined, ip, supportId);
       await syncEvidenceSummary(runner, docenteId);
-      return { id: supportId, estado: data.estado };
+      return { id: supportId, campo, estado: data.estado };
     });
   }
 
@@ -152,7 +179,7 @@ export class RundEvidenceWorkflow {
       if (!returning) {
         const missing = requiredEvidence(block, docente).filter(group => !supports.some((s: any) => group.includes(s.tipo_soporte) && s.documento_carpeta_id));
         if (missing.length) throw new BadRequestException(`Faltan soportes obligatorios: ${missing.map(g => g[0]).join(', ')}.`);
-        if (supports.some((s: any) => s.estado !== 'Aprobado' || (s.fecha_vencimiento && new Date(s.fecha_vencimiento) < new Date()))) throw new BadRequestException('Revise y apruebe cada soporte vigente antes de aprobar el bloque. Hay documentos pendientes, devueltos o vencidos.');
+        if (supports.some((s: any) => s.estado !== 'Aprobado' || evidenceFields(s.tipo_soporte).some(field => evidenceFieldDecision(s, field).estado !== 'Aprobado') || (s.fecha_vencimiento && new Date(s.fecha_vencimiento) < new Date()))) throw new BadRequestException('Revise y apruebe cada soporte vigente y cada fila antes de aprobar el bloque. Hay documentos pendientes, devueltos o vencidos.');
       }
       const estado = returning ? 'Devuelto' : 'Aprobado';
       await runner.query(`UPDATE academic_work_plan."RundCampoEstado" SET estado = $1, revisado_por = $2,

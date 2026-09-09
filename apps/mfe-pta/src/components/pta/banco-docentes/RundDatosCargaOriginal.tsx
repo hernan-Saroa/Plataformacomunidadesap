@@ -1,3 +1,7 @@
+import type { CSSProperties } from 'react';
+import { ChevronDown, FileText, LockKeyhole } from 'lucide-react';
+import './RundDatosCargaOriginal.css';
+
 export const COLUMNAS_CARGA_POR_BLOQUE: Record<string, Array<[string, string]>> = {
   IDENTIDAD: [['DOCUMENTO_IDENTIDAD', 'Número de documento'], ['TIPO_DOCUMENTO', 'Tipo de documento'], ['NOMBRE_COMPLETO', 'Nombre completo'], ['GENERO', 'Género'], ['SEXO_BIOLOGICO', 'Sexo biológico'], ['FECHA_NACIMIENTO', 'Fecha de nacimiento'], ['EDAD', 'Edad reportada'], ['RANGO_EDAD', 'Rango de edad reportado']],
   CONTACTO: [['CORREO_INSTITUCIONAL', 'Correo institucional'], ['CORREO_PERSONAL', 'Correo personal'], ['TELEFONO', 'Teléfono']],
@@ -14,25 +18,56 @@ export function RundDatosCargaOriginal({ bloque, datos, accesoCompleto }: {
 }) {
   if (!datos || !Object.keys(datos).length) return null;
   const columnas = COLUMNAS_CARGA_POR_BLOQUE[bloque] || [];
+  const campos = columnas.map(([clave, etiqueta]) => {
+    const restringido = ['DOCUMENTO_IDENTIDAD', 'PUNTAJE_SALARIAL'].includes(clave) && !accesoCompleto;
+    let valor = datos[clave];
+    if (typeof valor === 'number' && ['FECHA_NACIMIENTO', 'INICIO_VINCULACION', 'FIN_VINCULACION'].includes(clave)) {
+      valor = new Date(Math.floor(valor - 25569) * 86400000).toLocaleDateString('es-CO', { timeZone: 'UTC' });
+    }
+    const vacio = valor === null || valor === undefined || valor === '';
+    const textoLargo = !restringido && !vacio && (['PERFIL_ACADEMICO', 'OBSERVACIONES'].includes(clave) || String(valor).length > 140 || String(valor).includes('\n'));
+    return { clave, etiqueta, restringido, valor, vacio, textoLargo };
+  });
+  const compactos = campos.filter(campo => !campo.textoLargo).length || 1;
+  const columnasEquilibradas = (maximo: number) => {
+    const limite = Math.min(compactos, maximo);
+    // Prefer complete rows (e.g. six fields in two rows of three).
+    for (let cantidad = limite; cantidad >= 2; cantidad--) {
+      if (compactos % cantidad === 0) return cantidad;
+    }
+    return limite;
+  };
+  const gridStyle = {
+    '--rund-source-columns-small': columnasEquilibradas(2),
+    '--rund-source-columns-medium': columnasEquilibradas(3),
+    '--rund-source-columns-large': columnasEquilibradas(4),
+  } as CSSProperties;
   return (
-    <details style={{ marginBottom: 20, border: '1px solid #CBD5E1', borderRadius: 10, padding: 14, background: '#FFFFFF' }}>
-      <summary style={{ cursor: 'pointer', color: '#003DA5', fontWeight: 600 }}>Datos originales del archivo de carga ({columnas.length})</summary>
-      <p style={{ fontSize: 12, color: '#64748B' }}>Información reportada al cargar el archivo. El perfil puede incluir correcciones posteriores y valores calculados, como la edad actual.</p>
-      <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 16, margin: 0 }}>
-        {columnas.map(([clave, etiqueta]) => {
-          const restringido = ['DOCUMENTO_IDENTIDAD', 'PUNTAJE_SALARIAL'].includes(clave) && !accesoCompleto;
-          let valor = datos[clave];
-          if (typeof valor === 'number' && ['FECHA_NACIMIENTO', 'INICIO_VINCULACION', 'FIN_VINCULACION'].includes(clave)) {
-            valor = new Date(Math.floor(valor - 25569) * 86400000).toLocaleDateString('es-CO', { timeZone: 'UTC' });
-          }
-          return <div key={clave} style={{ minWidth: 0 }}>
-            <dt style={{ fontSize: 11, color: '#64748B' }}>{etiqueta}</dt>
-            <dd style={{ margin: '4px 0 0', fontSize: 13, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
-              {restringido ? 'Información restringida' : valor === null || valor === undefined || valor === '' ? 'Sin dato en el archivo' : String(valor)}
-            </dd>
-          </div>;
-        })}
-      </dl>
-    </details>
+    <div className="rund-source-data">
+      <details className="rund-source-data__panel">
+        <summary className="rund-source-data__summary">
+          <span className="rund-source-data__icon" aria-hidden="true"><FileText size={19} /></span>
+          <span className="rund-source-data__heading">
+            <span className="rund-source-data__title">Datos originales del archivo de carga</span>
+            <span className="rund-source-data__count">{columnas.length} datos</span>
+          </span>
+          <ChevronDown className="rund-source-data__chevron" size={18} aria-hidden="true" />
+        </summary>
+        <div className="rund-source-data__content">
+          <p className="rund-source-data__description">Información reportada al cargar el archivo. El perfil puede incluir correcciones posteriores y valores calculados, como la edad actual.</p>
+          <dl className="rund-source-data__grid" style={gridStyle}>
+            {campos.map(({ clave, etiqueta, restringido, valor, vacio, textoLargo }) => {
+              return <div key={clave} className={`rund-source-data__field${textoLargo ? ' rund-source-data__field--wide' : ''}${restringido || vacio ? ' rund-source-data__field--muted' : ''}`}>
+                <dt className="rund-source-data__label">{etiqueta}</dt>
+                <dd className="rund-source-data__value">
+                  {restringido && <LockKeyhole size={13} aria-hidden="true" />}
+                  {restringido ? 'Información restringida' : vacio ? 'Sin dato en el archivo' : String(valor)}
+                </dd>
+              </div>;
+            })}
+          </dl>
+        </div>
+      </details>
+    </div>
   );
 }

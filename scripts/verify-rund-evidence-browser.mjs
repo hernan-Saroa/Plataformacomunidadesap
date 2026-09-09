@@ -12,6 +12,7 @@ const panel = '/apps/mfe-pta/src/components/pta/banco-docentes/RundValidationPan
 const apiSource = `
 const names = ['IDENTIDAD','CONTACTO','FORMACION','VINCULACION','ACADEMICO','TRANSVERSAL'];
 const support = {id:'soporte-1',tipo_soporte:'documento_identidad',documento_perfil_id:'version-1',documento_carpeta_id:'/pta/prueba.pdf',nombre_archivo:'identidad-prueba.pdf',estado:'Pendiente'};
+Object.assign(support, JSON.parse(sessionStorage.getItem('review-fixture') || '{}'));
 const blocks = names.map(bloque=>({bloque,version:1,estado:bloque==='CONTACTO'?'Pendiente':'Soporte faltante',soportes:bloque==='IDENTIDAD'?[support]:[]}));
 blocks[0].estado='En revisión';
 const logs=[{id:'log-1',accion:'CARGAR_DOCUMENTO',bloque:'IDENTIDAD',actorId:'Gestor de prueba',createdAt:new Date().toISOString(),metadata:{nombreArchivo:'identidad-prueba.pdf',version:1}}];
@@ -26,7 +27,7 @@ get:async url=>{
 },
 post:async(url,body)=>{
  window.fixtureCalls.push({url,body});
- if(url.endsWith('/revision')){support.estado=body.estado;support.observacion=body.observacion;blocks[0].estado=body.estado==='Rechazado'?'Devuelto':'En revisión';logs.unshift({id:String(logs.length+1),accion:body.estado==='Aprobado'?'APROBAR_SOPORTE':'DEVOLVER_SOPORTE',bloque:'IDENTIDAD',actorId:'Revisor de prueba',createdAt:new Date().toISOString(),observacion:body.observacion,metadata:{nombreArchivo:support.nombre_archivo}});}
+ if(url.endsWith('/revision')){support.revisiones_campos={...support.revisiones_campos,[body.campo]:{estado:body.estado,observacion:body.observacion,documentoVersionId:body.documentoVersionId}};const decisions=Object.values(support.revisiones_campos);support.estado=decisions.some(d=>d.estado==='Rechazado')?'Rechazado':decisions.length===5?'Aprobado':'Pendiente';sessionStorage.setItem('review-fixture',JSON.stringify(support));blocks[0].estado=body.estado==='Rechazado'?'Devuelto':'En revisión';logs.unshift({id:String(logs.length+1),accion:body.estado==='Aprobado'?'APROBAR_SOPORTE':'DEVOLVER_SOPORTE',bloque:'IDENTIDAD',actorId:'Revisor de prueba',createdAt:new Date().toISOString(),observacion:body.observacion,metadata:{nombreArchivo:support.nombre_archivo}});}
  if(url.endsWith('/aprobar')){blocks[0].estado='Aprobado';blocks[0].fecha_revision=new Date().toISOString();}
  return {success:true};
 },getBlob:async()=>new Blob(['%PDF-1.7\\n%%EOF'],{type:'application/pdf'})};`;
@@ -67,13 +68,24 @@ try {
   await page.type('#support-return-reason','El archivo no corresponde a la información registrada. Adjunte el soporte correcto.');
   await click('Confirmar devolución');
   await page.waitForFunction(() => document.body.textContent.includes('El archivo no corresponde'));
-  const artifactDir = path.join(root, 'docs/rund/evidence-preview');
+  const artifactDir = path.join(root, '.local/rund-row-review-preview');
   await fs.mkdir(artifactDir, { recursive: true });
   await page.screenshot({ path: path.join(artifactDir,'devuelto.png'), fullPage: true });
-  // Reload fixture to exercise the independent approval path.
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Aprobar').length), 4);
+  // Start a fresh approval fixture, then verify persistence across reload.
+  await page.evaluate(() => sessionStorage.clear());
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Aprobar'));
   await click('Aprobar');
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Aprobar').length === 4);
+  assert(await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Aprobar bloque').disabled));
+  await page.reload();
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Aprobar').length === 4);
+  for (let remaining = 4; remaining > 0; remaining--) {
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Aprobar' && !b.disabled));
+    await click('Aprobar');
+    await page.waitForFunction(count => [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Aprobar').length === count, {}, remaining - 1);
+  }
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Aprobar bloque' && !b.disabled));
   await click('Aprobar bloque');
   await page.waitForFunction(() => document.body.textContent.includes('Espacio aprobado'));
@@ -83,5 +95,5 @@ try {
   assert.deepEqual(errors, []);
   const calls = await page.evaluate(() => window.fixtureCalls);
   assert(calls.some(c => c.url.endsWith('/revision') && c.body.documentoVersionId === 'version-1' && c.body.blockVersion === 1));
-  console.log(JSON.stringify({ success: true, browser: await browser.version(), simulatedAPI: true, businessDataModified: false, checks: ['Motivo obligatorio', 'Devolución visible', 'Aprobación documental persistida vía API', 'Espacio aprobado en verde', 'Historial visible'], screenshots: artifactDir }, null, 2));
+  console.log(JSON.stringify({ success: true, browser: await browser.version(), simulatedAPI: true, businessDataModified: false, checks: ['Una sola fila por clic', 'Persistencia al recargar', 'Bloque pendiente hasta revisar las cinco filas', 'Motivo obligatorio', 'Devolución visible', 'Aprobación documental persistida vía API', 'Espacio aprobado en verde', 'Historial visible'], screenshots: artifactDir }, null, 2));
 } finally { if (browser) await browser.close(); await server.close(); }
