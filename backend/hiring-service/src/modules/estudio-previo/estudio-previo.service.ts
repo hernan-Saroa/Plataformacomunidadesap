@@ -61,6 +61,17 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
 export const NUMERAL_ANALISIS_SECTOR = '3.2';
 
 /**
+ * Numeral 3.4: la revisión, que se resuelve desde el estudio previo.
+ *
+ * No tiene panel ni tarjeta en el riel: el abogado decide leyendo la 3.1, y
+ * pedirle además que entre a otra actividad a dejar constancia sería un paso
+ * que no aporta. Pero la actividad existe en la matriz, así que su estado sigue
+ * la decisión en vez de quedarse en borrador para siempre —el expediente diría
+ * que la revisión está pendiente cuando ya se resolvió—.
+ */
+export const NUMERAL_REVISION = '3.4';
+
+/**
  * Si el estudio previo de este proceso es de quien intenta tocarlo (EFDS-1183).
  *
  * `contratacion.actividad.edit` dice que alguien diligencia estudios previos, no
@@ -821,6 +832,7 @@ export class EstudioPrevioService {
       // dado por bueno, y negar dejaba una actividad aprobada colgando de un
       // proceso muerto.
       await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
+      await this.cerrarLaRevision(em, procesoId, decision, acceso);
 
       // El proceso termina con la actividad cuando la decisión lo cierra.
       const desenlace = desenlaceTrasDecision(decision);
@@ -873,6 +885,35 @@ export class EstudioPrevioService {
     sector.revisadoPor = null as any;
     sector.revisadoAt = null as any;
     await em.save(ProcesoActividad, sector);
+  }
+
+  /**
+   * Deja la 3.4 al día con lo que el abogado acaba de decidir.
+   *
+   * Aprobar y negar la cierran: la revisión ocurrió y concluyó, con las dos.
+   * Devolver la reabre, porque el estudio previo va a volver y habrá que
+   * mirarlo otra vez.
+   *
+   * Sin esto la actividad se quedaba en BORRADOR aunque la decisión estuviera
+   * tomada, y el expediente decía que la revisión seguía pendiente.
+   */
+  private async cerrarLaRevision(
+    em: EntityManager,
+    procesoId: string,
+    decision: DecisionRevision,
+    acceso: HiringAccess,
+  ) {
+    const revision = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_REVISION },
+    });
+    if (!revision || revision.estado === 'NO_APLICA') return;
+
+    const concluida = decision !== 'DEVUELTO';
+
+    revision.estado = concluida ? 'APROBADO' : 'BORRADOR';
+    revision.revisadoPor = concluida ? acceso.userName : (null as any);
+    revision.revisadoAt = concluida ? new Date() : (null as any);
+    await em.save(ProcesoActividad, revision);
   }
 
   /** Historial de revisiones del estudio previo, de la más reciente a la más antigua. */

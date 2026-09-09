@@ -15,12 +15,12 @@
 export const NUMERALES_CON_REGISTRO = [
   // Etapa 3 · lo que acompaña al estudio previo
   '3.2',
-  // La 3.3 salió de la lista con EFDS-1183. Era el caso más claro de lo que el
-  // comentario de arriba anticipaba: no es que nadie la recogiera, es que
-  // radicar —recibir el proceso en la Dirección y ponerle responsable— no cabe
-  // en una fecha y un documento. Ahora tiene pantalla propia y se cumple al
-  // tomar el proceso de la bandeja.
-  '3.4',
+  // La 3.3 y la 3.4 salieron de la lista con EFDS-1183. Eran el caso más claro
+  // de lo que el comentario de arriba anticipaba: no es que nadie las
+  // recogiera, es que no caben en una fecha y un documento. Radicar es recibir
+  // el proceso en la Dirección y ponerle responsable, y se cumple al hacerse
+  // cargo; la 3.4 es la decisión del abogado, que se toma leyendo el estudio
+  // previo y se cumple al resolverla desde ahí.
   '3.5',
   // La causal la elige el abogado leyendo el Decreto 1082/2015 contra el
   // objeto, y el comité sesiona en la Dirección de Contratación: ninguna de las

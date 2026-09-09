@@ -52,6 +52,20 @@ import { PanelRadicacion } from '../participacion/PanelRadicacion';
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
 
+/**
+ * La 3.4 no tiene tarjeta propia (EFDS-1183).
+ *
+ * La revisión ocurre —y queda en el expediente con su decisión, su motivo y
+ * quién la tomó— pero se resuelve leyendo el estudio previo, así que vive en el
+ * panel de la 3.1. Una tarjeta aparte pedía entrar a un sitio donde no había
+ * nada que hacer, y se quedaba en «pendiente» aunque la revisión ya se hubiera
+ * resuelto: el riel contaba una cosa y el expediente otra.
+ *
+ * No se borra de la matriz: la actividad existe y el área la reconoce. Lo que
+ * se retira es la fila del carril.
+ */
+const NUMERAL_REVISION = '3.4';
+
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 
@@ -304,11 +318,10 @@ const ACTIVIDADES_ETAPA_3 = [
  */
 const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   '3.2': 'Análisis del sector y estudio de mercado',
-  // La 3.3 salió de aquí con EFDS-1183: radicar es recibir el proceso y
-  // ponerle responsable, y eso no cabe en fecha, documento y observaciones.
-  // La 3.4 se queda de momento: la decisión del abogado se toma sobre el
-  // contenido de la 3.1, en su propio panel, y esta fila solo deja constancia.
-  '3.4': 'Revisión y reparto',
+  // La 3.3 y la 3.4 salieron de aquí con EFDS-1183. Ninguna de las dos se
+  // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
+  // en la Dirección y ponerle responsable, y la 3.4 es la decisión del abogado,
+  // que se toma leyendo el estudio previo y por eso vive en su panel.
   '3.5': 'Definir modalidad de contratación',
   '3.6': 'Causal de contratación',
   '3.7': 'Comité de contratación',
@@ -351,6 +364,12 @@ const TIENEN_PANEL = (numeral: string): boolean =>
  * gestor con «Elige una actividad», obligándole a buscar en el riel el punto
  * al que el proceso ya había llegado —un dato que la propia pantalla conoce.
  *
+ * **Lo que espera decisión ajena no cuenta como el punto del proceso**
+ * (EFDS-1183). Un estudio previo enviado está esperando a que alguien lo
+ * revise: para quien lo mandó no hay nada que hacer ahí, y para la Dirección
+ * que acaba de recibirlo, tampoco —lo suyo es hacerse cargo—. Abrir la 3.1 le
+ * ponía delante un formulario bloqueado en vez de la única acción disponible.
+ *
  * Vive fuera del componente y recibe lo que necesita porque tiene que poder
  * calcularse antes de pintar nada: la actividad que se abre sola se decide en
  * un efecto, y un efecto no puede colgar de que los datos ya hayan llegado.
@@ -373,15 +392,27 @@ export const actividadEnCurso = (
 
   for (const act of catalogo) {
     if (!TIENEN_PANEL(act.numeral)) continue;
+
     if (act.numeral === '3.1') {
+      // Enviado y esperando: el proceso ya no está aquí, está en manos de quien
+      // tiene que recibirlo y decidir. Se sigue buscando.
+      if (estadoDelEstudio === 'EN_REVISION') continue;
       if (estadoDelEstudio !== 'APROBADO') return '3.1';
       continue;
     }
+
     const aplica = act.aplica !== false;
     if (!aplica || !disponibles.has(act.numeral)) continue;
     if (estadoDeActividad(aplica, act.estado, true) !== 'aprobada') return act.numeral;
   }
-  return null;
+
+  /**
+   * Si todo lo disponible está esperando decisión, se abre el estudio previo.
+   *
+   * Es el caso del abogado: no tiene nada que trabajar, pero sí algo que
+   * resolver, y es ahí donde se resuelve.
+   */
+  return estadoDelEstudio === 'EN_REVISION' ? '3.1' : null;
 };
 
 const formatoPesos = new Intl.NumberFormat('es-CO', {
@@ -554,7 +585,9 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   // El catálogo llega del backend desde EFDS-1342: la matriz tiene 63
   // actividades y corregir el nombre de una no debería exigir un despliegue.
   // Si la consulta falla se cae a la etapa 3, que es lo único que había antes.
-  const catalogoDelProceso: any[] = catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3;
+  const catalogoDelProceso: any[] = (
+    catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3
+  ).filter((act: any) => act.numeral !== NUMERAL_REVISION);
 
   /*
    * La secuencia del flujo, calculada una vez sobre el catálogo completo.

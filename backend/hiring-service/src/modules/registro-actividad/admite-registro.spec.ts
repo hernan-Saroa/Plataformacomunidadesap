@@ -15,13 +15,13 @@ const base = {
 };
 
 describe('admiteRegistro · qué actividades se cumplen dejando constancia', () => {
-  it('son las trece que ninguna historia recogió y siguen sin pantalla propia', () => {
-    // Eran catorce. La 3.3 salió con EFDS-1183: radicar en la Dirección
-    // —recibir el proceso y ponerle responsable— no cabe en una fecha y un
-    // documento, así que tiene pantalla propia y se cumple al tomarlo.
+  it('son las doce que ninguna historia recogió y siguen sin pantalla propia', () => {
+    // Eran catorce. La 3.3 y la 3.4 salieron con EFDS-1183: ninguna cabe en
+    // una fecha y un documento. Radicar es recibir el proceso en la Dirección
+    // y ponerle responsable; la 3.4 es la decisión del abogado, que se toma
+    // leyendo el estudio previo y se resuelve desde su panel.
     expect([...NUMERALES_CON_REGISTRO]).toEqual([
       '3.2',
-      '3.4',
       '3.5',
       '3.6',
       '3.7',
@@ -43,10 +43,12 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
     expect(admiteRegistro('8.6')).toBe(true);
   });
 
-  it('la 3.3 ya no: tiene su propia pantalla', () => {
-    // Y no por conveniencia: mientras estuvo aquí, radicar era anotar una
-    // fecha, y el proceso no cambiaba de manos por eso.
+  it('la 3.3 y la 3.4 ya no: se resuelven en otro sitio', () => {
+    // Y no por conveniencia: mientras estuvieron aquí, radicar era anotar una
+    // fecha —el proceso no cambiaba de manos por eso— y la revisión se daba por
+    // cumplida sin que nadie hubiera decidido nada.
     expect(admiteRegistro('3.3')).toBe(false);
+    expect(admiteRegistro('3.4')).toBe(false);
   });
 
   it('no se lleva por delante las vecinas de la etapa 8', () => {

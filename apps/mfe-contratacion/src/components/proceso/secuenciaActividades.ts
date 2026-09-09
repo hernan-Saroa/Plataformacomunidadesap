@@ -43,6 +43,15 @@ export function estaTerminada(paso: PasoDelFlujo): boolean {
 const ATIENDEN_LA_REVISION = new Set(['3.3', '3.4']);
 
 /**
+ * Y la que abre ese tramo: el estudio previo.
+ *
+ * Solo su revisión, no la de cualquier actividad. La 3.3 y la 3.4 atienden lo
+ * que el área entregó en la 3.1; que la 3.2 esté esperando decisión no las
+ * habilita, y tratarlas igual desbloquearía el tramo por el motivo equivocado.
+ */
+const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
+
+/**
  * Hasta dónde puede llegar el gestor: la secuencia del flujo.
  *
  * Devuelve los numerales que se pueden abrir. La matriz es una secuencia —la
@@ -96,7 +105,7 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
     // las que existen para resolver esa espera. Cualquier otra sin terminar sí
     // lo cierra a todas las siguientes; se sigue recorriendo para no marcar
     // disponible nada que venga después.
-    if (paso.estado === 'EN_REVISION') {
+    if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
       esperandoDecision = true;
     } else {
       alcanzado = false;
