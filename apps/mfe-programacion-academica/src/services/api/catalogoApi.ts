@@ -370,3 +370,33 @@ export function getOfertas(): Promise<Oferta[]> {
 export function getConsumoPorOferta(documento: string): Promise<AcumuladoDocente> {
   return pedirJson<AcumuladoDocente>(`${BASE_OFERTAS}/consumo/${encodeURIComponent(documento)}`, { method: 'GET' });
 }
+
+// ─── Validación de cruces del histórico (3.9) ────────────────────────────────
+
+export interface CruceHistorico {
+  tipo: 'aula' | 'docente';
+  periodo: string;
+  dia: string;
+  horaInicio: string;
+  horaFin: string;
+  recurso: string;
+  asignaturaA: string;
+  asignaturaB: string;
+  programaA: string;
+  programaB: string;
+}
+
+export interface ValidacionHistorico {
+  origen: string;
+  periodos: string[];
+  resumen: { aula: number; docente: number; total: number };
+  cruces: CruceHistorico[];
+}
+
+/**
+ * Cruces detectados en la programación HISTÓRICA. No son fallas del sistema:
+ * el sistema no permite crearlos. Por eso van aparte del contador del panel.
+ */
+export function getCrucesHistoricos(): Promise<ValidacionHistorico> {
+  return pedirJson<ValidacionHistorico>('/programacion-academica/api/v1/validacion/historico', { method: 'GET' });
+}

@@ -12,6 +12,7 @@ import { HorariosModule } from './horarios/horarios.module.js';
 import { AsignacionesModule } from './asignaciones/asignaciones.module.js';
 import { AulasModule } from './aulas/aulas.module.js';
 import { OfertasModule } from './ofertas/ofertas.module.js';
+import { ValidacionModule } from './validacion/validacion.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 
@@ -47,6 +48,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
     AsignacionesModule,
     AulasModule,
     OfertasModule,
+    ValidacionModule,
   ],
   controllers: [AppController],
   providers: [

@@ -24,7 +24,10 @@ import {
   X
 } from 'lucide-react';
 
-import { getTodasLasSesiones, getAulas, type FranjaConContexto } from '../services/api/catalogoApi';
+import {
+  getTodasLasSesiones, getAulas, getCrucesHistoricos,
+  type FranjaConContexto, type ValidacionHistorico,
+} from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
@@ -96,6 +99,9 @@ export function ProgramacionAcademicaModule() {
   const [cargando, setCargando] = useState(true);
   // 3.6 — Detalle del grupo que abre la flecha de Acción.
   const [detalle, setDetalle] = useState<FranjaHoraria | null>(null);
+  // 3.9 — Cruces del histórico. Se cargan aparte del panel: son otra fuente.
+  const [historico, setHistorico] = useState<ValidacionHistorico | null>(null);
+  useEffect(() => { getCrucesHistoricos().then(setHistorico).catch(() => setHistorico(null)); }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -393,28 +399,78 @@ export function ProgramacionAcademicaModule() {
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
       {seccion === 'ofertas' && <GestionOfertas />}
 
+      {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
+          Antes esta sección mostraba alertas inventadas en el propio front.
+          Ahora sale de programacion_historica y va ETIQUETADA: son hallazgos
+          del Excel de 2026-1 que hoy se revisan a mano, no fallas del módulo.
+          El contador "Alertas de Cruce" del panel es otro y vale 0 por diseño,
+          porque el sistema rechaza el cruce al guardar. No se mezclan. */}
       {seccion === 'alertas' && (
         <div className="space-y-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <h3 className="font-bold text-slate-800 text-sm mb-1">Detección de Cruces y Traslapes</h3>
-            <p className="text-xs text-slate-500">Validación de conflictos de horario en asignaciones docentes y espacios físicos</p>
+            <h3 className="font-bold text-slate-800 text-sm mb-1">Cruces detectados en la programación histórica</h3>
+            <p className="text-xs text-slate-500">
+              Hallazgos sobre la programación cargada de {historico?.periodos?.join(' y ') || '2026-1'} —
+              hoy se revisan a mano. El sistema <strong>no permite crear</strong> estos cruces:
+              se rechazan al guardar.
+            </p>
           </div>
 
-          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-5 space-y-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-              <div>
-                <h4 className="font-bold text-amber-900 text-sm">Cruce de Horario en Laboratorio 1</h4>
-                <p className="text-xs text-amber-700">
-                  El Mg. Carlos Eduardo Gómez presenta cruce de franja horaria el Miércoles entre 07:00 y 10:00 AM en Sede Central Bogotá.
-                </p>
+          {historico && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { etiqueta: 'Total detectados', valor: historico.resumen.total, color: '#B45309' },
+                { etiqueta: 'Cruces de aula', valor: historico.resumen.aula, color: '#B45309' },
+                { etiqueta: 'Cruces de docente', valor: historico.resumen.docente, color: '#B45309' },
+              ].map((k) => (
+                <div key={k.etiqueta} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{k.etiqueta}</p>
+                  <h3 className="text-2xl font-black mt-1" style={{ color: k.color }}>{k.valor}</h3>
+                  <p className="text-xs text-slate-500 mt-1">Origen: histórico</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!historico && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 text-center text-sm text-slate-500">
+              Cargando cruces del histórico…
+            </div>
+          )}
+
+          {historico && historico.cruces.length === 0 && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 text-center text-sm text-slate-500">
+              No se detectaron cruces en la programación histórica cargada.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {(historico?.cruces || []).map((c, i) => (
+              <div key={i} className="bg-amber-50/70 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-amber-900 text-sm">
+                        {c.tipo === 'aula' ? `Aula ${c.recurso}` : c.recurso}
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-200/70 text-amber-900 text-[0.62rem] font-bold uppercase tracking-wide">
+                        Cruce de {c.tipo}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[0.62rem] font-bold uppercase tracking-wide">
+                        Histórico {c.periodo}
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800 mt-1">
+                      {c.dia} de {c.horaInicio} a {c.horaFin}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      {c.asignaturaA} ({c.programaA}) · {c.asignaturaB} ({c.programaB})
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-amber-200/60">
-              <button className="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-semibold text-xs hover:bg-amber-700 transition-colors">
-                Reasignar Aula / Horario
-              </button>
-            </div>
+            ))}
           </div>
         </div>
       )}
