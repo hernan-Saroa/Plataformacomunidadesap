@@ -242,6 +242,7 @@ export interface LegalAuto {
     currentVersion?: number;
     processId: string;
     process?: DisciplinaryProcess;
+    radicadorAsignadoId?: string | null;
     createdAt: string;
 }
 
@@ -1136,20 +1137,42 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async aprobarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, {
-            action: 'APPROVE'
-        });
-    }
-
-    async firmarAuto(id: string, userId: string, data?: any): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, data || {});
+    async aprobarAuto(id: string, aprobadoPorId: string, radicadorAsignadoId?: string): Promise<LegalAuto> {
+        const body: any = { action: 'APPROVE' };
+        if (radicadorAsignadoId) {
+            body.radicadorAsignadoId = radicadorAsignadoId;
+        }
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, body);
     }
 
     async devolverAuto(id: string, aprobadoPorId: string, observaciones: string): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, {
             action: 'RETURN',
             observaciones
+        });
+    }
+
+    async getRadicadoresDisponibles(): Promise<
+        Array<{
+            id: string;
+            nombre: string;
+            email: string;
+            autosAsignados: number;
+            cargaPorcentaje: number;
+        }>
+    > {
+        return apiClient.get<Array<{
+            id: string;
+            nombre: string;
+            email: string;
+            autosAsignados: number;
+            cargaPorcentaje: number;
+        }>>(`${SERVICE_PREFIX}/disciplinary-autos/radicadores-disponibles`);
+    }
+
+    async assignRadicadorToAuto(id: string, radicadorAsignadoId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/assign-radicador`, {
+            radicadorAsignadoId,
         });
     }
 

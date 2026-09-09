@@ -107,4 +107,9 @@ export class CreateSolicitudDto {
   @IsOptional()
   @IsBoolean()
   esInternacional?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  idDependencia?: number;
 }

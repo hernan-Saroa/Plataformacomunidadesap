@@ -101,13 +101,21 @@ export const ETAPAS_PROCESO = {
     icon: FileCheck,
     orden: 9
   },
+  INHIBITORIO: {
+    id: 'INHIBITORIO',
+    nombre: 'Inhibitorio',
+    descripcion: 'Inhibición antes de iniciar actuación disciplinaria (art. 209)',
+    color: '#6B7280',
+    icon: Archive,
+    orden: 10
+  },
   ARCHIVO: {
     id: 'ARCHIVO',
     nombre: 'Archivo',
-    descripcion: 'Archivos en cualquier etapa del proceso',
+    descripcion: 'Archivo dentro de actuación disciplinaria',
     color: '#DC2626',
     icon: Archive,
-    orden: 10
+    orden: 11
   }
 } as const;
 

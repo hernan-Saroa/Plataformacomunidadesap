@@ -26,10 +26,13 @@ import {
      BandejaSecretarioResponse,
      PrioridadUpdateResponse,
      ReturnRequestResponse,
-     CargaAnalista,
-     AsignacionAnalistaRequest,
-     AsignacionAnalistaResponse,
-   } from '../../types/viaticos';
+      CargaAnalista,
+      AsignacionAnalistaRequest,
+      AsignacionAnalistaResponse,
+      SolicitudAsignadaAnalistaResponse,
+      VerifyAuditResponse,
+      DevolverAnalistaResponse,
+    } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -1150,6 +1153,61 @@ export class ViaticosService {
     } catch (error) {
       console.error('[viaticos] Error obteniendo solicitudes asignadas:', error);
       return [];
+    }
+  }
+
+  // ========================================================================
+  // RF-VER-SIIF — Verificar y crear comisión en SIIF Nación (Etapa 5)
+  // ========================================================================
+
+  async obtenerSolicitudesAsignadasAnalista(): Promise<SolicitudListaResponse[]> {
+    try {
+      const response = await apiClient.get<SolicitudAsignadaAnalistaResponse>(
+        '/viaticos/api/v1/requests/analyst/inbox',
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitudes asignadas (analista):', error);
+      return [];
+    }
+  }
+
+  async verificarAuditoria(
+    solicitudId: string,
+    dto: { seguridadSocialVigente?: boolean; consultaRutFacturador?: boolean },
+  ): Promise<VerifyAuditResponse> {
+    try {
+      return await apiClient.post<VerifyAuditResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/verify-audit`,
+        dto,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error en verificacion de auditoria:', error);
+      throw error;
+    }
+  }
+
+  async devolverAnalista(
+    solicitudId: string,
+    motivo: string,
+  ): Promise<DevolverAnalistaResponse> {
+    try {
+      return await apiClient.post<DevolverAnalistaResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/devolver-analista`,
+        { motivo },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo solicitud (analista):', error);
+      throw error;
+    }
+  }
+
+  async exportarSIIF(solicitudId: string): Promise<Blob> {
+    try {
+      return await apiClient.getBlob(`/viaticos/api/v1/requests/${solicitudId}/siif-export`);
+    } catch (error) {
+      console.error('[viaticos] Error exportando SIIF:', error);
+      throw error;
     }
   }
 }

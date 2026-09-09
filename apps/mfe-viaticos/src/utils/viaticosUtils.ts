@@ -231,6 +231,11 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-orange-100',
     text: 'text-orange-800',
   },
+  SOLICITADA_SIIF: {
+    label: 'Solicitada SIIF',
+    bg: 'bg-fuchsia-100',
+    text: 'text-fuchsia-800',
+  },
 };
 
 export function getConfigEstado(estado: string): ConfigEstado {

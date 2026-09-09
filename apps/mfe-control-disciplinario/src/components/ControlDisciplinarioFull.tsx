@@ -33,7 +33,7 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 export interface ResultadoRevision {
   borradorId: string;
   procesoId: string;
-  accion: 'aprobado' | 'devuelto';
+  accion: 'aprobado' | 'devuelto' | 'enviado_juridica';
   comentarios: string;
   motivo?: string;
   fecha: string;
@@ -142,6 +142,7 @@ export function ControlDisciplinarioFull() {
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
   const [authUserRenderKey, setAuthUserRenderKey] = useState(getAuthUserRenderKey);
+  const [radicadoresMap, setRadicadoresMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const handleAuthUserChanged = () => {
@@ -159,7 +160,16 @@ export function ControlDisciplinarioFull() {
 
   const cargarAutosEnRevision = useCallback(async () => {
     try {
-      const todos = await disciplinaryService.getAllAutos();
+      const [todos, radicadores] = await Promise.all([
+        disciplinaryService.getAllAutos(),
+        disciplinaryService.getRadicadoresDisponibles(),
+      ]);
+      const radicadoresNombres: Record<string, string> = {};
+      (radicadores || []).forEach((r: any) => {
+        if (r.id) radicadoresNombres[r.id] = r.nombre || r.nombreCompleto || 'Radicador';
+      });
+      setRadicadoresMap(radicadoresNombres);
+
       const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
       const pliegosAprobados = todos.filter((a: any) =>
         a.estado === 'APROBADO' &&
@@ -174,6 +184,7 @@ export function ControlDisciplinarioFull() {
           numeroProceso: auto.process?.radicadoProceso || auto.processId,
           titulo: (auto.tipo || '').replace(/_/g, ' '),
           plantilla: auto.tipo || '',
+          tipo: auto.tipo,
           version: auto.currentVersion || 1,
           fechaEnvio: auto.createdAt,
           profesional: {
@@ -196,6 +207,8 @@ export function ControlDisciplinarioFull() {
               : 'Auto enviado a revisión del Jefe OCID',
           }],
           tiempoEspera: '',
+          radicadorAsignadoId: auto.radicadorAsignadoId || undefined,
+          radicadorAsignadoNombre: auto.radicadorAsignadoId ? (radicadoresNombres[auto.radicadorAsignadoId] || 'Radicador asignado') : undefined,
         }));
         setBorradores(borradoresReales);
         console.log("borradoresReales", borradoresReales)
@@ -332,39 +345,63 @@ export function ControlDisciplinarioFull() {
     setCurrentSection('aprobacion');
   }, []);
 
-  const handleAprobarBorrador = useCallback(async (borradorId: string, comentarios: string) => {
+  const handleAprobarBorrador = useCallback(async (borradorId: string, comentarios: string, radicadorAsignadoId?: string) => {
     const borrador = borradores.find(b => b.id === borradorId);
 
     if (borrador?.autoId) {
       try {
         const userId = authService.getCurrentUser()?.id || '';
-        await disciplinaryService.aprobarAuto(borrador.autoId, userId);
+        const autoActualizado = await disciplinaryService.aprobarAuto(borrador.autoId, userId, radicadorAsignadoId);
+        const radicadorNombre = radicadorAsignadoId
+          ? radicadoresMap[radicadorAsignadoId] || 'Radicador asignado'
+          : undefined;
+        setBorradores(prev => prev.map(b =>
+          b.id === borradorId
+            ? {
+                ...b,
+                estado: 'aprobado' as const,
+                radicadorAsignadoId: radicadorAsignadoId,
+                radicadorAsignadoNombre: radicadorNombre,
+                historial: [
+                  ...b.historial,
+                  {
+                    id: `h-${Date.now()}`,
+                    tipo: 'aprobado' as const,
+                    usuario: 'Jefe OCID',
+                    fecha: new Date().toISOString(),
+                    descripcion: `Auto aprobado${comentarios ? `: ${comentarios}` : ''}`,
+                  }
+                ]
+              }
+            : b
+        ));
       } catch (error) {
         toast.error('Error al aprobar el auto', {
           description: 'No se pudo conectar con el servidor. Intente nuevamente.',
         });
         throw error;
       }
+    } else {
+      setBorradores(prev => prev.map(b =>
+        b.id === borradorId
+          ? {
+              ...b,
+              estado: 'aprobado' as const,
+              historial: [
+                ...b.historial,
+                {
+                  id: `h-${Date.now()}`,
+                  tipo: 'aprobado' as const,
+                  usuario: 'Jefe OCID',
+                  fecha: new Date().toISOString(),
+                  descripcion: `Auto aprobado${comentarios ? `: ${comentarios}` : ''}`,
+                }
+              ]
+            }
+          : b
+      ));
     }
 
-    setBorradores(prev => prev.map(b =>
-      b.id === borradorId
-        ? {
-            ...b,
-            estado: 'aprobado' as const,
-            historial: [
-              ...b.historial,
-              {
-                id: `h-${Date.now()}`,
-                tipo: 'aprobado' as const,
-                usuario: 'Jefe OCID',
-                fecha: new Date().toISOString(),
-                descripcion: `Auto aprobado${comentarios ? `: ${comentarios}` : ''}`,
-              }
-            ]
-          }
-        : b
-    ));
     setRevisionLog(prev => [...prev, {
       borradorId,
       procesoId: borrador?.numeroProceso || borradorId,
@@ -376,7 +413,7 @@ export function ControlDisciplinarioFull() {
       description: `${borrador?.numeroProceso} — ${borrador?.titulo} · Firmado por el Jefe OCID`,
       duration: 5000,
     });
-  }, [borradores]);
+  }, [borradores, radicadoresMap]);
 
   const handleDevolverBorrador = useCallback(async (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => {
     const borrador = borradores.find(b => b.id === borradorId);

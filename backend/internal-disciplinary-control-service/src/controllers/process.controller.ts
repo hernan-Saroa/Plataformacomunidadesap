@@ -1002,7 +1002,8 @@ export class ProcessController {
             esAutoDigital: true,
             estado: auto.estado,
             tipoAuto: auto.tipo, // Tipo específico para edición
-            numero: auto.numero // Número para pre-llenar título
+            numero: auto.numero, // Número para pre-llenar título
+            radicadorAsignadoId: auto.radicadorAsignadoId || null,
           },
         };
       });

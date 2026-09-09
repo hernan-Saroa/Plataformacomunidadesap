@@ -73,9 +73,7 @@ export class ConsolidacionController {
       'Resumen de integridad con el flag `esConsolidable` y la lista de errores pendientes.',
   })
   @ApiResponse({ status: 404, description: 'Expediente no encontrado.' })
-  async previsualizar(
-    @Param('id') id: string,
-  ): Promise<ResumenConsolidacion> {
+  async previsualizar(@Param('id') id: string): Promise<ResumenConsolidacion> {
     return this.consolidacionService.obtenerResumenConsolidacion(id);
   }
 
@@ -121,9 +119,6 @@ export class ConsolidacionController {
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
   ): Promise<ResultadoConsolidacion> {
-    return this.consolidacionService.consolidarExpediente(
-      id,
-      req.user?.userId,
-    );
+    return this.consolidacionService.consolidarExpediente(id, req.user?.userId);
   }
 }

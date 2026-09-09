@@ -15,6 +15,11 @@ export const ROLES_ADMIN_VIATICOS = [
   'SUPER_ADMINISTRADOR',
   'ADMINISTRATIVO',
   'SUPERUSER',
+] as const;
+
+export const ROLES_ANALISTA_VIATICOS = [
+  'ANALISTA',
+  'ANALISTA_VIATICOS',
 ];
 
 export interface DependenciaUsuario {
@@ -165,7 +170,9 @@ export class AuthService {
     const permissions = Array.from(
       new Set([...extraerPermisos(data), ...extraerPermisos(cached)]),
     );
-    const esAdmin = roles.some((r) => ROLES_ADMIN_VIATICOS.includes(r));
+    const esAdmin = roles.some((r) =>
+      (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
+    );
 
     const personaHttp = data?.person;
     const personaCache = cached?.person ?? cached?.user?.person;
@@ -244,6 +251,13 @@ export class AuthService {
     return user.esAdmin || user.roles.some((r) => /SUPER.*ADMIN|ADMIN/.test(r));
   }
 
+  isAnalista(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) return false;
+    if (user.esAdmin) return false;
+    return user.roles.some((r) => ROLES_ANALISTA_VIATICOS.includes(r));
+  }
+
   private getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
@@ -263,7 +277,9 @@ export class AuthService {
       const permissions = permissionsRaw
         .map((p: any) => (typeof p === 'string' ? p : p?.code))
         .filter(Boolean);
-      const esAdmin = roles.some((r) => ROLES_ADMIN_VIATICOS.includes(r));
+      const esAdmin = roles.some((r) =>
+      (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
+    );
       return {
         userId: cached?.id_user || cached?.userId || cached?.id || '',
         username: cached?.username || cached?.fullName || cached?.full_name || '',

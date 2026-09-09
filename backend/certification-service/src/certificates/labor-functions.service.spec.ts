@@ -69,7 +69,6 @@ describe('LaborFunctionsService strict association', () => {
     ['hierarchical level', { hierarchical_level: 'Asistencial' }],
     ['department', { organization_department: 'Oficina Jurídica', position_location: 'Oficina Jurídica' }],
     ['internal group', { internal_group: 'Grupo Financiero' }],
-    ['cost center', { cost_center: 'CC-999', department: 'CC-999' }],
   ])('rejects a same-code profile when %s differs', async (_field, patch) => {
     const result = await buildService().resolveForRequest({
       ...exactRequest,
@@ -88,6 +87,56 @@ describe('LaborFunctionsService strict association', () => {
 
     expect(result.available).toBe(false);
     expect(result.reason).toBe('NOT_FOUND');
+  });
+
+  it('usa el grupo interno sin exigir un segundo centro de costo', async () => {
+    const result = await buildService().resolveForRequest({
+      ...exactRequest, cost_center: null,
+    } as any);
+    expect(result.available).toBe(true);
+  });
+
+  it('asocia CENTROCOSTO de Oracle con el grupo interno de la matriz', async () => {
+    const result = await buildService().resolveForRequest({
+      ...exactRequest, internal_group: null, cost_center: 'Grupo Académico',
+    } as any);
+    expect(result.available).toBe(true);
+  });
+
+  it('recupera perfiles antiguos que solo tenían centro de costo', async () => {
+    const result = await buildService([{
+      ...profile, internal_group: null, cost_center: 'Grupo Académico',
+    }]).resolveForRequest({ ...exactRequest, cost_center: null } as any);
+    expect(result.available).toBe(true);
+    expect(result.profile?.internal_group).toBe('Grupo Académico');
+  });
+
+  it('un centro de costo coincidente no oculta un grupo interno diferente', async () => {
+    const result = await buildService().resolveForRequest({
+      ...exactRequest, internal_group: 'Grupo Financiero', cost_center: 'Grupo Académico',
+      position_location: 'Grupo Académico',
+    } as any);
+    expect(result.reason).toBe('NOT_FOUND');
+  });
+
+  it('no elige funciones arbitrariamente si la unificación deja perfiles ambiguos', async () => {
+    const result = await buildService([profile, {
+      ...profile, id: 'legacy-duplicate', cost_center: null,
+      functions: [{ ordinal: 1, description: 'Otras funciones institucionales.' }],
+    }]).resolveForRequest(exactRequest as any);
+    expect(result.reason).toBe('AMBIGUOUS');
+    expect(result.available).toBe(false);
+  });
+
+  it('lista y busca el grupo que estaba guardado como centro de costo', async () => {
+    const service = new LaborFunctionsService(
+      { find: jest.fn().mockResolvedValue([{ ...profile, internal_group: null, cost_center: 'Grupo heredado' }]) } as any,
+      {} as any, { find: jest.fn().mockResolvedValue([]) } as any, {} as any,
+    );
+    const result = await service.list({ search: 'grupo heredado' });
+    expect(result.total).toBe(1);
+    expect(result.items[0].internal_group).toBe('Grupo heredado');
+    expect(result.items[0]).not.toHaveProperty('cost_center');
   });
 
   it('asocia correctamente un contrato cuyo grado 09 llega como 9', async () => {
@@ -291,6 +340,60 @@ describe('LaborFunctionsService strict association', () => {
     expect(result.results[2].message).toContain('funciones diferentes');
   });
 
+  const groupPayload = {
+    positionCode: '2028', gradeCode: '24', combinedCode: '202824',
+    hierarchicalLevel: 'Profesional', positionName: 'Profesional Especializado',
+    departmentName: 'Dirección de Formación', internalGroup: 'Grupo Académico',
+    functions: '1. Formular planes institucionales.',
+  };
+
+  it('detecta duplicados antiguos aunque su huella incluía centro de costo', async () => {
+    const result = await buildService([{ ...profile, match_key: 'legacy-key-with-cost-center' }])
+      .validateBulk([groupPayload]);
+    expect(result.summary.invalid).toBe(1);
+    expect(result.results[0].message).toContain('ya existe en la matriz');
+  });
+
+  it('detecta duplicados de carga usando grupo interno o su alias antiguo', async () => {
+    const result = await buildService([]).validateBulk([
+      { ...groupPayload, rowNumber: 4 },
+      { ...groupPayload, rowNumber: 5, internalGroup: '', costCenter: 'GRUPO ACADÉMICO' },
+      { ...groupPayload, rowNumber: 6, costCenter: 'CC-ANTIGUO' },
+    ]);
+    expect(result.summary).toMatchObject({ valid: 1, invalid: 2 });
+  });
+
+  it('permite el mismo cargo en grupos internos distintos', async () => {
+    const result = await buildService([]).validateBulk([
+      groupPayload, { ...groupPayload, internalGroup: 'Grupo Financiero' },
+    ]);
+    expect(result.summary.valid).toBe(2);
+  });
+
+  it('normaliza el alias antiguo en un único campo y valida su longitud', () => {
+    const service = buildService([]) as any;
+    expect(service.normalizePayload({ ...groupPayload, internalGroup: '', costCenter: 'Grupo heredado' }))
+      .toMatchObject({ internal_group: 'Grupo heredado', cost_center: null });
+    expect(service.normalizePayload({ ...groupPayload, internalGroup: '' }))
+      .toMatchObject({ internal_group: null, cost_center: null });
+    expect(() => service.normalizePayload({ ...groupPayload, internalGroup: 'a'.repeat(501) }))
+      .toThrow('máximo 500 caracteres');
+  });
+
+  it.each(['create', 'bulk'] as const)('bloquea duplicados históricos al persistir con %s', async (method) => {
+    const profileRepository = { find: jest.fn().mockResolvedValue([{ ...profile, match_key: 'legacy-key' }]), save: jest.fn() };
+    const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
+    const service = new LaborFunctionsService({} as any, {} as any, {} as any,
+      { transaction: jest.fn(async (callback) => callback(manager)) } as any);
+    if (method === 'create') {
+      await expect(service.create(groupPayload)).rejects.toThrow('Ya existe un registro');
+    } else {
+      const result = await service.bulk([groupPayload]);
+      expect(result.summary.failed).toBe(1);
+    }
+    expect(profileRepository.save).not.toHaveBeenCalled();
+  });
+
   it('ajusta una página solicitada cuando queda por fuera del total disponible', async () => {
     const profiles = Array.from({ length: 16 }, (_, index) => ({
       ...profile,
@@ -337,6 +440,7 @@ describe('LaborFunctionsService strict association', () => {
   it('edita un perfil y reemplaza sus funciones dentro de una transacción', async () => {
     const currentProfile = { ...profile, match_key: 'previous-match-key' };
     const profileRepository = {
+      find: jest.fn().mockResolvedValue([currentProfile]),
       findOne: jest
         .fn()
         .mockResolvedValueOnce(currentProfile)
@@ -387,6 +491,9 @@ describe('LaborFunctionsService strict association', () => {
     });
 
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      internal_group: 'Grupo Académico', cost_center: null,
+    }));
     expect(functionRepository.delete).toHaveBeenCalledWith({
       profile_id: currentProfile.id,
     });
@@ -401,6 +508,7 @@ describe('LaborFunctionsService strict association', () => {
     const currentProfile = { ...profile, id: 'profile-to-update', match_key: 'old-key' };
     const conflictingProfile = { ...profile, id: 'another-profile', match_key: 'new-key' };
     const profileRepository = {
+      find: jest.fn().mockResolvedValue([currentProfile, conflictingProfile]),
       findOne: jest
         .fn()
         .mockResolvedValueOnce(currentProfile)

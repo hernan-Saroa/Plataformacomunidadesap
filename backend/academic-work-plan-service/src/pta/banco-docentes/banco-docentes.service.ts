@@ -1,3 +1,6 @@
+import { assertRundEvidenceData } from './rund-evidence-data';
+import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
+import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
@@ -174,17 +177,12 @@ function extractFirstEmail(value: any): string | null {
   return match ? match[0].toLowerCase() : null;
 }
 
-function normalizePhoneForAuth(value: any): string | null {
-  const text = toCleanString(value);
-  if (!text) return null;
-  const candidates = text.match(/\+?\d[\d\s().-]{5,}\d/g) || [];
-  const normalizedCandidates = candidates
-    .map((candidate) => candidate.replace(/[^\d+]/g, ''))
-    .filter(Boolean);
-  const preferred = normalizedCandidates.find((candidate) => candidate.replace(/\D/g, '').length >= 10)
-    || normalizedCandidates[0]
-    || text.replace(/[^\d+]/g, '');
-  return (preferred || text.replace(/\s+/g, ' ').trim()).slice(0, 20);
+export function normalizePhoneForAuth(value: any, preserveImportedText = false): string | null {
+  const normalized = normalizeRundPhones(value);
+  // Bulk files may include extensions or location notes. Preserve them for review.
+  if (normalized === null && preserveImportedText && String(value).trim().length <= RUND_PHONE_MAX_LENGTH) return String(value).trim();
+  if (normalized === null) throw new BadRequestException({ message: RUND_PHONE_ERROR, columna: 'TELEFONO', valorEsperado: RUND_PHONE_ERROR });
+  return normalized || null;
 }
 
 // â”€â”€â”€ dedican / vinculacion codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -686,8 +684,8 @@ export function validateManualBancoDocentePayload(
       && rawAlternativeEmail.toLowerCase() === rawInstitutionalEmail.toLowerCase()) {
       fail('El correo personal debe ser diferente del institucional.', 'CORREO_PERSONAL', rawAlternativeEmail, 'Un correo diferente del institucional');
     }
-    if (rawPhone && !/^\d{7,15}$/.test(rawPhone)) {
-      fail('El telefono o celular debe contener entre 7 y 15 digitos.', 'TELEFONO', rawPhone, 'Solo numeros, entre 7 y 15 digitos');
+    if (rawPhone && normalizeRundPhones(rawPhone) === null) {
+      fail(RUND_PHONE_ERROR, 'TELEFONO', rawPhone, RUND_PHONE_ERROR);
     }
     if (rawHours !== undefined && rawHours !== null && rawHours !== '' && !/^\d+$/.test(String(rawHours))) {
       fail('Las horas PTA deben ser un numero entero.', 'HORAS_PTA', rawHours, 'Numero entero entre 0 y 2000');
@@ -703,8 +701,8 @@ export function validateManualBancoDocentePayload(
     }
   }
 
-  if (payload.telefono && !/^\d{7,15}$/.test(String(payload.telefono))) {
-    fail('El telefono o celular debe contener entre 7 y 15 digitos.', 'TELEFONO', payload.telefono, 'Solo numeros, entre 7 y 15 digitos');
+  if (payload.telefono && normalizeRundPhones(payload.telefono) === null) {
+    fail(RUND_PHONE_ERROR, 'TELEFONO', payload.telefono, RUND_PHONE_ERROR);
   }
   if (!isSupportedTipoVinculacion(payload.tipoVinculacion)) {
     fail('El tipo de vinculacion no corresponde al catalogo RUND.', 'VINCULACION', payload.tipoVinculacion, 'Vinculacion valida');
@@ -777,7 +775,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
   const nombreCompleto = [persona?.primer_nombre, persona?.segundo_nombre, persona?.primer_apellido, persona?.segundo_apellido].filter(Boolean).join(' ').trim() || usuario?.nombre || 'Sin nombre';
 
   const genUpper = (persona?.genero || '').toUpperCase();
-  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
 
   return {
     id: docente.id,
@@ -858,7 +856,7 @@ function buildAuthBancoDocenteResponse(row: any) {
   const email = row.email || row.username || null;
 
   const genUpper = (row.genero || '').toUpperCase();
-  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
 
   return {
     id: row.docente_id || row.usuario_id,
@@ -1457,7 +1455,10 @@ export class BancoDocentesService implements OnModuleInit {
 
     const runWithManager = async (manager: any) => {
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
-      const phoneFinal = normalizePhoneForAuth(payload.telefono);
+      const phoneFinal = normalizePhoneForAuth(payload.telefono, options.bulkImport === true);
+      if (options.bulkImport && normalizeRundPhones(payload.telefono) === null) {
+        payload.observaciones = [payload.observaciones, 'Telefono conservado como se reporto en el archivo; requiere revision de formato.'].filter(Boolean).join('. ');
+      }
       const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
       if (!finalFullName) throw new BadRequestException({
         message: `No se pudo construir el nombre del docente ${payload.documentNumber}.`,
@@ -1802,6 +1803,10 @@ export class BancoDocentesService implements OnModuleInit {
         } catch (e) {
           console.warn(`[RUND] Could not initialize blocks for docente ${docente.id}:`, e);
         }
+      }
+
+      if (existingDocente && action !== 'unchanged') {
+        await invalidateEditedEvidence(manager, docente.id, [...personaChangedFields, ...changedFields], options.audit?.actorId || 'SISTEMA', options.audit?.ip);
       }
 
       // Inicializar ValidacionDocumental en el banco de docentes si no existe
@@ -2915,7 +2920,17 @@ export class BancoDocentesService implements OnModuleInit {
       endpoint: 'AUTOGESTION_MI_PERFIL',
       fullAccess: false,
     }]);
-    return protectRundSensitiveData(match, false);
+    // La sesión OTP determina el perfil; nunca se acepta un docenteId del navegador.
+    const [soportes, bloques] = await Promise.all([
+      // Mensaje de corrección dirigido al titular autenticado; no incluye URL ni contenido del original.
+      this.dataSource.query(`SELECT bloque, tipo_soporte, nombre_archivo, estado, observacion AS correccion_requerida
+        FROM academic_work_plan."RundSoporteCampo"
+        WHERE docente_id::text = $1 AND tipo_soporte NOT IN ('soporte_edicion_perfil', 'soporte_cambio_estado_perfil')`,
+        [String(match.docente_id)]),
+      this.dataSource.query(`SELECT bloque, estado, observacion, fecha_revision
+        FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1`, [String(match.docente_id)]),
+    ]);
+    return protectRundSensitiveData({ ...match, evidencias: { soportes, bloques } }, false);
   }
 
   async submitFromToken(token: string, data: any) {
@@ -3081,14 +3096,15 @@ export class BancoDocentesService implements OnModuleInit {
   async getBloques(docenteId: string) {
     docenteId = await this.resolveDocenteId(docenteId);
 
-    const bloques = await this.dataSource.query(
+    let bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
       [docenteId],
     );
 
     // Si no existen bloques, inicializarlos
-    if (bloques.length === 0) {
-      return this.inicializarBloques(docenteId);
+    if (bloques.length < 6) {
+      await this.inicializarBloques(docenteId);
+      bloques = await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]);
     }
 
     // Cargar soportes por bloque
@@ -3140,141 +3156,16 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-043 â€” Aprobar un bloque (maker-checker: aprobador â‰  cargador).
    * BR-038 â€” Verifica que exista al menos un soporte para bloques crÃ­ticos.
    */
-  async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string) {
-    docenteId = await this.resolveDocenteId(docenteId);
-    const bloqueUpper = bloque.toUpperCase();
-    if (!BancoDocentesService.BLOQUES.includes(bloqueUpper as any)) {
-      throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}. VÃ¡lidos: ${BancoDocentesService.BLOQUES.join(', ')}`);
-    }
-
-    const [campoEstado] = await this.dataSource.query(
-      `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2 LIMIT 1`,
-      [docenteId, bloqueUpper],
-    );
-
-    if (!campoEstado) {
-      throw new NotFoundException(`No se encontrÃ³ el bloque ${bloqueUpper} para el docente ${docenteId}`);
-    }
-
-    // BR-043 â€” SegregaciÃ³n maker-checker
-    if (campoEstado.cargado_por && campoEstado.cargado_por === aprobadorId) {
-      throw new BadRequestException({
-        message: 'BR-043: No puede aprobar quien cargÃ³ los datos. Se requiere un validador distinto.',
-        rule: 'BR-043',
-        cargadoPor: campoEstado.cargado_por,
-        aprobadorId,
-      });
-    }
-
-    // BR-038 â€” Verificar soporte obligatorio para bloques crÃ­ticos
-    if (BancoDocentesService.BLOQUES_OBLIGATORIOS.includes(bloqueUpper as any)) {
-      const soportes = await this.dataSource.query(
-        `SELECT COUNT(*) as count FROM academic_work_plan."RundSoporteCampo" 
-         WHERE docente_id = $1 AND bloque = $2 AND estado != 'Rechazado'`,
-        [docenteId, bloqueUpper],
-      );
-      if (parseInt(soportes[0].count) === 0) {
-        throw new BadRequestException({
-          message: `BR-038: El bloque ${bloqueUpper} requiere al menos un soporte documental aprobado o pendiente antes de aprobar.`,
-          rule: 'BR-038',
-          bloque: bloqueUpper,
-          soportesRequeridos: BancoDocentesService.CATALOGO_SOPORTE[bloqueUpper],
-        });
-      }
-    }
-
-    // Aprobar
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado"
-       SET estado = 'Aprobado', revisado_por = $1, fecha_revision = NOW(), observacion = NULL, "updatedAt" = NOW()
-       WHERE docente_id = $2 AND bloque = $3`,
-      [aprobadorId, docenteId, bloqueUpper],
-    );
-
-    // Propagar el estado a los soportes del bloque para que la fuente de verdad
-    // (RundSoporteCampo.estado) quede alineada con las 3 vistas:
-    //  - RUND backoffice (docStatus se reconstruye desde aquí → botones no reaparecen)
-    //  - Carpeta Digital backoffice/docente (lee el estado del soporte → muestra "Aprobado")
-    // No tocamos soportes ya rechazados.
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundSoporteCampo"
-       SET estado = 'Aprobado'
-       WHERE docente_id = $1 AND bloque = $2 AND estado != 'Rechazado'`,
-      [docenteId, bloqueUpper],
-    );
-
-    // BR-056 â€” Log de auditorÃ­a inmutable
-    this.logger.log(`[BR-056] APROBAR bloque=${bloqueUpper} docente=${docenteId} por=${aprobadorId}`);
-    await this.logAudit({ docenteId, bloque: bloqueUpper, accion: 'APROBAR', actorId: aprobadorId });
-
-    // BR-047 â€” Verificar si se puede activar el registro
-    await this.verificarActivacion(docenteId);
-
-    return { success: true, bloque: bloqueUpper, estado: 'Aprobado' };
+  async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, undefined, ip);
   }
 
-  /**
-   * BR-045 â€” Devolver un bloque con observaciÃ³n obligatoria.
-   */
-  async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string) {
-    docenteId = await this.resolveDocenteId(docenteId);
-    const bloqueUpper = bloque.toUpperCase();
-    if (!BancoDocentesService.BLOQUES.includes(bloqueUpper as any)) {
-      throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}`);
-    }
+  async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, observacion ?? '', ip);
+  }
 
-    // BR-045 â€” ObservaciÃ³n obligatoria
-    if (!observacion || observacion.trim().length === 0) {
-      throw new BadRequestException({
-        message: 'BR-045: La devoluciÃ³n requiere una observaciÃ³n que indique el motivo y la correcciÃ³n requerida.',
-        rule: 'BR-045',
-      });
-    }
-
-    const [campoEstado] = await this.dataSource.query(
-      `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2 LIMIT 1`,
-      [docenteId, bloqueUpper],
-    );
-
-    if (!campoEstado) {
-      throw new NotFoundException(`No se encontrÃ³ el bloque ${bloqueUpper} para el docente ${docenteId}`);
-    }
-
-    // BR-043 â€” SegregaciÃ³n maker-checker
-    if (campoEstado.cargado_por && campoEstado.cargado_por === aprobadorId) {
-      throw new BadRequestException({
-        message: 'BR-043: No puede devolver quien cargÃ³ los datos.',
-        rule: 'BR-043',
-      });
-    }
-
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado"
-       SET estado = 'Devuelto', revisado_por = $1, observacion = $2, fecha_revision = NOW(), "updatedAt" = NOW()
-       WHERE docente_id = $3 AND bloque = $4`,
-      [aprobadorId, observacion.trim(), docenteId, bloqueUpper],
-    );
-
-    // Propagar el rechazo a los soportes del bloque (fuente de verdad unificada),
-    // para que tanto el RUND como la Carpeta Digital muestren el estado "Rechazado".
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundSoporteCampo"
-       SET estado = 'Rechazado', observacion = $3
-       WHERE docente_id = $1 AND bloque = $2`,
-      [docenteId, bloqueUpper, observacion.trim()],
-    );
-
-    // Actualizar estado global del docente
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."Docente" SET "estadoAprobacion" = 'DEVUELTO' WHERE id = $1`,
-      [docenteId],
-    );
-
-    // BR-056 â€” Log inmutable
-    this.logger.log(`[BR-056] DEVOLVER bloque=${bloqueUpper} docente=${docenteId} por=${aprobadorId} motivo="${observacion.substring(0, 100)}"`);
-    await this.logAudit({ docenteId, bloque: bloqueUpper, accion: 'DEVOLVER', actorId: aprobadorId, observacion: observacion.trim() });
-
-    return { success: true, bloque: bloqueUpper, estado: 'Devuelto', observacion };
+  async revisarSoporte(docenteId: string, bloque: string, soporteId: string, data: any, actorId: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewSupport(await this.resolveDocenteId(docenteId), bloque, soporteId, data, actorId, ip);
   }
 
   /**
@@ -3337,13 +3228,13 @@ export class BancoDocentesService implements OnModuleInit {
       (b) => completitud[b] === 'Aprobado',
     );
 
-    const nuevoEstado = activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
+    const nuevoEstado = Object.values(completitud).includes('Devuelto') ? 'DEVUELTO' : activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
     await this.dataSource.query(
       `UPDATE academic_work_plan."Docente" SET "estadoAprobacion" = $1, completitud = $2 WHERE id = $3`,
       [nuevoEstado, JSON.stringify(completitud), docenteId],
     );
 
-    return { activable, completitud };
+    return { activable: nuevoEstado === 'ACTIVO_RUND', completitud };
   }
 
   /**
@@ -3351,6 +3242,7 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async vincularSoporte(docenteId: string, bloque: string, data: {
     tipoSoporte: string;
+    campo?: string;
     documentoCarpetaId?: string;
     nombreArchivo?: string;
     fechaVencimiento?: string;
@@ -3373,6 +3265,8 @@ export class BancoDocentesService implements OnModuleInit {
       });
     }
 
+    await assertRundEvidenceData(this.dataSource, docenteId, data.tipoSoporte, data.campo);
+
     const { randomUUID } = require('crypto');
     const newId = randomUUID();
 
@@ -3387,7 +3281,7 @@ export class BancoDocentesService implements OnModuleInit {
       id = existing[0].id;
       await this.dataSource.query(
         `UPDATE academic_work_plan."RundSoporteCampo" 
-         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', "updatedAt" = NOW()
+         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, "updatedAt" = NOW()
          WHERE id = $4`,
         [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
       );
@@ -3758,7 +3652,7 @@ export class BancoDocentesService implements OnModuleInit {
     const edad = computeEdad(fechaNacimiento, (docente as any).edadReferencia);
     const rangoEdad = computeRangoEdad(edad, (docente as any).rangoEdad);
     const genUpper = (p.gen_tercero || '').toUpperCase();
-    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
     const territorialNombre = docente.territorialReportada || await this.getTerritoriales()
       .then((territoriales) => territoriales.find((t) => String(t.id) === String(docente.territorialId))?.nombre || null)
       .catch(() => null);
@@ -3932,26 +3826,8 @@ export class BancoDocentesService implements OnModuleInit {
     }
   }
 
-  async saveValidacionDocumentalBatch(userId: string, data: any[]) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-    try {
-      if (data && Array.isArray(data)) {
-        for (const item of data) {
-          if (!item.campoRund) continue;
-          this.logger.log(`[RUND] Validación guardada para docente ${userId}, campo: ${item.campoRund}, estado: ${item.estadoDocumento}`);
-        }
-      }
-      await queryRunner.commitTransaction();
-      return { success: true };
-    } catch (error: any) {
-      await queryRunner.rollbackTransaction();
-      this.logger.error(`Error saving validacion documental batch: ${error.message}`);
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+  async saveValidacionDocumentalBatch(_userId: string, _data: any[]) {
+    throw new BadRequestException('Esta versión de la revisión documental ya no está disponible. Actualice la pantalla y revise cada soporte con su versión vigente.');
   }
 
   async syncCheckDocente(docenteId: string) {

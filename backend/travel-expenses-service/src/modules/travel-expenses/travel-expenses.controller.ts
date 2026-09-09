@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { getUploadRootDir } from '../../common/storage.util';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -34,7 +35,10 @@ import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { UpdatePriorityDto } from '../../dto/update-priority.dto';
 import { ReturnRequestDto } from '../../dto/return-request.dto';
+import { VerifyAuditDto } from '../../dto/verify-audit.dto';
+import { DevolverAnalistaDto } from '../../dto/devolver-analista.dto';
 import { getClientIp } from '../../common/ip.util';
+import { SodGuard, SodProtected } from '../../common/sod.guard';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -191,7 +195,11 @@ export class TravelExpensesController {
     @Req() req: AuthenticatedRequest,
   ) {
     const esSuperAdmin = isSuperAdmin(req.user);
-    return this.service.subirDocumento(id, { ...dto, file, isSuperAdmin: esSuperAdmin });
+    return this.service.subirDocumento(id, {
+      ...dto,
+      file,
+      isSuperAdmin: esSuperAdmin,
+    });
   }
 
   @Delete('requests/:id/documentos/:documentoId')
@@ -212,7 +220,13 @@ export class TravelExpensesController {
   }
 
   @Get('requests/:id')
-  @Permissions('travel_expenses:create_request', 'travel_expenses:read_inbox', 'travel_expenses:set_priority', 'travel_expenses:return_request')
+  @Permissions(
+    'travel_expenses:create_request',
+    'travel_expenses:read_inbox',
+    'travel_expenses:set_priority',
+    'travel_expenses:return_request',
+    'travel_expenses:read_assigned',
+  )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
   }
@@ -233,7 +247,11 @@ export class TravelExpensesController {
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const extemporaneaBool =
-      extemporanea === 'true' ? true : extemporanea === 'false' ? false : undefined;
+      extemporanea === 'true'
+        ? true
+        : extemporanea === 'false'
+          ? false
+          : undefined;
 
     const result = await this.service.obtenerBandejaSecretario({
       dependenciaId: dependenciaId || undefined,
@@ -266,7 +284,12 @@ export class TravelExpensesController {
     if (!usuarioId) {
       throw new BadRequestException('Usuario no autenticado.');
     }
-    return this.service.actualizarPrioridad(id, dto.prioridad, usuarioId, esSuperAdmin);
+    return this.service.actualizarPrioridad(
+      id,
+      dto.prioridad,
+      usuarioId,
+      esSuperAdmin,
+    );
   }
 
   @Post('requests/:id/return')
@@ -282,7 +305,12 @@ export class TravelExpensesController {
     if (!usuarioId) {
       throw new BadRequestException('Usuario no autenticado.');
     }
-    return this.service.devolverSolicitud(id, dto.motivo, usuarioId, esSuperAdmin);
+    return this.service.devolverSolicitud(
+      id,
+      dto.motivo,
+      usuarioId,
+      esSuperAdmin,
+    );
   }
 
   @Get('parametrizacion/checklist/:tipo')
@@ -350,5 +378,151 @@ export class TravelExpensesController {
       'Content-Length': pdfBuffer.length,
     });
     res.send(pdfBuffer);
+  }
+
+  @Get('requests/analyst/inbox')
+  @Permissions('travel_expenses:read_assigned', 'travel_expenses:view_assigned_requests')
+  @ApiOperation({
+    summary: 'Obtener solicitudes asignadas al analista autenticado',
+    description:
+      'Devuelve las solicitudes de comision asignadas al analista (estados SOLICITADO, EN_VERIFICACION, VERIFICADA). Acepta tanto el permiso nuevo read_assigned como el legacy view_assigned_requests.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de solicitudes asignadas al analista.',
+  })
+  @ApiBearerAuth()
+  async obtenerSolicitudesAsignadas(@Req() req: AuthenticatedRequest) {
+    const analistaId = req.user?.userId;
+    if (!analistaId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const data =
+      await this.service.obtenerSolicitudesAsignadasAnalista(analistaId);
+    return {
+      data,
+      total: data.length,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('requests/:id/verify-audit')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, SodGuard)
+  @SodProtected('id')
+  @Permissions('travel_expenses:verify_request')
+  @ApiOperation({
+    summary: 'Registrar checklist de verificacion del analista',
+    description:
+      'Registra el checklist de verificacion (seguridad social, RUT) para una solicitud asignada. Actualiza el flag consulta_rut_facturador y almacena el resultado en el historial.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Checklist de verificacion registrado exitosamente.',
+  })
+  @ApiBearerAuth()
+  async verificarAuditoria(
+    @Param('id') id: string,
+    @Body() dto: VerifyAuditDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.verificarAuditoria(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post('requests/:id/devolver-analista')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, SodGuard)
+  @SodProtected('id')
+  @Permissions('travel_expenses:return_assigned')
+  @ApiOperation({
+    summary: 'Devolver solicitud asignada desde el analista',
+    description:
+      'Devuelve una solicitud asignada al analista para subsanar faltantes. Transiciona el estado a DEVUELTA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Solicitud devuelta exitosamente.',
+  })
+  @ApiBearerAuth()
+  async devolverAnalista(
+    @Param('id') id: string,
+    @Body() dto: DevolverAnalistaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.devolverAnalista(
+      id,
+      usuarioId,
+      roles,
+      dto.motivo,
+    );
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('requests/:id/siif-export')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, SodGuard)
+  @SodProtected('id')
+  @Permissions('travel_expenses:export_siif')
+  @ApiOperation({
+    summary: 'Exportar solicitud a SIIF Nacion',
+    description:
+      'Genera el CSV con los datos transaccionales necesarios para SIIF, marca siif_exportado=true y transiciona la solicitud a SOLICITADA_SIIF.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'CSV generado y solicitud exportada a SIIF.',
+  })
+  @ApiBearerAuth()
+  async exportarSIIF(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.exportarSIIF(id, usuarioId, roles);
+
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${result.fileName}"`,
+      'Content-Length': Buffer.byteLength(result.csvContent, 'utf8'),
+    });
+    res.send(result.csvContent);
   }
 }
