@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, ClipboardCheck, FileCheck2, Landmark, ShieldAlert, Timer } from 'lucide-react';
+import {
+  BellRing,
+  ClipboardCheck,
+  FileCheck2,
+  Landmark,
+  ShieldAlert,
+  Timer,
+  UserX,
+} from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
@@ -21,6 +29,10 @@ const RASGOS: Record<
   // le pide a quien mira. Comparte lista con los vencimientos porque son las
   // dos cosas que le reclaman atención, pero no son lo mismo.
   APROBACION_PENDIENTE: { etiqueta: 'Aprobar', icono: ClipboardCheck, color: '#059669' },
+  // Ámbar como la liquidación y no verde: aquí no se le pide una decisión a
+  // quien mira, se avisa de que el proceso lleva días parado sin que nadie
+  // pueda resolver su revisión.
+  SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
 };
 
 /**
@@ -182,10 +194,14 @@ function Fila({
   const rasgo = RASGOS[a.tipo];
   const vencido = a.estado === 'VENCIDO';
   const esAprobacion = a.tipo === 'APROBACION_PENDIENTE';
+  const sinAbogado = a.tipo === 'SIN_ABOGADO';
 
   // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
   // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
-  const numeral = esAprobacion ? a.descripcion.split('·')[0].trim() : undefined;
+  // Lo mismo vale para «sin abogado», cuya descripción abre con la 3.4: se
+  // llega a la actividad que está trancada, no a la portada del expediente.
+  const numeral =
+    esAprobacion || sinAbogado ? a.descripcion.split('·')[0].trim() : undefined;
 
   return (
     <li

@@ -2740,7 +2740,14 @@ export interface DatosNotificacion {
 
 /** Vencimiento próximo o ya cumplido (EFDS-1185). */
 export interface AlertaVencimiento {
-  tipo: 'AMPARO' | 'CDP' | 'REGISTRO_PRESUPUESTAL' | 'LIQUIDACION' | 'APROBACION_PENDIENTE';
+  tipo:
+    | 'AMPARO'
+    | 'CDP'
+    | 'REGISTRO_PRESUPUESTAL'
+    | 'LIQUIDACION'
+    | 'APROBACION_PENDIENTE'
+    /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
+    | 'SIN_ABOGADO';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
