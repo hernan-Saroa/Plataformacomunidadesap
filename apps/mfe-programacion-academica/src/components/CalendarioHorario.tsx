@@ -48,16 +48,28 @@ interface Props {
   idGrupo: string;
   numeroGrupo: number;
   nombreAsignatura: string;
+  /** Ciclo ya guardado del grupo. Sin esto los campos salían vacíos aunque
+   *  estuviera persistido, y parecía que "no se guarda". */
+  fechaInicioGrupo?: string | null;
+  fechaFinGrupo?: string | null;
 }
 
-export function CalendarioHorario({ idGrupo, numeroGrupo, nombreAsignatura }: Props) {
+export function CalendarioHorario({
+  idGrupo, numeroGrupo, nombreAsignatura, fechaInicioGrupo, fechaFinGrupo,
+}: Props) {
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
+  const [fechaInicio, setFechaInicio] = useState(fechaInicioGrupo ?? '');
+  const [fechaFin, setFechaFin] = useState(fechaFinGrupo ?? '');
+
+  // Al cambiar de grupo, los campos siguen al grupo elegido.
+  useEffect(() => {
+    setFechaInicio(fechaInicioGrupo ?? '');
+    setFechaFin(fechaFinGrupo ?? '');
+  }, [idGrupo, fechaInicioGrupo, fechaFinGrupo]);
   const [avisoPeriodo, setAvisoPeriodo] = useState('');
 
   // Formulario que se abre al hacer clic en el calendario (sin arrastrar).

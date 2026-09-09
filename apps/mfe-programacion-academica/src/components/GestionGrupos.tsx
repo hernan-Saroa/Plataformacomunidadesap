@@ -170,6 +170,8 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
             idGrupo={grupoSel.idGrupo}
             numeroGrupo={grupoSel.numeroGrupo}
             nombreAsignatura={nombreAsignatura}
+            fechaInicioGrupo={grupoSel.fechaInicio}
+            fechaFinGrupo={grupoSel.fechaFin}
           />
         </div>
       )}

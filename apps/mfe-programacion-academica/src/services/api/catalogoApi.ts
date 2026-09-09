@@ -88,6 +88,9 @@ export interface Grupo {
   cupoMaximo: number;
   estado: string;
   observaciones: string | null;
+  /** Ciclo de clases del grupo. El backend ya los devolvía; faltaba declararlos. */
+  fechaInicio: string | null;
+  fechaFin: string | null;
 }
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';

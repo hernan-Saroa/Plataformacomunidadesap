@@ -142,7 +142,7 @@ export class HorariosService {
     if (choque) {
       throw new BadRequestException(
         `La sesión se cruza con otra del mismo grupo el ${dto.diaSemana.toLowerCase()} `
-        + `de ${choque.horaInicio} a ${choque.horaFin}.`,
+        + `de ${String(choque.horaInicio).slice(0, 5)} a ${String(choque.horaFin).slice(0, 5)}.`,
       );
     }
 
