@@ -72,8 +72,8 @@ describe('PanelRadicacion · recibir y repartir', () => {
   it('en la bandeja, quien puede recibirlo ve el botón de tomar', async () => {
     pintar(estado({ puedeTomar: true }));
 
-    expect(await screen.findByText(/En la bandeja, sin recibir/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Tomar el proceso/ })).toBeInTheDocument();
+    expect(await screen.findByText(/Todavía no lo lleva nadie/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
   });
 
   it('quien no es de la Dirección lo ve, pero no puede recibirlo', async () => {
@@ -81,8 +81,10 @@ describe('PanelRadicacion · recibir y repartir', () => {
     // lo que no tiene es forma de sacarlo de la bandeja.
     pintar(estado());
 
-    expect(await screen.findByText(/Lo recibe alguien del equipo de Contratación/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Tomar el proceso/ })).toBeNull();
+    expect(
+      await screen.findByText(/alguien de la Dirección de Contratación se haga cargo/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hacerme cargo/ })).toBeNull();
   });
 
   it('tomado y sin repartir, avisa de que la 3.4 no la puede resolver nadie', async () => {
@@ -93,16 +95,18 @@ describe('PanelRadicacion · recibir y repartir', () => {
       }),
     );
 
-    expect(await screen.findByText(/Laura Pineda · lo tomaste tú/)).toBeInTheDocument();
-    expect(screen.getByText(/Falta repartirlo para que alguien lo revise/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Repartir a un abogado/ })).toBeInTheDocument();
+    expect(await screen.findByText(/Laura Pineda · estás a cargo/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Hasta que no elijas quién lo revisa/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Elegir abogado/ })).toBeInTheDocument();
   });
 
   it('quien no lo tomó no reparte: eso lo decide quien lo recibió', async () => {
     pintar(estado({ contratacion: participante('Laura Pineda') }));
 
     expect(await screen.findByText(/Laura Pineda/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Repartir/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Elegir abogado/ })).toBeNull();
   });
 
   it('cambiar de abogado exige motivo; repartir por primera vez no', async () => {
@@ -150,7 +154,7 @@ describe('PanelRadicacion · recibir y repartir', () => {
     );
 
     expect(
-      await screen.findByText(/Nadie puede resolver la 3.4 mientras tanto/),
+      await screen.findByText(/no se puede aprobar ni devolver mientras tanto/),
     ).toBeInTheDocument();
   });
 });

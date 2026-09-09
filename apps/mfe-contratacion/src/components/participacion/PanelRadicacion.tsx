@@ -163,9 +163,14 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
   return (
     <Marco>
       <Titulo>Radicación en la Dirección</Titulo>
+      {/* La ayuda dice qué hacer ahora, no cómo funciona por dentro. La primera
+          versión hablaba de «la bandeja» y de «repartir el abogado» —palabras
+          nuestras, no del área— y de «la 3.4», que a quien mira la pantalla no
+          le dice nada. */}
       <Ayuda>
-        El proceso llega a una bandeja que ve todo el equipo. Quien lo toma queda a cargo y reparte
-        el abogado que lo revisará en la 3.4.
+        {contratacion
+          ? 'El área ya entregó este proceso y la Dirección lo recibió. Elige el abogado que revisará el estudio previo.'
+          : 'El área solicitante entregó este proceso y todavía no lo lleva nadie. Cualquiera de la Dirección puede hacerse cargo; el primero que lo haga se lo queda.'}
       </Ayuda>
 
       {/* ------------------------------------------------ quién lo recibió -- */}
@@ -176,20 +181,19 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-bold text-emerald-900 m-0 break-words">
                 {contratacion.nombre}
-                {contratacion.esMio ? ' · lo tomaste tú' : ''}
+                {contratacion.esMio ? ' · estás a cargo' : ''}
               </p>
               <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
-                Radicado el {momento(contratacion.asignadoAt)}
+Se hizo cargo el {momento(contratacion.asignadoAt)}
               </p>
             </div>
           </div>
         </div>
       ) : (
-        <Aviso tono="aviso" titulo="En la bandeja, sin recibir">
-          Nadie de la Dirección ha tomado este proceso todavía.
+        <Aviso tono="aviso" titulo="Todavía no lo lleva nadie">
           {puedeTomar
-            ? ' Tómalo para quedar a cargo y repartirlo.'
-            : ' Lo recibe alguien del equipo de Contratación.'}
+            ? 'Hazte cargo para poder trabajarlo y elegir quién lo revisa.'
+            : 'Está esperando a que alguien de la Dirección de Contratación se haga cargo.'}
         </Aviso>
       )}
 
@@ -200,11 +204,11 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
           onClick={() =>
             hacer(
               () => contratacionService.tomarProceso(procesoId),
-              'Tomaste el proceso: ahora repártelo a un abogado',
+              'Ya estás a cargo. Ahora elige quién lo revisa.',
             )
           }
         >
-          Tomar el proceso
+          Hacerme cargo
         </Boton>
       )}
 
@@ -218,10 +222,10 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
                 <div className="min-w-0 flex-1">
                   <p className="text-[12.5px] font-bold text-slate-800 m-0 break-words">
                     {abogado.nombre}
-                    {abogado.esMio ? ' · te toca revisarlo' : ''}
+                    {abogado.esMio ? ' · te toca revisarlo a ti' : ''}
                   </p>
                   <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
-                    Revisa la 3.4 · repartido el {momento(abogado.asignadoAt)}
+                    Revisa el estudio previo · desde el {momento(abogado.asignadoAt)}
                     {abogado.asignadoPor ? ` por ${abogado.asignadoPor}` : ''}
                   </p>
                 </div>
@@ -230,17 +234,17 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
           ) : (
             // Un proceso recibido y sin abogado no avanza: la 3.4 no la puede
             // resolver nadie hasta que se reparta.
-            <Aviso tono="aviso" titulo="Sin abogado asignado">
+            <Aviso tono="aviso" titulo="Falta elegir el abogado">
               {sinAbogado
-                ? 'Se quitó al anterior y no se ha puesto otro. Nadie puede resolver la 3.4 mientras tanto.'
-                : 'Falta repartirlo para que alguien lo revise en la 3.4.'}
+                ? 'Se quitó al anterior y no se ha puesto otro. El estudio previo no se puede aprobar ni devolver mientras tanto.'
+                : 'Hasta que no elijas quién lo revisa, el estudio previo no se puede aprobar ni devolver.'}
             </Aviso>
           )}
 
           {puedeRepartir && !repartiendo && !quitando && (
             <div className="flex items-center gap-2 flex-wrap">
               <Boton icono={<UserPlus className="w-3.5 h-3.5" />} onClick={() => setRepartiendo(true)}>
-                {abogado ? 'Cambiar de abogado' : 'Repartir a un abogado'}
+                {abogado ? 'Cambiar de abogado' : 'Elegir abogado'}
               </Boton>
               {abogado && (
                 <BotonSecundario
@@ -248,7 +252,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
                   disabled={guardando}
                   onClick={() => setQuitando(true)}
                 >
-                  Quitarlo sin reemplazo
+                  Dejarlo sin abogado
                 </BotonSecundario>
               )}
             </div>
@@ -260,7 +264,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
       {repartiendo && (
         <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-3">
           <label htmlFor="rad-abogado" className="block text-xs font-bold text-gray-600">
-            {abogado ? 'Nuevo abogado' : 'Abogado que lo revisa'}{' '}
+            {abogado ? 'Nuevo abogado' : 'Abogado que revisará el estudio previo'}{' '}
             <span className="text-red-600">*</span>
           </label>
           <SelectorAbogado
@@ -302,11 +306,11 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
                     abogado
                       ? contratacionService.reasignarAbogado(procesoId, elegido, motivo.trim())
                       : contratacionService.asignarAbogado(procesoId, elegido),
-                  abogado ? 'El proceso cambió de abogado' : 'Repartido: ya tiene quien lo revise',
+                  abogado ? 'El proceso cambió de abogado' : 'Listo: ya tiene quien lo revise',
                 )
               }
             >
-              {abogado ? 'Reasignar' : 'Repartir'}
+              {abogado ? 'Reasignar' : 'Asignar'}
             </Boton>
             <button
               type="button"
@@ -327,8 +331,8 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
             Quitar a {abogado.nombre} sin poner otro
           </p>
           <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
-            El proceso queda sin quien lo revise y aparecerá como pendiente de reasignar. Lo normal
-            es cambiarlo por otro en el mismo acto.
+El estudio previo no se podrá aprobar ni devolver hasta que elijas a otro, y el
+            proceso saldrá en las alertas. Lo normal es cambiarlo por otro en el mismo acto.
           </p>
           <div>
             <label htmlFor="rad-quitar" className="block text-xs font-bold text-gray-600 mb-1.5">
@@ -378,7 +382,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
             className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-slate-500 hover:text-[#003DA5]"
           >
             <History className="w-3.5 h-3.5" />
-            {historialAbierto ? 'Ocultar' : 'Ver'} quiénes estuvieron antes ({historial.length})
+            {historialAbierto ? 'Ocultar' : 'Ver'} quiénes lo llevaron antes ({historial.length})
           </button>
 
           {historialAbierto && (
@@ -416,7 +420,8 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
           que su nombre dice. Se avisa una vez, para quien conocía la anterior. */}
       {!contratacion && !puedeTomar && (
         <p className="text-[11px] text-slate-400 m-0">
-          Esta actividad ya no se cumple dejando constancia: se cumple recibiendo el proceso.
+          Esta actividad ya no se cumple registrando una fecha: se cumple cuando alguien de la
+          Dirección se hace cargo del proceso.
         </p>
       )}
     </Marco>
