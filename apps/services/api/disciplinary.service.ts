@@ -1094,10 +1094,12 @@ if (fechaQuejaRaw) {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async aprobarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, {
-            action: 'APPROVE'
-        });
+    async aprobarAuto(id: string, aprobadoPorId: string, radicadorAsignadoId?: string): Promise<LegalAuto> {
+        const body: any = { action: 'APPROVE' };
+        if (radicadorAsignadoId) {
+            body.radicadorAsignadoId = radicadorAsignadoId;
+        }
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, body);
     }
 
     async firmarAuto(id: string, userId: string, data?: any): Promise<LegalAuto> {
@@ -1115,6 +1117,36 @@ if (fechaQuejaRaw) {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/notify`, {
             notificationDate: fecha,
             notificationEvidence: evidencia
+        });
+    }
+
+    async uploadRejectionDocument(id: string, file: File): Promise<LegalAuto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-rejection-document`, formData);
+    }
+
+    async getRadicadoresDisponibles(): Promise<
+        Array<{
+            id: string;
+            nombre: string;
+            email: string;
+            autosAsignados: number;
+            cargaPorcentaje: number;
+        }>
+    > {
+        return apiClient.get<Array<{
+            id: string;
+            nombre: string;
+            email: string;
+            autosAsignados: number;
+            cargaPorcentaje: number;
+        }>>(`${SERVICE_PREFIX}/disciplinary-autos/radicadores-disponibles`);
+    }
+
+    async assignRadicadorToAuto(id: string, radicadorAsignadoId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/assign-radicador`, {
+            radicadorAsignadoId,
         });
     }
 

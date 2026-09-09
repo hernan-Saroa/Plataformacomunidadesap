@@ -148,6 +148,18 @@ export class AutoController {
   }
 
   /**
+   * Obtener listado de Secretarios/Radicadores disponibles con su carga laboral
+   */
+  @Get('radicadores-disponibles')
+  @ApiOperation({
+    summary: 'Radicadores Disponibles',
+    description: 'Retorna los usuarios con rol SECRETARIA_RADICADOR y su porcentaje de carga laboral',
+  })
+  async getRadicadoresDisponibles() {
+    return await this.autoService.getAvailableRadicadores();
+  }
+
+  /**
    * Obtener Auto por ID
    */
   @Get(':id')
@@ -185,24 +197,42 @@ export class AutoController {
   }
 
   /**
-   * H4: Aprobar/Firmar auto (operación de Jefe)
-   */
-  @Patch(':id/approve')
-  @ApiOperation({
-    summary: 'Aprobar y Firmar Auto',
-    description: 'El Jefe aprueba el auto y genera la firma',
-  })
-  async approve(
-    @Param('id') id: string,
-    @Body() reviewAutoDto: ReviewAutoDto,
-    @Query('aprobadoPorId') aprobadoPorId: string,
-    @Req() req: AuthenticatedRequest,
-  ): Promise<LegalAuto> {
-    if (!aprobadoPorId) {
-      throw new Error('aprobadoPorId es requerido');
+    * H4: Aprobar/Firmar auto (operación de Jefe)
+    */
+   @Patch(':id/approve')
+   @ApiOperation({
+     summary: 'Aprobar y Firmar Auto',
+     description: 'El Jefe aprueba el auto y genera la firma',
+   })
+    async approve(
+      @Param('id') id: string,
+      @Body() reviewAutoDto: ReviewAutoDto,
+      @Query('aprobadoPorId') aprobadoPorId: string,
+      @Req() req: AuthenticatedRequest,
+    ): Promise<LegalAuto> {
+      if (!aprobadoPorId) {
+        throw new Error('aprobadoPorId es requerido');
+      }
+      return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId, req?.user?.name, reviewAutoDto.radicadorAsignadoId);
     }
-    return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId, req?.user?.name);
-  }
+
+    /**
+     * Asignar radicador a un auto aprobado
+     */
+   @Patch(':id/assign-radicador')
+   @ApiOperation({
+     summary: 'Asignar Radicador a Auto',
+     description: 'Asigna un radicador/secretario a un auto aprobado',
+   })
+   async assignRadicador(
+     @Param('id') id: string,
+     @Body() body: { radicadorAsignadoId: string },
+   ): Promise<LegalAuto> {
+     if (!body.radicadorAsignadoId) {
+       throw new Error('radicadorAsignadoId es requerido');
+     }
+     return await this.autoService.assignRadicador(id, body.radicadorAsignadoId);
+   }
 
   /**
    * Enviar auto pliego de cargos aprobado a Oficina Jurídica
