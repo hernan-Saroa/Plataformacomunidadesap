@@ -10,7 +10,7 @@ import { MatrizDeRoles, RolDelCatalogo } from '../../types';
  * El formato de roles llegó en dos hojas que no se tocan: una rejilla de diez
  * permisos marcada solo para cuatro perfiles genéricos, y un catálogo de
  * catorce roles reales sin rejilla. Cruzarlas era el trabajo, y esta pantalla
- * es donde se puede verificar el resultado: catorce filas contra veintiocho
+ * es donde se puede verificar el resultado: catorce filas contra veintinueve
  * columnas, que es la única forma de ver si un rol quedó ancho o estrecho.
  *
  * **Enseña lo que el módulo aplica, no lo que la base guarda.** Mientras el

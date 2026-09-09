@@ -43,6 +43,7 @@ import {
   PERMISO_MODIFICACION_VER,
   PERMISO_PROCESO_ARCHIVAR,
   PERMISO_PROCESO_ASIGNAR,
+  PERMISO_PROCESO_TOMAR,
   PERMISO_PROCESO_BORRAR,
   PERMISO_PROCESO_CREAR,
   PERMISO_PROCESO_EDITAR,
@@ -99,7 +100,7 @@ const ROL_SUPER_ADMIN = 'SUPER_ADMIN';
  * Las diez columnas de permiso de la Hoja1 del formato.
  *
  * Se conservan como se escribieron ahí, aunque el módulo haya terminado con
- * veintiocho códigos: son el vocabulario con el que Contratación va a revisar
+ * veintinueve códigos: son el vocabulario con el que Contratación va a revisar
  * la matriz, y traducirlas a `contratacion.proceso.view-all` obligaría a
  * revisar contra un documento que no es el suyo.
  */
@@ -135,7 +136,7 @@ export interface PermisoDelCatalogo {
 }
 
 /**
- * Los veintiocho permisos del módulo, en el orden en que se leen.
+ * Los veintinueve permisos del módulo, en el orden en que se leen.
  *
  * Es la lista que faltaba: los códigos ya estaban declarados uno a uno en
  * `permisos.ts`, pero nada los recorría, así que ni la matriz podía dibujar sus
@@ -176,6 +177,15 @@ export const CATALOGO_PERMISOS: PermisoDelCatalogo[] = [
     descripcion: 'Repartir los procesos entre los abogados de la Dirección',
     recurso: 'proceso',
     columna: 'Asignar / Reasignar',
+  },
+  {
+    codigo: PERMISO_PROCESO_TOMAR,
+    nombre: 'Tomar proceso de la bandeja',
+    descripcion: 'Quedarse con un proceso que llegó a la Dirección y nadie ha radicado',
+    recurso: 'proceso',
+    // No sale del anexo: la bandeja compartida se decidió al describir el flujo
+    // real de la etapa 3, que el formato no cubre.
+    columna: null,
   },
   {
     codigo: PERMISO_PROCESO_ARCHIVAR,
@@ -612,7 +622,7 @@ export function permisosDelRol(codigo: string): string[] {
  * Qué roles otorgan un permiso, en el orden del catálogo.
  *
  * Devuelve solo los del módulo: `SUPER_ADMIN` los otorga todos y listarlo en
- * las veintiocho filas no informa de nada.
+ * las veintinueve filas no informa de nada.
  */
 export function rolesQueOtorgan(permiso: string): string[] {
   const otorgan = ROLES_QUE_OTORGAN[permiso] ?? [];
@@ -650,7 +660,7 @@ export interface MatrizDeRoles {
  * La matriz completa, lista para consultarse o dibujarse.
  *
  * Se arma en cada llamada y no se guarda en una constante: son catorce filas
- * por veintiocho columnas, cuesta nada, y una constante congelada al importar
+ * por veintinueve columnas, cuesta nada, y una constante congelada al importar
  * el módulo sería un sitio más donde la matriz podría quedar desfasada.
  */
 export function matrizDeRoles(): MatrizDeRoles {
