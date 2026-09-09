@@ -88,4 +88,16 @@ describe('3.9 :: cruces de la programacion historica', () => {
           AND a.hora_inicio < b.hora_fin AND b.hora_inicio < a.hora_fin`);
     expect(rows[0].n).toBe(0);
   });
+
+  siHayBase('un espacio VIRTUAL nunca cruza por aula', async () => {
+    const dataSource = { query: (sql: string) => client!.query(sql).then((r) => r.rows) };
+    const servicio = new ValidacionService(dataSource as any);
+    const cruces = await servicio.crucesHistoricos();
+
+    // El Excel contaba las 40 sesiones de Campus Moodle entre si y producia 40
+    // falsos positivos: un campus virtual no tiene ocupacion fisica.
+    const virtualesComoAula = cruces.filter(
+      (c) => c.tipo === 'aula' && /moodle|virtual/i.test(c.recurso));
+    expect(virtualesComoAula).toHaveLength(0);
+  });
 });

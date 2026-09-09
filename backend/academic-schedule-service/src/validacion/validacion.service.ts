@@ -16,6 +16,12 @@ import { DataSource } from 'typeorm';
  * El ciclo importa: dos clases en el mismo salón, el mismo día y a la misma
  * hora, pero en semanas distintas, NO se cruzan. Ignorar las fechas infla el
  * conteo de 27 a 144 pares.
+ *
+ * ⚠️ LOS ESPACIOS VIRTUALES NO CRUZAN POR AULA. Un campus Moodle no tiene
+ * ocupación física: dos clases simultáneas ahí no compiten por un salón. El
+ * COUNTIFS del Excel las contaba entre sí y producía 40 falsos positivos. El
+ * docente SÍ sigue cruzando aunque la clase sea virtual: nadie dicta dos a la
+ * vez.
  */
 export interface CruceHistorico {
   tipo: 'aula' | 'docente';
@@ -47,12 +53,18 @@ export class ValidacionService {
             AND hora_inicio ~ '^[0-9]{2}:[0-9]{2}$'
             AND hora_fin   ~ '^[0-9]{2}:[0-9]{2}$'
        ),
+       -- Un docente SÍ choca consigo mismo aunque las clases sean virtuales:
+       -- nadie dicta dos a la vez. La exclusión es solo del espacio.
        par AS (
          SELECT a.aula, a.nombre_docente, a.cedula_docente AS ced_a, b.cedula_docente AS ced_b,
                 a.periodo, a.dia, a.hora_inicio, a.hora_fin,
                 a.asignatura AS asig_a, b.asignatura AS asig_b,
                 a.programa   AS prog_a, b.programa   AS prog_b,
-                (a.aula = b.aula AND a.aula <> '')                              AS choca_aula,
+                -- ⚠️ El aula solo choca si es un espacio FÍSICO. Un campus
+                -- virtual no tiene ocupación: dos clases simultáneas en Moodle
+                -- no compiten por un salón. Contarlas fue lo que infló el
+                -- conteo del Excel con 40 falsos positivos.
+                (a.aula = b.aula AND a.aula <> '' AND a.aula NOT ILIKE '%moodle%' AND a.aula NOT ILIKE '%virtual%')    AS choca_aula,
                 (a.cedula_docente = b.cedula_docente AND a.cedula_docente <> '') AS choca_doc
            FROM base a
            JOIN base b
