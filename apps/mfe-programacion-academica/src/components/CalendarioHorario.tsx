@@ -72,7 +72,15 @@ export function CalendarioHorario({
   }, [idGrupo, fechaInicioGrupo, fechaFinGrupo]);
   const [avisoPeriodo, setAvisoPeriodo] = useState('');
 
-  // Formulario que se abre al hacer clic en el calendario (sin arrastrar).
+  /**
+   * Arrastre para crear una franja (3.3). La rejilla es propia y la conversión
+   * tiempo↔píxeles ya existía en ambos sentidos, así que el arrastre solo añade
+   * los tres manejadores y una vista previa. Un clic simple sigue funcionando:
+   * si el rango sale menor a 15 min, se propone una hora como antes.
+   */
+  const [arrastre, setArrastre] = useState<{ dia: string; desde: number; hasta: number } | null>(null);
+
+  // Formulario que se abre al hacer clic en el calendario (o arrastrando).
   const [nueva, setNueva] = useState<null | {
     diaSemana: string; horaInicio: string; horaFin: string; tipoSesion: TipoSesion; aulaCodigo: string;
   }>(null);
@@ -93,19 +101,28 @@ export function CalendarioHorario({
 
   useEffect(recargar, [idGrupo]);
 
-  /** Clic en una columna: se propone una franja de una hora desde ese punto. */
-  const abrirFormulario = (dia: string, e: React.MouseEvent<HTMLDivElement>) => {
-    const caja = e.currentTarget.getBoundingClientRect();
-    const minutosDesdeArriba = ((e.clientY - caja.top) / ALTO_HORA) * 60;
-    // Se redondea a 15 min para que el clic sea cómodo; el campo admite cualquier
-    // hora en múltiplos de 5, que es la granularidad real.
-    const total = HORA_DESDE * 60 + Math.max(0, Math.round(minutosDesdeArriba / 15) * 15);
-    const fmt = (m: number) =>
-      `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  /**
+   * Minuto del día que corresponde a una posición vertical dentro de la columna.
+   * Se redondea a 15 min para que el gesto sea cómodo; el campo admite cualquier
+   * hora en múltiplos de 5, que es la granularidad real.
+   */
+  const minutoEn = (clientY: number, caja: DOMRect) => {
+    const desdeArriba = ((clientY - caja.top) / ALTO_HORA) * 60;
+    const total = HORA_DESDE * 60 + Math.round(desdeArriba / 15) * 15;
+    return Math.min(Math.max(total, HORA_DESDE * 60), HORA_HASTA * 60);
+  };
+
+  const fmtHora = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+  /** Abre el formulario con un rango ya definido (clic o arrastre). */
+  const abrirRango = (dia: string, desdeMin: number, hastaMin: number) => {
+    const ini = Math.min(desdeMin, hastaMin);
+    const fin = Math.max(desdeMin, hastaMin);
     setNueva({
       diaSemana: dia,
-      horaInicio: fmt(Math.min(total, HORA_HASTA * 60 - 60)),
-      horaFin: fmt(Math.min(total + 60, HORA_HASTA * 60)),
+      horaInicio: fmtHora(Math.min(ini, HORA_HASTA * 60 - 60)),
+      horaFin: fmtHora(Math.min(Math.max(fin, ini + 60), HORA_HASTA * 60)),
       tipoSesion: 'presencial',
       aulaCodigo: '',
     });
@@ -248,11 +265,39 @@ export function CalendarioHorario({
               {DIAS.map((d) => (
                 <div
                   key={d.valor}
-                  onClick={(e) => abrirFormulario(d.valor, e)}
-                  className="relative border-l border-slate-100 cursor-pointer hover:bg-blue-50/30 transition-colors"
+                  onMouseDown={(e) => {
+                    const m = minutoEn(e.clientY, e.currentTarget.getBoundingClientRect());
+                    setArrastre({ dia: d.valor, desde: m, hasta: m });
+                  }}
+                  onMouseMove={(e) => {
+                    if (!arrastre || arrastre.dia !== d.valor) return;
+                    const m = minutoEn(e.clientY, e.currentTarget.getBoundingClientRect());
+                    if (m !== arrastre.hasta) setArrastre({ ...arrastre, hasta: m });
+                  }}
+                  onMouseUp={() => {
+                    if (!arrastre || arrastre.dia !== d.valor) return;
+                    abrirRango(d.valor, arrastre.desde, arrastre.hasta);
+                    setArrastre(null);
+                  }}
+                  onMouseLeave={() => { if (arrastre?.dia === d.valor) setArrastre(null); }}
+                  className="relative select-none border-l border-slate-100 cursor-pointer hover:bg-blue-50/30 transition-colors"
                   style={{ height: altoTotal }}
-                  title={`Agregar sesión el ${d.corto.toLowerCase()}`}
+                  title={`Clic o arrastre para agregar una sesión el ${d.corto.toLowerCase()}`}
                 >
+                  {/* Vista previa del arrastre: el rango que quedará al soltar. */}
+                  {arrastre && arrastre.dia === d.valor && Math.abs(arrastre.hasta - arrastre.desde) >= 15 && (
+                    <div
+                      className="pointer-events-none absolute left-1 right-1 rounded-md border-2 border-dashed border-[#003DA5] bg-blue-100/50"
+                      style={{
+                        top: ((Math.min(arrastre.desde, arrastre.hasta) - HORA_DESDE * 60) / 60) * ALTO_HORA,
+                        height: Math.max((Math.abs(arrastre.hasta - arrastre.desde) / 60) * ALTO_HORA, 8),
+                      }}
+                    >
+                      <span className="px-1 text-[0.6rem] font-bold text-[#003DA5]">
+                        {fmtHora(Math.min(arrastre.desde, arrastre.hasta))}–{fmtHora(Math.max(arrastre.desde, arrastre.hasta))}
+                      </span>
+                    </div>
+                  )}
                   {horas.map((h, i) => (
                     <div key={h} className="absolute left-0 right-0 border-t border-slate-100"
                       style={{ top: i * ALTO_HORA }} />
