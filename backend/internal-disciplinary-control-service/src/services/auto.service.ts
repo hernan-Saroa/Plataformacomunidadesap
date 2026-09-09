@@ -8,7 +8,6 @@ import { LegalAuto, AutoStatus, AutoType } from '../entities/legal-auto.entity';
 import { AutoVersion } from '../entities/auto-version.entity';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
-
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { AlertasService } from './alertas.service';
 import { DocumentConversionService } from './document-conversion.service';
@@ -18,6 +17,8 @@ import { SequenceService } from './sequence.service';
 import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
 import { AutosConfigurationService } from './autos-configuration.service';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import {
   DisciplinaryProcess,
   ProcessStage,
@@ -49,6 +50,7 @@ export class AutoService {
     private juridicaEmailService: JuridicaEmailService,
     private notificationClient: NotificationClientService,
     private autosConfigurationService: AutosConfigurationService,
+    private httpService: HttpService,
   ) {}
 
   /**
@@ -217,6 +219,7 @@ export class AutoService {
     reviewAutoDto: ReviewAutoDto,
     aprobadoPorId: string,
     aprobadoPorNombre?: string,
+    radicadorAsignadoId?: string,
   ): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
     const previousSnapshot = {
@@ -256,6 +259,11 @@ export class AutoService {
         } catch (e) {
           console.warn('Firma del jefe no disponible, se omite del PDF:', e.message);
         }
+      }
+
+      // Asignar radicador si se proporciona
+      if (radicadorAsignadoId) {
+        auto.radicadorAsignadoId = radicadorAsignadoId;
       }
 
       // Nota: Para auto pliego de cargos, se aprueba y pasa a Juzgamiento, pero no se
@@ -382,6 +390,9 @@ export class AutoService {
           );
         }
       }
+
+      // Notificaciones de aprobación con radicador asignado
+      await this.enviarNotificacionesAprobacion(auto, aprobadoPorId);
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
       auto.estado = AutoStatus.DEVUELTO;
       if (reviewAutoDto.observaciones) {
@@ -802,6 +813,48 @@ export class AutoService {
   }
 
   /**
+   * Asigna un radicador a un auto aprobado y envía notificaciones
+   */
+  async assignRadicador(id: string, radicadorAsignadoId: string): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.estado !== AutoStatus.APROBADO && auto.estado !== AutoStatus.FIRMADO && auto.estado !== AutoStatus.NOTIFICADO) {
+      throw new HttpException(
+        'Solo se puede asignar radicador a autos aprobados, firmados o notificados',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const radicadorAnterior = auto.radicadorAsignadoId;
+    auto.radicadorAsignadoId = radicadorAsignadoId;
+    const savedAuto = await this.autoRepository.save(auto);
+
+    // Si había un radicador anterior, notificar del cambio
+    if (radicadorAnterior && radicadorAnterior !== radicadorAsignadoId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: radicadorAnterior,
+          tipo_notificacion: 'RADICADOR_AUTO_REASIGNADO',
+          titulo: 'Auto reasignado a otro radicador',
+          mensaje: `El auto ${savedAuto.tipo} del proceso ${auto.process?.radicadoProceso} fue reasignado a otro radicador.`,
+          descripcion_corta: `Auto reasignado - ${auto.process?.radicadoProceso}`,
+          icono: 'UserCog',
+          color: '#F59E0B',
+          prioridad: 'Media',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { processId: auto.processId, autoId: auto.id },
+        })
+        .catch(() => {});
+    }
+
+    await this.enviarNotificacionesAprobacion(savedAuto, 'Sistema');
+
+    return savedAuto;
+  }
+
+  /**
    * Elimina un auto por ID
    */
   async delete(id: string): Promise<void> {
@@ -1211,6 +1264,264 @@ export class AutoService {
     return savedAuto;
   }
 
+  private static readonly TIPOS_CON_ACCION_RADICADOR = new Set([
+    'AUTO_ARCHIVO',
+    'AUTO_FORMULACION_PLIEGO',
+    'PLIEGO_CARGOS',
+    'AUTO_PRORROGA',
+  ]);
+
+  private tieneAccionRadicador(tipo: string): boolean {
+    return tipo.startsWith('AUTO_APERTURA_') || AutoService.TIPOS_CON_ACCION_RADICADOR.has(tipo);
+  }
+
+  private async enviarNotificacionesAprobacion(auto: LegalAuto, aprobadoPorId: string): Promise<void> {
+    const proceso = auto.process;
+    if (!proceso) return;
+
+    const radicadorAsignadoId = auto.radicadorAsignadoId;
+    const radicadorAsignadoNombre = radicadorAsignadoId
+      ? await this.obtenerNombreUsuario(radicadorAsignadoId)
+      : 'Sin asignar';
+
+    const asunto = `Auto Aprobado: ${this.formatearTipoAuto(auto.tipo)} - Proceso ${proceso.radicadoProceso}`;
+    const mensajeBase = `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+      `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`;
+
+    // Notificación al profesional en bandeja
+    if (proceso.abogadoAsignadoId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: proceso.abogadoAsignadoId,
+          tipo_notificacion: 'AUTO_APROBADO_RADICADOR',
+          titulo: 'Auto aprobado con radicador asignado',
+          mensaje: mensajeBase,
+          descripcion_corta: `Auto aprobado - ${proceso.radicadoProceso}`,
+          icono: 'CheckCircle',
+          color: '#059669',
+          prioridad: 'Alta',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: {
+            processId: auto.processId,
+            radicadoProceso: proceso.radicadoProceso,
+            autoId: auto.id,
+            autoTipo: auto.tipo,
+            autoNumero: auto.numero,
+            radicadorAsignadoId,
+            radicadorAsignadoNombre,
+          },
+        })
+        .catch(() => {});
+
+      // Correo al profesional
+      this.enviarCorreoNotificacion(proceso.abogadoAsignadoId, asunto, mensajeBase).catch(() => {});
+    }
+
+    // Notificación a todos los radicadores en bandeja
+    const radicadoresRows: any[] = await this.autoRepository.manager.query(
+      `SELECT DISTINCT u.id_user
+       FROM auth.user u
+       JOIN auth.user_roles ur ON ur.id_user = u.id_user
+       JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+       JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
+       WHERE p.code = $1`,
+      ['control-disciplinario.noticia-disciplinaria.view_mine'],
+    );
+    const radicadoresIds = radicadoresRows.map((r) => r.id_user).filter(Boolean);
+    if (radicadoresIds.length > 0) {
+      const notificacionesRadicadores: import('./notification-client.service').SendNotificationDto[] = radicadoresIds.map((radicadorId) => ({
+        id_usuario_destinatario: radicadorId,
+        tipo_notificacion: 'NUEVO_AUTO_RADICADOR',
+        titulo: 'Nuevo auto disponible para radicación',
+        mensaje: `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+          `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`,
+        descripcion_corta: `Nuevo auto - ${proceso.radicadoProceso}`,
+        icono: 'FileText',
+        color: '#2563EB',
+        prioridad: 'Media',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver proceso',
+        datos_adicionales: {
+          processId: auto.processId,
+          radicadoProceso: proceso.radicadoProceso,
+          autoId: auto.id,
+          autoTipo: auto.tipo,
+          autoNumero: auto.numero,
+          radicadorAsignadoId,
+          radicadorAsignadoNombre,
+        },
+      }));
+      await this.notificationClient.sendMany(notificacionesRadicadores);
+
+      // Correo a cada radicador
+      const asuntoRadicador = `Auto aprobado: ${this.formatearTipoAuto(auto.tipo)} - Proceso ${proceso.radicadoProceso}`;
+      const mensajeRadicador = `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+        `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`;
+      await Promise.all(
+        radicadoresIds.map((radicadorId) =>
+          this.enviarCorreoNotificacion(radicadorId, asuntoRadicador, mensajeRadicador).catch(() => {}),
+        ),
+      );
+    }
+
+    // Correo al radicador asignado
+    if (radicadorAsignadoId) {
+      const mensajeRadicador = `Se le ha asignado el ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso}. ` +
+        `Por favor ingrese a la plataforma para revisar los detalles y realizar las actuaciones correspondientes.`;
+      await this.enviarCorreoNotificacion(radicadorAsignadoId, asunto, mensajeRadicador);
+    }
+  }
+
+  private async enviarCorreoNotificacion(userId: string, asunto: string, mensaje: string): Promise<void> {
+    try {
+      const result = await this.autoRepository.manager.query(
+        `SELECT p.dir_email FROM auth.user u JOIN auth.personas p ON p.id_person = u.id_person WHERE u.id_user = $1`,
+        [userId],
+      );
+      if (!result || result.length === 0) return;
+
+      const email = result[0].dir_email;
+      if (!email) return;
+
+      const notificationsUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: 'Inter', Arial, sans-serif; color: #1f2937; line-height: 1.6; background-color: #f3f4f6; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+            .header { background: linear-gradient(135deg, #003DA5 0%, #2563EB 100%); color: white; padding: 32px 24px; text-align: center; }
+            .content { padding: 32px; }
+            .info-box { background-color: #f9fafb; padding: 24px; border-radius: 8px; margin: 24px 0; border: 1px solid #f3f4f6; }
+            .footer { background-color: #f9fafb; padding: 24px; font-size: 12px; color: #6b7280; text-align: center; border-top: 1px solid #f3f4f6; }
+            .btn { display: inline-block; background-color: #2563EB; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin-top: 16px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin:0; font-size: 24px;">Control Interno Disciplinario</h1>
+              <p style="margin:8px 0 0 0; opacity: 0.9;">Notificación de Auto Aprobado</p>
+            </div>
+            <div class="content">
+              <p>${mensaje}</p>
+              <div class="info-box">
+                <p><strong>Asunto:</strong> ${asunto}</p>
+              </div>
+              <p>Por favor, ingresa a la plataforma para revisar los detalles.</p>
+              <div style="text-align: center;">
+                <a href="#" class="btn">Ir a la Plataforma</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p><strong>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</strong><br>Oficina de Control Interno Disciplinario</p>
+              <p style="margin-top: 8px;">Este correo fue generado automáticamente. Por favor no responder.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      await firstValueFrom(
+        this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+          to: email,
+          subject: asunto,
+          html,
+        }),
+      );
+    } catch (error) {
+      console.error('Error enviando correo de notificación de auto:', error);
+    }
+  }
+
+  private async obtenerNombreUsuario(userId: string): Promise<string> {
+    try {
+      const result = await this.autoRepository.manager.query(
+        `SELECT p.nom_largo FROM auth.user u JOIN auth.personas p ON p.id_tercero = u.id_tercero WHERE u.id_user = $1`,
+        [userId],
+      );
+      if (result && result.length > 0 && result[0].nom_largo) {
+        return result[0].nom_largo;
+      }
+    } catch {
+      // ignore
+    }
+    return 'Usuario';
+  }
+
+  private formatearTipoAuto(tipo: string): string {
+    return tipo.replace(/_/g, ' ').toLowerCase();
+  }
+
+  async getAvailableRadicadores(): Promise<
+    Array<{
+      id: string;
+      nombre: string;
+      email: string;
+      autosAsignados: number;
+      cargaPorcentaje: number;
+    }>
+  > {
+    const radicadoresRows: any[] = await this.autoRepository.manager.query(
+      `SELECT DISTINCT u.id_user
+       FROM auth.user u
+       JOIN auth.user_roles ur ON ur.id_user = u.id_user
+       JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+       JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
+       WHERE p.code = $1`,
+      ['control-disciplinario.noticia-disciplinaria.view_mine'],
+    );
+
+    const ids = radicadoresRows.map((r) => r.id_user).filter(Boolean);
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const [usuarios, conteoAutos] = await Promise.all([
+      this.autoRepository.manager.query(
+        `SELECT u.id_user, p.nom_largo, p.dir_email FROM auth.user u JOIN auth.personas p ON p.id_person = u.id_person WHERE u.id_user = ANY($1::uuid[])`,
+        [ids],
+      ),
+      this.autoRepository
+        .createQueryBuilder('auto')
+        .select('auto.radicadorAsignadoId', 'radicadorId')
+        .addSelect('COUNT(*)', 'count')
+        .where('auto.radicadorAsignadoId IS NOT NULL')
+        .andWhere('auto.radicadorAsignadoId IN (:...ids)', { ids })
+        .groupBy('auto.radicadorAsignadoId')
+        .getRawMany(),
+    ]);
+
+    const usuarioMap = new Map<string, { nombre: string; email: string }>(
+      usuarios.map((u: any) => [u.id_user, { nombre: u.nom_largo || 'Usuario', email: u.dir_email || '' }]),
+    );
+
+    const maxAsignados = Math.max(
+      1,
+      ...conteoAutos.map((c: any) => parseInt(c.count, 10)),
+    );
+
+    return ids
+      .map((id) => {
+        const usuario = usuarioMap.get(id) || { nombre: 'Usuario', email: '' };
+        const conteo = conteoAutos.find((c: any) => c.radicadorId === id);
+        const autosAsignados = conteo ? parseInt(conteo.count, 10) : 0;
+        const cargaPorcentaje = Math.round((autosAsignados / maxAsignados) * 100);
+
+        return {
+          id,
+          nombre: usuario.nombre,
+          email: usuario.email,
+          autosAsignados,
+          cargaPorcentaje,
+        };
+      })
+      .filter((r) => usuarioMap.has(r.id));
+  }
   private async preparePdfDocumentForSignature(auto: LegalAuto): Promise<void> {
     if (!auto.documentUrl) {
       return;

@@ -3185,7 +3185,7 @@ export function DashboardKanbanOperativo({
   filtroProfesionalId?: string | null;
   onEnviarARevision?: (borrador: BorradorPendiente) => void;
   onNavigateToRevision?: () => void;
-  revisionLog?: { borradorId: string; procesoId: string; accion: 'aprobado' | 'devuelto'; comentarios: string; motivo?: string; fecha: string }[];
+  revisionLog?: { borradorId: string; procesoId: string; accion: 'aprobado' | 'devuelto' | 'enviado_juridica'; comentarios: string; motivo?: string; fecha: string }[];
 }) {
   // ✅ NUEVO: Hook responsive centralizado
   const { isMobile, isTablet, isDesktop, width } = useResponsive();
@@ -5762,22 +5762,22 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ REFACTORIZADO: Handler de aprobación con comentarios (nuevo modal)
-  const handleConfirmarAprobacion = (comentarios: string) => {
+  const handleConfirmarAprobacion = (comentarios: string, _radicadorAsignadoId?: string) => {
     if (!itemSeleccionado || itemSeleccionado.tipo !== 'proceso') return;
 
     setItems(prev => prev.map(i =>
       i.id === itemSeleccionado.id && i.tipo === 'proceso'
         ? {
-          ...i,
-          pendienteAprobacion: false,
-          documentosAprobados: [...(i.documentosAprobados || []), {
-            id: `doc-${Date.now()}`,
-            titulo: `Auto de ${i.etapaActual}`,
-            fecha: new Date().toISOString(),
-            comentariosJefe: comentarios,
-            estado: 'aprobado'
-          }]
-        }
+            ...i,
+            pendienteAprobacion: false,
+            documentosAprobados: [...(i.documentosAprobados || []), {
+              id: `doc-${Date.now()}`,
+              titulo: `Auto de ${i.etapaActual}`,
+              fecha: new Date().toISOString(),
+              comentariosJefe: comentarios,
+              estado: 'aprobado'
+            }]
+          }
         : i
     ));
 
