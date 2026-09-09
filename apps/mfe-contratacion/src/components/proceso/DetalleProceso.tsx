@@ -46,6 +46,7 @@ import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
+import { AvisoSoloLectura, SoloLectura } from '../shared/SoloLectura';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
@@ -671,6 +672,27 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
+  /**
+   * Por qué la actividad abierta se puede leer pero no trabajar (EFDS-1183).
+   *
+   * El riel dejó de cerrar el paso: cualquiera se puede abrir para ver qué pide
+   * y con qué formatos. Lo que sigue en pie es el orden del expediente, y por
+   * eso el bloqueo se aplica aquí dentro —los botones y las cargas se apagan
+   * mientras esto traiga motivo— en vez de en el botón que lleva a la pantalla.
+   *
+   * `null` cuando se puede trabajar, que es lo normal.
+   */
+  const motivoSoloLectura =
+    actividadSeleccionada && !actividadSeleccionada.disponible
+      ? // La que no tiene panel se explica por sí sola: lo que falta no es la
+        // anterior, es la actividad. Nombrar una previa mandaría a terminar
+        // algo que no destrabaría nada.
+        !TIENEN_PANEL(actividadSeleccionada.numeral)
+        ? 'Esta actividad todavía no está construida en la plataforma'
+        : (motivoDelBloqueo(actividadSeleccionada.numeral, flujo) ??
+          'Esta actividad todavía no está habilitada')
+      : null;
+
   const etapaVista = etapaElegida ?? datos.proceso.etapa;
 
   /**
@@ -880,248 +902,260 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               es quien conoce el numeral y el nombre; los paneles no, y por eso
               una actividad bloqueada abria diciendo solo «Pendiente del paso
               4.2», sin decir de cual actividad hablaba. */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-            {actividadSeleccionada ? (
-              <EncabezadoActividad
-                numeral={actividadSeleccionada.numeral}
-                nombre={actividadSeleccionada.nombre}
-              />
-            ) : null}
+          {/* Lo que el bloqueo de secuencia envuelve: el panel que trabaja la
+              actividad y los documentos que entrega. Todo lo que escribe está
+              aquí dentro, así que apagarlo desde un sitio basta para las
+              sesenta y tres. La decisión de aprobación queda fuera a propósito:
+              es un acto sobre trabajo ya enviado, y por tanto sobre una
+              actividad que la secuencia ya alcanzó. */}
+          <SoloLectura motivo={motivoSoloLectura}>
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              {actividadSeleccionada ? (
+                <EncabezadoActividad
+                  numeral={actividadSeleccionada.numeral}
+                  nombre={actividadSeleccionada.nombre}
+                />
+              ) : null}
 
-            {actividadSeleccionada?.numeral === NUMERAL_MODALIDAD ? (
-              // La 3.5 deja de ser constancia: definir la modalidad es
-              // ratificar la que el área eligió, o devolverla para corregirla.
-              <PanelModalidad
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_RADICACION ? (
-              // La 3.3 deja de ser el panel genérico de constancia: radicar es
-              // recibir el proceso y ponerle responsable, no anotar una fecha.
-              <PanelRadicacion
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
-              <PanelCdp
-                numeral={actividadSeleccionada.numeral}
-                procesoId={procesoId}
-                valorEstimado={datos.proceso.valorEstimado}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_ADENDAS ? (
-              <PanelAdendas
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_OFERTAS ? (
-              <PanelOfertas
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
-              <PanelComite
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
-              <PanelEvaluacion
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada &&
-              NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
-              <PanelTraslado
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada &&
-              NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
-              <PanelAdjudicacion
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
-              <PanelArchivoExpediente
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_CIERRE_FINANCIERO ? (
-              <PanelCierreFinanciero
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_LIQUIDACION ? (
-              <PanelLiquidacion
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_INFORME_FINAL ? (
-              <PanelInformeFinal
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
-              <PanelModificaciones
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_PAGOS ? (
-              <PanelPagos
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada &&
-              NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
-              <PanelActaInicio
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
-              <PanelPublicacionContrato
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_RP ? (
-              <PanelRegistroPresupuestal
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada &&
-              NUMERALES_SUPERVISION.includes(actividadSeleccionada.numeral) ? (
-              <PanelSupervision
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
-              /**
-               * Dos paneles en la misma casilla.
-               *
-               * El presunto incumplimiento es un bloque transversal de la matriz
-               * y no una de las 63 actividades numeradas, así que no tiene
-               * casilla propia en el riel. Se cuelga de la 9.2 porque es donde el
-               * supervisor ya está: vigila la ejecución, y si algo no se cumple
-               * lo constata mirando esto mismo. Dejarlo sin sitio lo volvería
-               * inalcanzable desde la pantalla.
-               */
-              <div className="space-y-3">
-                <PanelSeguimiento
+              {/* Un panel con todos los botones apagados y sin una línea que lo
+                  explique se lee como una pantalla rota. */}
+              {motivoSoloLectura ? <AvisoSoloLectura motivo={motivoSoloLectura} /> : null}
+
+              {actividadSeleccionada?.numeral === NUMERAL_MODALIDAD ? (
+                // La 3.5 deja de ser constancia: definir la modalidad es
+                // ratificar la que el área eligió, o devolverla para corregirla.
+                <PanelModalidad
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
-                <PanelIncumplimiento
+              ) : actividadSeleccionada?.numeral === NUMERAL_RADICACION ? (
+                // La 3.3 deja de ser el panel genérico de constancia: radicar es
+                // recibir el proceso y ponerle responsable, no anotar una fecha.
+                <PanelRadicacion
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
-              </div>
-            ) : actividadSeleccionada &&
-              NUMERALES_CON_REGISTRO.includes(actividadSeleccionada.numeral) ? (
-              <PanelRegistroActividad
-                procesoId={procesoId}
-                numeral={actividadSeleccionada.numeral}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-                requiereAprobacion={pideAprobacion}
-                devuelta={fueDevuelta}
-                /* Donde el bloque de documentos recibe el soporte, cargarlo
-                   ahi es lo que desbloquea el boton de registrar: sin este
-                   token el formulario no se enteraba. */
-                recargarToken={tokenExpediente}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
-              actividadSeleccionada?.numeral === NUMERAL_ARL ? (
-              <PanelLegalizacion
-                procesoId={procesoId}
-                numeral={actividadSeleccionada.numeral as '8.4' | '8.5'}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_CONTRATO ? (
-              <PanelContrato
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_RIESGOS ? (
-              <PanelAudienciaRiesgos
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_APERTURA ? (
-              <PanelApertura
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_DOCUMENTOS ? (
-              <PanelDocumentosProceso
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
-              <PanelPublicacionPliego
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
-              <PanelObservaciones
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
-              <PanelMipyme
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            ) : actividadSeleccionada?.numeral === '3.1' ? (
-              <ContenidoEstudioPrevio
-                procesoId={procesoId}
-                onCambio={() => {
-                  contratacionService
-                    .obtenerEstudioPrevio(procesoId)
-                    .then(setDatos)
-                    .catch(() => undefined);
-                  setTokenExpediente((t) => t + 1);
-                }}
-              />
-            ) : (
-              /* El riel deja pulsar solo lo disponible, pero al entrar sin
-                 actividad elegida hay que decir qué hacer. Sin marco propio:
-                 el del contenedor ya lo envuelve. */
-              <div className="p-10 text-center">
-                <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
-                <p className="text-sm font-bold text-gray-600 m-0">
-                  {actividadSeleccionada ? actividadSeleccionada.nombre : 'Elige una actividad'}
-                </p>
-                <p className="text-xs text-gray-400 m-0 mt-1">
-                  {actividadSeleccionada
-                    ? 'Esta actividad aún no está habilitada en la plataforma.'
-                    : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Los documentos que la actividad entrega, debajo del panel: primero
-              se trabaja, después se adjunta.
-
-              Un solo bloque, con los formatos requeridos y lo demás que quedó
-              en el expediente como dos secciones dentro del mismo marco. Antes
-              eran dos componentes apilados con estilos distintos, y había que
-              deducir cuál lista era cuál.
-
-              Donde el panel ya reparte sus formatos —3.1 y 5.1— se monta en
-              modo `soloExpediente`, para listar lo demás sin duplicarlos. */}
-          {actividadSeleccionada ? (
-            <div className="mt-3">
-              <DocumentosDeLaActividad
-                procesoId={procesoId}
-                numeral={actividadSeleccionada.numeral}
-                recargarToken={tokenExpediente}
-                soloExpediente={NUMERALES_CON_FORMATOS_PROPIOS.includes(
-                  actividadSeleccionada.numeral,
-                )}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-                onFaltantes={setFaltanFormatos}
-              />
+              ) : actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
+                <PanelCdp
+                  numeral={actividadSeleccionada.numeral}
+                  procesoId={procesoId}
+                  valorEstimado={datos.proceso.valorEstimado}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_ADENDAS ? (
+                <PanelAdendas
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_OFERTAS ? (
+                <PanelOfertas
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
+                <PanelComite
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
+                <PanelEvaluacion
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada &&
+                NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
+                <PanelTraslado
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada &&
+                NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
+                <PanelAdjudicacion
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
+                <PanelArchivoExpediente
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_CIERRE_FINANCIERO ? (
+                <PanelCierreFinanciero
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_LIQUIDACION ? (
+                <PanelLiquidacion
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_INFORME_FINAL ? (
+                <PanelInformeFinal
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
+                <PanelModificaciones
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_PAGOS ? (
+                <PanelPagos
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada &&
+                NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
+                <PanelActaInicio
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
+                <PanelPublicacionContrato
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_RP ? (
+                <PanelRegistroPresupuestal
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada &&
+                NUMERALES_SUPERVISION.includes(actividadSeleccionada.numeral) ? (
+                <PanelSupervision
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
+                /**
+                 * Dos paneles en la misma casilla.
+                 *
+                 * El presunto incumplimiento es un bloque transversal de la matriz
+                 * y no una de las 63 actividades numeradas, así que no tiene
+                 * casilla propia en el riel. Se cuelga de la 9.2 porque es donde el
+                 * supervisor ya está: vigila la ejecución, y si algo no se cumple
+                 * lo constata mirando esto mismo. Dejarlo sin sitio lo volvería
+                 * inalcanzable desde la pantalla.
+                 */
+                <div className="space-y-3">
+                  <PanelSeguimiento
+                    procesoId={procesoId}
+                    onCambio={() => setTokenExpediente((t) => t + 1)}
+                  />
+                  <PanelIncumplimiento
+                    procesoId={procesoId}
+                    onCambio={() => setTokenExpediente((t) => t + 1)}
+                  />
+                </div>
+              ) : actividadSeleccionada &&
+                NUMERALES_CON_REGISTRO.includes(actividadSeleccionada.numeral) ? (
+                <PanelRegistroActividad
+                  procesoId={procesoId}
+                  numeral={actividadSeleccionada.numeral}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                  requiereAprobacion={pideAprobacion}
+                  devuelta={fueDevuelta}
+                  /* Donde el bloque de documentos recibe el soporte, cargarlo
+                     ahi es lo que desbloquea el boton de registrar: sin este
+                     token el formulario no se enteraba. */
+                  recargarToken={tokenExpediente}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
+                actividadSeleccionada?.numeral === NUMERAL_ARL ? (
+                <PanelLegalizacion
+                  procesoId={procesoId}
+                  numeral={actividadSeleccionada.numeral as '8.4' | '8.5'}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_CONTRATO ? (
+                <PanelContrato
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_RIESGOS ? (
+                <PanelAudienciaRiesgos
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_APERTURA ? (
+                <PanelApertura
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_DOCUMENTOS ? (
+                <PanelDocumentosProceso
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
+                <PanelPublicacionPliego
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
+                <PanelObservaciones
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
+                <PanelMipyme
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === '3.1' ? (
+                <ContenidoEstudioPrevio
+                  procesoId={procesoId}
+                  onCambio={() => {
+                    contratacionService
+                      .obtenerEstudioPrevio(procesoId)
+                      .then(setDatos)
+                      .catch(() => undefined);
+                    setTokenExpediente((t) => t + 1);
+                  }}
+                />
+              ) : (
+                /* El riel deja pulsar solo lo disponible, pero al entrar sin
+                   actividad elegida hay que decir qué hacer. Sin marco propio:
+                   el del contenedor ya lo envuelve. */
+                <div className="p-10 text-center">
+                  <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
+                  <p className="text-sm font-bold text-gray-600 m-0">
+                    {actividadSeleccionada ? actividadSeleccionada.nombre : 'Elige una actividad'}
+                  </p>
+                  <p className="text-xs text-gray-400 m-0 mt-1">
+                    {actividadSeleccionada
+                      ? 'Esta actividad aún no está habilitada en la plataforma.'
+                      : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
+                  </p>
+                </div>
+              )}
             </div>
-          ) : null}
+
+            {/* Los documentos que la actividad entrega, debajo del panel: primero
+                se trabaja, después se adjunta.
+
+                Un solo bloque, con los formatos requeridos y lo demás que quedó
+                en el expediente como dos secciones dentro del mismo marco. Antes
+                eran dos componentes apilados con estilos distintos, y había que
+                deducir cuál lista era cuál.
+
+                Donde el panel ya reparte sus formatos —3.1 y 5.1— se monta en
+                modo `soloExpediente`, para listar lo demás sin duplicarlos. */}
+            {actividadSeleccionada ? (
+              <div className="mt-3">
+                <DocumentosDeLaActividad
+                  procesoId={procesoId}
+                  numeral={actividadSeleccionada.numeral}
+                  recargarToken={tokenExpediente}
+                  soloExpediente={NUMERALES_CON_FORMATOS_PROPIOS.includes(
+                    actividadSeleccionada.numeral,
+                  )}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                  onFaltantes={setFaltanFormatos}
+                />
+              </div>
+            ) : null}
+          </SoloLectura>
 
         </div>
 

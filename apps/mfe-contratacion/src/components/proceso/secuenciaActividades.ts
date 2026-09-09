@@ -54,10 +54,14 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
 /**
  * Hasta dónde puede llegar el gestor: la secuencia del flujo.
  *
- * Devuelve los numerales que se pueden abrir. La matriz es una secuencia —la
- * 3.2 continúa lo que la 3.1 dejó— y hasta ahora la pantalla las ofrecía todas
- * a la vez, así que se podía diligenciar la 3.2 sin haber hecho la 3.1 y el
- * expediente quedaba contando una historia que no ocurrió en ese orden.
+ * Devuelve los numerales que se pueden **trabajar**. La matriz es una secuencia
+ * —la 3.2 continúa lo que la 3.1 dejó— y hasta ahora la pantalla las ofrecía
+ * todas a la vez, así que se podía diligenciar la 3.2 sin haber hecho la 3.1 y
+ * el expediente quedaba contando una historia que no ocurrió en ese orden.
+ *
+ * Abrirlas se puede siempre (EFDS-1183): lo que esta secuencia decide es dónde
+ * se escribe, no dónde se entra. Ver de antemano qué le van a pedir a uno no
+ * desordena nada; cargar un documento antes de tiempo, sí.
  *
  * Se salta lo que nunca podrá terminarse:
  *
@@ -115,7 +119,7 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
   return disponibles;
 }
 
-/** Por qué una actividad todavía no se puede abrir, para poder decirlo. */
+/** Por qué una actividad todavía no se puede trabajar, para poder decirlo. */
 export function motivoDelBloqueo(
   numeral: string,
   flujo: PasoDelFlujo[],

@@ -9,6 +9,7 @@ import {
   EstadoDocumentosActividad,
 } from '../../types';
 import { DocumentoVisible, VisorDocumento } from './VisorDocumento';
+import { useSoloLectura } from './SoloLectura';
 
 interface Props {
   procesoId: string;
@@ -62,6 +63,14 @@ export function DocumentosDeLaActividad({
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   const inputAdicional = useRef<HTMLInputElement>(null);
+  /**
+   * La secuencia todavía no llegó a esta actividad (EFDS-1183).
+   *
+   * Las filas siguen listándose y los formatos en blanco siguen descargándose
+   * —para eso se puede entrar a mirarla—, pero cargar queda fuera: es lo único
+   * que dejaría en el expediente un documento fuera de orden.
+   */
+  const soloLectura = useSoloLectura();
 
   /**
    * Lo que la actividad dejó en el expediente sin pasar por un formato: lo que
@@ -226,7 +235,8 @@ export function DocumentosDeLaActividad({
           key={doc.plantillaId}
           documento={doc}
           ocupada={ocupado === doc.plantillaId || ocupado === doc.cargado?.id}
-          puedeCargar={estado.puedeCargar}
+          puedeCargar={estado.puedeCargar && !soloLectura}
+          motivoBloqueo={soloLectura}
           onCargar={(archivo) => cargar(archivo, doc.plantillaId, doc.plantillaId)}
           onRetirar={() => doc.cargado && retirar(doc.cargado.id)}
           onVer={setViendo}
@@ -243,7 +253,7 @@ export function DocumentosDeLaActividad({
               key={doc.id}
               documento={doc}
               ocupada={ocupado === doc.id}
-              puedeRetirar={estado.puedeCargar}
+              puedeRetirar={estado.puedeCargar && !soloLectura}
               onRetirar={() => retirar(doc.id)}
               onVer={setViendo}
             />
@@ -266,7 +276,7 @@ export function DocumentosDeLaActividad({
 
       {/* Adjuntar algo que ningún formato pedía, en segundo plano: la lista de
           arriba es lo que hay que resolver. */}
-      {estado.puedeCargar && !soloExpediente && (
+      {estado.puedeCargar && !soloExpediente && !soloLectura && (
         <div className="pt-0.5">
           <input
             ref={inputAdicional}
@@ -304,6 +314,7 @@ function FilaRequerido({
   documento,
   ocupada,
   puedeCargar,
+  motivoBloqueo,
   onCargar,
   onRetirar,
   onVer,
@@ -312,6 +323,14 @@ function FilaRequerido({
   ocupada: boolean;
   /** Quien solo aprueba ve la fila, pero no los botones que le rechazarían. */
   puedeCargar: boolean;
+  /**
+   * Qué falta antes de poder cargar aquí, cuando lo que falta es la secuencia.
+   *
+   * Sin esto la fila bloqueada decía «Pendiente de que el gestor lo cargue» al
+   * propio gestor, que es justo quien no puede todavía: el motivo real no es de
+   * quién es el turno, sino que la actividad anterior no está cerrada.
+   */
+  motivoBloqueo?: string | null;
   onCargar: (archivo: File) => void;
   onRetirar: () => void;
   onVer: (documento: DocumentoVisible) => void;
@@ -427,7 +446,7 @@ function FilaRequerido({
         </div>
       ) : !cargado ? (
         <p className="text-[11px] text-slate-500 m-0 mt-2">
-          Pendiente de que el gestor lo cargue.
+          {motivoBloqueo ? `${motivoBloqueo}.` : 'Pendiente de que el gestor lo cargue.'}
         </p>
       ) : null}
     </div>
