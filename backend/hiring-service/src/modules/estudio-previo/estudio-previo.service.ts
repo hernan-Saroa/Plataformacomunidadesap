@@ -345,7 +345,20 @@ export class EstudioPrevioService {
       const enElProceso =
         verTodos || (await this.participacion.procesosDe(acceso)).includes(procesoId);
 
-      if (!enElProceso) {
+      /**
+       * Y la bandeja, que es la cuarta vía y la más fácil de olvidar.
+       *
+       * Un proceso sin recibir no es de nadie todavía: quien puede tomarlo
+       * tiene que poder abrirlo, o el listado le enseñaría lo que llegó a la
+       * Dirección y al pulsarlo le diría que no existe. Es exactamente lo que
+       * pasaba: la lista lo mostraba «en bandeja» y el detalle respondía 404.
+       */
+      const puedeRecibirlo =
+        enElProceso ||
+        (tienePermiso(acceso, PERMISO_PROCESO_TOMAR) &&
+          (await this.participacion.estaEnLaBandeja(procesoId)));
+
+      if (!puedeRecibirlo) {
         // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
         // no debe verlo que el proceso existe.
         throw new NotFoundException('Proceso no encontrado');

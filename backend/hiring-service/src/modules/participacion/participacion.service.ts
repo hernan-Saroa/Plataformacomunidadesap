@@ -331,22 +331,34 @@ export class ParticipacionService {
    * listado solo devuelve los procesos en los que ya estás, así que nadie podría
    * ver —ni tomar— uno que todavía no es de nadie.
    */
-  async idsEnBandeja(): Promise<string[]> {
+  async idsEnBandeja(soloEste?: string): Promise<string[]> {
     const filas: { id: string }[] = await this.dataSource.query(
       `SELECT p.id
          FROM hiring.procesos p
          JOIN hiring.proceso_actividades a
            ON a.proceso_id = p.id AND a.numeral = $1 AND a.estado = 'EN_REVISION'
         WHERE p.estado = 'EN_CURSO'
+          AND ($2::uuid IS NULL OR p.id = $2::uuid)
           AND NOT EXISTS (
             SELECT 1 FROM hiring.participaciones_proceso pp
              WHERE pp.proceso_id = p.id
                AND pp.papel = 'CONTRATACION'
                AND pp.estado = 'VIGENTE'
           )`,
-      [NUMERAL_ESTUDIO_PREVIO],
+      [NUMERAL_ESTUDIO_PREVIO, soloEste ?? null],
     );
     return filas.map((f) => f.id);
+  }
+
+  /**
+   * Si ese proceso concreto está en la bandeja.
+   *
+   * Misma consulta con un filtro, y no una segunda escrita a mano: qué cuenta
+   * como «estar en la bandeja» tiene que decirlo un solo sitio, o el listado y
+   * el control de acceso acabarán discrepando sobre el mismo proceso.
+   */
+  async estaEnLaBandeja(procesoId: string): Promise<boolean> {
+    return (await this.idsEnBandeja(procesoId)).length > 0;
   }
 
   /** Quién está en cada proceso del listado, en una sola consulta. */
