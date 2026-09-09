@@ -68,7 +68,9 @@ export class AssignmentsService {
         }
       }
     } catch (error) {
-      this.logger.warn('[assignments] No se pudo leer LIMITE_CARGA_SATURACION, usando default 12');
+      this.logger.warn(
+        '[assignments] No se pudo leer LIMITE_CARGA_SATURACION, usando default 12',
+      );
     }
     return 12;
   }
@@ -79,7 +81,10 @@ export class AssignmentsService {
    * - AMARILLO: 6 hasta el límite de saturación
    * - ROJO: mayor al límite de saturación
    */
-  private calcularColorSemafoto(puntaje: number, limiteSaturacion: number): string {
+  private calcularColorSemafoto(
+    puntaje: number,
+    limiteSaturacion: number,
+  ): string {
     if (puntaje <= 5) {
       return 'VERDE';
     }
@@ -146,7 +151,10 @@ export class AssignmentsService {
       [this.ESTADOS_ACTIVOS],
     );
 
-    const cargaPorAnalista = new Map<string, { altas: number; medias: number; bajas: number; puntaje: number }>();
+    const cargaPorAnalista = new Map<
+      string,
+      { altas: number; medias: number; bajas: number; puntaje: number }
+    >();
     for (const row of solicitudesActivas) {
       const analistaId = row.analista_id;
       const prioridad = (row.prioridad || 'BAJA').toUpperCase();
@@ -154,7 +162,12 @@ export class AssignmentsService {
       const peso = this.PESOS_PRIORIDAD[prioridad] || 1;
 
       if (!cargaPorAnalista.has(analistaId)) {
-        cargaPorAnalista.set(analistaId, { altas: 0, medias: 0, bajas: 0, puntaje: 0 });
+        cargaPorAnalista.set(analistaId, {
+          altas: 0,
+          medias: 0,
+          bajas: 0,
+          puntaje: 0,
+        });
       }
       const entry = cargaPorAnalista.get(analistaId)!;
 
@@ -166,8 +179,16 @@ export class AssignmentsService {
     }
 
     return analistasFiltrados.map((a) => {
-      const carga = cargaPorAnalista.get(a.usuarioId) || { altas: 0, medias: 0, bajas: 0, puntaje: 0 };
-      const colorSemaforo = this.calcularColorSemafoto(carga.puntaje, limiteSaturacion);
+      const carga = cargaPorAnalista.get(a.usuarioId) || {
+        altas: 0,
+        medias: 0,
+        bajas: 0,
+        puntaje: 0,
+      };
+      const colorSemaforo = this.calcularColorSemafoto(
+        carga.puntaje,
+        limiteSaturacion,
+      );
 
       return {
         usuarioId: a.usuarioId,
@@ -198,9 +219,14 @@ export class AssignmentsService {
     solicitudId: string,
     analistaId: string,
     secretarioId: string,
-  ): Promise<{ solicitud: SolicitudComisionEntity; historial: SolicitudHistorialEstadoEntity }> {
+  ): Promise<{
+    solicitud: SolicitudComisionEntity;
+    historial: SolicitudHistorialEstadoEntity;
+  }> {
     if (!solicitudId || !analistaId || !secretarioId) {
-      throw new BadRequestException('solicitudId, analistaId y secretarioId son obligatorios.');
+      throw new BadRequestException(
+        'solicitudId, analistaId y secretarioId son obligatorios.',
+      );
     }
 
     return this.dataSource.transaction(async (manager) => {
@@ -231,7 +257,9 @@ export class AssignmentsService {
         .getOne();
 
       if (!analista) {
-        throw new BadRequestException(`El analista ${analistaId} no existe en el módulo de viáticos.`);
+        throw new BadRequestException(
+          `El analista ${analistaId} no existe en el módulo de viáticos.`,
+        );
       }
 
       const estadoAnterior = solicitud.estadoSolicitud;
@@ -240,18 +268,24 @@ export class AssignmentsService {
       solicitud.analistaAsignadoId = analistaId;
       solicitud.estadoSolicitud = EstadoSolicitud.EN_VERIFICACION;
 
-      const savedSolicitud = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+      const savedSolicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
 
       // 5. Registrar en historial de estados
-      const historial = manager.getRepository(SolicitudHistorialEstadoEntity).create({
-        solicitudId: solicitud.id,
-        estadoAnterior,
-        estadoNuevo: EstadoSolicitud.EN_VERIFICACION,
-        usuarioId: secretarioId,
-        comentarios: `Asignada a analista ${analista.username}`,
-      });
+      const historial = manager
+        .getRepository(SolicitudHistorialEstadoEntity)
+        .create({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.EN_VERIFICACION,
+          usuarioId: secretarioId,
+          comentarios: `Asignada a analista ${analista.username}`,
+        });
 
-      const savedHistorial = await manager.getRepository(SolicitudHistorialEstadoEntity).save(historial);
+      const savedHistorial = await manager
+        .getRepository(SolicitudHistorialEstadoEntity)
+        .save(historial);
 
       this.logger.log(
         `[assignments] Solicitud ${solicitud.consecutivoUnico} asignada a ${analista.nombreCompleto} (${analista.username}) por secretario ${secretarioId}`,
@@ -266,7 +300,9 @@ export class AssignmentsService {
    *
    * Filtra por analista_id y estados activos: SOLICITADO, EN_VERIFICACION, VERIFICADA.
    */
-  async obtenerSolicitudesAsignadas(analistaId: string): Promise<SolicitudComisionEntity[]> {
+  async obtenerSolicitudesAsignadas(
+    analistaId: string,
+  ): Promise<SolicitudComisionEntity[]> {
     if (!analistaId) {
       throw new BadRequestException('analistaId es obligatorio.');
     }

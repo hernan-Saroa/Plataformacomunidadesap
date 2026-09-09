@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AssignmentsService } from '../assignments.service';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -29,14 +26,27 @@ describe('AssignmentsService — RF-REC-002', () => {
     updatedAt: new Date(),
   };
 
-  const buildDataSource = (solicitudRepo: any, analistaRepo: any, historialRepo: any): DataSource => ({
+  const buildDataSource = (
+    solicitudRepo: any,
+    analistaRepo: any,
+    historialRepo: any,
+  ): DataSource => ({
     transaction: jest.fn().mockImplementation(async (cb: any) => {
       const manager = {
         getRepository: jest.fn().mockImplementation((entity: any) => {
           const nombre = entity?.name || entity?.constructor?.name || '';
-          if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision') return solicitudRepo;
-          if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados') return historialRepo;
-          if (nombre === 'AnalistaEntity' || nombre === 'analistas_viaticos') return analistaRepo;
+          if (
+            nombre === 'SolicitudComisionEntity' ||
+            nombre === 'solicitudes_comision'
+          )
+            return solicitudRepo;
+          if (
+            nombre === 'SolicitudHistorialEstadoEntity' ||
+            nombre === 'solicitudes_historial_estados'
+          )
+            return historialRepo;
+          if (nombre === 'AnalistaEntity' || nombre === 'analistas_viaticos')
+            return analistaRepo;
           return {};
         }),
       };
@@ -46,17 +56,23 @@ describe('AssignmentsService — RF-REC-002', () => {
     query: jest.fn().mockResolvedValue([]),
     getRepository: jest.fn().mockImplementation((entity: any) => {
       const nombre = entity?.name || entity?.constructor?.name || '';
-      if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision') return solicitudRepo;
+      if (
+        nombre === 'SolicitudComisionEntity' ||
+        nombre === 'solicitudes_comision'
+      )
+        return solicitudRepo;
       return {};
     }),
   });
 
-  const createMockModule = (overrides: {
-    analistaRepo?: any;
-    solicitudRepo?: any;
-    historialRepo?: any;
-    dataSource?: DataSource;
-  } = {}) => {
+  const createMockModule = (
+    overrides: {
+      analistaRepo?: any;
+      solicitudRepo?: any;
+      historialRepo?: any;
+      dataSource?: DataSource;
+    } = {},
+  ) => {
     const {
       analistaRepo = { find: jest.fn(), createQueryBuilder: jest.fn() },
       solicitudRepo = {
@@ -117,7 +133,10 @@ describe('AssignmentsService — RF-REC-002', () => {
         ]),
       };
 
-      const module = await createMockModule({ analistaRepo, dataSource: dataSource as any });
+      const module = await createMockModule({
+        analistaRepo,
+        dataSource: dataSource as any,
+      });
       const svc = module.get<AssignmentsService>(AssignmentsService);
 
       const resultado = await svc.obtenerCargaAnalistas();
@@ -142,7 +161,10 @@ describe('AssignmentsService — RF-REC-002', () => {
         query: jest.fn().mockResolvedValue([]),
       };
 
-      const module = await createMockModule({ analistaRepo, dataSource: dataSource as any });
+      const module = await createMockModule({
+        analistaRepo,
+        dataSource: dataSource as any,
+      });
       const svc = module.get<AssignmentsService>(AssignmentsService);
 
       const resultado = await svc.obtenerCargaAnalistas();
@@ -160,12 +182,17 @@ describe('AssignmentsService — RF-REC-002', () => {
       const dataSource = {
         transaction: jest.fn(),
         createQueryBuilder: jest.fn(),
-        query: jest.fn().mockResolvedValue([
-          { analista_id: 'user-analista-1', prioridad: 'ALTA', cantidad: 5 },
-        ]),
+        query: jest
+          .fn()
+          .mockResolvedValue([
+            { analista_id: 'user-analista-1', prioridad: 'ALTA', cantidad: 5 },
+          ]),
       };
 
-      const module = await createMockModule({ analistaRepo, dataSource: dataSource as any });
+      const module = await createMockModule({
+        analistaRepo,
+        dataSource: dataSource as any,
+      });
       const svc = module.get<AssignmentsService>(AssignmentsService);
 
       const resultado = await svc.obtenerCargaAnalistas();
@@ -210,12 +237,22 @@ describe('AssignmentsService — RF-REC-002', () => {
         save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
       };
 
-      const module = await createMockModule({ analistaRepo, solicitudRepo, historialRepo });
+      const module = await createMockModule({
+        analistaRepo,
+        solicitudRepo,
+        historialRepo,
+      });
       const svc = module.get<AssignmentsService>(AssignmentsService);
 
-      const resultado = await svc.asignarAnalista('sol-001', 'user-analista-1', 'secretario-1');
+      const resultado = await svc.asignarAnalista(
+        'sol-001',
+        'user-analista-1',
+        'secretario-1',
+      );
 
-      expect(resultado.solicitud.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
+      expect(resultado.solicitud.estadoSolicitud).toBe(
+        EstadoSolicitud.EN_VERIFICACION,
+      );
       expect(resultado.solicitud.analistaAsignadoId).toBe('user-analista-1');
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -335,18 +372,23 @@ describe('AssignmentsService — RF-REC-002', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<AssignmentsService>(AssignmentsService);
 
-      const resultado = await svc.obtenerSolicitudesAsignadas('user-analista-1');
+      const resultado =
+        await svc.obtenerSolicitudesAsignadas('user-analista-1');
 
       expect(resultado).toHaveLength(2);
       expect(resultado[0].estadoSolicitud).toBe(EstadoSolicitud.SOLICITADO);
-      expect(resultado[1].estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
+      expect(resultado[1].estadoSolicitud).toBe(
+        EstadoSolicitud.EN_VERIFICACION,
+      );
     });
 
     it('debe lanzar 400 si analistaId no está definido', async () => {
       const module = await createMockModule();
       const svc = module.get<AssignmentsService>(AssignmentsService);
 
-      await expect(svc.obtenerSolicitudesAsignadas('')).rejects.toThrow(BadRequestException);
+      await expect(svc.obtenerSolicitudesAsignadas('')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

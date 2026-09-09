@@ -12,7 +12,8 @@ export type EstadoSolicitudViatico =
   | 'RECHAZADO'
   | 'RADICADA'
   | 'EXTEMPORANEA'
-  | 'DEVUELTA';
+  | 'DEVUELTA'
+  | 'SOLICITADA_SIIF';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -154,7 +155,17 @@ export interface SolicitudComisionResponse {
    warningMessage?: string;
    salarioBasico?: number;
    costoEstimadoTiquete?: number;
-   analistaAsignadoId?: string | null;
+  analistaAsignadoId?: string | null;
+  siifExportado?: boolean;
+  fechaExportacionSiif?: string | null;
+  consultaRutFacturador?: boolean;
+  resumenPresupuestal?: {
+    totalGastado: number;
+    cantidadSolicitudes: number;
+    limitePresupuesto: number;
+    porcentajeUso: number;
+    semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+  };
 }
 
 /**
@@ -211,6 +222,7 @@ export interface SolicitudListaResponse {
     | 'email'
     | 'telefonoContacto'
     | 'autorizacionHabeasData'
+    | 'idDependencia'
   > | null;
   destinoCiudad: string;
   destinoDepartamento: string;
@@ -235,6 +247,7 @@ export interface SolicitudListaResponse {
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
 }
 
 export interface BandejaSecretarioResponse {
@@ -287,6 +300,7 @@ export interface SolicitudViatico {
   actualizadoEn: string;
   esCreadoPorMi?: boolean;
   analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
 }
 
 export interface TiqueteAereo {
@@ -558,4 +572,34 @@ export interface AsignacionAnalistaResponse {
     analistaAsignadoId: string | null;
     historialId: string;
   };
+}
+
+// =========================================================================
+// RF-VER-SIIF — Verificar y crear comisión en SIIF Nación (Etapa 5)
+// =========================================================================
+
+export interface VerifyAuditResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    consultaRutFacturador: boolean;
+  };
+  timestamp: string;
+}
+
+export interface DevolverAnalistaResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    motivoDevolucion: string;
+  };
+  timestamp: string;
+}
+
+export interface SolicitudAsignadaAnalistaResponse {
+  data: SolicitudListaResponse[];
+  total: number;
+  timestamp: string;
 }

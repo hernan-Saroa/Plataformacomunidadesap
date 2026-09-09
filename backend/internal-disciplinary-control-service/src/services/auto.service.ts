@@ -17,6 +17,7 @@ import { ProcessService } from './process.service';
 import { SequenceService } from './sequence.service';
 import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
+import { AutosConfigurationService } from './autos-configuration.service';
 import {
   DisciplinaryProcess,
   ProcessStage,
@@ -47,6 +48,7 @@ export class AutoService {
     private documentConversionService: DocumentConversionService,
     private juridicaEmailService: JuridicaEmailService,
     private notificationClient: NotificationClientService,
+    private autosConfigurationService: AutosConfigurationService,
   ) {}
 
   /**
@@ -193,6 +195,7 @@ export class AutoService {
 
     if (
       auto.tipo !== AutoType.AUTO_ARCHIVO &&
+      auto.tipo !== AutoType.AUTO_INHIBITORIO &&
       auto.estado !== AutoStatus.BORRADOR &&
       auto.estado !== AutoStatus.DEVUELTO
     ) {
@@ -261,6 +264,8 @@ export class AutoService {
 
       if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
+      } else if (auto.tipo === AutoType.AUTO_INHIBITORIO) {
+        await this.archiveProcessInhibitorio(auto.processId, aprobadoPorId);
       }
 
       // EFDS-1564: recordar la etapa previa por si luego se reversa la aprobación.
@@ -312,12 +317,19 @@ export class AutoService {
 
       // EFDS-1564: si la aprobación efectivamente movió la etapa del proceso, se
       // guarda la etapa previa para poder devolver el proceso a ella si se reversa.
+      // Para inhibitorio/archivo, el proceso se archiva (status ARCHIVADO) pero la
+      // etapa no cambia, así que guardamos la etapa actual para poder restaurarla.
       if (etapaAntesDeAprobar) {
         const procesoTrasAprobar = await this.processService.findById(
           auto.processId,
           false,
         );
-        if (procesoTrasAprobar.etapaActual !== etapaAntesDeAprobar) {
+        const etapaCambiada = procesoTrasAprobar.etapaActual !== etapaAntesDeAprobar;
+        const esInhibitorioOArchivo =
+          auto.tipo === AutoType.AUTO_INHIBITORIO ||
+          auto.tipo === AutoType.AUTO_ARCHIVO;
+
+        if (etapaCambiada || esInhibitorioOArchivo) {
           auto.etapaPreviaAprobacion = etapaAntesDeAprobar;
         }
       }
@@ -534,10 +546,11 @@ export class AutoService {
     if (
       auto.estado !== AutoStatus.BORRADOR &&
       auto.estado !== AutoStatus.DEVUELTO &&
-      auto.tipo !== AutoType.AUTO_ARCHIVO
+      auto.tipo !== AutoType.AUTO_ARCHIVO &&
+      auto.tipo !== AutoType.AUTO_INHIBITORIO
     ) {
       throw new HttpException(
-        'Solo se pueden editar borradores, autos devueltos o autos de archivo',
+        'Solo se pueden editar borradores, autos devueltos, autos de archivo o autos inhibitorios',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -828,6 +841,42 @@ export class AutoService {
     }
   }
 
+  /**
+   * Archiva un proceso por Auto Inhibitorio (art. 209).
+   * Diferencia clave: el inhibitorio se produce ANTES de iniciar actuación disciplinaria,
+   * mientras que el archivo ocurre DENTRO de una actuación. El proceso queda ARCHIVADO
+   * pero con etapa INHIBITORIO para identificarlo como proceso inhibitorio.
+   */
+  private async archiveProcessInhibitorio(
+    processId: string,
+    aprobadoPorId: string,
+  ): Promise<void> {
+    try {
+      await this.processService.updateStatus(processId, ProcessStatus.ARCHIVADO);
+
+      const process = await this.processService.findById(processId, false);
+      process.fechaVencimientoEtapa = null;
+      process.etapaActual = ProcessStage.INHIBITORIO;
+      await this.processService['processRepository'].save(process);
+
+      if (process.abogadoAsignadoId) {
+        const asunto = `Proceso Inhibido: ${process.radicadoProceso}`;
+        const mensaje = `El proceso ${process.radicadoProceso} ha sido inhibido (art. 209) tras la aprobación del auto inhibitorio. No se inició actuación disciplinaria. El proceso queda archivado como inhibitorio.`;
+
+        await this.alertasService.crearNotificacionAuto(
+          null,
+          TipoAlerta.SISTEMA,
+          process.abogadoAsignadoId,
+          asunto,
+          mensaje,
+          aprobadoPorId,
+        );
+      }
+    } catch (error) {
+      console.error('Error archivando proceso inhibitorio:', error);
+    }
+  }
+
   private isWordDocument(
     auto: Pick<LegalAuto, 'documentName' | 'documentType' | 'documentUrl'>,
   ): boolean {
@@ -856,6 +905,17 @@ export class AutoService {
 
     const approvedPdfName = `${auto.numero}.pdf`;
 
+    // Obtener configuración del auto para determinar si necesita restricción de imágenes en footer
+    let autoConfigTipo: string | undefined;
+    if (auto.autoConfigurationId) {
+      try {
+        const config = await this.autosConfigurationService.findById(auto.autoConfigurationId);
+        autoConfigTipo = config.tipo;
+      } catch (error) {
+        console.warn('No se pudo obtener configuración de auto:', error);
+      }
+    }
+
     if (this.isWordDocument(auto)) {
       const convertedDocument =
         await this.documentConversionService.convertWordToPdf(
@@ -865,6 +925,7 @@ export class AutoService {
             marker,
             value: auto.numero,
           })),
+          { autoConfigTipo },
         );
 
       const replacedAutoConsecutive = AUTO_CONSECUTIVE_MARKERS.some((marker) =>
@@ -1013,11 +1074,9 @@ export class AutoService {
   }
 
   /**
-   * Reversa la aprobación de un Pliego de Cargos, devolviéndolo a BORRADOR para
-   * que el Profesional lo corrija y lo vuelva a enviar a revisión. Solo aplica
-   * mientras el auto sigue en estado APROBADO — una vez enviado a Jurídica el
-   * auto pasa a NOTIFICADO, así que esta operación queda bloqueada por diseño y
-   * NO afecta en absoluto el envío a Jurídica ni el cierre del proceso.
+   * Reversa la aprobación de un Pliego de Cargos, Auto Inhibitorio o Auto de Archivo,
+   * devolviéndolo a BORRADOR para que el Profesional lo corrija y lo vuelva a enviar
+   * a revisión. Solo aplica mientras el auto sigue en estado APROBADO.
    */
   async revertApproval(
     id: string,
@@ -1025,16 +1084,22 @@ export class AutoService {
   ): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
+    const esTipoReversible =
+      auto.tipo === AutoType.PLIEGO_CARGOS ||
+      auto.tipo === AutoType.AUTO_FORMULACION_PLIEGO ||
+      auto.tipo === AutoType.AUTO_INHIBITORIO ||
+      auto.tipo === AutoType.AUTO_ARCHIVO;
+
+    if (!esTipoReversible) {
       throw new HttpException(
-        'Esta operación solo aplica para autos de pliego de cargos',
+        'Esta operación solo aplica para autos de pliego de cargos, inhibitorio o archivo',
         HttpStatus.BAD_REQUEST,
       );
     }
 
     if (auto.estado !== AutoStatus.APROBADO) {
       throw new HttpException(
-        'Solo se puede reversar la aprobación de un auto que esté APROBADO. Si ya fue enviado a Jurídica, no se puede reversar.',
+        'Solo se puede reversar la aprobación de un auto que esté APROBADO.',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -1064,13 +1129,31 @@ export class AutoService {
     // EFDS-1564: devolver el proceso a la etapa en la que estaba antes de aprobar.
     const etapaADevolver = auto.etapaPreviaAprobacion;
     let etapaProcesoRevertida: string | null = null;
+    let procesoReactivado = false;
+
     if (etapaADevolver) {
-      const procesoRevertido = await this.processService.revertirEtapaProceso(
-        auto.processId,
-        etapaADevolver,
-        revertidoPorId,
-      );
-      etapaProcesoRevertida = procesoRevertido.etapaActual;
+      const esInhibitorioOArchivo =
+        auto.tipo === AutoType.AUTO_INHIBITORIO ||
+        auto.tipo === AutoType.AUTO_ARCHIVO;
+
+      if (esInhibitorioOArchivo) {
+        // Para inhibitorio/archivo, el proceso está ARCHIVADO: reactivarlo y restaurar etapa
+        const proceso = await this.processService.findById(auto.processId, false);
+        proceso.estado = ProcessStatus.ACTIVO;
+        proceso.etapaActual = etapaADevolver;
+        proceso.fechaVencimientoEtapa = new Date(); // Se recalculá luego
+        await this.processService['processRepository'].save(proceso);
+        etapaProcesoRevertida = etapaADevolver;
+        procesoReactivado = true;
+      } else {
+        // Para pliego de cargos, usar el método existente
+        const procesoRevertido = await this.processService.revertirEtapaProceso(
+          auto.processId,
+          etapaADevolver,
+          revertidoPorId,
+        );
+        etapaProcesoRevertida = procesoRevertido.etapaActual;
+      }
       auto.etapaPreviaAprobacion = null;
     }
 
@@ -1086,15 +1169,22 @@ export class AutoService {
       documentName: savedAuto.documentName,
     });
 
+    const tipoAutoTexto =
+      auto.tipo === AutoType.PLIEGO_CARGOS || auto.tipo === AutoType.AUTO_FORMULACION_PLIEGO
+        ? 'Pliego de Cargos'
+        : auto.tipo === AutoType.AUTO_INHIBITORIO
+          ? 'Inhibitorio'
+          : 'Archivo';
+
     await this.actuacionesRepository.save({
       processId: auto.processId,
       tipo: 'reversion_aprobacion',
       etapa: etapaProcesoRevertida ?? auto.process?.etapaActual,
-      descripcion: `Se reversó la aprobación del Pliego de Cargos (${auto.numero || 'sin número'}). El auto vuelve a borrador para corrección.`,
+      descripcion: `Se reversó la aprobación del ${tipoAutoTexto} (${auto.numero || 'sin número'}). El auto vuelve a borrador para corrección.`,
       responsableNombre: revertidoPorId,
       fechaActuacion: new Date(),
       observaciones: etapaProcesoRevertida
-        ? `El proceso regresó a la etapa ${etapaProcesoRevertida}.`
+        ? `El proceso regresó a la etapa ${etapaProcesoRevertida}${procesoReactivado ? ' y se reactivó (era ARCHIVADO)' : ''}.`
         : 'La etapa del proceso no se modifica; solo se revierte el estado del auto.',
     });
 
@@ -1104,8 +1194,8 @@ export class AutoService {
         .send({
           id_usuario_destinatario: proceso.abogadoAsignadoId,
           tipo_notificacion: 'AUTO_APROBACION_REVERSADA',
-          titulo: 'Aprobación de Pliego de Cargos reversada',
-          mensaje: `El Jefe OCID reversó la aprobación del Pliego de Cargos del proceso ${proceso.radicadoProceso}. El auto volvió a borrador para que lo corrijas y lo envíes de nuevo a revisión.`,
+          titulo: `Aprobación de ${tipoAutoTexto} reversada`,
+          mensaje: `El Jefe OCID reversó la aprobación del ${tipoAutoTexto.toLowerCase()} del proceso ${proceso.radicadoProceso}. El auto volvió a borrador para que lo corrijas y lo envíes de nuevo a revisión.`,
           descripcion_corta: `Aprobación reversada - ${proceso.radicadoProceso}`,
           icono: 'RotateCcw',
           color: '#DC2626',

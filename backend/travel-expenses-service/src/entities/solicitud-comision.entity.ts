@@ -23,6 +23,7 @@ import { UsuarioEntity } from './usuario.entity';
   'fechaInicio',
   'fechaFin',
 ])
+@Index('idx_solicitudes_siif_exportado', ['siifExportado'])
 export class SolicitudComisionEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -145,9 +146,24 @@ export class SolicitudComisionEntity {
   @Column({ name: 'analista_asignado_id', type: 'uuid', nullable: true })
   analistaAsignadoId: string | null;
 
+  @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
+  idDependencia: number | null;
+
   @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'analista_asignado_id' })
   analistaAsignado: UsuarioEntity;
+
+  @Column({ name: 'siif_exportado', type: 'boolean', default: false })
+  siifExportado: boolean;
+
+  @Column({ name: 'fecha_exportacion_siif', type: 'timestamp', nullable: true })
+  fechaExportacionSiif: Date | null;
+
+  @Column({ name: 'usuario_exportador_id', type: 'uuid', nullable: true })
+  usuarioExportadorId: string | null;
+
+  @Column({ name: 'consulta_rut_facturador', type: 'boolean', default: false })
+  consultaRutFacturador: boolean;
 
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;

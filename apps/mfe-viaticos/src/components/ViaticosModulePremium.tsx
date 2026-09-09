@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
+import AnalystInbox from './AnalystInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
@@ -79,6 +80,8 @@ export default function ViaticosModulePremium() {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
+  const [esAnalista, setEsAnalista] = useState(false);
+  const [cargandoRol, setCargandoRol] = useState(true);
   const [prioridadSeleccionada, setPrioridadSeleccionada] = useState<string>('');
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
   const [guardandoPrioridad, setGuardandoPrioridad] = useState(false);
@@ -139,8 +142,7 @@ export default function ViaticosModulePremium() {
   const cargarDatos = async () => {
     setCargando(true);
     try {
-      const { solicitudes: list, esSuperAdmin: esSuperAdminResp } = await viaticosService.obtenerSolicitudes();
-      setEsSuperAdmin(esSuperAdminResp);
+      const { solicitudes: list } = await viaticosService.obtenerSolicitudes();
 
       const esSecretario = authService.hasAnyPermission([
         Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
@@ -174,8 +176,27 @@ export default function ViaticosModulePremium() {
   };
 
   useEffect(() => {
-    cargarDatos();
+    const determinarRol = async () => {
+      setCargandoRol(true);
+      try {
+        await authService.getCurrentUser();
+      } catch {
+        // si falla verify, getCurrentUserSync() usará la caché del shell
+      } finally {
+        setEsSuperAdmin(authService.isSuperAdmin());
+        setEsAnalista(authService.isAnalista());
+        setCargandoRol(false);
+      }
+    };
+
+    determinarRol();
   }, []);
+
+  useEffect(() => {
+    if (!cargandoRol && (!esAnalista || esSuperAdmin)) {
+      cargarDatos();
+    }
+  }, [cargandoRol, esAnalista, esSuperAdmin]);
 
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
@@ -363,6 +384,18 @@ export default function ViaticosModulePremium() {
       }),
     }))
     .filter((grupo) => grupo.items.length > 0);
+
+  if (cargandoRol) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-xs text-slate-400">Cargando módulo de viáticos...</div>
+      </div>
+    );
+  }
+
+  if (esAnalista && !esSuperAdmin) {
+    return <AnalystInbox />;
+  }
 
   return (
     <ModuleLayout

@@ -16,6 +16,7 @@ export enum AutoType {
   // Core types
   AUTO_NORMAL = 'AUTO_NORMAL',
   AUTO_ARCHIVO = 'AUTO_ARCHIVO',
+  AUTO_INHIBITORIO = 'AUTO_INHIBITORIO',
   AUTO_PRORROGA = 'AUTO_PRORROGA',
   AUTO_FORMULACION_PLIEGO = 'AUTO_FORMULACION_PLIEGO',
   // Dynamic apertura types will be validated by pattern

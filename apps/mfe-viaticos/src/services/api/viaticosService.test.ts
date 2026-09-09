@@ -1,101 +1,167 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import viaticosService from './viaticosService';
+import { test, expect, vi, describe, beforeEach } from 'vitest';
+import { ViaticosService } from './viaticosService';
 import apiClient from './apiClient';
+import { buildApiUrl } from '../../../config/environment';
+import dependenciasService from '../../../../shell/src/services/api/dependencias.service';
+import { fallbackGeopolitica } from '../../utils/viaticosUtils';
 
-// Se mockea el apiClient para probar el parseo REAL de la respuesta del
-// auth-service (que envuelve con { success, data: { data: [...] }, timestamp }).
-vi.mock('./apiClient', () => ({
-  __esModule: true,
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-  },
-}));
+vi.mock('./apiClient');
+vi.mock('../../../config/environment');
+vi.mock('../../../../shell/src/services/api/dependencias.service');
+vi.mock('../../utils/viaticosUtils');
+vi.mock('../../../../shell/src/services/api/offlineCache');
 
-const mockedGet = vi.mocked(apiClient.get);
+const mockedApiClient = apiClient as ReturnType<typeof vi.fn> & {
+  get: ReturnType<typeof vi.fn>;
+  post: ReturnType<typeof vi.fn>;
+};
+const mockedBuildApiUrl = buildApiUrl as ReturnType<typeof vi.fn>;
+const mockedDependenciasService = dependenciasService as ReturnType<typeof vi.fn> & {
+  getDependencias: ReturnType<typeof vi.fn>;
+};
+const mockedFallbackGeopolitica = fallbackGeopolitica as ReturnType<typeof vi.fn>;
 
-describe('ViaticosService · geopolítica (auth.geopolitica)', () => {
+mockedBuildApiUrl.mockReturnValue('http://localhost:4000');
+mockedFallbackGeopolitica.mockReturnValue({ id: 'fallback', nombre: 'Fallback' });
+
+describe('ViaticosService — RF-REC-002', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('debe extraer departamentos de { success, data: { data: [...] } }', async () => {
-    mockedGet.mockResolvedValue({
-      success: true,
-      data: {
+  describe('obtenerCargaAnalistas', () => {
+    it('debe retornar la carga de analistas sin solicitudId', async () => {
+      const mockResponse = {
         data: [
           {
-            idGeopolitica: '920',
-            codGeopolitica: '66',
-            codDepartamento: 66,
-            nomDivGeopolitica: 'Risaralda',
-            tipDivision: 'DEPTO',
+            usuarioId: 'user-1',
+            nombreCompleto: 'Ana Gómez',
+            username: 'ana.gomez',
+            identificacion: '123456',
+            asignacionesActivas: 1,
+            altas: 1,
+            medias: 0,
+            bajas: 0,
+            puntajeTotal: 3,
+            colorSemaforo: 'VERDE',
           },
         ],
-      },
-      timestamp: '2026-08-28T00:00:00.000Z',
+        total: 1,
+      };
+
+      mockedApiClient.get.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.obtenerCargaAnalistas();
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.get).toHaveBeenCalledWith(
+        '/viaticos/api/v1/assignments/workload',
+      );
     });
 
-    const departamentos = await viaticosService.obtenerDepartamentos();
+    it('debe retornar la carga de analistas con solicitudId', async () => {
+      const mockResponse = {
+        data: [],
+        total: 0,
+      };
 
-    expect(mockedGet).toHaveBeenCalledWith(
-      '/auth/api/v1/estructura-organizacional/geopolitica/departamentos',
-    );
-    expect(departamentos).toHaveLength(1);
-    expect(departamentos[0].nomDivGeopolitica).toBe('Risaralda');
-    expect(departamentos[0].codDepartamento).toBe(66);
+      mockedApiClient.get.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.obtenerCargaAnalistas('sol-001');
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.get).toHaveBeenCalledWith(
+        '/viaticos/api/v1/assignments/workload?solicitudId=sol-001',
+      );
+    });
+
+    it('debe retornar array vacío si hay error', async () => {
+      mockedApiClient.get.mockRejectedValue(new Error('Network error'));
+
+      const service = new ViaticosService();
+      const result = await service.obtenerCargaAnalistas();
+
+      expect(result).toEqual({ data: [], total: 0 });
+    });
   });
 
-  it('debe extraer ciudades llamando con el código DANE del departamento (66)', async () => {
-    mockedGet.mockResolvedValue({
-      success: true,
-      data: {
+  describe('asignarAnalista', () => {
+    it('debe asignar el analista correctamente', async () => {
+      const mockResponse = {
+        success: true,
+        message: 'Solicitud asignada exitosamente.',
+        data: {
+          solicitudId: 'sol-001',
+          estadoSolicitud: 'EN_VERIFICACION',
+          analistaAsignadoId: 'user-1',
+          historialId: 'hist-001',
+        },
+      };
+
+      mockedApiClient.post.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.asignarAnalista({
+        solicitudId: 'sol-001',
+        analistaId: 'user-1',
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.post).toHaveBeenCalledWith(
+        '/viaticos/api/v1/assignments/assign',
+        { solicitudId: 'sol-001', analistaId: 'user-1' },
+      );
+    });
+
+    it('debe propagar el error si la asignación falla', async () => {
+      const error = new Error('Bad Request');
+      mockedApiClient.post.mockRejectedValue(error);
+
+      const service = new ViaticosService();
+
+      await expect(
+        service.asignarAnalista({
+          solicitudId: 'sol-001',
+          analistaId: 'user-1',
+        }),
+      ).rejects.toThrow('Bad Request');
+    });
+  });
+
+  describe('obtenerSolicitudesAsignadas', () => {
+    it('debe retornar las solicitudes asignadas al analista', async () => {
+      const mockResponse = {
         data: [
           {
-            idGeopolitica: '921',
-            codGeopolitica: '66001',
-            codDepartamento: 66,
-            nomDivGeopolitica: 'Pereira',
-            tipDivision: 'CIUDAD',
-          },
-          {
-            idGeopolitica: '922',
-            codGeopolitica: '66045',
-            codDepartamento: 66,
-            nomDivGeopolitica: 'Apía',
-            tipDivision: 'CIUDAD',
+            id: 'sol-001',
+            consecutivoUnico: 'COM-2026-0001',
+            estadoSolicitud: 'SOLICITADO',
+            analistaAsignadoId: 'user-1',
           },
         ],
-      },
-      timestamp: '2026-08-28T00:00:00.000Z',
+        total: 1,
+      };
+
+      mockedApiClient.get.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.obtenerSolicitudesAsignadas();
+
+      expect(result).toEqual(mockResponse.data);
+      expect(mockedApiClient.get).toHaveBeenCalledWith(
+        '/viaticos/api/v1/assignments/my-requests',
+      );
     });
 
-    const ciudades = await viaticosService.obtenerCiudadesPorDepartamento(66);
+    it('debe retornar array vacío si hay error', async () => {
+      mockedApiClient.get.mockRejectedValue(new Error('Network error'));
 
-    expect(mockedGet).toHaveBeenCalledWith(
-      '/auth/api/v1/estructura-organizacional/geopolitica/departamentos/66/ciudades',
-    );
-    expect(ciudades).toHaveLength(2);
-    expect(ciudades.map((c) => c.nomDivGeopolitica)).toEqual(['Pereira', 'Apía']);
-  });
+      const service = new ViaticosService();
+      const result = await service.obtenerSolicitudesAsignadas();
 
-  it('debe usar el catálogo local si el API está caída (rechazada)', async () => {
-    mockedGet.mockRejectedValue(new Error('API down'));
-
-    const departamentos = await viaticosService.obtenerDepartamentos();
-
-    expect(departamentos.length).toBeGreaterThan(0);
-    const risaralda = departamentos.find((d) => d.nomDivGeopolitica === 'Risaralda');
-    // El catálogo local también usa el código DANE real (66).
-    expect(risaralda?.codDepartamento).toBe(66);
-  });
-
-  it('debe usar el catálogo local si el API devuelve lista vacía', async () => {
-    mockedGet.mockResolvedValue({ success: true, data: { data: [] } });
-
-    const departamentos = await viaticosService.obtenerDepartamentos();
-
-    expect(departamentos.length).toBeGreaterThan(0);
-    expect(departamentos[0].tipDivision).toBe('DEPTO');
+      expect(result).toEqual([]);
+    });
   });
 });
