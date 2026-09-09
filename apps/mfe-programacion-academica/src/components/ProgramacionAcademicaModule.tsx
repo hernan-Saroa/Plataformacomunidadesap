@@ -20,10 +20,12 @@ import {
   FileCheck,
   ShieldCheck,
   Award,
-  Layers3
+  Layers3,
+  X
 } from 'lucide-react';
 
 import { getTodasLasSesiones, getAulas, type FranjaConContexto } from '../services/api/catalogoApi';
+import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
@@ -32,6 +34,12 @@ import { GestionOfertas } from './GestionOfertas';
 
 interface FranjaHoraria {
   id: string;
+  /** Id del grupo: lo necesita la flecha de Acción para abrir su detalle. */
+  idGrupo: string | null;
+  /** Ciclo del grupo. Sin esto el detalle abriría con las fechas vacías
+   *  aunque estén guardadas: el mismo defecto que se corrigió en 3.2. */
+  fechaInicioGrupo: string | null;
+  fechaFinGrupo: string | null;
   codigo: string;
   programa: string;
   asignatura: string;
@@ -58,6 +66,9 @@ type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'ale
 function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
   return {
     id: s.idFranja,
+    idGrupo: s.idGrupo,
+    fechaInicioGrupo: s.fechaInicioGrupo,
+    fechaFinGrupo: s.fechaFinGrupo,
     codigo: s.idFranja.slice(0, 8),
     programa: s.programa ?? '',
     asignatura: s.asignatura ?? '',
@@ -83,6 +94,8 @@ export function ProgramacionAcademicaModule() {
   const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
   const [totalAulas, setTotalAulas] = useState<number | null>(null);
   const [cargando, setCargando] = useState(true);
+  // 3.6 — Detalle del grupo que abre la flecha de Acción.
+  const [detalle, setDetalle] = useState<FranjaHoraria | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -225,7 +238,11 @@ export function ProgramacionAcademicaModule() {
         </div>
       </div>
 
-      {/* ── ACCIONES Y BÚSQUEDA ── */}
+      {/* ── ACCIONES Y BÚSQUEDA ──
+          Solo en Programación General: el buscador, el filtro de jornada y el
+          botón de nueva franja no aplican al catálogo, a las aulas ni a las
+          ofertas. Antes se repetía en todas las secciones. */}
+      {seccion === 'horarios' && (
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-96">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -262,14 +279,12 @@ export function ProgramacionAcademicaModule() {
             <span>Nueva Franja Lectiva</span>
           </button>
 
-          <button className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium text-xs rounded-xl transition-all">
-            <Download className="w-4 h-4" />
-            <span>Exportar</span>
-          </button>
         </div>
       </div>
+      )}
 
       {/* ── VISTAS POR SECCIÓN ── */}
+
       {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
           que el endpoint de horarios devuelva programa, asignatura y docente:
           hoy solo trae la sesión, así que esas columnas van vacías. */}
@@ -350,7 +365,13 @@ export function ProgramacionAcademicaModule() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button className="text-slate-400 hover:text-[#003DA5] font-medium text-xs p-1.5 rounded-lg hover:bg-blue-50 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => item.idGrupo && setDetalle(item)}
+                          disabled={!item.idGrupo}
+                          title={item.idGrupo ? 'Ver detalle del grupo' : 'La franja no tiene grupo asociado'}
+                          aria-label="Ver detalle del grupo"
+                          className="text-slate-400 hover:text-[#003DA5] font-medium text-xs p-1.5 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                           <ChevronRight className="w-4 h-4" />
                         </button>
                       </td>
@@ -394,6 +415,37 @@ export function ProgramacionAcademicaModule() {
                 Reasignar Aula / Horario
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3.6 — Detalle del grupo. La flecha no hacía nada: era un botón sin
+          onClick. Abre el calendario del grupo, que es donde ya se edita el
+          horario y se retiran sesiones. */}
+      {detalle && detalle.idGrupo && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Detalle del grupo de ${detalle.asignatura}`}
+          onClick={() => setDetalle(null)}
+        >
+          <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setDetalle(null)}
+              aria-label="Cerrar"
+              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <CalendarioHorario
+              idGrupo={detalle.idGrupo}
+              numeroGrupo={Number(detalle.grupo) || 1}
+              nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
+              fechaInicioGrupo={detalle.fechaInicioGrupo}
+              fechaFinGrupo={detalle.fechaFinGrupo}
+            />
           </div>
         </div>
       )}

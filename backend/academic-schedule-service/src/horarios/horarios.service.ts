@@ -34,6 +34,9 @@ export interface FranjaConContexto {
   aulaCodigo: string | null;
   estado: string;
   numeroGrupo: number | null;
+  /** Ciclo del grupo: lo necesita el detalle que abre la flecha de Acción. */
+  fechaInicioGrupo: string | null;
+  fechaFinGrupo: string | null;
   asignatura: string | null;
   programa: string | null;
   docente: string | null;
@@ -78,6 +81,8 @@ export class HorariosService {
               f.aula_codigo                     AS "aulaCodigo",
               f.estado,
               g.numero_grupo                    AS "numeroGrupo",
+              g.fecha_inicio::text              AS "fechaInicioGrupo",
+              g.fecha_fin::text                 AS "fechaFinGrupo",
               a.nombre                          AS "asignatura",
               pr.nombre                         AS "programa",
               per.nom_largo                     AS "docente"

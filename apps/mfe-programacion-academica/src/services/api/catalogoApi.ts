@@ -156,6 +156,8 @@ export interface Sesion {
  */
 export interface FranjaConContexto extends Sesion {
   numeroGrupo: number | null;
+  fechaInicioGrupo: string | null;
+  fechaFinGrupo: string | null;
   asignatura: string | null;
   programa: string | null;
   docente: string | null;
