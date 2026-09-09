@@ -312,7 +312,10 @@ export class AlertasService {
   private async liquidacionesPendientes(): Promise<Omit<Alerta, 'diasRestantes' | 'estado'>[]> {
     const filas = await this.dataSource.query(`
       SELECT p.id AS proceso_id, p.radicado, c.numero AS contrato,
-             COALESCE(m.fecha_efecto, c.updated_at::date) AS termino,
+             -- terminacion_el y no fecha_efecto: esa columna nunca existió
+             -- —la 053 la creó con este nombre— y la consulta reventaba, así
+             -- que el endpoint entero respondía 500 desde EFDS-1185.
+             COALESCE(m.terminacion_el, c.updated_at::date) AS termino,
              s.persona_id AS responsable_id, s.nombre AS responsable, s.email AS responsable_email
         FROM hiring.contratos c
         JOIN hiring.procesos p ON p.id = c.proceso_id
