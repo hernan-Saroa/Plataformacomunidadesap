@@ -23,7 +23,7 @@ import {
   Layers3
 } from 'lucide-react';
 
-import { getTodasLasSesiones, getAulas, type Sesion } from '../services/api/catalogoApi';
+import { getTodasLasSesiones, getAulas, type FranjaConContexto } from '../services/api/catalogoApi';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
@@ -51,19 +51,18 @@ type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'ale
 
 
 /**
- * El endpoint de horarios devuelve la SESIÓN, no el nombre del programa, la
- * asignatura ni el docente: esos viven en otras tablas y aún no se unen en esta
- * consulta. Se dejan vacíos a propósito en vez de inventarlos — que es
- * exactamente lo que hacía la constante que se retiró.
+ * El endpoint ya devuelve programa, asignatura y docente resueltos por JOIN
+ * (2.3). Lo que no exista en la base viene en null y se muestra vacío: sigue
+ * sin inventarse nada, que era el vicio de la constante retirada en 2.1.
  */
-function sesionAFranja(s: Sesion): FranjaHoraria {
+function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
   return {
     id: s.idFranja,
     codigo: s.idFranja.slice(0, 8),
-    programa: '',
-    asignatura: '',
-    grupo: s.idGrupo ?? '',
-    docente: '',
+    programa: s.programa ?? '',
+    asignatura: s.asignatura ?? '',
+    grupo: s.numeroGrupo != null ? String(s.numeroGrupo) : '',
+    docente: s.docente ?? '',
     sede: '',
     aula: s.aulaCodigo ?? '',
     dia: s.diaSemana,

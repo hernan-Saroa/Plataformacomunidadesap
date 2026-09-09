@@ -22,6 +22,23 @@ export interface CrearSesionDto {
   aulaCodigo?: string | null;
 }
 
+/** Franja con su contexto resuelto por el servidor (2.3). */
+export interface FranjaConContexto {
+  idFranja: string;
+  idGrupo: string | null;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  tipoSesion: string;
+  jornada: string | null;
+  aulaCodigo: string | null;
+  estado: string;
+  numeroGrupo: number | null;
+  asignatura: string | null;
+  programa: string | null;
+  docente: string | null;
+}
+
 export interface PeriodoGrupoDto {
   fechaInicio: string | null;
   fechaFin: string | null;
@@ -35,6 +52,45 @@ export class HorariosService {
     @InjectRepository(GrupoEntity)
     private readonly grupoRepo: Repository<GrupoEntity>,
   ) {}
+
+  /**
+   * TODAS las franjas, con programa, asignatura y docente YA RESUELTOS.
+   *
+   * Va con JOIN en el servidor y no con una consulta por fila desde el front:
+   * una tabla de N franjas dispararía N peticiones.
+   *
+   * ⚠️ TODOS los vínculos son POR ID —grupo.id_asignatura, asignatura.id_programa,
+   * asignacion_docente.id_docente— nunca por nombre. Emparejar por texto es donde
+   * se han colado los tropiezos de este módulo.
+   *
+   * El docente sale de la asignación ASIGNADA del grupo; si el grupo no tiene
+   * docente asignado, viene en null y el front muestra el vacío, no un invento.
+   */
+  async listarTodas(): Promise<FranjaConContexto[]> {
+    return this.franjaRepo.query(
+      `SELECT f.id_franja                       AS "idFranja",
+              f.id_grupo::text                  AS "idGrupo",
+              f.dia_semana                      AS "diaSemana",
+              to_char(f.hora_inicio, 'HH24:MI')  AS "horaInicio",
+              to_char(f.hora_fin, 'HH24:MI')    AS "horaFin",
+              f.tipo_sesion                     AS "tipoSesion",
+              f.jornada,
+              f.aula_codigo                     AS "aulaCodigo",
+              f.estado,
+              g.numero_grupo                    AS "numeroGrupo",
+              a.nombre                          AS "asignatura",
+              pr.nombre                         AS "programa",
+              per.nom_largo                     AS "docente"
+         FROM "academic-schedule".franja_horaria f
+         LEFT JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
+         LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
+         LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
+         LEFT JOIN "academic-schedule".asignacion_docente ad
+                ON ad.id_grupo = g.id_grupo AND ad.estado = 'ASIGNADO'
+         LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
+        ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
+    );
+  }
 
   listarPorGrupo(idGrupo: string): Promise<FranjaHorariaEntity[]> {
     return this.franjaRepo.find({

@@ -147,6 +147,17 @@ export interface Sesion {
   estado: string;
 }
 
+/**
+ * Franja con su contexto ya resuelto por el servidor: programa, asignatura y
+ * docente vienen del JOIN, no de consultas por fila desde aquí.
+ */
+export interface FranjaConContexto extends Sesion {
+  numeroGrupo: number | null;
+  asignatura: string | null;
+  programa: string | null;
+  docente: string | null;
+}
+
 const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
 
 /**
@@ -154,8 +165,8 @@ const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
  * contadores del panel: antes salían de una constante en el front y mostraban
  * "4 franjas activas" con la base vacía.
  */
-export function getTodasLasSesiones(): Promise<Sesion[]> {
-  return pedirJson<Sesion[]>(BASE_HORARIOS, { method: 'GET' });
+export function getTodasLasSesiones(): Promise<FranjaConContexto[]> {
+  return pedirJson<FranjaConContexto[]>(BASE_HORARIOS, { method: 'GET' });
 }
 
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
