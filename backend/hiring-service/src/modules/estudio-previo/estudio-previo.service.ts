@@ -30,6 +30,8 @@ import {
   PERMISO_PROCESO_VER_TODOS,
   tienePermiso,
 } from '../../auth/permisos';
+import { PermisosService } from '../../auth/permisos.service';
+import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
@@ -175,6 +177,8 @@ export class EstudioPrevioService {
     private readonly umbrales: UmbralesService,
     private readonly configuracionService: ConfiguracionService,
     private readonly participacion: ParticipacionService,
+    private readonly permisos: PermisosService,
+    private readonly aprobacion: AprobacionService,
   ) {}
 
   /**
@@ -206,6 +210,8 @@ export class EstudioPrevioService {
     const enElProceso = (await this.participacion.procesosDe(acceso)).includes(procesoId);
 
     if (!esSuElEstudioPrevio(loRadico, enElProceso)) {
+      // «Ver todos» sigue sin bastar: ver el expediente de toda la entidad y
+      // poder reescribirlo son cosas distintas.
       throw new ForbiddenException(
         'Este estudio previo lo diligencia el área que radicó el proceso: tener permiso de editar no da acceso a los expedientes de otras áreas',
       );
@@ -293,12 +299,59 @@ export class EstudioPrevioService {
     });
   }
 
-  async obtenerProceso(procesoId: string) {
+  /**
+   * Si le corresponde ver los procesos de toda la entidad.
+   *
+   * El permiso se resuelve también contra la base, no solo contra la tabla de
+   * roles del código: el JWT lleva los roles pero no los permisos —se mantiene
+   * compacto a propósito— así que `tienePermiso` cae en `ROLES_QUE_OTORGAN`,
+   * que solo conoce los roles previstos al escribirla. Un rol creado después
+   * desde la administración quedaba sin ninguno.
+   */
+  private async puedeVerTodos(acceso?: HiringAccess): Promise<boolean> {
+    if (!acceso) return true;
+    if (tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS)) return true;
+
+    const suyos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
+    return suyos.includes(PERMISO_PROCESO_VER_TODOS);
+  }
+
+  /**
+   * Un proceso, si a quien pregunta le corresponde verlo.
+   *
+   * Filtrar solo el listado no basta: con el id a la mano se entraba igual al
+   * expediente de otra dependencia, y el id viaja en cada enlace que se
+   * comparte. Se responde 404 y no 403 para no confirmar que el proceso
+   * existe a quien no debe verlo.
+   */
+  async obtenerProceso(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.dataSource.getRepository(Proceso).findOne({
       where: { id: procesoId },
       relations: ['expediente'],
     });
     if (!proceso) throw new NotFoundException('Proceso no encontrado');
+
+    /**
+     * Estar en el proceso también da acceso (EFDS-1183).
+     *
+     * El filtro original solo conocía a quien lo radicó, y desde que existe el
+     * reparto eso deja fuera a media Dirección: el abogado al que le asignaron
+     * el expediente recibiría 404 al abrir el suyo, y quien lo tomó de la
+     * bandeja, otro tanto. Se comprueba en último lugar porque es la única de
+     * las tres que consulta otra tabla.
+     */
+    if (acceso && proceso.createdBy !== acceso.userName) {
+      const verTodos = await this.puedeVerTodos(acceso);
+      const enElProceso =
+        verTodos || (await this.participacion.procesosDe(acceso)).includes(procesoId);
+
+      if (!enElProceso) {
+        // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
+        // no debe verlo que el proceso existe.
+        throw new NotFoundException('Proceso no encontrado');
+      }
+    }
+
     return proceso;
   }
 
@@ -317,8 +370,7 @@ export class EstudioPrevioService {
    * se devuelve todo, que es el comportamiento anterior.
    */
   async listarProcesos(acceso?: HiringAccess) {
-    const verTodos =
-      !acceso || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const verTodos = await this.puedeVerTodos(acceso);
 
     /**
      * «Los míos» son tres cosas y no una (EFDS-1183): los que radiqué, los que
@@ -436,7 +488,7 @@ export class EstudioPrevioService {
 
   /** Devuelve los datos y la definición de campos: el front dibuja desde aquí. */
   async obtener(procesoId: string, acceso?: HiringAccess) {
-    const proceso = await this.obtenerProceso(procesoId);
+    const proceso = await this.obtenerProceso(procesoId, acceso);
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
     const campos = await this.camposDe(this.dataSource.manager);
 
@@ -590,7 +642,28 @@ export class EstudioPrevioService {
         subidoPor: acceso.userName,
       } as Partial<Documento>);
 
-      actividad.estado = 'EN_REVISION';
+      /*
+       * Entra en revisión solo si alguien la revisa.
+       *
+       * Antes se forzaba EN_REVISION siempre, aunque nadie estuviera
+       * configurado para aprobarla: el estudio previo quedaba «pendiente de
+       * revisión» sin que existiera revisor, y a quien lo envió se le ofrecían
+       * los botones de aprobar y devolver que el servicio le iba a rechazar.
+       *
+       * La matriz pone la revisión del estudio previo en la 3.4 —«revisiones,
+       * mesas de trabajo y observaciones al estudio previo»—, no aquí. Si el
+       * área decide además revisarlo en la 3.1, lo configura y esto lo respeta,
+       * igual que en las otras treinta y siete actividades.
+       */
+      // La modalidad importa: una regla puede exigir revisión solo en algunas.
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      const revisan = await this.aprobacion.aprobadoresDe(
+        NUMERAL_ESTUDIO_PREVIO,
+        proceso?.modalidad ?? null,
+        em,
+      );
+
+      actividad.estado = revisan ? 'EN_REVISION' : 'APROBADO';
       actividad.enviadoPor = acceso.userName;
       actividad.enviadoAt = new Date();
       await em.save(ProcesoActividad, actividad);

@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoAudienciaRiesgos } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Titulo } from '../shared/PiezasPanel';
+import { Permitido } from '../shared/Permitido';
+import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
 interface Props {
@@ -246,13 +248,15 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
         onElegir={setMatriz}
       />
 
-      <Boton
-        icono={<ShieldAlert className="w-3.5 h-3.5" />}
-        disabled={!listo || guardando}
-        onClick={registrar}
-      >
-        {guardando ? 'Registrando…' : 'Registrar la audiencia'}
-      </Boton>
+      <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+        <Boton
+          icono={<ShieldAlert className="w-3.5 h-3.5" />}
+          disabled={!listo || guardando}
+          onClick={registrar}
+        >
+          {guardando ? 'Registrando…' : 'Registrar la audiencia'}
+        </Boton>
+      </Permitido>
     </Marco>
   );
 }

@@ -1,4 +1,5 @@
 import {
+  AlertasService,
   diasParaVencer,
   estadoAlerta,
   finDeVigenciaFiscal,
@@ -74,5 +75,142 @@ describe('finDeVigenciaFiscal', () => {
   it('el respaldo presupuestal vale hasta el cierre del año', () => {
     // El CDP y el RP se imputan a una vigencia, no a una fecha suelta.
     expect(finDeVigenciaFiscal(2026)).toBe('2026-12-31');
+  });
+});
+
+/**
+ * A quién llega el aviso y cuántas veces (EFDS-1183).
+ *
+ * Las dos cosas fallaban a la vez y en direcciones opuestas: la aprobación se
+ * escribía contra un identificador que la campana no consulta —así que no
+ * llegaba nunca— y se reescribía en cada pasada del cron, de modo que cuando
+ * llegara lo haría multiplicada.
+ */
+describe('AlertasService · notificar', () => {
+  const ACCESO = {
+    userId: '5ba6437a-d35e-4afe-a21b-fb939717c0e3',
+    userName: 'director@esap.edu.co',
+    roles: ['DIRECTOR_CONTRATACION'],
+    puedeEditar: true,
+  };
+
+  /**
+   * Una aprobación pendiente y nada más: se sustituye `listar` porque lo que se
+   * comprueba es el envío, no la consulta —que es SQL y se prueba contra la
+   * base—, y así el caso queda legible.
+   */
+  const servicioCon = (pendientesSinLeer: any[] = []) => {
+    const query = jest.fn().mockResolvedValue(pendientesSinLeer);
+    const srv = new AlertasService({ query } as never);
+
+    jest.spyOn(srv, 'listar').mockResolvedValue([
+      {
+        tipo: 'APROBACION_PENDIENTE',
+        procesoId: 'p1',
+        radicado: 'CTO-2026-0017',
+        contrato: null,
+        descripcion: '3.4 · Revisión y reparto',
+        vence: '2026-09-09',
+        diasRestantes: -2,
+        estado: 'POR_VENCER',
+        responsable: 'radicador@esap.edu.co',
+        responsableEmail: null,
+        responsableId: ACCESO.userId,
+      },
+    ] as never);
+
+    return srv;
+  };
+
+  const cuerpoDe = (fetchSimulado: jest.Mock) =>
+    JSON.parse(fetchSimulado.mock.calls[0][1].body);
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('avisa al aprobador con el id de su cuenta, que es el que consulta la campana', async () => {
+    // Antes se mandaba el `id_person`: la notificación se guardaba, pero el
+    // portal pregunta por `/users/:id_user/notifications` y la campana salía
+    // vacía con diez avisos en la base.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const resultado = await servicioCon().notificar(30, ACCESO as never);
+
+    expect(resultado.notificadas).toBe(1);
+    const [aviso] = cuerpoDe(fetchSimulado).notifications;
+    expect(aviso.id_usuario_destinatario).toBe(ACCESO.userId);
+    expect(aviso.tipo_notificacion).toBe('contratacion_aprobacion');
+  });
+
+  it('no repite un aviso que el aprobador ya tiene sin leer', async () => {
+    // El cron corre a diario y la aprobación tarda días: sin esto el aprobador
+    // acumulaba un mensaje idéntico por jornada hasta decidirse.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const yaEnLaCampana = [
+      {
+        id_usuario_destinatario: ACCESO.userId,
+        mensaje:
+          '3.4 · Revisión y reparto del proceso CTO-2026-0017 espera tu decisión, enviada por radicador@esap.edu.co.',
+      },
+    ];
+
+    const resultado = await servicioCon(yaEnLaCampana).notificar(30, ACCESO as never);
+
+    expect(fetchSimulado).not.toHaveBeenCalled();
+    expect(resultado.notificadas).toBe(0);
+    expect(resultado.repetidas).toBe(1);
+  });
+
+  it('vuelve a avisar lo que ya se leyó y sigue sin resolverse', async () => {
+    // La consulta solo trae lo no leído: que lo haya visto y no haya decidido
+    // es justamente motivo para insistir.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const resultado = await servicioCon([]).notificar(30, ACCESO as never);
+
+    expect(resultado.notificadas).toBe(1);
+  });
+
+  it('si no puede comprobar los repetidos, avisa igual', async () => {
+    // Un duplicado molesta; perder la aprobación no. Ante la duda, se manda.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const query = jest.fn().mockRejectedValue(new Error('sin conexión'));
+    const srv = new AlertasService({ query } as never);
+    jest.spyOn(srv, 'listar').mockResolvedValue([
+      {
+        tipo: 'APROBACION_PENDIENTE',
+        procesoId: 'p1',
+        radicado: 'CTO-2026-0017',
+        contrato: null,
+        descripcion: '3.4 · Revisión y reparto',
+        vence: '2026-09-09',
+        diasRestantes: -2,
+        estado: 'POR_VENCER',
+        responsable: null,
+        responsableEmail: null,
+        responsableId: ACCESO.userId,
+      },
+    ] as never);
+
+    const resultado = await srv.notificar(30, ACCESO as never);
+
+    expect(resultado.notificadas).toBe(1);
+  });
+
+  it('si notifications-service está caído, las alertas se siguen viendo', async () => {
+    // Best-effort a propósito: se pierde el aviso, no la alerta.
+    global.fetch = jest.fn().mockRejectedValue(new Error('caído')) as never;
+
+    const resultado = await servicioCon().notificar(30, ACCESO as never);
+
+    expect(resultado.notificadas).toBe(0);
+    expect(resultado.error).toBe('no se pudo notificar');
   });
 });

@@ -22,6 +22,7 @@ import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { Modal } from '../shared/Modal';
 import { BloqueDocumento } from './BloqueDocumento';
 import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
+import { usarAprobacion } from '../shared/usarAprobacion';
 
 interface Props {
   procesoId: string;
@@ -67,6 +68,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Si alguien revisa esta actividad, para no llamar «aprobado» a lo que se
+  // cerró sin que nadie decidiera.
+  const revision = usarAprobacion(procesoId, NUMERAL);
 
   const cargarAnexos = () =>
     Promise.all([
@@ -127,15 +132,15 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
    * es sobre la sesión y esconder dejaría el módulo en blanco; aquí la duda es
    * sobre un proceso concreto y el coste de equivocarse es un botón muerto.
    */
-  const revision = datos.revision ?? null;
-  const puedoDecidir = revision?.puedeDecidir === true;
+  const quienResuelve = datos.revision ?? null;
+  const puedoDecidir = quienResuelve?.puedeDecidir === true;
 
   /** Por qué no le toca a quien mira, dicho como lo diría una persona. */
   const porQueNoDecido =
-    revision?.motivo === 'SIN_ABOGADO'
+    quienResuelve?.motivo === 'SIN_ABOGADO'
       ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
-      : revision?.motivo === 'NO_ES_TUYO'
-        ? `Lo revisa ${revision.abogado?.nombre ?? 'otro abogado'}.`
+      : quienResuelve?.motivo === 'NO_ES_TUYO'
+        ? `Lo revisa ${quienResuelve.abogado?.nombre ?? 'otro abogado'}.`
         : null;
 
   const refrescar = async () => {
@@ -375,9 +380,15 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
       {/* Acciones */}
       <div className="flex items-center gap-2 flex-wrap pt-3 border-t border-gray-200">
         {aprobado ? (
+          /* «Aprobado» solo donde alguien aprobó. Sin revisor configurado la
+             actividad se cierra al enviarla, y decir que fue aprobada nombra
+             una decisión que nadie tomó: la revisión del estudio previo la
+             hace la 3.4, no esta actividad. */
           <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-700">
             <Lock className="w-3.5 h-3.5" />
-            Aprobado · registrado en el expediente
+            {revision.requiereAprobacion
+              ? 'Aprobado · registrado en el expediente'
+              : 'Terminado · registrado en el expediente'}
           </span>
         ) : negado ? (
           // Negar cierra el proceso: no hay corrección que esperar ni nada más
@@ -401,6 +412,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
             <span className="flex-1" />
 
+            {/* `puedoDecidir` ya incluye el permiso —`motivoParaNoDecidir`
+                devuelve SIN_PERMISO cuando falta— y además exige ser el abogado
+                al que se le repartió el proceso. Comprobar aquí el permiso
+                suelto sería una condición más débil sobre lo mismo. */}
             {puedoDecidir && (
               <>
                 <button

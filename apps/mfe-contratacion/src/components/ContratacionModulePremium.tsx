@@ -31,6 +31,7 @@ import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
+import { PERMISOS, tieneAlguno, tienePermiso } from '../auth/permisos';
 
 type Seccion =
   | 'estudios-previos'
@@ -54,52 +55,6 @@ type Seccion =
  * Implementado: etapa 3, numeral 3.1 (estudio previo). Las demás actividades
  * se muestran en el detalle para dejar visible el flujo, sin simular datos.
  */
-/**
- * Si el usuario tiene un permiso, leyéndolo de la sesión que dejó el shell.
- *
- * El menú se filtra con esto porque ofrecer una pantalla que la API va a
- * rechazar con 403 no es seguridad —el guard ya la protege—, es una puerta
- * pintada: el usuario la abre, se estrella y no entiende por qué.
- *
- * Se lee del almacenamiento y no de un servicio del shell para no acoplar el
- * microfrontend a su host; si mañana la sesión deja de estar ahí, el menú se
- * muestra completo y el backend sigue negando lo que corresponda.
- */
-function tienePermiso(codigo: string): boolean {
-  try {
-    const crudo =
-      localStorage.getItem('user') ??
-      localStorage.getItem('esap_user') ??
-      sessionStorage.getItem('user');
-    if (!crudo) return true;
-
-    const usuario = JSON.parse(crudo);
-    const roles: any[] = Array.isArray(usuario?.roles) ? usuario.roles : [];
-    const esSuperAdmin = roles.some((rol) =>
-      typeof rol === 'string' ? rol === 'SUPER_ADMIN' : rol?.code === 'SUPER_ADMIN',
-    );
-    if (esSuperAdmin) return true;
-
-    const permisos: string[] = Array.isArray(usuario?.permissions)
-      ? usuario.permissions.map((p: any) => (typeof p === 'string' ? p : p?.code)).filter(Boolean)
-      : [];
-
-    // Sin permisos en la sesión no se esconde nada: es más probable que la
-    // sesión venga incompleta a que el usuario no tenga ninguno.
-    if (permisos.length === 0) return true;
-
-    return permisos.includes(codigo);
-  } catch {
-    return true;
-  }
-}
-
-/** Administrar umbrales, plazos, MIPYME, plantillas y la matriz de etapas. */
-const PERMISO_CONFIGURAR = 'contratacion.config.manage';
-
-/** Consultar los indicadores de gestión (EFDS-1189). */
-const PERMISO_REPORTES = 'contratacion.reporte.view';
-
 /** Las que exigen `config.manage`: escriben parámetros, no trabajan un proceso. */
 const SECCIONES_DE_CONFIGURACION: Seccion[] = [
   'umbrales',
@@ -114,8 +69,18 @@ export default function ContratacionModulePremium() {
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
-  const puedeConfigurar = tienePermiso(PERMISO_CONFIGURAR);
-  const puedeVerReportes = tienePermiso(PERMISO_REPORTES);
+  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
+  const puedeVerReportes = tienePermiso(PERMISOS.reporteVer);
+  /*
+   * El expediente lo consulta quien lo audita, no cualquiera con acceso al
+   * módulo: reúne todo lo que se cargó en el proceso. Basta uno de los dos
+   * permisos —verlo o auditarlo— porque el Archivo de Gestión tiene el
+   * segundo sin el primero.
+   */
+  const puedeVerExpedientes = tieneAlguno(
+    PERMISOS.expedienteVer,
+    PERMISOS.expedienteAuditar,
+  );
 
   const grupos: MenuGroup[] = [
     {
@@ -140,18 +105,37 @@ export default function ContratacionModulePremium() {
          * sitios—, así que la entrada se retira en vez de quedarse prometiendo
          * algo que ya está en otro lado.
          */
-        {
-          // Tab propio y no un botón dentro del detalle: el expediente se
-          // consulta sin estar trabajando un proceso —es lo que abre un
-          // organismo de control—, y llegar a él pasando por lista y detalle
-          // lo escondía. Mismo sitio y mismo cian que en control interno y
-          // gestión legal.
-          id: 'expedientes',
-          label: 'Expedientes',
-          subtitle: 'Consulta y auditoría',
-          icon: <FolderOpen className="w-5 h-5" />,
-          color: '#0891B2',
-        },
+        /* Alertas estaba dentro de Configuración, que exige `config.manage`:
+           el gestor tenía «ver alertas de vencimiento» y aun así nunca veía la
+           entrada, aunque ahí es donde le llegan sus aprobaciones pendientes.
+           Va con el trabajo diario y se rige por su propio permiso. */
+        ...(!tienePermiso(PERMISOS.alertaVer)
+          ? []
+          : [
+              {
+                id: 'alertas' as Seccion,
+                label: 'Alertas',
+                subtitle: 'Vencimientos y aprobaciones',
+                icon: <BellRing className="w-5 h-5" />,
+                color: '#DC2626',
+              },
+            ]),
+        ...(!puedeVerExpedientes
+          ? []
+          : [
+              {
+                // Tab propio y no un botón dentro del detalle: el expediente se
+                // consulta sin estar trabajando un proceso —es lo que abre un
+                // organismo de control—, y llegar a él pasando por lista y
+                // detalle lo escondía. Mismo sitio y mismo cian que en control
+                // interno y gestión legal.
+                id: 'expedientes' as Seccion,
+                label: 'Expedientes',
+                subtitle: 'Consulta y auditoría',
+                icon: <FolderOpen className="w-5 h-5" />,
+                color: '#0891B2',
+              },
+            ]),
         // Con Expedientes y no en Configuración: las dos se consultan sin estar
         // trabajando un proceso, y los indicadores no son un parámetro del
         // flujo sino su resultado. Quien no pueda generarlos no ve el tab.
@@ -159,7 +143,7 @@ export default function ContratacionModulePremium() {
           ? []
           : [
               {
-                id: 'estadisticas',
+                id: 'estadisticas' as Seccion,
                 label: 'Estadísticas',
                 subtitle: 'Indicadores de gestión',
                 icon: <BarChart3 className="w-5 h-5" />,
@@ -197,15 +181,6 @@ export default function ContratacionModulePremium() {
           color: '#B45309',
         },
         {
-          // En Configuración por pedido del área: se revisa junto a los demás
-          // parámetros del flujo, no en el trabajo diario.
-          id: 'alertas',
-          label: 'Alertas',
-          subtitle: 'Vencimientos y aprobaciones',
-          icon: <BellRing className="w-5 h-5" />,
-          color: '#DC2626',
-        },
-        {
           id: 'mipyme',
           label: 'MIPYME',
           subtitle: 'Condiciones de limitación',
@@ -238,9 +213,34 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
-    // Las de configuración se comprueban aunque el menú ya las esconda: la
-    // sección sobrevive en el estado, y quien tenía la pantalla abierta cuando
-    // le retiraron el permiso seguiría dentro de ella.
+    // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
+    // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
+    // seguiría dentro de ella.
+    if (seccion === 'alertas' && !tienePermiso(PERMISOS.alertaVer)) {
+      return (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
+          <p className="text-[13px] font-bold text-slate-700 m-0">No tienes acceso a las alertas</p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+            Las consultan quienes trabajan los procesos y quienes los aprueban.
+          </p>
+        </div>
+      );
+    }
+
+    if (seccion === 'expedientes' && !puedeVerExpedientes) {
+      return (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
+          <p className="text-[13px] font-bold text-slate-700 m-0">
+            No tienes acceso al expediente
+          </p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+            Lo consultan la Dirección de Contratación, el Archivo de Gestión y los organismos de
+            control.
+          </p>
+        </div>
+      );
+    }
+
     const esDeConfiguracion = SECCIONES_DE_CONFIGURACION.includes(seccion);
     if (esDeConfiguracion && !puedeConfigurar) {
       return (

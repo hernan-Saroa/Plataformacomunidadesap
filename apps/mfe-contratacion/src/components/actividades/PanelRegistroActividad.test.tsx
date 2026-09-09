@@ -304,3 +304,105 @@ describe('PanelRegistroActividad · las actividades que se cumplen dejando const
     expect(screen.queryByRole('button', { name: /enviar a aprobación/ })).toBeNull();
   });
 });
+
+/**
+ * La actividad que devolvieron para corregir (EFDS-1183).
+ *
+ * El panel solo distinguía registrada de sin registrar. A una devuelta le
+ * mostraba «Registrada» —dándole por hecho lo que le acababan de rechazar— y
+ * como única salida «Anular», mientras el aviso de arriba le decía «vuelve a
+ * registrar la actividad». No había dónde.
+ */
+describe('PanelRegistroActividad · devuelta para corregir', () => {
+  const conRegistro = () =>
+    estado({
+      registro: {
+        id: 'r-1',
+        fecha: '2026-08-20',
+        nota: 'Se sorteó entre los tres oferentes.',
+        datos: {},
+        registradoPor: 'Ana Gestora',
+        registradoAt: '2026-08-21T14:00:00.000Z',
+        soporte: null,
+      },
+    });
+
+  const pintarDevuelta = (devuelta: boolean) =>
+    render(
+      <PanelRegistroActividad
+        procesoId="p-1"
+        numeral="5.10"
+        requiereAprobacion
+        devuelta={devuelta}
+      />,
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.registroActividad.mockResolvedValue(conRegistro());
+  });
+
+  it('no le dice «registrada» a lo que acaban de devolverle', async () => {
+    pintarDevuelta(true);
+
+    expect(await screen.findByText(/Lo que registraste el/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Registrada el/)).toBeNull();
+  });
+
+  it('ofrece corregir y volver a enviar, no anular', async () => {
+    pintarDevuelta(true);
+
+    expect(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Anular y registrar de nuevo/ })).toBeNull();
+  });
+
+  it('al corregir abre el formulario con lo que ya había escrito', async () => {
+    // Corregir no es rehacer: le señalaron una cosa concreta, y vaciarle el
+    // formulario le obliga a reescribir de memoria todo lo que estaba bien.
+    pintarDevuelta(true);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    );
+
+    expect(screen.getByDisplayValue('Se sorteó entre los tres oferentes.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2026-08-20')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar y volver a enviar/ })).toBeInTheDocument();
+  });
+
+  it('no le pide un motivo de anulación para corregir', async () => {
+    // El botón llevaba al flujo de anular, que borra el registro y deja el
+    // formulario en blanco pidiendo por qué se anula.
+    pintarDevuelta(true);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    );
+
+    expect(screen.queryByPlaceholderText('Por qué se anula el registro')).toBeNull();
+  });
+
+  it('deja volverse atrás sin guardar', async () => {
+    pintarDevuelta(true);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Dejarlo como estaba/ }));
+
+    expect(await screen.findByText(/Lo que registraste el/)).toBeInTheDocument();
+    expect(servicio.registrarActividad).not.toHaveBeenCalled();
+  });
+
+  it('sin devolución sigue siendo anular, que es otra cosa', async () => {
+    // Anular es deshacer un error propio; corregir se lo pidió quien revisa.
+    pintarDevuelta(false);
+
+    expect(await screen.findByText(/^Registrada el/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Anular y registrar de nuevo/ }),
+    ).toBeInTheDocument();
+  });
+});

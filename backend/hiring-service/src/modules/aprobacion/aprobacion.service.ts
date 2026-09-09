@@ -119,7 +119,7 @@ export class AprobacionService {
       : [];
     const revision = revisiones[0] ?? null;
 
-    const enviadoPorId = (actividad as any)?.enviadoPorId;
+    const enviadoPorId = actividad?.enviadoPorId;
     const esMia =
       !!actividad &&
       (enviadoPorId
@@ -140,8 +140,10 @@ export class AprobacionService {
       // Se resuelve aquí y no en el cliente: la pantalla no debería replicar la
       // regla de quién puede aprobar, porque quedaría desactualizada en cuanto
       // cambie aquí.
+      // `esMia` ya no la apaga: quien la trabajó la aprueba si tiene el rol.
+      // Sigue publicándose porque es lo que habilita retirarla de revisión.
       puedoAprobar: aprobadores
-        ? this.puedeAprobar(aprobadores, acceso, await this.personaDe(acceso.userId)) && !esMia
+        ? this.puedeAprobar(aprobadores, acceso, await this.personaDe(acceso.userId))
         : false,
       estado: actividad?.estado ?? 'BORRADOR',
       esMia,
@@ -303,7 +305,7 @@ export class AprobacionService {
 
       actividad.estado = 'EN_REVISION';
       actividad.enviadoPor = acceso.userName;
-      (actividad as any).enviadoPorId = acceso.userId;
+      actividad.enviadoPorId = acceso.userId ?? null;
       await em.save(actividad);
 
       await this.traza(em, procesoId, actividad.id, 'ENVIAR', acceso, { numeral });
@@ -327,7 +329,7 @@ export class AprobacionService {
       }
 
       const suya =
-        (actividad as any).enviadoPorId === acceso.userId ||
+        actividad.enviadoPorId === acceso.userId ||
         actividad.enviadoPor === acceso.userName;
       if (!suya && !acceso.roles?.includes('SUPER_ADMIN')) {
         throw new ForbiddenException('Solo quien la envió puede retirarla de aprobación');
@@ -402,22 +404,21 @@ export class AprobacionService {
       }
 
       /*
-       * Quien ejecutó la actividad no la aprueba, aunque tenga el rol.
+       * Quien trabaja la actividad sí puede aprobarla si tiene el rol.
        *
-       * Es la misma regla que ya protege las garantías —«si la misma cuenta
-       * hiciera las dos cosas, la revisión no sería una revisión»— y aquí se
-       * aplica a cualquier actividad configurada. No es configurable a
-       * propósito: si se pudiera desmarcar desde una pantalla dejaría de ser
-       * un control.
+       * Aquí se impedía, copiando la regla de las garantías: allí quien carga
+       * la póliza y quien la revisa son dos papeles distintos, así que nunca
+       * coinciden. En las actividades no: la 3.3 y la 3.4 se llaman
+       * «Radicación a la Dirección de contratación» y «Revisión y reparto en la
+       * Dirección de contratación», las ejecuta esa misma dirección y están
+       * configuradas para que las apruebe su director. El bloqueo lo dejaba
+       * esperándose a sí mismo, y con dos cuentas en el rol la actividad se
+       * quedaba sin salida.
+       *
+       * El control que queda es el rol: aprueba quien el área designó en
+       * Configuración, y la traza guarda quién envió y quién decidió, así que
+       * una autoaprobación se ve en el expediente en vez de impedirse.
        */
-      const esSuyaPropia =
-        (actividad as any).enviadoPorId === acceso.userId ||
-        actividad.enviadoPor === acceso.userName;
-      if (esSuyaPropia) {
-        throw new ForbiddenException(
-          'La aprueba alguien distinto de quien la trabajó: es lo que hace que la revisión exista',
-        );
-      }
 
       /*
        * No se aprueba con formatos sin entregar.

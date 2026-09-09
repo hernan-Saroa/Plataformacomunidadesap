@@ -25,6 +25,7 @@ import { Modalidad, ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 import { PaginationPremium } from '../shared/PaginationPremium';
+import { PERMISOS, tienePermiso } from '../../auth/permisos';
 import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
 
@@ -122,6 +123,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const [vista, setVista] = useState<'lista' | 'tablero'>(
     () => (localStorage.getItem('contratacion:vista') as 'lista' | 'tablero') || 'lista',
   );
+
+  /** Radicar es de quien radica: el resto solo consulta el listado. */
+  const puedeCrear = tienePermiso(PERMISOS.procesoCrear);
 
   const cambiarVista = (nueva: 'lista' | 'tablero') => {
     setVista(nueva);
@@ -256,14 +260,20 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       <ModuleHeader
         title="Procesos Contractuales"
         icon={<FileSignature className="w-[18px] h-[18px] text-white" strokeWidth={2} />}
-        buttons={[
-          {
-            label: 'Nuevo proceso',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-3.5 h-3.5" />,
-            onClick: () => setCreando(true),
-          },
-        ]}
+        /* Solo a quien radica. Ofrecerle «Nuevo proceso» a un ente de control
+           —que solo consulta— lo lleva a un 403 que no puede interpretar. */
+        buttons={
+          puedeCrear
+            ? [
+                {
+                  label: 'Nuevo proceso',
+                  labelMobile: 'Nuevo',
+                  icon: <Plus className="w-3.5 h-3.5" />,
+                  onClick: () => setCreando(true),
+                },
+              ]
+            : []
+        }
       />
 
       <Modal
@@ -504,12 +514,16 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                 ? 'No hay procesos con esa modalidad.'
                 : busqueda
                   ? 'Prueba con otro radicado, objeto o modalidad.'
-                  : 'Crea el primero para elaborar su estudio previo.'
+                  : puedeCrear
+                    ? 'Crea el primero para elaborar su estudio previo.'
+                    : // A quien no radica no se le pide que cree nada: se le
+                      // dice por qué la lista está vacía para él.
+                      'Aquí verás los procesos cuando haya alguno radicado.'
             }
             action={
               filtroModalidad
                 ? { label: 'Quitar filtro', onClick: () => setFiltroModalidad('') }
-                : busqueda
+                : busqueda || !puedeCrear
                   ? undefined
                   : { label: 'Nuevo proceso', onClick: () => setCreando(true), icon: Plus }
             }

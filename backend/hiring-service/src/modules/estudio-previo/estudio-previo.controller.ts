@@ -75,8 +75,8 @@ export class EstudioPrevioController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Consultar un proceso' })
-  obtenerProceso(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.obtenerProceso(id);
+  obtenerProceso(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.obtenerProceso(id, getHiringAccess(req));
   }
 
   @Get(':id/estudio-previo')

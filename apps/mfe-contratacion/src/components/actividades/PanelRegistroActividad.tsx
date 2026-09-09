@@ -14,6 +14,8 @@ import {
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
+import { Permitido } from '../shared/Permitido';
+import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 
 interface Props {
@@ -28,6 +30,15 @@ interface Props {
    * gestor tiene que saberlo antes de pulsar, no despues.
    */
   requiereAprobacion?: boolean;
+  /**
+   * Si quien la aprueba la devolvió para corregirla.
+   *
+   * El panel solo distinguía registrada de sin registrar, así que a una
+   * actividad devuelta le mostraba «Registrada» y como única salida «Anular».
+   * El aviso de arriba decía «vuelve a registrar la actividad» y aquí abajo no
+   * había dónde: quien la trabajó se quedaba sin camino para corregirla.
+   */
+  devuelta?: boolean;
   /**
    * Cambia cuando el bloque de documentos carga o retira un adjunto.
    *
@@ -51,6 +62,7 @@ export function PanelRegistroActividad({
   numeral,
   onCambio,
   requiereAprobacion = false,
+  devuelta = false,
   recargarToken,
 }: Props) {
   const [estado, setEstado] = useState<EstadoRegistroActividad | null>(null);
@@ -63,6 +75,8 @@ export function PanelRegistroActividad({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [anulando, setAnulando] = useState(false);
   const [motivo, setMotivo] = useState('');
+  /** Corrigiendo lo devuelto: el formulario se abre con lo que ya había. */
+  const [corrigiendo, setCorrigiendo] = useState(false);
 
   const leer = () =>
     contratacionService
@@ -107,7 +121,12 @@ export function PanelRegistroActividad({
     setGuardando(true);
     try {
       await contratacionService.registrarActividad(procesoId, numeral, { fecha, nota }, archivo);
-      toast.success(`Se registró la actividad ${numeral}`);
+      toast.success(
+        corrigiendo
+          ? `Se corrigió la actividad ${numeral} y volvió a enviarse`
+          : `Se registró la actividad ${numeral}`,
+      );
+      setCorrigiendo(false);
       limpiar();
       await leer();
       onCambio?.();
@@ -132,6 +151,23 @@ export function PanelRegistroActividad({
     } finally {
       setGuardando(false);
     }
+  };
+
+  /**
+   * Abre el formulario con lo que ya se había registrado, para corregirlo.
+   *
+   * Corregir no es rehacer: a quien le devolvieron la actividad le señalaron
+   * una cosa concreta —una fecha, una frase de la nota, un soporte que no
+   * era—, y vaciarle el formulario le obliga a reescribir de memoria todo lo
+   * demás, que estaba bien. El registro anterior se anula al guardar el nuevo,
+   * igual que antes; lo que cambia es que parte de lo que había.
+   */
+  const corregir = () => {
+    if (!estado?.registro) return;
+    setFecha(estado.registro.fecha.slice(0, 10));
+    setNota(estado.registro.nota ?? '');
+    setArchivo(null);
+    setCorrigiendo(true);
   };
 
   if (cargando) {
@@ -195,9 +231,21 @@ export function PanelRegistroActividad({
         </Aviso>
       )}
 
-      {registro ? (
+      {/* Corrigiendo se baja al formulario aunque haya registro: es el mismo de
+          abajo, ya cargado con lo anterior, y no una pantalla nueva. */}
+      {registro && !corrigiendo ? (
         <>
-          <Aviso tono="ok" titulo={`Registrada el ${fechaLarga(registro.fecha)}`}>
+          {/* Devuelta no es «registrada»: lo que hay es el intento anterior, y
+              llamarlo registrado le decía al gestor que ya estaba hecho justo
+              cuando le acaban de pedir que lo corrija. */}
+          <Aviso
+            tono={devuelta ? 'aviso' : 'ok'}
+            titulo={
+              devuelta
+                ? `Lo que registraste el ${fechaLarga(registro.fecha)}`
+                : `Registrada el ${fechaLarga(registro.fecha)}`
+            }
+          >
             {registro.nota}
           </Aviso>
 
@@ -243,16 +291,37 @@ export function PanelRegistroActividad({
               </div>
             </>
           ) : (
-            <BotonSecundario
-              icono={<CircleSlash className="w-3.5 h-3.5" />}
-              onClick={() => setAnulando(true)}
-            >
-              Anular y registrar de nuevo
-            </BotonSecundario>
+            /* Consultar el registro es de todos; rehacerlo, de quien lo
+               trabaja. Sin `quien`: el bloque de arriba ya dice qué se
+               registró y quién, así que un aviso más sobraría. */
+            <Permitido permiso={PERMISOS.actividadEditar}>
+              {/* Devuelta, corregir es la acción principal y no una salida de
+                  emergencia: se la pidió quien la revisa. «Anular» describía
+                  deshacer un error propio, que es otra cosa. */}
+              {devuelta ? (
+                <Boton icono={<FilePlus2 className="w-3.5 h-3.5" />} onClick={corregir}>
+                  Corregir y volver a enviar
+                </Boton>
+              ) : (
+                <BotonSecundario
+                  icono={<CircleSlash className="w-3.5 h-3.5" />}
+                  onClick={() => setAnulando(true)}
+                >
+                  Anular y registrar de nuevo
+                </BotonSecundario>
+              )}
+            </Permitido>
           )}
         </>
       ) : (
         <>
+          {corrigiendo && (
+            <Ayuda>
+              Estás corrigiendo lo que registraste. Cambia lo que te señalaron y vuelve a
+              enviarlo; lo anterior queda en el historial.
+            </Ayuda>
+          )}
+
           <label className="block">
             <span className="text-[11.5px] text-slate-600">Fecha en que ocurrió</span>
             <input
@@ -310,15 +379,34 @@ export function PanelRegistroActividad({
               aprobacion una actividad vacia, y las dos formas de cerrarla se
               ignoraban entre si. A la derecha porque es donde termina la
               lectura del formulario. */}
-          <div className="flex justify-end">
-            <Boton
-              icono={<FilePlus2 className="w-3.5 h-3.5" />}
-              onClick={registrar}
-              disabled={guardando || nota.trim().length < 10 || faltaSoporte}
-            >
-              {requiereAprobacion ? 'Registrar y enviar a aprobación' : 'Registrar la actividad'}
-            </Boton>
-          </div>
+          <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+            <div className="flex justify-end gap-2">
+              {/* Salida sin guardar: quien entró a corregir y se arrepiente
+                  volvería a ver el formulario vacío si no puede retroceder. */}
+              {corrigiendo && (
+                <BotonSecundario
+                  icono={<Undo2 className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setCorrigiendo(false);
+                    limpiar();
+                  }}
+                >
+                  Dejarlo como estaba
+                </BotonSecundario>
+              )}
+              <Boton
+                icono={<FilePlus2 className="w-3.5 h-3.5" />}
+                onClick={registrar}
+                disabled={guardando || nota.trim().length < 10 || faltaSoporte}
+              >
+                {corrigiendo
+                  ? 'Guardar y volver a enviar'
+                  : requiereAprobacion
+                    ? 'Registrar y enviar a aprobación'
+                    : 'Registrar la actividad'}
+              </Boton>
+            </div>
+          </Permitido>
         </>
       )}
 

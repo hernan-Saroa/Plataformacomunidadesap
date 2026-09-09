@@ -240,9 +240,33 @@ export class RegistroActividadService {
         where: { procesoId, numeral, estado: 'VIGENTE' },
       });
       if (yaHay) {
-        throw new BadRequestException(
-          `La actividad ${numeral} ya tiene un registro vigente. Anúlelo antes de registrar otro.`,
-        );
+        /*
+         * Devuelta: el registro anterior se anula solo y este lo reemplaza.
+         *
+         * La pantalla le dice al gestor «corrige lo señalado y vuelve a
+         * registrar la actividad», pero el registro vigente se lo impedía y la
+         * actividad quedaba atascada en DEVUELTO sin salida: ni podía
+         * reenviarla ni el revisor tenía qué resolver. Pedirle que anule a
+         * mano lo que el revisor acaba de rechazar es un paso que no aporta.
+         *
+         * Fuera de ese caso la regla sigue: un registro vigente se anula antes
+         * de poner otro, para que el expediente diga por qué cambió.
+         */
+        const actividadPrevia = await em.getRepository(ProcesoActividad).findOne({
+          where: { procesoId, numeral },
+        });
+
+        if (actividadPrevia?.estado !== 'DEVUELTO') {
+          throw new BadRequestException(
+            `La actividad ${numeral} ya tiene un registro vigente. Anúlelo antes de registrar otro.`,
+          );
+        }
+
+        yaHay.estado = 'ANULADO';
+        yaHay.anuladoPor = acceso.userName;
+        yaHay.anuladoAt = new Date();
+        yaHay.motivoAnulacion = 'Se corrigió tras la devolución del revisor';
+        await em.save(RegistroActividad, yaHay);
       }
 
       const documento = archivo
@@ -445,7 +469,7 @@ export class RegistroActividadService {
     actividad.estado = estado as any;
     if (cumplida) {
       actividad.enviadoPor = acceso.userName;
-      (actividad as any).enviadoPorId = acceso.userId;
+      actividad.enviadoPorId = acceso.userId ?? null;
     }
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);

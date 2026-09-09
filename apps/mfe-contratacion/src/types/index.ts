@@ -2746,6 +2746,7 @@ export interface AlertaVencimiento {
     | 'REGISTRO_PRESUPUESTAL'
     | 'LIQUIDACION'
     | 'APROBACION_PENDIENTE'
+    | 'DEVUELTA_PARA_CORREGIR'
     /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
     | 'SIN_ABOGADO';
   procesoId: string;
