@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -23,10 +24,15 @@ import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import {
+  PERMISO_ACTIVIDAD_APROBAR,
+  PERMISO_PROCESO_VER_TODOS,
+  tienePermiso,
+} from '../../auth/permisos';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
+import { ParticipacionService, esSuya } from '../participacion/participacion.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -43,6 +49,41 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
   if (decision === 'APROBADO') return 'APROBADO';
   if (decision === 'NEGADO') return 'NEGADO';
   return 'BORRADOR';
+}
+
+/**
+ * Numeral 3.2: el análisis del sector, que el área entrega junto al estudio
+ * previo y que la 3.4 revisa con él.
+ */
+export const NUMERAL_ANALISIS_SECTOR = '3.2';
+
+/** Por qué alguien no puede decidir sobre este proceso, o `null` si sí puede. */
+export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
+
+/**
+ * Quién puede resolver la revisión de la 3.4 (EFDS-1183).
+ *
+ * El abogado asignado en la 3.3, y nadie más. No basta con tener el permiso de
+ * aprobar: eso lo tienen todos los revisores de la Dirección, y el flujo dice
+ * que de este expediente responde el que lo recibió. El Director que quiera
+ * decidirlo se lo reasigna a sí mismo, que deja constancia de quién lo hizo.
+ *
+ * Sin abogado asignado no se decide. Es deliberado y no un descuido: el reparto
+ * de la 3.3 es lo que pone a alguien a responder por el proceso, y aprobar
+ * saltándoselo dejaría el expediente sin decir quién lo revisó. Un proceso en
+ * revisión y sin abogado aparece en las alertas para que se reparta.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function motivoParaNoDecidir(
+  tienePermisoDeAprobar: boolean,
+  hayAbogado: boolean,
+  esElAbogado: boolean,
+): MotivoNoDecide | null {
+  if (!tienePermisoDeAprobar) return 'SIN_PERMISO';
+  if (!hayAbogado) return 'SIN_ABOGADO';
+  if (!esElAbogado) return 'NO_ES_TUYO';
+  return null;
 }
 
 /**
@@ -110,7 +151,26 @@ export class EstudioPrevioService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
     private readonly configuracionService: ConfiguracionService,
+    private readonly participacion: ParticipacionService,
   ) {}
+
+  /**
+   * Quién es el abogado del proceso y si quien pregunta puede decidir por él.
+   *
+   * Lo usan la pantalla —para no ofrecer botones que la API va a rechazar— y
+   * las tres decisiones, que lo exigen. Tenerlo en un solo sitio es lo que
+   * impide que el aviso de la pantalla y el rechazo del servidor digan cosas
+   * distintas sobre el mismo proceso.
+   */
+  private async quienDecide(procesoId: string, acceso: HiringAccess) {
+    const abogado = await this.participacion.vigente(procesoId, 'ABOGADO');
+    const motivo = motivoParaNoDecidir(
+      tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR),
+      !!abogado,
+      !!abogado && esSuya(abogado, acceso),
+    );
+    return { abogado, motivo };
+  }
 
   // ------------------------------------------------------------- proceso ---
 
@@ -279,7 +339,7 @@ export class EstudioPrevioService {
   // ------------------------------------------------------ estudio previo ---
 
   /** Devuelve los datos y la definición de campos: el front dibuja desde aquí. */
-  async obtener(procesoId: string) {
+  async obtener(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.obtenerProceso(procesoId);
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
     const campos = await this.camposDe(this.dataSource.manager);
@@ -312,6 +372,27 @@ export class EstudioPrevioService {
       datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado } as Record<string, any>,
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
+      /**
+       * Quién resuelve la 3.4 y si le toca a quien está mirando (EFDS-1183).
+       *
+       * Va aquí y no en una consulta aparte porque la pantalla lo necesita en
+       * el mismo momento en que dibuja los botones: pedirlo después dejaría un
+       * instante en que ofrece decidir a quien no puede.
+       */
+      revision: acceso ? await this.quienRevisa(procesoId, acceso) : null,
+    };
+  }
+
+  /** El abogado del proceso y por qué quien pregunta puede o no decidir. */
+  private async quienRevisa(procesoId: string, acceso: HiringAccess) {
+    const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
+    return {
+      abogado: abogado
+        ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
+        : null,
+      puedeDecidir: motivo === null,
+      /** Para que la pantalla explique en vez de esconder sin más. */
+      motivo,
     };
   }
 
@@ -507,6 +588,20 @@ export class EstudioPrevioService {
     observaciones: string | undefined,
     acceso: HiringAccess,
   ) {
+    // Quién puede decidir se resuelve antes de abrir la transacción: no toca
+    // nada y así el error de autorización no arrastra un lock.
+    const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
+    if (motivo === 'SIN_ABOGADO') {
+      throw new ConflictException(
+        'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
+      );
+    }
+    if (motivo === 'NO_ES_TUYO') {
+      throw new ForbiddenException(
+        `Este proceso lo revisa ${abogado!.nombre}: la 3.4 la resuelve el abogado al que se le asignó`,
+      );
+    }
+
     return this.dataSource.transaction(async (em) => {
       // Lock pesimista: dos revisores simultáneos no deben registrar dos
       // decisiones sobre el mismo envío.
@@ -534,6 +629,13 @@ export class EstudioPrevioService {
       actividad.revisadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
 
+      // La 3.4 revisa lo que el área entregó en 3.1 **y en 3.2**, así que la
+      // decisión alcanza a las dos. Devolver solo la 3.1 dejaba al área
+      // corrigiendo el estudio previo mientras su análisis del sector seguía
+      // dado por bueno, y negar dejaba una actividad aprobada colgando de un
+      // proceso muerto.
+      await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
+
       // El proceso termina con la actividad cuando la decisión lo cierra.
       const desenlace = desenlaceTrasDecision(decision);
       if (desenlace) {
@@ -557,6 +659,34 @@ export class EstudioPrevioService {
         revisadoAt: actividad.revisadoAt,
       };
     });
+  }
+
+  /**
+   * Lleva la 3.2 al mismo sitio que la 3.1 cuando la 3.4 la devuelve o la niega.
+   *
+   * Solo hacia atrás: aprobar la 3.1 no aprueba la 3.2, porque el análisis del
+   * sector tiene su propio registro y darlo por bueno desde aquí sellaría como
+   * revisado algo que nadie miró.
+   *
+   * Una 3.2 que no aplica a la modalidad se queda como está: NO_APLICA no es un
+   * estado del que se pueda devolver a nadie.
+   */
+  private async arrastrarALaDelSector(
+    em: EntityManager,
+    procesoId: string,
+    estadoDeLa31: EstadoActividad,
+  ) {
+    if (estadoDeLa31 !== 'BORRADOR' && estadoDeLa31 !== 'NEGADO') return;
+
+    const sector = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_ANALISIS_SECTOR },
+    });
+    if (!sector || sector.estado === 'NO_APLICA') return;
+
+    sector.estado = estadoDeLa31;
+    sector.revisadoPor = null as any;
+    sector.revisadoAt = null as any;
+    await em.save(ProcesoActividad, sector);
   }
 
   /** Historial de revisiones del estudio previo, de la más reciente a la más antigua. */

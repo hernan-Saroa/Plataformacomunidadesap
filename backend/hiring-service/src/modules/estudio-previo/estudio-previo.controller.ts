@@ -80,9 +80,13 @@ export class EstudioPrevioController {
   }
 
   @Get(':id/estudio-previo')
-  @ApiOperation({ summary: 'Datos del estudio previo y definición de sus campos' })
-  obtener(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.obtener(id);
+  @ApiOperation({
+    summary: 'Datos del estudio previo y definición de sus campos',
+    description:
+      'Trae además quién resuelve la 3.4 y si le toca a quien consulta, para que la pantalla no ofrezca una decisión que la API va a rechazar.',
+  })
+  obtener(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.obtener(id, getHiringAccess(req));
   }
 
   @Put(':id/estudio-previo')
