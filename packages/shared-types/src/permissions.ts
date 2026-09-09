@@ -206,6 +206,9 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_EDIT = 'control-disciplinario.configuraciones.conductas.edit',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_DELETE = 'control-disciplinario.configuraciones.conductas.delete',
 
+  //Control Disciplinario - Reportes
+  CONTROL_DISCIPLINARIO_REPORTES_MANAGE = 'control-disciplinario.reportes.manage',
+
   // Control Disciplinario - Nuevos Permisos (Granulares)
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL = 'control-disciplinario.procesos.view_all',
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE = 'control-disciplinario.procesos.view_mine',
