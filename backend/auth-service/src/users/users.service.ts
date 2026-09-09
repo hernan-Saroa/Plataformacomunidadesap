@@ -228,8 +228,89 @@ export class UsersService {
            updated_at = NOW(),
            id_user = EXCLUDED.id_user
        `,
-       [user.person.full_name, currentEmail, user.person.phone || null, cargo, user.id_user],
-     );
+        [user.person.full_name, currentEmail, user.person.phone || null, cargo, user.id_user],
+      );
+  }
+
+  private async syncAnalistaViaticos(manager: EntityManager, user: User): Promise<void> {
+    const hasAnalistaRole = (user.roles || []).some(
+      (role) => role.code?.toUpperCase() === 'ANALISTA',
+    );
+
+    let person: Person | null = user.person;
+    if (!person && user.id_person) {
+      const found = await manager.getRepository(Person).findOne({
+        where: { id: user.id_person },
+      });
+      if (found) {
+        person = found;
+      }
+    }
+
+    if (!person) {
+      this.logger.warn(`syncAnalistaViaticos: usuario ${user.id_user} sin persona asociada`);
+      return;
+    }
+
+    const nombreCompleto = [person.first_name, person.last_name].filter(Boolean).join(' ').trim() || person.full_name;
+    const cargo = (user.roles || []).find((role) => role.code?.toUpperCase() === 'ANALISTA')?.name || null;
+
+    try {
+      if (hasAnalistaRole) {
+        const result = await manager.query(
+          `
+          INSERT INTO travel_expenses.analistas_viaticos (
+            usuario_id,
+            id_persona,
+            identificacion,
+            nombre_completo,
+            username,
+            email,
+            telefono,
+            cargo,
+            dependencia_id,
+            activo,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+          ON CONFLICT (usuario_id) DO UPDATE SET
+            id_persona = EXCLUDED.id_persona,
+            identificacion = EXCLUDED.identificacion,
+            nombre_completo = EXCLUDED.nombre_completo,
+            username = EXCLUDED.username,
+            email = EXCLUDED.email,
+            telefono = EXCLUDED.telefono,
+            cargo = EXCLUDED.cargo,
+            dependencia_id = EXCLUDED.dependencia_id,
+            activo = EXCLUDED.activo,
+            updated_at = NOW()
+          `,
+          [
+            user.id_user,
+            person.id,
+            person.identification_number,
+            nombreCompleto,
+            user.username,
+            person.email,
+            person.phone,
+            cargo,
+            person.idDependencia ?? null,
+            user.is_active,
+          ],
+        );
+        this.logger.log(`syncAnalistaViaticos: analista sincronizado para usuario ${user.id_user} (${user.username})`);
+      } else {
+        await manager.query(
+          `DELETE FROM travel_expenses.analistas_viaticos WHERE usuario_id = $1`,
+          [user.id_user],
+        );
+        this.logger.log(`syncAnalistaViaticos: analista eliminado para usuario ${user.id_user}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`syncAnalistaViaticos: error sincronizando usuario ${user.id_user}: ${error.message}`);
+      throw error;
+    }
   }
 
   private normalizeEmail(value: unknown): string {
@@ -662,11 +743,13 @@ export class UsersService {
               'Uno o mas roles seleccionados no existen.',
             );
           }
-          savedUser.roles = roles;
-          await userRepo.save(savedUser);
-        }
+           savedUser.roles = roles;
+           await userRepo.save(savedUser);
+         }
 
-        return this.loadUserWithRelations(manager, savedUser.id_user);
+         await this.syncAnalistaViaticos(manager, savedUser);
+
+         return this.loadUserWithRelations(manager, savedUser.id_user);
       });
     } catch (error) {
       this.rethrowCreateUserError(error);
@@ -928,9 +1011,11 @@ export class UsersService {
           await userRepo.save(savedUser);
         }
 
-        await this.syncDisciplinaryProfessional(manager, savedUser.id_user);
+         await this.syncDisciplinaryProfessional(manager, savedUser.id_user);
 
-        return this.loadUserWithRelations(manager, savedUser.id_user);
+         await this.syncAnalistaViaticos(manager, savedUser);
+
+         return this.loadUserWithRelations(manager, savedUser.id_user);
       });
     } catch (error) {
       this.rethrowCreateUserError(error);
@@ -1271,6 +1356,8 @@ export class UsersService {
       if (!updatedUser) {
         throw new NotFoundException('Usuario no encontrado');
       }
+
+      await this.syncAnalistaViaticos(manager, updatedUser);
 
       return updatedUser;
     });

@@ -289,6 +289,13 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Post(':ptaId/validar-reenvio')
+  @UseGuards(PtaAuthGuard)
+  async validarReenvio(@Param('ptaId') ptaId: string, @Req() req: Request) {
+    const data = await this.ptaService.validarReenvioPTA(ptaId, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Post(':ptaId/estado')
   @UseGuards(PtaAuthGuard)
   async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {

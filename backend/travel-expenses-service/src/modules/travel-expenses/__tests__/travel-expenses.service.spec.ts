@@ -3,14 +3,20 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { TravelExpensesService } from '../travel-expenses.service';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { ComisionadoEntity } from '../../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../../entities/documento-soporte.entity';
+import { SolicitudHistorialEstadoEntity } from '../../../entities/solicitud-historial-estado.entity';
 import { ConfigService } from '../../config/config.service';
+import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
+import { NotificationClientService } from '../../../common/notification-client.service';
+import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
+import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -36,8 +42,10 @@ describe('TravelExpensesService', () => {
       comisionadoRepo?: any;
       solicitudRepo?: any;
       documentoRepo?: any;
+      historialRepo?: any;
       dataSource?: any;
       configService?: any;
+      notificationClient?: any;
     } = {},
   ) => {
     const {
@@ -48,6 +56,7 @@ describe('TravelExpensesService', () => {
         save: jest.fn(),
       },
       documentoRepo = { create: jest.fn(), save: jest.fn() },
+      historialRepo = { create: jest.fn(), save: jest.fn() },
       dataSource = {
         transaction: jest.fn(),
         createQueryBuilder: jest.fn(),
@@ -58,6 +67,14 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+      },
+      notificationClient = {
+        archiveNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
       },
     } = overrides;
 
@@ -81,8 +98,16 @@ describe('TravelExpensesService', () => {
           useValue: documentoRepo,
         },
         {
+          provide: getRepositoryToken(SolicitudHistorialEstadoEntity),
+          useValue: historialRepo,
+        },
+        {
           provide: ConfigService,
           useValue: configService,
+        },
+        {
+          provide: NotificationClientService,
+          useValue: notificationClient,
         },
       ],
     }).compile();
@@ -196,9 +221,9 @@ describe('TravelExpensesService', () => {
 
       const module = await createMockModule({ comisionadoRepo, dataSource });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
-      await expect(svc.consultarComisionado('9999999999')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        svc.consultarComisionado('9999999999'),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
     });
 
@@ -808,7 +833,7 @@ describe('TravelExpensesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('debe marcar como EXTEMPORANEA cuando la anticipación es menor a 14 días hábiles', async () => {
+    it('debe radicar como RADICADA sin evaluar anticipación en la creación', async () => {
       const comisionado = {
         ...mockComisionado,
         autorizacionHabeasData: true,
@@ -879,8 +904,8 @@ describe('TravelExpensesService', () => {
       });
 
       expect(result).toBeDefined();
-      expect(result.extemporanea).toBe(true);
-      expect(result.estadoSolicitud).toBe('EXTEMPORANEA');
+      expect(result.extemporanea).toBe(false);
+      expect(result.estadoSolicitud).toBe('RADICADA');
     });
   });
 
@@ -1360,6 +1385,1118 @@ describe('TravelExpensesService', () => {
 
       expect(result.esInternacional).toBe(true);
       expect(result.tipoComision).toBe('INTERNACIONAL');
+    });
+  });
+});
+
+describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
+  let service: TravelExpensesService;
+
+  const mockComisionado = {
+    id: 'com-001',
+    numeroDocumento: '1234567890',
+    primerNombre: 'Juan',
+    primerApellido: 'Pérez',
+    segundoNombre: 'Pablo',
+    email: 'juan.perez@esap.edu.co',
+    telefonoContacto: '3001234567',
+    tipoComisionado: 'FUNCIONARIO',
+  } as ComisionadoEntity;
+
+  const createMockModuleEtapa5 = (
+    overrides: {
+      comisionadoRepo?: any;
+      solicitudRepo?: any;
+      documentoRepo?: any;
+      historialRepo?: any;
+      dataSource?: any;
+      configService?: any;
+      notificationClient?: any;
+    } = {},
+  ) => {
+    const {
+      comisionadoRepo = { findOne: jest.fn(), save: jest.fn() },
+      solicitudRepo = {
+        createQueryBuilder: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+        findOne: jest.fn(),
+      },
+      documentoRepo = { create: jest.fn(), save: jest.fn(), find: jest.fn() },
+      historialRepo = { create: jest.fn(), save: jest.fn() },
+      dataSource = {
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      },
+      configService = {
+        obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue(null),
+        obtenerConfiguracionPorCodigoFormulario: jest
+          .fn()
+          .mockResolvedValue(null),
+      },
+      notificationClient = {
+        archiveNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
+        send: jest.fn().mockResolvedValue(undefined),
+      },
+    } = overrides;
+
+    return Test.createTestingModule({
+      providers: [
+        TravelExpensesService,
+        {
+          provide: getDataSourceToken(),
+          useValue: dataSource,
+        },
+        {
+          provide: getRepositoryToken(ComisionadoEntity),
+          useValue: comisionadoRepo,
+        },
+        {
+          provide: getRepositoryToken(SolicitudComisionEntity),
+          useValue: solicitudRepo,
+        },
+        {
+          provide: getRepositoryToken(DocumentoSoporteEntity),
+          useValue: documentoRepo,
+        },
+        {
+          provide: getRepositoryToken(SolicitudHistorialEstadoEntity),
+          useValue: historialRepo,
+        },
+        {
+          provide: ConfigService,
+          useValue: configService,
+        },
+        {
+          provide: NotificationClientService,
+          useValue: notificationClient,
+        },
+      ],
+    }).compile();
+  };
+
+  beforeEach(async () => {
+    const module = await createMockModuleEtapa5();
+    service = module.get<TravelExpensesService>(TravelExpensesService);
+  });
+
+  it('debe estar definido', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('obtenerSolicitudesAsignadasAnalista', () => {
+    it('debe retornar solicitudes asignadas al analista en estados activos ordenadas por creadoEn DESC', async () => {
+      const solicitudes = [
+        {
+          id: 'sol-001',
+          analistaAsignadoId: 'analista-001',
+          estadoSolicitud: EstadoSolicitud.EN_VERIFICACION,
+          creadoEn: new Date('2026-09-03'),
+          comisionado: mockComisionado,
+        },
+        {
+          id: 'sol-002',
+          analistaAsignadoId: 'analista-001',
+          estadoSolicitud: EstadoSolicitud.SOLICITADO,
+          creadoEn: new Date('2026-09-02'),
+          comisionado: mockComisionado,
+        },
+        {
+          id: 'sol-003',
+          analistaAsignadoId: 'analista-001',
+          estadoSolicitud: EstadoSolicitud.VERIFICADA,
+          creadoEn: new Date('2026-09-01'),
+          comisionado: mockComisionado,
+        },
+      ];
+
+      const solicitudRepo = {
+        find: jest.fn().mockResolvedValue(solicitudes),
+        createQueryBuilder: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudesAsignadasAnalista('analista-001');
+
+      expect(solicitudRepo.find).toHaveBeenCalledWith({
+        where: {
+          analistaAsignadoId: 'analista-001',
+          estadoSolicitud: In([
+            EstadoSolicitud.SOLICITADO,
+            EstadoSolicitud.EN_VERIFICACION,
+            EstadoSolicitud.VERIFICADA,
+          ]),
+        },
+        order: { creadoEn: 'DESC' },
+        relations: ['comisionado'],
+      });
+      expect(result).toHaveLength(3);
+      expect(result[0].id).toBe('sol-001');
+      expect(result[0].estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
+    });
+
+    it('debe lanzar BadRequestException si analistaId esta vacio', async () => {
+      await expect(
+        service.obtenerSolicitudesAsignadasAnalista(''),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.obtenerSolicitudesAsignadasAnalista(''),
+      ).rejects.toThrow('analistaId es obligatorio.');
+    });
+
+    it('debe retornar lista vacia cuando no hay solicitudes asignadas', async () => {
+      const solicitudRepo = {
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudesAsignadasAnalista('analista-001');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('verificarAuditoria', () => {
+    it('debe registrar verificacion exitosamente: validar SoD, estado, log en historial y actualizar consultaRutFacturador', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        consultaRutFacturador: false,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const dto = {
+        seguridadSocialVigente: true,
+        consultaRutFacturador: true,
+      } as VerifyAuditDto;
+
+      const result = await svc.verificarAuditoria(
+        'sol-001',
+        'analista-001',
+        ['ANALISTA'],
+        dto,
+      );
+
+      expect(result.consultaRutFacturador).toBe(true);
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          solicitudId: 'sol-001',
+          comentarios: expect.stringContaining('VERIFICACION_ANALISTA'),
+        }),
+      );
+    });
+
+    it('debe lanzar NotFoundException si la solicitud no existe', async () => {
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarAuditoria(
+          'sol-inexistente',
+          'analista-001',
+          ['ANALISTA'],
+          {} as VerifyAuditDto,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('debe lanzar BadRequestException si el estado no es SOLICITADO ni EN_VERIFICACION', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.APROBADO_JEFE,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        consultaRutFacturador: false,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarAuditoria(
+          'sol-001',
+          'analista-001',
+          ['ANALISTA'],
+          {} as VerifyAuditDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.verificarAuditoria(
+          'sol-001',
+          'analista-001',
+          ['ANALISTA'],
+          {} as VerifyAuditDto,
+        ),
+      ).rejects.toThrow(
+        'Estado no valido para verificacion: APROBADO_JEFE',
+      );
+    });
+
+    it('debe lanzar ForbiddenException por infraccion SoD cuando el usuario es comisionado', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'user-001',
+        creadoPorUsuarioId: 'user-creador-1',
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarAuditoria(
+          'sol-001',
+          'user-001',
+          ['ANALISTA'],
+          {} as VerifyAuditDto,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe lanzar ForbiddenException por infraccion SoD cuando el usuario es el creador', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-001',
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarAuditoria(
+          'sol-001',
+          'user-001',
+          ['ANALISTA'],
+          {} as VerifyAuditDto,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe permitir verificacion a super admin sin importar la relacion', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        consultaRutFacturador: false,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.verificarAuditoria(
+        'sol-001',
+        'admin-001',
+        ['ADMIN'],
+        { seguridadSocialVigente: true, consultaRutFacturador: false } as VerifyAuditDto,
+      );
+
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('devolverAnalista', () => {
+    it('debe transicionar a DEVUELTA, establecer motivoDevolucion y registrar historial', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        motivoDevolucion: null,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-002' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.devolverAnalista(
+        'sol-001',
+        'analista-001',
+        ['ANALISTA'],
+        'Falta documento de soporte',
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.DEVUELTA);
+      expect(result.motivoDevolucion).toBe('Falta documento de soporte');
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          solicitudId: 'sol-001',
+          estadoAnterior: EstadoSolicitud.SOLICITADO,
+          estadoNuevo: EstadoSolicitud.DEVUELTA,
+          usuarioId: 'analista-001',
+          comentarios: 'Falta documento de soporte',
+        }),
+      );
+    });
+
+    it('debe lanzar BadRequestException si el estado no es SOLICITADO ni EN_VERIFICACION', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.APROBADO_JEFE,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAnalista('sol-001', 'analista-001', ['ANALISTA'], 'Falta soporte'),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.devolverAnalista('sol-001', 'analista-001', ['ANALISTA'], 'Falta soporte'),
+      ).rejects.toThrow(
+        'Estado no valido para devolucion: APROBADO_JEFE',
+      );
+    });
+
+    it('debe lanzar BadRequestException si el motivo esta vacio', async () => {
+      await expect(
+        service.devolverAnalista('sol-001', 'analista-001', ['ANALISTA'], '   '),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.devolverAnalista('sol-001', 'analista-001', ['ANALISTA'], '   '),
+      ).rejects.toThrow('El motivo de devolucion es obligatorio.');
+    });
+
+    it('debe lanzar ForbiddenException por infraccion SoD cuando el usuario es comisionado', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'user-001',
+        creadoPorUsuarioId: 'user-creador-1',
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAnalista('sol-001', 'user-001', ['ANALISTA'], 'Falta soporte'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('exportarSIIF', () => {
+    it('debe generar CSV, marcar siifExportado=true y transicionar a SOLICITADA_SIIF', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-001',
+        siifExportado: false,
+        objetoComision: 'Comision de servicios',
+        rubroPresupuestal: 'Rubro 01',
+        montoViaticos: 500000,
+        montoGastosViaje: 100000,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          ...mockComisionado,
+          primerNombre: 'Juan',
+          segundoNombre: 'Pablo',
+          primerApellido: 'Pérez',
+          segundoApellido: 'Gómez',
+        }),
+        save: jest.fn(),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-003' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'ComisionadoEntity' ||
+                nombre === 'comisionados'
+              )
+                return comisionadoRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        comisionadoRepo,
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
+
+      expect(result.fileName).toMatch(/^SIIF_COM-2026-0001_\d{4}-\d{2}-\d{2}\.csv$/);
+      expect(result.csvContent).toContain('Cedula;Nombre;Objeto;ValorNeto;RubroPresupuestal');
+      expect(result.csvContent).toContain('1234567890');
+      expect(result.solicitud.siifExportado).toBe(true);
+      expect(result.solicitud.fechaExportacionSiif).toBeDefined();
+      expect(result.solicitud.usuarioExportadorId).toBe('analista-001');
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          solicitudId: 'sol-001',
+          estadoAnterior: EstadoSolicitud.SOLICITADO,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          comentarios: 'Exportado a SIIF Nacion',
+        }),
+      );
+    });
+
+    it('debe lanzar BadRequestException si la solicitud ya fue exportada', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-001',
+        siifExportado: true,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
+      ).rejects.toThrow('Esta solicitud ya fue exportada a SIIF.');
+    });
+
+    it('debe lanzar BadRequestException si el estado no esta permitido', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.APROBADO_JEFE,
+        comisionadoId: 'com-001',
+        siifExportado: false,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
+      ).rejects.toThrow(
+        'Estado no valido para exportacion SIIF: APROBADO_JEFE',
+      );
+    });
+
+    it('debe lanzar ForbiddenException por infraccion SoD cuando el usuario es comisionado', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'user-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        siifExportado: false,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.exportarSIIF('sol-001', 'user-001', ['ANALISTA']),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe permitir exportar a super admin sin importar la relacion', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-001',
+        siifExportado: false,
+        objetoComision: 'Comision de servicios',
+        rubroPresupuestal: 'Rubro 01',
+        montoViaticos: 500000,
+        montoGastosViaje: 100000,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          ...mockComisionado,
+          primerNombre: 'Juan',
+          segundoNombre: 'Pablo',
+          primerApellido: 'Pérez',
+          segundoApellido: 'Gómez',
+        }),
+        save: jest.fn(),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-003' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'ComisionadoEntity' ||
+                nombre === 'comisionados'
+              )
+                return comisionadoRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        comisionadoRepo,
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.exportarSIIF('sol-001', 'admin-001', ['SUPER_ADMIN']);
+
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+    });
+  });
+
+  describe('validarSoD (privada, cubierta por metodos publicos)', () => {
+    it('debe permitir super admin en verificarAuditoria', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        consultaRutFacturador: false,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.verificarAuditoria(
+        'sol-001',
+        'admin-001',
+        ['SUPER_ADMIN'],
+        { seguridadSocialVigente: true } as VerifyAuditDto,
+      );
+
+      expect(result).toBeDefined();
+    });
+
+    it('debe bloquear comisionado en devolverAnalista', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        comisionadoId: 'user-001',
+        creadoPorUsuarioId: 'user-creador-1',
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAnalista('sol-001', 'user-001', ['ANALISTA'], 'Falta soporte'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe bloquear creador en exportarSIIF', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-001',
+        siifExportado: false,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.exportarSIIF('sol-001', 'user-001', ['ANALISTA']),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

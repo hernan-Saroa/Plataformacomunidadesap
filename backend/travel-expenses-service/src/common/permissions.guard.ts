@@ -14,6 +14,8 @@ const SUPER_ADMIN_ROLES = [
   'Super Administrador',
   'SUPER_ADMINISTRADOR',
   'super_administrador',
+  'SUPERUSER',
+  'superuser',
 ];
 
 @Injectable()

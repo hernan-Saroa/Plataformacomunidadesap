@@ -1,3 +1,4 @@
+import { normalizeRundPhones, RUND_PHONE_ERROR } from './rundPhones';
 export type ManualDocenteForm = Record<string, string>;
 export type ManualDocenteErrors = Record<string, string>;
 
@@ -63,7 +64,8 @@ export function sanitizeManualDocument(value: string, documentType: string): str
 }
 
 export function sanitizeManualPhone(value: string): string {
-  return value.replace(/\D/g, '').slice(0, 15);
+  // Preserve input so validation can report errors without joining or truncating numbers.
+  return value;
 }
 
 export function sanitizeManualInteger(value: string, maxLength = 4): string {
@@ -186,8 +188,8 @@ export function validateManualBancoDocenteStep(
     } else if (alternative && alternative === institutional) {
       errors.correoAlternativo = 'Debe ser diferente del correo institucional.';
     }
-    if (form.telefono && !/^\d{7,15}$/.test(form.telefono)) {
-      errors.telefono = 'Ingrese entre 7 y 15 dígitos, sin letras ni símbolos.';
+    if (form.telefono && normalizeRundPhones(form.telefono) === null) {
+      errors.telefono = RUND_PHONE_ERROR;
     }
   }
 

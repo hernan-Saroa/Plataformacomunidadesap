@@ -15,7 +15,7 @@ import { disciplinaryService } from '../../../../services/api/disciplinary.servi
 import { type TipoAuto } from './SeccionPlantillasAutosUnificada';
 
 // ─── Tipos de acción disponibles ───────────────────────────────────────────
-export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO';
+export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO' | 'INHIBITORIO';
 
 // Mapea el tipo del backend al tipoAccion del formulario
 const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
@@ -28,6 +28,9 @@ const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
       return 'PRORROGA';
     case 'AUTO_FORMULACION_PLIEGO':
       return 'PLIEGO';
+    case 'AUTO_INHIBITORIO':
+    case 'INHIBITORIO':
+      return 'INHIBITORIO';
     default:
       // Para tipos dinámicos de apertura: AUTO_APERTURA_*
       if (tipoBackend.startsWith('AUTO_APERTURA_')) {
@@ -72,6 +75,12 @@ const TIPOS_ACCION: {
     label: 'Pliego de Cargos',
     descripcion: 'Formula el pliego de cargos al investigado',
     conAccion: true,
+  },
+  {
+    id: 'INHIBITORIO',
+    label: 'Inhibitorio',
+    descripcion: 'Inhibe el proceso disciplinario',
+    conAccion: false,
   },
 ];
 
