@@ -2638,7 +2638,13 @@ export interface DatosNotificacion {
 
 /** Vencimiento próximo o ya cumplido (EFDS-1185). */
 export interface AlertaVencimiento {
-  tipo: 'AMPARO' | 'CDP' | 'REGISTRO_PRESUPUESTAL' | 'LIQUIDACION' | 'APROBACION_PENDIENTE';
+  tipo:
+    | 'AMPARO'
+    | 'CDP'
+    | 'REGISTRO_PRESUPUESTAL'
+    | 'LIQUIDACION'
+    | 'APROBACION_PENDIENTE'
+    | 'DEVUELTA_PARA_CORREGIR';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;

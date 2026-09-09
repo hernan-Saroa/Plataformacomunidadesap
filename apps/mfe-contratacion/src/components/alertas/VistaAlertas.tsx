@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, ClipboardCheck, FileCheck2, Landmark, ShieldAlert, Timer } from 'lucide-react';
+import {
+  BellRing,
+  ClipboardCheck,
+  FileCheck2,
+  Landmark,
+  ShieldAlert,
+  Timer,
+  Undo2,
+} from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
@@ -21,6 +29,10 @@ const RASGOS: Record<
   // le pide a quien mira. Comparte lista con los vencimientos porque son las
   // dos cosas que le reclaman atención, pero no son lo mismo.
   APROBACION_PENDIENTE: { etiqueta: 'Aprobar', icono: ClipboardCheck, color: '#059669' },
+  // Ámbar y no verde: la aprobación es una decisión que se pide; esta es una
+  // corrección que se debe. Tampoco es roja —nada ha vencido—, pero el trabajo
+  // está parado hasta que se resuelva.
+  DEVUELTA_PARA_CORREGIR: { etiqueta: 'Corregir', icono: Undo2, color: '#D97706' },
 };
 
 /**
@@ -182,10 +194,15 @@ function Fila({
   const rasgo = RASGOS[a.tipo];
   const vencido = a.estado === 'VENCIDO';
   const esAprobacion = a.tipo === 'APROBACION_PENDIENTE';
+  const esDevolucion = a.tipo === 'DEVUELTA_PARA_CORREGIR';
+  /** Ninguna de las dos vence: una espera decisión y la otra, corrección. */
+  const sinPlazo = esAprobacion || esDevolucion;
 
   // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
   // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
-  const numeral = esAprobacion ? a.descripcion.split('·')[0].trim() : undefined;
+  // La devolución la trae igual, y llevar a quien corrige hasta la actividad
+  // —no hasta el proceso— es justamente lo que le ahorra buscarla.
+  const numeral = sinPlazo ? a.descripcion.split('·')[0].trim() : undefined;
 
   return (
     <li
@@ -217,19 +234,38 @@ function Fila({
         </div>
         <p className="text-[11px] text-slate-500 m-0 mt-0.5">
           {a.contrato ?? a.radicado ?? '—'}
-          {a.responsable ? ` · ${a.responsable}` : ' · sin responsable asignado'}
+          {/* En la devuelta el nombre es de quien la devolvió, no de un
+              responsable: decir «sin responsable asignado» sobre una actividad
+              que es tuya no significaría nada. */}
+          {a.responsable
+            ? ` · ${esDevolucion ? `la devolvió ${a.responsable}` : a.responsable}`
+            : esDevolucion
+              ? ''
+              : ' · sin responsable asignado'}
         </p>
       </div>
 
       <div className="text-right flex-shrink-0">
         <span
           className={`block text-[12px] font-bold ${
-            esAprobacion ? 'text-emerald-700' : vencido ? 'text-red-600' : 'text-amber-600'
+            esAprobacion
+              ? 'text-emerald-700'
+              : esDevolucion
+                ? 'text-amber-700'
+                : vencido
+                  ? 'text-red-600'
+                  : 'text-amber-600'
           }`}
         >
-          {/* Una aprobación no vence: lleva esperando. Decir «vence en -3 días»
-              sería contar al revés algo que no tiene plazo. */}
-          {esAprobacion
+          {/* Ni la aprobación ni la devolución vencen: llevan esperando. Decir
+              «vence en -3 días» sería contar al revés algo que no tiene plazo.
+              Y en la devuelta se dice desde cuándo, que es lo que mide cuánto
+              lleva parado el proceso. */}
+          {esDevolucion
+            ? a.diasRestantes === 0
+              ? 'Devuelta hoy'
+              : `Devuelta hace ${Math.abs(a.diasRestantes)} días`
+            : esAprobacion
             ? a.diasRestantes === 0
               ? 'Esperando desde hoy'
               : `Esperando ${Math.abs(a.diasRestantes)} días`

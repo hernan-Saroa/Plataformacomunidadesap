@@ -461,7 +461,7 @@ export class RegistroActividadService {
     actividad.estado = estado as any;
     if (cumplida) {
       actividad.enviadoPor = acceso.userName;
-      (actividad as any).enviadoPorId = acceso.userId;
+      actividad.enviadoPorId = acceso.userId ?? null;
     }
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
