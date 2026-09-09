@@ -163,6 +163,20 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
 }
 
 /**
+ * La ruta del archivo en el gateway, sin decir todavía qué se hace con él.
+ *
+ * Lo que llega no tiene una sola forma: la columna guarda `/files/<archivo>`
+ * donde escribió la biblioteca de formatos y `hiring/files/<archivo>` donde
+ * escribieron los paneles, y solo unos pocos servicios la rearman antes de
+ * responder. Concatenar la segunda daría `/hiring/api/v1hiring/files/…`, un
+ * 404 que el usuario no puede distinguir de un documento borrado.
+ */
+function archivo(descargaUrl: string): string {
+  const nombre = descargaUrl.split('/').pop() ?? '';
+  return `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/files/${nombre}`;
+}
+
+/**
  * El cuerpo multipart de una acción que va con su documento.
  *
  * Se omite lo vacío en vez de mandar la cadena: en `FormData` todo viaja como
@@ -2393,19 +2407,40 @@ export const contratacionService = {
     }),
 
   /**
-   * La dirección desde la que el navegador descarga un adjunto.
+   * La dirección desde la que el navegador **baja** un adjunto.
    *
-   * Lo que llega no tiene una sola forma: la columna guarda `/files/<archivo>`
-   * donde escribió la biblioteca de formatos y `hiring/files/<archivo>` donde
-   * escribieron los paneles, y solo unos pocos servicios la rearman antes de
-   * responder. Concatenar la segunda daría `/hiring/api/v1hiring/files/…`, un
-   * 404 que el usuario no puede distinguir de un documento borrado.
-   *
-   * Se resuelve aquí, que es por donde pasan las cuarenta descargas del
-   * módulo, quedándose con el nombre: es lo único que el controlador necesita.
+   * `descargar=1` es lo que le pide al controlador la cabecera `attachment`.
+   * Va explícito desde que el archivo se sirve `inline` por defecto: sin él,
+   * un enlace sin `target` sacaría al usuario del módulo para enseñarle el PDF
+   * en la misma pestaña.
    */
-  urlDescarga: (descargaUrl: string) => {
-    const nombre = descargaUrl.split('/').pop() ?? '';
-    return `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/files/${nombre}`;
+  urlDescarga: (descargaUrl: string) =>
+    `${archivo(descargaUrl)}?descargar=1`,
+
+  /**
+   * La misma dirección, pero para mirar el documento en vez de bajarlo.
+   *
+   * El controlador sirve `inline` salvo que se le pida `descargar=1`, así que
+   * esta es la que abre el PDF en el visor o en una pestaña. Se separan porque
+   * las cuarenta descargas del módulo son eso —descargas— y cambiarlas todas a
+   * la vez dejaría a cualquier enlace sin `target` navegando fuera del módulo.
+   */
+  urlVista: (descargaUrl: string) => archivo(descargaUrl),
+
+  /**
+   * El documento en memoria, para enseñarlo sin salir de la pantalla.
+   *
+   * Va por `fetch` con la cookie de sesión y no por el `src` del visor: un
+   * `iframe` que apunta al gateway es una petición de tercero, y el navegador
+   * no siempre le manda la cookie —depende del `SameSite` y de si el shell y el
+   * gateway comparten sitio—. Con el blob, el visor pinta lo que esta misma
+   * sesión ya descargó, que es la vía que usa el resto del servicio.
+   */
+  contenidoDocumento: async (descargaUrl: string): Promise<Blob> => {
+    const res = await fetch(archivo(descargaUrl), { credentials: 'include' });
+    if (res.status === 401) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+    if (res.status === 404) throw new Error('El documento ya no está en el expediente');
+    if (!res.ok) throw new Error(`No se pudo abrir el documento (error ${res.status})`);
+    return res.blob();
   },
 };
