@@ -8,7 +8,18 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, Updat
  * recorre el ciclo anterior. Se instancia igual, en vez de omitirse, para que
  * el expediente deje constancia de por qué el proceso tuvo menos pasos.
  */
-export type EstadoActividad = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO' | 'NO_APLICA';
+/**
+ * `NEGADO` no reusa `DEVUELTO` (EFDS-1183): devuelta, la actividad vuelve a
+ * BORRADOR y se puede corregir y reenviar; negada, no se toca más. Con un solo
+ * estado el riel ofrecería editar algo que ya nadie va a mirar.
+ */
+export type EstadoActividad =
+  | 'BORRADOR'
+  | 'EN_REVISION'
+  | 'APROBADO'
+  | 'DEVUELTO'
+  | 'NO_APLICA'
+  | 'NEGADO';
 
 /** Numeral 3.1 de la matriz: elaboración del estudio previo. */
 export const NUMERAL_ESTUDIO_PREVIO = '3.1';
@@ -38,6 +49,19 @@ export class ProcesoActividad {
 
   @Column({ name: 'enviado_por', length: 120, nullable: true })
   enviadoPor: string;
+
+  /**
+   * Quién la envió, por id y no solo por su correo.
+   *
+   * El correo es para leerlo; este es el que compara el servicio para dos
+   * reglas: que nadie apruebe lo que él mismo envió, y a quién avisar cuando
+   * se la devuelven. La columna existía en la base y el servicio la asignaba,
+   * pero la entidad no la declaraba: TypeORM descartaba el valor sin avisar y
+   * quedaba en nulo, así que el aprobador podía aprobarse a sí mismo y la
+   * devolución no encontraba destinatario.
+   */
+  @Column({ name: 'enviado_por_id', length: 120, nullable: true })
+  enviadoPorId: string | null;
 
   @Column({ name: 'enviado_at', type: 'timestamptz', nullable: true })
   enviadoAt: Date;

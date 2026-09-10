@@ -25,6 +25,8 @@ import { AdjudicacionModule } from './modules/adjudicacion/adjudicacion.module';
 import { ContratosModule } from './modules/contratos/contratos.module';
 import { LegalizacionModule } from './modules/legalizacion/legalizacion.module';
 import { SupervisionModule } from './modules/supervision/supervision.module';
+import { ParticipacionModule } from './modules/participacion/participacion.module';
+import { ModalidadProcesoModule } from './modules/modalidad-proceso/modalidad-proceso.module';
 import { RegistroPresupuestalModule } from './modules/registro-presupuestal/registro-presupuestal.module';
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
@@ -38,6 +40,7 @@ import { ModificacionesModule } from './modules/modificaciones/modificaciones.mo
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
 import { RegistroActividadModule } from './modules/registro-actividad/registro-actividad.module';
 import { AlertasModule } from './modules/alertas/alertas.module';
+import { EstadisticasModule } from './modules/estadisticas/estadisticas.module';
 import { AprobacionModule } from './modules/aprobacion/aprobacion.module';
 import { DocumentosActividadModule } from './modules/documentos-actividad/documentos-actividad.module';
 import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
@@ -102,6 +105,7 @@ import {
   ResolucionSancionatoria,
 } from './entities/actuacion-sancionatoria.entity';
 import { SupervisionContrato } from './entities/supervision-contrato.entity';
+import { ParticipacionProceso } from './entities/participacion-proceso.entity';
 import { RegistroPresupuestal } from './entities/registro-presupuestal.entity';
 import { PlazoPublicacionContrato, PublicacionContrato } from './entities/publicacion-contrato.entity';
 import { TipologiaContrato } from './entities/tipologia-contrato.entity';
@@ -136,7 +140,7 @@ import {
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion, SeguimientoContrato, RegistroActividad, ActividadConSoporte, CasoIncumplimiento, AudienciaSancionatoria, ResolucionSancionatoria],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, ParticipacionProceso, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion, SeguimientoContrato, RegistroActividad, ActividadConSoporte, CasoIncumplimiento, AudienciaSancionatoria, ResolucionSancionatoria],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -166,6 +170,8 @@ import {
     ContratosModule,
     LegalizacionModule,
     SupervisionModule,
+    ParticipacionModule,
+    ModalidadProcesoModule,
     RegistroPresupuestalModule,
     PublicacionContratoModule,
     ActaInicioModule,
@@ -179,6 +185,7 @@ import {
     SeguimientoModule,
     RegistroActividadModule,
     AlertasModule,
+    EstadisticasModule,
     AprobacionModule,
     DocumentosActividadModule,
     IncumplimientoModule,

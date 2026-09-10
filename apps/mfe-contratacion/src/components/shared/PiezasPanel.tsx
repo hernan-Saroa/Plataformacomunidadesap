@@ -1,6 +1,8 @@
 import React from 'react';
 import { AlertTriangle, Check, FileText, Lock, Paperclip } from 'lucide-react';
 
+import { useSoloLectura } from './SoloLectura';
+
 /**
  * Piezas comunes de los paneles de actividad.
  *
@@ -123,36 +125,57 @@ export const Aviso = ({
   </div>
 );
 
+/**
+ * El botón con el que cada panel avanza su actividad.
+ *
+ * Se apaga solo cuando la secuencia todavía no llegó a la actividad abierta
+ * (EFDS-1183). Es el punto donde el bloqueo se aplica de verdad: el riel deja
+ * entrar a cualquier actividad para poder leerla, y lo que no puede pasar es
+ * que se escriba en ella antes de tiempo. Al vivir en la pieza compartida vale
+ * para los treinta y ocho paneles sin tocar ninguno.
+ */
 export const Boton = ({
   children,
   icono,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => (
-  <button
-    type="button"
-    {...props}
-    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all"
-  >
-    {icono}
-    {children}
-  </button>
-);
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => {
+  const soloLectura = useSoloLectura();
+
+  return (
+    <button
+      type="button"
+      {...props}
+      disabled={props.disabled || !!soloLectura}
+      title={soloLectura ?? props.title}
+      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+    >
+      {icono}
+      {children}
+    </button>
+  );
+};
 
 /** Botón secundario: acciones que corrigen o devuelven, no las que avanzan. */
 export const BotonSecundario = ({
   children,
   icono,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => (
-  <button
-    type="button"
-    {...props}
-    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 transition-all"
-  >
-    {icono}
-    {children}
-  </button>
-);
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => {
+  const soloLectura = useSoloLectura();
+
+  return (
+    <button
+      type="button"
+      {...props}
+      disabled={props.disabled || !!soloLectura}
+      title={soloLectura ?? props.title}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+    >
+      {icono}
+      {children}
+    </button>
+  );
+};
 
 export const campo =
   'w-full px-2.5 py-1.5 text-[12.5px] rounded-md border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20';
@@ -196,6 +219,7 @@ export const SelectorArchivo = ({
 }) => {
   const input = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const soloLectura = useSoloLectura();
 
   const elegir = (elegido: File | null) => {
     if (!elegido) return;
@@ -261,10 +285,15 @@ export const SelectorArchivo = ({
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* Mientras la secuencia no llegue a esta actividad no se elige nada:
+            el archivo se sube al registrar, así que dejar escoger aquí sería
+            recoger un documento que el botón de abajo no va a poder enviar. */}
         <button
           type="button"
           onClick={() => input.current?.click()}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-gray-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+          disabled={!!soloLectura}
+          title={soloLectura ?? undefined}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-gray-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <Paperclip className="w-3.5 h-3.5" />
           {archivo ? 'Cambiar archivo' : 'Elegir archivo'}
@@ -276,7 +305,8 @@ export const SelectorArchivo = ({
               setError(null);
               onElegir(null);
             }}
-            className="text-[11.5px] font-bold text-slate-500 hover:underline"
+            disabled={!!soloLectura}
+            className="text-[11.5px] font-bold text-slate-500 hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
           >
             Quitar
           </button>

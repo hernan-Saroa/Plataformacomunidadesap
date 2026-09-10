@@ -15,7 +15,13 @@ export interface ActividadEtapa {
   estado: EstadoActividadUI;
   /** Texto de apoyo bajo el nombre (ej. "faltan 13 campos"). */
   detalle?: string;
-  /** Solo las actividades con HU entregada son navegables. */
+  /**
+   * Si ya se puede trabajar: la secuencia llegó hasta ella y tiene panel.
+   *
+   * Dejó de decidir si se puede abrir (EFDS-1183). Todas se abren, para poder
+   * ver qué piden; lo que esto gobierna es si el panel acepta escritura o se
+   * monta en solo lectura.
+   */
   disponible?: boolean;
   /** Documentos cargados en esta actividad. */
   adjuntos?: number;

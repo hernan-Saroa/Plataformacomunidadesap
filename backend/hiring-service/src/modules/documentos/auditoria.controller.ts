@@ -71,8 +71,16 @@ export class AuditoriaController {
                     JOIN hiring.contratos c ON c.id = s.contrato_id
                    WHERE c.proceso_id = $1
                    ORDER BY s.created_at`, [procesoId]),
-        em.query(`SELECT m.tipo, m.estado, m.justificacion, m.dias_prorroga, m.fecha_efecto,
-                         m.plazo_anterior_dias, m.solicitada_por, m.resuelta_por, m.resuelta_at
+        // Cuatro de estas columnas se escribieron con nombres que la tabla nunca
+        // tuvo, y la consulta reventaba: la auditoría del expediente respondía
+        // 500 desde que se escribió. Se leen las reales y se devuelven con el
+        // alias que la pantalla ya espera, para no romper lo que sí funciona.
+        em.query(`SELECT m.tipo, m.estado, m.justificacion, m.dias_prorroga,
+                         m.terminacion_el   AS fecha_efecto,
+                         m.plazo_dias_antes AS plazo_anterior_dias,
+                         m.solicitada_por,
+                         m.aprobada_por     AS resuelta_por,
+                         m.aprobada_at      AS resuelta_at
                     FROM hiring.modificaciones_contrato m
                     JOIN hiring.contratos c ON c.id = m.contrato_id
                    WHERE c.proceso_id = $1
