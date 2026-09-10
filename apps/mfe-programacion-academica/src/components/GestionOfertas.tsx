@@ -3,7 +3,8 @@ import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 
 import {
   getOfertas, getConsumoPorOferta, crearPeriodo, activarPeriodo,
-  type Oferta, type AcumuladoDocente,
+  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
+  type Oferta, type AcumuladoDocente, type EstadoPublicacion,
 } from '../services/api/catalogoApi';
 
 /**
@@ -40,7 +41,48 @@ export function GestionOfertas() {
   const [guardando, setGuardando] = useState(false);
   const [avisoAdmin, setAvisoAdmin] = useState('');
 
-  const recargar = () => getOfertas().then(setOfertas).catch(() => {});
+  // NUEVA-1 (EFDS-1937) — Publicación de la programación por periodo. El estado
+  // por periodo se consulta y se refresca tras publicar/retirar.
+  const [pubs, setPubs] = useState<Record<string, EstadoPublicacion>>({});
+  const [pubOcupado, setPubOcupado] = useState<string | null>(null);
+  const [avisoPub, setAvisoPub] = useState('');
+
+  const cargarPubs = (lista: Oferta[]) =>
+    Promise.all(lista.map((o) =>
+      getEstadoPublicacion(o.idPeriodo).then((e) => [o.idPeriodo, e] as const).catch(() => null),
+    )).then((pares) => {
+      const map: Record<string, EstadoPublicacion> = {};
+      for (const p of pares) if (p) map[p[0]] = p[1];
+      setPubs(map);
+    });
+
+  const recargar = () => getOfertas().then((l) => { setOfertas(l); return cargarPubs(l); }).catch(() => {});
+
+  const publicar = async (id: string) => {
+    setAvisoPub('');
+    setPubOcupado(id);
+    try {
+      const e = await publicarProgramacion(id);
+      setPubs((prev) => ({ ...prev, [id]: e }));
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo publicar la programación.');
+    } finally {
+      setPubOcupado(null);
+    }
+  };
+
+  const retirar = async (id: string) => {
+    setAvisoPub('');
+    setPubOcupado(id);
+    try {
+      const e = await retirarProgramacion(id);
+      setPubs((prev) => ({ ...prev, [id]: e }));
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo retirar la publicación.');
+    } finally {
+      setPubOcupado(null);
+    }
+  };
 
   const crear = async (e: FormEvent) => {
     e.preventDefault();
@@ -69,7 +111,7 @@ export function GestionOfertas() {
 
   useEffect(() => {
     getOfertas()
-      .then(setOfertas)
+      .then((l) => { setOfertas(l); return cargarPubs(l); })
       .catch((e) => setError(e?.message || 'No se pudieron cargar las ofertas.'))
       .finally(() => setCargando(false));
   }, []);
@@ -102,6 +144,12 @@ export function GestionOfertas() {
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>}
+
+      {/* Aviso de publicar/retirar: el mensaje del backend, verbatim (403 para
+          quien no administra; conflicto si ya hay franjas tomadas). */}
+      {avisoPub && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">{avisoPub}</div>
+      )}
 
       {cargando ? (
         <div className="flex items-center gap-2 text-sm text-slate-500 p-4">
@@ -137,6 +185,44 @@ export function GestionOfertas() {
                   </button>
                 )}
               </div>
+
+              {/* NUEVA-1 — Publicación de la programación del periodo. Publicar
+                  valida sin cruces; retirar solo si nadie tomó franjas. */}
+              {(() => {
+                const p = pubs[o.idPeriodo];
+                if (!p) return null;
+                const ocupado = pubOcupado === o.idPeriodo;
+                const publicado = p.publicada > 0 || p.tomada > 0;
+                return (
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                      <span className="font-semibold text-slate-600">Programación:</span>
+                      <span>{p.programado} programadas</span>
+                      <span className="text-emerald-600">{p.publicada} publicadas</span>
+                      <span className="text-[#003DA5]">{p.tomada} tomadas</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!publicado ? (
+                        <button type="button" disabled={ocupado || p.total === 0}
+                          onClick={() => publicar(o.idPeriodo)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
+                          {ocupado ? 'Publicando…' : 'Publicar programación'}
+                        </button>
+                      ) : (
+                        <>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">Publicada</span>
+                          {/* Retirar se ofrece; el backend lo rechaza verbatim si ya hay franjas tomadas. */}
+                          <button type="button" disabled={ocupado}
+                            onClick={() => retirar(o.idPeriodo)}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-slate-50 disabled:opacity-40 active:scale-95 transition-all">
+                            {ocupado ? 'Retirando…' : 'Retirar'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>

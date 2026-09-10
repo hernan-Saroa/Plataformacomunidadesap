@@ -467,3 +467,34 @@ export function crearPeriodo(dto: CrearPeriodoDto): Promise<Oferta> {
 export function activarPeriodo(idPeriodo: string): Promise<Oferta> {
   return pedirJson<Oferta>(`${BASE_OFERTAS}/${encodeURIComponent(idPeriodo)}/activar`, { method: 'PATCH' });
 }
+
+// ─── Publicación de la programación (NUEVA-1 / EFDS-1937) ─────────────────────
+
+/**
+ * Estado de publicación de un periodo: conteo de sus franjas por etapa del
+ * ciclo PROGRAMADO → PUBLICADA → TOMADA. Es publicación, no oferta: la oferta es
+ * el periodo.
+ */
+export interface EstadoPublicacion {
+  idPeriodo: string;
+  programado: number;
+  publicada: number;
+  tomada: number;
+  total: number;
+}
+
+const BASE_PUBLICACIONES = '/programacion-academica/api/v1/publicaciones';
+
+export function getEstadoPublicacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}`, { method: 'GET' });
+}
+
+/** Publica: valida sin cruces y pasa las franjas PROGRAMADO a PUBLICADA. */
+export function publicarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/publicar`, { method: 'POST' });
+}
+
+/** Retira la publicación: solo si nadie tomó franjas (PUBLICADA → PROGRAMADO). */
+export function retirarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/retirar`, { method: 'POST' });
+}

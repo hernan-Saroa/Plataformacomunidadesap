@@ -13,6 +13,7 @@ import { AsignacionesModule } from './asignaciones/asignaciones.module.js';
 import { AulasModule } from './aulas/aulas.module.js';
 import { OfertasModule } from './ofertas/ofertas.module.js';
 import { ValidacionModule } from './validacion/validacion.module.js';
+import { PublicacionModule } from './publicacion/publicacion.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 
@@ -49,6 +50,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
     AulasModule,
     OfertasModule,
     ValidacionModule,
+    PublicacionModule,
   ],
   controllers: [AppController],
   providers: [
