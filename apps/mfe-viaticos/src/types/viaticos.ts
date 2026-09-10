@@ -603,3 +603,123 @@ export interface SolicitudAsignadaAnalistaResponse {
   total: number;
   timestamp: string;
 }
+
+// =========================================================================
+// RF-REV-002 — Control Viáticos (Segundo Nivel / Control Cruzado)
+// =========================================================================
+
+/** Solicitud en estado SOLICITADA_SIIF para la bandeja de Control Viáticos. */
+export interface SolicitudControlViaticosResponse {
+  id: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  comisionado: Pick<
+    Comisionado,
+    | 'id'
+    | 'numeroDocumento'
+    | 'primerNombre'
+    | 'segundoNombre'
+    | 'primerApellido'
+    | 'segundoApellido'
+    | 'tipoComisionado'
+    | 'email'
+    | 'telefonoContacto'
+    | 'autorizacionHabeasData'
+    | 'idDependencia'
+  > | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  estadoSolicitud: string;
+  radicadoFueraJornada: boolean;
+  extemporanea: boolean;
+  creadoPorUsuarioId?: string;
+  esCreadoPorMi?: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+  motivoDevolucion?: string | null;
+  fechaRevision?: string | null;
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
+  analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
+  /** Analista que realizó la verificación de 1er nivel (auditoría). */
+  analistaVerificadorId?: string | null;
+  /** Nombre completo del analista verificador de 1er nivel. */
+  analistaVerificadorNombre?: string | null;
+  /** Timestamp de la verificación de 1er nivel (exportación SIIF). */
+  fechaVerificacionPrimerNivel?: string | null;
+  /** Datos de liquidación calculada. */
+  liquidacion?: LiquidacionResponse['data'];
+  /** Validación de tiquete si aplica. */
+  validacionTiquete?: TicketValidationResult;
+  /** Documentos de soporte (PDFs). */
+  documentosSoporte?: DocumentoSoporte[];
+}
+
+export interface BandejaControlViaticosResponse {
+  data: SolicitudControlViaticosResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Payload para verificar en segundo nivel (Control Cruzado). */
+export interface VerificarSegundoNivelRequest {
+  observaciones?: string;
+}
+
+/** Respuesta al verificar en segundo nivel. */
+export interface VerificarSegundoNivelResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    fechaVerificacionSegundoNivel: string;
+    verificadoPorUsuarioId: string;
+  };
+  timestamp: string;
+}
+
+/** Payload para devolver al analista de 1er nivel con observaciones obligatorias. */
+export interface DevolverAAnalistaRequest {
+  motivo: string;
+}
+
+/** Respuesta al devolver al analista. */
+export interface DevolverAAnalistaResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    motivoDevolucion: string;
+    devueltoPorUsuarioId: string;
+  };
+  timestamp: string;
+}
+
+/** Modelo de presentación para la tabla de Control Viáticos. */
+export interface SolicitudControlViatico {
+  id: string;
+  codigo: string;
+  cedulaComisionado: string;
+  nombreComisionado: string;
+  cargoComisionado: string;
+  dependencia: string;
+  ciudadDestino: string;
+  departamentoDestino: string;
+  fechaInicio: string;
+  fechaFin: string;
+  diasComision: number;
+  prioridad: string;
+  analistaVerificadorNombre: string | null;
+  fechaVerificacionPrimerNivel: string | null;
+}

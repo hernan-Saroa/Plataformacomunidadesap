@@ -9,6 +9,8 @@ import { UsuarioEntity } from '../../entities/usuario.entity';
 import { ConfigModule } from '../config/config.module';
 import { CommonModule } from '../../common/common.module';
 import { AssignmentsModule } from '../assignments/assignments.module';
+import { SecondLevelSodGuard } from '../../common/second-level-sod.guard';
+import { SodGuard } from '../../common/sod.guard';
 
 @Module({
   imports: [
@@ -23,7 +25,7 @@ import { AssignmentsModule } from '../assignments/assignments.module';
     AssignmentsModule,
   ],
   controllers: [TravelExpensesController],
-  providers: [TravelExpensesService],
+  providers: [TravelExpensesService, SecondLevelSodGuard, SodGuard],
   exports: [TravelExpensesService],
 })
 export class TravelExpensesModule {}

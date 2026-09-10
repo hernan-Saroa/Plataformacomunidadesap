@@ -22,6 +22,7 @@ import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { VerifyAuditDto } from '../../dto/verify-audit.dto';
+import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
 import { sanitizeObjetoComision } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
@@ -1574,8 +1575,8 @@ export class TravelExpensesService {
 
   /**
    * RF-REC-002 Etapa 5 — Obtiene las solicitudes asignadas al analista
-   * autenticado filtradas por estados activos: SOLICITADO, EN_VERIFICACION,
-   * VERIFICADA (misma lógica que la bandeja del asignador).
+   * autenticado. Para el rol ANALISTA incluye TODO el historial de asignaciones
+   * (sin filtro de estado). Para SUPER_ADMIN aplica el filtro de estados activos.
    */
   async obtenerSolicitudesAsignadasAnalista(
     analistaId: string,
@@ -1597,11 +1598,6 @@ export class TravelExpensesService {
         }
       : {
           analistaAsignadoId: analistaId,
-          estadoSolicitud: In([
-            EstadoSolicitud.SOLICITADO,
-            EstadoSolicitud.EN_VERIFICACION,
-            EstadoSolicitud.VERIFICADA,
-          ]),
         };
 
     return this.solicitudRepo.find({
@@ -1859,6 +1855,386 @@ export class TravelExpensesService {
       );
 
       return { csvContent, fileName, solicitud: saved };
+    });
+  }
+
+  // ==========================================================================
+  // Etapa 5 — RF-REV-002 Segunda Revisión (Revisor de Control)
+  // ==========================================================================
+
+   /**
+    * RF-REV-002 — Obtiene el detalle completo de una solicitud para Control Viáticos.
+    *
+    * Devuelve la entidad base más:
+    * - Documentos de soporte (PDFs).
+    * - Resumen presupuestal de la dependencia.
+    * - Trazabilidad de primer nivel: exportador SIIF, fecha de exportación
+    *   y nombre del analista verificador (1er nivel).
+    *
+    * La liquidación calculada y la validación de tiquetes son opcionales:
+    * el modal del frontend las muestra cuando existen, pero no falla si
+    * no están disponibles en esta fase de integración.
+    */
+   async obtenerSolicitudControlViaticos(
+     solicitudId: string,
+   ): Promise<
+     SolicitudComisionEntity & {
+       documentosSoporte: DocumentoSoporteEntity[];
+       resumenPresupuestal?: {
+         totalGastado: number;
+         cantidadSolicitudes: number;
+         limitePresupuesto: number;
+         porcentajeUso: number;
+         semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+       };
+       analistaVerificadorNombre?: string | null;
+       fechaVerificacionPrimerNivel?: string | null;
+     }
+   > {
+     const solicitud = await this.solicitudRepo.findOne({
+       where: { id: solicitudId },
+       relations: ['comisionado'],
+     });
+
+     if (!solicitud) {
+       throw new NotFoundException('Solicitud no encontrada.');
+     }
+
+     const documentos = await this.documentoRepo.find({
+       where: { solicitudId: solicitud.id },
+     });
+
+     const idDependencia = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia;
+     const resumenPresupuestal =
+       idDependencia != null
+         ? await this.calcularResumenPresupuestalDependencia(Number(idDependencia))
+         : undefined;
+
+     // Resolución del nombre del analista verificador de 1er nivel
+     // mediante una consulta a auth.personas (origen único ESAP).
+     let analistaVerificadorNombre: string | null = null;
+     if (solicitud.analistaAsignadoId) {
+       const rows: any[] = await this.dataSource.query(
+         `SELECT p.nom_tercero, p.pri_apellido
+          FROM auth."user" u
+          LEFT JOIN auth.personas p ON p.id_persona = u.id_person
+          WHERE u.id_user = $1
+          LIMIT 1`,
+         [solicitud.analistaAsignadoId],
+       );
+       const row = rows?.[0];
+       if (row) {
+         analistaVerificadorNombre = [row.nom_tercero, row.pri_apellido]
+           .filter(Boolean)
+           .join(' ')
+           .trim();
+       }
+     }
+
+     return {
+       ...solicitud,
+       documentosSoporte: documentos,
+       resumenPresupuestal,
+       analistaVerificadorNombre,
+       fechaVerificacionPrimerNivel:
+         solicitud.fechaExportacionSiif?.toISOString() ?? null,
+     };
+   }
+
+  /**
+   * RF-REV-002 — Obtiene el listado de solicitudes en estado SOLICITADA_SIIF
+   * para la bandeja de Control Viáticos.
+   *
+   * Incluye la trazabilidad de primer nivel: el nombre del analista verificador
+   * (analistaAsignadoId) y la estampa de exportación a SIIF, resueltos mediante
+   * una consulta batch a auth.personas para evitar N+1.
+   */
+  async obtenerSolicitudesSIIFRequested(
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    const query = this.solicitudRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'comisionado')
+      .where('s.estado_solicitud = :estado', {
+        estado: EstadoSolicitud.SOLICITADA_SIIF,
+      })
+      .orderBy('s.fechaExportacionSiif', 'ASC')
+      .addOrderBy('s.creadoEn', 'ASC');
+
+    const total = await query.getCount();
+    const solicitudes = await query
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+
+    // Resolución batch del nombre del analista verificador (1er nivel)
+    // para evitar N+1 queries. Se consulta auth.personas a través de la
+    // relación user → personas.
+    const analistaIds = Array.from(
+      new Set(solicitudes.map((s) => s.analistaAsignadoId).filter(Boolean)),
+    );
+    const analistaNombreMap: Record<string, string> = {};
+    if (analistaIds.length > 0) {
+      const placeholders = analistaIds.map((_, i) => `$${i + 1}`).join(', ');
+      const rows: any[] = await this.dataSource.query(
+        `SELECT u.id_user, p.nom_tercero, p.pri_apellido
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_persona = u.id_person
+         WHERE u.id_user IN (${placeholders})`,
+        analistaIds,
+      );
+      for (const row of rows) {
+        const nombre = [row.nom_tercero, row.pri_apellido]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        if (nombre) {
+          analistaNombreMap[row.id_user] = nombre;
+        }
+      }
+    }
+
+    const data = solicitudes.map((s) => ({
+      id: s.id,
+      consecutivoUnico: s.consecutivoUnico,
+      comisionadoId: s.comisionadoId,
+      comisionado: s.comisionado
+        ? {
+            id: s.comisionado.id,
+            numeroDocumento: s.comisionado.numeroDocumento,
+            primerNombre: s.comisionado.primerNombre,
+            segundoNombre: s.comisionado.segundoNombre,
+            primerApellido: s.comisionado.primerApellido,
+            segundoApellido: s.comisionado.segundoApellido,
+            tipoComisionado: s.comisionado.tipoComisionado,
+            email: s.comisionado.email,
+            telefonoContacto: s.comisionado.telefonoContacto,
+            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+          }
+        : null,
+      destinoCiudad: s.destinoCiudad,
+      destinoDepartamento: s.destinoDepartamento,
+      fechaInicio: s.fechaInicio.toISOString(),
+      fechaFin: s.fechaFin.toISOString(),
+      objetoComision: s.objetoComision,
+      prioridad: s.prioridad,
+      rubroPresupuestal: s.rubroPresupuestal,
+      requiereTiquetes: s.requiereTiquetes,
+      montoViaticos: Number(s.montoViaticos || 0),
+      montoGastosViaje: Number(s.montoGastosViaje || 0),
+      diasComision: s.diasComision ?? 1,
+      estadoSolicitud: s.estadoSolicitud,
+      radicadoFueraJornada: s.radicadoFueraJornada,
+      extemporanea: s.extemporanea,
+      creadoEn: s.creadoEn.toISOString(),
+      actualizadoEn: s.actualizadoEn.toISOString(),
+      creadoPorUsuarioId: s.creadoPorUsuarioId,
+      analistaAsignadoId: s.analistaAsignadoId,
+      analistaVerificadorId: s.analistaAsignadoId,
+      analistaVerificadorNombre:
+        s.analistaAsignadoId && analistaNombreMap[s.analistaAsignadoId]
+          ? analistaNombreMap[s.analistaAsignadoId]
+          : null,
+      usuarioExportadorId: s.usuarioExportadorId,
+      fechaExportacionSiif: s.fechaExportacionSiif?.toISOString() ?? null,
+      fechaVerificacionPrimerNivel:
+        s.fechaExportacionSiif?.toISOString() ?? null,
+    }));
+
+    return { data, total, page, limit };
+  }
+
+  /**
+   * RF-REV-002 — Valida Segregación de Funciones para segunda revisión.
+   *
+   * El revisor no puede ser:
+   *   - el comisionado (comisionadoId)
+   *   - el creador de la solicitud (creadoPorUsuarioId)
+   *   - el analista que verificó (analistaAsignadoId)
+   *   - el usuario que exportó a SIIF (usuarioExportadorId)
+   *
+   * SUPER_ADMIN tiene bypass operativo.
+   */
+  private validarSoDSegundaRevision(
+    solicitud: SolicitudComisionEntity,
+    usuarioId: string,
+    rolesUsuario: string[],
+  ): void {
+    const superAdminRoles = [
+      'ADMIN',
+      'SUPER_ADMIN',
+      'ADMINISTRATIVO',
+      'SUPER_ADMINISTRADOR',
+      'super_administrador',
+      'SUPERUSER',
+      'superuser',
+    ];
+
+    const esSuperAdmin = rolesUsuario.some((r: any) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        superAdminRoles.includes(normalized) ||
+        superAdminRoles.includes(r.toUpperCase())
+      );
+    });
+
+    if (esSuperAdmin) {
+      return;
+    }
+
+    const participantesPrevios = [
+      solicitud.comisionadoId,
+      solicitud.creadoPorUsuarioId,
+      solicitud.analistaAsignadoId,
+      solicitud.usuarioExportadorId,
+    ].filter((id): id is string => Boolean(id));
+
+    if (participantesPrevios.includes(usuarioId)) {
+      throw new ForbiddenException(
+        'Violacion de Segregacion de Funciones: El revisor de segundo nivel debe ser diferente del comisionado, creador, analista verificador y exportador SIIF',
+      );
+    }
+  }
+
+  /**
+   * RF-REV-002 — Registra la segunda revisión (verificación de segundo nivel).
+   *
+   * Transiciona el estado de SOLICITADA_SIIF a VERIFICADA.
+    * Requiere observaciones obligatorias.
+    * Valida SoD estricta contra comisionado, creador, analista y exportador.
+   */
+  async verificarSegundaRevision(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: SegundaRevisionObservacionesDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+    // Las observaciones son OPTIONALES en aprobación: el revisor puede
+    // dejar una nota de auditoría sin que el flujo sea bloqueado. Solo se
+    // exige texto no vacío en el caso de devolución.
+    const observaciones = (dto?.observaciones || '').trim();
+
+    return this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoDSegundaRevision(solicitud, usuarioId, rolesUsuario);
+
+      const estadosPermitidos = [EstadoSolicitud.SOLICITADA_SIIF];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no válido para segunda revisión: ${solicitud.estadoSolicitud}. La solicitud debe estar en SOLICITADA_SIIF.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      solicitud.revisorControlId = usuarioId;
+      solicitud.fechaSegundaRevision = new Date();
+      solicitud.observacionesSegundaRevision = observaciones.slice(0, 2000);
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.VERIFICADA,
+        usuarioId: usuarioId,
+        comentarios: `Segunda revisión: ${observaciones.slice(0, 255)}`,
+      });
+
+      this.logger.log(
+        `[RF-REV-002] Solicitud ${solicitud.consecutivoUnico} verificada en segunda revisión por usuario ${usuarioId}`,
+      );
+
+      return saved;
+    });
+  }
+
+  /**
+   * RF-REV-002 — Devuelve la solicitud al analista desde la segunda revisión.
+   *
+   * Transiciona el estado de SOLICITADA_SIIF a EN_VERIFICACION.
+   * Requiere observaciones obligatorias.
+    * Valida SoD estricta contra comisionado, creador, analista y exportador.
+   */
+  async devolverAAnalistaDesdeSegundaRevision(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: SegundaRevisionObservacionesDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+    // Las observaciones son OBLIGATORIAS en devolución: se exige texto
+    // no vacío con al menos 3 caracteres para evitar bodies vacíos.
+    const observaciones = (dto?.observaciones || '').trim();
+    if (observaciones.length < 3) {
+      throw new BadRequestException(
+        'Las observaciones de devolución son obligatorias (mínimo 3 caracteres).',
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoDSegundaRevision(solicitud, usuarioId, rolesUsuario);
+
+      const estadosPermitidos = [EstadoSolicitud.SOLICITADA_SIIF];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no válido para devolución a analista: ${solicitud.estadoSolicitud}. La solicitud debe estar en SOLICITADA_SIIF.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.EN_VERIFICACION;
+      solicitud.revisorControlId = usuarioId;
+      solicitud.fechaSegundaRevision = new Date();
+      solicitud.observacionesSegundaRevision = observaciones.slice(0, 2000);
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.EN_VERIFICACION,
+        usuarioId: usuarioId,
+        comentarios: `Devuelta a analista desde segunda revisión: ${observaciones.slice(0, 255)}`,
+      });
+
+      this.logger.log(
+        `[RF-REV-002] Solicitud ${solicitud.consecutivoUnico} devuelta a analista desde segunda revisión por usuario ${usuarioId}`,
+      );
+
+      return saved;
     });
   }
 

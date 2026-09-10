@@ -24,7 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 import { getUploadRootDir } from '../../common/storage.util';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -37,8 +37,10 @@ import { UpdatePriorityDto } from '../../dto/update-priority.dto';
 import { ReturnRequestDto } from '../../dto/return-request.dto';
 import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { DevolverAnalistaDto } from '../../dto/devolver-analista.dto';
+import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
+import { SecondLevelSodGuard, SecondLevelSodProtected } from '../../common/second-level-sod.guard';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -77,6 +79,7 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
 }
 
 @Controller()
+@ApiTags('control-viaticos')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TravelExpensesController {
   constructor(private readonly service: TravelExpensesService) {}
@@ -524,5 +527,203 @@ export class TravelExpensesController {
       'Content-Length': Buffer.byteLength(result.csvContent, 'utf8'),
     });
     res.send(result.csvContent);
+  }
+
+  /**
+   * RF-REV-002 — Bandeja de solicitudes en estado SOLICITADA_SIIF.
+   *
+   * Devuelve el listado de solicitudes exportadas a SIIF que esperan la
+   * verificación de segundo nivel (revisor de Control Viáticos).
+   * Exige el permiso `travel_expenses:read_siif_requested`.
+   */
+  @Get('requests/siif-requested')
+  @Permissions('travel_expenses:read_siif_requested')
+  @ApiOperation({
+    summary: 'Obtener solicitudes en estado SOLICITADA_SIIF pendientes de segunda revisión',
+    description:
+      'Devuelve la lista de solicitudes exportadas a SIIF que esperan la verificación de segundo nivel (revisor de control).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de solicitudes pendientes de segunda revisión.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autenticado. Se requiere token Bearer válido.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No tiene permiso para consultar la bandeja de Control Viáticos.',
+  })
+  @ApiBearerAuth()
+  async obtenerSolicitudesSIIFRequested(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const result =
+      await this.service.obtenerSolicitudesSIIFRequested(pageNum, limitNum);
+    return {
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
+  }
+
+  /**
+   * RF-REV-002 — Detalle completo de una solicitud para Control Viáticos.
+   *
+   * Devuelve la solicitud en estado SOLICITADA_SIIF con:
+   * - Datos del Formato 023 (solicitud + comisionado).
+   * - Documentos de soporte (PDFs).
+   * - Resumen presupuestal de la dependencia.
+   * - Trazabilidad de primer nivel: exportador SIIF y fecha de exportación.
+   */
+  @Get('requests/:id/control-viaticos')
+  @Permissions(
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:double_check_request',
+    'travel_expenses:return_to_analyst',
+  )
+  @ApiOperation({
+    summary: 'Obtener detalle de solicitud para Control Viáticos',
+    description:
+      'Recupera el expediente completo (Formato 023, documentos, resumen presupuestal y trazabilidad SIIF) para que el revisor de Control Viáticos ejecute el control cruzado.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Detalle de la solicitud para Control Viáticos.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Solicitud no encontrada.',
+  })
+  @ApiBearerAuth()
+  async obtenerSolicitudControlViaticos(@Param('id') id: string) {
+    return this.service.obtenerSolicitudControlViaticos(id);
+  }
+
+  /**
+   * RF-REV-002 — Aprobar la segunda revisión (verificación de segundo nivel).
+   *
+   * Transiciona el estado de la comisión de SOLICITADA_SIIF a VERIFICADA.
+   * El usuario autenticado se registra como `revisor_control_id`.
+   * Valida la regla SoD: el revisor no puede ser el comisionado, el creador,
+   * el analista verificador ni el usuario exportador a SIIF.
+   * SUPER_ADMIN conserva el bypass operativo.
+   */
+  @Post('requests/:id/verify-second-level')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, SecondLevelSodGuard)
+  @SecondLevelSodProtected('id')
+  @Permissions('travel_expenses:double_check_request')
+  @ApiOperation({
+    summary: 'Registrar segunda revisión (verificación de segundo nivel)',
+    description:
+      'Transiciona la solicitud de SOLICITADA_SIIF a VERIFICADA. Valida SoD estricta: el revisor no puede ser comisionado, creador, analista verificador ni exportador SIIF. SUPER_ADMIN tiene bypass.',
+  })
+  @ApiBody({
+    description: 'Observaciones opcionales del revisor de segundo nivel.',
+    type: SegundaRevisionObservacionesDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Segunda revisión registrada exitosamente. Estado: VERIFICADA.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Estado inválido u observaciones faltantes.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Violación de Segregación de Funciones (SoD).',
+  })
+  @ApiBearerAuth()
+  async verificarSegundaRevision(
+    @Param('id') id: string,
+    @Body() dto: SegundaRevisionObservacionesDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.verificarSegundaRevision(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-002 — Devolver solicitud al analista desde segunda revisión.
+   *
+   * Transiciona el estado de SOLICITADA_SIIF a EN_VERIFICACION para que el
+   * analista subsane observaciones. Requiere observaciones obligatorias
+   * (mínimo 3 caracteres). Valida SoD estricta.
+   */
+  @Post('requests/:id/return-to-analyst')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, SecondLevelSodGuard)
+  @SecondLevelSodProtected('id')
+  @Permissions('travel_expenses:return_to_analyst')
+  @ApiOperation({
+    summary: 'Devolver solicitud al analista desde segunda revisión',
+    description:
+      'Transiciona la solicitud de SOLICITADA_SIIF a EN_VERIFICACION para que el analista subsane observaciones. Requiere observaciones obligatorias. Valida SoD estricta: el revisor no puede ser comisionado, creador, analista verificador ni exportador SIIF. SUPER_ADMIN tiene bypass.',
+  })
+  @ApiBody({
+    description: 'Observaciones obligatorias del hallazgo detectado.',
+    type: SegundaRevisionObservacionesDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Solicitud devuelta al analista exitosamente. Estado: EN_VERIFICACION.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Estado inválido u observaciones faltantes.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Violación de Segregación de Funciones (SoD).',
+  })
+  @ApiBearerAuth()
+  async devolverAAnalista(
+    @Param('id') id: string,
+    @Body() dto: SegundaRevisionObservacionesDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.devolverAAnalistaDesdeSegundaRevision(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
   }
 }

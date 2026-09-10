@@ -17,6 +17,7 @@ import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
 import { NotificationClientService } from '../../../common/notification-client.service';
 import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
+import { SegundaRevisionObservacionesDto } from '../../../dto/segunda-revision-observaciones.dto';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -255,8 +256,8 @@ describe('TravelExpensesService', () => {
         comisionado: mockComisionado,
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: new Date('2026-09-03'),
-        fechaFin: new Date('2026-09-07'),
+        fechaInicio: new Date('2026-09-15'),
+        fechaFin: new Date('2026-09-20'),
         objetoComision: 'Comision de servicios',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -299,8 +300,8 @@ describe('TravelExpensesService', () => {
         comisionado: mockComisionado,
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: new Date('2026-09-03'),
-        fechaFin: new Date('2026-09-07'),
+        fechaInicio: new Date('2026-09-15'),
+        fechaFin: new Date('2026-09-20'),
         objetoComision: 'Comision de servicios',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -339,8 +340,8 @@ describe('TravelExpensesService', () => {
         comisionado: mockComisionado,
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: new Date('2026-09-03'),
-        fechaFin: new Date('2026-09-07'),
+        fechaInicio: new Date('2026-09-15'),
+        fechaFin: new Date('2026-09-20'),
         objetoComision: 'Comision de servicios',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -398,8 +399,8 @@ describe('TravelExpensesService', () => {
           comisionadoId: 'inexistente',
           destinoCiudad: 'Bogotá',
           destinoDepartamento: 'Cundinamarca',
-          fechaInicio: '2026-09-03',
-          fechaFin: '2026-09-07',
+          fechaInicio: '2026-09-15',
+          fechaFin: '2026-09-20',
           objetoComision: 'Comisión de gestión',
           prioridad: 'ALTA',
           rubroPresupuestal: 'Rubro 01',
@@ -428,8 +429,8 @@ describe('TravelExpensesService', () => {
           comisionadoId: 'com-001',
           destinoCiudad: 'Bogotá',
           destinoDepartamento: 'Cundinamarca',
-          fechaInicio: '2026-09-03',
-          fechaFin: '2026-09-07',
+          fechaInicio: '2026-09-15',
+          fechaFin: '2026-09-20',
           objetoComision: 'Comisión de gestión',
           prioridad: 'ALTA',
           rubroPresupuestal: 'Rubro 01',
@@ -487,8 +488,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: 'Comisión de gestión',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -563,8 +564,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: '',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -632,8 +633,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: '',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -674,8 +675,8 @@ describe('TravelExpensesService', () => {
           comisionadoId: 'com-001',
           destinoCiudad: 'Bogotá',
           destinoDepartamento: 'Cundinamarca',
-          fechaInicio: '2026-09-03',
-          fechaFin: '2026-09-07',
+          fechaInicio: '2026-09-15',
+          fechaFin: '2026-09-20',
           objetoComision: 'Comisión de gestión',
           prioridad: 'ALTA',
           rubroPresupuestal: 'Rubro 01',
@@ -688,8 +689,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: 'Comisión de gestión',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -760,8 +761,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: 'Comisión de gestión institucional',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -792,8 +793,8 @@ describe('TravelExpensesService', () => {
           comisionadoId: 'com-001',
           destinoCiudad: 'Bogotá',
           destinoDepartamento: 'Cundinamarca',
-          fechaInicio: '2026-09-07',
-          fechaFin: '2026-09-03',
+          fechaInicio: '2026-09-20',
+          fechaFin: '2026-09-15',
           objetoComision: 'Comisión de gestión',
           prioridad: 'ALTA',
           rubroPresupuestal: 'Rubro 01',
@@ -1318,8 +1319,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: 'Comisión de gestión',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -1372,8 +1373,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-03',
-        fechaFin: '2026-09-07',
+        fechaInicio: '2026-09-15',
+        fechaFin: '2026-09-20',
         objetoComision: 'Comisión internacional',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -1497,7 +1498,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           id: 'sol-001',
           analistaAsignadoId: 'analista-001',
           estadoSolicitud: EstadoSolicitud.EN_VERIFICACION,
-          creadoEn: new Date('2026-09-03'),
+          creadoEn: new Date('2026-09-15'),
           comisionado: mockComisionado,
         },
         {
@@ -1526,11 +1527,10 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       const module = await createMockModuleEtapa5({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.obtenerSolicitudesAsignadasAnalista('analista-001');
+      const result = await svc.obtenerSolicitudesAsignadasAnalista('analista-001', ['SUPER_ADMIN']);
 
       expect(solicitudRepo.find).toHaveBeenCalledWith({
         where: {
-          analistaAsignadoId: 'analista-001',
           estadoSolicitud: In([
             EstadoSolicitud.SOLICITADO,
             EstadoSolicitud.EN_VERIFICACION,
@@ -2497,6 +2497,753 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       await expect(
         svc.exportarSIIF('sol-001', 'user-001', ['ANALISTA']),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('obtenerSolicitudesSIIFRequested', () => {
+    it('debe retornar lista paginada de solicitudes en SOLICITADA_SIIF con nombre del analista verificador', async () => {
+      const solicitudes = [
+        {
+          id: 'sol-001',
+          consecutivoUnico: 'COM-2026-0001',
+          comisionadoId: 'com-001',
+          comisionado: {
+            id: 'com-001',
+            numeroDocumento: '1234567890',
+            primerNombre: 'Juan',
+            segundoNombre: 'Pablo',
+            primerApellido: 'Pérez',
+            segundoApellido: 'Gómez',
+            tipoComisionado: 'FUNCIONARIO',
+            email: 'juan.perez@esap.edu.co',
+            telefonoContacto: '3001234567',
+            autorizacionHabeasData: true,
+          },
+          destinoCiudad: 'Bogotá',
+          destinoDepartamento: 'Cundinamarca',
+          fechaInicio: new Date('2026-10-03T00:00:00Z'),
+          fechaFin: new Date('2026-10-07T00:00:00Z'),
+          objetoComision: 'Comisión de gestión',
+          prioridad: 'ALTA',
+          rubroPresupuestal: 'Rubro 01',
+          requiereTiquetes: false,
+          montoViaticos: 560000,
+          montoGastosViaje: 120000,
+          diasComision: 5,
+          estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+          radicadoFueraJornada: false,
+          extemporanea: false,
+          creadoEn: new Date('2026-09-03T10:00:00Z'),
+          actualizadoEn: new Date('2026-09-03T10:00:00Z'),
+          creadoPorUsuarioId: 'user-creador',
+          analistaAsignadoId: 'analista-001',
+          usuarioExportadorId: 'exp-001',
+          fechaExportacionSiif: new Date('2026-09-08T10:00:00Z'),
+        },
+      ];
+
+      const solicitudRepo = {
+        find: jest.fn(),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue(solicitudes),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([
+          {
+            id_user: 'analista-001',
+            nom_tercero: 'María',
+            pri_apellido: 'López',
+          },
+        ]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudesSIIFRequested(1, 20);
+
+      expect(result.total).toBe(1);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].analistaVerificadorNombre).toBe('María López');
+      expect(result.data[0].analistaVerificadorId).toBe('analista-001');
+      expect(result.data[0].usuarioExportadorId).toBe('exp-001');
+      expect(result.data[0].fechaVerificacionPrimerNivel).toBe('2026-09-08T10:00:00.000Z');
+    });
+
+    it('debe retornar lista vacía cuando no hay solicitudes en SOLICITADA_SIIF', async () => {
+      const solicitudRepo = {
+        find: jest.fn(),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudesSIIFRequested(1, 20);
+
+      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20 });
+    });
+
+    it('debe omitir la query a auth.personas cuando no hay analistaAsignadoId', async () => {
+      const solicitudes = [
+        {
+          id: 'sol-001',
+          consecutivoUnico: 'COM-2026-0001',
+          comisionadoId: 'com-001',
+          comisionado: { id: 'com-001', numeroDocumento: '123', primerNombre: 'Juan', primerApellido: 'Pérez' },
+          destinoCiudad: 'Bogotá',
+          destinoDepartamento: 'Cundinamarca',
+          fechaInicio: new Date('2026-10-03T00:00:00Z'),
+          fechaFin: new Date('2026-10-07T00:00:00Z'),
+          objetoComision: 'Comisión',
+          prioridad: 'ALTA',
+          rubroPresupuestal: 'Rubro 01',
+          montoViaticos: 500000,
+          montoGastosViaje: 100000,
+          diasComision: 5,
+          estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+          creadoEn: new Date('2026-09-15'),
+          actualizadoEn: new Date('2026-09-15'),
+          creadoPorUsuarioId: 'user-001',
+          analistaAsignadoId: null,
+          usuarioExportadorId: 'exp-001',
+          fechaExportacionSiif: new Date('2026-09-08'),
+        },
+      ];
+
+      const solicitudRepo = {
+        find: jest.fn(),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue(solicitudes),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudesSIIFRequested();
+
+      expect(dataSource.query).not.toHaveBeenCalled();
+      expect(result.data[0].analistaVerificadorNombre).toBeNull();
+    });
+  });
+
+  describe('obtenerSolicitudControlViaticos', () => {
+    it('debe retornar la solicitud con documentos, resumen presupuestal y nombre del analista verificador', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        idDependencia: 42,
+        analistaAsignadoId: 'analista-001',
+        usuarioExportadorId: 'exp-001',
+        fechaExportacionSiif: new Date('2026-09-08T10:00:00Z'),
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionado: { id: 'com-001', idDependencia: 42 },
+      } as any;
+
+      const documentos = [
+        { id: 'doc-001', tipoDocumento: 'CDP', tipoMime: 'application/pdf' },
+      ];
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        find: jest.fn().mockResolvedValue(documentos),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ total: '100000', cantidad: '1' }),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const documentoRepo = {
+        find: jest.fn().mockResolvedValue(documentos),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([
+          { nom_tercero: 'María', pri_apellido: 'López' },
+        ]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        documentoRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudControlViaticos('sol-001');
+
+      expect(result).toBeDefined();
+      expect(result.documentosSoporte).toHaveLength(1);
+      expect(result.analistaVerificadorNombre).toBe('María López');
+      expect(result.fechaVerificacionPrimerNivel).toBe('2026-09-08T10:00:00.000Z');
+    });
+
+    it('debe lanzar NotFoundException cuando la solicitud no existe', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn(),
+        createQueryBuilder: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.obtenerSolicitudControlViaticos('no-existe')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('debe omitir la query a auth.personas cuando analistaAsignadoId es null', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        idDependencia: null,
+        analistaAsignadoId: null,
+        fechaExportacionSiif: null,
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+      } as any;
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudControlViaticos('sol-001');
+
+      expect(dataSource.query).not.toHaveBeenCalled();
+      expect(result.analistaVerificadorNombre).toBeNull();
+      expect(result.fechaVerificacionPrimerNivel).toBeNull();
+    });
+  });
+
+  describe('verificarSegundaRevision', () => {
+    const mockTransactionalSolicitud = (estado: EstadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF) => ({
+      id: 'sol-001',
+      consecutivoUnico: 'COM-2026-0001',
+      estadoSolicitud: estado,
+      comisionadoId: 'com-001',
+      creadoPorUsuarioId: 'user-creador',
+      analistaAsignadoId: 'analista-001',
+      usuarioExportadorId: 'exp-001',
+      save: jest.fn().mockImplementation(async (ent) => ent),
+    });
+
+    const createTransactionalMock = (solicitud: any, historialRepo?: any) => {
+      const solRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+      const histRepo = historialRepo ?? {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                return solRepo;
+              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                return histRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+      return { solicitudRepo: solRepo, historialRepo: histRepo, dataSource };
+    };
+
+    it('debe transitar a VERIFICADA y establecer revisorControlId + fechaSegundaRevision', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.verificarSegundaRevision(
+        'sol-001',
+        'revisor-control',
+        ['CONTROL_VIATICOS'],
+        { observaciones: 'Verificado OK' } as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(solicitud.revisorControlId).toBe('revisor-control');
+      expect(solicitud.fechaSegundaRevision).toBeDefined();
+      expect(solicitud.observacionesSegundaRevision).toBe('Verificado OK');
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estadoNuevo: EstadoSolicitud.VERIFICADA,
+        }),
+      );
+    });
+
+    it('debe permitir observaciones vacías en aprobación (solo log de auditoría)', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.verificarSegundaRevision(
+        'sol-001',
+        'revisor-control',
+        ['CONTROL_VIATICOS'],
+        {} as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(solicitud.observacionesSegundaRevision).toBe('');
+    });
+
+    it('debe lanzar NotFoundException cuando la solicitud no existe', async () => {
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        save: jest.fn(),
+      };
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) =>
+          cb({ getRepository: jest.fn().mockReturnValue(solicitudRepo) }),
+        ),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'no-existe',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('debe lanzar BadRequestException si el estado no es SOLICITADA_SIIF', async () => {
+      const solicitud = mockTransactionalSolicitud(EstadoSolicitud.VERIFICADA);
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow('Estado no válido para segunda revisión');
+    });
+
+    it('debe lanzar ForbiddenException cuando el revisor ES el comisionado', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionadoId: 'user-001',
+        creadoPorUsuarioId: 'user-creador',
+        analistaAsignadoId: 'analista-001',
+        usuarioExportadorId: 'exp-001',
+      };
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'user-001',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe lanzar ForbiddenException cuando el revisor ES el creador', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-001',
+        analistaAsignadoId: 'analista-001',
+        usuarioExportadorId: 'exp-001',
+      };
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'user-001',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe lanzar ForbiddenException cuando el revisor ES el analista verificador', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador',
+        analistaAsignadoId: 'user-001',
+        usuarioExportadorId: 'exp-001',
+      };
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'user-001',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe lanzar ForbiddenException cuando el revisor ES el exportador SIIF', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador',
+        analistaAsignadoId: 'analista-001',
+        usuarioExportadorId: 'user-001',
+      };
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'user-001',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe permitir super admin sin restricción SoD', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.verificarSegundaRevision(
+        'sol-001',
+        'admin-001',
+        ['SUPER_ADMIN'],
+        {} as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+    });
+  });
+
+  describe('devolverAAnalistaDesdeSegundaRevision', () => {
+    const mockTransactionalSolicitud = (estado: EstadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF) => ({
+      id: 'sol-001',
+      consecutivoUnico: 'COM-2026-0001',
+      estadoSolicitud: estado,
+      comisionadoId: 'com-001',
+      creadoPorUsuarioId: 'user-creador',
+      analistaAsignadoId: 'analista-001',
+      usuarioExportadorId: 'exp-001',
+      save: jest.fn().mockImplementation(async (ent) => ent),
+    });
+
+    const createTransactionalMock = (solicitud: any) => {
+      const solRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+      const histRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                return solRepo;
+              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                return histRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+      return { solicitudRepo: solRepo, historialRepo: histRepo, dataSource };
+    };
+
+    it('debe transitar a EN_VERIFICACION y registrar observaciones', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.devolverAAnalistaDesdeSegundaRevision(
+        'sol-001',
+        'revisor-control',
+        ['CONTROL_VIATICOS'],
+        { observaciones: 'Faltan documentos de soporte' } as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
+      expect(solicitud.revisorControlId).toBe('revisor-control');
+      expect(solicitud.fechaSegundaRevision).toBeDefined();
+      expect(solicitud.observacionesSegundaRevision).toBe('Faltan documentos de soporte');
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          estadoNuevo: EstadoSolicitud.EN_VERIFICACION,
+        }),
+      );
+    });
+
+    it('debe lanzar BadRequestException si las observaciones tienen menos de 3 caracteres', async () => {
+      const module = await createMockModuleEtapa5();
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          { observaciones: 'ab' } as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          { observaciones: 'ab' } as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow('Las observaciones de devolución son obligatorias');
+    });
+
+    it('debe lanzar BadRequestException si las observaciones están vacías', async () => {
+      const module = await createMockModuleEtapa5();
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {} as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe lanzar NotFoundException cuando la solicitud no existe', async () => {
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        save: jest.fn(),
+      };
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) =>
+          cb({ getRepository: jest.fn().mockReturnValue(solicitudRepo) }),
+        ),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'no-existe',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          { observaciones: 'Falta documento' },
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('debe lanzar BadRequestException si el estado no es SOLICITADA_SIIF', async () => {
+      const solicitud = mockTransactionalSolicitud(EstadoSolicitud.VERIFICADA);
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          { observaciones: 'Observaciones válidas' },
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          { observaciones: 'Observaciones válidas' },
+        ),
+      ).rejects.toThrow('Estado no válido para devolución a analista');
+    });
+
+    it('debe lanzar ForbiddenException cuando el revisor ES el comisionado', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionadoId: 'user-001',
+        creadoPorUsuarioId: 'user-creador',
+        analistaAsignadoId: 'analista-001',
+        usuarioExportadorId: 'exp-001',
+      };
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.devolverAAnalistaDesdeSegundaRevision(
+          'sol-001',
+          'user-001',
+          ['CONTROL_VIATICOS'],
+          { observaciones: 'Falló la auditoría' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('debe permitir super admin sin restricción SoD', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.devolverAAnalistaDesdeSegundaRevision(
+        'sol-001',
+        'admin-001',
+        ['SUPER_ADMIN'],
+        { observaciones: 'Requiere ajuste' },
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
     });
   });
 });

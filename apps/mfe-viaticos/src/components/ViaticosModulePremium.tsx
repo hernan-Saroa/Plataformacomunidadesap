@@ -21,10 +21,12 @@ import {
   Send,
   Flag,
   Undo2,
+  ShieldCheck,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
 import AnalystInbox from './AnalystInbox';
+import ControlViaticosInbox from './ControlViaticosInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
@@ -51,7 +53,7 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'control-viaticos';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   DEVUELTA: 1,
@@ -100,13 +102,20 @@ export default function ViaticosModulePremium() {
           icon: <Plane className="w-5 h-5" />,
           color: '#003DA5',
         },
-        {
-          id: 'mis-solicitudes',
-          label: 'Mis Solicitudes Asignadas',
-          subtitle: 'Solicitudes pendientes de revisión',
-          icon: <UserCheck className="w-5 h-5" />,
-          color: '#10B981',
-        },
+{
+        id: 'mis-solicitudes',
+        label: 'Mis Solicitudes Asignadas',
+        subtitle: 'Solicitudes pendientes de revisión',
+        icon: <UserCheck className="w-5 h-5" />,
+        color: '#10B981',
+      },
+      {
+        id: 'control-viaticos',
+        label: 'Control Viáticos',
+        subtitle: 'Segunda revisión y control cruzado',
+        icon: <ShieldCheck className="w-5 h-5" />,
+        color: '#059669',
+      },
         {
           id: 'tiquetes',
           label: 'Pasajes y Alojamiento',
@@ -369,6 +378,12 @@ export default function ViaticosModulePremium() {
     esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
   const puedeVerSolicitudesAsignadas =
     esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
+  const puedeVerControlViaticos =
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_siif_requested') ||
+    authService.hasPermission('travel_expenses:double_check_request') ||
+    authService.hasPermission('travel_expenses:return_to_analyst') ||
+    authService.isControlViaticos();
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => ({
@@ -376,6 +391,7 @@ export default function ViaticosModulePremium() {
       items: grupo.items.filter((item) => {
         if (item.id === 'solicitudes') return puedeVerSolicitudes;
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
+        if (item.id === 'control-viaticos') return puedeVerControlViaticos;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
@@ -772,9 +788,14 @@ export default function ViaticosModulePremium() {
            )}
 
              {/* ── MIS SOLICITUDES ASIGNADAS ── */}
-             {seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
-               <SolicitudesAsignadasAnalista />
-             )}
+{seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
+                <SolicitudesAsignadasAnalista />
+              )}
+
+              {/* ── CONTROL VIÁTICOS ── */}
+              {seccion === 'control-viaticos' && puedeVerControlViaticos && (
+                <ControlViaticosInbox />
+              )}
 
              {/* ── CONFIGURACIÓN ── */}
              {seccion === 'configuracion' && puedeVerConfiguracion && (

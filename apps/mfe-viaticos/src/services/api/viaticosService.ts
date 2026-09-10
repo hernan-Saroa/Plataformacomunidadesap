@@ -10,29 +10,35 @@ import {
   SolicitudListaResponse,
   EstadoSolicitudViatico,
   Geopolitica,
-   ChecklistDocumentosResponse,
-     FinalizarSolicitudResponse,
-     LiquidacionResponse,
-     CalcularLiquidacionRequest,
-     CategoriaInvestigador,
-     TicketValidationResult,
-     ValidateTicketRequest,
-     SaldoTiquete,
-     RutaRestringida,
-     ExcepcionTiquete,
-     CreateExcepcionTiqueteRequest,
-     ResumenConsolidacion,
-     ResultadoConsolidacion,
-     BandejaSecretarioResponse,
-     PrioridadUpdateResponse,
-     ReturnRequestResponse,
-      CargaAnalista,
-      AsignacionAnalistaRequest,
-      AsignacionAnalistaResponse,
-      SolicitudAsignadaAnalistaResponse,
-      VerifyAuditResponse,
-      DevolverAnalistaResponse,
-    } from '../../types/viaticos';
+  ChecklistDocumentosResponse,
+  FinalizarSolicitudResponse,
+  LiquidacionResponse,
+  CalcularLiquidacionRequest,
+  CategoriaInvestigador,
+  TicketValidationResult,
+  ValidateTicketRequest,
+  SaldoTiquete,
+  RutaRestringida,
+  ExcepcionTiquete,
+  CreateExcepcionTiqueteRequest,
+  ResumenConsolidacion,
+  ResultadoConsolidacion,
+  BandejaSecretarioResponse,
+  PrioridadUpdateResponse,
+  ReturnRequestResponse,
+  CargaAnalista,
+  AsignacionAnalistaRequest,
+  AsignacionAnalistaResponse,
+  SolicitudAsignadaAnalistaResponse,
+  VerifyAuditResponse,
+  DevolverAnalistaResponse,
+  SolicitudControlViaticosResponse,
+  BandejaControlViaticosResponse,
+  VerificarSegundoNivelRequest,
+  VerificarSegundoNivelResponse,
+  DevolverAAnalistaRequest,
+  DevolverAAnalistaResponse,
+} from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -1208,6 +1214,101 @@ export class ViaticosService {
     } catch (error) {
       console.error('[viaticos] Error exportando SIIF:', error);
       throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REV-002 — Control Viáticos (Segundo Nivel / Control Cruzado)
+  // ========================================================================
+
+  /**
+   * Obtiene la bandeja de solicitudes en estado SOLICITADA_SIIF para
+   * el control cruzado de segundo nivel.
+   */
+  async obtenerBandejaControlViaticos(filtros: {
+    dependenciaId?: string;
+    prioridad?: string;
+    comisionadoDocumento?: string;
+    fechaInicio?: string;
+    fechaFin?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<BandejaControlViaticosResponse> {
+    try {
+      const params = new URLSearchParams();
+      if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
+      if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
+      if (filtros.comisionadoDocumento) params.set('comisionado', filtros.comisionadoDocumento);
+      if (filtros.fechaInicio) params.set('fecha_inicio', filtros.fechaInicio);
+      if (filtros.fechaFin) params.set('fecha_fin', filtros.fechaFin);
+      if (filtros.page) params.set('page', String(filtros.page));
+      if (filtros.limit) params.set('limit', String(filtros.limit));
+
+      const query = params.toString();
+      const response = await apiClient.get<BandejaControlViaticosResponse>(
+        `/viaticos/api/v1/requests/siif-requested${query ? `?${query}` : ''}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja Control Viáticos:', error);
+      return { data: [], total: 0, page: filtros.page || 1, limit: filtros.limit || 20 };
+    }
+  }
+
+  /**
+   * Verifica la solicitud en segundo nivel (Control Cruzado).
+   * Cambia el estado a VERIFICADA y registra el usuario y timestamp.
+   */
+  async verificarSegundoNivel(
+    solicitudId: string,
+    dto: VerificarSegundoNivelRequest = {},
+  ): Promise<VerificarSegundoNivelResponse> {
+    try {
+      return await apiClient.post<VerificarSegundoNivelResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/verify-second-level`,
+        dto,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error verificando segundo nivel:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Devuelve la solicitud al analista de 1er nivel con observaciones obligatorias.
+   * El payload se alinea con `SegundaRevisionObservacionesDto` del backend,
+   * que espera el campo `observaciones` (string de 3 a 2000 caracteres).
+   */
+  async devolverAAnalista(
+    solicitudId: string,
+    observaciones: string,
+  ): Promise<DevolverAAnalistaResponse> {
+    try {
+      return await apiClient.post<DevolverAAnalistaResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return-to-analyst`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo a analista:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene el detalle completo de una solicitud para Control Viáticos,
+   * incluyendo liquidación, validación de tiquete, documentos PDF y
+   * auditoría de 1er nivel.
+   */
+  async obtenerSolicitudControlViaticos(
+    solicitudId: string,
+  ): Promise<SolicitudControlViaticosResponse | null> {
+    try {
+      return await apiClient.get<SolicitudControlViaticosResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/control-viaticos`,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitud Control Viáticos:', error);
+      return null;
     }
   }
 }

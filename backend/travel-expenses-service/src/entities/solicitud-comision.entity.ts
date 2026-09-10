@@ -162,6 +162,23 @@ export class SolicitudComisionEntity {
   @Column({ name: 'usuario_exportador_id', type: 'uuid', nullable: true })
   usuarioExportadorId: string | null;
 
+  @Column({ name: 'revisor_control_id', type: 'uuid', nullable: true })
+  revisorControlId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'revisor_control_id' })
+  revisorControl: UsuarioEntity;
+
+  @Column({ name: 'fecha_segunda_revision', type: 'timestamp', nullable: true })
+  fechaSegundaRevision: Date | null;
+
+  @Column({
+    name: 'observaciones_segunda_revision',
+    type: 'text',
+    nullable: true,
+  })
+  observacionesSegundaRevision: string | null;
+
   @Column({ name: 'consulta_rut_facturador', type: 'boolean', default: false })
   consultaRutFacturador: boolean;
 
