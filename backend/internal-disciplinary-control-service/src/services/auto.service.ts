@@ -258,7 +258,11 @@ export class AutoService {
       // Embeber firma del jefe si está configurada
       if (auto.documentUrl && this.isPdfDocument(auto)) {
         try {
-          await this.pdfModifierService.addSignature(auto.documentUrl, 'Jefe Control Disciplinario', 'Jefe Oficina');
+          await this.pdfModifierService.addSignature(
+            auto.documentUrl,
+            aprobadoPorNombre || 'Jefe Control Disciplinario',
+            'Jefe Oficina',
+          );
         } catch (e) {
           console.warn('Firma del jefe no disponible, se omite del PDF:', e.message);
         }
