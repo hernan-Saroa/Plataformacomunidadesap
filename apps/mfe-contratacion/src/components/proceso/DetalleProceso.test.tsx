@@ -66,3 +66,47 @@ describe('actividadEnCurso · por dónde va el proceso', () => {
     expect(actividadEnCurso([], 'BORRADOR')).toBeNull();
   });
 });
+
+/**
+ * Dónde cae cada quien al abrir el proceso (EFDS-1183).
+ *
+ * Un estudio previo enviado está esperando a que alguien lo revise: para quien
+ * lo mandó no hay nada que hacer ahí, y para la Dirección que acaba de
+ * recibirlo, tampoco —lo suyo es hacerse cargo—. Abrir la 3.1 le ponía delante
+ * un formulario bloqueado en vez de la única acción disponible.
+ */
+describe('actividadEnCurso · lo que espera decisión no es el punto del proceso', () => {
+  const act = (numeral: string, estado: string | null, aplica = true) => ({
+    numeral,
+    estado,
+    aplica,
+  });
+
+  it('con el estudio previo enviado, lleva a la radicación', () => {
+    const catalogo = [act('3.1', null), act('3.2', null), act('3.3', null)];
+
+    expect(actividadEnCurso(catalogo, 'EN_REVISION')).toBe('3.3');
+  });
+
+  it('recibido el proceso, sigue llevando a la radicación hasta repartirlo', () => {
+    // La 3.3 no se cumple al tomarlo y ya: falta elegir abogado, y eso también
+    // se hace ahí.
+    const catalogo = [act('3.1', null), act('3.2', null), act('3.3', 'BORRADOR')];
+
+    expect(actividadEnCurso(catalogo, 'EN_REVISION')).toBe('3.3');
+  });
+
+  it('resuelta la radicación, vuelve al estudio previo, que es donde se decide', () => {
+    // Es el caso del abogado: no tiene nada que trabajar, pero sí algo que
+    // resolver, y es ahí donde se resuelve.
+    const catalogo = [act('3.1', null), act('3.2', null), act('3.3', 'APROBADO')];
+
+    expect(actividadEnCurso(catalogo, 'EN_REVISION')).toBe('3.1');
+  });
+
+  it('en borrador no se salta nada: el proceso sigue siendo del área', () => {
+    const catalogo = [act('3.1', null), act('3.2', null), act('3.3', null)];
+
+    expect(actividadEnCurso(catalogo, 'BORRADOR')).toBe('3.1');
+  });
+});

@@ -121,6 +121,10 @@ const NOMBRE_DEL_DESENLACE: Record<EstadoProceso, string> = {
   EN_CURSO: 'En curso',
   ADJUDICADO: 'Adjudicados',
   DESIERTO: 'Declarados desiertos',
+  // Fila propia y no sumada a los desiertos (EFDS-1183): un proceso negado no
+  // salió al mercado, así que contarlo ahí exageraría cuántas convocatorias se
+  // quedaron sin oferentes, que es lo que ese indicador mide.
+  NEGADO: 'Negados en revisión',
 };
 
 /** Una fila cruda del agrupamiento de contratos. */

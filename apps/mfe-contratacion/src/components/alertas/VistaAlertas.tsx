@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   Timer,
   Undo2,
+  UserX,
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -33,6 +34,9 @@ const RASGOS: Record<
   // corrección que se debe. Tampoco es roja —nada ha vencido—, pero el trabajo
   // está parado hasta que se resuelva.
   DEVUELTA_PARA_CORREGIR: { etiqueta: 'Corregir', icono: Undo2, color: '#D97706' },
+  // Mismo ámbar y por lo mismo: nada ha vencido, pero el proceso está parado
+  // porque no hay quien resuelva su revisión.
+  SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
 };
 
 /**
@@ -195,13 +199,17 @@ function Fila({
   const vencido = a.estado === 'VENCIDO';
   const esAprobacion = a.tipo === 'APROBACION_PENDIENTE';
   const esDevolucion = a.tipo === 'DEVUELTA_PARA_CORREGIR';
-  /** Ninguna de las dos vence: una espera decisión y la otra, corrección. */
-  const sinPlazo = esAprobacion || esDevolucion;
+  /**
+   * Ninguna de las tres vence: una espera decisión, otra corrección, y la
+   * tercera avisa de un proceso que nadie ha tomado a su cargo.
+   */
+  const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_ABOGADO';
 
   // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
   // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
   // La devolución la trae igual, y llevar a quien corrige hasta la actividad
-  // —no hasta el proceso— es justamente lo que le ahorra buscarla.
+  // —no hasta el proceso— es justamente lo que le ahorra buscarla. «Sin
+  // abogado» abre con la 3.4, que es la actividad que está trancada.
   const numeral = sinPlazo ? a.descripcion.split('·')[0].trim() : undefined;
 
   return (

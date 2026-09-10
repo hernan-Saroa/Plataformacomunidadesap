@@ -10,15 +10,27 @@ import { EstudioPrevioService } from './estudio-previo.service';
  * cada enlace que se comparte, se entraba al expediente de otra dependencia.
  */
 describe('EstudioPrevioService · obtenerProceso de otro', () => {
-  const servicio = (proceso: unknown, permisos: string[] = []) => {
+  const servicio = (
+    proceso: unknown,
+    permisos: string[] = [],
+    enProcesos: string[] = [],
+    enBandeja = false,
+  ) => {
     const dataSource = {
       getRepository: () => ({ findOne: async () => proceso }),
     };
     const permisosService = { permisosDeRoles: async () => permisos };
+    // Estar en el proceso es la tercera vía de acceso desde que existe el
+    // reparto: quien lo tomó y el abogado asignado no lo radicaron.
+    const participacion = {
+      procesosDe: async () => enProcesos,
+      estaEnLaBandeja: async () => enBandeja,
+    };
     return new EstudioPrevioService(
       dataSource as never,
       {} as never,
       {} as never,
+      participacion as never,
       permisosService as never,
       {} as never,
     );
@@ -63,6 +75,39 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
   it('si el proceso no existe, tampoco', async () => {
     await expect(
       servicio(null).obtenerProceso('p-1', quien('yo@esap.edu.co')),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('y deja entrar a quien está en el proceso aunque no lo haya radicado', async () => {
+    // El abogado al que le repartieron el expediente y quien lo tomó de la
+    // bandeja no aparecen en `createdBy`: sin esto recibirían 404 al abrir el
+    // proceso que les toca trabajar.
+    await expect(
+      servicio(ajeno, [], ['p-1']).obtenerProceso('p-1', quien('yo@esap.edu.co')),
+    ).resolves.toBe(ajeno);
+  });
+
+  it('y a quien puede recibirlo, si sigue en la bandeja', async () => {
+    // La cuarta vía, y la que se olvidó al fusionar: el listado le enseñaba a
+    // la gestora lo que había llegado a la Dirección, y al abrirlo el detalle
+    // le respondía «Proceso no encontrado». Sin esto no hay forma de tomarlo.
+    const puedeTomar = { userName: 'yo@esap.edu.co', roles: ['GESTOR_CONTRATACION'] } as never;
+
+    await expect(
+      servicio(ajeno, [], [], true).obtenerProceso('p-1', puedeTomar),
+    ).resolves.toBe(ajeno);
+  });
+
+  it('pero no a quien no puede recibirlo, aunque esté en la bandeja', async () => {
+    // Estar sin repartir no lo hace público: el estructurador de otra área
+    // sigue sin tener nada que hacer ahí.
+    const noPuedeTomar = {
+      userName: 'yo@esap.edu.co',
+      roles: ['ESTRUCTURADOR_TECNICO'],
+    } as never;
+
+    await expect(
+      servicio(ajeno, [], [], true).obtenerProceso('p-1', noPuedeTomar),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

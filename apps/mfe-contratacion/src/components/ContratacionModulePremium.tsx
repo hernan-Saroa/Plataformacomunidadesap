@@ -308,7 +308,16 @@ export default function ContratacionModulePremium() {
       <VistaProcesos
         onAbrir={(id) => {
           setProcesoId(id);
-          setActividad('3.1'); // abre el proceso con el estudio previo desplegado
+          /**
+           * Sin forzar actividad: la abre el detalle (EFDS-1183).
+           *
+           * Antes entraba siempre por el estudio previo, que era cierto cuando
+           * la etapa 3 era una sola pantalla. Desde que el proceso cambia de
+           * manos, el punto depende de quién entra: al área le toca la 3.1, a
+           * la Dirección recibirlo en la 3.3, y al abogado decidir. Forzar la
+           * 3.1 le ponía delante a media Dirección un formulario bloqueado.
+           */
+          setActividad(null);
         }}
         onVerEtapa={(id) => {
           setProcesoId(id);

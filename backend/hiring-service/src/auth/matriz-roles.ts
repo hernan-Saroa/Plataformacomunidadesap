@@ -43,6 +43,7 @@ import {
   PERMISO_MODIFICACION_VER,
   PERMISO_PROCESO_ARCHIVAR,
   PERMISO_PROCESO_ASIGNAR,
+  PERMISO_PROCESO_TOMAR,
   PERMISO_PROCESO_BORRAR,
   PERMISO_PROCESO_CREAR,
   PERMISO_PROCESO_EDITAR,
@@ -99,7 +100,7 @@ const ROL_SUPER_ADMIN = 'SUPER_ADMIN';
  * Las diez columnas de permiso de la Hoja1 del formato.
  *
  * Se conservan como se escribieron ahí, aunque el módulo haya terminado con
- * veintiocho códigos: son el vocabulario con el que Contratación va a revisar
+ * treinta y cinco códigos: son el vocabulario con el que Contratación va a revisar
  * la matriz, y traducirlas a `contratacion.proceso.view-all` obligaría a
  * revisar contra un documento que no es el suyo.
  */
@@ -135,7 +136,7 @@ export interface PermisoDelCatalogo {
 }
 
 /**
- * Los veintiocho permisos del módulo, en el orden en que se leen.
+ * Los treinta y cinco permisos del módulo, en el orden en que se leen.
  *
  * Es la lista que faltaba: los códigos ya estaban declarados uno a uno en
  * `permisos.ts`, pero nada los recorría, así que ni la matriz podía dibujar sus
@@ -176,6 +177,15 @@ export const CATALOGO_PERMISOS: PermisoDelCatalogo[] = [
     descripcion: 'Repartir los procesos entre los abogados de la Dirección',
     recurso: 'proceso',
     columna: 'Asignar / Reasignar',
+  },
+  {
+    codigo: PERMISO_PROCESO_TOMAR,
+    nombre: 'Tomar proceso de la bandeja',
+    descripcion: 'Quedarse con un proceso que llegó a la Dirección y nadie ha radicado',
+    recurso: 'proceso',
+    // No sale del anexo: la bandeja compartida se decidió al describir el flujo
+    // real de la etapa 3, que el formato no cubre.
+    columna: null,
   },
   {
     codigo: PERMISO_PROCESO_ARCHIVAR,
@@ -581,6 +591,90 @@ export const CATALOGO_ROLES: RolDelCatalogo[] = [
  */
 export const ROLES_TRANSVERSALES = [ROL_SUPER_ADMIN];
 
+// ------------------------------------------- los cuatro perfiles por defecto --
+
+/**
+ * Un perfil: la combinación de roles que se entrega armada (EFDS-1183).
+ *
+ * Los catorce roles se combinan como se quiera, y esa flexibilidad es correcta
+ * —cada entidad reparte el trabajo a su manera—, pero a quien tiene que dar de
+ * alta a un funcionario le llega como un formulario de treinta y cinco casillas que
+ * no sabe responder, y el resultado previsible es que marque de más.
+ *
+ * Estos cuatro cubren el recorrido real de un proceso. No sustituyen a nada: es
+ * una respuesta a «¿qué le pongo a esta persona?» que no obliga a construirla
+ * desde cero.
+ */
+export interface PerfilPorDefecto {
+  codigo: string;
+  nombre: string;
+  /** Qué hace, en una línea, para quien está dando de alta a alguien. */
+  descripcion: string;
+  /** Quién lo ejerce, en las palabras de la entidad. */
+  quienLoEjerce: string;
+  /** Los roles del catálogo que lo componen. */
+  roles: string[];
+}
+
+/**
+ * Los cuatro, en el orden en que un proceso pasa por ellos.
+ *
+ * Tres son un solo rol y no una mezcla, que es la señal de que el catálogo
+ * estaba bien dibujado: lo que faltaba no eran roles, era decir cuál usar.
+ */
+export const PERFILES_POR_DEFECTO: PerfilPorDefecto[] = [
+  {
+    codigo: 'AREA_SOLICITANTE',
+    nombre: 'Área solicitante',
+    descripcion:
+      'Diligencia el estudio previo y el análisis del sector, los envía y los corrige si se los devuelven. Después consulta el avance sin poder editar.',
+    quienLoEjerce: 'Áreas de la entidad que piden una contratación',
+    roles: [ROL_ESTRUCTURADOR_TECNICO],
+  },
+  {
+    codigo: 'CONTRATACION',
+    nombre: 'Contratación',
+    descripcion:
+      'Toma los procesos de la bandeja, reparte el abogado que los revisa y carga los documentos del expediente.',
+    quienLoEjerce: 'Profesionales de la Dirección de Contratación',
+    roles: [ROL_GESTOR_CONTRATACION],
+  },
+  {
+    codigo: 'ABOGADO',
+    nombre: 'Abogado',
+    descripcion:
+      'Revisa lo que el área entregó y decide: aprueba, devuelve para corrección o niega. Después aprueba lo que Contratación va cargando.',
+    quienLoEjerce: 'Abogados revisores de la Dirección de Contratación',
+    roles: [ROL_REVISOR_CONTRATACION],
+  },
+  {
+    codigo: 'CONSULTA',
+    nombre: 'Consulta',
+    descripcion:
+      'Ve los procesos y sus expedientes sin intervenir en ninguno. Es el perfil de quien audita o hace seguimiento.',
+    quienLoEjerce: 'Control interno y organismos de control externos',
+    // Dos roles y no uno: el de apoyo abre el módulo y los reportes, y el de
+    // ente de control abre el expediente de auditoría. Ninguno de los dos por
+    // separado deja ver todo lo que este perfil tiene que ver.
+    roles: [ROL_APOYO_SUPERVISION, ROL_ENTE_DE_CONTROL],
+  },
+];
+
+/**
+ * Los permisos que reúne un perfil, sin repetir y en el orden del catálogo.
+ *
+ * Se derivan de sus roles en vez de listarse: un perfil no es una tercera
+ * fuente de verdad sobre quién puede qué, es un atajo para elegir roles.
+ */
+export function permisosDelPerfil(codigo: string): string[] {
+  const perfil = PERFILES_POR_DEFECTO.find((p) => p.codigo === codigo);
+  if (!perfil) return [];
+
+  const suyos = new Set(perfil.roles.flatMap((rol) => permisosDelRol(rol)));
+  return ORDEN_DE_PERMISOS.filter((permiso) => suyos.has(permiso));
+}
+
+
 /**
  * Si la matriz ya la ratificó la Dirección de Contratación.
  *
@@ -612,7 +706,7 @@ export function permisosDelRol(codigo: string): string[] {
  * Qué roles otorgan un permiso, en el orden del catálogo.
  *
  * Devuelve solo los del módulo: `SUPER_ADMIN` los otorga todos y listarlo en
- * las veintiocho filas no informa de nada.
+ * las treinta y cinco filas no informa de nada.
  */
 export function rolesQueOtorgan(permiso: string): string[] {
   const otorgan = ROLES_QUE_OTORGAN[permiso] ?? [];
@@ -638,6 +732,14 @@ export interface FilaDeLaMatriz extends RolDelCatalogo {
 export interface MatrizDeRoles {
   /** Si la Dirección de Contratación ya la ratificó. */
   confirmada: boolean;
+  /**
+   * Los cuatro que se entregan armados (EFDS-1183).
+   *
+   * Van con la matriz y no en una consulta aparte: quien la abre lo hace para
+   * responder «¿qué le pongo a esta persona?», y la rejilla sola contesta con
+   * treinta y cinco casillas.
+   */
+  perfiles: PerfilPorDefecto[];
   /** Las columnas, en el orden en que se leen. */
   permisos: PermisoDelCatalogo[];
   /** Las filas, en el orden del formato. */
@@ -650,12 +752,13 @@ export interface MatrizDeRoles {
  * La matriz completa, lista para consultarse o dibujarse.
  *
  * Se arma en cada llamada y no se guarda en una constante: son catorce filas
- * por veintiocho columnas, cuesta nada, y una constante congelada al importar
+ * por treinta y cinco columnas, cuesta nada, y una constante congelada al importar
  * el módulo sería un sitio más donde la matriz podría quedar desfasada.
  */
 export function matrizDeRoles(): MatrizDeRoles {
   return {
     confirmada: MATRIZ_CONFIRMADA,
+    perfiles: PERFILES_POR_DEFECTO,
     permisos: CATALOGO_PERMISOS,
     roles: CATALOGO_ROLES.map((rol) => ({ ...rol, permisos: permisosDelRol(rol.codigo) })),
     transversales: ROLES_TRANSVERSALES,

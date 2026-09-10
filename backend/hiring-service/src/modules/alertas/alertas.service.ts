@@ -7,6 +7,19 @@ import { HiringAccess } from '../../auth/hiring-access';
 export const ANTICIPACION_POR_DEFECTO = 30;
 
 /**
+ * Días que un proceso puede estar recibido y sin abogado antes de alertar.
+ *
+ * Dos, y no los treinta de los vencimientos: aquello anticipa una fecha que
+ * todavía no llegó —una póliza que vence el mes que viene—, y esto cuenta un
+ * proceso que ya está parado. Un expediente sin quien lo revise durante una
+ * semana no es una advertencia temprana, es trabajo detenido.
+ *
+ * Se dejan dos y no cero para no alarmar por el hueco normal entre recibir el
+ * proceso y sentarse a repartirlo.
+ */
+export const TOLERANCIA_SIN_ABOGADO = 2;
+
+/**
  * Plazo legal para liquidar de común acuerdo: cuatro meses desde que el
  * contrato terminó (Ley 1150 de 2007, art. 11).
  */
@@ -35,7 +48,16 @@ export type TipoAlerta =
    * enterarse de que se la habían rechazado. El aprobador sí recibía su aviso;
    * el camino de vuelta no existía.
    */
-  | 'DEVUELTA_PARA_CORREGIR';
+  | 'DEVUELTA_PARA_CORREGIR'
+  /**
+   * Un proceso recibido en la Dirección al que nadie revisa (EFDS-1183).
+   *
+   * No debería pasar, pero quitar un abogado sin poner otro es una situación
+   * real, y también lo es tomar el proceso y olvidarse de repartirlo. Mientras
+   * dure, la 3.4 no la puede resolver nadie: el proceso está parado y no lo
+   * dice ninguna pantalla salvo la suya.
+   */
+  | 'SIN_ABOGADO';
 
 /**
  * Días que faltan para la fecha. Negativo si ya pasó.
@@ -128,13 +150,14 @@ export class AlertasService {
   async listar(anticipacion: number, acceso: HiringAccess): Promise<Alerta[]> {
     const hoy = this.hoy();
 
-    const [amparos, presupuestales, liquidaciones, aprobaciones, devueltas] =
+    const [amparos, presupuestales, liquidaciones, aprobaciones, devueltas, sinAbogado] =
       await Promise.all([
         this.amparosPorVencer(),
         this.respaldosPorVencer(),
         this.liquidacionesPendientes(),
         this.aprobacionesPendientes(acceso),
         this.devueltasParaCorregir(acceso),
+        this.procesosSinAbogado(hoy),
       ]);
 
     const vencimientos = [...amparos, ...presupuestales, ...liquidaciones]
@@ -149,7 +172,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinAbogado, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -302,6 +325,77 @@ export class AlertasService {
   }
 
   /**
+   * Procesos recibidos en la Dirección y sin abogado que los revise
+   * (EFDS-1183).
+   *
+   * Dos formas de llegar aquí y la consulta no las distingue porque el efecto
+   * es el mismo: se tomó el proceso y no se repartió, o se quitó al abogado sin
+   * poner otro. Lo que cuenta es desde cuándo está parado, que es lo más
+   * reciente de las dos fechas —cuándo se recibió y cuándo salió el último
+   * abogado—.
+   *
+   * Los que siguen en la bandeja no entran: nadie los ha recibido, así que no
+   * hay a quién reclamarle el reparto, y el listado ya los marca como tales.
+   *
+   * `vence` es la fecha en que se agotó la tolerancia, no un plazo legal: así
+   * los días restantes y el estado se calculan como en el resto de la lista, en
+   * vez de inventar una segunda forma de ordenar lo urgente.
+   */
+  private async procesosSinAbogado(hoy: string): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT p.id       AS proceso_id,
+              p.radicado AS radicado,
+              c.nombre   AS responsable,
+              c.email    AS responsable_email,
+              GREATEST(
+                c.asignado_at,
+                COALESCE(
+                  (SELECT MAX(a.relevado_at)
+                     FROM hiring.participaciones_proceso a
+                    WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO'),
+                  c.asignado_at
+                )
+              ) AS desde
+         FROM hiring.procesos p
+         JOIN hiring.participaciones_proceso c
+           ON c.proceso_id = p.id AND c.papel = 'CONTRATACION' AND c.estado = 'VIGENTE'
+        WHERE p.estado = 'EN_CURSO'
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.participaciones_proceso a
+             WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO' AND a.estado = 'VIGENTE'
+          )
+        ORDER BY desde ASC`,
+    );
+
+    return filas
+      .map((f: any) => {
+        const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
+        const limite = new Date(desde);
+        limite.setDate(limite.getDate() + TOLERANCIA_SIN_ABOGADO);
+        const vence = limite.toISOString().slice(0, 10);
+        const diasRestantes = diasParaVencer(vence, hoy);
+
+        return {
+          tipo: 'SIN_ABOGADO' as TipoAlerta,
+          procesoId: f.proceso_id,
+          radicado: f.radicado,
+          contrato: null,
+          descripcion: '3.4 · el proceso no tiene abogado que lo revise',
+          vence,
+          diasRestantes,
+          estado: estadoAlerta(diasRestantes, TOLERANCIA_SIN_ABOGADO),
+          // A quien hay que reclamarle es a quien lo recibió: el reparto es suyo.
+          responsable: f.responsable ?? null,
+          responsableEmail: f.responsable_email ?? null,
+          responsableId: null,
+        };
+      })
+      // Dentro de la tolerancia no se avisa: es el hueco normal entre recibir
+      // el proceso y sentarse a repartirlo.
+      .filter((a) => a.estado !== 'VIGENTE');
+  }
+
+  /**
    * Criterio 1: pólizas con fecha de vencimiento.
    *
    * Se consultan los amparos y no las garantías porque el desglose de la 8.4
@@ -395,7 +489,10 @@ export class AlertasService {
   private async liquidacionesPendientes(): Promise<Omit<Alerta, 'diasRestantes' | 'estado'>[]> {
     const filas = await this.dataSource.query(`
       SELECT p.id AS proceso_id, p.radicado, c.numero AS contrato,
-             COALESCE(m.fecha_efecto, c.updated_at::date) AS termino,
+             -- terminacion_el y no fecha_efecto: esa columna nunca existió
+             -- —la 053 la creó con este nombre— y la consulta reventaba, así
+             -- que el endpoint entero respondía 500 desde EFDS-1185.
+             COALESCE(m.terminacion_el, c.updated_at::date) AS termino,
              s.persona_id AS responsable_id, s.nombre AS responsable, s.email AS responsable_email
         FROM hiring.contratos c
         JOIN hiring.procesos p ON p.id = c.proceso_id
