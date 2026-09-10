@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 
 import {
-  getOfertas, getConsumoPorOferta, type Oferta, type AcumuladoDocente,
+  getOfertas, getConsumoPorOferta, crearPeriodo, activarPeriodo,
+  type Oferta, type AcumuladoDocente,
 } from '../services/api/catalogoApi';
 
 /**
@@ -29,6 +30,42 @@ export function GestionOfertas() {
   const [documento, setDocumento] = useState('');
   const [consumo, setConsumo] = useState<AcumuladoDocente | null>(null);
   const [buscando, setBuscando] = useState(false);
+
+  // NUEVA-5a — Crear y activar. Requieren el permiso de administración; si
+  // falta, el backend responde 403 y el mensaje se muestra tal cual, sin
+  // traducirlo a un genérico.
+  const [nuevo, setNuevo] = useState({
+    codigo: '', nombre: '', tipo: 'periodo_regular', fechaInicio: '', fechaFin: '',
+  });
+  const [guardando, setGuardando] = useState(false);
+  const [avisoAdmin, setAvisoAdmin] = useState('');
+
+  const recargar = () => getOfertas().then(setOfertas).catch(() => {});
+
+  const crear = async (e: FormEvent) => {
+    e.preventDefault();
+    setGuardando(true);
+    setAvisoAdmin('');
+    try {
+      await crearPeriodo({ ...nuevo, tipo: nuevo.tipo || null });
+      setNuevo({ codigo: '', nombre: '', tipo: 'periodo_regular', fechaInicio: '', fechaFin: '' });
+      await recargar();
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo crear el periodo.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const activar = async (id: string) => {
+    setAvisoAdmin('');
+    try {
+      await activarPeriodo(id);
+      await recargar();
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo activar el periodo.');
+    }
+  };
 
   useEffect(() => {
     getOfertas()
@@ -59,6 +96,8 @@ export function GestionOfertas() {
         </h3>
         <p className="text-xs text-slate-500">
           Las cinco ofertas del año. El consumo de un docente se acumula por semestre entre todas ellas.
+          Las fechas de las cinco ofertas sembradas son de referencia hasta que llegue el
+          calendario oficial (C-5).
         </p>
       </div>
 
@@ -81,12 +120,83 @@ export function GestionOfertas() {
               <p className="text-xs text-slate-600">{o.nombre}</p>
               <p className="text-[11px] text-slate-400">
                 {o.fechaInicio || '—'} a {o.fechaFin || '—'}
-                <span className="ml-1 italic">(referencia)</span>
               </p>
+              <div className="flex items-center justify-between pt-1">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${o.estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : o.estado === 'cerrado' ? 'bg-slate-200 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
+                  {o.estado === 'activo' ? 'Activo' : o.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
+                </span>
+                {/* Cerrado es inmutable: no se ofrece reactivar lo que el
+                    backend rechazaría por inmutable. */}
+                {o.estado === 'planeacion' && (
+                  <button
+                    type="button"
+                    onClick={() => activar(o.idPeriodo)}
+                    className="px-2.5 py-1 rounded-lg bg-[#003DA5] text-white text-[11px] font-bold hover:bg-blue-800 active:scale-95 transition-all"
+                  >
+                    Activar
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* NUEVA-5a — Crear periodo. Nace en planeación; activar es aparte. */}
+      <form onSubmit={crear} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+        <h4 className="font-bold text-slate-800 text-sm">Crear periodo</h4>
+        <p className="text-xs text-slate-500">
+          Nace <strong>en planeación</strong>. Activarlo es un acto aparte, y varios periodos
+          pueden estar activos a la vez.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Código</span>
+            <input required value={nuevo.codigo} placeholder="2027-1" maxLength={20}
+              onChange={(e) => setNuevo({ ...nuevo, codigo: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Nombre</span>
+            <input required value={nuevo.nombre} placeholder="Periodo Regular 2027-1"
+              onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Tipo</span>
+            <select value={nuevo.tipo}
+              onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+              <option value="periodo_regular">Periodo regular</option>
+              <option value="creditos_virtual">Créditos virtual</option>
+              <option value="interperiodo">Interperiodo</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Inicio</span>
+            <input required type="date" value={nuevo.fechaInicio}
+              onChange={(e) => setNuevo({ ...nuevo, fechaInicio: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Fin</span>
+            <input required type="date" value={nuevo.fechaFin}
+              onChange={(e) => setNuevo({ ...nuevo, fechaFin: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          </div>
+        </div>
+        {avisoAdmin && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+            {avisoAdmin}
+          </div>
+        )}
+        <button type="submit" disabled={guardando}
+          className="px-4 py-2 rounded-lg bg-[#003DA5] text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-all">
+          {guardando ? 'Creando…' : 'Crear periodo'}
+        </button>
+      </form>
 
       {/* Consumo previo del docente frente al tope, entre ofertas */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">

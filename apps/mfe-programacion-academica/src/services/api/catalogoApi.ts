@@ -102,11 +102,16 @@ async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    if (res.status === 403) throw new Error('No tiene permisos para gestionar grupos de esta asignatura.');
-    // El backend explica el motivo (p. ej. contra qué sesión cruza la franja):
-    // se propaga tal cual, porque es lo que le dice al programador qué corregir.
+    // El backend explica el motivo (contra qué sesión cruza la franja, o qué
+    // permiso falta —crear un periodo exige el de administración—): se propaga
+    // TAL CUAL, porque es lo que le dice al usuario qué corregir. Este helper lo
+    // comparten grupos, horarios, asignaciones, aulas y ofertas; un 403 fijo de
+    // "grupos" mentía sobre las otras operaciones. El genérico queda de respaldo.
     let detalle = "";
     try { const cuerpo = await res.json(); detalle = cuerpo?.message || cuerpo?.error || ""; } catch { /* sin cuerpo util */ }
+    if (res.status === 403) {
+      throw new Error(detalle || 'No tiene permisos para completar esta operación.');
+    }
     throw new Error(detalle || `No se pudo completar la operación (error ${res.status}).`);
   }
   const cuerpo = await res.json();
@@ -348,6 +353,44 @@ export function publicarGrupo(idGrupo: string): Promise<{ publicado: boolean }> 
   return pedirJson(`${BASE_AULAS}/publicar/${encodeURIComponent(idGrupo)}`, { method: 'POST' });
 }
 
+/** Tipos de espacio válidos: el mismo conjunto cerrado del CHECK de la tabla. */
+export const TIPOS_AULA = ['aula', 'auditorio'] as const;
+export type TipoAula = (typeof TIPOS_AULA)[number];
+
+export interface CrearAulaDto {
+  codigo: string;
+  nombre: string;
+  capacidad: number | null;
+  sedeCodigo: string | null;
+  tipo: TipoAula | null;
+  piso: number | null;
+}
+
+/**
+ * El código es la PK y no se renombra; por eso no viaja en la actualización.
+ * Parcial: solo los campos presentes se envían y el backend solo toca esos.
+ */
+export type ActualizarAulaDto = Partial<Omit<CrearAulaDto, 'codigo'>>;
+
+/**
+ * CRUD de aulas y capacidad (EFDS-1942). Administración del dato maestro: exige
+ * el permiso de administración; si falta, el backend responde 403 y el mensaje
+ * se muestra tal cual (pedirJson lo propaga verbatim).
+ */
+export function crearAula(dto: CrearAulaDto): Promise<Aula> {
+  return pedirJson<Aula>(BASE_AULAS, { method: 'POST', body: JSON.stringify(dto) });
+}
+
+export function actualizarAula(codigo: string, dto: ActualizarAulaDto): Promise<Aula> {
+  return pedirJson<Aula>(`${BASE_AULAS}/${encodeURIComponent(codigo)}`, {
+    method: 'PATCH', body: JSON.stringify(dto),
+  });
+}
+
+export function eliminarAula(codigo: string): Promise<{ eliminado: true }> {
+  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}`, { method: 'DELETE' });
+}
+
 // ─── Ofertas académicas (EFDS-1375) ─────────────────────────────────────────
 
 export interface Oferta {
@@ -358,6 +401,16 @@ export interface Oferta {
   fechaInicio: string | null;
   fechaFin: string | null;
   activo: boolean;
+  /** planeacion | activo | cerrado. `activo` es falso en los dos extremos. */
+  estado: string;
+}
+
+export interface CrearPeriodoDto {
+  codigo: string;
+  nombre: string;
+  tipo: string | null;
+  fechaInicio: string;
+  fechaFin: string;
 }
 
 const BASE_OFERTAS = '/programacion-academica/api/v1/ofertas';
@@ -399,4 +452,18 @@ export interface ValidacionHistorico {
  */
 export function getCrucesHistoricos(): Promise<ValidacionHistorico> {
   return pedirJson<ValidacionHistorico>('/programacion-academica/api/v1/validacion/historico', { method: 'GET' });
+}
+
+/**
+ * Crea un periodo. Nace en 'planeacion': activar es un acto explícito aparte.
+ * Exige el permiso de administración del módulo; si falta, el backend responde
+ * 403 y el mensaje se muestra tal cual.
+ */
+export function crearPeriodo(dto: CrearPeriodoDto): Promise<Oferta> {
+  return pedirJson<Oferta>(BASE_OFERTAS, { method: 'POST', body: JSON.stringify(dto) });
+}
+
+/** Activa un periodo. Varios pueden estar activos a la vez. */
+export function activarPeriodo(idPeriodo: string): Promise<Oferta> {
+  return pedirJson<Oferta>(`${BASE_OFERTAS}/${encodeURIComponent(idPeriodo)}/activar`, { method: 'PATCH' });
 }

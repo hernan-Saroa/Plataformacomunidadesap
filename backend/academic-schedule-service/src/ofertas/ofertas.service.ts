@@ -41,6 +41,14 @@ export interface OfertaDto {
   fechaFin: string | null;
   /** Derivado de `estado = 'activo'` (migración 018); ya no hay columna is_activo. */
   activo: boolean;
+  /**
+   * Estado del ciclo: planeacion | activo | cerrado.
+   *
+   * Se agrega (aditivo) porque `activo` es falso tanto en planeación como en
+   * cerrado, y la UI necesita distinguirlos: ofrecer "Activar" sobre un periodo
+   * cerrado propone algo que el backend rechaza por inmutable.
+   */
+  estado: string;
 }
 
 @Injectable()
@@ -65,6 +73,7 @@ export class OfertasService {
       fechaInicio: iso(p.fecha_inicio),
       fechaFin: iso(p.fecha_fin),
       activo: p.estado === 'activo',
+      estado: p.estado,
     }));
   }
 
@@ -143,6 +152,7 @@ export class OfertasService {
       fechaInicio: iso(p.fecha_inicio),
       fechaFin: iso(p.fecha_fin),
       activo: p.estado === 'activo',
+      estado: p.estado,
     };
   }
 

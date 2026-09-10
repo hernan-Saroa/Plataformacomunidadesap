@@ -161,6 +161,30 @@ describe('EFDS-1375 :: las cinco ofertas academicas (agregado real)', () => {
     await expect(servicio.crear({ ...base, codigo: '2026-1', tipo: 'periodo_regular' })).rejects.toThrow();
   });
 
+  // ---------------------------------------------------------------------------
+  // NUEVA-5a :: el estado llega al DTO (A.1 — la UI decide sobre el)
+  // ---------------------------------------------------------------------------
+
+  siHayBase('estado viaja al DTO y activo nunca lo contradice (sobre TODA la tabla)', async () => {
+    // Invariante, no conteo: sea cual sea el numero de periodos —la UI ya puede
+    // crearlos—, cada fila debe cumplir dos cosas. Una, que su estado este en el
+    // conjunto cerrado del CHECK. Dos, que activo sea exactamente la derivacion
+    // de estado. Son los dos supuestos sobre los que la pantalla decide si
+    // ofrece el boton Activar; si se rompen, ofrece activar lo que el backend
+    // rechaza (cerrado) o esconde el boton donde si aplica (planeacion).
+    const dataSource = { query: (sql: string) => client!.query(sql).then((r) => r.rows) };
+    const servicio = new OfertasService(dataSource as any, null as any);
+
+    const todas = await servicio.listar();
+    expect(todas.length).toBeGreaterThan(0);
+
+    const ESTADOS = ['planeacion', 'activo', 'cerrado'];
+    for (const o of todas) {
+      expect(ESTADOS).toContain(o.estado);
+      expect(o.activo).toBe(o.estado === 'activo');
+    }
+  });
+
   siHayBase('varios periodos pueden estar activos a la vez', async () => {
     const { rows } = await client!.query(
       `SELECT COUNT(*)::int AS n FROM "academic-schedule".periodo_programacion WHERE estado = 'activo'`);
