@@ -38,4 +38,35 @@ export class ProgramacionPermissionsService {
       return new Set();
     }
   }
+
+  /**
+   * Permisos del PORTAL del módulo (`portal-transaccional.programacion-academica.*`).
+   *
+   * Es una consulta separada de `resolveForRoles` a propósito: aquel acota al
+   * prefijo del BACKOFFICE (`programacion-academica.%`) y el portal vive bajo otro
+   * prefijo (EFDS-1938, migración 028 sacó a DOCENTE del backoffice). Mezclarlos
+   * en un solo LIKE dejaría que un permiso de backoffice abriera el portal, o al
+   * revés. Mismo fail-closed.
+   */
+  async resolvePortal(roleCodes: string[]): Promise<Set<string>> {
+    const codes = (roleCodes || []).map((r) => String(r || '')).filter(Boolean);
+    if (codes.length === 0) return new Set();
+
+    try {
+      const rows: Array<{ code: string }> = await this.dataSource.query(
+        `SELECT DISTINCT p.code
+           FROM auth.role_permissions rp
+           INNER JOIN auth.role r ON r.id = rp.id_rol AND COALESCE(r.is_active, true) = true
+           INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
+          WHERE COALESCE(rp.is_active, true) = true
+            AND r.code = ANY($1::text[])
+            AND p.code LIKE 'portal-transaccional.programacion-academica.%'`,
+        [codes],
+      );
+      return new Set((rows || []).map((r) => String(r.code)).filter(Boolean));
+    } catch (error: any) {
+      this.logger.error(`No se pudieron resolver permisos del portal: ${error?.message}`);
+      return new Set();
+    }
+  }
 }

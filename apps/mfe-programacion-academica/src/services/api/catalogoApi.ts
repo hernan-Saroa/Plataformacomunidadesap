@@ -498,3 +498,46 @@ export function publicarProgramacion(idPeriodo: string): Promise<EstadoPublicaci
 export function retirarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
   return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/retirar`, { method: 'POST' });
 }
+
+// ─── Portal del docente (EFDS-1938) ──────────────────────────────────────────
+
+/** Franja tal como la ve el docente en el portal. */
+export interface FranjaPortal {
+  idFranja: string;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  tipoSesion: string;
+  aulaCodigo: string | null;
+  estado: string;
+  numeroGrupo: number | null;
+  asignatura: string | null;
+  programa: string | null;
+}
+
+const BASE_PORTAL = '/programacion-academica/api/v1/portal-docente';
+
+/** Franjas publicadas que el docente puede tomar (excluye las que cruzan lo suyo). */
+export function getDisponiblesPortal(): Promise<FranjaPortal[]> {
+  return pedirJson<FranjaPortal[]>(`${BASE_PORTAL}/disponibles`, { method: 'GET' });
+}
+
+/** Franjas que el docente ya tomó (o le aprobaron). */
+export function getMisFranjasPortal(): Promise<FranjaPortal[]> {
+  return pedirJson<FranjaPortal[]>(`${BASE_PORTAL}/mis-franjas`, { method: 'GET' });
+}
+
+/** Acumulado del docente autenticado vs su tope (RN-04, solo lectura). */
+export function getAcumuladoPortal(): Promise<AcumuladoDocente> {
+  return pedirJson<AcumuladoDocente>(`${BASE_PORTAL}/acumulado`, { method: 'GET' });
+}
+
+/** Toma una franja: el backend usa transacción + lock de fila. */
+export function tomarFranja(idFranja: string): Promise<{ tomada: true }> {
+  return pedirJson(`${BASE_PORTAL}/tomar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
+}
+
+/** Suelta una franja tomada (solo si no está aprobada). */
+export function soltarFranja(idFranja: string): Promise<{ soltada: true }> {
+  return pedirJson(`${BASE_PORTAL}/soltar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
+}
