@@ -25,7 +25,6 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     objetoComision: '',
     destinoCiudad: '',
     destinoDepartamento: '',
-    // Fechas por defecto: inicio HOY y fin el día siguiente (ajuste de forma).
     fechaInicio: hoyISO(),
     fechaFin: siguienteDiaISO(),
     rubroPresupuestal: '',
@@ -34,6 +33,8 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     montoViaticos: 0,
     montoGastosViaje: 0,
     diasComision: 1,
+    salarioBasico: 0,
+    costoEstimadoTiquete: 0,
     aceptaHabeasData: false,
     tipoComision: 'TERRESTRE',
     esInternacional: false,
@@ -190,6 +191,8 @@ export function mapearARequestCreacion(
     montoViaticos: form.montoViaticos,
     montoGastosViaje: form.montoGastosViaje,
     diasComision: form.diasComision,
+    salarioBasico: form.salarioBasico ?? 0,
+    costoEstimadoTiquete: form.costoEstimadoTiquete ?? 0,
     creadoPorUsuarioId: creadoPorUsuarioId,
     aceptaHabeasData: aceptaHabeasData,
     ipRegistroHabeasData: aceptaHabeasData ? '127.0.0.1' : comisionado.ipRegistroHabeasData,
@@ -227,6 +230,11 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     label: 'Devuelta (subsanar)',
     bg: 'bg-orange-100',
     text: 'text-orange-800',
+  },
+  SOLICITADA_SIIF: {
+    label: 'Solicitada SIIF',
+    bg: 'bg-fuchsia-100',
+    text: 'text-fuchsia-800',
   },
 };
 

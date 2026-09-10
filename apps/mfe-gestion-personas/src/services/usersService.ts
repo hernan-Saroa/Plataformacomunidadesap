@@ -74,6 +74,7 @@ export interface CreateUserData {
   roleIds?: string[];
   idSeccional?: number;
   idSede?: number;
+  idDependencia?: number | null;
   [key: string]: any; // Allow advanced fields (birth_date, address, etc.)
 }
 

@@ -198,7 +198,67 @@ Cuando se agregue un nuevo submodulo o funcionalidad que requiera selección de 
 
 ---
 
-## 8. Resumen de archivos clave
+## 8. Permisos "Ver Módulo" por submódulo (acceso al menú parametrizado)
+
+Migración: `db/migrations/432_add_ver_modulo_permissions_gestion_legal.sql`.
+
+Antes, el acceso a cada ítem del menú del SIGL (`GestionLegalFull.tsx`) dependía
+únicamente del permiso `gestion-legal.<submodulo>.manage`, que no existía en
+combinaciones parciales fáciles de armar para un rol nuevo (su nombre sugiere
+"gestión", no solo "ver").
+
+Ahora cada uno de los 12 submódulos del SIGL tiene, además, un permiso dedicado
+y exclusivo de visibilidad:
+
+| Submódulo (vista) | Permiso "ver" | Nombre visible |
+|---|---|---|
+| defensa-judicial | `gestion-legal.defensa-judicial.ver` | Ver Módulo Defensa Judicial |
+| juzgamiento | `gestion-legal.juzgamiento-disciplinario.ver` | Ver Módulo Juzgamiento Disciplinario |
+| asesoria | `gestion-legal.asesoria-juridica.ver` | Ver Módulo Asesoría Jurídica |
+| centro-comunicaciones | `gestion-legal.comunicaciones.ver` | Ver Módulo Centro de Comunicaciones |
+| terminos | `gestion-legal.terminos.ver` | Ver Módulo Términos e Informes |
+| organos-control | `gestion-legal.organos-control.ver` | Ver Módulo Órganos de Control |
+| procesos-coactivos | `gestion-legal.procesos-coactivos.ver` | Ver Módulo Procesos Coactivos |
+| expedientes | `gestion-legal.expedientes-electronicos.ver` | Ver Módulo Expedientes Electrónicos |
+| plan-accion | `gestion-legal.plan-accion.ver` | Ver Módulo Plan de Acción |
+| riesgos | `gestion-legal.riesgos.ver` | Ver Módulo Gestión de Riesgos |
+| planes-mejoramiento | `gestion-legal.planes-mejoramiento.ver` | Ver Módulo Planes de Mejoramiento |
+| configuraciones | `gestion-legal.configuraciones.ver` | Ver Módulo Configuraciones |
+
+**Regla:** un rol que tenga cualquiera de estos 12 permisos `*.ver` obtiene acceso
+únicamente a esos submódulos del menú (y nada más). Un rol sin ninguno de los 12
+no puede entrar a Gestión Legal.
+
+**Cómo se resuelve en frontend** (`apps/mfe-gestion-legal/src/components/core/GestionLegalFull.tsx`):
+- `VISTA_PERMISOS`: mapa `vista → [permiso MANAGE, permiso VER]`.
+- `puedeVerVista(vista)`: `authService.hasAnyPermission([...])` — acepta el `.manage`
+  histórico o el `.ver` nuevo (compatibilidad con JEFE/SECRETARIADO/MONITOREO/RESUELVE).
+- `menuItems[].visible` usa `puedeVerVista(...)` en vez de `hasPermission(MANAGE)` directo.
+- La vista inicial (`getVistaInicialDesdeQuery` / `getPrimeraVistaPermitida`) ya no
+  cae por defecto en `defensa-judicial`: si el usuario no tiene permiso para esa
+  vista (ni por query param `?modulo=`), se posiciona en el primer submódulo de
+  `VISTAS_VALIDAS` al que sí tenga acceso.
+
+**Compatibilidad hacia atrás:** la migración 432 otorga automáticamente el `*.ver`
+de un submódulo a todo rol que ya tuviera el `*.manage` correspondiente, así que
+los 4 roles de la sección 1 no pierden acceso a nada.
+
+**Nuevo rol creado:** `CONSULTA_SEGUIMIENTO_GESTION_LEGAL` — acceso exclusivo de
+consulta a **Términos e Informes**, **Plan de Acción**, **Gestión de Riesgos** y
+**Planes de Mejoramiento** (los 4 submódulos pedidos originalmente en el bug).
+Solo tiene los 4 permisos `*.ver` de esos submódulos, nada más.
+
+**Para armar un rol nuevo restringido a un subconjunto del SIGL:** asignarle solo
+los permisos `*.ver` de los submódulos deseados en `auth.role_permissions`. No
+requiere tocar código frontend. **Excepción:** si el rol debe ser 100% exclusivo
+de Gestión Legal (login lo lleva directo al SIGL en modo restringido, sin ver el
+resto del backoffice), su `code` debe agregarse también al arreglo `hasGestionLegal`
+en `apps/shell/src/App.tsx` (documentado ahí mismo) — esta parte del enrutamiento
+de login todavía es por lista de códigos de rol, no por permiso.
+
+---
+
+## 9. Resumen de archivos clave
 
 | Archivo | Propósito |
 |---------|-----------|
@@ -206,4 +266,8 @@ Cuando se agregue un nuevo submodulo o funcionalidad que requiera selección de 
 | `apps/services/api/legal.service.ts` | Servicio real de legal. `getAbogados()` delega a auth. |
 | `backend/auth-service/src/auth/authorization.constants.ts` | `AUTH_READ_ROLES` — roles que pueden llamar `GET /users`. |
 | `db/migrations/210_create_roles_gestion_legal.sql` | Definición de los 4 roles de GL en base de datos. |
+| `db/migrations/432_add_ver_modulo_permissions_gestion_legal.sql` | Permisos `*.ver` por submódulo + rol `CONSULTA_SEGUIMIENTO_GESTION_LEGAL`. |
+| `packages/shared-types/src/permissions.ts` | Enum `Permissions` — incluye los `GESTION_LEGAL_*_VER`. |
+| `apps/mfe-gestion-legal/src/components/core/GestionLegalFull.tsx` | `VISTA_PERMISOS`, `puedeVerVista()` — control de acceso al menú del SIGL. |
+| `apps/shell/src/App.tsx` | `hasGestionLegal` — códigos de rol 100% exclusivos de Gestión Legal (modo restringido). |
 | `apps/mfe-gestion-legal/src/components/modulos/` | Componentes del módulo Defensa Judicial. |

@@ -12,7 +12,8 @@ export type EstadoSolicitudViatico =
   | 'RECHAZADO'
   | 'RADICADA'
   | 'EXTEMPORANEA'
-  | 'DEVUELTA';
+  | 'DEVUELTA'
+  | 'SOLICITADA_SIIF';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -51,6 +52,8 @@ export interface FormNuevaSolicitud {
   tipoComision?: string;
   esInternacional?: boolean;
   documentos?: DocumentoFormItem[];
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -150,6 +153,19 @@ export interface SolicitudComisionResponse {
    documentosSoporte?: DocumentoSoporte[];
    comisionado?: Comisionado;
    warningMessage?: string;
+   salarioBasico?: number;
+   costoEstimadoTiquete?: number;
+  analistaAsignadoId?: string | null;
+  siifExportado?: boolean;
+  fechaExportacionSiif?: string | null;
+  consultaRutFacturador?: boolean;
+  resumenPresupuestal?: {
+    totalGastado: number;
+    cantidadSolicitudes: number;
+    limitePresupuesto: number;
+    porcentajeUso: number;
+    semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+  };
 }
 
 /**
@@ -169,6 +185,8 @@ export interface CreateSolicitudRequest {
   montoViaticos: number;
   montoGastosViaje: number;
   diasComision: number;
+  salarioBasico: number;
+  costoEstimadoTiquete: number;
   creadoPorUsuarioId: string;
   aceptaHabeasData?: boolean;
   ipRegistroHabeasData?: string;
@@ -204,6 +222,7 @@ export interface SolicitudListaResponse {
     | 'email'
     | 'telefonoContacto'
     | 'autorizacionHabeasData'
+    | 'idDependencia'
   > | null;
   destinoCiudad: string;
   destinoDepartamento: string;
@@ -223,6 +242,31 @@ export interface SolicitudListaResponse {
   esCreadoPorMi?: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  motivoDevolucion?: string | null;
+  fechaRevision?: string | null;
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
+  analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
+}
+
+export interface BandejaSecretarioResponse {
+  data: SolicitudListaResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface PrioridadUpdateResponse {
+  id: string;
+  prioridad: string;
+  fechaRevision?: string;
+}
+
+export interface ReturnRequestResponse {
+  id: string;
+  estadoSolicitud: string;
+  motivoDevolucion: string;
 }
 
 /** Modelo de presentación para la tabla de solicitudes. */
@@ -249,11 +293,14 @@ export interface SolicitudViatico {
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
   requiereTiqueteAereo: boolean;
+  prioridad?: string;
   numeroResolucion?: string;
   fechaResolucion?: string;
   creadoEn: string;
   actualizadoEn: string;
   esCreadoPorMi?: boolean;
+  analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
 }
 
 export interface TiqueteAereo {
@@ -490,4 +537,69 @@ export interface ResultadoConsolidacion {
   estadoAnterior: string;
   estadoSolicitud: EstadoSolicitudViatico;
   mensaje: string;
+}
+
+// =========================================================================
+// RF-REC-002 — Tablero de carga y asignación de analistas (Etapa 4)
+// =========================================================================
+
+export type ColorSemaforoAnalista = 'VERDE' | 'AMARILLO' | 'ROJO';
+
+export interface CargaAnalista {
+  usuarioId: string;
+  nombreCompleto: string;
+  username: string;
+  identificacion: string | null;
+  asignacionesActivas: number;
+  altas: number;
+  medias: number;
+  bajas: number;
+  puntajeTotal: number;
+  colorSemaforo: ColorSemaforoAnalista;
+}
+
+export interface AsignacionAnalistaRequest {
+  solicitudId: string;
+  analistaId: string;
+}
+
+export interface AsignacionAnalistaResponse {
+  success: boolean;
+  message: string;
+  data: {
+    solicitudId: string;
+    estadoSolicitud: string;
+    analistaAsignadoId: string | null;
+    historialId: string;
+  };
+}
+
+// =========================================================================
+// RF-VER-SIIF — Verificar y crear comisión en SIIF Nación (Etapa 5)
+// =========================================================================
+
+export interface VerifyAuditResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    consultaRutFacturador: boolean;
+  };
+  timestamp: string;
+}
+
+export interface DevolverAnalistaResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    motivoDevolucion: string;
+  };
+  timestamp: string;
+}
+
+export interface SolicitudAsignadaAnalistaResponse {
+  data: SolicitudListaResponse[];
+  total: number;
+  timestamp: string;
 }

@@ -38,7 +38,10 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
       }),
       save: jest.fn(),
     };
-    const { service } = createService({ invitacionRepo });
+    const soportes = [{ bloque: 'IDENTIDAD', tipo_soporte: 'documento_identidad', nombre_archivo: 'identidad.pdf', estado: 'Aprobado' }];
+    const bloques = [{ bloque: 'IDENTIDAD', estado: 'Aprobado', fecha_revision: '2026-09-08T12:00:00Z' }];
+    const dataSource = { query: jest.fn().mockResolvedValueOnce(soportes).mockResolvedValueOnce(bloques) };
+    const { service } = createService({ invitacionRepo, dataSource });
     jest.spyOn(service, 'list').mockResolvedValue({
       data: [{
         docente_id: '11111111-1111-4111-8111-111111111111',
@@ -55,6 +58,11 @@ describe('BancoDocentesService - datos sensibles en autogestión', () => {
 
     const result = await service.getAutogestionInfo('a'.repeat(64));
 
+    expect(result.evidencias).toEqual({
+      soportes: [{ ...soportes[0], nombre_archivo: 'Documento del perfil', contenidoRestringido: true }], bloques,
+    });
+    expect(dataSource.query).toHaveBeenNthCalledWith(1, expect.stringContaining('"RundSoporteCampo"'), ['11111111-1111-4111-8111-111111111111']);
+    expect(dataSource.query).toHaveBeenNthCalledWith(2, expect.stringContaining('"RundCampoEstado"'), ['11111111-1111-4111-8111-111111111111']);
     expect(result.documento_identidad).toBe('******4050');
     expect(result.puntaje_salarial).toBeNull();
     expect(result.proteccion_datos.acceso_completo).toBe(false);

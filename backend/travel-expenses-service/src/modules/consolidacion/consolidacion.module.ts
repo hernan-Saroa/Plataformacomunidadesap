@@ -9,6 +9,7 @@ import { ExcepcionTiqueteEntity } from '../../entities/tickets/excepcion-tiquete
 import { SaldoTiqueteEntity } from '../../entities/tickets/saldo-tiquete.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
 import { ConfigModule } from '../config/config.module';
+import { CommonModule } from '../../common/common.module';
 
 /**
  * Módulo de consolidación y cierre del expediente de comisión (RF-LIQ-004).
@@ -28,6 +29,7 @@ import { ConfigModule } from '../config/config.module';
       SolicitudHistorialEstadoEntity,
     ]),
     ConfigModule,
+    CommonModule,
   ],
   controllers: [ConsolidacionController],
   providers: [ConsolidacionService],

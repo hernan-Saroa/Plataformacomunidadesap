@@ -27,4 +27,7 @@ export class UploadDocumentoDto {
   // ValidationPipe global (forbidNonWhitelisted: true).
   @Allow()
   file?: any;
+
+  @IsOptional()
+  isSuperAdmin?: boolean;
 }

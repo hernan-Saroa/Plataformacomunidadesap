@@ -452,6 +452,19 @@ export async function seedPTAs() {
   }
 }
 
+export async function validarReenvioPTA(ptaId: string) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/validar-reenvio`, {});
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      success: normalized.success && normalized.data?.valido === true,
+      message: asObject(raw).message as string | undefined,
+    };
+  } catch (error: any) {
+    return { success: false, message: error?.message || 'No se pudo validar el PTA antes del reenvío.' };
+  }
+}
+
 export async function updatePTAStatus(
   ptaId: string,
   data: {
@@ -1929,6 +1942,18 @@ export async function getBancoDocenteById(id: string, periodoCarga?: string) {
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.warn('[mfe-pta][getBancoDocenteById] No encontrado o error al buscar docente:', error instanceof Error ? error.message : error);
+    return { success: false, data: null };
+  }
+}
+
+export async function getBancoDocenteCabezote(id: string, periodoCarga?: string) {
+  try {
+    const raw = await apiClient.get<any>(
+      `${BD_BASE}/${encodeURIComponent(id)}/cabezote`,
+      periodoCarga ? { periodoCarga } : undefined,
+    );
+    return normalizeResult<any>(raw, null);
+  } catch {
     return { success: false, data: null };
   }
 }

@@ -108,7 +108,7 @@ Calcula la autoliquidación de viáticos.
 
 **Headers**
 - `Authorization: Bearer <token>`
-- Permiso requerido: `travel_expenses:read`
+- Permiso requerido: `travel_expenses:create_request`
 
 **Request Body**
 

@@ -1865,7 +1865,44 @@ export class PtaService {
     }
   }
 
-  private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
+  private async getActividadesConCatalogoAprobado(
+    ptaId: string,
+    ds: any,
+    solicitud: SolicitudPtaEntity,
+  ): Promise<Set<any>> {
+    const reabiertos = new Set(expandSolicitudComponentes(
+      normalizeSolicitudComponentes(solicitud.componentes),
+    ));
+    // Ante una solicitud incompleta se conserva la validación estricta.
+    if (reabiertos.size === 0) return new Set();
+    const approvals = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+    const conservados = new Set(approvals
+      .filter(row => row.estado === 'aprobado' && !reabiertos.has(row.componente))
+      .map(row => row.componente));
+    const actividades = new Set<any>();
+    for (const activity of (Array.isArray(ds?.extension_actividades) ? ds.extension_actividades : [])) {
+      if (conservados.has(componentKeyForExtensionSection(activity?.seccion))) {
+        actividades.add(activity);
+      }
+    }
+    if (COMPLEMENTARIAS_COMPONENT_KEYS.some(key => conservados.has(key))) {
+      const clasificadas = await this.clasificarComplementarias(ds);
+      for (const key of COMPLEMENTARIAS_COMPONENT_KEYS) {
+        if (conservados.has(key)) {
+          for (const activity of clasificadas[key]) actividades.add(activity);
+        }
+      }
+    }
+    return actividades;
+  }
+
+  private validatePtaForSubmission(
+    body: any,
+    horas: ReturnType<PtaService['computeHorasTotales']>,
+    horasAProgramar: number,
+    rules: any,
+    actividadesConCatalogoAprobado: ReadonlySet<any> = new Set(),
+  ) {
     const { all: allComp, aadm: compAadm } = this.readComplementariasSecciones(body);
     const tieneTotalidad = compAadm.some((a: any) => a?.consumeTotalidad === true);
 
@@ -1965,7 +2002,8 @@ export class PtaService {
       const selected = selectedKeys.map((key: string) => descriptorByKey.get(key));
       if (selected.some(entry => !entry)) {
         throw new BadRequestException(
-          `La actividad ${label} contiene una opción que ya no existe en la configuración vigente.`,
+          `La actividad ${label} contiene una opción que ya no existe en la configuración vigente. `
+          + 'Vuelve a seleccionar una opción vigente en esta actividad antes de enviar el PTA.',
         );
       }
 
@@ -2167,6 +2205,7 @@ export class PtaService {
     const configuredRowHours = (row: any, allowZeroUntil = false): number =>
       getRecognitionBounds(row, 'fija', allowZeroUntil).min;
     for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
+      if (actividadesConCatalogoAprobado.has(activity)) continue;
       const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
       const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
@@ -2323,6 +2362,7 @@ export class PtaService {
 
     for (const activity of allComp) {
       if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
+      if (actividadesConCatalogoAprobado.has(activity)) continue;
       const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
       const configured = this.flattenCompV2Section(rules, sectionKey)
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
@@ -4194,6 +4234,120 @@ export class PtaService {
     return this.toPtaDto(saved, extMult);
   }
 
+  async validarReenvioPTA(ptaId: string, auth?: PtaAuthenticatedUser) {
+    if (!auth?.userId) throw new ForbiddenException('No fue posible identificar al docente autenticado.');
+    const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!existing) throw new NotFoundException('PTA no encontrado');
+    const docenteId = await this.resolveDocenteId(auth.userId, { periodo: existing.periodo });
+    if (docenteId !== existing.docenteId) {
+      throw new ForbiddenException('Solo el docente propietario puede validar este reenvío.');
+    }
+    if (!REVISION_DOCENTE_STATES.has(existing.estado)) {
+      throw new BadRequestException('Este PTA no está habilitado para el reenvío de correcciones.');
+    }
+    const solicitud = await this.solicitudRepo.findOne({
+      where: {
+        ptaId,
+        tipoSolicitud: SOLICITUD_EDICION_TIPO,
+        estado: In(['aprobado', 'en_aprobacion']),
+      } as any,
+      order: { updatedAt: 'DESC' as any },
+    });
+    // La comprobación previa no persiste la normalización del catálogo ni
+    // cambia estados, firmas, aprobaciones o el historial del PTA.
+    await this.validatePtaBeforeApproval({
+      ...existing,
+      datosEstructurados: structuredClone(existing.datosEstructurados || {}),
+    }, solicitud);
+    return { valido: true };
+  }
+
+  private async validatePtaBeforeApproval(
+    existing: Pick<PlanTrabajoAcademicoEntity, 'id' | 'docenteId' | 'datosEstructurados' | 'horasTotales' | 'horasAsignables'>,
+    solicitudEdicionParcial: SolicitudPtaEntity | null,
+  ): Promise<void> {
+    // Antes de cualquier envío/reenvío, actualizar Pensum desde el catálogo.
+    // Esto cubre también "avanzar sin cambios" en PTAs creados antes del campo.
+    {
+      const currentData = (existing.datosEstructurados as any) || {};
+      if (Array.isArray(currentData.asignaturas)) {
+        existing.datosEstructurados = {
+          ...currentData,
+          asignaturas: await this.syncAsignaturasPensum(currentData.asignaturas),
+        };
+      }
+    }
+
+    // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
+    {
+      const ds = existing.datosEstructurados as any || {};
+      const tieneTotalidad = this.readComplementariasSecciones(ds).aadm
+        .some((a: any) => a?.consumeTotalidad === true);
+      const horasActuales = existing.horasTotales || 0;
+      if (!tieneTotalidad && horasActuales === 0) {
+        throw new BadRequestException(
+          'El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobación.',
+        );
+      }
+    }
+
+    // ── Cuando el PTA llega a aprobación, validar datos completos ──────────────────────────
+    {
+      const ds = existing.datosEstructurados as any || {};
+      const tieneTotalidad = this.readComplementariasSecciones(ds).aadm
+        .some((a: any) => a?.consumeTotalidad === true);
+      if (!tieneTotalidad) {
+        const asignaturas = Array.isArray(ds.asignaturas)
+          ? ds.asignaturas.filter((a: any) => a?.asignatura_id)
+          : [];
+        if (asignaturas.length === 0) {
+          throw new BadRequestException('Debe incluir al menos una asignatura válida antes de enviar el PTA a aprobación.');
+        }
+        for (const [idx, asig] of asignaturas.entries()) {
+          const label = asig.asignatura_nombre || `Asignatura ${idx + 1}`;
+          if (!asig.programa_id) {
+            throw new BadRequestException(`Complete el programa de ${label} antes de enviar el PTA.`);
+          }
+          if (!asig.fecha_inicio || !asig.fecha_fin) {
+            throw new BadRequestException(`Complete las fechas de inicio y fin de ${label} antes de enviar el PTA.`);
+          }
+          const inicio = new Date(`${asig.fecha_inicio}T00:00:00`);
+          const fin = new Date(`${asig.fecha_fin}T00:00:00`);
+          if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime()) || fin < inicio) {
+            throw new BadRequestException(`El rango de fechas de ${label} no es válido.`);
+          }
+          const horasAsignatura = Number(asig.total_horas ?? asig.horas);
+          if (!Number.isFinite(horasAsignatura) || horasAsignatura <= 0) {
+            throw new BadRequestException(`La asignatura ${label} no tiene horas calculadas.`);
+          }
+        }
+      }
+    }
+
+    {
+      const ds = existing.datosEstructurados as any || {};
+      const extMult = await this.getExtMultiplicadores();
+      const horas = this.computeHorasTotales(ds, extMult);
+      const horasAProgramar = await this.resolveHorasAProgramar(
+        existing.docenteId,
+        ds,
+        Number(existing.horasAsignables),
+      );
+      // El guardado restringido preserva los componentes no reabiertos. No se
+      // deben reinterpretar sus opciones/horas históricas con un catálogo que
+      // pudo cambiar desde su aprobación. El alcance se obtiene del servidor,
+      // nunca del payload, y los topes globales siguen validando todo el PTA.
+      const actividadesConCatalogoAprobado = solicitudEdicionParcial
+        ? await this.getActividadesConCatalogoAprobado(existing.id, ds, solicitudEdicionParcial)
+        : new Set<any>();
+      this.validatePtaForSubmission(
+        ds, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {},
+        actividadesConCatalogoAprobado,
+      );
+    }
+
+  }
+
   async updatePTAStatus(
     ptaId: string,
     body: any,
@@ -4452,74 +4606,10 @@ export class PtaService {
       }
     }
 
-    // Antes de cualquier envío/reenvío, actualizar Pensum desde el catálogo.
-    // Esto cubre también "avanzar sin cambios" en PTAs creados antes del campo.
     if (isPendingRoleApprovalState(nuevoEstado)) {
-      const currentData = (existing.datosEstructurados as any) || {};
-      if (Array.isArray(currentData.asignaturas)) {
-        existing.datosEstructurados = {
-          ...currentData,
-          asignaturas: await this.syncAsignaturasPensum(currentData.asignaturas),
-        };
-      }
-    }
-
-    // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
-    if (isPendingRoleApprovalState(nuevoEstado)) {
-      const ds = existing.datosEstructurados as any || {};
-      const tieneTotalidad = this.readComplementariasSecciones(ds).aadm
-        .some((a: any) => a?.consumeTotalidad === true);
-      const horasActuales = existing.horasTotales || 0;
-      if (!tieneTotalidad && horasActuales === 0) {
-        throw new BadRequestException(
-          'El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobación.',
-        );
-      }
-    }
-
-    // ── Cuando el PTA llega a aprobación, validar datos completos ──────────────────────────
-    if (isPendingRoleApprovalState(nuevoEstado)) {
-      const ds = existing.datosEstructurados as any || {};
-      const tieneTotalidad = this.readComplementariasSecciones(ds).aadm
-        .some((a: any) => a?.consumeTotalidad === true);
-      if (!tieneTotalidad) {
-        const asignaturas = Array.isArray(ds.asignaturas)
-          ? ds.asignaturas.filter((a: any) => a?.asignatura_id)
-          : [];
-        if (asignaturas.length === 0) {
-          throw new BadRequestException('Debe incluir al menos una asignatura válida antes de enviar el PTA a aprobación.');
-        }
-        for (const [idx, asig] of asignaturas.entries()) {
-          const label = asig.asignatura_nombre || `Asignatura ${idx + 1}`;
-          if (!asig.programa_id) {
-            throw new BadRequestException(`Complete el programa de ${label} antes de enviar el PTA.`);
-          }
-          if (!asig.fecha_inicio || !asig.fecha_fin) {
-            throw new BadRequestException(`Complete las fechas de inicio y fin de ${label} antes de enviar el PTA.`);
-          }
-          const inicio = new Date(`${asig.fecha_inicio}T00:00:00`);
-          const fin = new Date(`${asig.fecha_fin}T00:00:00`);
-          if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime()) || fin < inicio) {
-            throw new BadRequestException(`El rango de fechas de ${label} no es válido.`);
-          }
-          const horasAsignatura = Number(asig.total_horas ?? asig.horas);
-          if (!Number.isFinite(horasAsignatura) || horasAsignatura <= 0) {
-            throw new BadRequestException(`La asignatura ${label} no tiene horas calculadas.`);
-          }
-        }
-      }
-    }
-
-    if (isPendingRoleApprovalState(nuevoEstado)) {
-      const ds = existing.datosEstructurados as any || {};
-      const extMult = await this.getExtMultiplicadores();
-      const horas = this.computeHorasTotales(ds, extMult);
-      const horasAProgramar = await this.resolveHorasAProgramar(
-        existing.docenteId,
-        ds,
-        Number((existing as any).horasAsignables),
+      await this.validatePtaBeforeApproval(
+        existing, a === 'reenviar_corregido' ? solicitudEdicionParcial : null,
       );
-      this.validatePtaForSubmission(ds, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
     }
 
     const estadoFinal = nuevoEstado || existing.estado || 'Borrador';
