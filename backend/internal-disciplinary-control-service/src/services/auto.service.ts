@@ -1353,64 +1353,54 @@ export class AutoService {
     }
   }
 
-  private async enviarCorreoNotificacion(userId: string, asunto: string, mensaje: string): Promise<void> {
-    try {
-      const result = await this.autoRepository.manager.query(
-        `SELECT p.dir_email FROM auth.user u JOIN auth.personas p ON p.id_person = u.id_person WHERE u.id_user = $1`,
-        [userId],
-      );
-      if (!result || result.length === 0) return;
+  private buildEmailTemplateAvisoESAP(titulo: string, mensaje: string): string {
+    return `
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#60A5FA;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td>
+                        <div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">ESAP</div>
+                        <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;">Notificaciones</div>
+                      </td>
+                      <td align="right">
+                        <span style="background-color:rgba(255,255,255,0.2);color:#ffffff;font-size:11px;font-weight:600;padding:4px 14px;border-radius:20px;letter-spacing:0.3px;">Aviso</span>
+                      </td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 28px 28px;">
+                <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:700;color:#111827;line-height:1.4;">${titulo}</h1>
+                <p style="margin:0;font-size:14px;color:#4b5563;line-height:1.7;">${mensaje}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
+      </div>
+    `;
+  }
 
-      const email = result[0].dir_email;
+  private async enviarCorreoNotificacion(userIdOrProfId: string, asunto: string, mensaje: string): Promise<void> {
+    try {
+      const datos = await this.resolverDestinatario(userIdOrProfId);
+      const email = datos.email;
       if (!email) return;
 
-      const notificationsUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: 'Inter', Arial, sans-serif; color: #1f2937; line-height: 1.6; background-color: #f3f4f6; padding: 20px; }
-            .container { max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-            .header { background: linear-gradient(135deg, #003DA5 0%, #2563EB 100%); color: white; padding: 32px 24px; text-align: center; }
-            .content { padding: 32px; }
-            .info-box { background-color: #f9fafb; padding: 24px; border-radius: 8px; margin: 24px 0; border: 1px solid #f3f4f6; }
-            .footer { background-color: #f9fafb; padding: 24px; font-size: 12px; color: #6b7280; text-align: center; border-top: 1px solid #f3f4f6; }
-            .btn { display: inline-block; background-color: #2563EB; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin-top: 16px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1 style="margin:0; font-size: 24px;">Control Interno Disciplinario</h1>
-              <p style="margin:8px 0 0 0; opacity: 0.9;">Notificación de Auto Aprobado</p>
-            </div>
-            <div class="content">
-              <p>${mensaje}</p>
-              <div class="info-box">
-                <p><strong>Asunto:</strong> ${asunto}</p>
-              </div>
-              <p>Por favor, ingresa a la plataforma para revisar los detalles.</p>
-              <div style="text-align: center;">
-                <a href="#" class="btn">Ir a la Plataforma</a>
-              </div>
-            </div>
-            <div class="footer">
-              <p><strong>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</strong><br>Oficina de Control Interno Disciplinario</p>
-              <p style="margin-top: 8px;">Este correo fue generado automáticamente. Por favor no responder.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      await firstValueFrom(
-        this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
-          to: email,
-          subject: asunto,
-          html,
-        }),
-      );
+      const html = this.buildEmailTemplateAvisoESAP(asunto, mensaje);
+      await this.enviarEmailDirecto(email, asunto, html, mensaje);
     } catch (error) {
       console.error('Error enviando correo de notificación de auto:', error);
     }
@@ -1418,15 +1408,30 @@ export class AutoService {
 
   private async obtenerNombreUsuario(userId: string): Promise<string> {
     try {
+      // 1. Intentar resolver con resolverDestinatario
+      const datos = await this.resolverDestinatario(userId);
+      if (datos.nombre && datos.nombre !== 'Usuario' && datos.nombre !== 'Profesional') {
+        return datos.nombre;
+      }
+
+      // 2. Consulta directa a auth.user uniendo con auth.personas por id_person
       const result = await this.autoRepository.manager.query(
-        `SELECT p.nom_largo FROM auth.user u JOIN auth.personas p ON p.id_tercero = u.id_tercero WHERE u.id_user = $1`,
+        `SELECT p.nom_largo, u.username 
+         FROM auth.user u 
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person 
+         WHERE u.id_user = $1`,
         [userId],
       );
-      if (result && result.length > 0 && result[0].nom_largo) {
-        return result[0].nom_largo;
+      if (result && result.length > 0) {
+        if (result[0].nom_largo && result[0].nom_largo.trim()) {
+          return result[0].nom_largo.trim();
+        }
+        if (result[0].username) {
+          return result[0].username;
+        }
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('Error obteniendo nombre de usuario:', e);
     }
     return 'Usuario';
   }
@@ -1686,8 +1691,15 @@ export class AutoService {
       if (proceso.abogadoAsignadoId) {
         destinatariosIds.add(proceso.abogadoAsignadoId);
       }
-      if (auto.creadoPorId && auto.creadoPorId !== aprobadoPorId) {
-        destinatariosIds.add(auto.creadoPorId);
+      try {
+        const v1 = await this.versionRepository.findOne({
+          where: { auto: { id: auto.id }, versionNumber: 1 },
+        });
+        if (v1?.createdBy && v1.createdBy !== aprobadoPorId) {
+          destinatariosIds.add(v1.createdBy);
+        }
+      } catch {
+        // ignore
       }
 
       const motivoTexto = observaciones?.trim() || 'Sin observaciones registradas';
