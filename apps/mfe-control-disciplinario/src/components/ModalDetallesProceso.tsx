@@ -16,7 +16,7 @@ import {
   CheckCircle, AlertCircle, ClipboardList, MessageSquare,
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
-  Loader2, XCircle, HardDrive, Shield,
+  Loader2, XCircle, HardDrive, Shield, UserCheck,
   Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
@@ -36,6 +36,7 @@ import {
   type DisciplinaryProcessActuacion,
   type DisciplinaryProcessNote,
   type DisciplinaryProcessTask,
+  type DisciplinaryNews as ApiNoticia,
 } from '../../services/api/disciplinary.service';
 import { API_MODE, buildApiUrl } from '../../../config/environment';
 
@@ -206,6 +207,9 @@ interface Archivo {
   urlExterna?: string | null;
   archivoNombre?: string;
   fileType?: string | null;
+  tipoAuto?: string;
+  radicadorAsignadoId?: string;
+  radicadorAsignadoNombre?: string;
 }
 
 interface ModalDetallesProcesoProps {
@@ -2233,6 +2237,7 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [radicadoresNombres, setRadicadoresNombres] = useState<Record<string, string>>({});
   const [archivoDetalleDevolucion, setArchivoDetalleDevolucion] = useState<Archivo | null>(null);
   const [noticia, setNoticia] = useState<ApiNoticia | null>(null);
   const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
@@ -2276,6 +2281,9 @@ export function ModalDetallesProceso({
     || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim()
     || currentUser?.email
     || 'Sistema';
+  const esRadicadorAsignado = currentUser?.id
+    ? archivosBackend.some(a => a.tipo === 'auto' && a.radicadorAsignadoId === currentUser.id)
+    : false;
 
   // ═══ Cargar noticia asociada ═══
   useEffect(() => {
@@ -2363,7 +2371,16 @@ export function ModalDetallesProceso({
     }
 
     try {
-      const res = await disciplinaryService.getDocumentosExpediente(proceso.id);
+      const [res, radicadores] = await Promise.all([
+        disciplinaryService.getDocumentosExpediente(proceso.id),
+        disciplinaryService.getRadicadoresDisponibles(),
+      ]);
+      const radicadoresNombres: Record<string, string> = {};
+      (radicadores || []).forEach((r: any) => {
+        if (r.id) radicadoresNombres[r.id] = r.nombre || r.nombreCompleto || 'Radicador';
+      });
+      setRadicadoresNombres(radicadoresNombres);
+
       const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
         const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
         const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
@@ -2376,6 +2393,7 @@ export function ModalDetallesProceso({
           : estadoAuto === 'DEVUELTO' ? 'devuelto'
           : estadoAuto === 'BORRADOR' ? 'borrador'
           : 'aprobado';
+        const radicadorId = doc.metadatos?.radicadorAsignadoId;
         return {
           id: doc.id,
           nombre: doc.metadatos?.tipoAuto || doc.nombre,
@@ -2392,9 +2410,12 @@ export function ModalDetallesProceso({
           urlExterna: doc.urlExterna || null,
           archivoNombre: doc.archivoNombre || doc.nombre,
           fileType: doc.fileType || null,
+          tipoAuto: doc.metadatos?.tipoAuto || undefined,
           observacionesDevolucion: estado === 'devuelto' ? (doc.descripcion || undefined) : undefined,
           archivoDevolucionUrl: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentUrl || undefined) : undefined,
           archivoDevolucionNombre: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentName || undefined) : undefined,
+          radicadorAsignadoId: radicadorId || undefined,
+          radicadorAsignadoNombre: radicadorId ? (radicadoresNombres[radicadorId] || 'Radicador asignado') : undefined,
         };
       });
 
@@ -2576,7 +2597,7 @@ export function ModalDetallesProceso({
     if (mountedRef.current) setLoadingProfesionales(true);
 
     try {
-      const response = await disciplinaryService.getProfesionales();
+      const response = await disciplinaryService.getProfesionales() as any;
       let profs = response;
       if (!Array.isArray(response)) {
         if (response?.data && Array.isArray(response.data)) {
@@ -3663,6 +3684,7 @@ export function ModalDetallesProceso({
       numeroProceso: proceso.numeroProceso,
       titulo: archivo.nombre,
       plantilla: `Plantilla ${proceso.etapaActual}`,
+      tipo: archivo.tipoAuto,
       version: archivo.version || 1,
       fechaEnvio: archivo.fechaEnvioRevision || archivo.fecha,
       profesional: {
@@ -3688,18 +3710,21 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(borrador);
   }, [proceso]);
 
-  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string) => {
+  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string, radicadorAsignadoId?: string) => {
     const userId = authService.getCurrentUser()?.id;
     if (!userId) {
       toast.error('No se pudo obtener el usuario actual');
       return;
     }
     try {
-      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId);
+      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId, radicadorAsignadoId);
       const numeroAsignado = autoActualizado?.numero;
+      const radicadorNombre = radicadorAsignadoId
+        ? radicadoresNombres[radicadorAsignadoId] || 'Radicador asignado'
+        : undefined;
       const actualizarArchivo = (prev: Archivo[]) =>
         prev.map(a => a.id === archivoId
-          ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1, numero: numeroAsignado }
+          ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1, numero: numeroAsignado, radicadorAsignadoId: radicadorAsignadoId, radicadorAsignadoNombre: radicadorNombre }
           : a
         );
       setArchivosBackend(actualizarArchivo);
@@ -3717,7 +3742,7 @@ export function ModalDetallesProceso({
       });
     }
     setAutoEnRevisionModal(null);
-  }, []);
+  }, [radicadoresNombres]);
 
   const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
     const enReal = archivosBackend.find(a => a.id === archivoId);
@@ -3753,7 +3778,10 @@ export function ModalDetallesProceso({
         requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
         requestedById: user?.id,
       });
-      await disciplinaryService.approveReassignmentRequest(solicitud.id, { approved: true });
+      await disciplinaryService.approveReassignmentRequest(solicitud.id, {
+        approved: true,
+        resolvedBy: user?.fullName || user?.email || 'Usuario del Sistema',
+      });
       toast.success('Profesional reasignado exitosamente', {
         description: `El proceso ha sido reasignado a ${nuevoProfesionalNombre}`,
         duration: 4000,
@@ -3927,6 +3955,12 @@ export function ModalDetallesProceso({
             ) : (
               <span className="flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: est.color }}>
                 {est.icon}{est.text}
+              </span>
+            )}
+            {archivo.estado === 'aprobado' && archivo.radicadorAsignadoNombre && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border bg-purple-50 text-purple-700 border-purple-200">
+                <UserCheck style={{ width: 10, height: 10 }} />
+                {archivo.radicadorAsignadoNombre}
               </span>
             )}
           </div>
@@ -5199,20 +5233,22 @@ export function ModalDetallesProceso({
                         <option value="evidencia">Evidencias</option>
                         <option value="oficio">Oficios</option>
                         <option value="acta">Actas</option>
-                      </select>
-                       {/* <button onClick={() => inputArchivoRef.current?.click()}
-                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white"
-                         style={{ background: '#003DA5' }}>
-                         <Upload className="w-3.5 h-3.5" />Cargar
-                       </button>
+                       </select>
+                       {(!isArchivado && (esRadicadorAsignado || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD))) && (
+                         <button onClick={() => inputArchivoRef.current?.click()}
+                           className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white"
+                           style={{ background: '#003DA5' }}>
+                           <Upload className="w-3.5 h-3.5" />Cargar
+                         </button>
+                       )}
                        <input ref={inputArchivoRef} type="file" multiple className="hidden"
                          accept={EXTENSIONES_PERMITIDAS.map(e => `.${e}`).join(',')}
                          onChange={(e) => handleFilesSelected(e.target.files)} />
                        <button onClick={() => toast.info('Descargando todos...')}
                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
                          <Download className="w-3.5 h-3.5" />Todos
-                       </button> */}
-                    </div>
+                       </button>
+                     </div>
 
                     {/* ═══ Filtro por Etapa + Toggle vista agrupada ═══ */}
                     <div className="space-y-2">
@@ -6422,7 +6458,7 @@ export function ModalDetallesProceso({
           <ModalRevisionAuto
             borrador={autoEnRevisionModal}
             onClose={() => setAutoEnRevisionModal(null)}
-            onAprobar={(comentarios) => handleAutoAprobado(autoEnRevisionModal.id, comentarios)}
+            onAprobar={(comentarios, radicadorAsignadoId) => handleAutoAprobado(autoEnRevisionModal.id, comentarios, radicadorAsignadoId)}
             onDevolver={(motivo, comentarios, _archivos) => handleAutoDevuelto(autoEnRevisionModal.id, motivo, comentarios)}
             mostrarBotonDevolver={true}
             tituloModal="Revisión y Aprobación de Auto"

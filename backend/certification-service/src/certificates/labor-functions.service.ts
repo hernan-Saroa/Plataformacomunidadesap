@@ -18,6 +18,7 @@ import {
   normalizePositionCode,
   parseLaborFunctions,
   parseLaborFunctionsRaw,
+  resolveLaborInternalGroup,
 } from './labor-functions.utils';
 
 export type LaborFunctionProfilePayload = {
@@ -191,13 +192,15 @@ export class LaborFunctionsService {
         'Cada registro debe incluir el Nivel Jerárquico.',
       );
     }
-    const internalGroup = this.nullableText(
+    const internalGroup = resolveLaborInternalGroup(
       payload.internalGroup ?? payload.internal_group,
-    );
-    const costCenter = this.nullableText(
       payload.costCenter ?? payload.cost_center,
-      255,
     );
+    if (internalGroup && internalGroup.length > 500) {
+      throw new BadRequestException(
+        'Grupo interno debe tener máximo 500 caracteres.',
+      );
+    }
     const rawFunctions = parseLaborFunctionsRaw(payload.functions);
     const functions = parseLaborFunctions(payload.functions);
     const duplicateFunctions = findDuplicateLaborFunctions(rawFunctions);
@@ -253,7 +256,6 @@ export class LaborFunctionsService {
         positionName,
         department: departmentName,
         internalGroup,
-        costCenter,
       }),
       hierarchical_level: hierarchicalLevel,
       position_name: positionName,
@@ -265,7 +267,7 @@ export class LaborFunctionsService {
       internal_group_key: internalGroup
         ? normalizeLaborFunctionText(internalGroup)
         : null,
-      cost_center: costCenter,
+      cost_center: null,
       source_sheet: this.nullableText(
         payload.sourceSheet ?? payload.source_sheet,
         255,
@@ -283,6 +285,11 @@ export class LaborFunctionsService {
     profile: LaborFunctionProfile,
     associationCount = 0,
   ) {
+    const { cost_center: legacyCostCenter, ...visibleProfile } = profile;
+    const internalGroup = resolveLaborInternalGroup(
+      profile.internal_group,
+      legacyCostCenter,
+    );
     const functions = [...(profile.functions || [])]
       .sort((a, b) => a.ordinal - b.ordinal)
       .map((item) => ({
@@ -291,7 +298,9 @@ export class LaborFunctionsService {
         description: item.description,
       }));
     return {
-      ...profile,
+      ...visibleProfile,
+      internal_group: internalGroup,
+      internal_group_key: normalizeLaborFunctionText(internalGroup) || null,
       functions,
       function_count: functions.length,
       association_count: associationCount,
@@ -405,14 +414,14 @@ export class LaborFunctionsService {
     }
     if (
       !this.exactEquivalent(
-        profile.internal_group,
-        request.internal_group,
-        request.position_location,
+        resolveLaborInternalGroup(profile.internal_group, profile.cost_center),
+        resolveLaborInternalGroup(
+          request.internal_group,
+          request.cost_center,
+          request.position_location,
+        ),
       )
     ) {
-      return false;
-    }
-    if (!this.exactEquivalent(profile.cost_center, request.cost_center)) {
       return false;
     }
     return true;
@@ -487,7 +496,10 @@ export class LaborFunctionsService {
       available: functions.length > 0,
       count: functions.length,
       reason: functions.length ? 'MATCHED' : 'NOT_FOUND',
-      profile: top,
+      profile: {
+        ...top,
+        internal_group: resolveLaborInternalGroup(top.internal_group, top.cost_center),
+      },
       functions,
     };
   }
@@ -550,7 +562,7 @@ export class LaborFunctionsService {
               profile.combined_code,
               profile.position_name,
               profile.department_name,
-              profile.internal_group,
+              resolveLaborInternalGroup(profile.internal_group, profile.cost_center),
             ].join(' '),
           ).includes(search),
         )
@@ -655,12 +667,18 @@ export class LaborFunctionsService {
         action = 'updated';
       }
 
-      const duplicate = await profiles.findOne({
-        where: { match_key: normalized.match_key },
+      // Recompute legacy keys in memory so existing rows remain protected from
+      // duplicates without rewriting or merging their functions during deployment.
+      const candidates = await profiles.find({
+        where: { combined_code: normalized.combined_code },
       });
-      if (duplicate && duplicate.id !== profile?.id) {
+      const duplicate = candidates.find(
+        (candidate) => candidate.id !== profile?.id &&
+          this.profileMatchKey(candidate) === normalized.match_key,
+      );
+      if (duplicate) {
         throw new ConflictException(
-          'Ya existe un registro con el mismo código, dependencia, grupo y centro de costo.',
+          'Ya existe un registro con el mismo código, dependencia y grupo interno.',
         );
       }
 
@@ -773,6 +791,17 @@ export class LaborFunctionsService {
     }
   }
 
+  private profileMatchKey(profile: LaborFunctionProfile): string {
+    return buildLaborFunctionMatchKey({
+      combinedCode: profile.combined_code,
+      hierarchicalLevel: profile.hierarchical_level,
+      positionName: profile.position_name,
+      department: profile.department_name,
+      internalGroup: profile.internal_group,
+      costCenter: profile.cost_center,
+    });
+  }
+
   async validateBulk(
     rows: LaborFunctionProfilePayload[],
     updatedBy?: string,
@@ -780,9 +809,18 @@ export class LaborFunctionsService {
   ) {
     this.assertBulkSize(rows);
     const existingProfiles = await this.profileRepo.find({
-      select: { id: true, match_key: true },
+      select: {
+        combined_code: true,
+        hierarchical_level: true,
+        position_name: true,
+        department_name: true,
+        internal_group: true,
+        cost_center: true,
+      },
     });
-    const existingKeys = new Set(existingProfiles.map((profile) => profile.match_key));
+    const existingKeys = new Set(
+      existingProfiles.map((profile) => this.profileMatchKey(profile)),
+    );
     const seenKeys = new Map<
       string,
       { rowNumber: number; functionSignature: string }
@@ -810,7 +848,7 @@ export class LaborFunctionsService {
             function_count: normalized.functions.length,
             message: exactDuplicate
               ? `Esta fila es idéntica a la fila ${duplicate.rowNumber}: repite el mismo cargo, ubicación y funciones. Se omitirá para evitar guardar el perfil dos veces.`
-              : `Esta fila repite el mismo cargo y ubicación de la fila ${duplicate.rowNumber}, pero contiene funciones diferentes. Unifica todas las funciones en una sola fila o completa el grupo o centro de costo que las diferencia.`,
+              : `Esta fila repite el mismo cargo y ubicación de la fila ${duplicate.rowNumber}, pero contiene funciones diferentes. Unifica todas las funciones en una sola fila o completa el grupo interno que las diferencia.`,
           };
         }
         seenKeys.set(normalized.match_key, { rowNumber, functionSignature });

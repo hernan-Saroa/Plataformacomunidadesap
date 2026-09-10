@@ -42,7 +42,6 @@ type EditorState = {
   positionName: string;
   departmentName: string;
   internalGroup: string;
-  costCenter: string;
   functions: string;
 };
 
@@ -119,7 +118,6 @@ const FIELD_LABELS: Partial<Record<EditorField | 'row', string>> = {
   positionName: 'Denominación',
   departmentName: 'Dependencia/Área',
   internalGroup: 'Grupo interno',
-  costCenter: 'Centro de costo',
   functions: 'Funciones',
   row: 'Fila',
 };
@@ -132,7 +130,6 @@ const EMPTY_EDITOR: EditorState = {
   positionName: '',
   departmentName: '',
   internalGroup: '',
-  costCenter: '',
   functions: '',
 };
 
@@ -165,7 +162,6 @@ const OFFICIAL_TEMPLATE_HEADERS = [
   'Denominación del empleo',
   'Dependencia/Área',
   'Grupo Interno',
-  'CentroCosto',
   'FUNCIONES',
 ];
 const NORMALIZED_OFFICIAL_TEMPLATE_HEADERS = OFFICIAL_TEMPLATE_HEADERS.map(normalizeHeader);
@@ -343,7 +339,6 @@ const validateEditor = (value: EditorState): EditorErrors => {
   if (department.length < 3) errors.departmentName = 'La dependencia o área es obligatoria.';
   else if (department.length > 500) errors.departmentName = 'Máximo 500 caracteres.';
   if (value.internalGroup.trim().length > 500) errors.internalGroup = 'Máximo 500 caracteres.';
-  if (value.costCenter.trim().length > 255) errors.costCenter = 'Máximo 255 caracteres.';
   if (!functions.length) errors.functions = 'Agrega al menos una función numerada o una función por línea.';
   else if (duplicateFunctions.length) errors.functions = duplicateFunctionsMessage(duplicateFunctions);
   else if (functions.length > 500) errors.functions = 'Se permiten máximo 500 funciones por perfil.';
@@ -365,7 +360,6 @@ const validateBulkRows = (rows: LaborFunctionProfilePayloadApi[]): BulkError[] =
       positionName: String(row.positionName || ''),
       departmentName: String(row.departmentName || ''),
       internalGroup: String(row.internalGroup || ''),
-      costCenter: String(row.costCenter || ''),
       functions: Array.isArray(row.functions) ? row.functions.join('\n') : String(row.functions || ''),
     };
     const rowErrors = validateEditor(editorValue);
@@ -380,8 +374,7 @@ const validateBulkRows = (rows: LaborFunctionProfilePayloadApi[]): BulkError[] =
         row.hierarchicalLevel,
         row.positionName,
         row.departmentName,
-        row.internalGroup,
-        row.costCenter,
+        ['n a', 'na', 'no aplica', 'no aplica ninguno', 'ninguno'].includes(normalizeMatchText(row.internalGroup)) ? '' : row.internalGroup,
       ].map(normalizeMatchText).join('|');
       const functionSignature = splitFunctions(row.functions).map(normalizeMatchText).join('|');
       const previous = matchKeys.get(matchKey);
@@ -392,7 +385,7 @@ const validateBulkRows = (rows: LaborFunctionProfilePayloadApi[]): BulkError[] =
           field: 'row',
           message: exactDuplicate
             ? `Esta fila es idéntica a la fila ${previous.rowNumber}: repite el mismo cargo, ubicación y funciones. Se omitirá para evitar guardar el perfil dos veces.`
-            : `Esta fila repite el mismo cargo y ubicación de la fila ${previous.rowNumber}, pero contiene funciones diferentes. Unifica todas las funciones en una sola fila o completa el grupo o centro de costo que las diferencia.`,
+            : `Esta fila repite el mismo cargo y ubicación de la fila ${previous.rowNumber}, pero contiene funciones diferentes. Unifica todas las funciones en una sola fila o completa el grupo interno que las diferencia.`,
           source: 'client',
         });
       } else {
@@ -729,7 +722,6 @@ export function LaborFunctionsManager() {
       positionName: profile.position_name || '',
       departmentName: profile.department_name || '',
       internalGroup: profile.internal_group || '',
-      costCenter: profile.cost_center || '',
       functions: (profile.functions || [])
         .slice()
         .sort((a, b) => a.ordinal - b.ordinal)
@@ -815,7 +807,6 @@ export function LaborFunctionsManager() {
     positionName: value.positionName.trim(),
     departmentName: value.departmentName.trim(),
     internalGroup: value.internalGroup.trim(),
-    costCenter: value.costCenter.trim(),
     sourceSheet: 'Registro individual',
     functions: value.functions,
   });
@@ -948,20 +939,20 @@ export function LaborFunctionsManager() {
         headers,
       ]);
       dataSheet['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
       ];
       dataSheet['!cols'] = [
         { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 22 }, { wch: 34 },
-        { wch: 42 }, { wch: 30 }, { wch: 20 }, { wch: 100 },
+        { wch: 42 }, { wch: 50 }, { wch: 100 },
       ];
       XLSX.utils.book_append_sheet(workbook, dataSheet, OFFICIAL_SHEET_NAME);
 
       const examplesSheet = XLSX.utils.aoa_to_sheet([
         headers,
-        ['2028', '24', '202824', 'Profesional', 'PROFESIONAL ESPECIALIZADO', 'DIRECCIÓN DE EJEMPLO', 'N/A', 'N/A', '1. Formular planes del área. 2. Ejecutar las actividades asignadas. 3. Presentar informes de gestión.'],
-        ['4064', '09', '406409', 'Asistencial', 'AUXILIAR DE SERVICIOS GENERALES', 'DIRECCIÓN TERRITORIAL', 'N/A', 'N/A', '1. Apoyar la prestación de los servicios generales. 2. Mantener organizados los elementos asignados.'],
-        ['0015', '', '0015', 'Directivo', 'DENOMINACIÓN DE EJEMPLO', 'DEPENDENCIA DE EJEMPLO', 'GRUPO DE EJEMPLO', 'CC-001', '1. Dirigir la dependencia.\n2. Hacer seguimiento a sus resultados.'],
+        ['2028', '24', '202824', 'Profesional', 'PROFESIONAL ESPECIALIZADO', 'DIRECCIÓN DE EJEMPLO', 'N/A', '1. Formular planes del área. 2. Ejecutar las actividades asignadas. 3. Presentar informes de gestión.'],
+        ['4064', '09', '406409', 'Asistencial', 'AUXILIAR DE SERVICIOS GENERALES', 'DIRECCIÓN TERRITORIAL', 'N/A', '1. Apoyar la prestación de los servicios generales. 2. Mantener organizados los elementos asignados.'],
+        ['0015', '', '0015', 'Directivo', 'DENOMINACIÓN DE EJEMPLO', 'DEPENDENCIA DE EJEMPLO', 'GRUPO DE EJEMPLO', '1. Dirigir la dependencia.\n2. Hacer seguimiento a sus resultados.'],
       ]);
       examplesSheet['!cols'] = dataSheet['!cols'];
       XLSX.utils.book_append_sheet(workbook, examplesSheet, 'Ejemplos - No importar');
@@ -974,7 +965,7 @@ export function LaborFunctionsManager() {
         ['Nivel Jerárquico', 'Debe coincidir con el nivel registrado para la persona.'],
         ['Denominación del empleo', 'Debe coincidir exactamente con la denominación registrada en el contrato o vinculación laboral. No use abreviaturas ni un cargo aproximado.'],
         ['Dependencia/Área', 'Debe coincidir con la dependencia laboral; evita asociaciones incorrectas.'],
-        ['Grupo Interno / CentroCosto', 'Complete estos campos cuando apliquen; también se validarán exactamente.'],
+        ['Grupo Interno', 'Corresponde a Grupo Interno de Trabajo (CENTROCOSTO en la fuente laboral). Complete este campo cuando aplique. Debe coincidir exactamente.'],
         ['FUNCIONES', 'Puede escribir 1. ... 2. ... 3. ... en una celda o una función por línea.'],
         ['IMPORTANTE', 'Cargue la hoja Matriz Funciones ESAP. Las hojas de instrucciones y ejemplos no se importan.'],
       ]);
@@ -1053,7 +1044,7 @@ export function LaborFunctionsManager() {
       const detail = incorrectColumns
         ? ` Revisa estas columnas o su posición: ${incorrectColumns}.`
         : '';
-      throw new Error(`Los encabezados no coinciden con la plantilla oficial.${detail} Deben conservarse las 9 columnas originales y en el mismo orden.`);
+      throw new Error(`Los encabezados no coinciden con la plantilla oficial.${detail} Deben conservarse las 8 columnas originales y en el mismo orden.`);
     }
 
     const indexes = {
@@ -1064,7 +1055,6 @@ export function LaborFunctionsManager() {
       positionName: findHeader(headers, ['denominacion del empleo', 'denominacion empleo', 'cargo']),
       departmentName: findHeader(headers, ['dependencia area', 'dependencia', 'area']),
       internalGroup: findHeader(headers, ['grupo interno', 'grupo interno de trabajo']),
-      costCenter: findHeader(headers, ['centrocosto', 'centro costo']),
       functions: findHeader(headers, ['funciones', 'funcion']),
     };
     if (Object.values(indexes).some((index) => index < 0)) {
@@ -1090,7 +1080,6 @@ export function LaborFunctionsManager() {
         positionName: value(row, indexes.positionName),
         departmentName: value(row, indexes.departmentName),
         internalGroup: value(row, indexes.internalGroup),
-        costCenter: value(row, indexes.costCenter),
         sourceSheet: sheetName,
         functions: value(row, indexes.functions),
       });
@@ -1318,8 +1307,7 @@ export function LaborFunctionsManager() {
     { field: 'hierarchicalLevel', label: 'Nivel jerárquico', placeholder: 'Ej. Profesional', required: true, list: 'labor-function-levels', layout: 'lg:col-span-4' },
     { field: 'positionName', label: 'Denominación exacta del empleo', placeholder: 'Tal como figura en el contrato', required: true, helper: 'Debe coincidir exactamente con la vinculación laboral.', layout: 'lg:col-span-4', maxLength: 255 },
     { field: 'departmentName', label: 'Dependencia / Área', placeholder: 'Dependencia exacta', required: true, layout: 'lg:col-span-4', maxLength: 500 },
-    { field: 'internalGroup', label: 'Grupo interno', placeholder: 'Si aplica', helper: 'Debe coincidir cuando la matriz lo informe.', layout: 'lg:col-span-6', maxLength: 500 },
-    { field: 'costCenter', label: 'Centro de costo', placeholder: 'Si aplica', helper: 'No inventes el dato si no existe.', layout: 'lg:col-span-6', maxLength: 255 },
+    { field: 'internalGroup', label: 'Grupo interno', placeholder: 'Si aplica', helper: 'Grupo Interno de Trabajo, identificado como CENTROCOSTO en la fuente laboral. Debe coincidir cuando aplique.', layout: 'lg:col-span-12', maxLength: 500 },
   ];
 
   return (
@@ -1410,7 +1398,7 @@ export function LaborFunctionsManager() {
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full lg:max-w-2xl">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por código, cargo, dependencia, grupo o centro de costo…" className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm outline-none transition focus:border-[#003DA5] focus:ring-4 focus:ring-blue-50" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por código, cargo, dependencia, grupo interno…" className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm outline-none transition focus:border-[#003DA5] focus:ring-4 focus:ring-blue-50" />
             {search && <button onClick={() => setSearch('')} aria-label="Limpiar búsqueda" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>}
           </div>
           <div className="flex items-center justify-between gap-3 lg:justify-end">
@@ -1478,7 +1466,7 @@ export function LaborFunctionsManager() {
                     </td>
                     <td className="px-5 py-4"><p className="font-mono text-base font-bold text-[#003DA5]">{profile.combined_code}</p><p className="mt-0.5 text-xs text-slate-500">Base {profile.position_code}{profile.grade_code ? ` · Grado ${profile.grade_code}` : ' · Sin grado'}</p></td>
                     <td className="px-5 py-4"><p className="font-semibold text-slate-900">{profile.position_name}</p><p className="mt-0.5 text-xs text-slate-500">{profile.hierarchical_level || 'Nivel no informado'}</p></td>
-                    <td className="max-w-xl px-5 py-4"><p className="truncate font-medium text-slate-700">{profile.department_name || 'Sin dependencia específica'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{[profile.internal_group, profile.cost_center].filter(Boolean).join(' · ') || 'Sin grupo ni centro de costo'}</p></td>
+                    <td className="max-w-xl px-5 py-4"><p className="truncate font-medium text-slate-700">{profile.department_name || 'Sin dependencia específica'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{profile.internal_group || 'Sin grupo interno'}</p></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-emerald-50 px-3 py-1.5 font-bold text-emerald-700 ring-1 ring-emerald-100">{profile.function_count}</span></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-blue-50 px-3 py-1.5 font-bold text-[#003DA5] ring-1 ring-blue-100">{profile.association_count}</span></td>
                     <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => openEdit(profile)} aria-label={`Editar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button><button onClick={() => openDelete(profile)} aria-label={`Eliminar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-red-600 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></td>
@@ -1671,7 +1659,7 @@ export function LaborFunctionsManager() {
                   {bulkValidationFailure && <div className={`rounded-2xl border p-4 text-sm ${bulkImportableRows.length ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-700'}`}><p className="font-bold">{bulkImportableRows.length ? 'La validación terminó con observaciones.' : 'No se pudo completar la validación del servidor.'}</p><p className="mt-1 text-xs">{bulkValidationFailure}</p></div>}
                   <div className="overflow-hidden rounded-2xl border border-slate-200">
                     <div className="flex flex-col gap-3 border-b bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-bold text-slate-800">Informe completo por fila</h3><p className="text-xs text-slate-500">{bulkDisplayRows.length} de {bulkRows.length} filas visibles.</p></div><div className="flex flex-wrap gap-2">{([['all', `Todas (${bulkRows.length})`], ['valid', `Válidas (${bulkImportableRows.length})`], ['error', `Con errores (${bulkInvalidRowCount})`]] as const).map(([value, label]) => <button key={value} onClick={() => setBulkFilter(value)} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${bulkFilter === value ? 'bg-[#003DA5] text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>{label}</button>)}</div></div>
-                    <div className="max-h-[400px] overflow-auto"><table className="w-full min-w-[1200px] text-left text-xs"><thead className="sticky top-0 z-[1] bg-white text-[10px] font-bold uppercase tracking-wide text-slate-500 shadow-sm"><tr><th className="p-3">Fila</th><th className="p-3">Código / grado</th><th className="p-3">Denominación / nivel</th><th className="p-3">Estructura organizacional</th><th className="p-3 text-center">Funciones</th><th className="p-3">Operación</th><th className="p-3">Estado y motivos</th></tr></thead><tbody className="divide-y divide-slate-100">{bulkVisibleRows.map((row, index) => { const rowNumber = Number(row.rowNumber) || index + 1; const rowErrors = bulkErrorsByRow.get(rowNumber) || []; const validation = bulkValidationByRow.get(rowNumber); const rowHasError = rowErrors.length > 0; return <tr key={rowNumber} className={rowHasError ? 'bg-red-50/60 align-top' : validation?.status === 'valid' ? 'bg-emerald-50/20 align-top' : 'bg-white align-top'}><td className="p-3 font-mono font-bold text-slate-600">{rowNumber}</td><td className="p-3"><p className="font-mono font-bold text-[#003DA5]">{row.combinedCode || expectedCombinedCode(row.positionCode, row.gradeCode) || '—'}</p><p className="text-[10px] text-slate-500">Código {row.positionCode || '—'} · Grado {row.gradeCode || 'N/A'}</p></td><td className="max-w-xs p-3"><p className="font-semibold text-slate-800">{row.positionName || '—'}</p><p className="text-[10px] text-slate-500">{row.hierarchicalLevel || 'Sin nivel'}</p></td><td className="max-w-xs p-3"><p className="truncate text-slate-700">{row.departmentName || '—'}</p><p className="truncate text-[10px] text-slate-500">{[row.internalGroup, row.costCenter].filter(Boolean).join(' · ') || 'Sin grupo/centro'}</p></td><td className="p-3 text-center font-bold text-slate-700">{functionPreviewCount(row.functions)}</td><td className="p-3">{validation?.status === 'valid' ? <span className="rounded-full bg-emerald-100 px-2 py-1 font-bold text-emerald-700">Crear</span> : <span className="rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-500">Sin operación</span>}</td><td className="max-w-sm p-3">{rowHasError ? <div><span className="inline-flex rounded-full bg-red-100 px-2 py-1 font-bold text-red-700">No se procesará</span><ul className="mt-2 space-y-1">{rowErrors.map((error, errorIndex) => <li key={`${error.source}-${errorIndex}`} className="text-red-700"><strong>{FIELD_LABELS[error.field || 'row'] || 'Fila'}:</strong> {error.message}</li>)}</ul></div> : bulkValidating && !validation ? <span className="inline-flex items-center gap-1.5 text-blue-700"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Validando…</span> : validation?.status === 'valid' ? <div><span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 font-bold text-emerald-700">Lista para crear</span><p className="mt-1 text-[10px] text-emerald-700">{validation.message}</p></div> : <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-600">Pendiente de validación</span>}</td></tr>; })}</tbody></table></div>
+                    <div className="max-h-[400px] overflow-auto"><table className="w-full min-w-[1200px] text-left text-xs"><thead className="sticky top-0 z-[1] bg-white text-[10px] font-bold uppercase tracking-wide text-slate-500 shadow-sm"><tr><th className="p-3">Fila</th><th className="p-3">Código / grado</th><th className="p-3">Denominación / nivel</th><th className="p-3">Estructura organizacional</th><th className="p-3 text-center">Funciones</th><th className="p-3">Operación</th><th className="p-3">Estado y motivos</th></tr></thead><tbody className="divide-y divide-slate-100">{bulkVisibleRows.map((row, index) => { const rowNumber = Number(row.rowNumber) || index + 1; const rowErrors = bulkErrorsByRow.get(rowNumber) || []; const validation = bulkValidationByRow.get(rowNumber); const rowHasError = rowErrors.length > 0; return <tr key={rowNumber} className={rowHasError ? 'bg-red-50/60 align-top' : validation?.status === 'valid' ? 'bg-emerald-50/20 align-top' : 'bg-white align-top'}><td className="p-3 font-mono font-bold text-slate-600">{rowNumber}</td><td className="p-3"><p className="font-mono font-bold text-[#003DA5]">{row.combinedCode || expectedCombinedCode(row.positionCode, row.gradeCode) || '—'}</p><p className="text-[10px] text-slate-500">Código {row.positionCode || '—'} · Grado {row.gradeCode || 'N/A'}</p></td><td className="max-w-xs p-3"><p className="font-semibold text-slate-800">{row.positionName || '—'}</p><p className="text-[10px] text-slate-500">{row.hierarchicalLevel || 'Sin nivel'}</p></td><td className="max-w-xs p-3"><p className="truncate text-slate-700">{row.departmentName || '—'}</p><p className="truncate text-[10px] text-slate-500">{row.internalGroup || 'Sin grupo interno'}</p></td><td className="p-3 text-center font-bold text-slate-700">{functionPreviewCount(row.functions)}</td><td className="p-3">{validation?.status === 'valid' ? <span className="rounded-full bg-emerald-100 px-2 py-1 font-bold text-emerald-700">Crear</span> : <span className="rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-500">Sin operación</span>}</td><td className="max-w-sm p-3">{rowHasError ? <div><span className="inline-flex rounded-full bg-red-100 px-2 py-1 font-bold text-red-700">No se procesará</span><ul className="mt-2 space-y-1">{rowErrors.map((error, errorIndex) => <li key={`${error.source}-${errorIndex}`} className="text-red-700"><strong>{FIELD_LABELS[error.field || 'row'] || 'Fila'}:</strong> {error.message}</li>)}</ul></div> : bulkValidating && !validation ? <span className="inline-flex items-center gap-1.5 text-blue-700"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Validando…</span> : validation?.status === 'valid' ? <div><span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 font-bold text-emerald-700">Lista para crear</span><p className="mt-1 text-[10px] text-emerald-700">{validation.message}</p></div> : <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-600">Pendiente de validación</span>}</td></tr>; })}</tbody></table></div>
                     {bulkPreviewPages > 1 && <div className="flex flex-col items-center justify-between gap-3 border-t bg-slate-50 px-4 py-3 text-xs lg:flex-row"><span className="text-slate-500">Página {bulkPreviewPage} de {bulkPreviewPages} · máximo {BULK_PAGE_SIZE} filas por página</span><PaginationNavigator page={bulkPreviewPage} totalPages={bulkPreviewPages} onPageChange={setBulkPreviewPage} showJump /><div className="flex gap-2"><button disabled={bulkPreviewPage <= 1} onClick={() => setBulkPreviewPage((value) => Math.max(1, value - 1))} className="rounded-lg border bg-white px-3 py-1.5 font-semibold disabled:opacity-40">Anterior</button><button disabled={bulkPreviewPage >= bulkPreviewPages} onClick={() => setBulkPreviewPage((value) => Math.min(bulkPreviewPages, value + 1))} className="rounded-lg border bg-white px-3 py-1.5 font-semibold disabled:opacity-40">Siguiente</button></div></div>}
                   </div>
                   {bulkInvalidRowCount > 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800"><strong>Importante:</strong> las filas con errores permanecerán fuera de la operación. Puedes cancelar, corregir el Excel y volver a cargarlo, o procesar únicamente {bulkImportableRows.length === 1 ? 'la fila válida' : `las ${bulkImportableRows.length} filas válidas`}.</div>}

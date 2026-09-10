@@ -17,4 +17,6 @@ export class SolicitudResponseDto {
   actualizadoEn: Date;
   documentosSoporte?: any[];
   warningMessage?: string;
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
 }

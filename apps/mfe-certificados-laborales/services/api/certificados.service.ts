@@ -162,7 +162,6 @@ export type LaborFunctionProfileApi = {
   position_name: string;
   department_name: string | null;
   internal_group: string | null;
-  cost_center: string | null;
   source_sheet: string | null;
   is_active: boolean;
   functions: LaborFunctionItemApi[];
@@ -180,7 +179,6 @@ export type LaborFunctionProfilePayloadApi = {
   positionName?: string;
   departmentName?: string;
   internalGroup?: string;
-  costCenter?: string;
   sourceSheet?: string;
   functions: string[] | string;
   isActive?: boolean;

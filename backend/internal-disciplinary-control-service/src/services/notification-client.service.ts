@@ -35,6 +35,21 @@ export class NotificationClientService {
       DEFAULT_INTERNAL_SERVICE_TOKEN;
   }
 
+  async getUsersByPermission(permissionCode: string): Promise<string[]> {
+    try {
+      const usersRes = await axios.get(`${this.authUrl}/users/by-permission`, {
+        params: { code: permissionCode },
+        headers: this.buildAuthHeaders(),
+        timeout: 3000,
+      });
+      const users: any[] = usersRes.data?.data ?? [];
+      return users.map((u: any) => u?.user?.id_user || u?.id_user).filter(Boolean);
+    } catch (err) {
+      this.logger.warn(`No se pudo obtener usuarios con permiso ${permissionCode}: ${err?.message}`);
+      return [];
+    }
+  }
+
   async getUsersByRole(roleCode: string): Promise<string[]> {
     try {
       // Paso 1: obtener el UUID del rol a partir del code

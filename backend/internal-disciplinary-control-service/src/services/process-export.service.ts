@@ -6,6 +6,7 @@ import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 import { ReglaAlerta } from '../entities/regla-alerta.entity';
 import { AutoStatus, AutoType } from '../entities/legal-auto.entity';
+import { TerminosCalculatorService } from './terminos-calculator.service';
 
 const HEADERS = [
   'No. DE TRAMITE DISCIPLINARIO',
@@ -88,6 +89,7 @@ export class ProcessExportService {
     private actuacionesRepository: Repository<DisciplinaryProcessActuacion>,
     @InjectRepository(ReglaAlerta)
     private reglaAlertaRepository: Repository<ReglaAlerta>,
+    private terminosCalculatorService: TerminosCalculatorService,
   ) {}
 
   private async buildActuacionesPorProceso(processIds: string[]): Promise<{
@@ -167,7 +169,8 @@ export class ProcessExportService {
     });
     headerRow.height = 30;
 
-    processes.forEach((process, i) => {
+    for (let i = 0; i < processes.length; i++) {
+      const process = processes[i];
       const r = i + 2;
       const implicado = getImplicado(process.news);
       const etapaLabel = mapEtapaToLabel(process.etapaActual);
@@ -189,6 +192,44 @@ export class ProcessExportService {
         AutoType.AUTO_FORMULACION_PLIEGO,
         AutoType.PLIEGO_CARGOS,
       ]);
+
+      // Evaluación y Cargos comparten UN SOLO plazo de 40 días calendario, contado
+      // desde que el proceso entra a Evaluación (confirmado con el usuario) — Cargos NO
+      // tiene un plazo propio ni reinicia el conteo al pasar de una etapa a la otra.
+      const fechaEntradaEvaluacion =
+        fechasEtapa?.get('EVALUACION') ||
+        (process.etapaActual === 'EVALUACION' ? process.fechaInicioEtapa : null) ||
+        fechaAprobacionAuto(autoCierre);
+      let fechaVencimientoEvaluacion: Date | null = null;
+      if (fechaEntradaEvaluacion) {
+        const fv = new Date(fechaEntradaEvaluacion);
+        fv.setDate(fv.getDate() + 40);
+        fechaVencimientoEvaluacion = fv;
+      }
+
+      // EFDS: para el resto de las etapas, el cálculo es GENÉRICO — se ancla a la fecha
+      // real de entrada a la etapa ACTUAL (sea cual sea) y usa los días hábiles
+      // configurados en Configuración > Etapas (mismo TerminosCalculatorService que usa
+      // el semáforo en vivo, con festivos reales). Así, si se crea una etapa nueva, el
+      // informe la calcula sola, sin tocar este código.
+      let fechaVencimientoEtapaActual: Date | null = null;
+      if (process.etapaActual === 'EVALUACION' || process.etapaActual === 'JUZGAMIENTO') {
+        fechaVencimientoEtapaActual = fechaVencimientoEvaluacion;
+      } else {
+        const esEtapaInicial = ['RECEPCION', 'VALORACION'].includes(process.etapaActual);
+        const fechaEntradaEtapaActual =
+          fechasEtapa?.get(process.etapaActual) ||
+          process.fechaInicioEtapa ||
+          (esEtapaInicial ? process.createdAt : null) ||
+          null;
+        if (fechaEntradaEtapaActual) {
+          const resultado = await this.terminosCalculatorService.calculateVencimientoEtapa(
+            process.etapaActual,
+            new Date(fechaEntradaEtapaActual),
+          );
+          fechaVencimientoEtapaActual = resultado.fechaVencimiento;
+        }
+      }
 
       const values: Record<number, any> = {
         1: process.radicadoProceso,
@@ -228,19 +269,18 @@ export class ProcessExportService {
       worksheet.getCell(r, 14).value = {
         formula: `IF(ISNUMBER(M${r}),DATE(YEAR(M${r})+5,MONTH(M${r}),DAY(M${r})),"Faltan datos/Vacia")`,
       } as any;
+      // EFDS: la fórmula ya no enumera etapas — usa el vencimiento ya calculado con
+      // TerminosCalculatorService (fechaVencimientoEtapaActual) para la etapa en la que
+      // el proceso esté HOY, sea la que sea. La prórroga (si existe) sigue mandando.
+      const vencimientoEtapaLiteral = fechaVencimientoEtapaActual
+        ? `DATE(${fechaVencimientoEtapaActual.getFullYear()},${fechaVencimientoEtapaActual.getMonth() + 1},${fechaVencimientoEtapaActual.getDate()})`
+        : '""';
       worksheet.getCell(r, 20).value = {
-        formula:
-          `IF(Q${r}="SI",EDATE(R${r},S${r}),` +
-          `IF(F${r}="01 NOTICIA DISCIPLINARIA",B${r}+10,` +
-          `IF(F${r}="02 INDAGACIÓN PREVIA",IF(O${r}<>"",EDATE(O${r},6),""),` +
-          `IF(F${r}="03 INVESTIGACIÓN DISCIPLINARIA",IF(P${r}<>"",EDATE(P${r},6),""),` +
-          `IF(F${r}="04 EVALUACIÓN ID",IF(U${r}<>"",U${r}+40,""),` +
-          `IF(F${r}="05 CARGOS",IF(U${r}<>"",EDATE(U${r},3),""),` +
-          `""))))))`,
+        formula: `IF(Q${r}="SI",EDATE(R${r},S${r}),${vencimientoEtapaLiteral})`,
       } as any;
-      worksheet.getCell(r, 22).value = {
-        formula: `WORKDAY(U${r},41)`,
-      } as any;
+      // Columna V: ya viene totalmente calculada (días hábiles reales, con festivos) —
+      // se escribe como valor, no como fórmula de Excel.
+      worksheet.getCell(r, 22).value = fechaVencimientoEvaluacion || null;
       worksheet.getCell(r, 24).value = {
         formula:
           `IF(T${r}="","Sin datos",` +
@@ -251,7 +291,57 @@ export class ProcessExportService {
       DATE_COLUMNS.forEach((col) => {
         worksheet.getCell(r, col).numFmt = 'dd/mm/yyyy';
       });
-    });
+    }
+
+    // Colorea la columna "Vencimientos" (X, la última) según el mismo semáforo
+    // rojo/amarillo/verde ya usado en el resto del sistema.
+    if (processes.length > 0) {
+      worksheet.addConditionalFormatting({
+        ref: `X2:X${processes.length + 1}`,
+        rules: [
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'VENCIDO',
+            priority: 1,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } },
+              font: { color: { argb: 'FF991B1B' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'ETAPA POR VENCER',
+            priority: 2,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
+              font: { color: { argb: 'FF92400E' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'EN TÉRMINOS',
+            priority: 3,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } },
+              font: { color: { argb: 'FF065F46' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'Sin datos',
+            priority: 4,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } },
+              font: { color: { argb: 'FF6B7280' } },
+            },
+          },
+        ],
+      });
+    }
 
     return workbook;
   }

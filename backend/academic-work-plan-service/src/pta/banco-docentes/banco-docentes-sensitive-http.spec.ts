@@ -6,6 +6,7 @@ import { BancoDocentesController } from './banco-docentes.controller';
 import { BancoDocentesService } from './banco-docentes.service';
 import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { RUND_PERMISSIONS } from './rund-permissions';
+import { buildRundPerfilCabezote } from './rund-perfil-cabezote';
 
 describe('RBAC RUND por HTTP con el guard real y permisos resueltos', () => {
   let app: INestApplication;
@@ -16,6 +17,7 @@ describe('RBAC RUND por HTTP con el guard real y permisos resueltos', () => {
   };
   const service = {
     getById: jest.fn().mockResolvedValue(profile),
+    getPerfilCabezote: jest.fn().mockResolvedValue(buildRundPerfilCabezote(profile)),
     list: jest.fn().mockResolvedValue({ data: [profile], total: 1, page: 1, pages: 1, limit: 50 }),
     logSensitiveDataAccess: jest.fn().mockResolvedValue(undefined),
   };
@@ -76,5 +78,26 @@ describe('RBAC RUND por HTTP con el guard real y permisos resueltos', () => {
     authenticatedUser = { userId: 'consultor-1', roles: ['CONSULTOR_SIN_PERMISOS'] };
     await request(app.getHttpServer()).get('/banco-docentes').expect(403);
     expect(service.list).not.toHaveBeenCalled();
+  });
+
+  it.each(['GESTION_PROFESORAL', 'SUPER_ADMIN', 'DOCENTE', 'CONSULTOR'])(
+    'aplica permisos, periodo y enmascaramiento al cabezote de %s por HTTP', async (role) => {
+      authenticatedUser = { userId: 'lector-1', roles: [role] };
+      const response = await request(app.getHttpServer())
+        .get(`/pta/banco-docentes/${profile.docente_id}/cabezote?periodoCarga=2026-2`).expect(200);
+      expect(service.getPerfilCabezote).toHaveBeenCalledWith(profile.docente_id, '2026-2');
+      const completo = ['GESTION_PROFESORAL', 'SUPER_ADMIN'].includes(role);
+      expect(response.body.data.proteccion_datos.acceso_completo).toBe(completo);
+      expect(response.body.data.puntaje_salarial).toBe(completo ? 145.5 : null);
+      expect(response.body.data.solo_lectura).toBe(true);
+      expect(response.body.data.documento_identidad).toBeUndefined();
+    },
+  );
+
+  it('rechaza el cabezote sin autorización antes de consultar datos', async () => {
+    await request(app.getHttpServer()).get(`/banco-docentes/${profile.docente_id}/cabezote`).expect(403);
+    authenticatedUser = { userId: 'consultor-1', roles: ['CONSULTOR_SIN_PERMISOS'] };
+    await request(app.getHttpServer()).get(`/banco-docentes/${profile.docente_id}/cabezote`).expect(403);
+    expect(service.getPerfilCabezote).not.toHaveBeenCalled();
   });
 });

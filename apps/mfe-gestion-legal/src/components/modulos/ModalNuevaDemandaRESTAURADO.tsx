@@ -1357,6 +1357,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             return false;
           }
         } catch (error) {
+          console.error('Error al verificar si el radicado ya existe:', error);
           setErroresCampos(prev => ({ ...prev, numeroRadicado: 'No se pudo verificar el radicado, intente nuevamente' }));
           toast.error('⚠️ No se pudo verificar el radicado', {
             description: 'Ocurrió un error validando el número de radicado. Intente nuevamente antes de continuar.'
@@ -1675,6 +1676,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     try {
       radicadoDuplicado = await legalService.existeRadicado(formData.numeroRadicado, isEdit ? currentId : undefined);
     } catch (error) {
+      console.error('Error al verificar si el radicado ya existe:', error);
       setPasoActual(1);
       toast.error('⚠️ No se pudo verificar el radicado', {
         description: 'Ocurrió un error validando el número de radicado. Intente nuevamente antes de continuar.'

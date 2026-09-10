@@ -14,6 +14,12 @@ export const ROLES_ADMIN_VIATICOS = [
   'SUPERADMIN',
   'SUPER_ADMINISTRADOR',
   'ADMINISTRATIVO',
+  'SUPERUSER',
+] as const;
+
+export const ROLES_ANALISTA_VIATICOS = [
+  'ANALISTA',
+  'ANALISTA_VIATICOS',
 ];
 
 export interface DependenciaUsuario {
@@ -28,6 +34,8 @@ export interface UsuarioActual {
   email?: string;
   /** Códigos de rol normalizados a forma canónica (ej. 'SUPER_ADMIN'). */
   roles: string[];
+  /** Permisos granulares del usuario (ej. 'travel_expenses:create_request'). */
+  permissions: string[];
   /** `true` cuando el usuario posee alguno de `ROLES_ADMIN_VIATICOS`. */
   esAdmin: boolean;
   person?: {
@@ -123,9 +131,19 @@ function extraerRoles(data: any): string[] {
   return rolesRaw.map(normalizarRoleCode).filter(Boolean);
 }
 
+function extraerPermisos(data: any): string[] {
+  const raw = Array.isArray(data?.permissions)
+    ? data.permissions
+    : data?.user?.permissions
+      ? data.user.permissions
+      : [];
+  return raw
+    .map((p: any) => (typeof p === 'string' ? p : p?.code))
+    .filter(Boolean);
+}
+
 export class AuthService {
   async getCurrentUser(): Promise<UsuarioActual | null> {
-    // 1) Verificación directa vía gateway (auth-service).
     let data: any = null;
     try {
       data = await apiClient.get<any>('auth/api/v1/verify');
@@ -136,10 +154,6 @@ export class AuthService {
       );
     }
 
-    // 2) Sesión autoritativa en memoria que mantiene el shell
-    //    (`window.__esap_auth_cache`, escrita al iniciar/refrescar sesión).
-    //    Es el mismo payload que consumen otros MFEs e incluye la persona
-    //    con su dependencia (idDependencia/codDependencia/nomDependencia).
     const cached: any =
       typeof window !== 'undefined' ? (window as any).__esap_auth_cache : null;
 
@@ -150,11 +164,15 @@ export class AuthService {
     );
     if (!httpUsable && !cacheUsable) return null;
 
-    // Roles: se unen ambas fuentes para tolerar payloads parciales.
     const roles = Array.from(
       new Set([...extraerRoles(data), ...extraerRoles(cached)]),
     );
-    const esAdmin = roles.some((r) => ROLES_ADMIN_VIATICOS.includes(r));
+    const permissions = Array.from(
+      new Set([...extraerPermisos(data), ...extraerPermisos(cached)]),
+    );
+    const esAdmin = roles.some((r) =>
+      (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
+    );
 
     const personaHttp = data?.person;
     const personaCache = cached?.person ?? cached?.user?.person;
@@ -191,6 +209,7 @@ export class AuthService {
         '',
       email: data?.email || cached?.email || persona?.email,
       roles,
+      permissions,
       esAdmin,
       person: persona
         ? {
@@ -203,6 +222,76 @@ export class AuthService {
           }
         : undefined,
     };
+  }
+
+  hasRole(role: string): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) return false;
+    return user.roles.some((r) => r === role || r.includes(role));
+  }
+
+  hasPermission(permission: string): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return user.permissions.includes(permission);
+  }
+
+  hasAnyPermission(permissions: string[]): boolean {
+    return permissions.some((p) => this.hasPermission(p));
+  }
+
+  hasAllPermissions(permissions: string[]): boolean {
+    return permissions.every((p) => this.hasPermission(p));
+  }
+
+  isSuperAdmin(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    return user.esAdmin || user.roles.some((r) => /SUPER.*ADMIN|ADMIN/.test(r));
+  }
+
+  isAnalista(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) return false;
+    if (user.esAdmin) return false;
+    return user.roles.some((r) => ROLES_ANALISTA_VIATICOS.includes(r));
+  }
+
+  private getCurrentUserSync(): UsuarioActual | null {
+    try {
+      const cached: any =
+        typeof window !== 'undefined' ? (window as any).__esap_auth_cache : null;
+      if (!cached) return null;
+      const rolesRaw: any[] = Array.isArray(cached?.roles)
+        ? cached.roles
+        : cached?.person?.roles
+          ? cached.person.roles
+          : cached?.user?.roles ?? [];
+      const roles = rolesRaw.map(normalizarRoleCode).filter(Boolean);
+      const permissionsRaw: any[] = Array.isArray(cached?.permissions)
+        ? cached.permissions
+        : cached?.user?.permissions
+          ? cached.user.permissions
+          : [];
+      const permissions = permissionsRaw
+        .map((p: any) => (typeof p === 'string' ? p : p?.code))
+        .filter(Boolean);
+      const esAdmin = roles.some((r) =>
+      (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
+    );
+      return {
+        userId: cached?.id_user || cached?.userId || cached?.id || '',
+        username: cached?.username || cached?.fullName || cached?.full_name || '',
+        email: cached?.email,
+        roles,
+        permissions,
+        esAdmin,
+        person: cached?.person || cached?.user?.person,
+      };
+    } catch {
+      return null;
+    }
   }
 }
 
