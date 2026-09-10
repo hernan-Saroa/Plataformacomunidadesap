@@ -897,6 +897,7 @@ class DisciplinaryService {
             formato?: string;
             tamanoKB?: string;
             archivoAcceso?: string;
+            urlAcceso?: string;
         }>,
         filename: string,
     ): Promise<void> {

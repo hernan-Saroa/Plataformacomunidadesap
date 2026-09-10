@@ -172,7 +172,9 @@ export class GatewayService {
 
     // Si el request llegó con cookie HttpOnly (OTIC-001) y no trae Authorization header,
     // extraer el token de la cookie e inyectarlo como Authorization para los microservicios.
+    const isPublicEndpoint = /^\/(auth|login|forgot-password|reset-password)/.test(req.path);
     const cookieToken = (() => {
+      if (isPublicEndpoint) return null;
       const cookieHeader = req.headers.cookie || '';
       for (const part of cookieHeader.split(';')) {
         const [key, ...rest] = part.trim().split('=');
