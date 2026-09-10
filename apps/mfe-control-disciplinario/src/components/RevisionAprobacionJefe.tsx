@@ -71,7 +71,7 @@ interface SolicitudReasignacion {
 interface RevisionAprobacionJefeProps {
   borradores: BorradorPendiente[];
   solicitudesReasignacion?: SolicitudReasignacion[];
-  onAprobar: (borradorId: string, comentarios: string) => void | Promise<void>;
+  onAprobar: (borradorId: string, comentarios: string, radicadorAsignadoId?: string) => void | Promise<void>;
   onDevolver: (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => void;
   onSendJuridica?: (borradorId: string) => void;
   onAprobarReasignacion?: (solicitudId: string, observaciones: string) => void;
@@ -187,9 +187,9 @@ export function RevisionAprobacionJefe({
     return (ordenReasignacion[a.estado] ?? 3) - (ordenReasignacion[b.estado] ?? 3);
   });
 
-  const handleAprobar = async (comentarios: string) => {
+  const handleAprobar = async (comentarios: string, radicadorAsignadoId?: string) => {
     if (borradorSeleccionado) {
-      await onAprobar(borradorSeleccionado.id, comentarios);
+      await onAprobar(borradorSeleccionado.id, comentarios, radicadorAsignadoId);
       setBorradorSeleccionado(null);
     }
   };
@@ -506,6 +506,12 @@ export function RevisionAprobacionJefe({
                             {estadoCfg.icon}
                             {estadoCfg.label}
                           </span>
+                          {borrador.estado === 'aprobado' && borrador.radicadorAsignadoNombre && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-purple-50 text-purple-700 border-purple-200">
+                              <UserCheck style={{ width: 10, height: 10 }} />
+                              {borrador.radicadorAsignadoNombre}
+                            </span>
+                          )}
                           {/* Prioridad */}
                           <span
                             className="px-2 py-0.5 rounded-full text-[10px] font-bold"

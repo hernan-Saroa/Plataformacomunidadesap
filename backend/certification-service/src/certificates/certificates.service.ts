@@ -4310,7 +4310,6 @@ export class CertificatesService {
           position_name: laborFunctions.profile?.position_name,
           department_name: laborFunctions.profile?.department_name,
           internal_group: laborFunctions.profile?.internal_group,
-          cost_center: laborFunctions.profile?.cost_center,
           functions: laborFunctions.functions,
         }
       : null;

@@ -28,6 +28,10 @@ interface WordPlaceholderReplacement {
   value: string;
 }
 
+interface ConvertWordToPdfOptions {
+  autoConfigTipo?: string;
+}
+
 @Injectable()
 export class DocumentConversionService {
   private readonly logger = new Logger(DocumentConversionService.name);
@@ -38,6 +42,7 @@ export class DocumentConversionService {
     documentUrl: string,
     preferredPdfName: string,
     replacements: WordPlaceholderReplacement[] = [],
+    options: ConvertWordToPdfOptions = {},
   ): Promise<ConvertedDocumentResult> {
     const inputFilename = path.basename(decodeURIComponent(documentUrl));
     const inputPath = this.storageService.getFullPath(documentUrl);
@@ -87,6 +92,7 @@ export class DocumentConversionService {
         conversionInputPath,
         outputPath,
         replacements,
+        options,
       );
       replacedMarkers = Array.from(
         new Set([...replacedMarkers, ...conversionReplacedMarkers]),
@@ -133,6 +139,7 @@ export class DocumentConversionService {
     inputPath: string,
     outputPath: string,
     replacements: WordPlaceholderReplacement[] = [],
+    options: ConvertWordToPdfOptions = {},
   ): Promise<string[]> {
     this.logger.log(`[Conversion] Starting Word to PDF conversion for: ${inputPath}`);
     const errors: string[] = [];
@@ -144,6 +151,7 @@ export class DocumentConversionService {
         inputPath,
         outputPath,
         replacements,
+        options,
       );
       this.logger.log(`[Conversion] Mammoth + Puppeteer succeeded`);
       return replacedMarkers;
@@ -310,7 +318,18 @@ export class DocumentConversionService {
     inputPath: string,
     outputPath: string,
     replacements: WordPlaceholderReplacement[] = [],
+    options: ConvertWordToPdfOptions = {},
   ): Promise<string[]> {
+    const { autoConfigTipo } = options;
+    // Aplicar restricción de altura solo para tipos de auto con pie de página problemático
+    // (ej. Auto Inhibitorio con iconos ICONTEC/ISO en el footer)
+    // Usamos la configuración paramétrica (autoConfigTipo) en lugar de hardcoded strings
+    const shouldConstrainFooterImages = autoConfigTipo
+      ? ['INHIBITORIO', 'AUTO_INHIBITORIO'].some((t) =>
+          autoConfigTipo.toUpperCase().includes(t.toUpperCase()),
+        )
+      : false;
+
     let browser;
     try {
       this.logger.log(`[Mammoth] Starting conversion: ${inputPath} -> ${outputPath}`);
@@ -353,6 +372,13 @@ export class DocumentConversionService {
       // El membrete y el pie de ESAP son imágenes tipo "banner" que ocupan todo el
       // ancho de la página (el logo queda a la izquierda; "www.esap.edu.co" a la
       // derecha). Se renderizan a ancho completo, no centradas ni encogidas.
+      // FIX: Para Auto Inhibitorio, el pie tiene iconos (ICONTEC/ISO) que son banner ancho.
+      // Aumentamos el margen inferior para que quepan sin solaparse con el cuerpo.
+      // El margen normal es 4cm; usamos 5.5cm para dar espacio al banner del pie.
+      const footerImageStyle = shouldConstrainFooterImages
+        ? 'display:block; width:100%; height:auto; object-fit:contain;'
+        : 'display:block; width:100%;';
+      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '2cm';
       const headerImagesHtml = headerContent.images
         .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
@@ -363,7 +389,7 @@ export class DocumentConversionService {
         )
         .join('');
       const footerImagesHtml = footerContent.images
-        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
+        .map((src) => `<img src="${src}" style="${footerImageStyle}" />`)
         .join('');
       const footerTextHtml = footerContent.textBlocks
         .map(
@@ -469,7 +495,8 @@ export class DocumentConversionService {
           // de dirección superpuestas): necesita un margen inferior generoso o se
           // recorta. Debe coincidir con el yPosition de la firma en
           // pdf-modifier.service para que no se solapen.
-          bottom: hasFooter ? '4cm' : '2cm',
+          // Para inhibitorio usamos margen mayor (5.5cm) para que quepan los iconos ICONTEC/ISO
+          bottom: hasFooter ? footerMarginBottom : '2cm',
           left: '2cm'
         }
       });

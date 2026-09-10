@@ -24,6 +24,7 @@ export enum ProcessStage {
   INDAGACION = 'INDAGACION',
   FALLO = 'FALLO',
   SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
+  INHIBITORIO = 'INHIBITORIO',
 }
 
 export enum ProcessStatus {

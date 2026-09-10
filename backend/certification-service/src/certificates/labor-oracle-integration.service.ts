@@ -1,3 +1,4 @@
+import { resolveLaborInternalGroup } from './labor-functions.utils';
 import {
   BadRequestException,
   Injectable,
@@ -493,7 +494,7 @@ export class LaborOracleIntegrationService {
       hierarchical_level: nivelJerarquico,
       position_name: cargo,
       organization_department: dependencia,
-      internal_group: grupoInterno,
+      internal_group: resolveLaborInternalGroup(grupoInterno, centroCosto),
       cost_center: centroCosto,
       email: emailInstitucional || emailPersonal,
       personal_email: emailPersonal,

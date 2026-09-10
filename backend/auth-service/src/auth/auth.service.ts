@@ -377,6 +377,7 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
+      // permissions: permissionCodes, // Se quita porque al momento de generar el JWT sale error: "Parse Error: Header overflow"
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {
@@ -399,12 +400,13 @@ export class AuthService {
         super_admin = true;
       }
       for (const permission of role.permissions || []) {
-        const code = permission.code.split('.')[0].toLowerCase().replace(/_/g, '-');
+        const rawCode = permission.code;
+        const modulePart = rawCode.includes(':') ? rawCode.split(':')[0] : rawCode.split('.')[0];
+        const code = modulePart.toLowerCase().replace(/_/g, '-');
         if (!modules.includes(code)) {
           modules.push(code);
         }
-        // Grant extra modules for cross-module permissions
-        const extraModule = CROSS_MODULE_GRANTS[permission.code.toLowerCase()];
+        const extraModule = CROSS_MODULE_GRANTS[rawCode.toLowerCase()];
         if (extraModule && !modules.includes(extraModule)) {
           modules.push(extraModule);
         }
