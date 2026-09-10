@@ -169,6 +169,7 @@ export function GestionLegalFull() {
   //   asesoria              → ModuloAsesoriaJuridicaV3
   //   organos-control       → OrganosControl
   //   procesos-coactivos    → ProcesosCoactivosV3
+  //   centro-comunicaciones → CentroComunicacionesJuridicasV3 (p.ej. acuse de recibido de un correo)
   useEffect(() => {
     const moduloAVista: Record<string, VistaDisponible> = {
       'defensa-judicial': 'defensa-judicial',
@@ -176,6 +177,7 @@ export function GestionLegalFull() {
       'asesoria': 'asesoria',
       'organos-control': 'organos-control',
       'procesos-coactivos': 'procesos-coactivos',
+      'centro-comunicaciones': 'centro-comunicaciones',
     };
 
     const handleOpen = (event: Event) => {

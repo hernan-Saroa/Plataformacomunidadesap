@@ -24,11 +24,21 @@ export type TipoCampo =
  * BORRADOR → EN_REVISION → APROBADO
  *                        ↘ DEVUELTO → BORRADOR (el gestor corrige y reenvía)
  */
-export type EstadoActividad = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+/**
+ * `NEGADO` no es `DEVUELTO` (EFDS-1183): devuelta, la actividad vuelve a
+ * borrador y el área la corrige; negada, no se toca más y el proceso termina.
+ */
+export type EstadoActividad =
+  | 'BORRADOR'
+  | 'EN_REVISION'
+  | 'APROBADO'
+  | 'DEVUELTO'
+  | 'NO_APLICA'
+  | 'NEGADO';
 
 export interface RevisionEstudioPrevio {
   id: string;
-  decision: 'APROBADO' | 'DEVUELTO';
+  decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO';
   observaciones?: string;
   versionRevisada: number;
   revisadoPor: string;
@@ -389,6 +399,107 @@ export interface ProcesoResumen {
     actualizadoEn: string;
   } | null;
   actividades?: { numeral: string; estado: EstadoActividad }[];
+  /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
+  participacion?: ParticipacionEnLista;
+}
+
+/**
+ * Por qué quien mira no puede resolver la 3.4 (EFDS-1183).
+ *
+ * - `SIN_PERMISO`: su rol no aprueba actividades.
+ * - `SIN_ABOGADO`: nadie ha repartido el proceso todavía; se hace en la 3.3.
+ * - `NO_ES_TUYO`: lo revisa otro abogado, el que lo recibió.
+ */
+export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
+
+/** Quién resuelve la 3.4 de este proceso y si le toca a quien mira. */
+export interface RevisionDelProceso {
+  abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
+  puedeDecidir: boolean;
+  motivo: MotivoNoDecide | null;
+}
+
+// --------------------- modalidad del proceso · 3.5 (EFDS-1183) -------------
+
+/** Lo que el abogado dijo de la modalidad cada vez. */
+export interface RevisionModalidad {
+  decision: 'APROBADO' | 'DEVUELTO';
+  observaciones: string | null;
+  revisadoPor: string;
+  createdAt: string;
+}
+
+export interface EstadoModalidadProceso {
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  /** La cuantía, que es contra lo que se comprueba cuál corresponde. */
+  valorEstimado: number | null;
+  estado: EstadoActividad;
+  /** El área puede cambiarla y mandarla: en borrador o devuelta. */
+  puedeCorregir: boolean;
+  /** A quien mira le toca ratificarla. */
+  puedeDecidir: boolean;
+  abogado: { nombre: string; usuarioNombre: string } | null;
+  motivoNoDecide: MotivoNoDecide | null;
+  revisiones: RevisionModalidad[];
+}
+
+// ------------------------- quién está en el proceso (EFDS-1183) ------------
+
+/** Una cuenta a la que se le puede dar un papel en un proceso. */
+export interface CuentaCandidata {
+  usuarioId: string;
+  usuarioNombre: string;
+  personaId: string | null;
+  nombre: string;
+  cargo: string | null;
+  email: string | null;
+}
+
+/** Quien ocupa un papel ahora mismo. */
+export interface Participante {
+  id: string;
+  usuarioId: string | null;
+  usuarioNombre: string;
+  nombre: string;
+  cargo: string | null;
+  email: string | null;
+  asignadoPor: string | null;
+  asignadoAt: string;
+  /** Si le toca a quien está mirando. */
+  esMio: boolean;
+}
+
+/** Uno de los que estuvieron antes, con el motivo de su salida. */
+export interface ParticipacionRelevada {
+  papel: 'CONTRATACION' | 'ABOGADO';
+  nombre: string;
+  cargo: string | null;
+  asignadoAt: string;
+  asignadoPor: string | null;
+  relevadoAt: string | null;
+  relevadoPor: string | null;
+  motivoRelevo: string | null;
+}
+
+export interface EstadoParticipacion {
+  /** El proceso está en la bandeja y quien mira puede recibirlo. */
+  puedeTomar: boolean;
+  /** Quien lo tomó reparte el abogado; el Director también. */
+  puedeRepartir: boolean;
+  contratacion: Participante | null;
+  abogado: Participante | null;
+  /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
+  sinAbogado: boolean;
+  historial: ParticipacionRelevada[];
+}
+
+/** Lo que la fila del listado dice sobre quién lleva el proceso. */
+export interface ParticipacionEnLista {
+  contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  /** Llegó a la Dirección y nadie lo ha recibido. */
+  enBandeja: boolean;
 }
 
 export interface EstudioPrevio {
@@ -408,6 +519,14 @@ export interface EstudioPrevio {
   datos: Record<string, any>;
   definicionCampos: CampoFormulario[];
   editable: boolean;
+  /**
+   * Quién resuelve la 3.4 y si le toca a quien está mirando.
+   *
+   * Viene con el estudio previo y no en otra consulta porque la pantalla lo
+   * necesita en el mismo momento en que dibuja los botones: pedirlo después
+   * deja un instante en que ofrece decidir a quien no puede.
+   */
+  revision?: RevisionDelProceso | null;
 }
 
 /** Campo obligatorio sin diligenciar (criterio 2 del HU). */
@@ -2284,6 +2403,14 @@ export interface EstadoRegistroActividad {
   numeral: string;
   etapa: number;
   exigeSoporte: boolean;
+  /**
+   * Si la actividad tiene formatos asignados en la biblioteca.
+   *
+   * Donde los hay, el soporte se carga en el bloque de documentos y no en el
+   * formulario: los dos escriben el mismo adjunto, y ofrecer los dos era pedir
+   * el documento dos veces.
+   */
+  tieneFormatos: boolean;
   /** Si la exigencia sale de la matriz o es suposicion del equipo. */
   exigenciaConfirmada: boolean;
   /** Lo que la matriz dice de esta actividad, para mostrarlo en la pantalla. */
@@ -2638,7 +2765,15 @@ export interface DatosNotificacion {
 
 /** Vencimiento próximo o ya cumplido (EFDS-1185). */
 export interface AlertaVencimiento {
-  tipo: 'AMPARO' | 'CDP' | 'REGISTRO_PRESUPUESTAL' | 'LIQUIDACION' | 'APROBACION_PENDIENTE';
+  tipo:
+    | 'AMPARO'
+    | 'CDP'
+    | 'REGISTRO_PRESUPUESTAL'
+    | 'LIQUIDACION'
+    | 'APROBACION_PENDIENTE'
+    | 'DEVUELTA_PARA_CORREGIR'
+    /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
+    | 'SIN_ABOGADO';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
@@ -2649,6 +2784,57 @@ export interface AlertaVencimiento {
   estado: 'VENCIDO' | 'POR_VENCER' | 'VIGENTE';
   responsable: string | null;
   responsableEmail: string | null;
+}
+
+/**
+ * Estadísticas y reportes de gestión (EFDS-1189, numeral 3.1.a).
+ *
+ * Los cinco estados que informa no son los diez del ciclo del contrato: son el
+ * vocabulario con el que la entidad rinde cuentas. Quien pide el reporte
+ * pregunta cuántos contratos se suscribieron, no cuántos están perfeccionados
+ * y cuántos legalizados.
+ */
+export type EstadoDeGestion =
+  | 'SUSCRITO'
+  | 'EJECUCION'
+  | 'TERMINADO'
+  | 'LIQUIDADO'
+  | 'CERRADO';
+
+/** Cuántos y por cuánto. Es la forma de todos los cortes del reporte. */
+export interface ConteoValor {
+  /** Código con el que se agrupó: el estado, la modalidad o la tipología. */
+  clave: string;
+  /** Cómo se llama en la pantalla y en el archivo descargable. */
+  etiqueta: string;
+  cuantos: number;
+  valor: number;
+}
+
+export interface EstadisticasGestion {
+  /** Momento del corte: un informe sin fecha no se puede citar. */
+  generadoEn: string;
+  filtros: { vigencia: number | null; modalidad: string | null };
+  contratos: {
+    total: number;
+    valorTotal: number;
+    porEstado: ConteoValor[];
+    porModalidad: ConteoValor[];
+    porTipologia: ConteoValor[];
+  };
+  procesos: {
+    total: number;
+    porDesenlace: ConteoValor[];
+  };
+  presupuesto: {
+    contratado: number;
+    pagado: number;
+    porPagar: number;
+    /** Porcentaje de lo contratado que ya se pagó, con un decimal. */
+    porcentajeEjecutado: number;
+  };
+  /** Los años en que hay contratos, para que la pantalla ofrezca solo esos. */
+  vigenciasDisponibles: number[];
 }
 
 /**
@@ -2749,4 +2935,72 @@ export interface ExpedienteAuditoria {
     detalle: Record<string, unknown> | null;
     created_at: string;
   }[];
+}
+
+// ------------------------ matriz de roles y permisos (EFDS-1183) ----------
+
+/** Una de las diez columnas de permiso del formato de roles. */
+export type ColumnaDelFormato =
+  | 'Radicar'
+  | 'Editar'
+  | 'Adjuntar'
+  | 'Visualizar todos los procesos'
+  | 'Asignar / Reasignar'
+  | 'Aprobar'
+  | 'Archivar'
+  | 'Borrar'
+  | 'Generar informes'
+  | 'Configurar';
+
+/** Una columna de la rejilla: lo que se puede hacer. */
+export interface PermisoDelCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  /** El segmento central del código; agrupa la rejilla. */
+  recurso: string;
+  /** La columna de la Hoja1 que realiza, o `null` si el formato no la tenía. */
+  columna: ColumnaDelFormato | null;
+}
+
+/** Una fila de la rejilla: quién puede hacerlo. */
+export interface RolDelCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  /** Quién lo ejerce en la ESAP, según la Hoja2 del formato. */
+  quienLoEjerce: string;
+  procedencia: 'INTERNA' | 'EXTERNA';
+  /** Si la fila sale del anexo o la fijaron las historias del módulo. */
+  origen: 'FORMATO' | 'MODULO';
+  /** Lo que el rol hace y la rejilla todavía no puede mostrar. */
+  nota?: string;
+  permisos: string[];
+}
+
+/** Una combinación de roles que se entrega armada (EFDS-1183). */
+export interface PerfilPorDefecto {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  quienLoEjerce: string;
+  roles: string[];
+}
+
+export interface MatrizDeRoles {
+  /** Si la Dirección de Contratación ya la ratificó. */
+  confirmada: boolean;
+  /** Los cuatro que responden «¿qué le pongo a esta persona?». */
+  perfiles?: PerfilPorDefecto[];
+  permisos: PermisoDelCatalogo[];
+  roles: RolDelCatalogo[];
+  /** Los que lo otorgan todo sin ser del módulo. */
+  transversales: string[];
+}
+
+/** Lo que puede hacer quien está mirando la pantalla. */
+export interface MisPermisos {
+  roles: string[];
+  rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
+  permisos: string[];
 }

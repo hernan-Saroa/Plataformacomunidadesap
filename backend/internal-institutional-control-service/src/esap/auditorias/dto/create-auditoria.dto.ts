@@ -219,6 +219,11 @@ export class CreateAuditoriaDto {
   @IsOptional()
   @IsString()
   estadoKanban?: string;
+
+  // Tipo operativo del tablero: regular | territorial | especial
+  @IsOptional()
+  @IsString()
+  tipoKanban?: string;
 }
 
 

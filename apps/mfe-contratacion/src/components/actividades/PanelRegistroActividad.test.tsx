@@ -28,6 +28,7 @@ const estado = (parcial: Partial<EstadoRegistroActividad> = {}): EstadoRegistroA
   numeral: '5.10',
   etapa: 5,
   exigeSoporte: true,
+  tieneFormatos: false,
   exigenciaConfirmada: true,
   notaFuente: 'Campo de sí/no, adjunta soporte.',
   aplica: true,
@@ -37,12 +38,13 @@ const estado = (parcial: Partial<EstadoRegistroActividad> = {}): EstadoRegistroA
   ...parcial,
 });
 
-const pintar = (numeral = '5.10', requiereAprobacion = false) =>
+const pintar = (numeral = '5.10', requiereAprobacion = false, recargarToken?: number) =>
   render(
     <PanelRegistroActividad
       procesoId="p-1"
       numeral={numeral}
       requiereAprobacion={requiereAprobacion}
+      recargarToken={recargarToken}
     />,
   );
 
@@ -128,6 +130,88 @@ describe('PanelRegistroActividad · las actividades que se cumplen dejando const
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Registrar la actividad/ })).toBeEnabled(),
     );
+  });
+
+  /*
+   * La doble carga que reportó el área en las catorce actividades de registro.
+   *
+   * El formulario y el bloque de documentos escriben el mismo adjunto desde
+   * que el soporte cumple el formato pendiente, así que mientras los dos
+   * ofrecieran cargarlo la pantalla pedía el papel dos veces.
+   */
+  it('no pide el soporte en el formulario cuando lo recibe el bloque de documentos', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '3.2', tieneFormatos: true, exigeSoporte: true }),
+    );
+    pintar('3.2');
+    await screen.findByText(/por fuera de la plataforma/i);
+
+    expect(screen.queryByText('Soporte de la actividad')).not.toBeInTheDocument();
+    // Y dice dónde está, que si no el gestor solo ve desaparecer el selector.
+    expect(
+      screen.getByText(/El soporte se carga abajo, en «Documentos de esta actividad»/),
+    ).toBeInTheDocument();
+  });
+
+  it('sigue pidiéndolo en el formulario donde no hay formatos asignados', async () => {
+    pintar();
+    await screen.findByText(/por fuera de la plataforma/i);
+
+    expect(screen.getByText('Soporte de la actividad')).toBeInTheDocument();
+  });
+
+  it('con formatos, el formato pendiente es lo que bloquea el registro', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '3.2', tieneFormatos: true, exigeSoporte: true }),
+    );
+    pintar('3.2');
+    await screen.findByText(/por fuera de la plataforma/i);
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Qué se hizo/),
+      'Se consultaron tres proveedores y se promediaron sus cotizaciones.',
+    );
+
+    expect(screen.getByRole('button', { name: /Registrar la actividad/ })).toBeDisabled();
+  });
+
+  it('entregado el formato, el registro se desbloquea sin tocar el formulario', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '3.2', tieneFormatos: true, exigeSoporte: false }),
+    );
+    pintar('3.2');
+    await screen.findByText(/por fuera de la plataforma/i);
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Qué se hizo/),
+      'Se consultaron tres proveedores y se promediaron sus cotizaciones.',
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Registrar la actividad/ })).toBeEnabled(),
+    );
+  });
+
+  it('vuelve a leer cuando el bloque de documentos carga el soporte', async () => {
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '3.2', tieneFormatos: true, exigeSoporte: true }),
+    );
+    const { rerender } = pintar('3.2', false, 1);
+    await screen.findByText(/por fuera de la plataforma/i);
+    expect(servicio.registroActividad).toHaveBeenCalledTimes(1);
+
+    // Lo que hace `DetalleProceso` al cargar un documento: sube el token.
+    servicio.registroActividad.mockResolvedValue(
+      estado({ numeral: '3.2', tieneFormatos: true, exigeSoporte: false }),
+    );
+    rerender(
+      <PanelRegistroActividad procesoId="p-1" numeral="3.2" recargarToken={2} />,
+    );
+
+    await waitFor(() => expect(servicio.registroActividad).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText(/El soporte ya está cargado/),
+    ).toBeInTheDocument();
   });
 
   it('muestra el registro vigente con su nota y quién lo transcribió', async () => {
@@ -218,5 +302,107 @@ describe('PanelRegistroActividad · las actividades que se cumplen dejando const
       await screen.findByRole('button', { name: /Registrar la actividad/ }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enviar a aprobación/ })).toBeNull();
+  });
+});
+
+/**
+ * La actividad que devolvieron para corregir (EFDS-1183).
+ *
+ * El panel solo distinguía registrada de sin registrar. A una devuelta le
+ * mostraba «Registrada» —dándole por hecho lo que le acababan de rechazar— y
+ * como única salida «Anular», mientras el aviso de arriba le decía «vuelve a
+ * registrar la actividad». No había dónde.
+ */
+describe('PanelRegistroActividad · devuelta para corregir', () => {
+  const conRegistro = () =>
+    estado({
+      registro: {
+        id: 'r-1',
+        fecha: '2026-08-20',
+        nota: 'Se sorteó entre los tres oferentes.',
+        datos: {},
+        registradoPor: 'Ana Gestora',
+        registradoAt: '2026-08-21T14:00:00.000Z',
+        soporte: null,
+      },
+    });
+
+  const pintarDevuelta = (devuelta: boolean) =>
+    render(
+      <PanelRegistroActividad
+        procesoId="p-1"
+        numeral="5.10"
+        requiereAprobacion
+        devuelta={devuelta}
+      />,
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.registroActividad.mockResolvedValue(conRegistro());
+  });
+
+  it('no le dice «registrada» a lo que acaban de devolverle', async () => {
+    pintarDevuelta(true);
+
+    expect(await screen.findByText(/Lo que registraste el/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Registrada el/)).toBeNull();
+  });
+
+  it('ofrece corregir y volver a enviar, no anular', async () => {
+    pintarDevuelta(true);
+
+    expect(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Anular y registrar de nuevo/ })).toBeNull();
+  });
+
+  it('al corregir abre el formulario con lo que ya había escrito', async () => {
+    // Corregir no es rehacer: le señalaron una cosa concreta, y vaciarle el
+    // formulario le obliga a reescribir de memoria todo lo que estaba bien.
+    pintarDevuelta(true);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    );
+
+    expect(screen.getByDisplayValue('Se sorteó entre los tres oferentes.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2026-08-20')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar y volver a enviar/ })).toBeInTheDocument();
+  });
+
+  it('no le pide un motivo de anulación para corregir', async () => {
+    // El botón llevaba al flujo de anular, que borra el registro y deja el
+    // formulario en blanco pidiendo por qué se anula.
+    pintarDevuelta(true);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    );
+
+    expect(screen.queryByPlaceholderText('Por qué se anula el registro')).toBeNull();
+  });
+
+  it('deja volverse atrás sin guardar', async () => {
+    pintarDevuelta(true);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Corregir y volver a enviar/ }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Dejarlo como estaba/ }));
+
+    expect(await screen.findByText(/Lo que registraste el/)).toBeInTheDocument();
+    expect(servicio.registrarActividad).not.toHaveBeenCalled();
+  });
+
+  it('sin devolución sigue siendo anular, que es otra cosa', async () => {
+    // Anular es deshacer un error propio; corregir se lo pidió quien revisa.
+    pintarDevuelta(false);
+
+    expect(await screen.findByText(/^Registrada el/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Anular y registrar de nuevo/ }),
+    ).toBeInTheDocument();
   });
 });

@@ -46,6 +46,13 @@ function nombreDeEtapa(numero: number): string {
  * **Las que la modalidad excluye no se listan**, pero se cuentan al pie y se
  * pueden desplegar: esconderlas sin decirlo impediría distinguir «no aplicaba»
  * de «se omitió» en una auditoría, que es justo lo que el tachado protegía.
+ *
+ * **Todas las aplicables se pueden abrir**, también las que la secuencia aún no
+ * alcanzó: el candado dejó de cerrar el renglón y pasó a avisar de que ahí
+ * todavía no se escribe. Lo que hay que proteger es el expediente —que no se
+ * cargue un documento antes de tiempo—, y eso lo resuelve `SoloLectura` dentro
+ * del panel; cerrar el riel además dejaba al gestor sin poder ver qué le van a
+ * pedir más adelante.
  */
 export function RielActividades({
   etapa,
@@ -161,26 +168,32 @@ function Actividad({
   onSeleccionar: (numeral: string) => void;
 }) {
   const color = COLORES[actividad.estado];
-  const bloqueada = !actividad.disponible;
+  /**
+   * La secuencia todavía no llegó a ella: se abre, pero no se trabaja.
+   *
+   * Antes el renglón venía `disabled` y el gestor no podía ni asomarse a lo que
+   * le iban a pedir más adelante —qué formatos, qué datos—, cuando lo único que
+   * hay que proteger es el expediente. Ahora se entra, se lee, y quien apaga los
+   * botones de dentro es `SoloLectura`; el candado se queda como aviso de que
+   * ahí todavía no se escribe.
+   */
+  const soloLectura = !actividad.disponible;
 
   return (
     <button
       type="button"
       onClick={() => onSeleccionar(actividad.numeral)}
-      disabled={bloqueada}
       aria-current={activa ? 'true' : undefined}
       // El numeral vive aquí: identifica la fila de la matriz cuando hay que
       // hablar de ella, sin ocupar la línea que lee el gestor.
       title={
-        bloqueada
-          ? `${actividad.numeral} · ${actividad.nombre} — aún no disponible`
+        soloLectura
+          ? `${actividad.numeral} · ${actividad.nombre} — se puede consultar, todavía no trabajar`
           : `${actividad.numeral} · ${actividad.nombre}`
       }
       className={`w-full text-left rounded-lg px-2.5 py-2 flex items-start gap-2.5
         transition-colors focus:outline-none focus-visible:ring-2
-        focus-visible:ring-[#003DA5]/40 ${
-          activa ? 'bg-[#E0EDFF]' : bloqueada ? 'cursor-not-allowed' : 'hover:bg-slate-50'
-        }`}
+        focus-visible:ring-[#003DA5]/40 ${activa ? 'bg-[#E0EDFF]' : 'hover:bg-slate-50'}`}
     >
       <span
         className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -208,7 +221,7 @@ function Actividad({
         )}
       </span>
 
-      {bloqueada && (
+      {soloLectura && (
         <Lock className="w-3 h-3 text-slate-300 flex-shrink-0 mt-1" aria-hidden="true" />
       )}
       {!!actividad.adjuntos && (

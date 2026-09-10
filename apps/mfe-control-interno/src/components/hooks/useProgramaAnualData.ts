@@ -159,6 +159,31 @@ export function resolverColumnaKanban(
 // MAPPERS: Backend → Frontend
 // ════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Etapa en la que entra una auditoría al crearse (EFDS-1923).
+ * Una auditoría Especial puede iniciar en Ejecución o Comunicación sin pasar por
+ * Planeación: si no programó Planeación, entra en la primera etapa con fechas.
+ */
+function resolverEtapaInicial(data: AuditoriaCreateData): string {
+  // El formulario siempre envía 'Programa Anual' como valor por defecto; sólo se
+  // respeta un estado explícito cuando es distinto de ese.
+  const estadoExplicito = (data.estadoKanban || '').trim();
+  if (estadoExplicito && estadoExplicito.toLowerCase() !== 'programa anual') {
+    return estadoExplicito;
+  }
+
+  const esEspecial = (data.tipoAuditoria || '').trim().toLowerCase().includes('especial');
+  if (!esEspecial) return 'Programa Anual';
+
+  // Basta el inicio de la etapa: Comunicación no tiene fecha de fin propia.
+  if (data.fechaFinPlaneacion) return 'Programa Anual';
+
+  if (data.fechaInicioEjecucion || data.fechaFinEjecucion) return 'Ejecución';
+  if (data.fechaInicioComunicacion) return 'Comunicación';
+
+  return 'Programa Anual';
+}
+
 /** Mapea tipo de auditoría del backend al UI */
 function mapTipoAuditoria(tipo: string): TipoAuditoria {
   const map: Record<string, TipoAuditoria> = {
@@ -718,8 +743,10 @@ export function useProgramaAnualData(
         planAnualId: data.planAnualId,
         planAnualAño: data.planAnualAño,
         rolDecretoAsociado: data.rolDecretoAsociado,
-        // Volvemos a 'Programa Anual' fijo inicial por seguridad (para no cruzar etapas de Planes de Mejoramiento)
-        estadoKanban: data.estadoKanban || 'Programa Anual',
+        // 'Programa Anual' es el estado inicial por defecto. Excepción: una auditoría
+        // Especial que no programa Planeación ya viene en curso y entra en la primera
+        // etapa con fechas (EFDS-1923). El resto de tipos no cambia.
+        estadoKanban: resolverEtapaInicial(data),
       };
 
       console.log('[useProgramaAnualData] Creando auditoría con servicio:', formData);

@@ -450,13 +450,19 @@ export function ModalNuevoTipoAuto({
                         {loadingStages ? (
                           <option disabled>Cargando etapas...</option>
                         ) : (
-                          stages
-                            .sort((a, b) => a.orden - b.orden)
-                            .map((stage) => (
-                              <option key={stage.id} value={stage.etapa}>
-                                {stage.etapa}
-                              </option>
-                            ))
+                          <>
+                            {formData.etapa &&
+                              !stages.some((stage) => stage.etapa === formData.etapa) && (
+                                <option value={formData.etapa}>{formData.etapa}</option>
+                              )}
+                            {[...stages]
+                              .sort((a, b) => a.orden - b.orden)
+                              .map((stage) => (
+                                <option key={stage.id} value={stage.etapa}>
+                                  {stage.etapa}
+                                </option>
+                              ))}
+                          </>
                         )}
                       </select>
                       <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">

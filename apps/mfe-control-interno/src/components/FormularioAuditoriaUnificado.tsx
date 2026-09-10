@@ -27,7 +27,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
@@ -525,7 +525,7 @@ export function FormularioAuditoriaUnificado({
   const [seccionalesDisponibles, setSeccionalesDisponibles] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
   const [cargandoSeccionales, setCargandoSeccionales] = useState(false);
 
-  const TOTAL_PASOS = mode === 'create' ? 2 : 9;
+  const TOTAL_PASOS = mode === 'create' ? 3 : 9;
   
   // Precargar todas las personas disponibles al abrir el formulario
   useEffect(() => {
@@ -652,6 +652,26 @@ export function FormularioAuditoriaUnificado({
     cargarTipos();
   }, [open]);
 
+  // El tipo se guarda por nombre (dato histórico), así que se resuelve contra el
+  // catálogo para depender del código y no del nombre, que es renombrable.
+  const codigoTipoAuditoria = useMemo(() => {
+    const valor = formData.tipoAuditoria?.trim().toLowerCase();
+    if (!valor) return '';
+
+    const tipo = tiposAuditoria.find(
+      (t) => t.nombre?.trim().toLowerCase() === valor || t.codigo?.trim().toLowerCase() === valor
+    );
+    if (tipo?.codigo) return tipo.codigo.trim().toUpperCase();
+
+    // Sin catálogo cargado, se cae al nombre para no perder el comportamiento.
+    if (valor === 'especial') return 'AUD-ESP';
+    if (valor === 'territorial') return 'AUD-TERR';
+    return '';
+  }, [formData.tipoAuditoria, tiposAuditoria]);
+
+  const esAuditoriaEspecial = codigoTipoAuditoria === 'AUD-ESP';
+  const esAuditoriaTerritorial = codigoTipoAuditoria === 'AUD-TERR';
+
   // Cargar procesos auditables desde el universo de auditorías
   useEffect(() => {
     const cargarProcesos = async () => {
@@ -659,6 +679,25 @@ export function FormularioAuditoriaUnificado({
       
       setCargandoProcesos(true);
       try {
+        // Especial y Territorial no pasan por el Universo Auditable, así que sus
+        // procesos no tienen evaluación y se leen del catálogo de procesos:
+        // Especial -> marcados como especiales, sin los de tipo territorial.
+        // Territorial -> los de tipo territorial.
+        if (esAuditoriaEspecial || esAuditoriaTerritorial) {
+          const procesos = await controlInternoService.getProcesosAuditables();
+          const esTipoTerritorial = (p: ProcesoAuditable) =>
+            (p.tipoProceso?.codigo || p.tipo || '').trim().toLowerCase() === 'territorial';
+
+          const filtrados = (procesos || [])
+            .filter((p) => (esAuditoriaTerritorial ? esTipoTerritorial(p) : p.esEspecial && !esTipoTerritorial(p)))
+            .map((p) => p.nombre)
+            .sort();
+
+          setEvaluacionesDisponibles([]);
+          setProcesosAuditables(filtrados);
+          return;
+        }
+
         // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
         const evaluaciones = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
         
@@ -697,7 +736,7 @@ export function FormularioAuditoriaUnificado({
     };
     
     cargarProcesos();
-  }, [open]);
+  }, [open, esAuditoriaEspecial, esAuditoriaTerritorial]);
 
   // Cargar seccionales/territoriales desde Estructura Organizacional
   useEffect(() => {
@@ -732,7 +771,13 @@ export function FormularioAuditoriaUnificado({
 
   useEffect(() => {
     const equipoAuditores = (formData.equipoAuditores || []).filter(Boolean);
-    const fechaInicio = formData.fechaInicioPlaneacion || formData.fechaInicio || '';
+    // Una auditoría Especial puede no tener Planeación: se toma la primera etapa con fecha.
+    const fechaInicio =
+      formData.fechaInicioPlaneacion ||
+      formData.fechaInicioEjecucion ||
+      formData.fechaInicioComunicacion ||
+      formData.fechaInicio ||
+      '';
     const fechaFin = formData.fechaFinComunicacion || formData.fechaFin || '';
 
     if (!open || equipoAuditores.length === 0 || !fechaInicio || !fechaFin) {
@@ -1003,6 +1048,19 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
+    // Equipo Auditor (Paso 2 en creación): la auditoría no puede quedar sin
+    // responsables, requisito para la trazabilidad del ciclo OCI (EFDS-1921).
+    if (mode === 'create') {
+      const tieneLider = Boolean(formData.auditorLider && formData.auditorLider !== 'Por asignar');
+      const tieneEquipo = (formData.equipoAuditores || []).filter(Boolean).length > 0;
+
+      if (!tieneLider && !tieneEquipo) {
+        toast.error('Debe asignar al menos un auditor a la auditoría');
+        setPasoActual(2);
+        return;
+      }
+    }
+
     // Validaciones de Responsable del Área (Paso 2) sólo aplican en modo edición si tiene permiso
     if (mode === 'edit' && puedeEditarPaso(2)) {
       const resp = formData.responsableArea;
@@ -1029,16 +1087,31 @@ export function FormularioAuditoriaUnificado({
     }
 
     // Validar Etapa 1: Planeación (obligatoria si puede editar programación)
-    const pasoProg = mode === 'create' ? 2 : 4;
+    const pasoProg = mode === 'create' ? 3 : 4;
     const puedeEditarProgramacion = mode === 'create' || puedeEditarPaso(4);
 
-    if (puedeEditarProgramacion) {
+    // Una auditoría Especial puede iniciar en Ejecución o Comunicación: no se le
+    // exige Planeación, pero sí al menos una etapa con fechas (EFDS-1923).
+    if (puedeEditarProgramacion && esAuditoriaEspecial) {
+      const tieneAlgunaEtapa =
+        (formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion) ||
+        (formData.fechaInicioEjecucion && formData.fechaFinEjecucion) ||
+        (formData.fechaInicioComunicacion && formData.fechaFinComunicacion);
+
+      if (!tieneAlgunaEtapa) {
+        toast.error('Debe especificar las fechas de al menos una etapa');
+        setPasoActual(pasoProg);
+        return;
+      }
+    }
+
+    if (puedeEditarProgramacion && !esAuditoriaEspecial) {
       if (!formData.fechaInicioPlaneacion || !formData.fechaFinPlaneacion) {
         toast.error('Debe especificar las fechas de inicio y fin de la etapa de Planeación');
         setPasoActual(pasoProg);
         return;
       }
-      
+
       const inicioPlaneacion = parseLocalDate(formData.fechaInicioPlaneacion);
       const finPlaneacion = parseLocalDate(formData.fechaFinPlaneacion);
       if (finPlaneacion <= inicioPlaneacion) {
@@ -1097,7 +1170,12 @@ export function FormularioAuditoriaUnificado({
     }
 
     if ((mode === 'create' || puedeEditarPaso(3) || puedeEditarPaso(4)) && formData.equipoAuditores.length > 0) {
-      const fechaInicioEquipo = formData.fechaInicioPlaneacion || formData.fechaInicio || '';
+      const fechaInicioEquipo =
+        formData.fechaInicioPlaneacion ||
+        formData.fechaInicioEjecucion ||
+        formData.fechaInicioComunicacion ||
+        formData.fechaInicio ||
+        '';
       const fechaFinEquipo = formData.fechaFinComunicacion || formData.fechaFin || '';
 
       if (fechaInicioEquipo && fechaFinEquipo) {
@@ -1192,7 +1270,7 @@ export function FormularioAuditoriaUnificado({
   };
 
   const handleSiguiente = () => {
-    const pasoProg = mode === 'create' ? 2 : 4;
+    const pasoProg = mode === 'create' ? 3 : 4;
     if (pasoActual >= pasoProg && disponibilidadEquipoAuditor?.disponible === false) {
       toast.error('Equipo auditor adicional no disponible', {
         description: disponibilidadEquipoAuditor.mensaje || 'Ajuste las fechas o el equipo adicional antes de continuar.',
@@ -1228,15 +1306,30 @@ export function FormularioAuditoriaUnificado({
               evaluaciones={evaluacionesDisponibles}
               tiposAuditoria={tiposAuditoria}
               cargandoTipos={cargandoTipos}
+              esAuditoriaEspecial={esAuditoriaEspecial}
+              esAuditoriaTerritorial={esAuditoriaTerritorial}
+              seccionales={seccionalesDisponibles}
+              cargandoSeccionales={cargandoSeccionales}
             />
           );
         case 2:
+          return (
+            <Paso3EquipoAuditor
+              formData={formData}
+              onChange={handleChange}
+              auditores={auditoresDisponibles}
+              disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
+              validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+            />
+          );
+        case 3:
           return (
             <Paso4Programacion
               formData={formData}
               onChange={handleChange}
               disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
               validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+              esAuditoriaEspecial={esAuditoriaEspecial}
             />
           );
         default:
@@ -1259,6 +1352,10 @@ export function FormularioAuditoriaUnificado({
             evaluaciones={evaluacionesDisponibles}
             tiposAuditoria={tiposAuditoria}
             cargandoTipos={cargandoTipos}
+            esAuditoriaEspecial={esAuditoriaEspecial}
+            esAuditoriaTerritorial={esAuditoriaTerritorial}
+            seccionales={seccionalesDisponibles}
+            cargandoSeccionales={cargandoSeccionales}
           />
         );
       case 2:
@@ -1295,6 +1392,7 @@ export function FormularioAuditoriaUnificado({
             onChange={handleChange}
             disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
             validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+            esAuditoriaEspecial={esAuditoriaEspecial}
           />
         );
       case 5:
@@ -1357,7 +1455,8 @@ export function FormularioAuditoriaUnificado({
   const pasos = mode === 'create'
     ? [
         { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
-        { numero: 2, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
+        { numero: 2, titulo: 'Equipo Auditor', icono: <Users className="w-4 h-4" /> },
+        { numero: 3, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
       ]
     : [
         { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
@@ -1586,6 +1685,10 @@ interface Paso1Props extends PasoProps {
   evaluaciones: EvaluacionProceso[];
   tiposAuditoria: { id: string; codigo: string; nombre: string; color?: string; descripcion?: string }[];
   cargandoTipos: boolean;
+  esAuditoriaEspecial: boolean;
+  esAuditoriaTerritorial: boolean;
+  seccionales: { id: number | string; nombre: string; codigo?: string }[];
+  cargandoSeccionales: boolean;
 }
 
 function Paso1InformacionBasica({ 
@@ -1599,7 +1702,11 @@ function Paso1InformacionBasica({
   setMostrarSugerenciasProcesos,
   evaluaciones,
   tiposAuditoria,
-  cargandoTipos
+  cargandoTipos,
+  esAuditoriaEspecial,
+  esAuditoriaTerritorial,
+  seccionales,
+  cargandoSeccionales
 }: Paso1Props) {
   // Filtrar procesos según búsqueda
   const procesosFiltrados = procesos.filter(proceso =>
@@ -1739,24 +1846,34 @@ function Paso1InformacionBasica({
             )}
           </FieldWrapper>
 
-          {/* Información contextual según tipo */}
-          {formData.tipoAuditoria === 'especial' && (
-            <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
-                  <p className="text-amber-700">
-                    Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
-                  </p>
-                </div>
-              </div>
-            </div>
+          {/* Territorial a asociar: informativo, no condiciona el flujo normal */}
+          {esAuditoriaTerritorial && (
+            <FieldWrapper
+              label="Asociar Territorial"
+              helpText="Territorial o seccional a la que se asocia la auditoría. Es informativo y no cambia el flujo."
+            >
+              <select
+                value={formData.territorial || ''}
+                onChange={(e) => onChange('territorial', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                disabled={cargandoSeccionales}
+              >
+                <option value="">
+                  {cargandoSeccionales ? 'Cargando territoriales...' : 'Seleccione una territorial/seccional'}
+                </option>
+                <option value="Sede Central">Sede Central (Bogotá)</option>
+                {seccionales.map((s) => (
+                  <option key={s.id} value={s.nombre}>
+                    {s.nombre} {s.codigo ? `(${s.codigo})` : ''}
+                  </option>
+                ))}
+              </select>
+            </FieldWrapper>
           )}
 
           {/* Título de Auditoría - BÚSQUEDA CON AUTOCOMPLETADO */}
-          <FieldWrapper 
-            label="Asociar a Proceso" 
+          <FieldWrapper
+            label="Asociar a Proceso"
             required
             helpText={
               cargandoProcesos 
@@ -2625,6 +2742,7 @@ function Paso3EquipoAuditor({
 interface Paso4Props extends PasoProps {
   disponibilidadEquipoAuditor?: DisponibilidadEquipoAuditorResponse | null;
   validandoDisponibilidadEquipo?: boolean;
+  esAuditoriaEspecial?: boolean;
 }
 
 function Paso4Programacion({
@@ -2632,10 +2750,16 @@ function Paso4Programacion({
   onChange,
   disponibilidadEquipoAuditor,
   validandoDisponibilidadEquipo,
+  esAuditoriaEspecial,
 }: Paso4Props) {
   // Verificar si las etapas anteriores están completas (convertir a boolean)
   const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
   const ejecucionCompleta = !!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion);
+
+  // Una auditoría Especial puede iniciar en Ejecución o Comunicación, así que las
+  // tres etapas quedan abiertas y se llenan las que apliquen (EFDS-1923).
+  const planeacionHabilitada = !!esAuditoriaEspecial || planeacionCompleta;
+  const ejecucionHabilitada = !!esAuditoriaEspecial || ejecucionCompleta;
 
   // Limitar el calendario al año de la vigencia seleccionada
   const añoVigencia = formData.planAnualAño || new Date().getFullYear();
@@ -2791,9 +2915,9 @@ function Paso4Programacion({
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FieldWrapper 
-            label="Fecha de Inicio" 
-            required
+          <FieldWrapper
+            label="Fecha de Inicio"
+            required={!esAuditoriaEspecial}
             helpText="Inicio de la etapa de Planeación"
           >
             <Input
@@ -2806,9 +2930,9 @@ function Paso4Programacion({
             />
           </FieldWrapper>
 
-          <FieldWrapper 
-            label="Fecha de Fin" 
-            required
+          <FieldWrapper
+            label="Fecha de Fin"
+            required={!esAuditoriaEspecial}
             helpText="Finalización de la etapa de Planeación"
           >
             <Input
@@ -2830,14 +2954,14 @@ function Paso4Programacion({
       </Card>
 
       {/* ETAPA 2: EJECUCIÓN - Se habilita al completar Planeación */}
-      <Card className={`p-6 border-2 ${planeacionCompleta ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+      <Card className={`p-6 border-2 ${planeacionHabilitada ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
         <div className="flex items-center gap-3 mb-4">
-          <div className={`w-8 h-8 rounded-full ${planeacionCompleta ? 'bg-amber-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>2</div>
+          <div className={`w-8 h-8 rounded-full ${planeacionHabilitada ? 'bg-amber-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>2</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Ejecución</h4>
             <p className="text-xs text-gray-600">Trabajo de campo y desarrollo de la auditoría</p>
           </div>
-          {!planeacionCompleta && (
+          {!planeacionHabilitada && (
             <Badge className="ml-auto bg-gray-100 text-gray-600 border-gray-300">
               <AlertCircle className="w-3 h-3 mr-1" />
               Complete la etapa de Planeación primero
@@ -2854,7 +2978,7 @@ function Paso4Programacion({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FieldWrapper 
             label="Fecha de Inicio" 
-            required={planeacionCompleta}
+            required={planeacionCompleta && !esAuditoriaEspecial}
             helpText="Inicio de la etapa de Ejecución"
           >
             <Input
@@ -2862,7 +2986,7 @@ function Paso4Programacion({
               value={formData.fechaInicioEjecucion || ''}
               onChange={(e) => handleFechaInicioEjecucionChange(e.target.value)}
               className="border-gray-300"
-              disabled={!planeacionCompleta}
+              disabled={!planeacionHabilitada}
               min={formData.fechaFinPlaneacion || minDate}
               max={maxDate}
             />
@@ -2870,7 +2994,7 @@ function Paso4Programacion({
 
           <FieldWrapper 
             label="Fecha de Fin" 
-            required={planeacionCompleta}
+            required={planeacionCompleta && !esAuditoriaEspecial}
             helpText="Finalización de la etapa de Ejecución"
           >
             <Input
@@ -2878,7 +3002,7 @@ function Paso4Programacion({
               value={formData.fechaFinEjecucion || ''}
               onChange={(e) => handleFechaFinEjecucionChange(e.target.value)}
               className="border-gray-300"
-              disabled={!planeacionCompleta}
+              disabled={!planeacionHabilitada}
               min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || minDate}
               max={maxDate}
             />
@@ -2893,14 +3017,14 @@ function Paso4Programacion({
       </Card>
 
       {/* ETAPA 3: COMUNICACIÓN - Se habilita al completar Ejecución */}
-      <Card className={`p-6 border-2 ${ejecucionCompleta ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+      <Card className={`p-6 border-2 ${ejecucionHabilitada ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
         <div className="flex items-center gap-3 mb-4">
-          <div className={`w-8 h-8 rounded-full ${ejecucionCompleta ? 'bg-green-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>3</div>
+          <div className={`w-8 h-8 rounded-full ${ejecucionHabilitada ? 'bg-green-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>3</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Comunicación</h4>
             <p className="text-xs text-gray-600">Elaboración y entrega del informe final</p>
           </div>
-          {!ejecucionCompleta && (
+          {!ejecucionHabilitada && (
             <Badge className="ml-auto bg-gray-100 text-gray-600 border-gray-300">
               <AlertCircle className="w-3 h-3 mr-1" />
               Complete la etapa de Ejecución primero
@@ -2917,7 +3041,7 @@ function Paso4Programacion({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FieldWrapper 
             label="Fecha de Inicio" 
-            required={ejecucionCompleta}
+            required={ejecucionCompleta && !esAuditoriaEspecial}
             helpText="Inicio de la etapa de Comunicación"
           >
             <Input
@@ -2925,7 +3049,7 @@ function Paso4Programacion({
               value={formData.fechaInicioComunicacion || ''}
               onChange={(e) => handleFechaInicioComunicacionChange(e.target.value)}
               className="border-gray-300"
-              disabled={!ejecucionCompleta}
+              disabled={!ejecucionHabilitada}
               min={formData.fechaFinEjecucion || minDate}
               max={maxDate}
             />
@@ -2933,7 +3057,7 @@ function Paso4Programacion({
 
           <FieldWrapper 
             label="Fecha de Fin" 
-            required={ejecucionCompleta}
+            required={ejecucionCompleta && !esAuditoriaEspecial}
             helpText="Finalización de la auditoría"
           >
             <Input
@@ -2941,7 +3065,7 @@ function Paso4Programacion({
               value={formData.fechaFinComunicacion || ''}
               onChange={(e) => handleFechaFinComunicacionChange(e.target.value)}
               className="border-gray-300"
-              disabled={!ejecucionCompleta}
+              disabled={!ejecucionHabilitada}
               min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || minDate}
               max={maxDate}
             />
