@@ -258,6 +258,20 @@ export class AuthService {
     return user.roles.some((r) => ROLES_ANALISTA_VIATICOS.includes(r));
   }
 
+  /**
+   * Determina si el usuario autenticado tiene el rol técnico
+   * `CONTROL_VIATICOS` (segunda revisión / control cruzado).
+   *
+   * Un usuario con rol `SUPER_ADMIN` o `ADMIN` también puede acceder
+   * a la bandeja por herencia administrativa.
+   */
+  isControlViaticos(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) return false;
+    if (user.esAdmin) return true;
+    return user.roles.some((r) => r === 'CONTROL_VIATICOS');
+  }
+
   private getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
