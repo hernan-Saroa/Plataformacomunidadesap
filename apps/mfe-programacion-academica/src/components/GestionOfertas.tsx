@@ -4,7 +4,8 @@ import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 import {
   getOfertas, getConsumoPorOferta, crearPeriodo, activarPeriodo,
   getEstadoPublicacion, publicarProgramacion, retirarProgramacion, cerrarProgramacion,
-  type Oferta, type AcumuladoDocente, type EstadoPublicacion,
+  getPendientesCierre, marcarExcepcion,
+  type Oferta, type AcumuladoDocente, type EstadoPublicacion, type PendienteCierre,
 } from '../services/api/catalogoApi';
 
 /**
@@ -46,6 +47,9 @@ export function GestionOfertas() {
   const [pubs, setPubs] = useState<Record<string, EstadoPublicacion>>({});
   const [pubOcupado, setPubOcupado] = useState<string | null>(null);
   const [avisoPub, setAvisoPub] = useState('');
+  // EFDS-1941 — lista de franjas que impiden cerrar, para marcarlas como excepción.
+  const [verPend, setVerPend] = useState<string | null>(null);
+  const [pendCierre, setPendCierre] = useState<Record<string, PendienteCierre[]>>({});
 
   const cargarPubs = (lista: Oferta[]) =>
     Promise.all(lista.map((o) =>
@@ -81,6 +85,32 @@ export function GestionOfertas() {
       setAvisoPub(err?.message || 'No se pudo retirar la publicación.');
     } finally {
       setPubOcupado(null);
+    }
+  };
+
+  const abrirExcepciones = async (id: string) => {
+    if (verPend === id) { setVerPend(null); return; }
+    setAvisoPub('');
+    try {
+      const lista = await getPendientesCierre(id);
+      setPendCierre((prev) => ({ ...prev, [id]: lista }));
+      setVerPend(id);
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudieron cargar las franjas pendientes.');
+    }
+  };
+
+  const excepcion = async (id: string, idFranja: string) => {
+    if (!window.confirm('¿Marcar esta franja como excepción? No pasará por aprobación y no impedirá cerrar el periodo.')) return;
+    setAvisoPub('');
+    try {
+      const e = await marcarExcepcion(id, idFranja);
+      setPubs((prev) => ({ ...prev, [id]: e }));
+      const lista = await getPendientesCierre(id);
+      setPendCierre((prev) => ({ ...prev, [id]: lista }));
+      if (lista.length === 0) setVerPend(null);
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo marcar la excepción.');
     }
   };
 
@@ -244,7 +274,31 @@ export function GestionOfertas() {
                         className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
                         {ocupado ? 'Cerrando…' : 'Cerrar periodo'}
                       </button>
+                      {p.pendientesCierre > 0 && (
+                        <button type="button" onClick={() => abrirExcepciones(o.idPeriodo)}
+                          className="px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 text-[11px] font-bold hover:bg-amber-50 active:scale-95 transition-all">
+                          {verPend === o.idPeriodo ? 'Ocultar' : `Excepción (${p.pendientesCierre})`}
+                        </button>
+                      )}
                     </div>
+                    )}
+
+                    {/* Lista de franjas que impiden cerrar; se marcan como excepción. */}
+                    {verPend === o.idPeriodo && (pendCierre[o.idPeriodo]?.length ?? 0) > 0 && (
+                      <div className="mt-1 space-y-1 border border-amber-200 rounded-lg p-2 bg-amber-50/40">
+                        {pendCierre[o.idPeriodo].map((f) => (
+                          <div key={f.idFranja} className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="min-w-0 truncate text-slate-600">
+                              {f.asignatura || 'Asignatura'} · {f.diaSemana.toLowerCase()} {f.horaInicio}–{f.horaFin}
+                              <span className="ml-1 text-slate-400">({f.estado.toLowerCase()})</span>
+                            </span>
+                            <button type="button" onClick={() => excepcion(o.idPeriodo, f.idFranja)}
+                              className="shrink-0 px-2 py-0.5 rounded border border-amber-300 text-amber-800 font-bold hover:bg-amber-100">
+                              Excepción
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 );

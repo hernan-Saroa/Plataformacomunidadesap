@@ -26,24 +26,32 @@ const cap = (s: string) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : s);
 function FilaFranja({ f, accion, etiqueta, icono, ocupado }: {
   f: FranjaPortal; accion: () => void; etiqueta: string; icono: React.ReactNode; ocupado: boolean;
 }) {
+  const devuelta = f.estado === 'DEVUELTA';
   return (
-    <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-white">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-slate-800 truncate">{f.asignatura || 'Asignatura'}</p>
-        <p className="text-[11px] text-slate-500 truncate">
-          {f.programa || 'Programa'}{f.numeroGrupo != null ? ` · Grupo ${f.numeroGrupo}` : ''}
-        </p>
-        <p className="text-[11px] text-slate-400">
-          {cap(f.diaSemana)} {f.horaInicio}–{f.horaFin}
-          {' · '}{f.tipoSesion === 'mediada_tecnologia' ? 'Virtual' : `Aula ${f.aulaCodigo || '—'}`}
-        </p>
+    <div className={`p-3 rounded-xl border ${devuelta ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-800 truncate">{f.asignatura || 'Asignatura'}</p>
+          <p className="text-[11px] text-slate-500 truncate">
+            {f.programa || 'Programa'}{f.numeroGrupo != null ? ` · Grupo ${f.numeroGrupo}` : ''}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            {cap(f.diaSemana)} {f.horaInicio}–{f.horaFin}
+            {' · '}{f.tipoSesion === 'mediada_tecnologia' ? 'Virtual' : `Aula ${f.aulaCodigo || '—'}`}
+          </p>
+        </div>
+        <button type="button" onClick={accion} disabled={ocupado}
+          className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-40 active:scale-95 transition-all border
+                     ${devuelta ? 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200' : 'border-slate-200 hover:bg-slate-50 text-[#003DA5]'}`}>
+          {ocupado ? <Loader2 className="w-4 h-4 animate-spin" /> : icono}
+          <span>{devuelta ? 'Corregir y re-tomar' : etiqueta}</span>
+        </button>
       </div>
-      <button type="button" onClick={accion} disabled={ocupado}
-        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-40 active:scale-95 transition-all
-                   border border-slate-200 hover:bg-slate-50 text-[#003DA5]">
-        {ocupado ? <Loader2 className="w-4 h-4 animate-spin" /> : icono}
-        <span>{etiqueta}</span>
-      </button>
+      {devuelta && f.comentarioJefatura && (
+        <p className="mt-2 text-[11px] text-amber-800 bg-amber-100/70 rounded-lg px-2 py-1">
+          <strong>Devuelta por la jefatura:</strong> {f.comentarioJefatura}
+        </p>
+      )}
     </div>
   );
 }

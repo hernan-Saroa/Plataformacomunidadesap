@@ -59,6 +59,12 @@ export class PublicacionController {
     return { success: true, data: await this.publicacion.retirar(idPeriodo) };
   }
 
+  /** GET /publicaciones/:idPeriodo/pendientes-cierre — franjas que impiden cerrar. */
+  @Get(':idPeriodo/pendientes-cierre')
+  async pendientesCierre(@Param('idPeriodo') idPeriodo: string) {
+    return { success: true, data: await this.publicacion.pendientesCierre(idPeriodo) };
+  }
+
   /** POST /publicaciones/:idPeriodo/cerrar — cierra si todo está aprobado o en excepción. */
   @Post(':idPeriodo/cerrar')
   async cerrar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {

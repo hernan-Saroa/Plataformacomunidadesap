@@ -97,13 +97,12 @@ export class PortalDocenteService {
    * porque pasan a cruzar con una franja que el docente ya posee.
    */
   async disponibles(idPerson: string): Promise<FranjaPortal[]> {
-    // PUBLICADA de dos clases: las libres (id_docente NULL) y las DEVUELTAS a
-    // ESTE docente (id_docente = él, con comentario). Una devuelta a otro docente
-    // no se le ofrece: es suya para corregir.
+    // Dos clases: las PUBLICADA libres (por diseño sin id_docente) y las DEVUELTA
+    // a ESTE docente (suyas para corregir, con el comentario de la jefatura). Una
+    // devuelta a otro docente no aparece aquí.
     return this.dataSource.query(
       `${this.SELECT_CONTEXTO}
-        WHERE f.estado = 'PUBLICADA'
-          AND (f.id_docente IS NULL OR f.id_docente = $1)
+        WHERE (f.estado = 'PUBLICADA' OR (f.estado = 'DEVUELTA' AND f.id_docente = $1))
           AND NOT EXISTS (
             SELECT 1 FROM "academic-schedule".franja_horaria m
              WHERE m.id_docente = $1
@@ -148,12 +147,15 @@ export class PortalDocenteService {
       );
       if (!filas.length) throw new NotFoundException('La franja no existe.');
       const f = filas[0];
-      if (f.estado !== 'PUBLICADA') {
+      // Tomable en dos casos: PUBLICADA libre, o DEVUELTA al PROPIO docente (la
+      // re-toma para corregir). Cualquier otra cosa es conflicto.
+      const libre = f.estado === 'PUBLICADA';                     // por diseño sin id_docente
+      const devueltaMia = f.estado === 'DEVUELTA' && String(f.id_docente) === String(idPerson);
+      if (!libre && !devueltaMia) {
+        if (f.estado === 'DEVUELTA') {
+          throw new ConflictException('Esta franja fue devuelta a otro docente y no está disponible.');
+        }
         throw new ConflictException('La franja ya no está disponible: alguien la tomó o se retiró de publicación.');
-      }
-      // Una franja devuelta a OTRO docente no se puede tomar: es suya para corregir.
-      if (f.id_docente && String(f.id_docente) !== String(idPerson)) {
-        throw new ConflictException('Esta franja fue devuelta a otro docente y no está disponible.');
       }
 
       const cruce = await qr.query(

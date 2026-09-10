@@ -46,6 +46,8 @@ export interface EstadoPublicacion {
   publicada: number;
   tomada: number;
   aprobada: number;
+  /** Devueltas por la jefatura, a la espera de que el docente las re-tome. */
+  devuelta: number;
   total: number;
   /** Franjas que impiden cerrar: ni APROBADA ni excepción (EFDS-1941). */
   pendientesCierre: number;
@@ -125,6 +127,7 @@ export class PublicacionService {
     const publicada = por['PUBLICADA'] ?? 0;
     const tomada = por['TOMADA'] ?? 0;
     const aprobada = por['APROBADA'] ?? 0;
+    const devuelta = por['DEVUELTA'] ?? 0;
 
     // Lo que impide cerrar: ni APROBADA ni marcada como excepción.
     const pend = await this.dataSource.query(
@@ -134,8 +137,8 @@ export class PublicacionService {
         WHERE g.id_periodo = $1 AND f.estado <> 'APROBADA' AND f.excepcion = false`, [idPeriodo]);
 
     return {
-      idPeriodo, programado, publicada, tomada, aprobada,
-      total: programado + publicada + tomada + aprobada,
+      idPeriodo, programado, publicada, tomada, aprobada, devuelta,
+      total: programado + publicada + tomada + aprobada + devuelta,
       pendientesCierre: pend[0].n,
     };
   }
@@ -202,6 +205,33 @@ export class PublicacionService {
           AND f.estado = 'PUBLICADA'`, [idPeriodo]);
 
     return this.estado(idPeriodo);
+  }
+
+  /**
+   * Franjas que impiden cerrar el periodo (ni APROBADA ni en excepción), con su
+   * contexto, para poder marcarlas como excepción desde la vista de cierre.
+   */
+  async pendientesCierre(idPeriodo: string): Promise<Array<{
+    idFranja: string; diaSemana: string; horaInicio: string; horaFin: string;
+    estado: string; asignatura: string | null; programa: string | null;
+  }>> {
+    await this.exigirPeriodo(idPeriodo);
+    return this.dataSource.query(
+      `SELECT f.id_franja                       AS "idFranja",
+              f.dia_semana                      AS "diaSemana",
+              to_char(f.hora_inicio, 'HH24:MI') AS "horaInicio",
+              to_char(f.hora_fin, 'HH24:MI')    AS "horaFin",
+              f.estado,
+              a.nombre                          AS "asignatura",
+              pr.nombre                         AS "programa"
+         FROM "academic-schedule".franja_horaria f
+         JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
+         LEFT JOIN academic_work_plan.asignatura a ON a.id       = g.id_asignatura
+         LEFT JOIN academic_work_plan.programa pr  ON pr.id      = a.id_programa
+        WHERE g.id_periodo = $1 AND f.estado <> 'APROBADA' AND f.excepcion = false
+        ORDER BY f.dia_semana, f.hora_inicio`,
+      [idPeriodo],
+    );
   }
 
   /**

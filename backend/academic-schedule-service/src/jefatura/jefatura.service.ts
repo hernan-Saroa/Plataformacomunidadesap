@@ -124,7 +124,7 @@ export class JefaturaService {
 
     const pend = await this.dataSource.query(
       `SELECT 1 FROM "${S}".franja_horaria
-        WHERE id_docente = $1 AND estado = 'PUBLICADA' AND comentario_jefatura IS NOT NULL
+        WHERE id_docente = $1 AND estado = 'DEVUELTA'
         LIMIT 1`,
       [idDocente],
     );
@@ -144,8 +144,9 @@ export class JefaturaService {
   }
 
   /**
-   * Devuelve una franja con comentario obligatorio: TOMADA → PUBLICADA,
-   * conservando el id_docente (queda «suya para corregir») y el motivo.
+   * Devuelve una franja con comentario obligatorio: TOMADA → DEVUELTA,
+   * conservando el id_docente (queda «suya para corregir») y el motivo. DEVUELTA
+   * es un estado propio: no se confunde con PUBLICADA (libre).
    */
   async devolver(idUser: string, idFranja: string, comentario: string): Promise<{ devuelta: true }> {
     const motivo = String(comentario ?? '').trim();
@@ -156,7 +157,7 @@ export class JefaturaService {
 
     await this.dataSource.query(
       `UPDATE "${S}".franja_horaria
-          SET estado = 'PUBLICADA', comentario_jefatura = $2, updated_at = NOW()
+          SET estado = 'DEVUELTA', comentario_jefatura = $2, updated_at = NOW()
         WHERE id_franja = $1`,
       [idFranja, motivo],
     );

@@ -507,6 +507,29 @@ export function cerrarProgramacion(idPeriodo: string): Promise<EstadoPublicacion
   return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/cerrar`, { method: 'POST' });
 }
 
+/** Franja que impide cerrar el periodo (ni aprobada ni en excepción). */
+export interface PendienteCierre {
+  idFranja: string;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  estado: string;
+  asignatura: string | null;
+  programa: string | null;
+}
+
+export function getPendientesCierre(idPeriodo: string): Promise<PendienteCierre[]> {
+  return pedirJson<PendienteCierre[]>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/pendientes-cierre`, { method: 'GET' });
+}
+
+/** Marca una franja como excepción (no impide cerrar). */
+export function marcarExcepcion(idPeriodo: string, idFranja: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(
+    `${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/excepcion/${encodeURIComponent(idFranja)}`,
+    { method: 'POST', body: JSON.stringify({ excepcion: true }) },
+  );
+}
+
 // ─── Portal del docente (EFDS-1938) ──────────────────────────────────────────
 
 /** Franja tal como la ve el docente en el portal. */
@@ -521,6 +544,8 @@ export interface FranjaPortal {
   numeroGrupo: number | null;
   asignatura: string | null;
   programa: string | null;
+  /** Motivo de la devolución de la jefatura, si la franja está DEVUELTA. */
+  comentarioJefatura: string | null;
 }
 
 const BASE_PORTAL = '/programacion-academica/api/v1/portal-docente';

@@ -117,14 +117,23 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
     await expect(portal().soltar(P1, F['F1'])).rejects.toThrow(/aprobada/i);
   });
 
-  siHayBase('devolver exige comentario y deja PUBLICADA conservando el id_docente', async () => {
+  siHayBase('devolver exige comentario y deja DEVUELTA conservando el id_docente', async () => {
     await expect(jefatura().devolver(JEFA, F['F2'], '   ')).rejects.toThrow(/comentario/i);
     await jefatura().devolver(JEFA, F['F2'], 'Corrige el horario, cruza con tu franja de la mañana.');
     const { rows } = await client!.query(
       `SELECT estado, id_docente, comentario_jefatura FROM "${S}".franja_horaria WHERE id_franja=$1`, [F['F2']]);
-    expect(rows[0].estado).toBe('PUBLICADA');
+    expect(rows[0].estado).toBe('DEVUELTA');               // estado propio, no PUBLICADA
     expect(String(rows[0].id_docente)).toBe(P1);          // sigue siendo suya para corregir
     expect(rows[0].comentario_jefatura).toMatch(/Corrige/);
+  });
+
+  siHayBase('INVARIANTE: ninguna franja PUBLICADA tiene id_docente (por diseño)', async () => {
+    // Lo que el encoding anterior permitía y ahora queda prohibido: una PUBLICADA
+    // con docente. Se afirma sobre TODA la tabla, no sobre el fixture.
+    const { rows } = await client!.query(
+      `SELECT COUNT(*)::int AS n FROM "${S}".franja_horaria
+        WHERE estado = 'PUBLICADA' AND id_docente IS NOT NULL`);
+    expect(rows[0].n).toBe(0);
   });
 
   siHayBase('una devolucion pendiente bloquea aprobar el resto de ese docente', async () => {
