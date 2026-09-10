@@ -2585,12 +2585,11 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
                             <span
                               className="px-1.5 py-0.5 rounded text-[9px] font-bold"
                               style={{
-                                backgroundColor: item.etapaActual === 'INHIBITORIO' ? '#E5E7EB' : '#FEE2E2',
-                                color: item.etapaActual === 'INHIBITORIO' ? '#6B7280' : '#DC2626'
+                                backgroundColor: item.estadoActual === 'CERRADO' ? '#FEF3C7' : '#FEE2E2',
+                                color: item.estadoActual === 'CERRADO' ? '#92400E' : '#DC2626'
                               }}
                             >
-                              {item.etapaActual === 'INHIBITORIO' ? 'Inhibido' : 'Archivo'}
-                              
+                              {item.estadoActual === 'CERRADO' ? 'Cerrado' : 'Archivo'}
                             </span>
                           )}
                         </div>
@@ -2667,12 +2666,11 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
                       <span
                         className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold"
                         style={{
-                          backgroundColor: item.etapaActual === 'INHIBITORIO' ? '#E5E7EB' : '#FEE2E2',
-                          color: item.etapaActual === 'INHIBITORIO' ? '#6B7280' : '#DC2626'
+                          backgroundColor: item.estadoActual === 'CERRADO' ? '#FEF3C7' : '#FEE2E2',
+                          color: item.estadoActual === 'CERRADO' ? '#92400E' : '#DC2626'
                         }}
                       >
-                        {item.etapaActual === 'INHIBITORIO' ? 'Inhibido' : 'Archivo'}
-                        
+                        {item.estadoActual === 'CERRADO' ? 'Cerrado' : 'Archivo'}
                       </span>
                     )}
                     {isNoticia && <span className="text-[11px] text-gray-400">—</span>}
@@ -2706,6 +2704,251 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
                         Apelar
                       </KanbanButtonSecondary>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== COMPONENTE VISTA INHIBITORIOS — WORLD CLASS ====================
+interface VistaInhibitoriosProps {
+  items: Array<any>;
+  onDesarchivar: (item: any) => void;
+  onApelar: (item: any) => void;
+  onVerDetalles: (item: any) => void;
+  isMobile: boolean;
+}
+
+function VistaInhibitorios({ items, onDesarchivar, onApelar, onVerDetalles, isMobile }: VistaInhibitoriosProps) {
+  const [searchInhibitorio, setSearchInhibitorio] = useState('');
+  const [ordenarPor, setOrdenarPor] = useState<'reciente' | 'antiguo'>('reciente');
+
+  // Permisos para restaurar procesos
+  const canRestoreProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_RESTAURAR);
+
+  const canRestoreItem = (item: any): boolean => {
+    return canRestoreProcesos;
+  };
+
+  const itemsFiltrados = items
+    .filter(item => {
+      if (searchInhibitorio) {
+        const term = searchInhibitorio.toLowerCase();
+        const numero = (item.numero || item.numeroProceso || '').toLowerCase();
+        const denunciado = typeof item.denunciado === 'string'
+          ? item.denunciado.toLowerCase()
+          : (item.denunciado?.nombre || '').toLowerCase();
+        const hechos = (item.hechos || item.descripcionHechos || '').toLowerCase();
+        return numero.includes(term) || denunciado.includes(term) || hechos.includes(term);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const fa = new Date(a.fechaInhibitorio || a.fechaArchivo || a.fechaCreacion || 0).getTime();
+      const fb = new Date(b.fechaInhibitorio || b.fechaArchivo || b.fechaCreacion || 0).getTime();
+      return ordenarPor === 'reciente' ? fb - fa : fa - fb;
+    });
+
+  return (
+    <div className="flex-1 overflow-hidden flex flex-col px-4 pb-4">
+      {/* Header con estadísticas */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center bg-amber-50 border border-amber-200"
+            >
+              <Ban className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-gray-900">Registro de Inhibitorios</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  Art. 209 Ley 1952
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {items.length} proceso{items.length !== 1 ? 's' : ''} inhibitorio{items.length !== 1 ? 's' : ''} — Terminación por no configurarse falta disciplinaria o mérito inhibitorio
+              </p>
+            </div>
+          </div>
+
+          {/* Controles de filtro y búsqueda */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Buscador */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={searchInhibitorio}
+                onChange={(e) => setSearchInhibitorio(e.target.value)}
+                placeholder="Buscar inhibitorio..."
+                className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]/20 outline-none transition-all w-52"
+              />
+            </div>
+
+            {/* Orden */}
+            <button
+              onClick={() => setOrdenarPor(prev => prev === 'reciente' ? 'antiguo' : 'reciente')}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-all"
+              title={ordenarPor === 'reciente' ? 'Más recientes primero' : 'Más antiguos primero'}
+            >
+              <History className="w-3 h-3" />
+              {ordenarPor === 'reciente' ? 'Recientes' : 'Antiguos'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de inhibitorios */}
+      <div className="flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+        {itemsFiltrados.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4 border border-amber-100">
+              <Ban className="w-8 h-8 text-amber-600" />
+            </div>
+            <p className="text-sm font-bold text-gray-700 mb-1">
+              {items.length === 0 ? 'Sin procesos inhibitorios' : 'Sin resultados de búsqueda'}
+            </p>
+            <p className="text-xs text-gray-400 text-center max-w-sm">
+              {items.length === 0
+                ? 'Los procesos en los que se profiera Auto Inhibitorio aparecerán en este registro especializado para su control y trazabilidad.'
+                : 'Intenta con otros términos de búsqueda (radicado, disciplinable o hechos).'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {/* Cabecera de tabla */}
+            {!isMobile && (
+              <div className="grid grid-cols-[auto_1fr_150px_140px_120px_120px_170px] gap-3 px-4 py-2.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200">
+                <div className="w-8">Tipo</div>
+                <div>Identificación / Detalle</div>
+                <div>Disciplinable</div>
+                <div>Profesional</div>
+                <div>Fecha Inhibitorio</div>
+                <div>Estado</div>
+                <div className="text-center">Acciones</div>
+              </div>
+            )}
+
+            {itemsFiltrados.map((item) => {
+              const numero = item.numero || item.numeroProceso || 'Sin número';
+              const denunciado = typeof item.denunciado === 'string'
+                ? item.denunciado
+                : (item.denunciado?.nombre || 'Sin identificar');
+              const profesional = typeof item.profesionalAsignado === 'string'
+                ? item.profesionalAsignado
+                : (item.profesionalAsignado?.nombre || 'Sin asignar');
+              const fechaInh = item.fechaInhibitorio || item.fechaArchivo || item.fechaCreacion || '—';
+              const hechos = item.hechos || item.descripcionHechos || 'Sin descripción';
+
+              if (isMobile) {
+                return (
+                  <div key={item.id} className="p-3 hover:bg-gray-50/80 transition-colors border-b border-gray-100">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-100 flex-shrink-0">
+                          <Ban className="w-3.5 h-3.5 text-amber-700" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-gray-900">{numero}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">
+                              Inhibitorio
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-gray-500">{denunciado}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-gray-600 line-clamp-2 mb-2">{hechos}</p>
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[10px] text-gray-400">
+                      <span>{fechaInh} · {profesional}</span>
+                      <div className="flex items-center gap-1">
+                        <KanbanButtonTertiary compact onClick={() => onVerDetalles(item)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles" className="!flex-none !w-8" />
+                        {/* {canRestoreItem(item) && (
+                          <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!w-auto !px-2 !py-1.5" />
+                        )}
+                        {canRestoreItem(item) && (
+                          <KanbanButtonTertiary compact onClick={() => onApelar(item)} icon={<Forward className="w-3.5 h-3.5" />} title="Apelar a segunda instancia" className="!flex-none !w-8" />
+                        )} */}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-[auto_1fr_150px_140px_120px_120px_170px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
+                >
+                  {/* Tipo */}
+                  <div className="w-8">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-100 border border-amber-200">
+                      <Ban className="w-3.5 h-3.5 text-amber-700" />
+                    </div>
+                  </div>
+
+                  {/* Identificación / Detalle */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs font-bold text-gray-900 truncate">{numero}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0 bg-amber-100 text-amber-800 border border-amber-200">
+                        Inhibitorio
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 truncate">{hechos}</p>
+                  </div>
+
+                  {/* Denunciado */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <User className="w-3 h-3 text-gray-400" />
+                      </div>
+                      <span className="text-[11px] text-gray-700 truncate">{denunciado}</span>
+                    </div>
+                  </div>
+
+                  {/* Profesional */}
+                  <div className="min-w-0">
+                    <span className="text-[11px] text-gray-600 truncate block">{profesional}</span>
+                  </div>
+
+                  {/* Fecha Inhibitorio */}
+                  <div>
+                    <span className="text-[11px] text-gray-600">{fechaInh}</span>
+                  </div>
+
+                  {/* Estado */}
+                  <div className="min-w-0">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      Inhibido (art. 209)
+                    </span>
+                  </div>
+
+                  {/* Acciones */}
+                  <div className="flex items-center justify-center gap-1">
+                    <KanbanButtonSecondary onClick={() => onVerDetalles(item)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles" className="!text-[10px] !px-2 !py-1">
+                      Ver
+                    </KanbanButtonSecondary>
+                    {/* {canRestoreItem(item) && (
+                      <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!text-[10px] !px-2 !py-1">
+                        Restaurar
+                      </KanbanButtonSemantic>
+                    )}
+                    {canRestoreItem(item) && (
+                      <KanbanButtonSecondary onClick={() => onApelar(item)} icon={<Forward className="w-3.5 h-3.5" />} title="Apelar a segunda instancia" className="!text-[10px] !px-2 !py-1">
+                        Apelar
+                      </KanbanButtonSecondary>
+                    )} */}
                   </div>
                 </div>
               );
@@ -3211,7 +3454,7 @@ export function DashboardKanbanOperativo({
   const [showPanelEstados, setShowPanelEstados] = useState(false);
 
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados' | 'inhibitorios'>('kanban');
 
   // ✅ Auto-switch from kanban to lista on mobile
   useEffect(() => {
@@ -3309,6 +3552,8 @@ export function DashboardKanbanOperativo({
 
   // ✅ Archivados: inician vacíos, se llenan al archivar noticias/procesos (persistido en Supabase vía update de estado)
   const [itemsArchivados, setItemsArchivados] = useState<Array<Item & { fechaArchivo: string; motivoArchivo: string }>>([]);
+  // ✅ Inhibitorios: procesos terminados por auto inhibitorio (art. 209)
+  const [itemsInhibitorios, setItemsInhibitorios] = useState<Array<Item & { fechaInhibitorio?: string; motivoInhibitorio?: string }>>([]);
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
@@ -3553,19 +3798,40 @@ export function DashboardKanbanOperativo({
       // Transformar procesos al formato interno
       const procesosTransformados = procesosFiltrados.map(p => toProcesoFromApi(p, etapasConfig));
 
-      // Separar procesos archivados (en etapa 'Archivo' o 'INHIBITORIO') de los activos
+      // Helper para identificar procesos inhibitorios (art. 209)
+      const isProcesoInhibitorio = (p: any): boolean => {
+        const etapa = (p.etapaActual || '').toUpperCase();
+        const estado = (p.estadoActual || p.estado || '').toUpperCase();
+        return etapa === 'INHIBITORIO' || estado === 'INHIBITORIO' || estado === 'INHIBIDO';
+      };
+
+      // Helper para identificar procesos archivados (excluyendo inhibitorios)
+      const isProcesoArchivado = (p: any): boolean => {
+        if (isProcesoInhibitorio(p)) return false;
+        const etapa = (p.etapaActual || '').toUpperCase();
+        const estado = (p.estadoActual || p.estado || '').toUpperCase();
+        return etapa === 'ARCHIVO' || estado === 'ARCHIVADO' || estado === 'CERRADO';
+      };
+
+      // Separar procesos activos, archivados e inhibitorios
       const procesosActivos = procesosTransformados.filter(p =>
-        p.etapaActual !== 'Archivo' && p.etapaActual !== 'INHIBITORIO' && p.estadoActual !== 'ARCHIVADO' && p.estadoActual !== 'CERRADO'
+        !isProcesoInhibitorio(p) && !isProcesoArchivado(p)
       );
-      const procesosArchivados = procesosTransformados.filter(p =>
-        p.etapaActual === 'Archivo' || p.etapaActual === 'INHIBITORIO' || p.estadoActual === 'ARCHIVADO' || p.estadoActual === 'CERRADO'
-      );
+      const procesosArchivados = procesosTransformados.filter(isProcesoArchivado);
+      const procesosInhibitorios = procesosTransformados.filter(isProcesoInhibitorio);
 
       // Transformar procesos archivados al formato de archivados
       const procesosArchivadosTransformados = procesosArchivados.map(p => ({
         ...p,
         fechaArchivo: (p as any).fechaCreacion || new Date().toISOString(),
         motivoArchivo: p.estadoActual === 'CERRADO' ? 'Cerrado - Enviado a Jurídica' : 'Completado - Archivo'
+      }));
+
+      // Transformar procesos inhibitorios al formato de inhibitorios
+      const procesosInhibitoriosTransformados = procesosInhibitorios.map(p => ({
+        ...p,
+        fechaInhibitorio: (p as any).fechaCreacion || new Date().toISOString(),
+        motivoInhibitorio: 'Auto Inhibitorio (art. 209)'
       }));
 
       // Combinar noticias y procesos activos
@@ -3582,9 +3848,11 @@ export function DashboardKanbanOperativo({
 
       console.log('[DashboardKanban] Total items para Kanban:', todosLosItems.length);
       console.log('[DashboardKanban] Total items archivados:', todosLosArchivados.length);
+      console.log('[DashboardKanban] Total items inhibitorios:', procesosInhibitoriosTransformados.length);
 
       setItems(todosLosItems);
       setItemsArchivados(todosLosArchivados as any);
+      setItemsInhibitorios(procesosInhibitoriosTransformados as any);
       setDatosCargados(true);
     } catch (error: any) {
       console.error('Error al cargar datos:', error);
@@ -5066,6 +5334,7 @@ export function DashboardKanbanOperativo({
         } as Proceso,
       ]);
       setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+      setItemsInhibitorios(prev => prev.filter(i => i.id !== item.id));
 
       toast.success('Proceso apelado', {
         id: toastId,
@@ -5093,7 +5362,7 @@ export function DashboardKanbanOperativo({
 
     const item = itemParaRestaurar;
     // Restaurar al flujo activo
-    const { fechaArchivo, motivoArchivo, ...itemRestaurado } = item;
+    const { fechaArchivo, motivoArchivo, fechaInhibitorio, motivoInhibitorio, ...itemRestaurado } = item;
 
     try {
       if (item.tipo === 'noticia') {
@@ -5106,6 +5375,7 @@ export function DashboardKanbanOperativo({
 
       setItems(prev => [...prev, itemRestaurado]);
       setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+      setItemsInhibitorios(prev => prev.filter(i => i.id !== item.id));
 
       toast.success('Restaurado al Flujo Activo', {
         description: `${item.numero || item.numeroProceso} ha sido restaurado y aparecerá nuevamente en el tablero.`,
@@ -5885,6 +6155,32 @@ export function DashboardKanbanOperativo({
       return;
     }
 
+    if (backendStage === 'INHIBITORIO') {
+      const itemInhibitorio = {
+        ...proceso,
+        etapaActual: 'INHIBITORIO',
+        estadoActual: 'INHIBIDO',
+        fechaInhibitorio: new Date().toISOString(),
+        motivoInhibitorio: 'Auto Inhibitorio (art. 209)'
+      };
+      setItems(prev => prev.filter(i => i.id !== proceso.id));
+      setItemsInhibitorios(prev => [itemInhibitorio as any, ...prev]);
+      return;
+    }
+
+    if (backendStage === 'ARCHIVO') {
+      const itemArchivado = {
+        ...proceso,
+        etapaActual: 'Archivo',
+        estadoActual: 'ARCHIVADO',
+        fechaArchivo: new Date().toISOString(),
+        motivoArchivo: 'Completado - Archivo'
+      };
+      setItems(prev => prev.filter(i => i.id !== proceso.id));
+      setItemsArchivados(prev => [itemArchivado as any, ...prev]);
+      return;
+    }
+
     // Actualizar estado local
     setItems(prev => prev.map(i =>
       i.id === proceso.id && i.tipo === 'proceso'
@@ -6021,8 +6317,11 @@ export function DashboardKanbanOperativo({
     return itemMatchesSearch(item, normalizedGlobalQuery);
   });
 
-  // ✅ También filtrar archivados por búsqueda global
+  // ✅ También filtrar archivados e inhibitorios por búsqueda global
   const itemsArchivadosFiltrados = itemsArchivados.filter(item =>
+    itemMatchesSearch(item, normalizedGlobalQuery)
+  );
+  const itemsInhibitoriosFiltrados = itemsInhibitorios.filter(item =>
     itemMatchesSearch(item, normalizedGlobalQuery)
   );
 
@@ -6165,7 +6464,15 @@ export function DashboardKanbanOperativo({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#003DA510' }}>
-                  <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
+                  {tipoVista === 'archivados' ? (
+                    <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
+                  ) : tipoVista === 'inhibitorios' ? (
+                    <Ban className="w-5 h-5 text-amber-700" />
+                  ) : tipoVista === 'lista' ? (
+                    <List className="w-5 h-5" style={{ color: '#003DA5' }} />
+                  ) : (
+                    <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
+                  )}
                 </div>
                 <h2
                   className="font-bold leading-tight truncate tracking-tight"
@@ -6174,7 +6481,13 @@ export function DashboardKanbanOperativo({
                     fontSize: containerWidth < 500 ? '1rem' : containerWidth < 700 ? '1.1rem' : '1.25rem'
                   }}
                 >
-                  Kanban
+                  {tipoVista === 'archivados'
+                    ? 'Archivados'
+                    : tipoVista === 'inhibitorios'
+                      ? 'Inhibitorios'
+                      : tipoVista === 'lista'
+                        ? 'Lista de Procesos'
+                        : 'Kanban'}
                 </h2>
               </div>
             </div>
@@ -6251,42 +6564,104 @@ export function DashboardKanbanOperativo({
                   className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white"
                   style={{ backgroundColor: '#003DA5' }}
                 >
-                  {itemsFiltrados.length + itemsArchivadosFiltrados.length}
+                  {itemsFiltrados.length + itemsArchivadosFiltrados.length + itemsInhibitoriosFiltrados.length}
                 </span>
               )}
             </div>
 
-            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + CTA */}
-            <div className="flex items-center gap-3 flex-shrink-0">
-              {/* Filtro por tipo */}
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
-                {([
-                  { value: 'todos', label: 'Todos' },
-                  { value: 'noticia', label: 'Noticias' },
-                  { value: 'proceso', label: 'Procesos' },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFiltroTipo(opt.value)}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
-                      ? 'bg-white shadow-sm text-gray-900'
-                      : 'text-gray-500 hover:bg-gray-200'
-                      }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + Vistas Separadas + CTA */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              {/* Filtro por tipo (visible en tablero principal y archivados) */}
+              {tipoVista !== 'inhibitorios' && (
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
+                  {([
+                    { value: 'todos', label: 'Todos' },
+                    { value: 'noticia', label: 'Noticias' },
+                    { value: 'proceso', label: 'Procesos' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFiltroTipo(opt.value)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
+                        ? 'bg-white shadow-sm text-gray-900'
+                        : 'text-gray-500 hover:bg-gray-200'
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
+              {/* Vistas Principales: Kanban / Lista */}
               <KanbanViewToggle
                 options={[
                   ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
                   { value: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
-                  { value: 'archivados', icon: <Archive style={{ width: 16, height: 16 }} />, label: 'Archivados', badge: itemsArchivados.length > 0 ? itemsArchivados.length : undefined },
                 ]}
-                current={tipoVista}
+                current={tipoVista === 'kanban' || tipoVista === 'lista' ? tipoVista : ''}
                 onChange={(id) => setTipoVista(id as any)}
               />
+
+              {/* Separador vertical */}
+              <div className="h-5 w-[1px] bg-gray-200" />
+
+              {/* Vistas Especializadas Separadas y Responsive: Archivados e Inhibitorios */}
+              <div className="flex items-center gap-1.5">
+                {/* Botón Archivados */}
+                <button
+                  onClick={() => setTipoVista('archivados')}
+                  className={`relative group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                    tipoVista === 'archivados'
+                      ? 'bg-blue-50 text-[#003DA5] border-[#003DA5]/40 shadow-sm ring-1 ring-[#003DA5]/20 font-bold'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                  title={`Archivados (${itemsArchivados.length})`}
+                >
+                  <Archive className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden md:inline">Archivados</span>
+                  {itemsArchivados.length > 0 && (
+                    <span
+                      className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 leading-none ${
+                        tipoVista === 'archivados' ? 'bg-[#003DA5] text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {itemsArchivados.length}
+                    </span>
+                  )}
+                  {/* Tooltip flotante en responsive / mobile */}
+                  <div className="md:hidden absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-900 text-white text-[11px] font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                    Archivados ({itemsArchivados.length})
+                  </div>
+                </button>
+
+                {/* Botón Inhibitorios */}
+                <button
+                  onClick={() => setTipoVista('inhibitorios')}
+                  className={`relative group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                    tipoVista === 'inhibitorios'
+                      ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-sm ring-1 ring-amber-400/30 font-bold'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                  title={`Inhibitorios (${itemsInhibitorios.length})`}
+                >
+                  <Ban className="w-4 h-4 flex-shrink-0 text-amber-700" />
+                  <span className="hidden md:inline">Inhibitorios</span>
+                  {itemsInhibitorios.length > 0 && (
+                    <span
+                      className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 leading-none ${
+                        tipoVista === 'inhibitorios' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {itemsInhibitorios.length}
+                    </span>
+                  )}
+                  {/* Tooltip flotante en responsive / mobile */}
+                  <div className="md:hidden absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-900 text-white text-[11px] font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                    Inhibitorios ({itemsInhibitorios.length})
+                  </div>
+                </button>
+              </div>
 
               {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
                 <KanbanToolbarCTA
@@ -6567,11 +6942,21 @@ export function DashboardKanbanOperativo({
             onApelar={handleApelarArchivado}
             onVerDetalles={(item) => {
               setItemSeleccionado(item);
-              if (item.tipo === 'noticia') {
-                setModalActivo('ver-detalles');
-              } else {
-                setModalActivo('ver-detalles');
-              }
+              setModalActivo('ver-detalles');
+            }}
+            isMobile={isMobile}
+          />
+        )}
+
+        {/* ═══ Vista Inhibitorios ═══ */}
+        {tipoVista === 'inhibitorios' && (
+          <VistaInhibitorios
+            items={itemsInhibitoriosFiltrados}
+            onDesarchivar={handleDesarchivar}
+            onApelar={handleApelarArchivado}
+            onVerDetalles={(item) => {
+              setItemSeleccionado(item);
+              setModalActivo('ver-detalles');
             }}
             isMobile={isMobile}
           />
@@ -7708,7 +8093,7 @@ export function DashboardKanbanOperativo({
                         <div className="bg-white rounded p-3 space-y-1">
                           <p className="text-sm"><strong>Tipo:</strong> {itemParaRestaurar.tipo === 'noticia' ? 'Noticia' : 'Proceso'}</p>
                           <p className="text-sm"><strong>Número:</strong> {itemParaRestaurar.numero || itemParaRestaurar.numeroProceso}</p>
-                          <p className="text-sm"><strong>Estado:</strong> Archivado</p>
+                          <p className="text-sm"><strong>Estado:</strong> {itemParaRestaurar.etapaActual === 'INHIBITORIO' || itemParaRestaurar.estadoActual === 'INHIBIDO' ? 'Inhibitorio (art. 209)' : 'Archivado'}</p>
                         </div>
                       </div>
                     </div>
