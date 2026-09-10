@@ -3,7 +3,7 @@ import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 
 import {
   getOfertas, getConsumoPorOferta, crearPeriodo, activarPeriodo,
-  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
+  getEstadoPublicacion, publicarProgramacion, retirarProgramacion, cerrarProgramacion,
   type Oferta, type AcumuladoDocente, type EstadoPublicacion,
 } from '../services/api/catalogoApi';
 
@@ -79,6 +79,21 @@ export function GestionOfertas() {
       setPubs((prev) => ({ ...prev, [id]: e }));
     } catch (err: any) {
       setAvisoPub(err?.message || 'No se pudo retirar la publicación.');
+    } finally {
+      setPubOcupado(null);
+    }
+  };
+
+  // NUEVA-5b (EFDS-1941) — Cerrar el periodo. Al cerrarse queda inmutable, así
+  // que se recarga para que la tarjeta muestre el estado 'cerrado'.
+  const cerrar = async (id: string) => {
+    setAvisoPub('');
+    setPubOcupado(id);
+    try {
+      await cerrarProgramacion(id);
+      await recargar();
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo cerrar el periodo.');
     } finally {
       setPubOcupado(null);
     }
@@ -195,13 +210,15 @@ export function GestionOfertas() {
                 const publicado = p.publicada > 0 || p.tomada > 0;
                 return (
                   <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
                       <span className="font-semibold text-slate-600">Programación:</span>
                       <span>{p.programado} programadas</span>
                       <span className="text-emerald-600">{p.publicada} publicadas</span>
                       <span className="text-[#003DA5]">{p.tomada} tomadas</span>
+                      <span className="text-emerald-700 font-semibold">{p.aprobada} aprobadas</span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    {o.estado !== 'cerrado' && (
+                    <div className="flex items-center gap-2 flex-wrap">
                       {!publicado ? (
                         <button type="button" disabled={ocupado || p.total === 0}
                           onClick={() => publicar(o.idPeriodo)}
@@ -219,7 +236,16 @@ export function GestionOfertas() {
                           </button>
                         </>
                       )}
+                      {/* Cerrar: el backend exige todo aprobado o en excepción y lo
+                          rechaza verbatim si algo queda pendiente. */}
+                      <button type="button" disabled={ocupado}
+                        onClick={() => cerrar(o.idPeriodo)}
+                        title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franja(s) sin aprobar` : 'Cerrar el periodo'}
+                        className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
+                        {ocupado ? 'Cerrando…' : 'Cerrar periodo'}
+                      </button>
                     </div>
+                    )}
                   </div>
                 );
               })()}

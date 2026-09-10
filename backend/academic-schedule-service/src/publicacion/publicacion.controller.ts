@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
@@ -57,5 +57,24 @@ export class PublicacionController {
   async retirar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.publicacion.retirar(idPeriodo) };
+  }
+
+  /** POST /publicaciones/:idPeriodo/cerrar — cierra si todo está aprobado o en excepción. */
+  @Post(':idPeriodo/cerrar')
+  async cerrar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
+    await this.exigirAdministracion(req);
+    return { success: true, data: await this.publicacion.cerrar(idPeriodo) };
+  }
+
+  /** POST /publicaciones/:idPeriodo/excepcion/:idFranja — marca/desmarca excepción. */
+  @Post(':idPeriodo/excepcion/:idFranja')
+  async excepcion(
+    @Req() req: Request,
+    @Param('idPeriodo') idPeriodo: string,
+    @Param('idFranja') idFranja: string,
+    @Body() body: { excepcion?: boolean },
+  ) {
+    await this.exigirAdministracion(req);
+    return { success: true, data: await this.publicacion.marcarExcepcion(idPeriodo, idFranja, body?.excepcion !== false) };
   }
 }

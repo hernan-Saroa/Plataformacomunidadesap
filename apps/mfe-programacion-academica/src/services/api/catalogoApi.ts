@@ -480,7 +480,10 @@ export interface EstadoPublicacion {
   programado: number;
   publicada: number;
   tomada: number;
+  aprobada: number;
   total: number;
+  /** Franjas que impiden cerrar: ni aprobadas ni en excepción (EFDS-1941). */
+  pendientesCierre: number;
 }
 
 const BASE_PUBLICACIONES = '/programacion-academica/api/v1/publicaciones';
@@ -497,6 +500,11 @@ export function publicarProgramacion(idPeriodo: string): Promise<EstadoPublicaci
 /** Retira la publicación: solo si nadie tomó franjas (PUBLICADA → PROGRAMADO). */
 export function retirarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
   return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/retirar`, { method: 'POST' });
+}
+
+/** Cierra el periodo: exige todo aprobado o en excepción; queda inmutable (EFDS-1941). */
+export function cerrarProgramacion(idPeriodo: string): Promise<EstadoPublicacion> {
+  return pedirJson<EstadoPublicacion>(`${BASE_PUBLICACIONES}/${encodeURIComponent(idPeriodo)}/cerrar`, { method: 'POST' });
 }
 
 // ─── Portal del docente (EFDS-1938) ──────────────────────────────────────────

@@ -45,7 +45,10 @@ export interface EstadoPublicacion {
   programado: number;
   publicada: number;
   tomada: number;
+  aprobada: number;
   total: number;
+  /** Franjas que impiden cerrar: ni APROBADA ni excepción (EFDS-1941). */
+  pendientesCierre: number;
 }
 
 @Injectable()
@@ -121,7 +124,20 @@ export class PublicacionService {
     const programado = por['PROGRAMADO'] ?? 0;
     const publicada = por['PUBLICADA'] ?? 0;
     const tomada = por['TOMADA'] ?? 0;
-    return { idPeriodo, programado, publicada, tomada, total: programado + publicada + tomada };
+    const aprobada = por['APROBADA'] ?? 0;
+
+    // Lo que impide cerrar: ni APROBADA ni marcada como excepción.
+    const pend = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS n
+         FROM "academic-schedule".franja_horaria f
+         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
+        WHERE g.id_periodo = $1 AND f.estado <> 'APROBADA' AND f.excepcion = false`, [idPeriodo]);
+
+    return {
+      idPeriodo, programado, publicada, tomada, aprobada,
+      total: programado + publicada + tomada + aprobada,
+      pendientesCierre: pend[0].n,
+    };
   }
 
   /**
@@ -185,6 +201,56 @@ export class PublicacionService {
           AND g.id_periodo = $1
           AND f.estado = 'PUBLICADA'`, [idPeriodo]);
 
+    return this.estado(idPeriodo);
+  }
+
+  /**
+   * Marca (o desmarca) una franja como EXCEPCIÓN: no pasará por aprobación pero
+   * no debe impedir el cierre (EFDS-1941). Conserva su estado real.
+   */
+  async marcarExcepcion(idPeriodo: string, idFranja: string, excepcion: boolean): Promise<EstadoPublicacion> {
+    await this.exigirPeriodo(idPeriodo);
+    const r = await this.dataSource.query(
+      `UPDATE "academic-schedule".franja_horaria f
+          SET excepcion = $3, updated_at = NOW()
+         FROM "academic-schedule".grupo g
+        WHERE g.id_grupo = f.id_grupo
+          AND f.id_franja = $2
+          AND g.id_periodo = $1
+      RETURNING f.id_franja`,
+      [idPeriodo, idFranja, excepcion],
+    );
+    if (!r.length) throw new NotFoundException('La franja no pertenece a este periodo.');
+    return this.estado(idPeriodo);
+  }
+
+  /**
+   * Cierra el periodo: exige que TODA su franja esté APROBADA o marcada como
+   * excepción. Un periodo cerrado es inmutable (ofertas.activar ya rechaza
+   * reactivarlo); aquí se impide re-cerrar.
+   *
+   * ⚠️ NUEVA-5b: depende de la aprobación de NUEVA-3 (EFDS-1939). Por eso cerrar
+   * no vivía en ofertas.crear/activar: hasta ahora no tenía de qué depender.
+   */
+  async cerrar(idPeriodo: string): Promise<EstadoPublicacion> {
+    const p = await this.dataSource.query(
+      `SELECT estado FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]);
+    if (!p.length) throw new NotFoundException('El periodo no existe.');
+    if (p[0].estado === 'cerrado') {
+      throw new ConflictException('El periodo ya está cerrado y es inmutable.');
+    }
+
+    const est = await this.estado(idPeriodo);
+    if (est.pendientesCierre > 0) {
+      throw new ConflictException(
+        `No se puede cerrar: ${est.pendientesCierre} franja(s) no están aprobadas ni marcadas como excepción.`,
+      );
+    }
+
+    await this.dataSource.query(
+      `UPDATE "academic-schedule".periodo_programacion
+          SET estado = 'cerrado', updated_at = NOW()
+        WHERE id_periodo = $1`, [idPeriodo]);
     return this.estado(idPeriodo);
   }
 }
