@@ -525,7 +525,7 @@ export function FormularioAuditoriaUnificado({
   const [seccionalesDisponibles, setSeccionalesDisponibles] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
   const [cargandoSeccionales, setCargandoSeccionales] = useState(false);
 
-  const TOTAL_PASOS = mode === 'create' ? 2 : 9;
+  const TOTAL_PASOS = mode === 'create' ? 3 : 9;
   
   // Precargar todas las personas disponibles al abrir el formulario
   useEffect(() => {
@@ -1048,6 +1048,19 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
+    // Equipo Auditor (Paso 2 en creación): la auditoría no puede quedar sin
+    // responsables, requisito para la trazabilidad del ciclo OCI (EFDS-1921).
+    if (mode === 'create') {
+      const tieneLider = Boolean(formData.auditorLider && formData.auditorLider !== 'Por asignar');
+      const tieneEquipo = (formData.equipoAuditores || []).filter(Boolean).length > 0;
+
+      if (!tieneLider && !tieneEquipo) {
+        toast.error('Debe asignar al menos un auditor a la auditoría');
+        setPasoActual(2);
+        return;
+      }
+    }
+
     // Validaciones de Responsable del Área (Paso 2) sólo aplican en modo edición si tiene permiso
     if (mode === 'edit' && puedeEditarPaso(2)) {
       const resp = formData.responsableArea;
@@ -1074,7 +1087,7 @@ export function FormularioAuditoriaUnificado({
     }
 
     // Validar Etapa 1: Planeación (obligatoria si puede editar programación)
-    const pasoProg = mode === 'create' ? 2 : 4;
+    const pasoProg = mode === 'create' ? 3 : 4;
     const puedeEditarProgramacion = mode === 'create' || puedeEditarPaso(4);
 
     // Una auditoría Especial puede iniciar en Ejecución o Comunicación: no se le
@@ -1257,7 +1270,7 @@ export function FormularioAuditoriaUnificado({
   };
 
   const handleSiguiente = () => {
-    const pasoProg = mode === 'create' ? 2 : 4;
+    const pasoProg = mode === 'create' ? 3 : 4;
     if (pasoActual >= pasoProg && disponibilidadEquipoAuditor?.disponible === false) {
       toast.error('Equipo auditor adicional no disponible', {
         description: disponibilidadEquipoAuditor.mensaje || 'Ajuste las fechas o el equipo adicional antes de continuar.',
@@ -1300,6 +1313,16 @@ export function FormularioAuditoriaUnificado({
             />
           );
         case 2:
+          return (
+            <Paso3EquipoAuditor
+              formData={formData}
+              onChange={handleChange}
+              auditores={auditoresDisponibles}
+              disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
+              validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+            />
+          );
+        case 3:
           return (
             <Paso4Programacion
               formData={formData}
@@ -1432,7 +1455,8 @@ export function FormularioAuditoriaUnificado({
   const pasos = mode === 'create'
     ? [
         { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
-        { numero: 2, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
+        { numero: 2, titulo: 'Equipo Auditor', icono: <Users className="w-4 h-4" /> },
+        { numero: 3, titulo: 'Programación', icono: <Calendar className="w-4 h-4" /> },
       ]
     : [
         { numero: 1, titulo: 'Información Básica', icono: <FileText className="w-4 h-4" /> },
