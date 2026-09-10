@@ -1054,7 +1054,8 @@ export class AutoService {
     );
 
     // Marcar el auto como NOTIFICADO para que no reaparezca en la lista de borradores
-    await this.autoRepository.save({ ...auto, estado: AutoStatus.NOTIFICADO });
+    await this.autoRepository.update(id, { estado: AutoStatus.NOTIFICADO });
+    auto.estado = AutoStatus.NOTIFICADO;
 
     // Registrar actuación de envío a jurídica
     await this.actuacionesRepository.save({

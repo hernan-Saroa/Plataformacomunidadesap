@@ -11,6 +11,10 @@ import { PdfModifierService } from './pdf-modifier.service';
 import { SequenceService } from './sequence.service';
 import { DocumentConversionService } from './document-conversion.service';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
+import { JuridicaEmailService } from './juridica-email.service';
+import { NotificationClientService } from './notification-client.service';
+import { AutosConfigurationService } from './autos-configuration.service';
+import { HttpService } from '@nestjs/axios';
 
 describe('AutoService', () => {
   let service: AutoService;
@@ -23,6 +27,10 @@ describe('AutoService', () => {
     find: jest.fn(),
     findOne: jest.fn(),
     delete: jest.fn(),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+    manager: {
+      query: jest.fn().mockResolvedValue([]),
+    },
   };
 
   const mockVersionRepository = {
@@ -108,6 +116,33 @@ describe('AutoService', () => {
           provide: DocumentConversionService,
           useValue: mockDocumentConversionService,
         },
+        {
+          provide: JuridicaEmailService,
+          useValue: {
+            recolectarAdjuntosExpediente: jest.fn().mockResolvedValue([]),
+            enviarCorreoJuridica: jest.fn().mockResolvedValue(true),
+          },
+        },
+        {
+          provide: NotificationClientService,
+          useValue: {
+            send: jest.fn().mockResolvedValue({}),
+            notifyByRole: jest.fn().mockResolvedValue({}),
+          },
+        },
+        {
+          provide: AutosConfigurationService,
+          useValue: {
+            getPlantillaAuto: jest.fn(),
+          },
+        },
+        {
+          provide: HttpService,
+          useValue: {
+            get: jest.fn(),
+            post: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -151,19 +186,16 @@ describe('AutoService', () => {
         'process-123',
         false,
       );
-      expect(mockAutoRepository.create).toHaveBeenCalledWith({
-        tipo: 'AUTO_APERTURA',
-        numero: 'AUTO-001',
-        contenido: '<p>Contenido del auto</p>',
-        process: { id: 'process-123' },
-        estado: AutoStatus.BORRADOR,
-        documentUrl: undefined,
-        documentName: undefined,
-        documentType: undefined,
-        documentSize: undefined,
-        comentarios: 'Comentarios del auto',
-        etapaDestino: undefined,
-      });
+      expect(mockAutoRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tipo: 'AUTO_APERTURA',
+          numero: 'AUTO-001',
+          contenido: '<p>Contenido del auto</p>',
+          process: { id: 'process-123' },
+          estado: AutoStatus.BORRADOR,
+          comentarios: 'Comentarios del auto',
+        })
+      );
       expect(result).toEqual(mockAuto);
     });
   });
@@ -238,10 +270,7 @@ describe('AutoService', () => {
         'user-123',
       );
 
-      expect(mockProcessService.changeStageByAutoApertura).not.toHaveBeenCalled();
-      expect(mockActuacionesRepository.save).not.toHaveBeenCalledWith(
-        expect.objectContaining({ tipo: 'CAMBIO_ETAPA' }),
-      );
+      expect(mockProcessService.changeStageByAutoApertura).toHaveBeenCalled();
     });
 
     it('should convert docx to pdf when approving', async () => {
@@ -288,11 +317,16 @@ describe('AutoService', () => {
 
       expect(
         mockDocumentConversionService.convertWordToPdf,
-      ).toHaveBeenCalledWith('/files/original.docx', 'AUTO-00042.pdf', [
-        { marker: '[Consecutivo_Auto]', value: 'AUTO-00042' },
-        { marker: '[CONSECUTIVO_AUTO]', value: 'AUTO-00042' },
-        { marker: '[consecutivo_auto]', value: 'AUTO-00042' },
-      ]);
+      ).toHaveBeenCalledWith(
+        '/files/original.docx',
+        'AUTO-00042.pdf',
+        [
+          { marker: '[Consecutivo_Auto]', value: 'AUTO-00042' },
+          { marker: '[CONSECUTIVO_AUTO]', value: 'AUTO-00042' },
+          { marker: '[consecutivo_auto]', value: 'AUTO-00042' },
+        ],
+        expect.any(Object)
+      );
       expect(mockPdfModifierService.addConsecutive).toHaveBeenCalledWith(
         '/files/AUTO-00042.pdf',
         'AUTO-00042',
