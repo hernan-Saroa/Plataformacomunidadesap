@@ -620,6 +620,9 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                       <FloatingField label="Territorial" required error={fieldErrors.territorialNombre}>
                         <select className="wizard-field wizard-select" style={fieldStyle} value={form.territorialNombre} onChange={set('territorialNombre')} aria-invalid={Boolean(fieldErrors.territorialNombre)}>
                           <option value="">Seleccionar...</option>
+                          {docente && form.territorialNombre && !TERRITORIALES.includes(form.territorialNombre) && (
+                            <option value={form.territorialNombre}>{form.territorialNombre} (reportada)</option>
+                          )}
                           {TERRITORIALES.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </FloatingField>
@@ -782,8 +785,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Teléfono" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Teléfono / Celular" error={fieldErrors.telefono} hint="Entre 7 y 15 dígitos; no admite letras ni símbolos.">
-                        <input className="wizard-field" style={fieldStyle} value={form.telefono} onChange={(e) => setValue('telefono', sanitizeManualPhone(e.target.value))} placeholder="Ej: 3001234567" inputMode="numeric" maxLength={15} aria-invalid={Boolean(fieldErrors.telefono)} />
+                      <FloatingField label="Teléfono / Celular" error={fieldErrors.telefono} hint="Cada número debe tener entre 7 y 15 dígitos. Separe varios con un guion.">
+                        <input className="wizard-field" style={fieldStyle} value={form.telefono} onChange={(e) => setValue('telefono', sanitizeManualPhone(e.target.value))} placeholder="Ej: 3106791787 - 6723168" inputMode="tel" maxLength={255} aria-invalid={Boolean(fieldErrors.telefono)} />
                       </FloatingField>
                     </div>
                   </div>

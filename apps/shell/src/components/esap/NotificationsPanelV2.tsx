@@ -18,7 +18,8 @@ import {
   TrendingUp,
   AlertTriangle,
   Info,
-  Star
+  Star,
+  MailCheck
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -208,7 +209,8 @@ export function NotificationsPanelV2({
       Settings,
       Bell,
       AlertTriangle,
-      Info
+      Info,
+      MailCheck
     };
     return icons[iconName] || Bell;
   };

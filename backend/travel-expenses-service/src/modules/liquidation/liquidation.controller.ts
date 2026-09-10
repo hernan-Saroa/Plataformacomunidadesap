@@ -20,7 +20,7 @@ export class LiquidationController {
   constructor(private readonly liquidationService: LiquidationService) {}
 
   @Post('calculate')
-  @Permissions('travel_expenses:read')
+  @Permissions('travel_expenses:create_request')
   @ApiOperation({ summary: 'Calcula la autoliquidación de viáticos' })
   @ApiResponse({
     status: 200,

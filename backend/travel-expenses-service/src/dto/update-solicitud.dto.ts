@@ -67,6 +67,16 @@ export class UpdateSolicitudDto {
   diasComision?: number;
 
   @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  salarioBasico?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  costoEstimadoTiquete?: number;
+
+  @IsOptional()
   @IsString()
   @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
   tipoComision?: string;

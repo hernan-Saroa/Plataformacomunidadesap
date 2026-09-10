@@ -1,3 +1,6 @@
+import { assertRundEvidenceData } from './rund-evidence-data';
+import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
+import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
@@ -12,6 +15,8 @@ import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
 import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
 import { recordRundAccess } from './rund-access-audit';
+import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
+import { capturarDatosCarga, fechaCivilPersistencia } from './rund-carga-original';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -45,6 +50,8 @@ type BulkSupport = {
 };
 
 type UpsertDocenteOptions = {
+  bulkImport?: boolean;
+  preserveTerritorial?: boolean;
   rejectExisting?: boolean;
   outerManager?: any;
   relaxValidation?: boolean;
@@ -80,6 +87,12 @@ function firstNonEmpty(...values: any[]): string | null {
 function normalizeLookupText(value: any): string {
   const text = toCleanString(value) || '';
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
+
+// Solo se invoca con expresiones SQL constantes. Unifica etiquetas informativas
+// y catálogo para filtrar RUND, sin cambiar los IDs usados por PTA.
+function territorialLookupSql(expression: string): string {
+  return `REPLACE(REGEXP_REPLACE(LOWER(TRANSLATE(COALESCE(${expression}, ''), 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNaeiouun')), '[^a-z0-9]', '', 'g'), 'nortedesantander', 'nortesantander')`;
 }
 
 /**
@@ -164,17 +177,12 @@ function extractFirstEmail(value: any): string | null {
   return match ? match[0].toLowerCase() : null;
 }
 
-function normalizePhoneForAuth(value: any): string | null {
-  const text = toCleanString(value);
-  if (!text) return null;
-  const candidates = text.match(/\+?\d[\d\s().-]{5,}\d/g) || [];
-  const normalizedCandidates = candidates
-    .map((candidate) => candidate.replace(/[^\d+]/g, ''))
-    .filter(Boolean);
-  const preferred = normalizedCandidates.find((candidate) => candidate.replace(/\D/g, '').length >= 10)
-    || normalizedCandidates[0]
-    || text.replace(/[^\d+]/g, '');
-  return (preferred || text.replace(/\s+/g, ' ').trim()).slice(0, 20);
+export function normalizePhoneForAuth(value: any, preserveImportedText = false): string | null {
+  const normalized = normalizeRundPhones(value);
+  // Bulk files may include extensions or location notes. Preserve them for review.
+  if (normalized === null && preserveImportedText && String(value).trim().length <= RUND_PHONE_MAX_LENGTH) return String(value).trim();
+  if (normalized === null) throw new BadRequestException({ message: RUND_PHONE_ERROR, columna: 'TELEFONO', valorEsperado: RUND_PHONE_ERROR });
+  return normalized || null;
 }
 
 // â”€â”€â”€ dedican / vinculacion codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -312,6 +320,9 @@ const TERRITORIAL_ALIASES: Record<string, string[]> = Object.fromEntries(
 function findTerritorialMatch(territoriales: AuthSeccionalTerritorial[], rawValue: any): AuthSeccionalTerritorial | null {
   const lookup = normalizeLookupText(rawValue);
   if (!lookup) return null;
+  if (lookup === 'nortesantander') {
+    return territoriales.find((t) => normalizeLookupText(t.nombre) === 'nortedesantander') || null;
+  }
   const exact = territoriales.find((t) => normalizeLookupText(t.nombre) === lookup);
   if (exact) return exact;
   const aliasEntry = Object.entries(TERRITORIAL_ALIASES).find(([, aliases]) => aliases.includes(lookup));
@@ -673,8 +684,8 @@ export function validateManualBancoDocentePayload(
       && rawAlternativeEmail.toLowerCase() === rawInstitutionalEmail.toLowerCase()) {
       fail('El correo personal debe ser diferente del institucional.', 'CORREO_PERSONAL', rawAlternativeEmail, 'Un correo diferente del institucional');
     }
-    if (rawPhone && !/^\d{7,15}$/.test(rawPhone)) {
-      fail('El telefono o celular debe contener entre 7 y 15 digitos.', 'TELEFONO', rawPhone, 'Solo numeros, entre 7 y 15 digitos');
+    if (rawPhone && normalizeRundPhones(rawPhone) === null) {
+      fail(RUND_PHONE_ERROR, 'TELEFONO', rawPhone, RUND_PHONE_ERROR);
     }
     if (rawHours !== undefined && rawHours !== null && rawHours !== '' && !/^\d+$/.test(String(rawHours))) {
       fail('Las horas PTA deben ser un numero entero.', 'HORAS_PTA', rawHours, 'Numero entero entre 0 y 2000');
@@ -690,8 +701,8 @@ export function validateManualBancoDocentePayload(
     }
   }
 
-  if (payload.telefono && !/^\d{7,15}$/.test(String(payload.telefono))) {
-    fail('El telefono o celular debe contener entre 7 y 15 digitos.', 'TELEFONO', payload.telefono, 'Solo numeros, entre 7 y 15 digitos');
+  if (payload.telefono && normalizeRundPhones(payload.telefono) === null) {
+    fail(RUND_PHONE_ERROR, 'TELEFONO', payload.telefono, RUND_PHONE_ERROR);
   }
   if (!isSupportedTipoVinculacion(payload.tipoVinculacion)) {
     fail('El tipo de vinculacion no corresponde al catalogo RUND.', 'VINCULACION', payload.tipoVinculacion, 'Vinculacion valida');
@@ -764,7 +775,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
   const nombreCompleto = [persona?.primer_nombre, persona?.segundo_nombre, persona?.primer_apellido, persona?.segundo_apellido].filter(Boolean).join(' ').trim() || usuario?.nombre || 'Sin nombre';
 
   const genUpper = (persona?.genero || '').toUpperCase();
-  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
 
   return {
     id: docente.id,
@@ -785,7 +796,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     dedicacion: getDedicacionLabel(docente.dedicacion, docente.dedicacionDisplay),
     dedicacion_codigo: docente.dedicacion,
     dedicacion_horas_semana: docente.dedicacionHorasSemana ?? getHorasSemanalesFromDedicacion(docente.dedicacion),
-    territorial: (docente as any).territorial?.nombre ?? null,
+    territorial: docente.territorialReportada || (docente as any).territorial?.nombre || null,
     territorial_id: docente.territorialId,
     territorial_codigo: (docente as any).territorial?.codigo ?? null,
     sede: (docente as any).sede?.nombre ?? null,
@@ -845,7 +856,7 @@ function buildAuthBancoDocenteResponse(row: any) {
   const email = row.email || row.username || null;
 
   const genUpper = (row.genero || '').toUpperCase();
-  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
 
   return {
     id: row.docente_id || row.usuario_id,
@@ -868,6 +879,8 @@ function buildAuthBancoDocenteResponse(row: any) {
     dedicacion_codigo: dedicacionCodigo,
     dedicacion_horas_semana: row.dedicacion_horas_semana ?? getHorasSemanalesFromDedicacion(dedicacionCodigo || row.dedicacion),
     territorial: row.territorial || row.auth_territorial || null,
+    territorial_reportada: row.territorial_reportada || null,
+    territorial_catalogo: row.territorial_catalogo || null,
     territorial_id: row.territorial_id || row.auth_territorial_id || null,
     territorial_codigo: row.territorial_codigo || row.auth_territorial_codigo || null,
     sede: row.sede || row.auth_sede || null,
@@ -904,6 +917,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     email,
     activo: row.activo_efectivo ?? row.activo,
     roles: row.roles || ['DOCENTE'],
+    periodo_carga: row.periodo_carga || row.periodoCarga || null,
     period_carga: row.periodo_carga || row.periodoCarga || null,
     periodoCarga: row.periodo_carga || row.periodoCarga || null,
     observaciones: row.observaciones ?? null,
@@ -945,7 +959,9 @@ export class BancoDocentesService implements OnModuleInit {
         ALTER TABLE academic_work_plan."Docente"
           ADD COLUMN IF NOT EXISTS "sexoBiologico" TEXT,
           ADD COLUMN IF NOT EXISTS "dedicacionHorasSemana" INTEGER,
-          ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT
+          ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT,
+          ADD COLUMN IF NOT EXISTS "territorialReportada" TEXT,
+          ADD COLUMN IF NOT EXISTS "datosCargaMasiva" JSONB
       `);
       await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
       await this.dataSource.query(`
@@ -1124,7 +1140,9 @@ export class BancoDocentesService implements OnModuleInit {
           d."dedicacionDisplay" AS dedicacion,
           d."dedicacionHorasSemana" AS dedicacion_horas_semana,
           COALESCE(d."territorialId", p.id_seccional::text) AS territorial_id,
-          COALESCE(doc_sec.nom_seccional, sec.nom_seccional) AS territorial,
+          COALESCE(NULLIF(BTRIM(d."territorialReportada"), ''), doc_sec.nom_seccional, sec.nom_seccional) AS territorial,
+          d."territorialReportada" AS territorial_reportada,
+          doc_sec.nom_seccional AS territorial_catalogo,
           COALESCE(doc_sec.cod_seccional, sec.cod_seccional) AS territorial_codigo,
           COALESCE(d."sedeId", p.id_sede::text) AS sede_id,
           COALESCE(doc_sede.nom_sede, sede.nom_sede) AS sede,
@@ -1197,6 +1215,11 @@ export class BancoDocentesService implements OnModuleInit {
         OR territorial_id::text = $${idx}
         OR auth_territorial ILIKE $${idx}
         OR territorial ILIKE $${idx}
+        OR EXISTS (
+          SELECT 1 FROM auth.seccionales filtro_sec
+          WHERE filtro_sec.id_seccional::text = $${idx}
+            AND ${territorialLookupSql('territorial')} = ${territorialLookupSql('filtro_sec.nom_seccional')}
+        )
       )`);
     }
 
@@ -1324,6 +1347,30 @@ export class BancoDocentesService implements OnModuleInit {
     return buildAuthBancoDocenteResponse(rows[0]);
   }
 
+  /**
+   * REQ-RUND-F002 — Cabezote del perfil docente (solo lectura).
+   * Reutiliza el perfil consolidado y le agrega el canal de origen del
+   * registro, necesario para trazar la procedencia de `ultima_evaluacion`.
+   * El puntaje salarial sale crudo: lo enmascara `protectRundSensitiveData`
+   * en el controlador, igual que el resto de respuestas RUND.
+   */
+  async getPerfilCabezote(id: string, periodoCarga?: string): Promise<RundPerfilCabezote> {
+    const perfil = await this.getById(id, periodoCarga);
+    let canalOrigen: string | null = null;
+    if (perfil?.docente_id) {
+      try {
+        const docente = await this.docenteRepo.findOne({
+          where: { id: String(perfil.docente_id) },
+          select: { canalOrigen: true },
+        });
+        canalOrigen = docente?.canalOrigen ?? null;
+      } catch {
+        // Sin el canal el origen queda como REGISTRO_RUND; el cabezote no se bloquea por esto.
+      }
+    }
+    return buildRundPerfilCabezote({ ...perfil, canal_origen: canalOrigen });
+  }
+
   private async writeAuditWithManager(manager: any, entry: {
     docenteId: string;
     bloque?: string;
@@ -1396,7 +1443,7 @@ export class BancoDocentesService implements OnModuleInit {
       // defecto para no bloquear el autoregistro (GGP la corrige en validación).
       if (options.relaxValidation && territoriales.length > 0) {
         territorial = territoriales.find((t) => normalizeLookupText(t.nombre) === normalizeLookupText('Sede Central')) || territoriales[0];
-      } else {
+      } else if (!options.bulkImport && !options.preserveTerritorial) {
         throw new BadRequestException({
           message: `La territorial "${payload.territorialNombre}" no existe en el catálogo.`,
           columna: 'TERRITORIAL',
@@ -1408,7 +1455,10 @@ export class BancoDocentesService implements OnModuleInit {
 
     const runWithManager = async (manager: any) => {
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
-      const phoneFinal = normalizePhoneForAuth(payload.telefono);
+      const phoneFinal = normalizePhoneForAuth(payload.telefono, options.bulkImport === true);
+      if (options.bulkImport && normalizeRundPhones(payload.telefono) === null) {
+        payload.observaciones = [payload.observaciones, 'Telefono conservado como se reporto en el archivo; requiere revision de formato.'].filter(Boolean).join('. ');
+      }
       const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
       if (!finalFullName) throw new BadRequestException({
         message: `No se pudo construir el nombre del docente ${payload.documentNumber}.`,
@@ -1470,7 +1520,7 @@ export class BancoDocentesService implements OnModuleInit {
         });
       }
 
-      const authSeccionalId = Number(territorial.id);
+      const authSeccionalId = !options.preserveTerritorial && territorial?.id ? Number(territorial.id) : null;
       const authPersonId = authPersona?.id_person || randomUUID();
       const firstName = payload.primer_nombre || splitFullName(finalFullName).primer_nombre || 'Docente';
       const lastName = payload.primer_apellido || splitFullName(finalFullName).primer_apellido || null;
@@ -1505,7 +1555,7 @@ export class BancoDocentesService implements OnModuleInit {
           lastName,
           payload.segundo_apellido,
           gender || 'N',
-          payload.fechaNacimiento,
+          formatDateOnly(payload.fechaNacimiento),
           emailFinal,
           phoneFinal,
           authSeccionalId,
@@ -1571,7 +1621,7 @@ export class BancoDocentesService implements OnModuleInit {
               lastName,
               payload.segundo_apellido,
               gender || authPersona.gen_tercero || 'N',
-              payload.fechaNacimiento || authPersona.fec_nacimiento || null,
+              formatDateOnly(payload.fechaNacimiento || authPersona.fec_nacimiento),
               emailFinal,
               phoneFinal || authPersona.tel_celular || null,
               authSeccionalId,
@@ -1666,7 +1716,9 @@ export class BancoDocentesService implements OnModuleInit {
 
       const docenteData: Partial<DocenteEntity> = {
         personaId: authPersonId,
-        territorialId: territorial.id,
+        territorialId: options.preserveTerritorial ? existingDocente?.territorialId || '' : territorial?.id || existingDocente?.territorialId || '',
+        territorialReportada: payload.territorialNombre || existingDocente?.territorialReportada || null,
+        datosCargaMasiva: options.bulkImport ? capturarDatosCarga(rawPayload) : existingDocente?.datosCargaMasiva || null,
         sedeId: existingDocente?.sedeId || null,
         tipoVinculacion: payload.tipoVinculacion,
         dedicacion: payload.dedicacion,
@@ -1695,8 +1747,8 @@ export class BancoDocentesService implements OnModuleInit {
         ultimaEvaluacion: payload.ultimaEvaluacion ?? existingDocente?.ultimaEvaluacion ?? null,
         situacionAdministrativa: payload.situacionAdministrativa ?? existingDocente?.situacionAdministrativa ?? null,
         situacionCategoria: payload.situacionCategoria ?? existingDocente?.situacionCategoria ?? null,
-        fechaInicioVinculacion: payload.fechaInicioVinculacion ?? existingDocente?.fechaInicioVinculacion ?? null,
-        fechaFinVinculacion: payload.fechaFinVinculacion ?? existingDocente?.fechaFinVinculacion ?? null,
+        fechaInicioVinculacion: fechaCivilPersistencia(payload.fechaInicioVinculacion) ?? existingDocente?.fechaInicioVinculacion ?? null,
+        fechaFinVinculacion: fechaCivilPersistencia(payload.fechaFinVinculacion) ?? existingDocente?.fechaFinVinculacion ?? null,
         puntajeSalarial: payload.puntajeSalarial ?? existingDocente?.puntajeSalarial ?? null,
         edadReferencia: payload.edadReferencia ?? existingDocente?.edadReferencia ?? null,
         rangoEdad: payload.rangoEdad ?? existingDocente?.rangoEdad ?? null,
@@ -1720,13 +1772,15 @@ export class BancoDocentesService implements OnModuleInit {
         let hasChanges = false;
         const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
         
+        fieldsToCheck.push('territorialReportada', 'datosCargaMasiva');
         for (const field of fieldsToCheck) {
           const newVal = docenteData[field];
           const oldVal = existingDocente[field];
-          if (newVal !== undefined && newVal !== null && String(newVal) !== String(oldVal)) {
+          const changed = field === 'datosCargaMasiva' ? JSON.stringify(newVal) !== JSON.stringify(oldVal) : String(newVal) !== String(oldVal);
+          if (newVal !== undefined && newVal !== null && changed) {
             hasChanges = true;
             changedFields.push(String(field));
-            profileChanges[String(field)] = field === 'puntajeSalarial'
+            profileChanges[String(field)] = field === 'puntajeSalarial' || field === 'datosCargaMasiva'
               ? { anterior: '[PROTEGIDO]', nuevo: '[PROTEGIDO]' }
               : { anterior: oldVal ?? null, nuevo: newVal ?? null };
           }
@@ -1749,6 +1803,10 @@ export class BancoDocentesService implements OnModuleInit {
         } catch (e) {
           console.warn(`[RUND] Could not initialize blocks for docente ${docente.id}:`, e);
         }
+      }
+
+      if (existingDocente && action !== 'unchanged') {
+        await invalidateEditedEvidence(manager, docente.id, [...personaChangedFields, ...changedFields], options.audit?.actorId || 'SISTEMA', options.audit?.ip);
       }
 
       // Inicializar ValidacionDocumental en el banco de docentes si no existe
@@ -1861,7 +1919,7 @@ export class BancoDocentesService implements OnModuleInit {
         documentNumber: payload.documentNumber!,
         fullName: finalFullName,
         email: emailFinal,
-        territorialNombre: territorial.nombre,
+        territorialNombre: payload.territorialNombre || territorial?.nombre || null,
         authUserCreated,
         welcomeEmail: { sent: false, skipped: !authUserCreated },
         message: action === 'insert' ? 'Docente creado correctamente.' : action === 'unchanged' ? 'Docente ya existe sin cambios.' : 'Docente actualizado correctamente.',
@@ -2000,6 +2058,7 @@ export class BancoDocentesService implements OnModuleInit {
             await manager.query(`SAVEPOINT ${savepointName}`);
           }
           const result = await this.upsertDocente(row, {
+            bulkImport: true,
             rejectExisting: options.rejectExisting,
             outerManager: manager,
             audit: options.dryRun ? undefined : {
@@ -2300,6 +2359,8 @@ export class BancoDocentesService implements OnModuleInit {
       // La cedula siempre se obtiene de auth.personas; nunca se acepta del body al editar.
       documentNumber: currentDocument,
     }, {
+      // Editar otro dato no reconcilia de forma implícita la territorial operativa.
+      preserveTerritorial: Boolean(d.territorialReportada && String(safeBody.territorialNombre || '').trim() === d.territorialReportada.trim()),
       audit: {
         actorId: body.actorId || body.cargadoPor || 'SISTEMA',
         canalOrigen: 'MODAL',
@@ -2830,7 +2891,7 @@ export class BancoDocentesService implements OnModuleInit {
           nucleo_tematico: docenteDirecto.nucleoTematico,
           investigacion: docenteDirecto.investigacion,
           tipo_vinculacion: docenteDirecto.tipoVinculacion,
-          territorial: null,
+          territorial: docenteDirecto.territorialReportada || null,
           sede_nombre: null,
           dedicacion: docenteDirecto.dedicacion,
           escalafon: docenteDirecto.escalafon,
@@ -2859,7 +2920,17 @@ export class BancoDocentesService implements OnModuleInit {
       endpoint: 'AUTOGESTION_MI_PERFIL',
       fullAccess: false,
     }]);
-    return protectRundSensitiveData(match, false);
+    // La sesión OTP determina el perfil; nunca se acepta un docenteId del navegador.
+    const [soportes, bloques] = await Promise.all([
+      // Mensaje de corrección dirigido al titular autenticado; no incluye URL ni contenido del original.
+      this.dataSource.query(`SELECT bloque, tipo_soporte, nombre_archivo, estado, observacion AS correccion_requerida
+        FROM academic_work_plan."RundSoporteCampo"
+        WHERE docente_id::text = $1 AND tipo_soporte NOT IN ('soporte_edicion_perfil', 'soporte_cambio_estado_perfil')`,
+        [String(match.docente_id)]),
+      this.dataSource.query(`SELECT bloque, estado, observacion, fecha_revision
+        FROM academic_work_plan."RundCampoEstado" WHERE docente_id::text = $1`, [String(match.docente_id)]),
+    ]);
+    return protectRundSensitiveData({ ...match, evidencias: { soportes, bloques } }, false);
   }
 
   async submitFromToken(token: string, data: any) {
@@ -3025,14 +3096,15 @@ export class BancoDocentesService implements OnModuleInit {
   async getBloques(docenteId: string) {
     docenteId = await this.resolveDocenteId(docenteId);
 
-    const bloques = await this.dataSource.query(
+    let bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
       [docenteId],
     );
 
     // Si no existen bloques, inicializarlos
-    if (bloques.length === 0) {
-      return this.inicializarBloques(docenteId);
+    if (bloques.length < 6) {
+      await this.inicializarBloques(docenteId);
+      bloques = await this.dataSource.query('SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC', [docenteId]);
     }
 
     // Cargar soportes por bloque
@@ -3084,141 +3156,16 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-043 â€” Aprobar un bloque (maker-checker: aprobador â‰  cargador).
    * BR-038 â€” Verifica que exista al menos un soporte para bloques crÃ­ticos.
    */
-  async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string) {
-    docenteId = await this.resolveDocenteId(docenteId);
-    const bloqueUpper = bloque.toUpperCase();
-    if (!BancoDocentesService.BLOQUES.includes(bloqueUpper as any)) {
-      throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}. VÃ¡lidos: ${BancoDocentesService.BLOQUES.join(', ')}`);
-    }
-
-    const [campoEstado] = await this.dataSource.query(
-      `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2 LIMIT 1`,
-      [docenteId, bloqueUpper],
-    );
-
-    if (!campoEstado) {
-      throw new NotFoundException(`No se encontrÃ³ el bloque ${bloqueUpper} para el docente ${docenteId}`);
-    }
-
-    // BR-043 â€” SegregaciÃ³n maker-checker
-    if (campoEstado.cargado_por && campoEstado.cargado_por === aprobadorId) {
-      throw new BadRequestException({
-        message: 'BR-043: No puede aprobar quien cargÃ³ los datos. Se requiere un validador distinto.',
-        rule: 'BR-043',
-        cargadoPor: campoEstado.cargado_por,
-        aprobadorId,
-      });
-    }
-
-    // BR-038 â€” Verificar soporte obligatorio para bloques crÃ­ticos
-    if (BancoDocentesService.BLOQUES_OBLIGATORIOS.includes(bloqueUpper as any)) {
-      const soportes = await this.dataSource.query(
-        `SELECT COUNT(*) as count FROM academic_work_plan."RundSoporteCampo" 
-         WHERE docente_id = $1 AND bloque = $2 AND estado != 'Rechazado'`,
-        [docenteId, bloqueUpper],
-      );
-      if (parseInt(soportes[0].count) === 0) {
-        throw new BadRequestException({
-          message: `BR-038: El bloque ${bloqueUpper} requiere al menos un soporte documental aprobado o pendiente antes de aprobar.`,
-          rule: 'BR-038',
-          bloque: bloqueUpper,
-          soportesRequeridos: BancoDocentesService.CATALOGO_SOPORTE[bloqueUpper],
-        });
-      }
-    }
-
-    // Aprobar
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado"
-       SET estado = 'Aprobado', revisado_por = $1, fecha_revision = NOW(), observacion = NULL, "updatedAt" = NOW()
-       WHERE docente_id = $2 AND bloque = $3`,
-      [aprobadorId, docenteId, bloqueUpper],
-    );
-
-    // Propagar el estado a los soportes del bloque para que la fuente de verdad
-    // (RundSoporteCampo.estado) quede alineada con las 3 vistas:
-    //  - RUND backoffice (docStatus se reconstruye desde aquí → botones no reaparecen)
-    //  - Carpeta Digital backoffice/docente (lee el estado del soporte → muestra "Aprobado")
-    // No tocamos soportes ya rechazados.
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundSoporteCampo"
-       SET estado = 'Aprobado'
-       WHERE docente_id = $1 AND bloque = $2 AND estado != 'Rechazado'`,
-      [docenteId, bloqueUpper],
-    );
-
-    // BR-056 â€” Log de auditorÃ­a inmutable
-    this.logger.log(`[BR-056] APROBAR bloque=${bloqueUpper} docente=${docenteId} por=${aprobadorId}`);
-    await this.logAudit({ docenteId, bloque: bloqueUpper, accion: 'APROBAR', actorId: aprobadorId });
-
-    // BR-047 â€” Verificar si se puede activar el registro
-    await this.verificarActivacion(docenteId);
-
-    return { success: true, bloque: bloqueUpper, estado: 'Aprobado' };
+  async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, undefined, ip);
   }
 
-  /**
-   * BR-045 â€” Devolver un bloque con observaciÃ³n obligatoria.
-   */
-  async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string) {
-    docenteId = await this.resolveDocenteId(docenteId);
-    const bloqueUpper = bloque.toUpperCase();
-    if (!BancoDocentesService.BLOQUES.includes(bloqueUpper as any)) {
-      throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}`);
-    }
+  async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewBlock(await this.resolveDocenteId(docenteId), bloque, aprobadorId, observacion ?? '', ip);
+  }
 
-    // BR-045 â€” ObservaciÃ³n obligatoria
-    if (!observacion || observacion.trim().length === 0) {
-      throw new BadRequestException({
-        message: 'BR-045: La devoluciÃ³n requiere una observaciÃ³n que indique el motivo y la correcciÃ³n requerida.',
-        rule: 'BR-045',
-      });
-    }
-
-    const [campoEstado] = await this.dataSource.query(
-      `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2 LIMIT 1`,
-      [docenteId, bloqueUpper],
-    );
-
-    if (!campoEstado) {
-      throw new NotFoundException(`No se encontrÃ³ el bloque ${bloqueUpper} para el docente ${docenteId}`);
-    }
-
-    // BR-043 â€” SegregaciÃ³n maker-checker
-    if (campoEstado.cargado_por && campoEstado.cargado_por === aprobadorId) {
-      throw new BadRequestException({
-        message: 'BR-043: No puede devolver quien cargÃ³ los datos.',
-        rule: 'BR-043',
-      });
-    }
-
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado"
-       SET estado = 'Devuelto', revisado_por = $1, observacion = $2, fecha_revision = NOW(), "updatedAt" = NOW()
-       WHERE docente_id = $3 AND bloque = $4`,
-      [aprobadorId, observacion.trim(), docenteId, bloqueUpper],
-    );
-
-    // Propagar el rechazo a los soportes del bloque (fuente de verdad unificada),
-    // para que tanto el RUND como la Carpeta Digital muestren el estado "Rechazado".
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."RundSoporteCampo"
-       SET estado = 'Rechazado', observacion = $3
-       WHERE docente_id = $1 AND bloque = $2`,
-      [docenteId, bloqueUpper, observacion.trim()],
-    );
-
-    // Actualizar estado global del docente
-    await this.dataSource.query(
-      `UPDATE academic_work_plan."Docente" SET "estadoAprobacion" = 'DEVUELTO' WHERE id = $1`,
-      [docenteId],
-    );
-
-    // BR-056 â€” Log inmutable
-    this.logger.log(`[BR-056] DEVOLVER bloque=${bloqueUpper} docente=${docenteId} por=${aprobadorId} motivo="${observacion.substring(0, 100)}"`);
-    await this.logAudit({ docenteId, bloque: bloqueUpper, accion: 'DEVOLVER', actorId: aprobadorId, observacion: observacion.trim() });
-
-    return { success: true, bloque: bloqueUpper, estado: 'Devuelto', observacion };
+  async revisarSoporte(docenteId: string, bloque: string, soporteId: string, data: any, actorId: string, ip?: string) {
+    return new RundEvidenceWorkflow(this.dataSource).reviewSupport(await this.resolveDocenteId(docenteId), bloque, soporteId, data, actorId, ip);
   }
 
   /**
@@ -3281,13 +3228,13 @@ export class BancoDocentesService implements OnModuleInit {
       (b) => completitud[b] === 'Aprobado',
     );
 
-    const nuevoEstado = activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
+    const nuevoEstado = Object.values(completitud).includes('Devuelto') ? 'DEVUELTO' : activable ? 'ACTIVO_RUND' : 'PENDIENTE_APROBACION';
     await this.dataSource.query(
       `UPDATE academic_work_plan."Docente" SET "estadoAprobacion" = $1, completitud = $2 WHERE id = $3`,
       [nuevoEstado, JSON.stringify(completitud), docenteId],
     );
 
-    return { activable, completitud };
+    return { activable: nuevoEstado === 'ACTIVO_RUND', completitud };
   }
 
   /**
@@ -3295,6 +3242,7 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async vincularSoporte(docenteId: string, bloque: string, data: {
     tipoSoporte: string;
+    campo?: string;
     documentoCarpetaId?: string;
     nombreArchivo?: string;
     fechaVencimiento?: string;
@@ -3317,6 +3265,8 @@ export class BancoDocentesService implements OnModuleInit {
       });
     }
 
+    await assertRundEvidenceData(this.dataSource, docenteId, data.tipoSoporte, data.campo);
+
     const { randomUUID } = require('crypto');
     const newId = randomUUID();
 
@@ -3331,7 +3281,7 @@ export class BancoDocentesService implements OnModuleInit {
       id = existing[0].id;
       await this.dataSource.query(
         `UPDATE academic_work_plan."RundSoporteCampo" 
-         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', "updatedAt" = NOW()
+         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, "updatedAt" = NOW()
          WHERE id = $4`,
         [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
       );
@@ -3702,15 +3652,16 @@ export class BancoDocentesService implements OnModuleInit {
     const edad = computeEdad(fechaNacimiento, (docente as any).edadReferencia);
     const rangoEdad = computeRangoEdad(edad, (docente as any).rangoEdad);
     const genUpper = (p.gen_tercero || '').toUpperCase();
-    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
-    const territorialNombre = await this.getTerritoriales()
-      .then((territoriales) => territoriales.find((t) => String(t.id) === String((docente as any).territorialId))?.nombre || (docente as any).territorialId || null)
-      .catch(() => (docente as any).territorialId || null);
+    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : genUpper ? 'Otro' : null));
+    const territorialNombre = docente.territorialReportada || await this.getTerritoriales()
+      .then((territoriales) => territoriales.find((t) => String(t.id) === String(docente.territorialId))?.nombre || null)
+      .catch(() => null);
 
     // Organizar datos por bloque
     const tarjeta = {
       docenteId: docente.id,
       idRund: (docente as any).idRund || null,
+      datos_carga_masiva: docente.datosCargaMasiva || null,
       periodoCarga: (docente as any).periodoCarga || null,
       estadoAprobacion: (docente as any).estadoAprobacion || 'PENDIENTE',
       canalOrigen: (docente as any).canalOrigen || 'MASIVO',
@@ -3758,7 +3709,7 @@ export class BancoDocentesService implements OnModuleInit {
             { campo: 'ACTO_ADMINISTRATIVO', valor: (docente as any).actoAdministrativoVinculacion || null, editable: true },
             { campo: 'INICIO_VINCULACION', valor: (docente as any).fechaInicioVinculacion || null, editable: true },
             { campo: 'FIN_VINCULACION', valor: (docente as any).fechaFinVinculacion || null, editable: true },
-            { campo: 'PUNTAJE_SALARIAL', valor: (docente as any).puntajeSalarial || null, editable: true },
+            { campo: 'PUNTAJE_SALARIAL', valor: (docente as any).puntajeSalarial ?? null, editable: true },
             { campo: 'SITUACION_ADMINISTRATIVA', valor: (docente as any).situacionAdministrativa || null, editable: true },
             { campo: 'SITUACION_CATEGORIA', valor: (docente as any).situacionCategoria || categorizarSituacion((docente as any).situacionAdministrativa), editable: true },
             { campo: 'ESTADO_DOCENTE', valor: (docente as any).estado || null, editable: true },
@@ -3875,26 +3826,8 @@ export class BancoDocentesService implements OnModuleInit {
     }
   }
 
-  async saveValidacionDocumentalBatch(userId: string, data: any[]) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-    try {
-      if (data && Array.isArray(data)) {
-        for (const item of data) {
-          if (!item.campoRund) continue;
-          this.logger.log(`[RUND] Validación guardada para docente ${userId}, campo: ${item.campoRund}, estado: ${item.estadoDocumento}`);
-        }
-      }
-      await queryRunner.commitTransaction();
-      return { success: true };
-    } catch (error: any) {
-      await queryRunner.rollbackTransaction();
-      this.logger.error(`Error saving validacion documental batch: ${error.message}`);
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+  async saveValidacionDocumentalBatch(_userId: string, _data: any[]) {
+    throw new BadRequestException('Esta versión de la revisión documental ya no está disponible. Actualice la pantalla y revise cada soporte con su versión vigente.');
   }
 
   async syncCheckDocente(docenteId: string) {

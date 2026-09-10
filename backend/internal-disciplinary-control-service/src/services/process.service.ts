@@ -89,6 +89,7 @@ export class ProcessService {
     process: {
       abogadoAsignadoId?: string | null;
       abogadoAsignado?: { email?: string | null } | null;
+      autos?: Array<{ radicadorAsignadoId?: string | null }>;
     },
     professionalIds: Set<string>,
     normalizedEmail: string | null,
@@ -98,7 +99,16 @@ export class ProcessService {
     }
 
     const assignedEmail = this.normalizeAccessEmail(process.abogadoAsignado?.email);
-    return Boolean(normalizedEmail && assignedEmail && assignedEmail === normalizedEmail);
+    if (normalizedEmail && assignedEmail && assignedEmail === normalizedEmail) {
+      return true;
+    }
+
+    const userId = Array.from(professionalIds)[0];
+    if (userId && process.autos?.some(auto => auto.radicadorAsignadoId === userId)) {
+      return true;
+    }
+
+    return false;
   }
 
   async findAllAccessible(
@@ -125,7 +135,7 @@ export class ProcessService {
 
   async findByIdAccessible(
     id: string,
-    includeAutos: boolean,
+    includeAutos: boolean = true,
     userId?: string,
     email?: string,
   ): Promise<DisciplinaryProcess> {
@@ -154,7 +164,7 @@ export class ProcessService {
     userId?: string,
     email?: string,
   ): Promise<DisciplinaryProcess> {
-    const process = await this.findByRadicado(radicadoProceso);
+    const process = await this.findByRadicado(radicadoProceso, true);
     const { professionalIds, normalizedEmail } =
       await this.resolveAccessibleProfessionalContext(userId, email);
 
@@ -1417,10 +1427,15 @@ export class ProcessService {
   /**
    * Obtener proceso por radicado del proceso
    */
-  async findByRadicado(radicadoProceso: string): Promise<DisciplinaryProcess> {
+  async findByRadicado(radicadoProceso: string, includeAutos: boolean = false): Promise<DisciplinaryProcess> {
+    const relations = ['news', 'abogadoAsignado'];
+    if (includeAutos) {
+      relations.push('autos');
+    }
+
     const proceso = await this.processRepository.findOne({
       where: { radicadoProceso },
-      relations: ['news', 'abogadoAsignado'],
+      relations,
     });
 
     if (!proceso) {

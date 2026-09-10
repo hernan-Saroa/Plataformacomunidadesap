@@ -11,19 +11,28 @@ import {
   EstadoSolicitudViatico,
   Geopolitica,
    ChecklistDocumentosResponse,
-   FinalizarSolicitudResponse,
-   LiquidacionResponse,
-   CalcularLiquidacionRequest,
-   CategoriaInvestigador,
-   TicketValidationResult,
-   ValidateTicketRequest,
-   SaldoTiquete,
-   RutaRestringida,
-   ExcepcionTiquete,
-   CreateExcepcionTiqueteRequest,
-   ResumenConsolidacion,
-   ResultadoConsolidacion,
-  } from '../../types/viaticos';
+     FinalizarSolicitudResponse,
+     LiquidacionResponse,
+     CalcularLiquidacionRequest,
+     CategoriaInvestigador,
+     TicketValidationResult,
+     ValidateTicketRequest,
+     SaldoTiquete,
+     RutaRestringida,
+     ExcepcionTiquete,
+     CreateExcepcionTiqueteRequest,
+     ResumenConsolidacion,
+     ResultadoConsolidacion,
+     BandejaSecretarioResponse,
+     PrioridadUpdateResponse,
+     ReturnRequestResponse,
+      CargaAnalista,
+      AsignacionAnalistaRequest,
+      AsignacionAnalistaResponse,
+      SolicitudAsignadaAnalistaResponse,
+      VerifyAuditResponse,
+      DevolverAnalistaResponse,
+    } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -144,7 +153,7 @@ export class ViaticosService {
   /**
    * Mapea una solicitud del backend (GET /solicitudes) al modelo de presentación.
    */
-  private mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
+  public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
     return {
@@ -172,9 +181,11 @@ export class ViaticosService {
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
       requiereTiqueteAereo: s.requiereTiquetes,
+      prioridad: s.prioridad,
       creadoEn: s.creadoEn.slice(0, 10),
       actualizadoEn: s.actualizadoEn.slice(0, 10),
       esCreadoPorMi: s.esCreadoPorMi,
+      analistaAsignadoId: s.analistaAsignadoId || null,
     };
   }
 
@@ -1034,6 +1045,168 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('Error actualizando holgura global:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REC-001 — Etapa 4: Revisar solicitud y definir prioridad (Secretario/a de Viáticos)
+  // ========================================================================
+
+  async obtenerBandejaSecretario(filtros: {
+    dependenciaId?: string;
+    prioridad?: string;
+    extemporanea?: boolean;
+    comisionadoDocumento?: string;
+    fechaInicio?: string;
+    fechaFin?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<BandejaSecretarioResponse> {
+    try {
+      const params = new URLSearchParams();
+      if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
+      if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
+      if (typeof filtros.extemporanea === 'boolean') params.set('extemporanea', String(filtros.extemporanea));
+      if (filtros.comisionadoDocumento) params.set('comisionado', filtros.comisionadoDocumento);
+      if (filtros.fechaInicio) params.set('fecha_inicio', filtros.fechaInicio);
+      if (filtros.fechaFin) params.set('fecha_fin', filtros.fechaFin);
+      if (filtros.page) params.set('page', String(filtros.page));
+      if (filtros.limit) params.set('limit', String(filtros.limit));
+
+      const query = params.toString();
+      const response = await apiClient.get<BandejaSecretarioResponse>(
+        `/viaticos/api/v1/requests/inbox/secretary${query ? `?${query}` : ''}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja secretario:', error);
+      return { data: [], total: 0, page: filtros.page || 1, limit: filtros.limit || 20 };
+    }
+  }
+
+  async actualizarPrioridad(
+    solicitudId: string,
+    prioridad: string,
+  ): Promise<PrioridadUpdateResponse> {
+    try {
+      return await apiClient.patch<PrioridadUpdateResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/priority`,
+        { prioridad },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error actualizando prioridad:', error);
+      throw error;
+    }
+  }
+
+  async devolverSolicitud(
+    solicitudId: string,
+    motivo: string,
+  ): Promise<ReturnRequestResponse> {
+    try {
+      return await apiClient.post<ReturnRequestResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return`,
+        { motivo },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo solicitud:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REC-002 — Tablero de carga y asignación de analistas (Etapa 4)
+  // ========================================================================
+
+  async obtenerCargaAnalistas(solicitudId?: string): Promise<{ data: CargaAnalista[]; total: number }> {
+    try {
+      const params = solicitudId ? `?solicitudId=${encodeURIComponent(solicitudId)}` : '';
+      const response = await apiClient.get<{ data: CargaAnalista[]; total: number }>(
+        `/viaticos/api/v1/assignments/workload${params}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo carga de analistas:', error);
+      return { data: [], total: 0 };
+    }
+  }
+
+  async asignarAnalista(data: AsignacionAnalistaRequest): Promise<AsignacionAnalistaResponse> {
+    try {
+      return await apiClient.post<AsignacionAnalistaResponse>(
+        '/viaticos/api/v1/assignments/assign',
+        data,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error asignando analista:', error);
+      throw error;
+    }
+  }
+
+  async obtenerSolicitudesAsignadas(): Promise<SolicitudListaResponse[]> {
+    try {
+      const response = await apiClient.get<{ data: SolicitudListaResponse[]; total: number }>(
+        '/viaticos/api/v1/assignments/my-requests',
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitudes asignadas:', error);
+      return [];
+    }
+  }
+
+  // ========================================================================
+  // RF-VER-SIIF — Verificar y crear comisión en SIIF Nación (Etapa 5)
+  // ========================================================================
+
+  async obtenerSolicitudesAsignadasAnalista(): Promise<SolicitudListaResponse[]> {
+    try {
+      const response = await apiClient.get<SolicitudAsignadaAnalistaResponse>(
+        '/viaticos/api/v1/requests/analyst/inbox',
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitudes asignadas (analista):', error);
+      return [];
+    }
+  }
+
+  async verificarAuditoria(
+    solicitudId: string,
+    dto: { seguridadSocialVigente?: boolean; consultaRutFacturador?: boolean },
+  ): Promise<VerifyAuditResponse> {
+    try {
+      return await apiClient.post<VerifyAuditResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/verify-audit`,
+        dto,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error en verificacion de auditoria:', error);
+      throw error;
+    }
+  }
+
+  async devolverAnalista(
+    solicitudId: string,
+    motivo: string,
+  ): Promise<DevolverAnalistaResponse> {
+    try {
+      return await apiClient.post<DevolverAnalistaResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/devolver-analista`,
+        { motivo },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo solicitud (analista):', error);
+      throw error;
+    }
+  }
+
+  async exportarSIIF(solicitudId: string): Promise<Blob> {
+    try {
+      return await apiClient.getBlob(`/viaticos/api/v1/requests/${solicitudId}/siif-export`);
+    } catch (error) {
+      console.error('[viaticos] Error exportando SIIF:', error);
       throw error;
     }
   }

@@ -1184,93 +1184,47 @@ export function ExpedientesElectronicosWorldClass() {
   };
 
   /**
-   * ✅ EXPORTAR ÍNDICE COMPLETO DEL EXPEDIENTE EN EXCEL
+   * ✅ EXPORTAR ÍNDICE ELECTRÓNICO DEL EXPEDIENTE EN EL FORMATO OFICIAL EI-FO-020
    */
-  const exportarIndiceExpedienteExcel = (expedienteId: string) => {
+  const exportarIndiceExpedienteExcel = async (expedienteId: string) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC)) {
+      toast.error('No tiene permisos para descargar el índice del expediente');
+      return;
+    }
     const expediente = expedientes.find(e => e.id === expedienteId);
     if (!expediente) return;
-    
+
     const docsExpediente = documentos.filter(d => d.expedienteId === expedienteId)
       .sort((a, b) => new Date(a.fechaSubida).getTime() - new Date(b.fechaSubida).getTime());
-    
-    // Crear libro de Excel
-    const wb = XLSX.utils.book_new();
-    
-    // Datos para la hoja
-    const datosHoja: any[][] = [
-      // ENCABEZADO CORPORATIVO
-      ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP'],
-      ['CONTROL INTERNO DISCIPLINARIO'],
-      ['ÍNDICE ELECTRÓNICO COMPLETO DEL EXPEDIENTE'],
-      [],
-      // INFORMACIÓN DEL EXPEDIENTE
-      ['INFORMACIÓN DEL EXPEDIENTE'],
-      ['Expediente:', expediente.radicado],
-      ['NED:', expediente.nombreDisciplinado],
-      ['Responsable:', expediente.responsable],
-      ['Fecha de Inicio:', expediente.fechaInicio],
-      ['Total de Documentos:', docsExpediente.length.toString()],
-      [],
-      // ENCABEZADOS DE LA TABLA
-      [
-        'N°',
-        '1. DESCRIPCIÓN',
-        '2. TIPOLOGÍA',
-        '3. ANEXOS',
-        '4. F. CREACIÓN',
-        '5. F. INCORPORACIÓN',
-        '6. PÁG. INICIO',
-        '7. PÁG. FINAL',
-        '8. FORMATO',
-        '9. TAMAÑO',
-        '10. ACCESO'
-      ]
-    ];
-    
-    // Agregar cada documento
-    docsExpediente.forEach((doc, index) => {
-      datosHoja.push([
-        (index + 1).toString(),
-        doc.descripcionPrincipal,
-        doc.tipologiaDocumental,
-        doc.anexos,
-        formatearFechaHojaControl(doc.fechaCreacion),
-        formatearFechaHojaControl(doc.fechaIncorporacion),
-        doc.paginaInicio.toString(),
-        doc.paginaFinal.toString(),
-        doc.formato,
-        doc.tamanoKB,
-        doc.archivoAcceso
-      ]);
-    });
-    
-    // Agregar pie de página
-    datosHoja.push([]);
-    datosHoja.push(['Generado el:', new Date().toLocaleDateString('es-CO') + ' ' + new Date().toLocaleTimeString('es-CO')]);
-    
-    // Crear hoja de cálculo
-    const ws = XLSX.utils.aoa_to_sheet(datosHoja);
-    
-    // Ajustar ancho de columnas
-    ws['!cols'] = [
-      { wch: 5 },   // N°
-      { wch: 60 },  // Descripción
-      { wch: 25 },  // Tipología
-      { wch: 25 },  // Anexos
-      { wch: 12 },  // F. Creación
-      { wch: 14 },  // F. Incorporación
-      { wch: 10 },  // Pág. Inicio
-      { wch: 10 },  // Pág. Final
-      { wch: 10 },  // Formato
-      { wch: 12 },  // Tamaño
-      { wch: 35 }   // Acceso
-    ];
-    
-    // Agregar hoja al libro
-    XLSX.utils.book_append_sheet(wb, ws, 'Índice Electrónico');
-    
-    // Descargar archivo
-    XLSX.writeFile(wb, `IndiceElectronico_${expediente.radicado}.xlsx`);
+
+    try {
+      await disciplinaryService.descargarIndiceElectronico(
+        expedienteId,
+        {
+          radicado: expediente.radicado,
+          asunto: expediente.tipoProceso,
+          responsable: expediente.responsable,
+        },
+        docsExpediente.map(doc => ({
+          descripcionPrincipal: doc.descripcionPrincipal,
+          tipologiaDocumental: doc.tipologiaDocumental,
+          anexos: doc.anexos,
+          fechaCreacion: formatearFechaHojaControl(doc.fechaCreacion),
+          fechaIncorporacion: formatearFechaHojaControl(doc.fechaIncorporacion),
+          paginaInicio: doc.paginaInicio,
+          paginaFinal: doc.paginaFinal,
+          formato: doc.formato,
+          tamanoKB: doc.tamanoKB,
+          archivoAcceso: doc.archivoAcceso,
+        })),
+        `IndiceElectronico_${expediente.radicado}.xlsx`,
+      );
+    } catch (error) {
+      console.error('Error al descargar el Índice Electrónico:', error);
+      toast.error('No se pudo generar el Índice Electrónico', {
+        description: expediente.radicado,
+      });
+    }
   };
 
   // ✅ HELPER: Detectar tipo de archivo por extensión
