@@ -29,12 +29,39 @@ export function estaTerminada(paso: PasoDelFlujo): boolean {
 }
 
 /**
+ * Las que atienden una revisión en curso (EFDS-1183).
+ *
+ * La 3.3 recibe el proceso en la Dirección y la 3.4 lo decide. Las dos existen
+ * precisamente porque la 3.1 está esperando, así que exigirles que la 3.1 esté
+ * aprobada las deja bloqueadas por lo que ellas mismas tienen que desbloquear:
+ * nadie puede aprobar porque nadie ha repartido, y nadie puede repartir porque
+ * nadie ha aprobado.
+ *
+ * El traspaso del área a la Dirección ocurre al **enviar**, no al aprobar. Es
+ * lo único que estas dos actividades necesitan de la anterior.
+ */
+const ATIENDEN_LA_REVISION = new Set(['3.3', '3.4']);
+
+/**
+ * Y la que abre ese tramo: el estudio previo.
+ *
+ * Solo su revisión, no la de cualquier actividad. La 3.3 y la 3.4 atienden lo
+ * que el área entregó en la 3.1; que la 3.2 esté esperando decisión no las
+ * habilita, y tratarlas igual desbloquearía el tramo por el motivo equivocado.
+ */
+const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
+
+/**
  * Hasta dónde puede llegar el gestor: la secuencia del flujo.
  *
- * Devuelve los numerales que se pueden abrir. La matriz es una secuencia —la
- * 3.2 continúa lo que la 3.1 dejó— y hasta ahora la pantalla las ofrecía todas
- * a la vez, así que se podía diligenciar la 3.2 sin haber hecho la 3.1 y el
- * expediente quedaba contando una historia que no ocurrió en ese orden.
+ * Devuelve los numerales que se pueden **trabajar**. La matriz es una secuencia
+ * —la 3.2 continúa lo que la 3.1 dejó— y hasta ahora la pantalla las ofrecía
+ * todas a la vez, así que se podía diligenciar la 3.2 sin haber hecho la 3.1 y
+ * el expediente quedaba contando una historia que no ocurrió en ese orden.
+ *
+ * Abrirlas se puede siempre (EFDS-1183): lo que esta secuencia decide es dónde
+ * se escribe, no dónde se entra. Ver de antemano qué le van a pedir a uno no
+ * desordena nada; cargar un documento antes de tiempo, sí.
  *
  * Se salta lo que nunca podrá terminarse:
  *
@@ -50,23 +77,49 @@ export function estaTerminada(paso: PasoDelFlujo): boolean {
 export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
   const disponibles = new Set<string>();
   let alcanzado = true;
+  /**
+   * Hay una actividad enviada esperando decisión.
+   *
+   * A partir de ahí solo se abren las que atienden esa espera; el resto del
+   * flujo sigue detenido, que es lo que la secuencia siempre hizo.
+   */
+  let esperandoDecision = false;
 
   for (const paso of flujo) {
     // Lo que no aplica o no existe se recorre sin abrir ni cerrar la puerta:
     // ni se puede trabajar ni puede detener a nadie.
     if (!paso.aplica || !paso.construida) continue;
 
+    if (esperandoDecision) {
+      // Mientras la decisión no llegue, el resto del flujo está detenido: no
+      // se abre, y tampoco cierra nada, porque lo que le falta es justo la
+      // decisión que las de abajo tienen que producir.
+      if (!ATIENDEN_LA_REVISION.has(paso.numeral)) continue;
+
+      if (alcanzado) disponibles.add(paso.numeral);
+      if (!estaTerminada(paso)) alcanzado = false;
+      continue;
+    }
+
     if (alcanzado) disponibles.add(paso.numeral);
 
-    // La primera sin terminar cierra el paso a todas las siguientes; se sigue
-    // recorriendo para no marcar disponible nada que venga después.
-    if (!estaTerminada(paso)) alcanzado = false;
+    if (estaTerminada(paso)) continue;
+
+    // Una actividad enviada y a la espera no cierra el paso: abre el tramo de
+    // las que existen para resolver esa espera. Cualquier otra sin terminar sí
+    // lo cierra a todas las siguientes; se sigue recorriendo para no marcar
+    // disponible nada que venga después.
+    if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
+      esperandoDecision = true;
+    } else {
+      alcanzado = false;
+    }
   }
 
   return disponibles;
 }
 
-/** Por qué una actividad todavía no se puede abrir, para poder decirlo. */
+/** Por qué una actividad todavía no se puede trabajar, para poder decirlo. */
 export function motivoDelBloqueo(
   numeral: string,
   flujo: PasoDelFlujo[],

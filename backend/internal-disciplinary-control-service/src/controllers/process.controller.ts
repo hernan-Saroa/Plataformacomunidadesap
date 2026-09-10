@@ -32,6 +32,7 @@ import {
   IndiceElectronicoExportService,
   IndiceElectronicoDocumentoDto,
   IndiceElectronicoExpedienteDto,
+  limpiarNombreArchivo,
 } from '../services/indice-electronico-export.service';
 import {
   CreateDisciplinaryProcessDto,
@@ -1179,7 +1180,8 @@ export class ProcessController {
     }
 
     // Obtener el nombre original del archivo para la cabecera Content-Disposition
-    const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+    const rawNombre = documento.filename || documento.nombreDocumento || 'documento';
+    const nombreArchivo = limpiarNombreArchivo(rawNombre) || rawNombre;
 
     // Si es para visualización, enviar con content-type adecuado y disposition inline
     if (view === 'true') {

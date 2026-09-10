@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import { DocumentoRequerido, EstadoDocumentos, PlantillaFormato } from '../../types';
 import { Aviso, Ayuda, Marco, Titulo } from '../shared/PiezasPanel';
+import { useSoloLectura } from '../shared/SoloLectura';
 import { useFormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
 import { fechaLarga } from '../shared/fechas';
 
@@ -208,6 +209,9 @@ function FilaDocumento({
 }) {
   const inputArchivo = useRef<HTMLInputElement>(null);
   const cargado = documento.cargado;
+  // La secuencia todavía no llegó a la 5.1: la lista de requisitos se lee, que
+  // es para lo que sirve entrar a mirarla, pero no recibe nada.
+  const soloLectura = useSoloLectura();
 
   // Si no casa con ninguno, el formato no se pierde: sale en «otros formatos».
   const formato = formatos.find((f) => mismoDocumento(f.nombre, documento.nombre));
@@ -280,7 +284,9 @@ function FilaDocumento({
           está. El formato se descarga desde el enlace de arriba, que apoya sin
           disputarle el sitio. */}
       <div className="mt-2.5">
-        {cargado ? (
+        {soloLectura ? (
+          <p className="text-[11px] text-slate-500 m-0">{soloLectura}.</p>
+        ) : cargado ? (
           <button
             type="button"
             disabled={ocupada}

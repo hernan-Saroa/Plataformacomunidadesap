@@ -141,7 +141,7 @@ describe('CorreosJuridicosService', () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-1', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            const result = await service.sendEmail({ to: 'destino@test.com', subject: 'Asunto', body: '<p>Hola</p>' });
+            const result = await service.sendEmail({ to: 'destino@test.com', subject: 'Asunto', body: '<p>Hola</p>', requestReadReceipt: true });
 
             expect(result.success).toBe(true);
             expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ asunto: 'Asunto', direccion: 'ENVIADO' }));
@@ -151,19 +151,30 @@ describe('CorreosJuridicosService', () => {
                 expect.stringContaining('/correos/track/open/'),
                 undefined,
                 [],
-                { requestReadReceipt: false, requestDeliveryReceipt: false },
+                { requestReadReceipt: true, requestDeliveryReceipt: false },
                 'juridica@esap.gov.co',
                 undefined,
             );
         });
 
-        it('debe inyectar pixel de tracking en el body HTML antes de enviar', async () => {
+        it('debe inyectar pixel de tracking en el body HTML cuando se solicita confirmación de entrega/lectura', async () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-2', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            await service.sendEmail({ to: 'destino@test.com', subject: 'Tracking', body: '<p>Contenido</p>' });
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Tracking', body: '<p>Contenido</p>', requestReadReceipt: true });
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('<img src="https://test.esap.gov.co/services/legal/api/v1/correos/track/open/');
+            expect(mockTrackingRepo.save).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'OPEN_PIXEL' }));
+        });
+
+        it('no debe inyectar pixel de tracking cuando no se solicita confirmación de entrega/lectura', async () => {
+            mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-2b', ...data }));
+            mockGraphService.sendEmail.mockResolvedValue(true);
+
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Sin tracking', body: '<p>Contenido</p>' });
+
+            expect(mockGraphService.sendEmail.mock.calls[0][2]).not.toContain('<img src=');
+            expect(mockTrackingRepo.save).not.toHaveBeenCalledWith(expect.objectContaining({ tipo: 'OPEN_PIXEL' }));
         });
 
         it('debe crear registros de AdjuntoCorreo por cada adjunto recibido', async () => {
@@ -239,7 +250,7 @@ describe('CorreosJuridicosService', () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-5', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            await service.sendEmail({ to: 'destino@test.com', subject: 'URL', body: '<p>Hola</p>' });
+            await service.sendEmail({ to: 'destino@test.com', subject: 'URL', body: '<p>Hola</p>', requestReadReceipt: true });
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://test.esap.gov.co/services/legal/api/v1/correos/track/open/');
         });
@@ -250,7 +261,7 @@ describe('CorreosJuridicosService', () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-6', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            await service.sendEmail({ to: 'destino@test.com', subject: 'URL fallback', body: '<p>Hola</p>' });
+            await service.sendEmail({ to: 'destino@test.com', subject: 'URL fallback', body: '<p>Hola</p>', requestReadReceipt: true });
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://cors.test.esap.gov.co/services/legal/api/v1/correos/track/open/');
         });
@@ -263,7 +274,7 @@ describe('CorreosJuridicosService', () => {
             mockGraphService.sendEmail.mockResolvedValue(true);
 
             const req = { headers: { origin: 'http://172.16.202.222' } };
-            await service.sendEmail({ to: 'destino@test.com', subject: 'Dinamico', body: '<p>Hola</p>' }, req);
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Dinamico', body: '<p>Hola</p>', requestReadReceipt: true }, req);
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('http://172.16.202.222/services/legal/api/v1/correos/track/open/');
         });
@@ -277,9 +288,67 @@ describe('CorreosJuridicosService', () => {
             mockGraphService.sendEmail.mockResolvedValue(true);
 
             const req = { headers: { host: 'api-gateway-pre:3000' } };
-            await service.sendEmail({ to: 'destino@test.com', subject: 'Interno', body: '<p>Hola</p>' }, req);
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Interno', body: '<p>Hola</p>', requestReadReceipt: true }, req);
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://cors.test.esap.gov.co/services/legal/api/v1/correos/track/open/');
+        });
+    });
+
+    describe('processTrackingPixel() - acuse de recibido automático', () => {
+        it('debe notificar a JEFE_GESTION_LEGAL en la primera apertura del pixel', async () => {
+            mockTrackingRepo.findOne.mockResolvedValue({
+                id: 'track-1',
+                correoId: 'correo-1',
+                tipo: 'OPEN_PIXEL',
+                abierto: false,
+                destinatarioEmail: 'destino@test.com',
+            });
+            mockCorreoRepo.findOne.mockResolvedValue({
+                id: 'correo-1',
+                direccion: 'ENVIADO',
+                asunto: 'Asunto de prueba',
+                remitenteNombre: 'Oficina Jurídica',
+                destinatariosTo: 'destino@test.com',
+                fechaRecepcion: new Date(),
+            });
+
+            await service.processTrackingPixel('token-1', '127.0.0.1', 'jest-agent');
+            // notificarAcuseDeRecibido() se dispara sin esperarse (fire-and-forget) — dejar drenar microtasks.
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockTrackingRepo.save).toHaveBeenCalledWith(expect.objectContaining({ abierto: true }));
+            expect(mockHistorialRepo.save).toHaveBeenCalledWith(expect.objectContaining({ tipoEvento: 'CORREO_ABIERTO_EXTERNO' }));
+            expect(mockNotificationClient.notifyByRoles).toHaveBeenCalledWith(
+                ['JEFE_GESTION_LEGAL'],
+                expect.objectContaining({ tipo_notificacion: 'ACUSE_RECIBIDO_CORREO' }),
+                expect.objectContaining({ subject: expect.stringContaining('Acuse de recibido') }),
+            );
+        });
+
+        it('no debe notificar de nuevo en aperturas posteriores del mismo correo', async () => {
+            mockTrackingRepo.findOne.mockResolvedValue({
+                id: 'track-2',
+                correoId: 'correo-2',
+                tipo: 'OPEN_PIXEL',
+                abierto: true,
+                destinatarioEmail: 'destino@test.com',
+            });
+
+            await service.processTrackingPixel('token-2', '127.0.0.1', 'jest-agent');
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockHistorialRepo.save).not.toHaveBeenCalled();
+            expect(mockNotificationClient.notifyByRoles).not.toHaveBeenCalled();
+        });
+
+        it('no debe hacer nada si no existe un token de tracking (correo enviado sin solicitar confirmación)', async () => {
+            mockTrackingRepo.findOne.mockResolvedValue(null);
+
+            await service.processTrackingPixel('token-inexistente', '127.0.0.1', 'jest-agent');
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockTrackingRepo.save).not.toHaveBeenCalled();
+            expect(mockNotificationClient.notifyByRoles).not.toHaveBeenCalled();
         });
     });
 

@@ -108,7 +108,9 @@ export class CorreosJuridicosService {
                 : 'N/A';
             const fechaApertura = new Date().toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
 
-            const urlAccion = `/gestion-legal?modulo=comunicaciones&correoId=${encodeURIComponent(correoId)}`;
+            // 'centro-comunicaciones' es el código de vista real (ver VistaDisponible en
+            // gestionLegalVistaPermisos.ts); un valor distinto no activa ningún submódulo.
+            const urlAccion = `/gestion-legal?modulo=centro-comunicaciones&correoId=${encodeURIComponent(correoId)}`;
 
             const emailHtml = `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
@@ -806,7 +808,8 @@ export class CorreosJuridicosService {
     /**
      * Send an email via Graph API and save record in DB.
      * ALL attachments are converted to tracked download links (no inline attachments).
-     * A tracking pixel is injected to detect when the recipient opens the email.
+     * A tracking pixel is injected only when `dto.requestReadReceipt` is true, to detect
+     * when the recipient opens the email (acuse de recibido -> notifica a JEFE_GESTION_LEGAL).
      */
     async sendEmail(dto: SendEmailDto, req?: any): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const fs = require('fs');
@@ -875,17 +878,21 @@ export class CorreosJuridicosService {
             }
         }
 
-        // 3. Build HTML body with tracking pixel + tracked download links
+        // 3. Build HTML body with tracking pixel (si se solicitó) + tracked download links
         let finalBody = dto.body;
 
-        // Pixel de tracking (apertura del correo)
-        const pixelToken = randomUUID();
-        await this.trackingRepo.save(this.trackingRepo.create({
-            correoId: savedCorreo.id,
-            token: pixelToken,
-            tipo: 'OPEN_PIXEL',
-            destinatarioEmail: destinatariosTo,
-        }));
+        // Pixel de tracking (apertura del correo) — solo si el remitente marcó
+        // "Solicitar confirmación de entrega y lectura" al componer el correo.
+        let pixelToken: string | undefined;
+        if (dto.requestReadReceipt) {
+            pixelToken = randomUUID();
+            await this.trackingRepo.save(this.trackingRepo.create({
+                correoId: savedCorreo.id,
+                token: pixelToken,
+                tipo: 'OPEN_PIXEL',
+                destinatarioEmail: destinatariosTo,
+            }));
+        }
 
         // Links trackeados para cada adjunto
         if (savedAdjuntos.length > 0) {
@@ -909,9 +916,11 @@ export class CorreosJuridicosService {
             finalBody += '</ul></div>';
         }
 
-        // Pixel invisible al final
-        const pixelUrl = `${baseUrl}${pathPrefix}/correos/track/open/${pixelToken}?_=${Date.now()}`;
-        finalBody += `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
+        // Pixel invisible al final (solo si se generó el token arriba)
+        if (pixelToken) {
+            const pixelUrl = `${baseUrl}${pathPrefix}/correos/track/open/${pixelToken}?_=${Date.now()}`;
+            finalBody += `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
+        }
 
         // 4. Send via Graph with modified HTML and NO inline file attachments
         const sent = await this.graphService.sendEmail(

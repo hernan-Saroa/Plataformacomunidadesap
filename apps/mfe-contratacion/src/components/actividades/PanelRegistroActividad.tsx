@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CircleSlash, Eye, FilePlus2, History, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -14,6 +14,8 @@ import {
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
+import { Permitido } from '../shared/Permitido';
+import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 
 interface Props {
@@ -28,6 +30,23 @@ interface Props {
    * gestor tiene que saberlo antes de pulsar, no despues.
    */
   requiereAprobacion?: boolean;
+  /**
+   * Si quien la aprueba la devolvió para corregirla.
+   *
+   * El panel solo distinguía registrada de sin registrar, así que a una
+   * actividad devuelta le mostraba «Registrada» y como única salida «Anular».
+   * El aviso de arriba decía «vuelve a registrar la actividad» y aquí abajo no
+   * había dónde: quien la trabajó se quedaba sin camino para corregirla.
+   */
+  devuelta?: boolean;
+  /**
+   * Cambia cuando el bloque de documentos carga o retira un adjunto.
+   *
+   * Donde el soporte lo recibe ese bloque, `exigeSoporte` deja de ser cierto en
+   * cuanto el formato se entrega, y sin volver a leer el boton de registrar se
+   * quedaba bloqueado pidiendo un documento que ya estaba cargado.
+   */
+  recargarToken?: number;
 }
 
 /**
@@ -43,6 +62,8 @@ export function PanelRegistroActividad({
   numeral,
   onCambio,
   requiereAprobacion = false,
+  devuelta = false,
+  recargarToken,
 }: Props) {
   const [estado, setEstado] = useState<EstadoRegistroActividad | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -54,6 +75,8 @@ export function PanelRegistroActividad({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [anulando, setAnulando] = useState(false);
   const [motivo, setMotivo] = useState('');
+  /** Corrigiendo lo devuelto: el formulario se abre con lo que ya había. */
+  const [corrigiendo, setCorrigiendo] = useState(false);
 
   const leer = () =>
     contratacionService
@@ -70,6 +93,24 @@ export function PanelRegistroActividad({
     leer();
   }, [procesoId, numeral]);
 
+  /*
+   * Relectura cuando el bloque de documentos carga o retira un adjunto.
+   *
+   * Solo a los cambios del token y no tambien al montar, que es cuando el
+   * efecto de arriba ya lee: sin el `ref` la pantalla pedia el estado dos veces
+   * cada vez que se abria una actividad.
+   *
+   * Sin `setCargando`: el bloque ya se pinta a si mismo mientras carga, y
+   * vaciar el formulario a cada adjunto perderia lo que el gestor lleva escrito
+   * en la nota.
+   */
+  const tokenLeido = useRef(recargarToken);
+  useEffect(() => {
+    if (recargarToken === tokenLeido.current) return;
+    tokenLeido.current = recargarToken;
+    leer();
+  }, [recargarToken]);
+
   const limpiar = () => {
     setFecha(hoyEnBogota());
     setNota('');
@@ -80,7 +121,12 @@ export function PanelRegistroActividad({
     setGuardando(true);
     try {
       await contratacionService.registrarActividad(procesoId, numeral, { fecha, nota }, archivo);
-      toast.success(`Se registró la actividad ${numeral}`);
+      toast.success(
+        corrigiendo
+          ? `Se corrigió la actividad ${numeral} y volvió a enviarse`
+          : `Se registró la actividad ${numeral}`,
+      );
+      setCorrigiendo(false);
       limpiar();
       await leer();
       onCambio?.();
@@ -105,6 +151,23 @@ export function PanelRegistroActividad({
     } finally {
       setGuardando(false);
     }
+  };
+
+  /**
+   * Abre el formulario con lo que ya se había registrado, para corregirlo.
+   *
+   * Corregir no es rehacer: a quien le devolvieron la actividad le señalaron
+   * una cosa concreta —una fecha, una frase de la nota, un soporte que no
+   * era—, y vaciarle el formulario le obliga a reescribir de memoria todo lo
+   * demás, que estaba bien. El registro anterior se anula al guardar el nuevo,
+   * igual que antes; lo que cambia es que parte de lo que había.
+   */
+  const corregir = () => {
+    if (!estado?.registro) return;
+    setFecha(estado.registro.fecha.slice(0, 10));
+    setNota(estado.registro.nota ?? '');
+    setArchivo(null);
+    setCorrigiendo(true);
   };
 
   if (cargando) {
@@ -139,6 +202,17 @@ export function PanelRegistroActividad({
 
   const registro = estado.registro;
 
+  /*
+   * Si todavia falta el documento que respalda la actividad.
+   *
+   * Donde lo recibe el bloque de documentos no hay archivo que mirar en el
+   * formulario: lo que falta lo dice el propio `exigeSoporte`, que ya deja de
+   * ser cierto en cuanto el formato se entrega alli.
+   */
+  const faltaSoporte = estado.tieneFormatos
+    ? estado.exigeSoporte
+    : estado.exigeSoporte && !archivo;
+
   return (
     <Marco>
       {/* El numeral y el nombre los pinta el contenedor, para las sesenta y
@@ -157,9 +231,21 @@ export function PanelRegistroActividad({
         </Aviso>
       )}
 
-      {registro ? (
+      {/* Corrigiendo se baja al formulario aunque haya registro: es el mismo de
+          abajo, ya cargado con lo anterior, y no una pantalla nueva. */}
+      {registro && !corrigiendo ? (
         <>
-          <Aviso tono="ok" titulo={`Registrada el ${fechaLarga(registro.fecha)}`}>
+          {/* Devuelta no es «registrada»: lo que hay es el intento anterior, y
+              llamarlo registrado le decía al gestor que ya estaba hecho justo
+              cuando le acaban de pedir que lo corrija. */}
+          <Aviso
+            tono={devuelta ? 'aviso' : 'ok'}
+            titulo={
+              devuelta
+                ? `Lo que registraste el ${fechaLarga(registro.fecha)}`
+                : `Registrada el ${fechaLarga(registro.fecha)}`
+            }
+          >
             {registro.nota}
           </Aviso>
 
@@ -205,16 +291,37 @@ export function PanelRegistroActividad({
               </div>
             </>
           ) : (
-            <BotonSecundario
-              icono={<CircleSlash className="w-3.5 h-3.5" />}
-              onClick={() => setAnulando(true)}
-            >
-              Anular y registrar de nuevo
-            </BotonSecundario>
+            /* Consultar el registro es de todos; rehacerlo, de quien lo
+               trabaja. Sin `quien`: el bloque de arriba ya dice qué se
+               registró y quién, así que un aviso más sobraría. */
+            <Permitido permiso={PERMISOS.actividadEditar}>
+              {/* Devuelta, corregir es la acción principal y no una salida de
+                  emergencia: se la pidió quien la revisa. «Anular» describía
+                  deshacer un error propio, que es otra cosa. */}
+              {devuelta ? (
+                <Boton icono={<FilePlus2 className="w-3.5 h-3.5" />} onClick={corregir}>
+                  Corregir y volver a enviar
+                </Boton>
+              ) : (
+                <BotonSecundario
+                  icono={<CircleSlash className="w-3.5 h-3.5" />}
+                  onClick={() => setAnulando(true)}
+                >
+                  Anular y registrar de nuevo
+                </BotonSecundario>
+              )}
+            </Permitido>
           )}
         </>
       ) : (
         <>
+          {corrigiendo && (
+            <Ayuda>
+              Estás corrigiendo lo que registraste. Cambia lo que te señalaron y vuelve a
+              enviarlo; lo anterior queda en el historial.
+            </Ayuda>
+          )}
+
           <label className="block">
             <span className="text-[11.5px] text-slate-600">Fecha en que ocurrió</span>
             <input
@@ -237,17 +344,33 @@ export function PanelRegistroActividad({
             />
           </label>
 
-          <SelectorArchivo
-            etiqueta="Soporte de la actividad"
-            archivo={archivo}
-            onElegir={setArchivo}
-            obligatorio={estado.exigeSoporte}
-            ayuda={
-              estado.exigeSoporte
-                ? 'Obligatorio para esta actividad.'
-                : 'Opcional: adjúntalo si la actividad dejó un documento.'
-            }
-          />
+          {/* El soporte se pide una sola vez.
+
+              Con formatos asignados lo recibe el bloque de documentos de abajo
+              —los dos escriben el mismo adjunto desde que el soporte cumple el
+              formato pendiente, así que ofrecer los dos era pedir el papel dos
+              veces— y aquí solo se dice dónde está. El bloque además nombra el
+              formato y presta la plantilla en blanco, que es lo que este
+              selector genérico nunca pudo hacer. */}
+          {estado.tieneFormatos ? (
+            <Ayuda>
+              {estado.exigeSoporte
+                ? 'El soporte se carga abajo, en «Documentos de esta actividad»: ahí se dice qué formato es y se descarga la plantilla en blanco.'
+                : 'El soporte ya está cargado en «Documentos de esta actividad», abajo.'}
+            </Ayuda>
+          ) : (
+            <SelectorArchivo
+              etiqueta="Soporte de la actividad"
+              archivo={archivo}
+              onElegir={setArchivo}
+              obligatorio={estado.exigeSoporte}
+              ayuda={
+                estado.exigeSoporte
+                  ? 'Obligatorio para esta actividad.'
+                  : 'Opcional: adjúntalo si la actividad dejó un documento.'
+              }
+            />
+          )}
 
           {/* Este boton es el unico punto que sabe si el trabajo esta hecho
               —comprueba la fecha, la nota y el soporte—, asi que es el que
@@ -256,15 +379,34 @@ export function PanelRegistroActividad({
               aprobacion una actividad vacia, y las dos formas de cerrarla se
               ignoraban entre si. A la derecha porque es donde termina la
               lectura del formulario. */}
-          <div className="flex justify-end">
-            <Boton
-              icono={<FilePlus2 className="w-3.5 h-3.5" />}
-              onClick={registrar}
-              disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
-            >
-              {requiereAprobacion ? 'Registrar y enviar a aprobación' : 'Registrar la actividad'}
-            </Boton>
-          </div>
+          <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+            <div className="flex justify-end gap-2">
+              {/* Salida sin guardar: quien entró a corregir y se arrepiente
+                  volvería a ver el formulario vacío si no puede retroceder. */}
+              {corrigiendo && (
+                <BotonSecundario
+                  icono={<Undo2 className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setCorrigiendo(false);
+                    limpiar();
+                  }}
+                >
+                  Dejarlo como estaba
+                </BotonSecundario>
+              )}
+              <Boton
+                icono={<FilePlus2 className="w-3.5 h-3.5" />}
+                onClick={registrar}
+                disabled={guardando || nota.trim().length < 10 || faltaSoporte}
+              >
+                {corrigiendo
+                  ? 'Guardar y volver a enviar'
+                  : requiereAprobacion
+                    ? 'Registrar y enviar a aprobación'
+                    : 'Registrar la actividad'}
+              </Boton>
+            </div>
+          </Permitido>
         </>
       )}
 
