@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual, ILike, DataSource } from 'typeorm';
-import { Auditoria, TipoAuditoria, FaseAuditoria, PrioridadAuditoria, RiesgoKanban, EstadoKanban } from './entities/auditoria.entity';
+import { Auditoria, TipoAuditoria, FaseAuditoria, PrioridadAuditoria, RiesgoKanban, EstadoKanban, TipoKanban } from './entities/auditoria.entity';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
@@ -674,6 +674,13 @@ export class AuditoriasService {
     return estadoDirecto || EstadoKanban.PLANEACION;
   }
 
+  private resolveTipoKanban(tipoKanban?: string, tipo?: string): TipoKanban {
+    const valor = (tipoKanban || tipo || '').trim().toLowerCase();
+    if (valor.includes('especial')) return TipoKanban.ESPECIAL;
+    if (valor.includes('territorial')) return TipoKanban.TERRITORIAL;
+    return TipoKanban.REGULAR;
+  }
+
   private mapEstadoKanbanToFase(estadoKanban: EstadoKanban): FaseAuditoria {
     const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
       [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLAN_ANUAL,
@@ -1270,15 +1277,21 @@ export class AuditoriasService {
       }
     }
     
+    // Una auditoría Especial puede iniciar en Ejecución o Comunicación, así que
+    // no se le exige haber programado Planeación (EFDS-1923).
+    const esEspecialSinPlaneacion =
+      this.resolveTipoKanban(createDto.tipoKanban, createDto.tipo) === TipoKanban.ESPECIAL &&
+      !fechaFinPlaneacion;
+
     if (fechaFinEjecucion) {
-      if (!fechaFinPlaneacion) {
+      if (!fechaFinPlaneacion && !esEspecialSinPlaneacion) {
         throw new BadRequestException('Debe especificar la fecha de fin de Planeación antes de la fecha de fin de Ejecución');
       }
-      if (fechaFinEjecucion <= fechaFinPlaneacion) {
+      if (fechaFinPlaneacion && fechaFinEjecucion <= fechaFinPlaneacion) {
         throw new BadRequestException('La fecha de fin de Ejecución debe ser posterior al fin de Planeación');
       }
     }
-    
+
     // Si se proporciona fechaFinEjecucion, validar que fechaFin sea posterior
     if (fechaFinEjecucion && fechaFin <= fechaFinEjecucion) {
       throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
@@ -1331,6 +1344,9 @@ export class AuditoriasService {
       presupuestoEstimado: createDto.presupuestoEstimado,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
       estadoKanban: estadoKanbanInicial,
+      // Tipo operativo del tablero. Si no viene explícito se deriva del tipo de
+      // auditoría, para no guardar siempre 'regular' por defecto (EFDS-1923).
+      tipoKanban: this.resolveTipoKanban(createDto.tipoKanban, createDto.tipo),
     };
 
     // Incluir campos opcionales si tienen valor
