@@ -3751,20 +3751,33 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(null);
   }, [radicadoresNombres]);
 
-  const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
-    const enReal = archivosBackend.find(a => a.id === archivoId);
-    if (enReal) {
-      enReal.estado = 'devuelto';
-      enReal.observacionesDevolucion = `${motivo}: ${comentarios}`;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === archivoId ? { ...a, estado: 'devuelto' as const, observacionesDevolucion: `${motivo}: ${comentarios}` } : a
-      ));
+  const handleAutoDevuelto = useCallback(async (archivoId: string, motivo: string, comentarios: string) => {
+    const userId = authService.getCurrentUser()?.id;
+    if (!userId) {
+      toast.error('No se pudo obtener el usuario actual');
+      return;
     }
-    toast.warning('Auto devuelto para corrección', {
-      description: `El profesional debe corregir y reenviar el documento`,
-      duration: 5000,
-    });
+    const observaciones = `${motivo}${comentarios ? ` — ${comentarios}` : ''}`;
+    try {
+      await disciplinaryService.devolverAuto(archivoId, userId, observaciones);
+      const actualizarArchivo = (prev: Archivo[]) =>
+        prev.map(a =>
+          a.id === archivoId
+            ? { ...a, estado: 'devuelto' as const, observacionesDevolucion: observaciones }
+            : a
+        );
+      setArchivosBackend(actualizarArchivo);
+      setArchivosSubidos(actualizarArchivo);
+      toast.warning('Auto devuelto para corrección', {
+        description: `El profesional debe corregir y reenviar el documento`,
+        duration: 5000,
+      });
+    } catch (err: any) {
+      toast.error('Error al devolver el auto', {
+        description: err?.message || 'No se pudo conectar con el servidor. Intente nuevamente.',
+        duration: 5000,
+      });
+    }
     setAutoEnRevisionModal(null);
   }, []);
 

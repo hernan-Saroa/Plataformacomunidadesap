@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { of } from 'rxjs';
 import { AutoService } from './auto.service';
 import { LegalAuto, AutoStatus } from '../entities/legal-auto.entity';
 import { AutoVersion } from '../entities/auto-version.entity';
@@ -11,10 +12,12 @@ import { PdfModifierService } from './pdf-modifier.service';
 import { SequenceService } from './sequence.service';
 import { DocumentConversionService } from './document-conversion.service';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
+import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
 import { JuridicaEmailService } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
 import { AutosConfigurationService } from './autos-configuration.service';
 import { HttpService } from '@nestjs/axios';
+import { ReviewAction } from '../dtos/review-auto.dto';
 
 describe('AutoService', () => {
   let service: AutoService;
@@ -45,6 +48,23 @@ describe('AutoService', () => {
 
   const mockActuacionesRepository = {
     save: jest.fn(),
+  };
+
+  const mockProfessionalRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const mockNotificationClient = {
+    send: jest.fn().mockResolvedValue({}),
+    sendMany: jest.fn().mockResolvedValue({}),
+    notifyByRole: jest.fn().mockResolvedValue({}),
+  };
+
+  const mockHttpService = {
+    get: jest.fn(),
+    post: jest.fn().mockReturnValue(of({ data: { success: true } })),
   };
 
   const mockProcessService = {
@@ -97,6 +117,10 @@ describe('AutoService', () => {
           useValue: mockActuacionesRepository,
         },
         {
+          provide: getRepositoryToken(DisciplinaryProfessional),
+          useValue: mockProfessionalRepository,
+        },
+        {
           provide: ProcessService,
           useValue: mockProcessService,
         },
@@ -125,10 +149,7 @@ describe('AutoService', () => {
         },
         {
           provide: NotificationClientService,
-          useValue: {
-            send: jest.fn().mockResolvedValue({}),
-            notifyByRole: jest.fn().mockResolvedValue({}),
-          },
+          useValue: mockNotificationClient,
         },
         {
           provide: AutosConfigurationService,
@@ -138,10 +159,7 @@ describe('AutoService', () => {
         },
         {
           provide: HttpService,
-          useValue: {
-            get: jest.fn(),
-            post: jest.fn(),
-          },
+          useValue: mockHttpService,
         },
       ],
     }).compile();
@@ -378,6 +396,83 @@ describe('AutoService', () => {
       );
 
       expect(mockPdfModifierService.addConsecutive).not.toHaveBeenCalled();
+    });
+
+    it('should return auto, set status to DEVUELTO, and send internal and email notifications to involved professional', async () => {
+      const mockAuto = {
+        id: 'auto-return-123',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: {
+          id: 'process-123',
+          radicadoProceso: 'D-2026-001',
+          abogadoAsignadoId: 'prof-uuid-456',
+        },
+        currentVersion: 1,
+        contenido: '<p>Contenido auto</p>',
+        tipo: 'AUTO_APERTURA_INVESTIGACION',
+        documentUrl: '/files/auto.docx',
+        documentName: 'auto.docx',
+      };
+
+      const mockProfessional = {
+        id: 'prof-uuid-456',
+        idUser: 'user-auth-uuid-789',
+        nombreCompleto: 'Dra. María Abogada',
+        email: 'maria.abogada@esap.edu.co',
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({ securitySettings: { auditEnabled: false } });
+      mockProfessionalRepository.findOne.mockImplementation(({ where }: any) => {
+        if (where?.id === 'prof-uuid-456') return Promise.resolve(mockProfessional);
+        if (where?.id === 'jefe-user-id') {
+          return Promise.resolve({
+            id: 'jefe-prof-id',
+            nombreCompleto: 'Dr. Carlos Jefe OCID',
+            email: 'jefe@esap.edu.co',
+          });
+        }
+        return Promise.resolve(null);
+      });
+
+      mockAutoRepository.save.mockImplementation((entity: any) =>
+        Promise.resolve({ ...entity, id: entity.id || 'auto-return-123' }),
+      );
+
+      const result = await service.approve(
+        'auto-return-123',
+        {
+          action: ReviewAction.RETURN,
+          observaciones: 'Por favor corregir la motivación jurídica en el considerando tercero.',
+        } as any,
+        'jefe-user-id',
+      );
+
+      expect(result.estado).toBe(AutoStatus.DEVUELTO);
+      expect(result.rejection_comments).toBe('Por favor corregir la motivación jurídica en el considerando tercero.');
+
+      // Verificar notificación interna en campana (DISCIPLINARIO)
+      expect(mockNotificationClient.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_usuario_destinatario: 'user-auth-uuid-789',
+          tipo_notificacion: 'AUTO_DEVUELTO',
+          categoria: 'DISCIPLINARIO',
+          icono: 'RotateCcw',
+          prioridad: 'Alta',
+          mensaje: expect.stringContaining('Por favor corregir la motivación jurídica'),
+        }),
+      );
+
+      // Verificar correo electrónico enviado
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'maria.abogada@esap.edu.co',
+          subject: expect.stringContaining('[AUTO DEVUELTO]'),
+          html: expect.stringContaining('Escuela Superior de Administración Pública'.toUpperCase()),
+        }),
+      );
     });
   });
 
