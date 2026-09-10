@@ -15,6 +15,7 @@ import { OfertasModule } from './ofertas/ofertas.module.js';
 import { ValidacionModule } from './validacion/validacion.module.js';
 import { PublicacionModule } from './publicacion/publicacion.module.js';
 import { PortalDocenteModule } from './portal-docente/portal-docente.module.js';
+import { JefaturaModule } from './jefatura/jefatura.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 
@@ -53,6 +54,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
     ValidacionModule,
     PublicacionModule,
     PortalDocenteModule,
+    JefaturaModule,
   ],
   controllers: [AppController],
   providers: [

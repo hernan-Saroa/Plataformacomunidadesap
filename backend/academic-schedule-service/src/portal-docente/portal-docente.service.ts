@@ -42,6 +42,8 @@ export interface FranjaPortal {
   numeroGrupo: number | null;
   asignatura: string | null;
   programa: string | null;
+  /** Motivo de la devolución de la jefatura, si la franja fue devuelta (EFDS-1939). */
+  comentarioJefatura: string | null;
 }
 
 @Injectable()
@@ -79,6 +81,7 @@ export class PortalDocenteService {
            f.tipo_sesion                      AS "tipoSesion",
            f.aula_codigo                      AS "aulaCodigo",
            f.estado,
+           f.comentario_jefatura              AS "comentarioJefatura",
            g.numero_grupo                     AS "numeroGrupo",
            a.nombre                           AS "asignatura",
            pr.nombre                          AS "programa"
@@ -94,9 +97,13 @@ export class PortalDocenteService {
    * porque pasan a cruzar con una franja que el docente ya posee.
    */
   async disponibles(idPerson: string): Promise<FranjaPortal[]> {
+    // PUBLICADA de dos clases: las libres (id_docente NULL) y las DEVUELTAS a
+    // ESTE docente (id_docente = él, con comentario). Una devuelta a otro docente
+    // no se le ofrece: es suya para corregir.
     return this.dataSource.query(
       `${this.SELECT_CONTEXTO}
         WHERE f.estado = 'PUBLICADA'
+          AND (f.id_docente IS NULL OR f.id_docente = $1)
           AND NOT EXISTS (
             SELECT 1 FROM "academic-schedule".franja_horaria m
              WHERE m.id_docente = $1
@@ -132,7 +139,7 @@ export class PortalDocenteService {
     await qr.startTransaction();
     try {
       const filas = await qr.query(
-        `SELECT id_franja, estado, dia_semana,
+        `SELECT id_franja, estado, id_docente, dia_semana,
                 hora_inicio, hora_fin
            FROM "academic-schedule".franja_horaria
           WHERE id_franja = $1
@@ -143,6 +150,10 @@ export class PortalDocenteService {
       const f = filas[0];
       if (f.estado !== 'PUBLICADA') {
         throw new ConflictException('La franja ya no está disponible: alguien la tomó o se retiró de publicación.');
+      }
+      // Una franja devuelta a OTRO docente no se puede tomar: es suya para corregir.
+      if (f.id_docente && String(f.id_docente) !== String(idPerson)) {
+        throw new ConflictException('Esta franja fue devuelta a otro docente y no está disponible.');
       }
 
       const cruce = await qr.query(
@@ -158,9 +169,11 @@ export class PortalDocenteService {
         throw new ConflictException('No puede tomar esta franja: se cruza con otra que usted ya tiene.');
       }
 
+      // Tomarla (o re-tomar una devuelta) la deja TOMADA y limpia el comentario
+      // de la jefatura: el motivo de la devolución ya fue atendido.
       await qr.query(
         `UPDATE "academic-schedule".franja_horaria
-            SET estado = 'TOMADA', id_docente = $1, updated_at = NOW()
+            SET estado = 'TOMADA', id_docente = $1, comentario_jefatura = NULL, updated_at = NOW()
           WHERE id_franja = $2`,
         [idPerson, idFranja],
       );

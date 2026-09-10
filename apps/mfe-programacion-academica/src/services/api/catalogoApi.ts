@@ -541,3 +541,38 @@ export function tomarFranja(idFranja: string): Promise<{ tomada: true }> {
 export function soltarFranja(idFranja: string): Promise<{ soltada: true }> {
   return pedirJson(`${BASE_PORTAL}/soltar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
 }
+
+// ─── Aprobación de la jefatura territorial (EFDS-1939) ────────────────────────
+
+/** Franja pendiente de decisión de la jefatura, con su docente. */
+export interface FranjaAprobacion {
+  idFranja: string;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  aulaCodigo: string | null;
+  estado: string;
+  asignatura: string | null;
+  programa: string | null;
+  documentoDocente: string;
+  nombreDocente: string;
+}
+
+const BASE_JEFATURA = '/programacion-academica/api/v1/jefatura';
+
+/** Franjas tomadas por docentes de la territorial de la jefatura autenticada. */
+export function getPendientesJefatura(): Promise<FranjaAprobacion[]> {
+  return pedirJson<FranjaAprobacion[]>(`${BASE_JEFATURA}/pendientes`, { method: 'GET' });
+}
+
+/** Aprueba una franja (TOMADA → APROBADA). */
+export function aprobarFranja(idFranja: string): Promise<{ aprobada: true }> {
+  return pedirJson(`${BASE_JEFATURA}/aprobar/${encodeURIComponent(idFranja)}`, { method: 'POST' });
+}
+
+/** Devuelve una franja con comentario obligatorio (TOMADA → PUBLICADA). */
+export function devolverFranja(idFranja: string, comentario: string): Promise<{ devuelta: true }> {
+  return pedirJson(`${BASE_JEFATURA}/devolver/${encodeURIComponent(idFranja)}`, {
+    method: 'POST', body: JSON.stringify({ comentario }),
+  });
+}

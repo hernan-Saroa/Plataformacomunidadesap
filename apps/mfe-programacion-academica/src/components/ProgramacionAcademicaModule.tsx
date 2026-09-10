@@ -21,11 +21,12 @@ import {
   ShieldCheck,
   Award,
   Layers3,
+  ClipboardCheck,
   X
 } from 'lucide-react';
 
 import {
-  getTodasLasSesiones, getAulas, getCrucesHistoricos,
+  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura,
   type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
@@ -34,6 +35,7 @@ import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
+import { AprobacionJefatura } from './AprobacionJefatura';
 
 interface FranjaHoraria {
   id: string;
@@ -58,7 +60,7 @@ interface FranjaHoraria {
   estado: 'PROGRAMADO' | 'CONFIRMADO' | 'CONFLICTO';
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion';
 
 
 /**
@@ -102,6 +104,10 @@ export function ProgramacionAcademicaModule() {
   // 3.9 — Cruces del histórico. Se cargan aparte del panel: son otra fuente.
   const [historico, setHistorico] = useState<ValidacionHistorico | null>(null);
   useEffect(() => { getCrucesHistoricos().then(setHistorico).catch(() => setHistorico(null)); }, []);
+  // EFDS-1939 — el item de aprobación solo aparece si el usuario ES jefatura. Se
+  // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
+  const [esJefatura, setEsJefatura] = useState(false);
+  useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -172,6 +178,14 @@ export function ProgramacionAcademicaModule() {
           color: '#D97706',
           badge: totalConflictos > 0 ? totalConflictos : undefined,
         },
+        // EFDS-1939 — solo para jefaturas territoriales.
+        ...(esJefatura ? [{
+          id: 'aprobacion',
+          label: 'Aprobación territorial',
+          subtitle: 'Aprobar o devolver franjas de tus docentes',
+          icon: <ClipboardCheck className="w-5 h-5" />,
+          color: '#059669',
+        }] : []),
       ],
     },
   ];
@@ -398,6 +412,8 @@ export function ProgramacionAcademicaModule() {
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
       {seccion === 'ofertas' && <GestionOfertas />}
+
+      {seccion === 'aprobacion' && <AprobacionJefatura />}
 
       {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
           Antes esta sección mostraba alertas inventadas en el propio front.
