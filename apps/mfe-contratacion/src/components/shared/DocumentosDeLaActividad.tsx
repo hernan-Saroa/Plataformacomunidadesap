@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Download, FileText, Paperclip, Plus, Trash2 } from 'lucide-react';
+import { Check, Download, Eye, FileText, Paperclip, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -8,6 +8,8 @@ import {
   DocumentoRequeridoPorFormato,
   EstadoDocumentosActividad,
 } from '../../types';
+import { DocumentoVisible, VisorDocumento } from './VisorDocumento';
+import { useSoloLectura } from './SoloLectura';
 
 interface Props {
   procesoId: string;
@@ -59,7 +61,16 @@ export function DocumentosDeLaActividad({
 }: Props) {
   const [estado, setEstado] = useState<EstadoDocumentosActividad | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   const inputAdicional = useRef<HTMLInputElement>(null);
+  /**
+   * La secuencia todavía no llegó a esta actividad (EFDS-1183).
+   *
+   * Las filas siguen listándose y los formatos en blanco siguen descargándose
+   * —para eso se puede entrar a mirarla—, pero cargar queda fuera: es lo único
+   * que dejaría en el expediente un documento fuera de orden.
+   */
+  const soloLectura = useSoloLectura();
 
   /**
    * Lo que la actividad dejó en el expediente sin pasar por un formato: lo que
@@ -123,6 +134,38 @@ export function DocumentosDeLaActividad({
       toast.error(e.message ?? 'No se pudo cargar el documento');
     } finally {
       setOcupado(null);
+    }
+  };
+
+  /**
+   * Varios adjuntos de una vez, para los que no responden a ningún formato.
+   *
+   * Las filas de arriba son de uno en uno porque un formato es un documento: la
+   * fila tiene un hueco y ese hueco se llena o se retira. Los adicionales no
+   * tienen esa forma —son los anexos que ninguna plantilla previó, y llegan a
+   * puñados—, así que aquí el selector admite varios y se suben en serie.
+   */
+  const cargarVarios = async (archivos: File[]) => {
+    setOcupado('adicional');
+    let subidos = 0;
+    try {
+      for (const archivo of archivos) {
+        await contratacionService.cargarDocumentoDeActividad(procesoId, numeral, archivo);
+        subidos += 1;
+      }
+      toast.success(subidos === 1 ? 'Documento cargado' : `${subidos} documentos cargados`);
+    } catch (e: any) {
+      toast.error(
+        subidos > 0
+          ? `${e.message ?? 'No se pudo cargar el documento'} · se cargaron ${subidos} de ${archivos.length}`
+          : (e.message ?? 'No se pudo cargar el documento'),
+      );
+    } finally {
+      setOcupado(null);
+      if (subidos > 0) {
+        await leer();
+        onCambio?.();
+      }
     }
   };
 
@@ -192,9 +235,11 @@ export function DocumentosDeLaActividad({
           key={doc.plantillaId}
           documento={doc}
           ocupada={ocupado === doc.plantillaId || ocupado === doc.cargado?.id}
-          puedeCargar={estado.puedeCargar}
+          puedeCargar={estado.puedeCargar && !soloLectura}
+          motivoBloqueo={soloLectura}
           onCargar={(archivo) => cargar(archivo, doc.plantillaId, doc.plantillaId)}
           onRetirar={() => doc.cargado && retirar(doc.cargado.id)}
+          onVer={setViendo}
         />
       ))}
 
@@ -208,8 +253,9 @@ export function DocumentosDeLaActividad({
               key={doc.id}
               documento={doc}
               ocupada={ocupado === doc.id}
-              puedeRetirar={estado.puedeCargar}
+              puedeRetirar={estado.puedeCargar && !soloLectura}
               onRetirar={() => retirar(doc.id)}
+              onVer={setViendo}
             />
           ))}
 
@@ -222,6 +268,7 @@ export function DocumentosDeLaActividad({
               ocupada={false}
               puedeRetirar={false}
               onRetirar={() => undefined}
+              onVer={setViendo}
             />
           ))}
         </div>
@@ -229,19 +276,20 @@ export function DocumentosDeLaActividad({
 
       {/* Adjuntar algo que ningún formato pedía, en segundo plano: la lista de
           arriba es lo que hay que resolver. */}
-      {estado.puedeCargar && !soloExpediente && (
+      {estado.puedeCargar && !soloExpediente && !soloLectura && (
         <div className="pt-0.5">
           <input
             ref={inputAdicional}
             type="file"
+            multiple
             className="hidden"
             accept={MIME_ACEPTADOS}
             onChange={(e) => {
-              const archivo = e.target.files?.[0];
+              const elegidos = Array.from(e.target.files ?? []);
               // Se limpia: si tras un error se elige el mismo archivo, sin esto
               // el onChange no se dispara y la pantalla parecería colgada.
               e.target.value = '';
-              if (archivo) cargar(archivo, undefined, 'adicional');
+              if (elegidos.length) cargarVarios(elegidos);
             }}
           />
           <button
@@ -251,11 +299,12 @@ export function DocumentosDeLaActividad({
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-[#003DA5] transition-colors disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-            {ocupado === 'adicional' ? 'Cargando…' : 'Adjuntar otro documento'}
+            {ocupado === 'adicional' ? 'Cargando…' : 'Adjuntar otros documentos'}
           </button>
         </div>
       )}
 
+      <VisorDocumento documento={viendo} onClose={() => setViendo(null)} />
     </div>
   );
 }
@@ -265,15 +314,26 @@ function FilaRequerido({
   documento,
   ocupada,
   puedeCargar,
+  motivoBloqueo,
   onCargar,
   onRetirar,
+  onVer,
 }: {
   documento: DocumentoRequeridoPorFormato;
   ocupada: boolean;
   /** Quien solo aprueba ve la fila, pero no los botones que le rechazarían. */
   puedeCargar: boolean;
+  /**
+   * Qué falta antes de poder cargar aquí, cuando lo que falta es la secuencia.
+   *
+   * Sin esto la fila bloqueada decía «Pendiente de que el gestor lo cargue» al
+   * propio gestor, que es justo quien no puede todavía: el motivo real no es de
+   * quién es el turno, sino que la actividad anterior no está cerrada.
+   */
+  motivoBloqueo?: string | null;
   onCargar: (archivo: File) => void;
   onRetirar: () => void;
+  onVer: (documento: DocumentoVisible) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const cargado = documento.cargado;
@@ -386,7 +446,7 @@ function FilaRequerido({
         </div>
       ) : !cargado ? (
         <p className="text-[11px] text-slate-500 m-0 mt-2">
-          Pendiente de que el gestor lo cargue.
+          {motivoBloqueo ? `${motivoBloqueo}.` : 'Pendiente de que el gestor lo cargue.'}
         </p>
       ) : null}
     </div>
@@ -399,11 +459,13 @@ function FilaAdicional({
   ocupada,
   puedeRetirar,
   onRetirar,
+  onVer,
 }: {
   documento: DocumentoCargado;
   ocupada: boolean;
   puedeRetirar: boolean;
   onRetirar: () => void;
+  onVer: (documento: DocumentoVisible) => void;
 }) {
   return (
     <div className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2">
@@ -420,15 +482,31 @@ function FilaAdicional({
       </div>
 
       {documento.descargaUrl && (
-        <a
-          href={contratacionService.urlDescarga(documento.descargaUrl)}
-          target="_blank"
-          rel="noreferrer"
-          title={`Descargar ${documento.nombre}`}
-          className="shrink-0 p-1 rounded-md text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
-        >
-          <Download className="w-3.5 h-3.5" aria-hidden="true" />
-        </a>
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              onVer({
+                nombre: documento.nombre,
+                descargaUrl: documento.descargaUrl!,
+                detalle: documento.subidoPor ?? undefined,
+              })
+            }
+            title={`Ver ${documento.nombre}`}
+            className="shrink-0 p-1 rounded-md text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+          >
+            <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+          <a
+            href={contratacionService.urlDescarga(documento.descargaUrl)}
+            target="_blank"
+            rel="noreferrer"
+            title={`Descargar ${documento.nombre}`}
+            className="shrink-0 p-1 rounded-md text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+          >
+            <Download className="w-3.5 h-3.5" aria-hidden="true" />
+          </a>
+        </>
       )}
 
       {puedeRetirar && (

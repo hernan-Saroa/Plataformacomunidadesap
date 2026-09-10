@@ -33,6 +33,9 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
+  CuentaCandidata,
+  EstadoParticipacion,
+  EstadoModalidadProceso,
   EstadoActaInicio,
   DatosActaInicio,
   DatosReasignacion,
@@ -157,6 +160,20 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
   }
 
   throw new Error(cuerpo?.message ?? `Error ${res.status}`);
+}
+
+/**
+ * La ruta del archivo en el gateway, sin decir todavía qué se hace con él.
+ *
+ * Lo que llega no tiene una sola forma: la columna guarda `/files/<archivo>`
+ * donde escribió la biblioteca de formatos y `hiring/files/<archivo>` donde
+ * escribieron los paneles, y solo unos pocos servicios la rearman antes de
+ * responder. Concatenar la segunda daría `/hiring/api/v1hiring/files/…`, un
+ * 404 que el usuario no puede distinguir de un documento borrado.
+ */
+function archivo(descargaUrl: string): string {
+  const nombre = descargaUrl.split('/').pop() ?? '';
+  return `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/files/${nombre}`;
 }
 
 /**
@@ -580,6 +597,79 @@ export const contratacionService = {
     pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
+    }),
+
+  // ------------------- modalidad del proceso · 3.5 (EFDS-1183) --------------
+
+  /** Qué modalidad tiene el proceso, si está ratificada y qué se dijo de ella. */
+  modalidadDelProceso: (procesoId: string) =>
+    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`),
+
+  /**
+   * Propone la modalidad, o la corrige tras una devolución.
+   *
+   * La cambia y la manda a revisar de una vez: corregir es volver a proponer, y
+   * dejarla cambiada sin mandar haría que el abogado viera una modalidad
+   * distinta de la que aprobó sin que nada dijera que estaba pendiente.
+   */
+  proponerModalidad: (procesoId: string, modalidad: string) =>
+    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`, {
+      method: 'PUT',
+      body: JSON.stringify({ modalidad }),
+    }),
+
+  /** El abogado la ratifica, o la devuelve diciendo cuál corresponde. */
+  decidirModalidad: (
+    procesoId: string,
+    decision: 'APROBADO' | 'DEVUELTO',
+    observaciones?: string,
+  ) =>
+    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad/decidir`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, observaciones }),
+    }),
+
+  // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------
+
+  /** Quién lo tomó, qué abogado lo revisa y quiénes estuvieron antes. */
+  participacion: (procesoId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion`),
+
+  /**
+   * Actividad 3.3: toma el proceso de la bandeja.
+   *
+   * Nadie lo entrega: el primero que llega se lo queda. Si otro lo tomó antes,
+   * responde 409 diciendo quién.
+   */
+  tomarProceso: (procesoId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/tomar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  /** A quién se le puede dar el papel de abogado. */
+  abogados: (q = '') =>
+    pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
+
+  /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
+  asignarAbogado: (procesoId: string, usuarioId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
+      method: 'POST',
+      body: JSON.stringify({ usuarioId }),
+    }),
+
+  /** Releva al vigente y asigna al nuevo de una vez, para no dejarlo sin revisor. */
+  reasignarAbogado: (procesoId: string, usuarioId: string, motivo: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/reasignar`, {
+      method: 'POST',
+      body: JSON.stringify({ usuarioId, motivo }),
+    }),
+
+  /** Lo quita sin poner otro. El proceso queda pendiente de reasignar. */
+  quitarAbogado: (procesoId: string, motivo: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/quitar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
   // ---------------------- etapa 8 · supervisión del contrato (8.2) ----------
@@ -1561,6 +1651,18 @@ export const contratacionService = {
       { method: 'POST', body: JSON.stringify({ observaciones }) },
     ),
 
+  /**
+   * Numeral 3.4: niega el proceso. No es devolver.
+   *
+   * Devolver espera una corrección y deja el proceso vivo; negar lo cierra y no
+   * admite reenvío. El motivo es obligatorio y no se puede deshacer.
+   */
+  negar: (procesoId: string, observaciones: string) =>
+    pedir<{ estado: string; decision: string; revisadoPor: string }>(
+      `/procesos/${procesoId}/estudio-previo/negar`,
+      { method: 'POST', body: JSON.stringify({ observaciones }) },
+    ),
+
   revisiones: (procesoId: string) =>
     pedir<RevisionEstudioPrevio[]>(`/procesos/${procesoId}/estudio-previo/revisiones`),
 
@@ -2305,19 +2407,40 @@ export const contratacionService = {
     }),
 
   /**
-   * La dirección desde la que el navegador descarga un adjunto.
+   * La dirección desde la que el navegador **baja** un adjunto.
    *
-   * Lo que llega no tiene una sola forma: la columna guarda `/files/<archivo>`
-   * donde escribió la biblioteca de formatos y `hiring/files/<archivo>` donde
-   * escribieron los paneles, y solo unos pocos servicios la rearman antes de
-   * responder. Concatenar la segunda daría `/hiring/api/v1hiring/files/…`, un
-   * 404 que el usuario no puede distinguir de un documento borrado.
-   *
-   * Se resuelve aquí, que es por donde pasan las cuarenta descargas del
-   * módulo, quedándose con el nombre: es lo único que el controlador necesita.
+   * `descargar=1` es lo que le pide al controlador la cabecera `attachment`.
+   * Va explícito desde que el archivo se sirve `inline` por defecto: sin él,
+   * un enlace sin `target` sacaría al usuario del módulo para enseñarle el PDF
+   * en la misma pestaña.
    */
-  urlDescarga: (descargaUrl: string) => {
-    const nombre = descargaUrl.split('/').pop() ?? '';
-    return `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/files/${nombre}`;
+  urlDescarga: (descargaUrl: string) =>
+    `${archivo(descargaUrl)}?descargar=1`,
+
+  /**
+   * La misma dirección, pero para mirar el documento en vez de bajarlo.
+   *
+   * El controlador sirve `inline` salvo que se le pida `descargar=1`, así que
+   * esta es la que abre el PDF en el visor o en una pestaña. Se separan porque
+   * las cuarenta descargas del módulo son eso —descargas— y cambiarlas todas a
+   * la vez dejaría a cualquier enlace sin `target` navegando fuera del módulo.
+   */
+  urlVista: (descargaUrl: string) => archivo(descargaUrl),
+
+  /**
+   * El documento en memoria, para enseñarlo sin salir de la pantalla.
+   *
+   * Va por `fetch` con la cookie de sesión y no por el `src` del visor: un
+   * `iframe` que apunta al gateway es una petición de tercero, y el navegador
+   * no siempre le manda la cookie —depende del `SameSite` y de si el shell y el
+   * gateway comparten sitio—. Con el blob, el visor pinta lo que esta misma
+   * sesión ya descargó, que es la vía que usa el resto del servicio.
+   */
+  contenidoDocumento: async (descargaUrl: string): Promise<Blob> => {
+    const res = await fetch(archivo(descargaUrl), { credentials: 'include' });
+    if (res.status === 401) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+    if (res.status === 404) throw new Error('El documento ya no está en el expediente');
+    if (!res.ok) throw new Error(`No se pudo abrir el documento (error ${res.status})`);
+    return res.blob();
   },
 };

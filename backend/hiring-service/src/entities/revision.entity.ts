@@ -1,6 +1,14 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-export type DecisionRevision = 'APROBADO' | 'DEVUELTO';
+/**
+ * Los tres desenlaces de una revisión (EFDS-1183).
+ *
+ * `DEVUELTO` es «corrígelo y vuelve»: el trabajo regresa a quien lo hizo y el
+ * proceso sigue vivo. `NEGADO` es «esto no procede»: no hay nada que corregir y
+ * el proceso termina ahí. Devolver un proceso que la Dirección rechaza de plano
+ * era mentirle al área, que se queda esperando saber qué corregir.
+ */
+export type DecisionRevision = 'APROBADO' | 'DEVUELTO' | 'NEGADO';
 
 /**
  * Historial de revisiones de una actividad (numeral 3.4 de la matriz).
@@ -18,7 +26,7 @@ export class Revision {
   @Column({ length: 20 })
   decision: DecisionRevision;
 
-  /** Obligatorio cuando se devuelve: sin motivo el gestor no sabe qué corregir. */
+  /** Obligatorio salvo al aprobar: sin motivo nadie sabe qué corregir, ni por qué se negó. */
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 

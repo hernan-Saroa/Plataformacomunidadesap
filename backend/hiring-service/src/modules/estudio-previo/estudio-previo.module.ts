@@ -7,6 +7,7 @@ import { FilesController } from './files.controller';
 import { ModalidadesController } from './modalidades.controller';
 import { PersonasController } from './personas.controller';
 import { ConfiguracionModule } from '../configuracion/configuracion.module';
+import { ParticipacionModule } from '../participacion/participacion.module';
 
 import { Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -33,6 +34,9 @@ import { AprobacionModule } from '../aprobacion/aprobacion.module';
       CampoFormulario,
       Documento, Trazabilidad, Revision, Plantilla, Modalidad]),
     ConfiguracionModule,
+    // La 3.4 la resuelve el abogado asignado en la 3.3, así que hay que saber
+    // quién es antes de aceptar una decisión.
+    ParticipacionModule,
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],

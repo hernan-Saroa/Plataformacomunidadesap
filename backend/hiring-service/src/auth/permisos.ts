@@ -83,6 +83,15 @@ export const PERMISO_PROCESO_EDITAR = 'contratacion.proceso.edit';
 export const PERMISO_PROCESO_VER = 'contratacion.proceso.view';
 export const PERMISO_PROCESO_VER_TODOS = 'contratacion.proceso.view-all';
 export const PERMISO_PROCESO_ASIGNAR = 'contratacion.proceso.assign';
+/**
+ * Tomar de la bandeja un proceso que llegó sin radicar (EFDS-1183).
+ *
+ * Separado de `assign` a propósito: repartir es entregarle un proceso a otro
+ * —competencia del Director—, y tomar es quedarse con uno que nadie ha cogido.
+ * Si fueran el mismo permiso, dejar que el equipo tome de la bandeja les daría
+ * de paso la facultad de repartirse trabajo entre ellos.
+ */
+export const PERMISO_PROCESO_TOMAR = 'contratacion.proceso.take';
 export const PERMISO_PROCESO_ARCHIVAR = 'contratacion.proceso.archive';
 export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
 export const PERMISO_CONFIG_ADMINISTRAR = 'contratacion.config.manage';
@@ -311,12 +320,20 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'APOYO_SUPERVISION',
     'SUPER_ADMIN',
   ],
-  [PERMISO_PROCESO_VER_TODOS]: [
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
+  // Una sola X en la Hoja1 del formato, la del Jefe de Oficina: ver toda la
+  // entidad es la excepción y no el modo de trabajo de la Dirección.
+  //
+  // El revisor lo tenía porque cuando se escribió esta tabla el reparto no
+  // existía y sin «ver todos» no habría alcanzado los expedientes que le tocaba
+  // revisar. Desde que la 3.3 reparte (EFDS-1183) llega a los suyos por su
+  // participación, así que esto solo le enseñaba de más: al abogado le salían
+  // los procesos de toda la entidad y no los que le asignaron.
+  [PERMISO_PROCESO_VER_TODOS]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  // Todo el equipo de la Dirección, porque la bandeja es compartida: quien
+  // llega primero se queda con el proceso. El estructurador técnico no entra
+  // —es de las áreas que radican, no de quien recibe—.
+  [PERMISO_PROCESO_TOMAR]: ['GESTOR_CONTRATACION', 'DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_ARCHIVAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
   // Las dos únicas casillas que la Hoja1 del formato le marca al
