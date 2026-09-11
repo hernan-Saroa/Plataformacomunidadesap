@@ -1928,7 +1928,7 @@ export class TravelExpensesService {
        const rows: any[] = await this.dataSource.query(
          `SELECT p.nom_tercero, p.pri_apellido
           FROM auth."user" u
-          LEFT JOIN auth.personas p ON p.id_persona = u.id_person
+          LEFT JOIN auth.personas p ON p.id_person = u.id_person
           WHERE u.id_user = $1
           LIMIT 1`,
          [solicitud.analistaAsignadoId],
@@ -1991,7 +1991,7 @@ export class TravelExpensesService {
       const rows: any[] = await this.dataSource.query(
         `SELECT u.id_user, p.nom_tercero, p.pri_apellido
          FROM auth."user" u
-         LEFT JOIN auth.personas p ON p.id_persona = u.id_person
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.id_user IN (${placeholders})`,
         analistaIds,
       );
