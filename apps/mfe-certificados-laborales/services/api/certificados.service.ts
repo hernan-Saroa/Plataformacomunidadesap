@@ -22,6 +22,12 @@ const SERVICE_PREFIX = '/certificados/api/v1';
 
 export type CorrectionStatus = 'PENDING' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED';
 
+type CorrectionReadOptions = { silent?: boolean };
+const correctionReadConfig = (options?: CorrectionReadOptions) => ({
+  cache: 'no-store' as RequestCache,
+  ...(options?.silent ? { skipErrorToast: true, retries: 0 } : {}),
+});
+
 export type CorrectionEvidence = {
   index: number;
   originalName: string;
@@ -192,11 +198,11 @@ export const certificadosService = {
       limit?: number;
       status?: CorrectionStatus | 'ALL';
       search?: string;
-    }): Promise<CertificateCorrectionListResponse> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params);
+    }, options?: CorrectionReadOptions): Promise<CertificateCorrectionListResponse> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params, correctionReadConfig(options));
     },
 
-    async estadisticas(): Promise<{
+    async estadisticas(options?: CorrectionReadOptions): Promise<{
       total: number;
       pending: number;
       in_review: number;
@@ -204,11 +210,11 @@ export const certificadosService = {
       rejected: number;
       overdue: number;
     }> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/stats`);
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/stats`, undefined, correctionReadConfig(options));
     },
 
-    async obtener(id: string): Promise<CertificateCorrectionRequest> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/${id}`);
+    async obtener(id: string, options?: CorrectionReadOptions): Promise<CertificateCorrectionRequest> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/${id}`, undefined, correctionReadConfig(options));
     },
 
     async iniciarRevision(id: string): Promise<CertificateCorrectionRequest> {

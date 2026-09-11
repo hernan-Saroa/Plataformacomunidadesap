@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale, BarChart3, Send } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -173,46 +173,45 @@ export function ControlDisciplinarioFull() {
       const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
       const pliegosAprobados = todos.filter((a: any) =>
         a.estado === 'APROBADO' &&
+        a.estado !== 'NOTIFICADO' &&
+        a.process?.estado !== 'CERRADO' &&
         (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
       );
       const autosAMostrar = [...enRevision, ...pliegosAprobados];
-      if (autosAMostrar.length > 0) {
-        const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
-          id: `auto-${auto.id}`,
-          autoId: auto.id,
-          procesoId: auto.processId || auto.process?.id,
-          numeroProceso: auto.process?.radicadoProceso || auto.processId,
-          titulo: (auto.tipo || '').replace(/_/g, ' '),
-          plantilla: auto.tipo || '',
-          tipo: auto.tipo,
-          version: auto.currentVersion || 1,
-          fechaEnvio: auto.createdAt,
-          profesional: {
-            nombre: auto.process?.abogadoAsignado?.nombreCompleto || auto.process?.abogadoAsignadoNombre || 'Profesional',
-            email: '',
-          },
-          observacionesProfesional: auto.comentarios || '',
-          contenido: auto.contenido || '',
-          denunciado: getDenunciadoNombre(auto.process?.news?.disciplinable),
-          etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
-          prioridad: 'media' as const,
-          estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
-          historial: [{
-            id: `h-${auto.id}`,
-            tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
-            usuario: auto.process?.abogadoAsignado?.nombreCompleto || auto.process?.abogadoAsignadoNombre || 'Profesional',
-            fecha: auto.createdAt,
-            descripcion: auto.estado === 'APROBADO'
-              ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
-              : 'Auto enviado a revisión del Jefe OCID',
-          }],
-          tiempoEspera: '',
-          radicadorAsignadoId: auto.radicadorAsignadoId || undefined,
-          radicadorAsignadoNombre: auto.radicadorAsignadoId ? (radicadoresNombres[auto.radicadorAsignadoId] || 'Radicador asignado') : undefined,
-        }));
-        setBorradores(borradoresReales);
-        console.log("borradoresReales", borradoresReales)
-      }
+      const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
+        id: `auto-${auto.id}`,
+        autoId: auto.id,
+        procesoId: auto.processId || auto.process?.id,
+        numeroProceso: auto.process?.radicadoProceso || auto.processId,
+        titulo: (auto.tipo || '').replace(/_/g, ' '),
+        plantilla: auto.tipo || '',
+        tipo: auto.tipo,
+        version: auto.currentVersion || 1,
+        fechaEnvio: auto.createdAt,
+        profesional: {
+          nombre: auto.process?.abogadoAsignado?.nombreCompleto || auto.process?.abogadoAsignadoNombre || 'Profesional',
+          email: '',
+        },
+        observacionesProfesional: auto.comentarios || '',
+        contenido: auto.contenido || '',
+        denunciado: getDenunciadoNombre(auto.process?.news?.disciplinable),
+        etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
+        prioridad: 'media' as const,
+        estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
+        historial: [{
+          id: `h-${auto.id}`,
+          tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
+          usuario: auto.process?.abogadoAsignado?.nombreCompleto || auto.process?.abogadoAsignadoNombre || 'Profesional',
+          fecha: auto.createdAt,
+          descripcion: auto.estado === 'APROBADO'
+            ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
+            : 'Auto enviado a revisión del Jefe OCID',
+        }],
+        tiempoEspera: '',
+        radicadorAsignadoId: auto.radicadorAsignadoId || undefined,
+        radicadorAsignadoNombre: auto.radicadorAsignadoId ? (radicadoresNombres[auto.radicadorAsignadoId] || 'Radicador asignado') : undefined,
+      }));
+      setBorradores(borradoresReales);
     } catch {
       // Si falla la carga, conservar los datos de demostración
     }
@@ -221,6 +220,28 @@ export function ControlDisciplinarioFull() {
   // Cargar autos reales con estado REVISION_JEFE desde el backend
   useEffect(() => {
     cargarAutosEnRevision();
+  }, [cargarAutosEnRevision]);
+
+  // Refrescar lista al ingresar a la sección de Revisión y Aprobación
+  useEffect(() => {
+    if (currentSection === 'aprobacion') {
+      cargarAutosEnRevision();
+    }
+  }, [currentSection, cargarAutosEnRevision]);
+
+  // Escuchar cuando un auto es enviado a Jurídica desde cualquier modal
+  useEffect(() => {
+    const handleAutoEnviado = (e: any) => {
+      const { autoId } = e?.detail || {};
+      if (autoId) {
+        setBorradores(prev => prev.filter(b => b.autoId !== autoId && b.id !== `auto-${autoId}`));
+      }
+      cargarAutosEnRevision();
+    };
+    window.addEventListener('esap:auto-enviado-juridica', handleAutoEnviado);
+    return () => {
+      window.removeEventListener('esap:auto-enviado-juridica', handleAutoEnviado);
+    };
   }, [cargarAutosEnRevision]);
   
   // ✅ NUEVO: Estado para solicitudes de reasignación
@@ -279,9 +300,18 @@ export function ControlDisciplinarioFull() {
     cargarSolicitudesReasignacion();
   }, []);
 
+  const currentUserData = authService.getCurrentUser() as any;
+  const currentRoles: string[] = Array.isArray(currentUserData?.roles)
+    ? currentUserData.roles.map((r: any) => typeof r === 'string' ? r : r?.code || r?.name || '')
+    : [];
+  const isJefeUser = currentRoles.includes('JEFE_DE_LA_OCID');
+  const isRadicadorUser = currentRoles.includes('RADICADOR_DISCIPLINARIO') || currentRoles.includes('SECRETARIA_RADICADOR');
+  const canSendJuridicaUser = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA);
+  const isModoEnvioJuridica = !isJefeUser && (isRadicadorUser || canSendJuridicaUser);
+
   const hasPermissionBySection: Record<Section, boolean> = {
     dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_MANAGE),
-    aprobacion: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE),
+    aprobacion: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE) || canSendJuridicaUser,
     expediente: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE),
     terminos: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE),
     profesionales: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE),
@@ -304,11 +334,13 @@ export function ControlDisciplinarioFull() {
     { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
     {
       id: 'aprobacion',
-      label: 'Revisión y Aprobación',
-      icon: <CheckCircle className="w-5 h-5" />,
+      label: isModoEnvioJuridica ? 'Envío a Jurídica' : 'Revisión y Aprobación',
+      icon: isModoEnvioJuridica ? <Send className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />,
       color: '#10B981',
       visible: hasPermissionBySection.aprobacion,
-      badge: borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined
+      badge: isModoEnvioJuridica
+        ? (borradores.filter(b => b.estado === 'aprobado' && (b.titulo?.toLowerCase().includes('pliego') || b.plantilla?.toLowerCase().includes('pliego') || b.tipo === 'PLIEGO_CARGOS' || b.tipo === 'AUTO_FORMULACION_PLIEGO')).length || undefined)
+        : (borradores.filter(b => b.estado === 'pendiente_revision' || b.estado === 'en_revision').length || undefined)
     },
     { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: hasPermissionBySection.expediente },
     { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: hasPermissionBySection.terminos },
@@ -645,6 +677,7 @@ export function ControlDisciplinarioFull() {
           onSendJuridica={handleSendJuridica}
           onAprobarReasignacion={handleAprobarReasignacion}
           onRechazarReasignacion={handleRechazarReasignacion}
+          modoEnvioJuridica={isModoEnvioJuridica}
         />
       )}
       {currentSection === 'expediente' && <ExpedientesElectronicosWorldClass />}

@@ -246,12 +246,16 @@ export class AutoController {
   async sendPliegoToJuridica(
     @Param('id') id: string,
     @Body() body: { enviadoPorId: string; enviadoPorEmail?: string; enviadoPorNombre?: string },
-  ): Promise<void> {
+  ): Promise<{ success: boolean; message: string }> {
     const { enviadoPorId, enviadoPorEmail, enviadoPorNombre } = body || {};
     if (!enviadoPorId) {
-      throw new Error('enviadoPorId es requerido');
+      throw new BadRequestException('enviadoPorId es requerido');
     }
-    return await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
+    await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
+    return {
+      success: true,
+      message: 'Auto pliego enviado a jurídica exitosamente',
+    };
   }
 
   /**

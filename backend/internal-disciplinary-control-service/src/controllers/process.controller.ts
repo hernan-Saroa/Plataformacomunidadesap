@@ -73,6 +73,7 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
   'SECRETARIA_RADICADOR',
+  'RADICADOR_DISCIPLINARIO',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -361,7 +362,8 @@ export class ProcessController {
     return await this.processService.changeStage(
       id,
       changeStageDto.stageId,
-      changeStageDto.kanbanNotice
+      changeStageDto.kanbanNotice,
+      req.user?.roles
     );
   }
 
@@ -1305,7 +1307,7 @@ export class ProcessController {
    * Solo disponible para el Radicador (rol SECRETARIA_RADICADOR)
    */
   @Get('export')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
   @ApiOperation({
     summary: 'Exportar informe de vencimientos',
     description: 'Genera y descarga el informe de vencimientos de los procesos disciplinarios en formato Excel',
