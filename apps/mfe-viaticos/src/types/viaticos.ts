@@ -303,6 +303,10 @@ export interface SolicitudViatico {
   esCreadoPorMi?: boolean;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  motivoDevolucion?: string | null;
+  observacionesSegundaRevision?: string | null;
+  fechaSegundaRevision?: string | null;
+  revisorControlId?: string | null;
 }
 
 export interface TiqueteAereo {

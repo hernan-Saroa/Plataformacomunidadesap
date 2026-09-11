@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Clock,
+  Eye,
   FileText,
   LoaderCircle,
   Search,
@@ -223,21 +224,44 @@ export default function AnalystInbox() {
                       </span>
                     </td>
                     <td className="py-2 px-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${ec.bg} ${ec.text}`}>
-                        {ec.label}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${ec.bg} ${ec.text}`}>
+                          {ec.label}
+                        </span>
+                        {(s.motivoDevolucion || (s as any).observacionesSegundaRevision) && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 max-w-[180px] truncate"
+                            title={`Devuelta por Control Viáticos: ${s.motivoDevolucion || (s as any).observacionesSegundaRevision}`}
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                            <span className="truncate">{s.motivoDevolucion || (s as any).observacionesSegundaRevision}</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleIniciarAuditoria(s)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a7d] transition-colors text-[11px] font-semibold"
-                        title="Iniciar auditoría de soportes"
-                      >
-                        <Search className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Auditoría</span>
-                        <FileText className="w-3.5 h-3.5" />
-                      </button>
+                      {s.estadoSolicitud === 'SOLICITADA_SIIF' || s.estadoSolicitud === 'VERIFICADA' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleIniciarAuditoria(s)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
+                          title="Consultar expediente y datos SIIF"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          <span className="hidden sm:inline">Consultar</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleIniciarAuditoria(s)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a7d] transition-colors text-[11px] font-semibold"
+                          title="Iniciar auditoría de soportes"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Auditoría</span>
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

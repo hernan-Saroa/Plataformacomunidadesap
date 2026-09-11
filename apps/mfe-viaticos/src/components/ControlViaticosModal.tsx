@@ -131,10 +131,20 @@ function CopiableField({
 
 function LiquidacionSection({
   liquidacion,
+  solicitud,
 }: {
-  liquidacion: LiquidacionResponse['data'] | undefined;
+  liquidacion?: LiquidacionResponse['data'] | undefined;
+  solicitud?: SolicitudControlViaticosResponse | null;
 }) {
-  if (!liquidacion) {
+  const montoViaticos = Number(solicitud?.montoViaticos || liquidacion?.valorTotalViaticos || 0);
+  const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
+  const dias = Number(solicitud?.diasComision || liquidacion?.numeroDiasNoches || 1);
+  const salarioBase = Number(solicitud?.salarioBasico || liquidacion?.salarioBaseAplicado || 0);
+  const tarifaDiaria =
+    liquidacion?.tarifaFinalAplicadaDia ||
+    (dias > 0 ? Math.round(montoViaticos / dias) : montoViaticos);
+
+  if (!liquidacion && montoViaticos === 0 && salarioBase === 0) {
     return (
       <div className="text-[11px] text-slate-400 italic">
         No hay datos de liquidación disponibles.
@@ -142,41 +152,60 @@ function LiquidacionSection({
     );
   }
 
+  const decreto = liquidacion?.decretoAplicado || 'Decreto 314 de 2026';
+  const tarifaBase = liquidacion?.tarifaDiariaBase || tarifaDiaria;
+  const factorComisionado = liquidacion?.factorComisionado ?? 1;
+  const factorPernocta = liquidacion?.factorPernocta ?? 1;
+  const totalViaticos = liquidacion?.valorTotalViaticos ?? montoViaticos;
+  const valorTotalNeto = totalViaticos + montoGastosViaje;
+
   return (
     <div className="space-y-2 text-xs">
       <div className="flex justify-between">
         <span className="text-slate-500">Salario base aplicado</span>
-        <span className="font-semibold text-slate-800">{formatearMoneda(liquidacion.salarioBaseAplicado)}</span>
+        <span className="font-semibold text-slate-800">{formatearMoneda(salarioBase)}</span>
       </div>
       <div className="flex justify-between">
         <span className="text-slate-500">Decreto aplicado</span>
-        <span className="font-semibold text-slate-800">{liquidacion.decretoAplicado}</span>
+        <span className="font-semibold text-slate-800">{decreto}</span>
       </div>
       <div className="flex justify-between">
         <span className="text-slate-500">Tarifa diaria base</span>
-        <span className="font-semibold text-slate-800">{formatearMoneda(liquidacion.tarifaDiariaBase)}</span>
+        <span className="font-semibold text-slate-800">{formatearMoneda(tarifaBase)}</span>
       </div>
       <div className="flex justify-between">
         <span className="text-slate-500">Factor comisionado</span>
-        <span className="font-semibold text-slate-800">{liquidacion.factorComisionado}x</span>
+        <span className="font-semibold text-slate-800">{factorComisionado}x</span>
       </div>
       <div className="flex justify-between">
         <span className="text-slate-500">Factor pernocta</span>
-        <span className="font-semibold text-slate-800">{liquidacion.factorPernocta}x</span>
+        <span className="font-semibold text-slate-800">{factorPernocta}x</span>
       </div>
       <div className="flex justify-between border-t border-slate-100 pt-2">
         <span className="text-slate-500">Tarifa final aplicada/día</span>
-        <span className="font-bold text-slate-800">{formatearMoneda(liquidacion.tarifaFinalAplicadaDia)}</span>
+        <span className="font-bold text-slate-800">{formatearMoneda(tarifaDiaria)}</span>
       </div>
       <div className="flex justify-between">
         <span className="text-slate-500">Días / Noches</span>
-        <span className="font-semibold text-slate-800">{liquidacion.numeroDiasNoches}</span>
+        <span className="font-semibold text-slate-800">{dias}</span>
       </div>
       <div className="flex justify-between border-t border-slate-200 pt-2 font-bold">
         <span className="text-slate-800">Valor Total Viáticos</span>
-        <span className="text-emerald-700">{formatearMoneda(liquidacion.valorTotalViaticos)}</span>
+        <span className="text-emerald-700">{formatearMoneda(totalViaticos)}</span>
       </div>
-      {liquidacion.alertas && liquidacion.alertas.length > 0 && (
+      {montoGastosViaje > 0 && (
+        <div className="flex justify-between">
+          <span className="text-slate-500">Gastos de Viaje / Transporte</span>
+          <span className="font-semibold text-slate-800">{formatearMoneda(montoGastosViaje)}</span>
+        </div>
+      )}
+      {montoGastosViaje > 0 && (
+        <div className="flex justify-between border-t border-slate-200 pt-2 font-bold bg-slate-100/70 p-2 rounded-lg">
+          <span className="text-slate-900">Total a Girar (Viáticos + Gastos)</span>
+          <span className="text-emerald-800 text-sm">{formatearMoneda(valorTotalNeto)}</span>
+        </div>
+      )}
+      {liquidacion?.alertas && liquidacion.alertas.length > 0 && (
         <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-800">
           <p className="font-semibold mb-1">Alertas:</p>
           <ul className="list-disc list-inside space-y-0.5">
@@ -489,7 +518,7 @@ export default function ControlViaticosModal({
                   Liquidación Calculada
                 </h3>
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                  <LiquidacionSection liquidacion={solicitud.liquidacion} />
+                  <LiquidacionSection liquidacion={solicitud.liquidacion} solicitud={solicitud} />
                 </div>
               </section>
 

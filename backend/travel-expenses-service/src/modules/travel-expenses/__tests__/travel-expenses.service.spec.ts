@@ -2184,19 +2184,31 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-001',
-          estadoAnterior: EstadoSolicitud.SOLICITADO,
+          estadoAnterior: EstadoSolicitud.VERIFICADA,
           estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
           comentarios: 'Exportado a SIIF Nacion',
         }),
       );
     });
 
-    it('debe lanzar BadRequestException si la solicitud ya fue exportada', async () => {
+    it('debe permitir re-exportar a SIIF sin límite incluso si ya fue exportada previamente', async () => {
       const solicitud = {
         id: 'sol-001',
-        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        consecutivoUnico: 'VIAT-2026-0001',
+        estadoSolicitud: EstadoSolicitud.EN_VERIFICACION,
         comisionadoId: 'com-001',
         siifExportado: true,
+        objetoComision: 'Viaje a territorio',
+        rubroPresupuestal: 'A-01',
+        montoViaticos: 500000,
+        montoGastosViaje: 100000,
+      };
+
+      const comisionado = {
+        id: 'com-001',
+        numeroDocumento: '123456789',
+        primerNombre: 'Carlos',
+        primerApellido: 'Gomez',
       };
 
       const solicitudRepo = {
@@ -2205,13 +2217,26 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           where: jest.fn().mockReturnThis(),
           getOne: jest.fn().mockResolvedValue(solicitud),
         }),
-        save: jest.fn(),
+        save: jest.fn().mockImplementation(async (s) => s),
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+      };
+
+      const historialRepo = {
+        save: jest.fn().mockResolvedValue({}),
       };
 
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
-            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+            getRepository: jest.fn().mockImplementation((entity) => {
+              if (entity === SolicitudComisionEntity) return solicitudRepo;
+              if (entity === ComisionadoEntity) return comisionadoRepo;
+              if (entity === SolicitudHistorialEstadoEntity) return historialRepo;
+              return { save: jest.fn(), findOne: jest.fn() };
+            }),
           };
           return cb(manager);
         }),
@@ -2224,12 +2249,10 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await expect(
-        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
-      ).rejects.toThrow('Esta solicitud ya fue exportada a SIIF.');
+      const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
+      expect(res.solicitud.siifExportado).toBe(true);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.csvContent).toContain('123456789');
     });
 
     it('debe lanzar BadRequestException si el estado no esta permitido', async () => {

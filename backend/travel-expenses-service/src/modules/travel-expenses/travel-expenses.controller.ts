@@ -116,6 +116,13 @@ export class TravelExpensesController {
       normalizedPermissions.includes('travel_expenses:read_siif_requested') ||
       normalizedPermissions.includes('travel_expenses:double_check_request');
 
+    const isAnalista =
+      normalizedRoles.some(
+        (r) => r === 'ANALISTA' || r === 'ANALISTA_VIATICOS',
+      ) ||
+      normalizedPermissions.includes('travel_expenses:verify_request') ||
+      normalizedPermissions.includes('travel_expenses:view_assigned_requests');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerSolicitudes(
@@ -124,6 +131,7 @@ export class TravelExpensesController {
       pageNum,
       limitNum,
       isControlViaticos,
+      isAnalista,
     );
     return {
       data: result.data,

@@ -205,4 +205,32 @@ describe('VerificacionSIIFModal', () => {
       expect(viaticosService.devolverAnalista).toHaveBeenCalledWith('sol-001', 'Falta documento');
     });
   });
+
+  it('bloquea el registro de verificación y devolución cuando está en SOLICITADA_SIIF', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({ estadoSolicitud: 'SOLICITADA_SIIF' }),
+    });
+
+    // Título en modo consulta
+    expect(screen.getByText('Expediente y Consulta SIIF')).toBeDefined();
+
+    // Banner de advertencia informativo
+    expect(screen.getByText(/En Segunda Revisión · Control Viáticos/i)).toBeDefined();
+
+    // El botón 'Registrar Verificación' NO debe existir
+    expect(screen.queryByText('Registrar Verificación')).toBeNull();
+
+    // Mensaje de verificación completada
+    expect(screen.getByText(/Verificación de analista completada/i)).toBeDefined();
+
+    // El botón 'Devolver a Enlace' NO debe existir
+    expect(screen.queryByText('Devolver a Enlace')).toBeNull();
+
+    // Los checkboxes están deshabilitados
+    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    checkboxes.forEach((cb) => {
+      expect(cb.disabled).toBe(true);
+    });
+  });
 });

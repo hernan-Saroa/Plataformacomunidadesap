@@ -81,26 +81,35 @@ function CheckboxItem({
   onChange,
   label,
   sublabel,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   sublabel?: string;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex items-start gap-3 cursor-pointer py-2">
+    <label
+      className={`flex items-start gap-3 py-2 ${
+        disabled ? 'cursor-default opacity-85' : 'cursor-pointer'
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5] shrink-0"
+        disabled={disabled}
+        onChange={(e) => {
+          if (!disabled) onChange(e.target.checked);
+        }}
+        className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5] shrink-0 disabled:opacity-60"
       />
       <div className="flex-1">
         <span className="text-xs font-medium text-slate-800">{label}</span>
         {sublabel && <p className="text-[10px] text-slate-500 mt-0.5">{sublabel}</p>}
       </div>
       {checked ? (
-        <CheckSquare className="w-4 h-4 text-[#003DA5] shrink-0" />
+        <CheckSquare className={`w-4 h-4 shrink-0 ${disabled ? 'text-emerald-600' : 'text-[#003DA5]'}`} />
       ) : (
         <Square className="w-4 h-4 text-slate-300 shrink-0" />
       )}
@@ -161,10 +170,13 @@ export default function VerificacionSIIFModal({
 
   useEffect(() => {
     if (abierta) {
-      setCheckLiquidacion(false);
-      setCheckSeguridadSocial(false);
-      setCheckItinerario(false);
-      setCheckRutFacturador(false);
+      const yaAuditado =
+        solicitud?.estadoSolicitud === 'SOLICITADA_SIIF' ||
+        solicitud?.estadoSolicitud === 'VERIFICADA';
+      setCheckLiquidacion(yaAuditado);
+      setCheckSeguridadSocial(yaAuditado);
+      setCheckItinerario(yaAuditado);
+      setCheckRutFacturador(Boolean(solicitud?.consultaRutFacturador || yaAuditado));
       setRegistrando(false);
       setRegistroError(null);
       setRegistroExitoso(false);
@@ -175,7 +187,7 @@ export default function VerificacionSIIFModal({
       setCopied(null);
       void cargarCatalogoDependencias();
     }
-  }, [abierta]);
+  }, [abierta, solicitud]);
 
   if (!abierta) return null;
 
@@ -200,6 +212,10 @@ export default function VerificacionSIIFModal({
   const documentosPdf = (solicitud?.documentosSoporte || []).filter((d) =>
     esPdfMime(d.tipoMime),
   );
+
+  const estaEnControlViaticos = solicitud?.estadoSolicitud === 'SOLICITADA_SIIF';
+  const estaVerificada = solicitud?.estadoSolicitud === 'VERIFICADA';
+  const esSoloLectura = estaEnControlViaticos || estaVerificada;
 
   const todosCheckMandatory =
     checkLiquidacion && checkSeguridadSocial && checkItinerario;
@@ -284,7 +300,7 @@ export default function VerificacionSIIFModal({
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
             <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-[#003DA5]" />
-              Auditoría de Soportes y Exportación SIIF
+              {esSoloLectura ? 'Expediente y Consulta SIIF' : 'Auditoría de Soportes y Exportación SIIF'}
             </h2>
             <button
               type="button"
@@ -302,6 +318,92 @@ export default function VerificacionSIIFModal({
             </div>
           ) : (
             <>
+              {/* ==================== Banner Alerta de Devolución ==================== */}
+              {solicitud.estadoSolicitud === 'EN_VERIFICACION' &&
+                (solicitud.motivoDevolucion || (solicitud as any).observacionesSegundaRevision) && (
+                <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0 mt-0.5">
+                      <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white">
+                          Devuelta por Control Viáticos
+                        </span>
+                        {(solicitud as any).fechaSegundaRevision && (
+                          <span className="text-[10px] text-rose-600 font-medium">
+                            {fmtFecha((solicitud as any).fechaSegundaRevision)}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-rose-950 mt-1">
+                        Hallazgo / Motivo registrado para subsanación:
+                      </h4>
+                      <p className="text-xs text-rose-900 mt-1 bg-white/80 p-3 rounded-xl border border-rose-200/80 font-mono whitespace-pre-wrap leading-relaxed">
+                        {solicitud.motivoDevolucion || (solicitud as any).observacionesSegundaRevision}
+                      </p>
+                      <p className="text-[10px] text-rose-700 mt-1.5 font-medium">
+                        Verifique o ajuste los soportes y liquidación señalados para subsanar este hallazgo antes de exportar nuevamente a SIIF.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== Banner Solicitada SIIF / Control Viáticos ==================== */}
+              {estaEnControlViaticos && (
+                <div className="mb-6 p-4 bg-fuchsia-50 border border-fuchsia-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-fuchsia-100 rounded-xl text-fuchsia-700 shrink-0 mt-0.5">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-fuchsia-600 text-white">
+                          En Segunda Revisión · Control Viáticos
+                        </span>
+                        {solicitud?.fechaExportacionSiif && (
+                          <span className="text-[10px] text-fuchsia-700 font-medium">
+                            Exportada a SIIF: {fmtFecha(solicitud.fechaExportacionSiif)}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-fuchsia-950 mt-1">
+                        Solicitud radicada en SIIF y transferida a Control Viáticos
+                      </h4>
+                      <p className="text-xs text-fuchsia-900 mt-1 leading-relaxed">
+                        Esta comisión ya fue exportada a SIIF Nación y se encuentra en etapa de control cruzado con el revisor de Control Viáticos. Las opciones de modificación y nuevo registro se encuentran bloqueadas en este estado.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== Banner Verificada ==================== */}
+              {estaVerificada && (
+                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-emerald-100 rounded-xl text-emerald-700 shrink-0 mt-0.5">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white">
+                          Comisión Verificada
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-emerald-950 mt-1">
+                        Segunda revisión aprobada exitosamente
+                      </h4>
+                      <p className="text-xs text-emerald-900 mt-1 leading-relaxed">
+                        Esta comisión ya culminó su doble control y cuenta con la aprobación final de Control Viáticos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ==================== Section 1: Revisión de Fondo ==================== */}
               <section className="mb-6">
                 <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
@@ -431,18 +533,21 @@ export default function VerificacionSIIFModal({
                   <CheckboxItem
                     checked={checkLiquidacion}
                     onChange={setCheckLiquidacion}
+                    disabled={esSoloLectura}
                     label="Liquidación Correcta"
                     sublabel="La liquidación calculada coincide con la documentación soporte."
                   />
                   <CheckboxItem
                     checked={checkSeguridadSocial}
                     onChange={setCheckSeguridadSocial}
+                    disabled={esSoloLectura}
                     label="Seguridad Social Vigente"
                     sublabel="Contribuciones de seguridad social al día al momento de la comisión."
                   />
                   <CheckboxItem
                     checked={checkItinerario}
                     onChange={setCheckItinerario}
+                    disabled={esSoloLectura}
                     label="Itinerario Coherente"
                     sublabel="El itinerario justifica el monto y los tiempos declarados."
                   />
@@ -455,41 +560,55 @@ export default function VerificacionSIIFModal({
                   <CheckboxItem
                     checked={checkRutFacturador}
                     onChange={setCheckRutFacturador}
+                    disabled={esSoloLectura}
                     label="Comisionado es Facturador Electrónico"
                     sublabel="Se consulta el RUT del comisionado en los PDFs de soporte."
                   />
                 </div>
 
                 <div className="mt-4 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={handleRegistrarVerificacion}
-                    disabled={!todosCheckMandatory || registrando}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                      todosCheckMandatory && !registrando
-                        ? 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {registrando ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
-                    Registrar Verificación
-                  </button>
+                  {esSoloLectura ? (
+                    <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs font-semibold w-full">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        {estaVerificada
+                          ? 'Auditoría y control cruzado completados — Comisión en estado VERIFICADA.'
+                          : 'Verificación de analista completada — Solicitud transferida a Control Viáticos (SOLICITADA_SIIF). Registro cerrado.'}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleRegistrarVerificacion}
+                        disabled={!todosCheckMandatory || registrando}
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                          todosCheckMandatory && !registrando
+                            ? 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {registrando ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4" />
+                        )}
+                        Registrar Verificación
+                      </button>
 
-                  {registroExitoso && (
-                    <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Verificación registrada
-                    </span>
-                  )}
-                  {registroError && (
-                    <span className="text-xs text-red-600 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      {registroError}
-                    </span>
+                      {registroExitoso && (
+                        <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Verificación registrada
+                        </span>
+                      )}
+                      {registroError && (
+                        <span className="text-xs text-red-600 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {registroError}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </section>
@@ -553,16 +672,19 @@ export default function VerificacionSIIFModal({
                   )}
                 </div>
                 <p className="mt-2 text-[10px] text-slate-400">
-                  Al descargar, la solicitud se exporta a SIIF Nación y la comisión se crea en el sistema.
+                  {esSoloLectura
+                    ? 'La solicitud ya fue exportada a SIIF Nación y transferida a Control Viáticos. Puede descargar una copia del archivo plano si lo requiere.'
+                    : 'Al descargar, la solicitud se exporta a SIIF Nación y la comisión se crea en el sistema.'}
                 </p>
               </section>
 
               {/* ==================== Acción: Devolver a Enlace ==================== */}
-              <section className="border-t border-slate-100 pt-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  Devolver a Enlace
-                </h3>
+              {!esSoloLectura && (
+                <section className="border-t border-slate-100 pt-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Devolver a Enlace
+                  </h3>
 
                 {!mostrandoSolDevolucion ? (
                   <button
@@ -623,6 +745,7 @@ export default function VerificacionSIIFModal({
                   </div>
                 )}
               </section>
+              )}
             </>
           )}
 

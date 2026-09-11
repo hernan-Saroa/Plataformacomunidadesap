@@ -4,6 +4,7 @@ import {
   FileText,
   Clock,
   AlertCircle,
+  AlertTriangle,
   Plus,
   Search,
   Filter,
@@ -679,12 +680,25 @@ export default function ViaticosModulePremium() {
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {getBadgeEstado(sol.estado)}
-                                {sol.radicadoFueraJornada && (
-                                  <span className="inline-flex items-center text-amber-600" title="Radicado fuera de jornada">
-                                    <AlertCircle className="w-3.5 h-3.5" />
-                                  </span>
+                              <div className="flex flex-col gap-1 items-start">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {getBadgeEstado(sol.estado)}
+                                  {sol.radicadoFueraJornada && (
+                                    <span className="inline-flex items-center text-amber-600" title="Radicado fuera de jornada">
+                                      <AlertCircle className="w-3.5 h-3.5" />
+                                    </span>
+                                  )}
+                                </div>
+                                {(sol.motivoDevolucion || sol.observacionesSegundaRevision) && (
+                                  <div
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 max-w-[200px]"
+                                    title={`Motivo de Devolución: ${sol.motivoDevolucion || sol.observacionesSegundaRevision}`}
+                                  >
+                                    <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                                    <span className="truncate">
+                                      {sol.motivoDevolucion || sol.observacionesSegundaRevision}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             </td>
@@ -928,6 +942,21 @@ export default function ViaticosModulePremium() {
                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado</span>
                     <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
                   </div>
+                  {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] uppercase tracking-wider text-rose-800 font-black block">
+                            Devolución de Control Viáticos (Hallazgo para subsanar)
+                          </span>
+                          <p className="text-xs text-rose-900 mt-1 font-mono bg-white/70 p-2.5 rounded-lg border border-rose-200/60 whitespace-pre-wrap leading-relaxed">
+                            {solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Justificación</span>
                     <p className="bg-slate-50 p-2.5 rounded-lg text-slate-700 leading-relaxed border border-slate-100">

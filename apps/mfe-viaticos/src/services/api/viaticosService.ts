@@ -192,6 +192,10 @@ export class ViaticosService {
       actualizadoEn: s.actualizadoEn.slice(0, 10),
       esCreadoPorMi: s.esCreadoPorMi,
       analistaAsignadoId: s.analistaAsignadoId || null,
+      motivoDevolucion: s.motivoDevolucion || (s as any).observacionesSegundaRevision || null,
+      observacionesSegundaRevision: (s as any).observacionesSegundaRevision || null,
+      fechaSegundaRevision: (s as any).fechaSegundaRevision || null,
+      revisorControlId: (s as any).revisorControlId || null,
     };
   }
 
