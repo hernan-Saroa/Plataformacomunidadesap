@@ -88,7 +88,9 @@ export type TipoDocumentoSoporte =
   | 'CONTRATO_SECOP'
   | 'PASAPORTE'
   | 'CARTA_INVITACION'
-  | 'RESOLUCION_ACTO';
+  | 'RESOLUCION_ACTO'
+  | 'FACTURA'
+  | 'FACTURA_ELECTRONICA';
 
 /** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
 export interface Comisionado {
@@ -101,6 +103,7 @@ export interface Comisionado {
   email: string;
   telefonoContacto: string;
   tipoComisionado: TipoComisionado;
+  esFacturadorElectronico?: boolean;
   origenDatos: 'HUMANO' | 'ESAP' | 'SECOP';
   autorizacionHabeasData: boolean;
   fechaAutorizacionHabeasData?: Date;
@@ -161,6 +164,10 @@ export interface SolicitudComisionResponse {
   siifExportado?: boolean;
   fechaExportacionSiif?: string | null;
   consultaRutFacturador?: boolean;
+  motivoDevolucion?: string | null;
+  observacionesSegundaRevision?: string | null;
+  fechaSegundaRevision?: string | null;
+  revisorControlNombre?: string | null;
   resumenPresupuestal?: {
     totalGastado: number;
     cantidadSolicitudes: number;
@@ -221,6 +228,7 @@ export interface SolicitudListaResponse {
     | 'primerApellido'
     | 'segundoApellido'
     | 'tipoComisionado'
+    | 'esFacturadorElectronico'
     | 'email'
     | 'telefonoContacto'
     | 'autorizacionHabeasData'
@@ -245,6 +253,13 @@ export interface SolicitudListaResponse {
   creadoEn: string;
   actualizadoEn: string;
   motivoDevolucion?: string | null;
+  observacionesSegundaRevision?: string | null;
+  fechaSegundaRevision?: string | null;
+  revisorControlId?: string | null;
+  revisorControl?: { id: string; username: string } | null;
+  revisorControlNombre?: string | null;
+  consultaRutFacturador?: boolean;
+  documentosSoporte?: DocumentoSoporte[];
   fechaRevision?: string | null;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;

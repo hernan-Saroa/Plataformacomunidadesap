@@ -1574,10 +1574,11 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             EstadoSolicitud.SOLICITADO,
             EstadoSolicitud.EN_VERIFICACION,
             EstadoSolicitud.VERIFICADA,
+            EstadoSolicitud.DEVUELTA,
           ]),
         },
         order: { creadoEn: 'DESC' },
-        relations: ['comisionado'],
+        relations: ['comisionado', 'revisorControl', 'documentosSoporte'],
       });
       expect(result).toHaveLength(3);
       expect(result[0].id).toBe('sol-001');
@@ -2415,6 +2416,160 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       const result = await svc.exportarSIIF('sol-001', 'admin-001', ['SUPER_ADMIN']);
 
       expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+    });
+
+    it('RF-REV-003: debe bloquear exportacion SIIF si el comisionado contratista es facturador electronico y no tiene factura adjunta', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-contratista-1',
+        consultaRutFacturador: true,
+        siifExportado: false,
+        objetoComision: 'Auditoria fiscal',
+        rubroPresupuestal: 'Rubro 01',
+        montoViaticos: 500000,
+        montoGastosViaje: 0,
+      };
+
+      const comisionado = {
+        id: 'com-contratista-1',
+        tipoComisionado: 'CONTRATISTA',
+        esFacturadorElectronico: true,
+        numeroDocumento: '1234567890',
+        primerNombre: 'Ana',
+        primerApellido: 'Perez',
+      };
+
+      const documentoRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 'doc-001', tipoDocumento: 'CDP', nombreArchivoOriginal: 'cdp.pdf' },
+        ]),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                return solicitudRepo;
+              if (nombre === 'ComisionadoEntity' || nombre === 'comisionados')
+                return comisionadoRepo;
+              if (nombre === 'DocumentoSoporteEntity' || nombre === 'documentos_soporte')
+                return documentoRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']),
+      ).rejects.toThrow('Bloqueo SIIF: El comisionado es contratista facturador electrónico');
+    });
+
+    it('RF-REV-003: debe permitir exportacion SIIF si el comisionado contratista facturador cuenta con factura electronica', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-contratista-1',
+        consultaRutFacturador: true,
+        siifExportado: false,
+        objetoComision: 'Auditoria fiscal',
+        rubroPresupuestal: 'Rubro 01',
+        montoViaticos: 500000,
+        montoGastosViaje: 0,
+      };
+
+      const comisionado = {
+        id: 'com-contratista-1',
+        tipoComisionado: 'CONTRATISTA',
+        esFacturadorElectronico: true,
+        numeroDocumento: '1234567890',
+        primerNombre: 'Ana',
+        primerApellido: 'Perez',
+      };
+
+      const documentoRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 'doc-001', tipoDocumento: 'CDP', nombreArchivoOriginal: 'cdp.pdf' },
+          { id: 'doc-002', tipoDocumento: 'FACTURA', nombreArchivoOriginal: 'factura_electronica_fe01.pdf' },
+        ]),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (s) => s),
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+      };
+
+      const historialRepo = {
+        save: jest.fn().mockResolvedValue({}),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                return solicitudRepo;
+              if (nombre === 'ComisionadoEntity' || nombre === 'comisionados')
+                return comisionadoRepo;
+              if (nombre === 'DocumentoSoporteEntity' || nombre === 'documentos_soporte')
+                return documentoRepo;
+              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        comisionadoRepo,
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.siifExportado).toBe(true);
     });
   });
 

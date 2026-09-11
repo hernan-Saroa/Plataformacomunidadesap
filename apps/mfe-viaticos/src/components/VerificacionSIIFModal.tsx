@@ -2,15 +2,20 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   CheckSquare,
   Copy,
   Download,
   FileText,
   Info,
+  Lock,
+  RotateCcw,
   ShieldCheck,
   Square,
+  Upload,
   X,
+  Zap,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudComisionResponse } from '../types/viaticos';
@@ -168,6 +173,10 @@ export default function VerificacionSIIFModal({
   const [devolviendo, setDevolviendo] = useState(false);
   const [errorDevolucion, setErrorDevolucion] = useState<string | null>(null);
 
+  // Carga directa de Factura Electrónica (RF-REV-003)
+  const [subiendoFactura, setSubiendoFactura] = useState(false);
+  const [errorSubidaFactura, setErrorSubidaFactura] = useState<string | null>(null);
+
   useEffect(() => {
     if (abierta) {
       const yaAuditado =
@@ -184,6 +193,8 @@ export default function VerificacionSIIFModal({
       setMotivoDevolucion('');
       setDevolviendo(false);
       setErrorDevolucion(null);
+      setSubiendoFactura(false);
+      setErrorSubidaFactura(null);
       setCopied(null);
       void cargarCatalogoDependencias();
     }
@@ -196,6 +207,20 @@ export default function VerificacionSIIFModal({
   const montoViaticos = Number(solicitud?.montoViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
   const valorNeto = montoViaticos + montoGastosViaje;
+
+  const esContratista = (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA';
+  const esFacturadorElectronico = Boolean(
+    checkRutFacturador ||
+    solicitud?.consultaRutFacturador ||
+    comisionado?.esFacturadorElectronico,
+  );
+  const requiereFactura = esContratista && esFacturadorElectronico;
+  const tieneFacturaAdjunta = (solicitud?.documentosSoporte || []).some((d) => {
+    const tipo = (d.tipoDocumento || '').toUpperCase();
+    const nom = (d.nombreArchivoOriginal || '').toLowerCase();
+    return tipo === 'FACTURA' || tipo === 'FACTURA_ELECTRONICA' || nom.includes('factura');
+  });
+  const bloqueoFacturaActivo = requiereFactura && !tieneFacturaAdjunta;
 
   const resumenPresupuestal = (solicitud as any)?.resumenPresupuestal as
     | {
@@ -219,6 +244,30 @@ export default function VerificacionSIIFModal({
 
   const todosCheckMandatory =
     checkLiquidacion && checkSeguridadSocial && checkItinerario;
+
+  const handleSolicitarFacturaDevolucion = () => {
+    setMotivoDevolucion(
+      'Se devuelve la comisión en cumplimiento del requisito contractual y tributario: El comisionado es contratista facturador electrónico y se requiere adjuntar la Factura Electrónica correspondiente antes de proceder con la creación y exportación en SIIF Nación.',
+    );
+    setMostrandoSolDevolucion(true);
+    setErrorDevolucion(null);
+  };
+
+  const handleSubirFacturaDirecta = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !solicitud) return;
+    setSubiendoFactura(true);
+    setErrorSubidaFactura(null);
+    try {
+      await viaticosService.subirDocumento(solicitud.id, 'FACTURA', file);
+      onRefrescar();
+    } catch (err: any) {
+      setErrorSubidaFactura(err?.message || 'Error al subir la factura electrónica.');
+    } finally {
+      setSubiendoFactura(false);
+      e.target.value = '';
+    }
+  };
 
   const handleCopy = async (valor: string) => {
     if (!valor) return;
@@ -319,18 +368,26 @@ export default function VerificacionSIIFModal({
           ) : (
             <>
               {/* ==================== Banner Alerta de Devolución ==================== */}
-              {solicitud.estadoSolicitud === 'EN_VERIFICACION' &&
-                (solicitud.motivoDevolucion || (solicitud as any).observacionesSegundaRevision) && (
+              {(solicitud.estadoSolicitud === 'DEVUELTA' ||
+                (solicitud.estadoSolicitud === 'EN_VERIFICACION' &&
+                  (solicitud.motivoDevolucion || (solicitud as any).observacionesSegundaRevision))) && (
                 <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl shadow-xs">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0 mt-0.5">
                       <AlertCircle className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white">
-                          Devuelta por Control Viáticos
+                          {solicitud.estadoSolicitud === 'DEVUELTA'
+                            ? 'Devuelta a Enlace'
+                            : 'Devuelta por Control Viáticos'}
                         </span>
+                        {solicitud.revisorControlNombre && (
+                          <span className="text-[10px] font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full">
+                            Responsable: {solicitud.revisorControlNombre}
+                          </span>
+                        )}
                         {(solicitud as any).fechaSegundaRevision && (
                           <span className="text-[10px] text-rose-600 font-medium">
                             {fmtFecha((solicitud as any).fechaSegundaRevision)}
@@ -341,7 +398,7 @@ export default function VerificacionSIIFModal({
                         Hallazgo / Motivo registrado para subsanación:
                       </h4>
                       <p className="text-xs text-rose-900 mt-1 bg-white/80 p-3 rounded-xl border border-rose-200/80 font-mono whitespace-pre-wrap leading-relaxed">
-                        {solicitud.motivoDevolucion || (solicitud as any).observacionesSegundaRevision}
+                        {(solicitud as any).observacionesSegundaRevision || solicitud.motivoDevolucion}
                       </p>
                       <p className="text-[10px] text-rose-700 mt-1.5 font-medium">
                         Verifique o ajuste los soportes y liquidación señalados para subsanar este hallazgo antes de exportar nuevamente a SIIF.
@@ -416,15 +473,26 @@ export default function VerificacionSIIFModal({
                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Consecutivo</label>
                        <div className="text-slate-800 font-mono">{solicitud.consecutivoUnico}</div>
                      </div>
-                     <div>
-                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Comisionado</label>
-                       <div className="text-slate-800">
-                         {nombreCompleto || 'N/A'}
-                       </div>
-                       <div className="text-slate-500">
-                         {comisionado?.numeroDocumento || 'N/A'}
-                       </div>
-                     </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Comisionado</label>
+                        <div className="text-slate-800 font-medium flex items-center gap-1.5 flex-wrap">
+                          <span>{nombreCompleto || 'N/A'}</span>
+                          {comisionado?.tipoComisionado === 'CONTRATISTA' && (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              Contratista
+                            </span>
+                          )}
+                          {(comisionado as any)?.esFacturadorElectronico && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              <Zap className="w-3 h-3 text-amber-600" />
+                              Facturador Electrónico
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-slate-500">
+                          {comisionado?.numeroDocumento || 'N/A'}
+                        </div>
+                      </div>
                       <div>
                         <label className="text-[10px] font-semibold text-slate-400 uppercase">Dependencia</label>
                         <div className="text-slate-800">
@@ -562,7 +630,11 @@ export default function VerificacionSIIFModal({
                     onChange={setCheckRutFacturador}
                     disabled={esSoloLectura}
                     label="Comisionado es Facturador Electrónico"
-                    sublabel="Se consulta el RUT del comisionado en los PDFs de soporte."
+                    sublabel={
+                      comisionado?.tipoComisionado === 'CONTRATISTA'
+                        ? 'Se consulta el RUT del comisionado en los PDFs de soporte. Si es contratista facturador, el sistema exigirá adjuntar la factura electrónica antes de permitir la exportación a SIIF.'
+                        : 'Se consulta el RUT del comisionado en los PDFs de soporte.'
+                    }
                   />
                 </div>
 
@@ -655,13 +727,83 @@ export default function VerificacionSIIFModal({
                   )}
                 </div>
 
+                {/* Bloqueo y Requisito de Factura Electrónica */}
+                {bloqueoFacturaActivo && (
+                  <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0">
+                        <Lock className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-xs font-bold text-amber-900">
+                          Exportación SIIF Bloqueada: Falta Factura Electrónica
+                        </h4>
+                        <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                          El comisionado es un <strong>contratista facturador electrónico</strong>. El sistema exige la factura electrónica correspondiente antes de crear y exportar la comisión en SIIF.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-200">
+                      <label
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                          subiendoFactura
+                            ? 'bg-amber-200 text-amber-700 cursor-wait'
+                            : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5 text-amber-700" />
+                        <span>{subiendoFactura ? 'Cargando Factura...' : 'Cargar Factura Electrónica (PDF)'}</span>
+                        <input
+                          type="file"
+                          accept=".pdf"
+                          disabled={subiendoFactura || esSoloLectura}
+                          className="hidden"
+                          onChange={handleSubirFacturaDirecta}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleSolicitarFacturaDevolucion}
+                        disabled={devolviendo}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-700 text-white rounded-lg text-xs font-semibold hover:bg-amber-800 transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Devolver a Enlace para solicitar factura
+                      </button>
+                    </div>
+
+                    {errorSubidaFactura && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {errorSubidaFactura}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-4 flex flex-col sm:flex-row gap-2">
                   <button
                     type="button"
                     onClick={handleDescargarCsv}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white rounded-lg text-xs font-semibold hover:bg-[#002a7d] transition-colors"
+                    disabled={bloqueoFacturaActivo}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                      bloqueoFacturaActivo
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                        : 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
+                    }`}
+                    title={
+                      bloqueoFacturaActivo
+                        ? 'Bloqueado: Debe cargar la factura electrónica del contratista para continuar'
+                        : undefined
+                    }
                   >
-                    <Download className="w-4 h-4" />
+                    {bloqueoFacturaActivo ? (
+                      <Lock className="w-4 h-4" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
                     Descargar Archivo Plano CSV para SIIF
                   </button>
                   {registroError && (

@@ -233,4 +233,99 @@ describe('VerificacionSIIFModal', () => {
       expect(cb.disabled).toBe(true);
     });
   });
+
+  it('muestra badge de contratista facturador electrónico en el encabezado del comisionado', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        comisionado: {
+          primerNombre: 'Laura',
+          primerApellido: 'García',
+          numeroDocumento: '987654321',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+      }),
+    });
+
+    expect(screen.getByText('Contratista')).toBeDefined();
+    expect(screen.getByText('Facturador Electrónico')).toBeDefined();
+  });
+
+  it('bloquea la descarga de CSV SIIF cuando contratista es facturador electrónico sin factura adjunta', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        comisionado: {
+          primerNombre: 'Laura',
+          primerApellido: 'García',
+          numeroDocumento: '987654321',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+        documentosSoporte: [],
+      }),
+    });
+
+    // Banner de bloqueo visible
+    expect(screen.getByText(/Exportación SIIF Bloqueada: Falta Factura Electrónica/i)).toBeDefined();
+    expect(screen.getByText(/Cargar Factura Electrónica/i)).toBeDefined();
+    expect(screen.getByText(/Devolver a Enlace para solicitar factura/i)).toBeDefined();
+
+    // Botón CSV deshabilitado
+    const downloadBtn = screen.getByText('Descargar Archivo Plano CSV para SIIF').closest('button');
+    expect(downloadBtn).toBeDisabled();
+  });
+
+  it('permite la descarga de CSV SIIF cuando contratista facturador ya tiene factura cargada', async () => {
+    const blob = new Blob(['csv'], { type: 'text/csv' });
+    (viaticosService.exportarSIIF as any).mockResolvedValue(blob);
+
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        comisionado: {
+          primerNombre: 'Laura',
+          primerApellido: 'García',
+          numeroDocumento: '987654321',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+        documentosSoporte: [
+          {
+            id: 'doc-fac-1',
+            tipoDocumento: 'FACTURA',
+            nombreArchivoOriginal: 'factura_electronica_fe01.pdf',
+            urlRepositorio: 'https://storage/factura.pdf',
+          },
+        ],
+      }),
+    });
+
+    // No debe mostrar banner de bloqueo
+    expect(screen.queryByText(/Exportación SIIF Bloqueada: Falta Factura Electrónica/i)).toBeNull();
+
+    const downloadBtn = screen.getByText('Descargar Archivo Plano CSV para SIIF').closest('button');
+    expect(downloadBtn).toBeEnabled();
+
+    fireEvent.click(downloadBtn!);
+    await waitFor(() => {
+      expect(viaticosService.exportarSIIF).toHaveBeenCalledWith('sol-001');
+    });
+  });
+
+  it('muestra banner de devolución con trazabilidad del responsable', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        estadoSolicitud: 'EN_VERIFICACION',
+        revisorControlNombre: 'Andrés López',
+        observacionesSegundaRevision: 'Inconsistencia en días de pernoctación.',
+      }),
+    });
+
+    expect(screen.getByText(/Devuelta por Control Viáticos/i)).toBeDefined();
+    expect(screen.getByText(/Responsable: Andrés López/i)).toBeDefined();
+    expect(screen.getByText(/Inconsistencia en días de pernoctación/i)).toBeDefined();
+  });
 });

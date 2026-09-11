@@ -589,6 +589,7 @@ export class TravelExpensesService {
         semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
       };
       analistaVerificadorNombre?: string | null;
+      revisorControlNombre?: string | null;
       fechaVerificacionPrimerNivel?: string | null;
       liquidacion?: any;
       validacionTiquete?: any;
@@ -628,6 +629,26 @@ export class TravelExpensesService {
       const row = rows?.[0];
       if (row) {
         analistaVerificadorNombre = [row.nom_tercero, row.pri_apellido]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+      }
+    }
+
+    // Resolución del nombre del revisor de control (quien realizó la devolución o revisión)
+    let revisorControlNombre: string | null = null;
+    if (solicitud.revisorControlId) {
+      const rowsRev: any[] = await this.dataSource.query(
+        `SELECT p.nom_tercero, p.pri_apellido
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.id_user = $1
+         LIMIT 1`,
+        [solicitud.revisorControlId],
+      );
+      const rowRev = rowsRev?.[0];
+      if (rowRev) {
+        revisorControlNombre = [rowRev.nom_tercero, rowRev.pri_apellido]
           .filter(Boolean)
           .join(' ')
           .trim();
@@ -731,6 +752,7 @@ export class TravelExpensesService {
       documentosSoporte: documentos,
       resumenPresupuestal,
       analistaVerificadorNombre,
+      revisorControlNombre,
       fechaVerificacionPrimerNivel:
         solicitud.fechaExportacionSiif?.toISOString() ?? null,
       liquidacion,
@@ -1840,6 +1862,7 @@ export class TravelExpensesService {
             EstadoSolicitud.SOLICITADO,
             EstadoSolicitud.EN_VERIFICACION,
             EstadoSolicitud.VERIFICADA,
+            EstadoSolicitud.DEVUELTA,
           ]),
         }
       : {
@@ -1849,7 +1872,7 @@ export class TravelExpensesService {
     return this.solicitudRepo.find({
       where: whereCondition,
       order: { creadoEn: 'DESC' },
-      relations: ['comisionado'],
+      relations: ['comisionado', 'revisorControl', 'documentosSoporte'],
     });
   }
 
@@ -1909,6 +1932,23 @@ export class TravelExpensesService {
       });
 
       solicitud.consultaRutFacturador = dto.consultaRutFacturador ?? false;
+
+      // Sincronizar la marca persistente de facturador electrónico en el comisionado contratista (RF-REV-003)
+      if (solicitud.comisionadoId && dto.consultaRutFacturador !== undefined) {
+        const comRepo = manager.getRepository(ComisionadoEntity);
+        if (comRepo && typeof comRepo.findOne === 'function') {
+          const comisionado = await comRepo.findOne({
+            where: { id: solicitud.comisionadoId },
+          });
+          if (comisionado && (comisionado.tipoComisionado || '').toUpperCase() === 'CONTRATISTA') {
+            comisionado.esFacturadorElectronico = Boolean(dto.consultaRutFacturador);
+            if (typeof comRepo.save === 'function') {
+              await comRepo.save(comisionado);
+            }
+          }
+        }
+      }
+
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
         .save(solicitud);
@@ -2037,6 +2077,36 @@ export class TravelExpensesService {
         .findOne({
           where: { id: solicitud.comisionadoId },
         });
+
+      // RF-REV-003: Bloqueo de creación/exportación en SIIF para contratista facturador electrónico
+      // sin soporte de Factura Electrónica adjunto.
+      const esContratista =
+        (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA';
+      const esFacturador = Boolean(
+        solicitud.consultaRutFacturador || comisionado?.esFacturadorElectronico,
+      );
+
+      if (esContratista && esFacturador) {
+        const docsSoporte = await manager
+          .getRepository(DocumentoSoporteEntity)
+          .find({ where: { solicitudId: solicitud.id } });
+
+        const tieneFactura = (docsSoporte || []).some((d) => {
+          const tipo = (d.tipoDocumento || '').toUpperCase();
+          const nom = (d.nombreArchivoOriginal || '').toLowerCase();
+          return (
+            tipo === 'FACTURA' ||
+            tipo === 'FACTURA_ELECTRONICA' ||
+            nom.includes('factura')
+          );
+        });
+
+        if (!tieneFactura) {
+          throw new BadRequestException(
+            'Bloqueo SIIF: El comisionado es contratista facturador electrónico y no cuenta con la Factura Electrónica cargada en el expediente. Debe solicitarla o adjuntarla antes de continuar.',
+          );
+        }
+      }
 
       const nombreComisionado = comisionado
         ? [
