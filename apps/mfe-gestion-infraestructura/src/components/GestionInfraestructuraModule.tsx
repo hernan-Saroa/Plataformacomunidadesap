@@ -20,6 +20,7 @@ import { GestionSedes } from './GestionSedes';
 import { GestionEspacios } from './GestionEspacios';
 import { SolicitudesMantenimientoView } from './SolicitudesMantenimiento';
 import { NuevaSolicitudForm } from './NuevaSolicitudForm';
+import { DetalleSolicitudModal } from './DetalleSolicitudModal';
 
 type TabActiva = 'espacios' | 'sedes' | 'mantenimiento';
 type VistaMantenimiento = 'todas' | 'mias';
@@ -40,6 +41,9 @@ export const GestionInfraestructuraModule: React.FC = () => {
   const [vistaMantenimiento, setVistaMantenimiento] = useState<VistaMantenimiento>('todas');
   const [mostrarFormulario, setMostrarFormulario] = useState<boolean>(false);
   const [toast, setToast] = useState<Toast | null>(null);
+
+  const [abrirDetalle, setAbrirDetalle] = useState<boolean>(false);
+  const [idSolicitudSeleccionada, setIdSolicitudSeleccionada] = useState<string | null>(null);
 
   const [stats, setStats] = useState<EstadisticasInfraestructura>({
     total: 0,
@@ -94,6 +98,11 @@ export const GestionInfraestructuraModule: React.FC = () => {
     await fetchData();
   };
 
+  const manejarGestionar = (idSolicitud: string) => {
+    setIdSolicitudSeleccionada(idSolicitud);
+    setAbrirDetalle(true);
+  };
+
   const renderToast = () => {
     if (!toast) return null;
     const esExito = toast.tipo === 'exito';
@@ -139,6 +148,14 @@ export const GestionInfraestructuraModule: React.FC = () => {
           onExito={manejarExitoRadicacion}
         />
       )}
+      <DetalleSolicitudModal
+        open={abrirDetalle}
+        idSolicitud={idSolicitudSeleccionada}
+        onClose={() => {
+          setAbrirDetalle(false);
+          setIdSolicitudSeleccionada(null);
+        }}
+      />
 
       {/* Encabezado Principal */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
@@ -238,7 +255,9 @@ export const GestionInfraestructuraModule: React.FC = () => {
             vista={vistaMantenimiento}
             onChangeVista={setVistaMantenimiento}
             onNuevaSolicitud={() => setMostrarFormulario(true)}
+            onGestionar={manejarGestionar}
             loading={loading}
+            onRefresh={fetchData}
           />
         )}
       </div>

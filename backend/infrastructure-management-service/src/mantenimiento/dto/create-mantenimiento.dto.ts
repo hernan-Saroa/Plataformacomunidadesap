@@ -56,10 +56,20 @@ export class CreateMantenimientoDto {
   @MinLength(10)
   descripcion: string;
 
-  @ApiPropertyOptional({ example: 'http://storage/evidencia1.jpg', description: 'Evidencia inicial opcional' })
+  @ApiPropertyOptional({ example: 'http://storage/evidencia1.jpg', description: 'Evidencia inicial opcional (URL externa legacy)' })
   @IsString()
   @IsOptional()
   evidenciaInicialUrl?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['<uuid-evidencia1>', '<uuid-evidencia2>'],
+    description: 'IDs de evidencias subidas previamente por el endpoint /mantenimiento/evidencias/upload y pendientes de ligar a la solicitud',
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  @IsUUID(undefined, { each: true })
+  uploadedEvidenciaIds?: string[];
 
   @ApiPropertyOptional({ example: 'MEDIA', description: 'Prioridad: BAJA, MEDIA, ALTA, URGENTE' })
   @IsString()

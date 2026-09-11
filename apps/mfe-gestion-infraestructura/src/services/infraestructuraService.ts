@@ -9,6 +9,7 @@ export interface Sede {
   telefono?: string;
   emailContacto?: string;
   isActivo: boolean;
+  alcanceUmi?: boolean;
   bloques?: BloqueEdificio[];
 }
 
@@ -41,6 +42,36 @@ export interface EspacioFisico {
   bloque?: BloqueEdificio;
 }
 
+export interface CatalogoItem {
+  idCatalogo: number;
+  catalogo: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  orden: number;
+  isActivo: boolean;
+  metadata: Record<string, any>;
+}
+
+export interface SolicitudEvidencia {
+  idEvidencia: string;
+  idSolicitud?: string;
+  nombreOriginal: string;
+  nombreAlmacenado: string;
+  rutaObjeto: string;
+  bucket: string;
+  urlPublica?: string;
+  urlPresigned?: string;
+  vencimientoPresigned?: string;
+  mimeType?: string;
+  tamanoBytes: number;
+  usuarioQueSubioId?: string;
+  usuarioQueSubioEmail?: string;
+  orden?: number;
+  notas?: string;
+  fechaSubida: string;
+}
+
 export interface SolicitudMantenimiento {
   idSolicitud: string;
   consecutivo: string;
@@ -67,9 +98,11 @@ export interface SolicitudMantenimiento {
   fechaRadicacion?: string;
   usuarioSolicitanteId?: string;
   usuarioSolicitanteEmail?: string;
+  evidenciaInicialUrl?: string;
   createdAt: string;
   sede?: Sede;
   espacio?: EspacioFisico;
+  evidencias?: SolicitudEvidencia[];
 }
 
 export interface CreateMantenimientoPayload {
@@ -83,6 +116,7 @@ export interface CreateMantenimientoPayload {
   tipoMantenimiento: string;
   descripcion: string;
   evidenciaInicialUrl?: string;
+  uploadedEvidenciaIds?: string[];
   prioridad?: string;
 }
 
@@ -100,7 +134,20 @@ const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any)._
 
 const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
 
+export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD';
+
 export const infraestructuraService = {
+  async getCatalogo(nombre: NombreCatalogo): Promise<CatalogoItem[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/catalogos/${nombre}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Error al obtener catálogo ${nombre} (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getCatalogo(${nombre}) falló:`, err);
+      return [];
+    }
+  },
+
   async getSedes(): Promise<Sede[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/sedes`, { credentials: 'include' });
@@ -145,47 +192,23 @@ export const infraestructuraService = {
       const res = await fetch(`${API_BASE_URL}/mantenimiento`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
       return await res.json();
-    } catch {
-      return [
-        {
-          idSolicitud: 'm1',
-          consecutivo: 'MNT-2026-0001',
-          idSede: '1',
-          tipoMantenimiento: 'CORRECTIVO',
-          prioridad: 'ALTA',
-          descripcion: 'Mantenimiento del sistema de proyección y cableado HDMI en Auditorio Principal',
-          solicitanteEmail: 'direccion.academica@esap.edu.co',
-          solicitanteNombre: 'Dirección Académica',
-          responsableAsignado: 'Ing. Javier Moreno',
-          fechaProgramada: '2026-09-12',
-          estado: 'EN_PROCESO',
-          costoEstimado: 680000,
-          piso: '1',
-          salon: 'Auditorio Principal',
-          nombreAreaSolicitante: 'Dirección Académica',
-          tipoAtencion: 'FISICA',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          idSolicitud: 'm2',
-          consecutivo: 'MNT-2026-0002',
-          idSede: '2',
-          tipoMantenimiento: 'PREVENTIVO',
-          prioridad: 'MEDIA',
-          descripcion: 'Revisión periódica de unidades de aire acondicionado y filtros',
-          solicitanteEmail: 'antioquia@esap.edu.co',
-          solicitanteNombre: 'Coordinación Territorial',
-          responsableAsignado: 'Técnico Climatización S.A.S.',
-          fechaProgramada: '2026-09-18',
-          estado: 'RECIBIDA',
-          costoEstimado: 1200000,
-          piso: '3',
-          salon: 'Oficina 301',
-          nombreAreaSolicitante: 'Coordinación Territorial',
-          tipoAtencion: 'FISICA',
-          createdAt: new Date().toISOString(),
-        },
-      ];
+    } catch (err) {
+      console.warn('[infraestructuraService] getMantenimientos falló, retornando []:', err);
+      return [];
+    }
+  },
+
+  async getMantenimientoById(idSolicitud: string): Promise<SolicitudMantenimiento | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}`, {
+        credentials: 'include',
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`Error al obtener detalle (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getMantenimientoById(${idSolicitud}):`, err);
+      return null;
     }
   },
 
@@ -225,8 +248,72 @@ export const infraestructuraService = {
     return await res.json();
   },
 
+  async uploadEvidencia(
+    file: File,
+    opts?: { onProgress?: (porcentaje: number) => void; idSolicitud?: string; orden?: number; notas?: string },
+  ): Promise<SolicitudEvidencia> {
+    return new Promise<SolicitudEvidencia>((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (opts?.idSolicitud) form.append('idSolicitud', opts.idSolicitud);
+      if (opts?.orden != null) form.append('orden', String(opts.orden));
+      if (opts?.notas) form.append('notas', opts.notas);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}/mantenimiento/evidencias/upload`, true);
+      xhr.withCredentials = true;
+      if (opts?.onProgress && xhr.upload) {
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            const p = Math.round((ev.loaded / ev.total) * 100);
+            opts.onProgress?.(p);
+          }
+        };
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as SolicitudEvidencia);
+          } catch (err) {
+            reject(new Error('Respuesta inválida al subir evidencia'));
+          }
+        } else {
+          let mensaje = `Error al subir evidencia (${xhr.status})`;
+          try {
+            const errorBody = JSON.parse(xhr.responseText);
+            if (errorBody?.message) {
+              mensaje = Array.isArray(errorBody.message) ? errorBody.message.join(', ') : String(errorBody.message);
+            }
+          } catch {
+            // ignore
+          }
+          reject(new Error(mensaje));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Error de red al subir evidencia'));
+      xhr.send(form);
+    });
+  },
+
+  async getEvidenciasBySolicitud(idSolicitud: string): Promise<SolicitudEvidencia[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${idSolicitud}/evidencias`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Error al obtener evidencias (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getEvidenciasBySolicitud(${idSolicitud}):`, err);
+      return [];
+    }
+  },
+
   async getSedesAlcanceUMI(): Promise<Sede[]> {
     const todas = await this.getSedes();
+    // Preferencia 1: columna nueva sede.alcanceUmi (migración 004)
+    const conBandera = todas.filter((s) => s.isActivo && s.alcanceUmi === true);
+    if (conBandera.length > 0) {
+      return conBandera;
+    }
+    // Fallback: strings quemados (backward compat si la migración aún no se aplicó)
     return todas.filter(
       (s) => s.isActivo && (s.tipo === 'SEDE_CENTRAL' || s.tipo === 'SEDE_ALTERNA'),
     );

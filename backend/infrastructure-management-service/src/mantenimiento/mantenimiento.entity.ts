@@ -5,10 +5,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { EspacioFisico } from '../espacios/espacio.entity.js';
 import { Sede } from '../sedes/sede.entity.js';
+import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 
 @Entity({ name: 'solicitud_mantenimiento', schema: 'infrastructure-management' })
 export class SolicitudMantenimiento {
@@ -85,7 +87,10 @@ export class SolicitudMantenimiento {
   usuarioSolicitanteId: string;
 
   @Column({ type: 'varchar', length: 150, nullable: true, name: 'usuario_solicitante_email' })
-  usuarioSolicitanteEmail: string;
+  usuarioSolicitanteEmail?: string;
+
+  @Column({ type: 'text', nullable: true, name: 'evidencia_inicial_url' })
+  evidenciaInicialUrl?: string;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
@@ -100,4 +105,7 @@ export class SolicitudMantenimiento {
   @ManyToOne(() => Sede, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'id_sede' })
   sede: Sede;
+
+  @OneToMany(() => SolicitudEvidencia, (e) => e.solicitud, { nullable: true })
+  evidencias?: SolicitudEvidencia[];
 }

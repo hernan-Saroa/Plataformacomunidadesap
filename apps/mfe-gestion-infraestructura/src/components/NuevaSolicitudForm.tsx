@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   Send,
@@ -11,12 +11,18 @@ import {
   AlertCircle,
   CheckCircle2,
   ImagePlus,
+  UploadCloud,
+  File,
+  Trash2,
+  Link2,
 } from 'lucide-react';
 import {
   infraestructuraService,
   Sede,
   SolicitudMantenimiento,
   CreateMantenimientoPayload,
+  CatalogoItem,
+  SolicitudEvidencia,
 } from '../services/infraestructuraService';
 
 interface NuevaSolicitudFormProps {
@@ -24,23 +30,43 @@ interface NuevaSolicitudFormProps {
   onExito: (solicitud: SolicitudMantenimiento) => void;
 }
 
-const TIPOS_MANTENIMIENTO = [
-  { valor: 'PREVENTIVO', etiqueta: 'Preventivo' },
-  { valor: 'CORRECTIVO', etiqueta: 'Correctivo' },
-  { valor: 'LOCATIVO', etiqueta: 'Locativo' },
-  { valor: 'URGENCIA', etiqueta: 'Urgencia' },
+interface ArchivoPendiente {
+  localId: string;
+  file: File;
+  preview?: string;
+  progreso: number;
+  error?: string;
+  evidencia?: SolicitudEvidencia;
+}
+
+const TIPOS_MANTENIMIENTO_FALLBACK: CatalogoItem[] = [
+  { idCatalogo: 1, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'PREVENTIVO', nombre: 'Preventivo', orden: 1, isActivo: true, metadata: {} },
+  { idCatalogo: 2, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'CORRECTIVO', nombre: 'Correctivo', orden: 2, isActivo: true, metadata: {} },
+  { idCatalogo: 3, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'LOCATIVO',   nombre: 'Locativo',   orden: 3, isActivo: true, metadata: {} },
+  { idCatalogo: 4, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'URGENTE',    nombre: 'Urgente',    orden: 4, isActivo: true, metadata: {} },
 ];
 
-const PRIORIDADES = [
-  { valor: 'BAJA', etiqueta: 'Baja' },
-  { valor: 'MEDIA', etiqueta: 'Media' },
-  { valor: 'ALTA', etiqueta: 'Alta' },
-  { valor: 'URGENTE', etiqueta: 'Urgente' },
+const PRIORIDADES_FALLBACK: CatalogoItem[] = [
+  { idCatalogo: 1, catalogo: 'PRIORIDAD', codigo: 'BAJA',    nombre: 'Baja',    orden: 1, isActivo: true, metadata: {} },
+  { idCatalogo: 2, catalogo: 'PRIORIDAD', codigo: 'MEDIA',   nombre: 'Media',   orden: 2, isActivo: true, metadata: {} },
+  { idCatalogo: 3, catalogo: 'PRIORIDAD', codigo: 'ALTA',    nombre: 'Alta',    orden: 3, isActivo: true, metadata: {} },
+  { idCatalogo: 4, catalogo: 'PRIORIDAD', codigo: 'URGENTE', nombre: 'Urgente', orden: 4, isActivo: true, metadata: {} },
 ];
+
+const ES_IMAGEN = (m?: string) => /^image\//i.test(m || '');
+const TAMANO_HUMANO = (b: number) => {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+};
 
 export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose, onExito }) => {
   const [sedesAlcance, setSedesAlcance] = useState<Sede[]>([]);
   const [cargandoSedes, setCargandoSedes] = useState<boolean>(true);
+
+  const [catalogoTM, setCatalogoTM] = useState<CatalogoItem[]>([]);
+  const [catalogoPR, setCatalogoPR] = useState<CatalogoItem[]>([]);
+  const [cargandoCatalogos, setCargandoCatalogos] = useState<boolean>(true);
 
   const [idSede, setIdSede] = useState<string>('');
   const [nombreAreaSolicitante, setNombreAreaSolicitante] = useState<string>('');
@@ -52,26 +78,52 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [descripcion, setDescripcion] = useState<string>('');
   const [evidenciaInicialUrl, setEvidenciaInicialUrl] = useState<string>('');
 
+  const [archivos, setArchivos] = useState<ArchivoPendiente[]>([]);
+  const [arrastrando, setArrastrando] = useState<boolean>(false);
+  const [subeFiles, setSubeFiles] = useState<boolean>(false);
+
   const [enviando, setEnviando] = useState<boolean>(false);
   const [errorMensaje, setErrorMensaje] = useState<string>('');
   const [errores, setErrores] = useState<Record<string, string>>({});
+
+  const inputFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
       try {
         setCargandoSedes(true);
-        const listado = await infraestructuraService.getSedesAlcanceUMI();
-        setSedesAlcance(listado);
-        if (listado.length === 1) {
-          setIdSede(listado[0].idSede);
+        setCargandoCatalogos(true);
+        const [listadoSedes, tm, pr] = await Promise.all([
+          infraestructuraService.getSedesAlcanceUMI(),
+          infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
+          infraestructuraService.getCatalogo('PRIORIDAD'),
+        ]);
+        setSedesAlcance(listadoSedes);
+        setCatalogoTM(tm.length > 0 ? tm : TIPOS_MANTENIMIENTO_FALLBACK);
+        setCatalogoPR(pr.length > 0 ? pr : PRIORIDADES_FALLBACK);
+        if (listadoSedes.length === 1) {
+          setIdSede(listadoSedes[0].idSede);
         }
+        if (catalogoTM.length === 0 && tm.length === 0) {
+          setTipoMantenimiento('CORRECTIVO');
+        } else {
+          setTipoMantenimiento(tm[0]?.codigo ?? 'CORRECTIVO');
+        }
+        setPrioridad(pr[0]?.codigo ?? 'MEDIA');
       } catch (err) {
-        console.error('No se pudieron cargar las sedes de alcance UMI', err);
+        console.error('No se pudieron cargar sedes/catalogos UMI', err);
+        setCatalogoTM(TIPOS_MANTENIMIENTO_FALLBACK);
+        setCatalogoPR(PRIORIDADES_FALLBACK);
       } finally {
         setCargandoSedes(false);
+        setCargandoCatalogos(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const listaTM = catalogoTM.length > 0 ? catalogoTM : TIPOS_MANTENIMIENTO_FALLBACK;
+  const listaPR = catalogoPR.length > 0 ? catalogoPR : PRIORIDADES_FALLBACK;
 
   const validar = (): boolean => {
     const nuevosErrores: Record<string, string> = {};
@@ -89,12 +141,108 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     return Object.keys(nuevosErrores).length === 0;
   };
 
-  const manejarEnvio = async (e: React.FormEvent) => {
+  const agregarFiles = (list: FileList | File[]) => {
+    const arr = Array.from(list).filter((f) => {
+      const permitido =
+        /^(image\/(png|jpe?g|gif|webp|heic|heif)|application\/pdf)$/i.test(f.type) ||
+        /\.(png|jpe?g|gif|webp|heic|heif|pdf)$/i.test(f.name);
+      if (!permitido) {
+        setErrorMensaje(
+          `Archivo "${f.name}" no permitido. Solo imágenes (PNG/JPG/HEIC/WEBP) o PDF, hasta 20MB cada uno.`,
+        );
+        setTimeout(() => setErrorMensaje((prev) => (prev.includes(f.name) ? '' : prev)), 6000);
+      }
+      if (f.size > 20 * 1024 * 1024) {
+        setErrorMensaje(`Archivo "${f.name}" excede los 20MB.`);
+        return false;
+      }
+      return permitido;
+    });
+    const pendientes: ArchivoPendiente[] = arr.map((f) => ({
+      localId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      file: f,
+      progreso: 0,
+      preview: ES_IMAGEN(f.type) ? URL.createObjectURL(f) : undefined,
+    }));
+    setArchivos((prev) => [...prev, ...pendientes]);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastrando(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      agregarFiles(e.dataTransfer.files);
+    }
+  };
+
+  const removerArchivo = (localId: string) => {
+    setArchivos((prev) => {
+      const f = prev.find((x) => x.localId === localId);
+      if (f?.preview) URL.revokeObjectURL(f.preview);
+      return prev.filter((x) => x.localId !== localId);
+    });
+  };
+
+  const subirArchivos = async () => {
+    if (archivos.length === 0) return [];
+    setSubeFiles(true);
+    try {
+      const resultados: SolicitudEvidencia[] = [];
+      for (let i = 0; i < archivos.length; i++) {
+        const a = archivos[i];
+        if (a.evidencia) {
+          resultados.push(a.evidencia);
+          continue;
+        }
+        try {
+          const uploaded = await infraestructuraService.uploadEvidencia(a.file, {
+            orden: i + 1,
+            onProgress: (p) => {
+              setArchivos((prev) =>
+                prev.map((x) => (x.localId === a.localId ? { ...x, progreso: p } : x)),
+              );
+            },
+          });
+          setArchivos((prev) =>
+            prev.map((x) => (x.localId === a.localId ? { ...x, progreso: 100, evidencia: uploaded } : x)),
+          );
+          resultados.push(uploaded);
+        } catch (err: any) {
+          setArchivos((prev) =>
+            prev.map((x) =>
+              x.localId === a.localId
+                ? { ...x, progreso: 0, error: err?.message || 'No se pudo subir' }
+                : x,
+            ),
+          );
+          throw err;
+        }
+      }
+      return resultados;
+    } finally {
+      setSubeFiles(false);
+    }
+  };
+
+  const manejarEnvio = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
     setErrorMensaje('');
     if (!validar()) return;
     setEnviando(true);
     try {
+      let evidenciasSubidas: SolicitudEvidencia[] = [];
+      if (archivos.filter((a) => !a.evidencia).length > 0 || archivos.length > 0) {
+        evidenciasSubidas = await subirArchivos();
+      }
+      const conErrores = archivos.find((a) => a.error);
+      if (conErrores) {
+        throw new Error(
+          `No se pudo subir el archivo ${conErrores.file.name}: ${conErrores.error}. Intente nuevamente o remuévalo.`,
+        );
+      }
+      const uploadedEvidenciaIds = archivos
+        .map((a) => a.evidencia?.idEvidencia)
+        .filter((x): x is string => !!x);
       const payload: CreateMantenimientoPayload = {
         idSede,
         nombreAreaSolicitante: nombreAreaSolicitante.trim(),
@@ -105,8 +253,10 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         prioridad,
         descripcion: descripcion.trim(),
         evidenciaInicialUrl: evidenciaInicialUrl.trim() || undefined,
+        uploadedEvidenciaIds: uploadedEvidenciaIds.length > 0 ? uploadedEvidenciaIds : undefined,
       };
       const resultado = await infraestructuraService.createMantenimiento(payload);
+      archivos.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
       onExito(resultado);
     } catch (err: any) {
       setErrorMensaje(err?.message || 'No se pudo radicar la solicitud. Intente nuevamente.');
@@ -114,6 +264,11 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       setEnviando(false);
     }
   };
+
+  const totalSubidosOk = useMemo(
+    () => archivos.filter((a) => !!a.evidencia).length,
+    [archivos],
+  );
 
   const inputClase = (campo: string) =>
     `w-full rounded-lg border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 ${
@@ -256,14 +411,18 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <select
                   value={tipoMantenimiento}
                   onChange={(e) => setTipoMantenimiento(e.target.value)}
+                  disabled={cargandoCatalogos}
                   className={inputClase('tipoMantenimiento')}
                 >
-                  {TIPOS_MANTENIMIENTO.map((t) => (
-                    <option key={t.valor} value={t.valor}>
-                      {t.etiqueta}
+                  {listaTM.map((t) => (
+                    <option key={t.codigo} value={t.codigo}>
+                      {t.nombre}
                     </option>
                   ))}
                 </select>
+                {errores.tipoMantenimiento && (
+                  <p className="mt-1 text-xs text-rose-600 font-medium">{errores.tipoMantenimiento}</p>
+                )}
               </div>
 
               <div>
@@ -276,11 +435,12 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <select
                   value={prioridad}
                   onChange={(e) => setPrioridad(e.target.value)}
+                  disabled={cargandoCatalogos}
                   className={inputClase('prioridad')}
                 >
-                  {PRIORIDADES.map((p) => (
-                    <option key={p.valor} value={p.valor}>
-                      {p.etiqueta}
+                  {listaPR.map((p) => (
+                    <option key={p.codigo} value={p.codigo}>
+                      {p.nombre}
                     </option>
                   ))}
                 </select>
@@ -326,15 +486,127 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <label className={labelClase}>
                   <span className="inline-flex items-center gap-1.5">
                     <ImagePlus className="w-3.5 h-3.5 text-slate-400" />
-                    Evidencia inicial
+                    Adjuntar evidencias
                   </span>
-                  <span className="text-slate-400 font-normal ml-2">(opcional, ST-09: adjuntar archivos vendrá luego)</span>
+                  <span className="text-slate-400 font-normal ml-2">
+                    (opcional — imágenes PNG/JPG/HEIC/WEBP o PDF, hasta 20MB cada uno)
+                  </span>
+                </label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setArrastrando(true);
+                  }}
+                  onDragLeave={() => setArrastrando(false)}
+                  onDrop={onDrop}
+                  onClick={() => inputFileRef.current?.click()}
+                  className={`group cursor-pointer select-none rounded-2xl border-2 border-dashed px-6 py-7 text-center transition-all ${
+                    arrastrando
+                      ? 'border-amber-500 bg-amber-50'
+                      : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-amber-400'
+                  }`}
+                >
+                  <UploadCloud
+                    className={`mx-auto mb-2 transition-all ${
+                      arrastrando ? 'text-amber-600 scale-110' : 'text-slate-400 group-hover:text-amber-500'
+                    }`}
+                    style={{ width: 36, height: 36 }}
+                  />
+                  <p className="text-sm font-semibold text-slate-700">
+                    Arrastra tus archivos aquí o haz clic para seleccionar
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {archivos.length === 0
+                      ? 'Adjunta fotos, planos, recibos o PDF de soporte a la solicitud'
+                      : `${archivos.length} archivo(s) seleccionados · ${totalSubidosOk}/${archivos.length} subido(s) OK`}
+                  </p>
+                  <input
+                    ref={inputFileRef}
+                    type="file"
+                    multiple
+                    accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,application/pdf"
+                    className="hidden"
+                    onChange={(e) => e.target.files && agregarFiles(e.target.files)}
+                  />
+                </div>
+
+                {archivos.length > 0 && (
+                  <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {archivos.map((a) => (
+                      <li
+                        key={a.localId}
+                        className={`relative rounded-xl border bg-white p-2 text-xs shadow-sm ${
+                          a.error
+                            ? 'border-rose-300'
+                            : a.evidencia
+                            ? 'border-emerald-300 bg-emerald-50/40'
+                            : subeFiles
+                            ? 'border-amber-200 bg-amber-50/30'
+                            : 'border-slate-200'
+                        }`}
+                      >
+                        <div className="aspect-square w-full overflow-hidden rounded-lg bg-slate-100 flex items-center justify-center mb-2">
+                          {a.preview ? (
+                            <img
+                              src={a.preview}
+                              alt={a.file.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center gap-1 text-slate-500 p-2">
+                              <File style={{ width: 22, height: 22 }} />
+                              <span className="font-medium line-clamp-2 text-center">{a.file.name.split('.').pop()?.toUpperCase()}</span>
+                            </div>
+                          )}
+                        </div>
+                        <p className="font-medium text-slate-700 line-clamp-1" title={a.file.name}>
+                          {a.file.name}
+                        </p>
+                        <p className="text-slate-500 mb-1">{TAMANO_HUMANO(a.file.size)}</p>
+                        {subeFiles && !a.evidencia && !a.error ? (
+                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mb-1">
+                            <div
+                              className="h-full bg-amber-500 transition-all"
+                              style={{ width: `${a.progreso}%` }}
+                            />
+                          </div>
+                        ) : a.error ? (
+                          <p className="text-rose-600 font-medium">{a.error}</p>
+                        ) : a.evidencia ? (
+                          <p className="text-emerald-700 font-semibold inline-flex items-center gap-1">
+                            <CheckCircle2 style={{ width: 12, height: 12 }} /> Subido OK
+                          </p>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!enviando && !subeFiles) removerArchivo(a.localId);
+                          }}
+                          disabled={enviando || subeFiles}
+                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 shadow-sm transition-colors disabled:opacity-50"
+                          aria-label="Quitar archivo"
+                        >
+                          <Trash2 style={{ width: 13, height: 13 }} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <label className={labelClase}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5 text-slate-400" />
+                    URL de evidencia (opcional legacy)
+                  </span>
                 </label>
                 <input
                   type="text"
                   value={evidenciaInicialUrl}
                   onChange={(e) => setEvidenciaInicialUrl(e.target.value)}
-                  placeholder="Puede pegar aquí una URL de referencia o evidencia (screenshot, documento, etc.)"
+                  placeholder="Alternativa: pega aquí una URL externa (Drive, Dropbox, etc.)"
                   className={inputClase('evidenciaInicialUrl')}
                 />
               </div>
@@ -364,15 +636,15 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
             Cancelar
           </button>
           <button
-            type="submit"
-            disabled={enviando}
+            type="button"
+            disabled={enviando || subeFiles}
             onClick={manejarEnvio}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm shadow-amber-500/20 transition-all active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100"
           >
-            {enviando ? (
+            {enviando || subeFiles ? (
               <>
                 <span className="w-4 h-4 rounded-full border-2 border-white/50 border-t-white animate-spin" />
-                Radicando...
+                {subeFiles && !enviando ? `Subiendo archivos ${totalSubidosOk}/${archivos.length}...` : 'Radicando...'}
               </>
             ) : (
               <>
