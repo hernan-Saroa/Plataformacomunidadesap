@@ -378,7 +378,9 @@ export class DocumentConversionService {
       const footerImageStyle = shouldConstrainFooterImages
         ? 'display:block; width:100%; height:auto; object-fit:contain;'
         : 'display:block; width:100%;';
-      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '2cm';
+      // Margen inferior para dar espacio completo al banner del pie institucional,
+      // las 5 líneas de contacto y la paginación para TODOS los autos con pie
+      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '4.8cm';
       const headerImagesHtml = headerContent.images
         .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
@@ -394,7 +396,7 @@ export class DocumentConversionService {
       const footerTextHtml = footerContent.textBlocks
         .map(
           (texto) =>
-            `<div style="text-align:left; font-size:7pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
+            `<div style="text-align:left; font-size:7pt; line-height:1.2;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
 
@@ -407,7 +409,7 @@ export class DocumentConversionService {
       // El "Página X de Y" del pie original es un campo de Word (no <w:t>), así que
       // no lo trae la extracción: se reconstruye con los contadores de Puppeteer.
       const footerPageNumberHtml =
-        '<div style="text-align:center; font-size:7pt; line-height:1.3;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+        '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
 
       // La imagen del membrete va a sangre (ancho completo). El texto del pie
       // (dirección) se superpone sobre el banner por la izquierda, como en el
@@ -420,30 +422,37 @@ export class DocumentConversionService {
           }</div>`
         : '<div></div>';
       const footerBodyHtml = footerImagesHtml
-        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:0; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
+        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
         : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
       const footerTemplate = hasFooter
-        ? `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact;">${footerPageNumberHtml}${footerBodyHtml}</div>`
+        ? `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`
         : '<div></div>';
 
-      // Crear HTML completo con estilos básicos
+      // Crear HTML completo con estilos limpios sin doble margen de body
       const fullHtml = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
           <style>
+            @page {
+              size: A4;
+            }
             body {
               font-family: 'Times New Roman', Times, serif;
               font-size: 12pt;
-              line-height: 1.5;
-              margin: 2cm;
+              line-height: 1.4;
+              margin: 0;
+              padding: 0;
+              color: #000;
             }
             .mammoth-style-wrapper {
               max-width: 100%;
             }
-            /* Estilos adicionales para mejor compatibilidad */
-            p { margin: 0 0 10pt 0; }
+            p { 
+              margin: 0 0 8pt 0; 
+              text-align: justify;
+            }
             table { border-collapse: collapse; width: 100%; }
             td, th { border: 1px solid #000; padding: 4pt; }
           </style>
@@ -468,7 +477,6 @@ export class DocumentConversionService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--single-process',
           '--disable-gpu'
         ]
       });
@@ -491,11 +499,6 @@ export class DocumentConversionService {
         margin: {
           top: hasHeader ? '3.8cm' : '2cm',
           right: '2cm',
-          // El pie institucional es alto (banner a ancho completo + varias líneas
-          // de dirección superpuestas): necesita un margen inferior generoso o se
-          // recorta. Debe coincidir con el yPosition de la firma en
-          // pdf-modifier.service para que no se solapen.
-          // Para inhibitorio usamos margen mayor (5.5cm) para que quepan los iconos ICONTEC/ISO
           bottom: hasFooter ? footerMarginBottom : '2cm',
           left: '2cm'
         }

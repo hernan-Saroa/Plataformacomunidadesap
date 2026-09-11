@@ -205,6 +205,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3005
+      TZ: America/Bogota
 
       JWT_SECRET: esap-super-secret-jwt-key-2024
 

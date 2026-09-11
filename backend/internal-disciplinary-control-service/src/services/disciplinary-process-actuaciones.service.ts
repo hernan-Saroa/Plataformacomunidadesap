@@ -60,6 +60,21 @@ export class DisciplinaryProcessActuacionesService {
     });
   }
 
+  private parseFechaActuacion(fechaStr?: string | null): Date {
+    if (!fechaStr) return new Date();
+    const dateOnlyMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const hoyBogota = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      if (fechaStr === hoyBogota) {
+        return new Date();
+      }
+      const [, y, m, d] = dateOnlyMatch;
+      return new Date(`${y}-${m}-${d}T12:00:00-05:00`);
+    }
+    const date = new Date(fechaStr);
+    return isNaN(date.getTime()) ? new Date() : date;
+  }
+
   async create(
     processId: string,
     dto: CreateDisciplinaryProcessActuacionDto,
@@ -73,7 +88,7 @@ export class DisciplinaryProcessActuacionesService {
       etapa: dto.etapa?.trim() || process.etapaActual,
       descripcion: dto.descripcion.trim(),
       responsableNombre: dto.responsableNombre.trim(),
-      fechaActuacion: new Date(dto.fechaActuacion),
+      fechaActuacion: this.parseFechaActuacion(dto.fechaActuacion),
       observaciones: dto.observaciones?.trim() || null,
     });
 
@@ -93,7 +108,7 @@ export class DisciplinaryProcessActuacionesService {
       etapa: dto.etapa?.trim() || 'RADICACION',
       descripcion: dto.descripcion.trim(),
       responsableNombre: dto.responsableNombre.trim(),
-      fechaActuacion: new Date(dto.fechaActuacion),
+      fechaActuacion: this.parseFechaActuacion(dto.fechaActuacion),
       observaciones: dto.observaciones?.trim() || null,
     });
 
