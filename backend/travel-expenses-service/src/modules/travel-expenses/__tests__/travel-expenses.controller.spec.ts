@@ -24,6 +24,7 @@ describe('TravelExpensesController — Etapa 5 (RF-REC-002)', () => {
             obtenerSolicitudControlViaticos: jest.fn(),
             verificarSegundaRevision: jest.fn(),
             devolverAAnalistaDesdeSegundaRevision: jest.fn(),
+            exportarFormato023: jest.fn(),
           },
         },
         {
@@ -529,6 +530,28 @@ describe('TravelExpensesController — Etapa 5 (RF-REC-002)', () => {
           { user: { userId: 'user-001', roles: ['CONTROL_VIATICOS'] } } as any,
         ),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('GET solicitudes/:id/exportar/pdf', () => {
+    it('debe exportar el formato 023 en PDF y configurar headers de respuesta', async () => {
+      const mockBuffer = Buffer.from('mock-pdf-content');
+      jest.spyOn(service, 'exportarFormato023').mockResolvedValue(mockBuffer);
+
+      const mockRes = {
+        set: jest.fn(),
+        send: jest.fn(),
+      };
+
+      await controller.exportarFormato023('sol-001', {} as any, mockRes as any);
+
+      expect(service.exportarFormato023).toHaveBeenCalledWith('sol-001', {});
+      expect(mockRes.set).toHaveBeenCalledWith({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename="Formato-023-Solicitud-sol-001.pdf"',
+        'Content-Length': mockBuffer.length,
+      });
+      expect(mockRes.send).toHaveBeenCalledWith(mockBuffer);
     });
   });
 });

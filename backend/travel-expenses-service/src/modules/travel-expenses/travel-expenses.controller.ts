@@ -242,7 +242,15 @@ export class TravelExpensesController {
     'travel_expenses:read_inbox',
     'travel_expenses:set_priority',
     'travel_expenses:return_request',
+    'travel_expenses:assign_analyst',
     'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:export_siif',
+    'travel_expenses:return_assigned',
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:double_check_request',
+    'travel_expenses:return_to_analyst',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
@@ -382,7 +390,21 @@ export class TravelExpensesController {
   }
 
   @Get('solicitudes/:id/exportar/pdf')
-  @Permissions('travel_expenses:create_request')
+  @Permissions(
+    'travel_expenses:create_request',
+    'travel_expenses:read_inbox',
+    'travel_expenses:set_priority',
+    'travel_expenses:return_request',
+    'travel_expenses:assign_analyst',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:export_siif',
+    'travel_expenses:return_assigned',
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:double_check_request',
+    'travel_expenses:return_to_analyst',
+  )
   async exportarFormato023(
     @Param('id') id: string,
     @Req() req: Request,
