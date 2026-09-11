@@ -3308,4 +3308,98 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
     });
   });
+
+  describe('calcularResumenPresupuestalDependencia', () => {
+    it('debe usar el presupuesto parametrizado de saldos_tiquetes (15M) para Planeación', async () => {
+      const qbMock = {
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '1171040', cantidad: '2' }),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.dependencias')) {
+            return [
+              {
+                id_dependencia: '1',
+                cod_dependencia: 'DEP-PLAN-01',
+                nom_dependencia: 'Subdirección de Planificación',
+              },
+            ];
+          }
+          if (sql.includes('travel_expenses.saldos_tiquetes')) {
+            return [
+              {
+                id: 'e23ecd74-e19d-480a-a1ea-11baa3d503bd',
+                dependencia_id: 'DEP-PLAN-01',
+                nombre_dependencia: 'Subdirección de Planificación',
+                presupuesto_inicial: '15000000.00',
+                presupuesto_disponible: '15000000.00',
+              },
+            ];
+          }
+          return [];
+        }),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const resumen = await svc.calcularResumenPresupuestalDependencia(1);
+
+      expect(resumen.nombreDependencia).toBe('Subdirección de Planificación');
+      expect(resumen.limitePresupuesto).toBe(15000000);
+      expect(resumen.totalGastado).toBe(1171040);
+      expect(resumen.cantidadSolicitudes).toBe(2);
+      expect(resumen.presupuestoDisponible).toBe(15000000 - 1171040);
+      expect(resumen.porcentajeUso).toBeCloseTo(7.81, 1);
+      expect(resumen.semaforo).toBe('VERDE');
+    });
+
+    it('debe calcular semáforo AMARILLO cuando el uso supera el 50%', async () => {
+      const qbMock = {
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '9000000', cantidad: '5' }),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('travel_expenses.saldos_tiquetes')) {
+            return [
+              {
+                presupuesto_inicial: '15000000.00',
+                nombre_dependencia: 'Subdirección de Planificación',
+              },
+            ];
+          }
+          return [];
+        }),
+      };
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const resumen = await svc.calcularResumenPresupuestalDependencia('DEP-PLAN-01');
+
+      expect(resumen.limitePresupuesto).toBe(15000000);
+      expect(resumen.porcentajeUso).toBe(60);
+      expect(resumen.semaforo).toBe('AMARILLO');
+    });
+  });
 });

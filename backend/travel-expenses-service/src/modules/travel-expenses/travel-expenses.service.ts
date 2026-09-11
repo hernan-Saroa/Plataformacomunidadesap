@@ -580,9 +580,11 @@ export class TravelExpensesService {
     SolicitudComisionEntity & {
       documentosSoporte: DocumentoSoporteEntity[];
       resumenPresupuestal?: {
+        nombreDependencia?: string;
         totalGastado: number;
         cantidadSolicitudes: number;
         limitePresupuesto: number;
+        presupuestoDisponible: number;
         porcentajeUso: number;
         semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
       };
@@ -608,7 +610,7 @@ export class TravelExpensesService {
     const idDependencia = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia;
     const resumenPresupuestal =
       idDependencia != null
-        ? await this.calcularResumenPresupuestalDependencia(Number(idDependencia))
+        ? await this.calcularResumenPresupuestalDependencia(idDependencia)
         : undefined;
 
     // Resolución del nombre del analista verificador de 1er nivel
@@ -737,14 +739,77 @@ export class TravelExpensesService {
   }
 
   async calcularResumenPresupuestalDependencia(
-    idDependencia: number,
+    idDependencia: number | string,
   ): Promise<{
+    nombreDependencia?: string;
     totalGastado: number;
     cantidadSolicitudes: number;
     limitePresupuesto: number;
+    presupuestoDisponible: number;
     porcentajeUso: number;
     semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
   }> {
+    const depStr = String(idDependencia).trim();
+    let codDependencia = depStr;
+    let numIdDependencia: number | null = !isNaN(Number(depStr)) ? Number(depStr) : null;
+    let nombreDependencia: string | undefined = undefined;
+
+    // 1. Resolver código y nombre oficial de la dependencia en auth.dependencias
+    try {
+      const depRows: any[] = await this.dataSource.query(
+        `SELECT id_dependencia, cod_dependencia, nom_dependencia 
+         FROM auth.dependencias 
+         WHERE id_dependencia::text = $1 OR cod_dependencia = $1 
+         LIMIT 1`,
+        [depStr],
+      );
+      if (depRows.length > 0) {
+        codDependencia = depRows[0].cod_dependencia;
+        numIdDependencia = Number(depRows[0].id_dependencia);
+        nombreDependencia = depRows[0].nom_dependencia;
+      }
+    } catch (e) {
+      this.logger.warn(
+        `[calcularResumenPresupuestalDependencia] Error al consultar auth.dependencias para ${idDependencia}: ${e?.message}`,
+      );
+    }
+
+    // 2. Consultar presupuesto parametrizado en travel_expenses.saldos_tiquetes
+    let limitePresupuesto = Number(process.env.PRESUPUESTO_DEPENDENCIA_LIMITE || '10000000');
+    try {
+      const saldoRows: any[] = await this.dataSource.query(
+        `SELECT id, dependencia_id, nombre_dependencia, presupuesto_inicial, presupuesto_disponible, presupuesto_reservado 
+         FROM travel_expenses.saldos_tiquetes 
+         WHERE activo = true 
+           AND (dependencia_id = $1 OR dependencia_id = $2 OR dependencia_id = $3)
+         ORDER BY actualizado_en DESC 
+         LIMIT 1`,
+        [depStr, codDependencia, numIdDependencia != null ? String(numIdDependencia) : depStr],
+      );
+      if (saldoRows.length > 0) {
+        const saldoRow = saldoRows[0];
+        if (saldoRow.presupuesto_inicial != null && Number(saldoRow.presupuesto_inicial) > 0) {
+          limitePresupuesto = Number(saldoRow.presupuesto_inicial);
+        }
+        if (saldoRow.nombre_dependencia) {
+          nombreDependencia = saldoRow.nombre_dependencia;
+        }
+      }
+    } catch (e) {
+      this.logger.warn(
+        `[calcularResumenPresupuestalDependencia] Error al consultar travel_expenses.saldos_tiquetes para ${idDependencia}: ${e?.message}`,
+      );
+    }
+
+    // 3. Consultar total ejecutado en solicitudes de comisión aprobadas/tramitadas
+    const candidateIds = Array.from(
+      new Set(
+        [depStr, codDependencia, numIdDependencia != null ? String(numIdDependencia) : null].filter(
+          Boolean,
+        ),
+      ),
+    ) as string[];
+
     const ESTADOS_APROBADOS = [
       'APROBADO_JEFE',
       'APROBADO_TALENTO_HUMANO',
@@ -756,20 +821,43 @@ export class TravelExpensesService {
       'SOLICITADA_SIIF',
     ];
 
-    const result = await this.solicitudRepo
-      .createQueryBuilder('s')
-      .where('s.id_dependencia = :idDependencia', { idDependencia })
-      .andWhere('s.estado_solicitud IN (:...estados)', {
-        estados: ESTADOS_APROBADOS,
-      })
-      .select('COALESCE(SUM(s.monto_viaticos + s.monto_gastos_viaje), 0)', 'total')
-      .addSelect('COUNT(s.id)', 'cantidad')
-      .getRawOne<{ total: string; cantidad: string }>();
+    let result: { total: string; cantidad: string } | undefined;
+
+    try {
+      const qb = this.solicitudRepo
+        .createQueryBuilder('s')
+        .leftJoin('s.comisionado', 'c')
+        .where('s.estado_solicitud IN (:...estados)', { estados: ESTADOS_APROBADOS });
+
+      if (numIdDependencia != null) {
+        qb.andWhere(
+          '(s.id_dependencia = :numId OR (s.id_dependencia IS NULL AND c.id_dependencia = :numId))',
+          { numId: numIdDependencia },
+        );
+      } else {
+        qb.andWhere(
+          '(s.id_dependencia::text IN (:...depIds) OR (s.id_dependencia IS NULL AND c.id_dependencia::text IN (:...depIds)))',
+          { depIds: candidateIds },
+        );
+      }
+
+      result = await qb
+        .select('COALESCE(SUM(s.monto_viaticos + s.monto_gastos_viaje), 0)', 'total')
+        .addSelect('COUNT(s.id)', 'cantidad')
+        .getRawOne<{ total: string; cantidad: string }>();
+    } catch (e) {
+      this.logger.warn(
+        `[calcularResumenPresupuestalDependencia] Error al agregar gasto de solicitudes: ${e?.message}`,
+      );
+    }
 
     const totalGastado = Number(result?.total || 0);
     const cantidadSolicitudes = Number(result?.cantidad || 0);
-    const limitePresupuesto = Number(process.env.PRESUPUESTO_DEPENDENCIA_LIMITE || '10000000');
-    const porcentajeUso = Math.min((totalGastado / limitePresupuesto) * 100, 100);
+    const porcentajeUso =
+      limitePresupuesto > 0
+        ? Math.min(Math.round(((totalGastado / limitePresupuesto) * 100) * 100) / 100, 100)
+        : 0;
+    const presupuestoDisponible = Math.max(limitePresupuesto - totalGastado, 0);
 
     let semaforo: 'VERDE' | 'AMARILLO' | 'ROJO' = 'VERDE';
     if (porcentajeUso >= 80) {
@@ -779,9 +867,11 @@ export class TravelExpensesService {
     }
 
     return {
+      nombreDependencia,
       totalGastado,
       cantidadSolicitudes,
       limitePresupuesto,
+      presupuestoDisponible,
       porcentajeUso,
       semaforo,
     };

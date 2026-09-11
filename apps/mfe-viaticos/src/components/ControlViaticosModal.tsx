@@ -347,9 +347,11 @@ export default function ControlViaticosModal({
 
   const resumenPresupuestal = (solicitud as any)?.resumenPresupuestal as
     | {
+        nombreDependencia?: string;
         totalGastado: number;
         cantidadSolicitudes: number;
         limitePresupuesto: number;
+        presupuestoDisponible?: number;
         porcentajeUso: number;
         semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
       }
@@ -501,10 +503,31 @@ export default function ControlViaticosModal({
                       })()}
                     </div>
                     {resumenPresupuestal && (
-                      <div className="mt-2 space-y-1 text-[10px] text-slate-500">
-                        <div>Total gastado dependencia: ${resumenPresupuestal.totalGastado.toLocaleString('es-CO')}</div>
-                        <div>Solicitudes aprobadas: {resumenPresupuestal.cantidadSolicitudes}</div>
-                        <div>Límite: ${resumenPresupuestal.limitePresupuesto.toLocaleString('es-CO')} ({resumenPresupuestal.porcentajeUso.toFixed(1)}%)</div>
+                      <div className="mt-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5 text-[11px]">
+                        {resumenPresupuestal.nombreDependencia && (
+                          <div className="font-semibold text-slate-800 border-b border-slate-200/60 pb-1 flex items-center justify-between">
+                            <span className="truncate">{resumenPresupuestal.nombreDependencia}</span>
+                            <span className="text-[10px] text-slate-500 font-normal shrink-0 ml-2">
+                              {resumenPresupuestal.cantidadSolicitudes} {resumenPresupuestal.cantidadSolicitudes === 1 ? 'solicitud' : 'solicitudes'}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>Presupuesto asignado:</span>
+                          <span className="font-bold font-mono text-slate-800">${resumenPresupuestal.limitePresupuesto.toLocaleString('es-CO')}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>Total gastado:</span>
+                          <span className="font-semibold font-mono text-slate-700">
+                            ${resumenPresupuestal.totalGastado.toLocaleString('es-CO')} ({resumenPresupuestal.porcentajeUso.toFixed(1)}%)
+                          </span>
+                        </div>
+                        {resumenPresupuestal.presupuestoDisponible != null && (
+                          <div className="flex justify-between items-center text-emerald-700 pt-1 border-t border-slate-200/60 font-medium">
+                            <span>Saldo disponible:</span>
+                            <span className="font-bold font-mono">${resumenPresupuestal.presupuestoDisponible.toLocaleString('es-CO')}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
