@@ -176,4 +176,26 @@ describe('AnalystInbox', () => {
       expect(screen.getByText('Auditoría de Soportes y Exportación SIIF')).toBeDefined();
     });
   });
+
+  it('no muestra comisiones en estado AUTORIZADA en el perfil de analista', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-aut-1',
+        consecutivoUnico: 'COM-2026-AUT1',
+        estadoSolicitud: 'AUTORIZADA',
+      }),
+      solMock({
+        id: 'sol-valid-1',
+        consecutivoUnico: 'COM-2026-SOL1',
+        estadoSolicitud: 'SOLICITADO',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-SOL1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-AUT1')).toBeNull();
+    });
+  });
 });

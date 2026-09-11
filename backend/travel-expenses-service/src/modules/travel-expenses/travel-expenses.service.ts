@@ -1864,17 +1864,20 @@ export class TravelExpensesService {
 
     const esSuperAdmin = this.esSuperAdmin(rolesUsuario);
 
+    const estadosActivosAnalista = [
+      EstadoSolicitud.SOLICITADO,
+      EstadoSolicitud.EN_VERIFICACION,
+      EstadoSolicitud.VERIFICADA,
+      EstadoSolicitud.DEVUELTA,
+    ];
+
     const whereCondition: any = esSuperAdmin
       ? {
-          estadoSolicitud: In([
-            EstadoSolicitud.SOLICITADO,
-            EstadoSolicitud.EN_VERIFICACION,
-            EstadoSolicitud.VERIFICADA,
-            EstadoSolicitud.DEVUELTA,
-          ]),
+          estadoSolicitud: In(estadosActivosAnalista),
         }
       : {
           analistaAsignadoId: analistaId,
+          estadoSolicitud: In(estadosActivosAnalista),
         };
 
     return this.solicitudRepo.find({
@@ -3089,7 +3092,7 @@ export class TravelExpensesService {
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
         .leftJoinAndSelect('s.comisionado', 'c')
-        .setLock('pessimistic_write')
+        .setLock('pessimistic_write', undefined, ['s'])
         .where('s.id = :id', { id: solicitudId })
         .getOne();
 
@@ -3168,7 +3171,7 @@ export class TravelExpensesService {
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
         .leftJoinAndSelect('s.comisionado', 'c')
-        .setLock('pessimistic_write')
+        .setLock('pessimistic_write', undefined, ['s'])
         .where('s.id = :id', { id: solicitudId })
         .getOne();
 

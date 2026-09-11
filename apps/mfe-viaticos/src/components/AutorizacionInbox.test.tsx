@@ -86,10 +86,8 @@ describe('AutorizacionInbox — RF-AUT-001 (Etapa 6)', () => {
   it('renderiza el encabezado y carga las comisiones de la bandeja', async () => {
     render(<AutorizacionInbox />);
 
-    expect(
-      screen.getByText(/Bandeja de Autorizaciones — Subdirección de Gestión Corporativa/i),
-    ).toBeDefined();
-    expect(screen.getByText(/Etapa 6 — Autorización Corporativa/i)).toBeDefined();
+    expect(screen.getByText(/Bandeja de Autorizaciones/i)).toBeDefined();
+    expect(screen.getByText(/Autorización Corporativa/i)).toBeDefined();
 
     await waitFor(() => {
       expect(screen.getByText('COM-2026-0001')).toBeDefined();

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
+  CheckCircle2,
   Clock,
   Eye,
   FileText,
@@ -45,6 +46,15 @@ const ESTADO_CONFIG: Record<string, { bg: string; text: string; label: string }>
   VERIFICADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Verificada' },
 };
 
+const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
+  'AUTORIZADA',
+  'RESOLUCION_EMITIDA',
+  'TIQUETES_COMPRADOS',
+  'EN_COMISION',
+  'PENDIENTE_LEGALIZACION',
+  'LEGALIZADO',
+]);
+
 export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'DEVOLUCIONES';
 
 export default function AnalystInbox() {
@@ -57,13 +67,19 @@ export default function AnalystInbox() {
   const [modalAbierta, setModalAbierta] = useState(false);
   const [solicitudModal, setSolicitudModal] = useState<SolicitudComisionResponse | null>(null);
   const [cargandoModal, setCargandoModal] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
   const cargarSolicitudes = async () => {
     setCargando(true);
     setError(null);
     try {
       const data = await viaticosService.obtenerSolicitudesAsignadasAnalista();
-      setSolicitudes(data);
+      // Excluir estados que ya superaron la fase del analista (AUTORIZADA ya cuenta con aprobaciones corporativas)
+      const dataValida = (data || []).filter((s) => {
+        const est = (s.estadoSolicitud || '').toUpperCase();
+        return !ESTADOS_EXCLUIDOS_ANALISTA.has(est);
+      });
+      setSolicitudes(dataValida);
     } catch (err) {
       setError('Error al cargar las solicitudes asignadas.');
       console.error(err);
@@ -101,6 +117,9 @@ export default function AnalystInbox() {
     const pendList: SolicitudListaResponse[] = [];
 
     solicitudes.forEach((s) => {
+      const est = (s.estadoSolicitud || '').toUpperCase();
+      if (ESTADOS_EXCLUIDOS_ANALISTA.has(est)) return;
+
       const esDevuelta =
         s.estadoSolicitud === 'DEVUELTA' ||
         Boolean(s.motivoDevolucion && s.motivoDevolucion.trim().length > 0) ||
@@ -117,9 +136,12 @@ export default function AnalystInbox() {
   }, [solicitudes]);
 
   const solicitudesPorTab = useMemo(() => {
+    const base = solicitudes.filter(
+      (s) => !ESTADOS_EXCLUIDOS_ANALISTA.has((s.estadoSolicitud || '').toUpperCase()),
+    );
     if (tabActual === 'DEVOLUCIONES') return devueltas;
     if (tabActual === 'PENDIENTES') return pendientes;
-    return solicitudes;
+    return base;
   }, [tabActual, solicitudes, devueltas, pendientes]);
 
   const solicitudesFiltradas = useMemo(() => {
@@ -203,6 +225,8 @@ export default function AnalystInbox() {
 
   const handleRefrescar = () => {
     void cargarSolicitudes();
+    setMensajeExito('Expediente actualizado y sincronizado correctamente.');
+    setTimeout(() => setMensajeExito(null), 4000);
   };
 
   return (
@@ -227,6 +251,23 @@ export default function AnalystInbox() {
           Actualizar
         </button>
       </div>
+
+      {/* Notificación de éxito */}
+      {mensajeExito && (
+        <div className="mt-4 flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-xs font-semibold animate-in fade-in">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            {mensajeExito}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMensajeExito(null)}
+            className="text-emerald-600 hover:text-emerald-800 text-xs font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Pestañas / Tabs */}
       <div className="flex border-b border-slate-200 mt-4 gap-2 overflow-x-auto">
