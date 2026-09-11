@@ -1,20 +1,24 @@
 import React, { useState } from 'react';
 import {
   AlertTriangle,
+  Award,
   Calendar,
   CheckCircle2,
   DollarSign,
   Download,
   FileCheck,
+  FileSignature,
   FileText,
   LoaderCircle,
   MapPin,
   Plane,
   RotateCcw,
+  ShieldCheck,
   User,
   X,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
 import { SolicitudAutorizacion } from '../types/viaticos';
 import { formatearMoneda } from '../utils/viaticosUtils';
 
@@ -121,6 +125,33 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
     month: 'short',
     year: 'numeric',
   });
+
+  const currentUser = typeof (authService as any).getCurrentUserSync === 'function'
+    ? (authService as any).getCurrentUserSync()
+    : null;
+
+  const nombreSubdirector =
+    solicitud.autorizadorNombre ||
+    currentUser?.person?.full_name ||
+    [currentUser?.person?.first_name, currentUser?.person?.last_name].filter(Boolean).join(' ') ||
+    currentUser?.username ||
+    'Subdirección de Gestión Corporativa';
+
+  const fechaAutorizacionFormateada = solicitud.fechaAutorizacion
+    ? new Date(solicitud.fechaAutorizacion).toLocaleString('es-CO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : new Date().toLocaleString('es-CO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 
   return (
     <div
@@ -341,6 +372,104 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               <p className="text-xs text-slate-500 italic">No hay documentos de soporte adjuntos.</p>
             )}
           </div>
+
+          {/* Tarjeta 5: Apartado de Firma del Subdirector y Aprobación */}
+          {estaAutorizada && (
+            <div className="rounded-xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/90 via-white to-emerald-50/40 p-4 sm:p-5 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-200">
+                <div className="flex items-center space-x-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                    <Award className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-emerald-950">
+                      5. Apartado de Firma y Visto Bueno del Subdirector
+                    </h3>
+                    <p className="text-[11px] text-emerald-700">
+                      Autorización corporativa de gasto e itinerario oficial
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sello de APROBADO */}
+                <div className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full bg-emerald-600 text-white font-black text-xs shadow-xs tracking-wider uppercase self-start sm:self-auto">
+                  <CheckCircle2 className="h-4 w-4 text-white" />
+                  <span>APROBADO</span>
+                </div>
+              </div>
+
+              {/* Contenido de la firma */}
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+                {/* Visual Digital Signature Card */}
+                <div className="md:col-span-7 bg-white rounded-xl border border-emerald-200 p-4 shadow-2xs flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider flex items-center gap-1.5">
+                        <FileSignature className="h-3.5 w-3.5 text-emerald-600" />
+                        Firma Digital del Subdirector
+                      </span>
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        ESTADO: APROBADO
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-1">
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase block">
+                        Nombre del Subdirector
+                      </span>
+                      <p className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
+                        {nombreSubdirector}
+                      </p>
+                      <p className="text-xs font-semibold text-slate-700">
+                        Subdirector(a) de Gestión Corporativa
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Escuela Superior de Administración Pública - ESAP
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 gap-1.5">
+                    <span>
+                      <strong className="text-slate-700">Fecha de Aprobación: </strong>
+                      {fechaAutorizacionFormateada}
+                    </span>
+                    <span className="font-mono text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Radicado: {solicitud.consecutivoUnico}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sello de Garantía y Trazabilidad */}
+                <div className="md:col-span-5 bg-emerald-900/5 rounded-xl border border-emerald-200/80 p-4 text-xs flex flex-col justify-between space-y-2.5">
+                  <div>
+                    <div className="flex items-center space-x-1.5 text-emerald-900 font-bold text-[11px] mb-1">
+                      <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                      <span>Certificación Institucional</span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 leading-relaxed">
+                      El itinerario y la asignación presupuestal fueron revisados y autorizados con firma digital corporativa en el sistema institucional de Viáticos ESAP.
+                    </p>
+                  </div>
+
+                  {solicitud.observacionesAutorizacion ? (
+                    <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-[11px]">
+                      <span className="font-bold text-emerald-900 block text-[10px] uppercase mb-0.5">
+                        Observaciones del Subdirector:
+                      </span>
+                      <p className="text-slate-700 italic">
+                        "{solicitud.observacionesAutorizacion}"
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-emerald-800 italic bg-white/70 px-2.5 py-1.5 rounded-lg border border-emerald-100">
+                      Aprobado con visto bueno institucional sin observaciones adicionales.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Formulario de Observaciones / Hallazgos */}
           {!estaAutorizada && (

@@ -375,7 +375,7 @@ export const AutorizacionInbox: React.FC = () => {
                         {estaAutorizada ? (
                           <>
                             <Eye className="h-4 w-4" />
-                            <span>Ver Detalle y Trazabilidad</span>
+                            <span>Ver Itinerario y Trazabilidad</span>
                           </>
                         ) : (
                           <>
@@ -490,7 +490,7 @@ export const AutorizacionInbox: React.FC = () => {
                             {estaAutorizada ? (
                               <>
                                 <Eye className="h-3.5 w-3.5" />
-                                <span>Ver Detalle</span>
+                                <span>Ver Itinerario</span>
                               </>
                             ) : (
                               <>

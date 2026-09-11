@@ -152,4 +152,44 @@ describe('AutorizacionGastoModal — RF-AUT-001 (Etapa 6)', () => {
       expect(screen.getByText(/Comisión devuelta al analista con observaciones/i)).toBeDefined();
     });
   });
+
+  it('muestra el apartado de firma del subdirector con su nombre y sello APROBADO cuando la solicitud está AUTORIZADA', () => {
+    const solicitudAutorizada: SolicitudAutorizacion = {
+      ...mockSolicitud,
+      estadoSolicitud: 'AUTORIZADA',
+      autorizadorId: 'subdirector-123',
+      autorizadorNombre: 'Dra. María Mercedes Rodríguez',
+      fechaAutorizacion: '2026-11-02T14:30:00Z',
+      observacionesAutorizacion: 'Itinerario y presupuesto institucional verificado conforme a la norma.',
+    };
+
+    render(
+      <AutorizacionGastoModal
+        isOpen={true}
+        solicitud={solicitudAutorizada}
+        onClose={() => {}}
+        onSuccess={() => {}}
+      />,
+    );
+
+    // Debe mostrar el apartado de firma de subdirector
+    expect(
+      screen.getByText(/5\. Apartado de Firma y Visto Bueno del Subdirector/i),
+    ).toBeDefined();
+
+    // Debe mostrar el nombre del subdirector
+    expect(screen.getByText('Dra. María Mercedes Rodríguez')).toBeDefined();
+
+    // Debe mostrar la etiqueta y sello APROBADO
+    expect(screen.getAllByText(/APROBADO/i).length).toBeGreaterThan(0);
+
+    // Debe mostrar el cargo y la entidad
+    expect(screen.getByText(/Subdirector\(a\) de Gestión Corporativa/i)).toBeDefined();
+    expect(screen.getByText(/Escuela Superior de Administración Pública - ESAP/i)).toBeDefined();
+
+    // Debe mostrar las observaciones del subdirector
+    expect(
+      screen.getByText(/Itinerario y presupuesto institucional verificado conforme a la norma/i),
+    ).toBeDefined();
+  });
 });

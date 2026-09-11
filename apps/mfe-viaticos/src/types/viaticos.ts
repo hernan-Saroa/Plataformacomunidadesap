@@ -810,6 +810,7 @@ export interface SolicitudAutorizacion {
   revisorControlId: string | null;
   fechaSegundaRevision: string | null;
   autorizadorId: string | null;
+  autorizadorNombre?: string | null;
   fechaAutorizacion: string | null;
   observacionesAutorizacion: string | null;
   analistaAsignadoId: string | null;

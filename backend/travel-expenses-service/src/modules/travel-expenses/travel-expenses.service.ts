@@ -3012,6 +3012,33 @@ export class TravelExpensesService {
 
     const [items, total] = await Promise.all([qb.getMany(), qb.getCount()]);
 
+    const autorizadorIds = Array.from(
+      new Set(items.map((i) => i.autorizadorId).filter(Boolean) as string[]),
+    );
+    const autorizadoresMap = new Map<string, string>();
+    if (autorizadorIds.length > 0 && typeof this.dataSource?.query === 'function') {
+      try {
+        const rowsAut: any[] = await this.dataSource.query(
+          `SELECT u.id_user, u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.id_user = ANY($1)`,
+          [autorizadorIds],
+        );
+        if (Array.isArray(rowsAut)) {
+          for (const r of rowsAut) {
+            const nombre =
+              r.nom_largo ||
+              [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
+              r.username;
+            autorizadoresMap.set(r.id_user, nombre);
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Error resolviendo nombres de autorizadores: ${e}`);
+      }
+    }
+
     return {
       data: items.map((s) => ({
         id: s.id,
@@ -3052,6 +3079,7 @@ export class TravelExpensesService {
         revisorControlId: s.revisorControlId,
         fechaSegundaRevision: s.fechaSegundaRevision,
         autorizadorId: s.autorizadorId,
+        autorizadorNombre: s.autorizadorId ? (autorizadoresMap.get(s.autorizadorId) || null) : null,
         fechaAutorizacion: s.fechaAutorizacion,
         observacionesAutorizacion: s.observacionesAutorizacion,
         analistaAsignadoId: s.analistaAsignadoId,
@@ -3432,6 +3460,32 @@ export class TravelExpensesService {
     const comisionado = solicitud.comisionado;
     const PDFDocument = require('pdfkit');
 
+    let autorizadorNombre = 'Subdirección de Gestión Corporativa';
+    if (solicitud.autorizadorId && typeof this.dataSource?.query === 'function') {
+      try {
+        const rowsAut: any[] = await this.dataSource.query(
+          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.id_user = $1
+           LIMIT 1`,
+          [solicitud.autorizadorId],
+        );
+        if (Array.isArray(rowsAut) && rowsAut[0]) {
+          const r = rowsAut[0];
+          autorizadorNombre =
+            r.nom_largo ||
+            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
+            r.username ||
+            'Subdirección de Gestión Corporativa';
+        }
+      } catch (e) {
+        this.logger.warn(`Error resolviendo autorizador en PDF: ${e}`);
+      }
+    } else if (solicitud.autorizador?.username) {
+      autorizadorNombre = solicitud.autorizador.username;
+    }
+
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'letter' });
       const buffers: Buffer[] = [];
@@ -3465,6 +3519,28 @@ export class TravelExpensesService {
         doc.moveDown(0.8);
       };
 
+      const sanitizarTexto = (texto: string | null | undefined): string => {
+        if (!texto) return '';
+        return String(texto)
+          .replace(/Ã¡/g, 'á')
+          .replace(/Ã©/g, 'é')
+          .replace(/Ã­/g, 'í')
+          .replace(/Ã³/g, 'ó')
+          .replace(/Ãº/g, 'ú')
+          .replace(/Ã±/g, 'ñ')
+          .replace(/Ã‘/g, 'Ñ')
+          .replace(/Ã\u0081/g, 'Á')
+          .replace(/Ã\u0089/g, 'É')
+          .replace(/Ã\u008D/g, 'Í')
+          .replace(/Ã\u0093/g, 'Ó')
+          .replace(/Ã\u009A/g, 'Ú')
+          .replace(/Ã\u0091/g, 'Ñ')
+          .replace(/Ã-/g, 'í')
+          .replace(/Ã\u00ad/g, 'í')
+          .replace(/Â/g, '')
+          .trim();
+      };
+
       const drawSectionTitle = (title: string) => {
         doc.fontSize(11).font('Helvetica-Bold');
         doc.fillColor('#003DA5');
@@ -3478,7 +3554,7 @@ export class TravelExpensesService {
         doc.text(`${label}: `, { continued: true });
         doc.font('Helvetica');
         doc.fillColor('#555555');
-        doc.text(value || 'N/A');
+        doc.text(sanitizarTexto(value) || 'N/A');
       };
 
       const formatCurrency = (amount: number): string => {
@@ -3499,14 +3575,16 @@ export class TravelExpensesService {
         });
       };
 
-      const nombreCompleto = [
-        comisionado?.primerNombre,
-        comisionado?.segundoNombre,
-        comisionado?.primerApellido,
-        comisionado?.segundoApellido,
-      ]
-        .filter(Boolean)
-        .join(' ');
+      const nombreCompleto = sanitizarTexto(
+        [
+          comisionado?.primerNombre,
+          comisionado?.segundoNombre,
+          comisionado?.primerApellido,
+          comisionado?.segundoApellido,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      );
 
       drawHeader();
 
@@ -3563,10 +3641,41 @@ export class TravelExpensesService {
         'Observaciones Corporativas',
         solicitud.observacionesAutorizacion || 'Aprobado sin observaciones adicionales.',
       );
-      doc.moveDown(1.5);
+      doc.moveDown(1.2);
 
-      // Bloque de firmas
-      const yFirmas = doc.y;
+      // Posicionamiento seguro del bloque de firmas hacia el tercio inferior
+      // garantizando separación vertical adecuada sin sobreponerse con la sección 4
+      const yStampTop = Math.max(doc.y + 35, 560);
+      const stampHeight = 44;
+      const yFirmas = yStampTop + stampHeight + 20;
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA) {
+        // Sello visual digital APROBADO para la Subdirección
+        doc
+          .roundedRect(60, yStampTop, 180, stampHeight, 4)
+          .lineWidth(1)
+          .strokeColor('#15803D')
+          .fillAndStroke('#F0FDF4', '#15803D');
+
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#15803D');
+        doc.text('ESTADO: APROBADO', 60, yStampTop + 6, {
+          width: 180,
+          align: 'center',
+        });
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#14532D');
+        doc.text(sanitizarTexto(autorizadorNombre), 60, yStampTop + 18, {
+          width: 180,
+          align: 'center',
+        });
+        doc.fontSize(6.5).font('Helvetica').fillColor('#166534');
+        doc.text(
+          `Visto Bueno Corporativo · ${formatDate(solicitud.fechaAutorizacion)}`,
+          60,
+          yStampTop + 29,
+          { width: 180, align: 'center' },
+        );
+      }
+
       doc
         .strokeColor('#94a3b8')
         .lineWidth(1)
@@ -3580,27 +3689,39 @@ export class TravelExpensesService {
         .lineTo(500, yFirmas)
         .stroke();
 
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155');
-      doc.text('Subdirección de Gestión Corporativa', 60, yFirmas + 6, {
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#334155');
+      doc.text(sanitizarTexto(autorizadorNombre), 60, yFirmas + 6, {
         width: 180,
         align: 'center',
       });
-      doc.fontSize(7).font('Helvetica').fillColor('#64748b');
-      doc.text('Autorización y Visto Bueno', 60, yFirmas + 18, {
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('Subdirector(a) de Gestión Corporativa', 60, yFirmas + 18, {
+        width: 180,
+        align: 'center',
+      });
+      doc.fontSize(6.5).font('Helvetica').fillColor('#64748b');
+      doc.text('Firma y Visto Bueno Institucional', 60, yFirmas + 28, {
         width: 180,
         align: 'center',
       });
 
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155');
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#334155');
       doc.text(nombreCompleto || 'Firma Comisionado', 320, yFirmas + 6, {
         width: 180,
         align: 'center',
       });
-      doc.fontSize(7).font('Helvetica').fillColor('#64748b');
+      doc.fontSize(7.5).font('Helvetica').fillColor('#64748b');
       doc.text('Comisionado / Pasajero', 320, yFirmas + 18, {
         width: 180,
         align: 'center',
       });
+      doc.fontSize(6.5).font('Helvetica').fillColor('#64748b');
+      doc.text(
+        `C.C. ${comisionado?.numeroDocumento || 'N/A'}`,
+        320,
+        yFirmas + 28,
+        { width: 180, align: 'center' },
+      );
 
       doc.end();
     });
