@@ -12,6 +12,7 @@ import { AssignmentsModule } from '../assignments/assignments.module';
 import { LiquidationModule } from '../liquidation/liquidation.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { SecondLevelSodGuard } from '../../common/second-level-sod.guard';
+import { AuthorizationSodGuard } from '../../common/authorization-sod.guard';
 import { SodGuard } from '../../common/sod.guard';
 
 @Module({
@@ -29,7 +30,12 @@ import { SodGuard } from '../../common/sod.guard';
     TicketsModule,
   ],
   controllers: [TravelExpensesController],
-  providers: [TravelExpensesService, SecondLevelSodGuard, SodGuard],
+  providers: [
+    TravelExpensesService,
+    SecondLevelSodGuard,
+    AuthorizationSodGuard,
+    SodGuard,
+  ],
   exports: [TravelExpensesService],
 })
 export class TravelExpensesModule {}

@@ -1483,6 +1483,8 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           .fn()
           .mockResolvedValue(undefined),
         send: jest.fn().mockResolvedValue(undefined),
+        notifyByRole: jest.fn().mockResolvedValue(undefined),
+        sendEmail: jest.fn().mockResolvedValue(undefined),
       },
     } = overrides;
 
@@ -3645,6 +3647,651 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(resumen.limitePresupuesto).toBe(15000000);
       expect(resumen.porcentajeUso).toBe(60);
       expect(resumen.semaforo).toBe('AMARILLO');
+    });
+  });
+
+  describe('RF-AUT-001 — Etapa 6: Autorización Corporativa (Subdirección de Gestión Corporativa)', () => {
+    const mockComisionadoAutorizacion = {
+      id: 'com-aut-001',
+      numeroDocumento: '987654321',
+      primerNombre: 'Carlos',
+      primerApellido: 'Mendoza',
+      email: 'carlos.mendoza@esap.edu.co',
+      telefonoContacto: '3109876543',
+      tipoComisionado: 'DOCENTE',
+    };
+
+    const mockSolicitudAutorizacion = (
+      estado: EstadoSolicitud = EstadoSolicitud.EN_AUTORIZACION,
+      overrides: Record<string, any> = {},
+    ) => ({
+      id: 'sol-aut-001',
+      consecutivoUnico: 'COM-2026-0099',
+      estadoSolicitud: estado,
+      comisionadoId: 'com-aut-001',
+      comisionado: { ...mockComisionadoAutorizacion },
+      creadoPorUsuarioId: 'user-creador-001',
+      objetoComision: 'Taller de inducción institucional',
+      destinoCiudad: 'Cali',
+      destinoDepartamento: 'Valle del Cauca',
+      fechaInicio: new Date('2026-11-01T08:00:00Z'),
+      fechaFin: new Date('2026-11-04T18:00:00Z'),
+      montoViaticos: 850000,
+      montoGastosViaje: 150000,
+      totalComision: 1000000,
+      requiereTiquetes: true,
+      tipoTransporte: 'AEREO',
+      autorizadorId: null,
+      fechaAutorizacion: null,
+      observacionesAutorizacion: null,
+      save: jest.fn().mockImplementation(async (ent) => ent),
+      ...overrides,
+    });
+
+    describe('obtenerBandejaAutorizacion', () => {
+      it('Criterio 1 (Gherkin): Dada una comisión VERIFICADA, Cuando llega a la Subdirección, Entonces el sistema la deja en estado EN AUTORIZACIÓN en su bandeja', async () => {
+        const solicitudVerificada = mockSolicitudAutorizacion(EstadoSolicitud.VERIFICADA);
+        const solicitudEnAutorizacion = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepoManager = {
+          find: jest.fn().mockResolvedValue([solicitudVerificada]),
+          save: jest.fn().mockImplementation(async (ent) => ent),
+        };
+        const histRepoManager = {
+          create: jest.fn().mockImplementation((ent) => ent),
+          save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+        };
+
+        const queryBuilderMock = {
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue([solicitudEnAutorizacion]),
+        };
+
+        const solicitudRepo = {
+          find: jest.fn().mockResolvedValue([solicitudVerificada]),
+          createQueryBuilder: jest.fn().mockReturnValue(queryBuilderMock),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity: any) => {
+                const nombre = entity?.name || entity?.constructor?.name || '';
+                if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                  return solRepoManager;
+                if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                  return histRepoManager;
+                return {};
+              }),
+            };
+            return cb(manager);
+          }),
+          createQueryBuilder: jest.fn(),
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const result = await svc.obtenerBandejaAutorizacion(1, 10);
+
+        // Verifica que la solicitud VERIFICADA se actualizó a EN_AUTORIZACION
+        expect(solRepoManager.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'sol-aut-001',
+            estadoSolicitud: EstadoSolicitud.EN_AUTORIZACION,
+          }),
+        );
+        // Verifica que se registró el historial de transición
+        expect(histRepoManager.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            solicitudId: 'sol-aut-001',
+            estadoAnterior: EstadoSolicitud.VERIFICADA,
+            estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
+          }),
+        );
+        // Verifica el resultado devuelto
+        expect(result.data).toHaveLength(1);
+        expect(result.total).toBe(1);
+        expect(result.page).toBe(1);
+      });
+
+      it('debe filtrar por estado y término de búsqueda cuando se proporcionan en la consulta', async () => {
+        const queryBuilderMock = {
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+          getMany: jest.fn().mockResolvedValue([]),
+        };
+
+        const solicitudRepo = {
+          find: jest.fn().mockResolvedValue([]),
+          createQueryBuilder: jest.fn().mockReturnValue(queryBuilderMock),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue({
+                find: jest.fn().mockResolvedValue([]),
+                save: jest.fn(),
+              }),
+            };
+            return cb(manager);
+          }),
+          createQueryBuilder: jest.fn(),
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await svc.obtenerBandejaAutorizacion(
+          2,
+          5,
+          'COM-2026',
+          EstadoSolicitud.AUTORIZADA,
+        );
+
+        expect(queryBuilderMock.where).toHaveBeenCalledWith(
+          's.estadoSolicitud = :estado',
+          { estado: EstadoSolicitud.AUTORIZADA },
+        );
+        expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
+          expect.stringContaining('LOWER(s.consecutivoUnico) LIKE :term'),
+          expect.objectContaining({ term: '%com-2026%' }),
+        );
+        expect(queryBuilderMock.offset).toHaveBeenCalledWith(5);
+        expect(queryBuilderMock.limit).toHaveBeenCalledWith(5);
+      });
+    });
+
+    describe('autorizarComision', () => {
+      it('Criterio 2 y 3 (Gherkin): Dada una comisión EN AUTORIZACIÓN, Cuando la Subdirección la aprueba, Entonces pasa a estado AUTORIZADA, notifica al responsable de tiquetes y envía el PDF del tiquete', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn().mockImplementation(async (ent) => ent),
+        };
+
+        const histRepo = {
+          create: jest.fn().mockImplementation((ent) => ent),
+          save: jest.fn().mockResolvedValue({ id: 'hist-aut-001' }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity: any) => {
+                const nombre = entity?.name || entity?.constructor?.name || '';
+                if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                  return solRepo;
+                if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                  return histRepo;
+                return {};
+              }),
+            };
+            return cb(manager);
+          }),
+          createQueryBuilder: jest.fn(),
+          query: jest.fn().mockResolvedValue([
+            { id_user: 'user-creador-001', email: 'enlace@esap.edu.co', nom_tercero: 'Enlace', pri_apellido: 'Dependencia' },
+          ]),
+        };
+
+        const notificationClient = {
+          archiveNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+          deleteNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+          send: jest.fn().mockResolvedValue(undefined),
+          notifyByRole: jest.fn().mockResolvedValue(undefined),
+          sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+
+        const module = await createMockModuleEtapa5({
+          solicitudRepo: solRepo,
+          historialRepo: histRepo,
+          dataSource,
+          notificationClient,
+        });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const resultado = await svc.autorizarComision(
+          'sol-aut-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          { observaciones: 'Aprobación presupuestal y de itinerario confirmada' },
+        );
+
+        // Verificación de estado y campos de auditoría
+        expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
+        expect(solicitud.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
+        expect(solicitud.autorizadorId).toBe('subdirector-001');
+        expect(solicitud.fechaAutorizacion).toBeDefined();
+        expect(solicitud.observacionesAutorizacion).toBe(
+          'Aprobación presupuestal y de itinerario confirmada',
+        );
+
+        // Verificación de registro en historial
+        expect(histRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            solicitudId: 'sol-aut-001',
+            estadoAnterior: EstadoSolicitud.EN_AUTORIZACION,
+            estadoNuevo: EstadoSolicitud.AUTORIZADA,
+            usuarioId: 'subdirector-001',
+          }),
+        );
+
+        // Verificación de notificaciones al responsable de tiquetes
+        expect(notificationClient.notifyByRole).toHaveBeenCalledWith(
+          'RESPONSABLE_TIQUETES',
+          expect.objectContaining({
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_TIQUETES',
+            datos_adicionales: expect.objectContaining({
+              solicitudId: 'sol-aut-001',
+            }),
+          }),
+        );
+
+        // Verificación de notificación al pasajero / comisionado
+        expect(notificationClient.send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id_usuario_destinatario: 'com-aut-001',
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
+          }),
+        );
+      });
+
+      it('debe lanzar BadRequestException si la comisión no está en EN_AUTORIZACION', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.SOLICITADO);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn(),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.autorizarComision(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {},
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('debe lanzar NotFoundException si la solicitud no existe', async () => {
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(null),
+          }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.autorizarComision(
+            'inexistente',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {},
+          ),
+        ).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    describe('devolverComisionAutorizacion', () => {
+      it('Criterio 4 (Gherkin): Dada una comisión con reparos, Cuando la Subdirección la devuelve, Entonces regresa con observaciones', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn().mockImplementation(async (ent) => ent),
+        };
+
+        const histRepo = {
+          create: jest.fn().mockImplementation((ent) => ent),
+          save: jest.fn().mockResolvedValue({ id: 'hist-dev-001' }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity: any) => {
+                const nombre = entity?.name || entity?.constructor?.name || '';
+                if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                  return solRepo;
+                if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                  return histRepo;
+                return {};
+              }),
+            };
+            return cb(manager);
+          }),
+          createQueryBuilder: jest.fn(),
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const notificationClient = {
+          archiveNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+          deleteNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+          send: jest.fn().mockResolvedValue(undefined),
+          notifyByRole: jest.fn().mockResolvedValue(undefined),
+          sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+
+        const module = await createMockModuleEtapa5({
+          solicitudRepo: solRepo,
+          historialRepo: histRepo,
+          dataSource,
+          notificationClient,
+        });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const resultado = await svc.devolverComisionAutorizacion(
+          'sol-aut-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          'El itinerario propuesto coincide con día no laboral sin justificación',
+        );
+
+        // Verifica cambio a EN_VERIFICACION
+        expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
+        expect(solicitud.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
+        expect(solicitud.observacionesAutorizacion).toBe(
+          'El itinerario propuesto coincide con día no laboral sin justificación',
+        );
+
+        // Verifica registro de historial
+        expect(histRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            solicitudId: 'sol-aut-001',
+            estadoAnterior: EstadoSolicitud.EN_AUTORIZACION,
+            estadoNuevo: EstadoSolicitud.EN_VERIFICACION,
+            usuarioId: 'subdirector-001',
+          }),
+        );
+      });
+
+      it('debe rechazar la devolución si la observación está vacía o tiene menos de 3 caracteres', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.devolverComisionAutorizacion(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            '   ',
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        await expect(
+          svc.devolverComisionAutorizacion(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            'no',
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('debe lanzar BadRequestException si la comisión no está en EN_AUTORIZACION', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.AUTORIZADA);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.devolverComisionAutorizacion(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            'Observación válida para rechazo',
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    describe('Segregación de Funciones (SoD) en Autorización', () => {
+      it('debe lanzar ForbiddenException cuando el autorizador ES el comisionado', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION, {
+          comisionadoId: 'user-001',
+          creadoPorUsuarioId: 'user-creador-002',
+        });
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.autorizarComision(
+            'sol-aut-001',
+            'user-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {},
+          ),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('debe lanzar ForbiddenException cuando el autorizador ES el creador de la comisión', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION, {
+          comisionadoId: 'com-aut-002',
+          creadoPorUsuarioId: 'user-001',
+        });
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.autorizarComision(
+            'sol-aut-001',
+            'user-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {},
+          ),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('debe permitir bypass de SoD para usuarios con rol SUPER_ADMIN', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION, {
+          comisionadoId: 'admin-001',
+          creadoPorUsuarioId: 'admin-001',
+        });
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn().mockImplementation(async (ent) => ent),
+        };
+
+        const histRepo = {
+          create: jest.fn().mockImplementation((ent) => ent),
+          save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity: any) => {
+                const nombre = entity?.name || entity?.constructor?.name || '';
+                if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision')
+                  return solRepo;
+                if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados')
+                  return histRepo;
+                return {};
+              }),
+            };
+            return cb(manager);
+          }),
+          createQueryBuilder: jest.fn(),
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const module = await createMockModuleEtapa5({
+          solicitudRepo: solRepo,
+          historialRepo: histRepo,
+          dataSource,
+        });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const result = await svc.autorizarComision(
+          'sol-aut-001',
+          'admin-001',
+          ['SUPER_ADMIN'],
+          { observaciones: 'Autorización forzada por Super Admin' },
+        );
+
+        expect(result.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
+      });
+    });
+
+    describe('exportarPdfTiqueteItinerario', () => {
+      it('debe generar y retornar el buffer de un archivo PDF oficial de autorización e itinerario', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.AUTORIZADA);
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockResolvedValue([
+            { nom_tercero: 'Roberto', pri_apellido: 'Gómez', email: 'roberto.gomez@esap.edu.co' },
+          ]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarPdfTiqueteItinerario('sol-aut-001');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        // Encabezado estándar de PDF: "%PDF-"
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+      });
+
+      it('debe lanzar NotFoundException si la solicitud no existe', async () => {
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(null),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(svc.exportarPdfTiqueteItinerario('inexistente')).rejects.toThrow(
+          NotFoundException,
+        );
+      });
     });
   });
 });

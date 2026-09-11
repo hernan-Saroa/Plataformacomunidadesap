@@ -15,7 +15,9 @@ export type EstadoSolicitudViatico =
   | 'DEVUELTA'
   | 'SOLICITADA_SIIF'
   | 'VERIFICADA'
-  | 'EN_VERIFICACION';
+  | 'EN_VERIFICACION'
+  | 'EN_AUTORIZACION'
+  | 'AUTORIZADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -750,3 +752,77 @@ export interface SolicitudControlViatico {
   analistaVerificadorNombre: string | null;
   fechaVerificacionPrimerNivel: string | null;
 }
+
+// ============================================================================
+// Tipos e interfaces de la Etapa 6 — Autorización Corporativa (RF-AUT-001)
+// ============================================================================
+
+export interface AutorizarComisionRequest {
+  observaciones?: string;
+}
+
+export interface AutorizarComisionResponse {
+  success: boolean;
+  data: any;
+  message?: string;
+  timestamp?: string;
+}
+
+export interface DevolverAutorizacionRequest {
+  observaciones: string;
+}
+
+export interface DevolverAutorizacionResponse {
+  success: boolean;
+  data: any;
+  message?: string;
+  timestamp?: string;
+}
+
+export interface SolicitudAutorizacion {
+  id: string;
+  consecutivoUnico: string;
+  comisionado: {
+    id: string;
+    numeroDocumento: string;
+    nombreCompleto: string;
+    tipoComisionado?: string;
+    cargo?: string;
+    dependencia?: string;
+    email?: string;
+  } | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  diasComision: number;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  costoEstimadoTiquete: number;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  montoTotal: number;
+  estadoSolicitud: EstadoSolicitudViatico;
+  siifExportado: boolean;
+  fechaExportacionSiif: string | null;
+  revisorControlId: string | null;
+  fechaSegundaRevision: string | null;
+  autorizadorId: string | null;
+  fechaAutorizacion: string | null;
+  observacionesAutorizacion: string | null;
+  analistaAsignadoId: string | null;
+  creadoPorUsuarioId: string;
+  documentosSoporte: DocumentoSoporte[];
+  actualizadoEn: string;
+}
+
+export interface BandejaAutorizacionResponse {
+  success: boolean;
+  data: SolicitudAutorizacion[];
+  total: number;
+  page: number;
+  limit: number;
+}
+

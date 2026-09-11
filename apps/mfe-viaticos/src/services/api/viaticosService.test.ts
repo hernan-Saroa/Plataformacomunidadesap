@@ -360,4 +360,119 @@ describe('ViaticosService — RF-REC-002', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('RF-AUT-001 — Etapa 6: Autorización Corporativa', () => {
+    describe('obtenerBandejaAutorizacion', () => {
+      it('debe consultar la bandeja de autorización con parámetros por defecto', async () => {
+        const mockResponse = {
+          data: [
+            {
+              id: 'sol-001',
+              consecutivoUnico: 'COM-2026-0001',
+              estadoSolicitud: 'EN_AUTORIZACION',
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 20,
+        };
+
+        mockedApiClient.get.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.obtenerBandejaAutorizacion();
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.get).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/authorization/inbox?page=1&limit=20',
+        );
+      });
+
+      it('debe incluir búsqueda y filtro de estado en la query URL', async () => {
+        const mockResponse = { data: [], total: 0, page: 2, limit: 10 };
+        mockedApiClient.get.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.obtenerBandejaAutorizacion(
+          2,
+          10,
+          'Cali',
+          'AUTORIZADA',
+        );
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.get).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/authorization/inbox?page=2&limit=10&search=Cali&estado=AUTORIZADA',
+        );
+      });
+    });
+
+    describe('autorizarComision', () => {
+      it('debe enviar la solicitud de autorización con observaciones', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            id: 'sol-001',
+            estadoSolicitud: 'AUTORIZADA',
+            autorizadorId: 'subdirector-001',
+          },
+          message: 'Comisión autorizada exitosamente.',
+        };
+
+        mockedApiClient.post.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.autorizarComision('sol-001', 'Visto bueno corporativo OK');
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.post).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/sol-001/authorize',
+          { observaciones: 'Visto bueno corporativo OK' },
+        );
+      });
+
+      it('debe propagar errores al autorizar', async () => {
+        mockedApiClient.post.mockRejectedValue(new Error('Violación SoD'));
+
+        const service = new ViaticosService();
+        await expect(service.autorizarComision('sol-001')).rejects.toThrow('Violación SoD');
+      });
+    });
+
+    describe('devolverComisionAutorizacion', () => {
+      it('debe enviar la solicitud de devolución con observaciones obligatorias', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            id: 'sol-001',
+            estadoSolicitud: 'EN_VERIFICACION',
+          },
+          message: 'Comisión devuelta a verificación.',
+        };
+
+        mockedApiClient.post.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.devolverComisionAutorizacion(
+          'sol-001',
+          'El itinerario requiere justificación en fin de semana',
+        );
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.post).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/sol-001/return-authorization',
+          { observaciones: 'El itinerario requiere justificación en fin de semana' },
+        );
+      });
+
+      it('debe propagar errores si la observación es rechazada', async () => {
+        mockedApiClient.post.mockRejectedValue(new Error('Observaciones obligatorias'));
+
+        const service = new ViaticosService();
+        await expect(
+          service.devolverComisionAutorizacion('sol-001', 'ab'),
+        ).rejects.toThrow('Observaciones obligatorias');
+      });
+    });
+  });
 });

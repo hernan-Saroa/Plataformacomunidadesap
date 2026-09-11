@@ -1,5 +1,5 @@
 import apiClient from './apiClient';
-import { buildApiUrl } from '../../../config/environment';
+import { buildApiUrl, getApiGatewayBaseUrl } from '../../../config/environment';
 import {
   SolicitudViatico,
   ResumenEstadisticoViaticos,
@@ -38,6 +38,11 @@ import {
   VerificarSegundoNivelResponse,
   DevolverAAnalistaRequest,
   DevolverAAnalistaResponse,
+  AutorizarComisionRequest,
+  AutorizarComisionResponse,
+  DevolverAutorizacionRequest,
+  DevolverAutorizacionResponse,
+  BandejaAutorizacionResponse,
 } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
@@ -1313,6 +1318,94 @@ export class ViaticosService {
     } catch (error) {
       console.error('[viaticos] Error obteniendo solicitud Control Viáticos:', error);
       return null;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Consulta la bandeja de autorizaciones corporativas (Etapa 6).
+   * Al consultar la bandeja, las comisiones en VERIFICADA se transicionan
+   * automáticamente a EN_AUTORIZACION en backend.
+   */
+  async obtenerBandejaAutorizacion(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<BandejaAutorizacionResponse> {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', String(page));
+      params.append('limit', String(limit));
+      if (search?.trim()) params.append('search', search.trim());
+      if (estado?.trim()) params.append('estado', estado.trim());
+
+      return await apiClient.get<BandejaAutorizacionResponse>(
+        `/viaticos/api/v1/requests/authorization/inbox?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de autorización:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Emite visto bueno corporativo a la comisión (Etapa 6).
+   * Transiciona a AUTORIZADA, notifica al responsable de tiquetes y envía
+   * PDF del itinerario/tiquete a pasajero y enlace.
+   */
+  async autorizarComision(
+    solicitudId: string,
+    observaciones?: string,
+  ): Promise<AutorizarComisionResponse> {
+    try {
+      return await apiClient.post<AutorizarComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/authorize`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error autorizando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Devuelve la comisión con reparos u observaciones (Etapa 6).
+   * Requiere observaciones obligatorias (mínimo 3 caracteres).
+   */
+  async devolverComisionAutorizacion(
+    solicitudId: string,
+    observaciones: string,
+  ): Promise<DevolverAutorizacionResponse> {
+    try {
+      return await apiClient.post<DevolverAutorizacionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return-authorization`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo comisión desde autorización:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Descarga el PDF oficial de Autorización de Gasto e Itinerario (Tiquete).
+   */
+  async descargarPdfTiqueteItinerario(solicitudId: string): Promise<Blob> {
+    try {
+      const url = `${getApiGatewayBaseUrl()}/viaticos/api/v1/requests/${solicitudId}/ticket-itinerary/pdf`;
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`Error al descargar PDF: ${response.statusText}`);
+      }
+      return await response.blob();
+    } catch (error) {
+      console.error('[viaticos] Error descargando PDF de itinerario/tiquete:', error);
+      throw error;
     }
   }
 }

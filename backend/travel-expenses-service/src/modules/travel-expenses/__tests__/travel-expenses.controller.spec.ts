@@ -25,6 +25,10 @@ describe('TravelExpensesController — Etapa 5 (RF-REC-002)', () => {
             verificarSegundaRevision: jest.fn(),
             devolverAAnalistaDesdeSegundaRevision: jest.fn(),
             exportarFormato023: jest.fn(),
+            obtenerBandejaAutorizacion: jest.fn(),
+            autorizarComision: jest.fn(),
+            devolverComisionAutorizacion: jest.fn(),
+            exportarPdfTiqueteItinerario: jest.fn(),
           },
         },
         {
@@ -552,6 +556,147 @@ describe('TravelExpensesController — Etapa 5 (RF-REC-002)', () => {
         'Content-Length': mockBuffer.length,
       });
       expect(mockRes.send).toHaveBeenCalledWith(mockBuffer);
+    });
+  });
+
+  describe('RF-AUT-001 — Etapa 6: Autorización Corporativa (Endpoints)', () => {
+    describe('GET requests/authorization/inbox', () => {
+      it('debe retornar la bandeja de autorización paginada', async () => {
+        const mockResponse = {
+          data: [
+            {
+              id: 'sol-001',
+              consecutivoUnico: 'COM-2026-0001',
+              estadoSolicitud: EstadoSolicitud.EN_AUTORIZACION,
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 10,
+        };
+
+        jest.spyOn(service, 'obtenerBandejaAutorizacion').mockResolvedValue(mockResponse as any);
+
+        const result = await controller.obtenerBandejaAutorizacion(
+          '1',
+          '10',
+          'COM-2026',
+          undefined,
+        );
+
+        expect(service.obtenerBandejaAutorizacion).toHaveBeenCalledWith(
+          1,
+          10,
+          'COM-2026',
+          undefined,
+        );
+        expect(result).toEqual({
+          success: true,
+          ...mockResponse,
+          timestamp: expect.any(String),
+        });
+      });
+    });
+
+    describe('POST requests/:id/authorize', () => {
+      it('debe autorizar la comisión exitosamente', async () => {
+        const mockResult = {
+          id: 'sol-001',
+          estadoSolicitud: EstadoSolicitud.AUTORIZADA,
+          autorizadorId: 'subdirector-001',
+          observacionesAutorizacion: 'Aprobado sin objeción',
+        };
+
+        jest.spyOn(service, 'autorizarComision').mockResolvedValue(mockResult as any);
+
+        const result = await controller.autorizarComision(
+          'sol-001',
+          { observaciones: 'Aprobado sin objeción' },
+          { user: { userId: 'subdirector-001', roles: ['SUBDIRECCION_GESTION_CORPORATIVA'] } } as any,
+        );
+
+        expect(service.autorizarComision).toHaveBeenCalledWith(
+          'sol-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          { observaciones: 'Aprobado sin objeción' },
+        );
+        expect(result).toEqual({
+          success: true,
+          data: mockResult,
+          message: expect.stringContaining('Comisión autorizada exitosamente'),
+          timestamp: expect.any(String),
+        });
+      });
+
+      it('debe lanzar BadRequestException si no hay usuario autenticado', async () => {
+        await expect(
+          controller.autorizarComision('sol-001', {}, {} as any),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    describe('POST requests/:id/return-authorization', () => {
+      it('debe devolver la comisión a EN_VERIFICACION con observaciones', async () => {
+        const mockResult = {
+          id: 'sol-001',
+          estadoSolicitud: EstadoSolicitud.EN_VERIFICACION,
+          observacionesAutorizacion: 'Requiere ajuste de fechas',
+        };
+
+        jest.spyOn(service, 'devolverComisionAutorizacion').mockResolvedValue(mockResult as any);
+
+        const result = await controller.devolverComisionAutorizacion(
+          'sol-001',
+          { observaciones: 'Requiere ajuste de fechas' },
+          { user: { userId: 'subdirector-001', roles: ['SUBDIRECCION_GESTION_CORPORATIVA'] } } as any,
+        );
+
+        expect(service.devolverComisionAutorizacion).toHaveBeenCalledWith(
+          'sol-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          { observaciones: 'Requiere ajuste de fechas' },
+        );
+        expect(result).toEqual({
+          success: true,
+          data: mockResult,
+          message: expect.stringContaining('Comisión devuelta al analista'),
+          timestamp: expect.any(String),
+        });
+      });
+
+      it('debe lanzar BadRequestException si no hay usuario autenticado', async () => {
+        await expect(
+          controller.devolverComisionAutorizacion(
+            'sol-001',
+            { observaciones: 'Ajuste' },
+            {} as any,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    describe('GET requests/:id/ticket-itinerary/pdf', () => {
+      it('debe exportar el PDF del tiquete/itinerario con encabezados correctos', async () => {
+        const mockBuffer = Buffer.from('mock-ticket-pdf-content');
+        jest.spyOn(service, 'exportarPdfTiqueteItinerario').mockResolvedValue(mockBuffer);
+
+        const mockRes = {
+          set: jest.fn(),
+          send: jest.fn(),
+        };
+
+        await controller.exportarPdfTiqueteItinerario('sol-001', {} as any, mockRes as any);
+
+        expect(service.exportarPdfTiqueteItinerario).toHaveBeenCalledWith('sol-001', expect.anything());
+        expect(mockRes.set).toHaveBeenCalledWith({
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'attachment; filename="Autorizacion-Itinerario-sol-001.pdf"',
+          'Content-Length': mockBuffer.length,
+        });
+        expect(mockRes.send).toHaveBeenCalledWith(mockBuffer);
+      });
     });
   });
 });

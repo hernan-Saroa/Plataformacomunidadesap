@@ -182,6 +182,23 @@ export class SolicitudComisionEntity {
   @Column({ name: 'consulta_rut_facturador', type: 'boolean', default: false })
   consultaRutFacturador: boolean;
 
+  @Column({ name: 'autorizador_id', type: 'uuid', nullable: true })
+  autorizadorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'autorizador_id' })
+  autorizador: UsuarioEntity;
+
+  @Column({ name: 'fecha_autorizacion', type: 'timestamp', nullable: true })
+  fechaAutorizacion: Date | null;
+
+  @Column({
+    name: 'observaciones_autorizacion',
+    type: 'text',
+    nullable: true,
+  })
+  observacionesAutorizacion: string | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

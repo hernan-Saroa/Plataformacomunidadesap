@@ -24,6 +24,7 @@ import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
+import { AutorizacionObservacionesDto } from '../../dto/autorizacion-observaciones.dto';
 import {
   sanitizeObjetoComision,
   sanitizeTextoPlano,
@@ -2885,5 +2886,720 @@ export class TravelExpensesService {
         'Infraccion de Segregacion de Funciones: Un comisionado o creador de solicitud no puede auto-auditarse',
       );
     }
+  }
+
+  /**
+   * RF-AUT-001 — Valida Segregación de Funciones (SoD) para Autorización Corporativa (Etapa 6).
+   * Un comisionado (pasajero) o creador de la solicitud (enlace) no puede auto-autorizarse.
+   * Super Admin conserva bypass operativo.
+   */
+  private validarSoDAutorizacion(
+    solicitud: SolicitudComisionEntity,
+    usuarioId: string,
+    rolesUsuario: string[],
+  ): void {
+    if (this.esSuperAdmin(rolesUsuario)) {
+      return;
+    }
+
+    if (
+      solicitud.comisionadoId === usuarioId ||
+      solicitud.creadoPorUsuarioId === usuarioId
+    ) {
+      throw new ForbiddenException(
+        'Violación de Segregación de Funciones: El autorizador corporativo debe ser diferente del comisionado y del enlace solicitante',
+      );
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Obtener bandeja de comisiones para la Subdirección de Gestión Corporativa (Etapa 6).
+   *
+   * Criterio de aceptación 1 (Gherkin):
+   *   Dada una comisión VERIFICADA, cuando llega a la Subdirección,
+   *   entonces el sistema la deja en estado EN_AUTORIZACION en su bandeja.
+   *
+   * Al consultar la bandeja, cualquier comisión en VERIFICADA se transiciona
+   * automáticamente a EN_AUTORIZACION, registrando el hito de trazabilidad.
+   */
+  async obtenerBandejaAutorizacion(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    // 1. Transición automática atómica de VERIFICADA -> EN_AUTORIZACION
+    try {
+      const verificadas = await this.solicitudRepo.find({
+        where: { estadoSolicitud: EstadoSolicitud.VERIFICADA },
+      });
+
+      if (verificadas.length > 0) {
+        await this.dataSource.transaction(async (manager) => {
+          for (const sol of verificadas) {
+            sol.estadoSolicitud = EstadoSolicitud.EN_AUTORIZACION;
+            await manager.getRepository(SolicitudComisionEntity).save(sol);
+
+            await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+              solicitudId: sol.id,
+              estadoAnterior: EstadoSolicitud.VERIFICADA,
+              estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
+              usuarioId: sol.revisorControlId || sol.creadoPorUsuarioId,
+              comentarios:
+                'Llegada a la Subdirección de Gestión Corporativa para visto bueno de gasto e itinerario',
+            });
+          }
+        });
+        this.logger.log(
+          `[RF-AUT-001] Se transicionaron ${verificadas.length} comisiones de VERIFICADA a EN_AUTORIZACION`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[RF-AUT-001] Error en transición automática de VERIFICADA a EN_AUTORIZACION: ${err?.message}`,
+      );
+    }
+
+    // 2. Consulta de bandeja
+    const qb = this.solicitudRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'c')
+      .leftJoinAndSelect('s.analistaAsignado', 'a')
+      .leftJoinAndSelect('s.revisorControl', 'rc')
+      .leftJoinAndSelect('s.autorizador', 'aut')
+      .leftJoinAndSelect('s.documentosSoporte', 'docs');
+
+    if (estado && Object.values(EstadoSolicitud).includes(estado as EstadoSolicitud)) {
+      qb.where('s.estadoSolicitud = :estado', { estado });
+    } else {
+      qb.where('s.estadoSolicitud IN (:...estados)', {
+        estados: [
+          EstadoSolicitud.EN_AUTORIZACION,
+          EstadoSolicitud.AUTORIZADA,
+        ],
+      });
+    }
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(s.consecutivoUnico) LIKE :term OR LOWER(s.destinoCiudad) LIKE :term OR LOWER(c.primerNombre) LIKE :term OR LOWER(c.primerApellido) LIKE :term OR LOWER(c.numeroDocumento) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy(
+      `CASE s.estado_solicitud
+         WHEN 'EN_AUTORIZACION' THEN 1
+         WHEN 'AUTORIZADA' THEN 2
+         ELSE 3
+       END`,
+      'ASC',
+    );
+    qb.addOrderBy('s.actualizadoEn', 'DESC');
+
+    const take = Math.max(1, Math.min(100, Number(limit) || 20));
+    const skip = (Math.max(1, Number(page) || 1) - 1) * take;
+    qb.offset(skip).limit(take);
+
+    const [items, total] = await Promise.all([qb.getMany(), qb.getCount()]);
+
+    return {
+      data: items.map((s) => ({
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        comisionado: s.comisionado
+          ? {
+              id: s.comisionado.id,
+              numeroDocumento: s.comisionado.numeroDocumento,
+              nombreCompleto: [
+                s.comisionado.primerNombre,
+                s.comisionado.segundoNombre,
+                s.comisionado.primerApellido,
+                s.comisionado.segundoApellido,
+              ]
+                .filter(Boolean)
+                .join(' '),
+              tipoComisionado: s.comisionado.tipoComisionado,
+              idDependencia: s.comisionado.idDependencia,
+              email: s.comisionado.email,
+            }
+          : null,
+        destinoCiudad: s.destinoCiudad,
+        destinoDepartamento: s.destinoDepartamento,
+        fechaInicio: s.fechaInicio,
+        fechaFin: s.fechaFin,
+        diasComision: s.diasComision,
+        objetoComision: s.objetoComision,
+        prioridad: s.prioridad,
+        rubroPresupuestal: s.rubroPresupuestal,
+        requiereTiquetes: s.requiereTiquetes,
+        costoEstimadoTiquete: s.costoEstimadoTiquete,
+        montoViaticos: s.montoViaticos,
+        montoGastosViaje: s.montoGastosViaje,
+        montoTotal: Number(s.montoViaticos || 0) + Number(s.montoGastosViaje || 0),
+        estadoSolicitud: s.estadoSolicitud,
+        siifExportado: s.siifExportado,
+        fechaExportacionSiif: s.fechaExportacionSiif,
+        revisorControlId: s.revisorControlId,
+        fechaSegundaRevision: s.fechaSegundaRevision,
+        autorizadorId: s.autorizadorId,
+        fechaAutorizacion: s.fechaAutorizacion,
+        observacionesAutorizacion: s.observacionesAutorizacion,
+        analistaAsignadoId: s.analistaAsignadoId,
+        creadoPorUsuarioId: s.creadoPorUsuarioId,
+        documentosSoporte: s.documentosSoporte || [],
+        actualizadoEn: s.actualizadoEn,
+      })),
+      total,
+      page: Number(page) || 1,
+      limit: take,
+    };
+  }
+
+  /**
+   * RF-AUT-001 — Autorizar gasto e itinerario (Etapa 6).
+   *
+   * Transiciona la comisión de EN_AUTORIZACION (o VERIFICADA) a AUTORIZADA.
+   * Registra autorizador_id, fecha_autorizacion y observaciones.
+   * Emite notificaciones:
+   *  1. Al responsable de tiquetes (in-app y rol).
+   *  2. Al pasajero (comisionado) con PDF del itinerario/tiquete.
+   *  3. Al enlace (creador) con confirmación y PDF.
+   */
+  async autorizarComision(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto?: AutorizacionObservacionesDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const observaciones = (dto?.observaciones || '').trim();
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoDAutorizacion(solicitud, usuarioId, rolesUsuario);
+
+      const estadosPermitidos = [
+        EstadoSolicitud.EN_AUTORIZACION,
+      ];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no válido para autorización: ${solicitud.estadoSolicitud}. La comisión debe estar en EN_AUTORIZACION.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.AUTORIZADA;
+      solicitud.autorizadorId = usuarioId;
+      solicitud.fechaAutorizacion = new Date();
+      solicitud.observacionesAutorizacion = observaciones
+        ? observaciones.slice(0, 2000)
+        : null;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.AUTORIZADA,
+        usuarioId,
+        comentarios: `Autorización corporativa de gasto e itinerario: ${observaciones ? observaciones.slice(0, 255) : 'Visto bueno corporativo emitido'}`,
+      });
+
+      this.logger.log(
+        `[RF-AUT-001] Solicitud ${solicitud.consecutivoUnico} AUTORIZADA por usuario ${usuarioId}`,
+      );
+
+      return saved;
+    });
+
+    // Despacho asíncrono de notificaciones multicanal
+    void this.despacharNotificacionesAutorizacion(result, usuarioId);
+
+    return result;
+  }
+
+  /**
+   * RF-AUT-001 — Devolver comisión desde autorización con observaciones (Etapa 6).
+   *
+   * Transiciona la comisión de EN_AUTORIZACION a EN_VERIFICACION con observaciones obligatorias.
+   */
+  async devolverComisionAutorizacion(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: AutorizacionObservacionesDto | string,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const observaciones = (typeof dto === 'string' ? dto : dto?.observaciones || '').trim();
+    if (observaciones.length < 3) {
+      throw new BadRequestException(
+        'Las observaciones de devolución son obligatorias (mínimo 3 caracteres).',
+      );
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write')
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoDAutorizacion(solicitud, usuarioId, rolesUsuario);
+
+      const estadosPermitidos = [
+        EstadoSolicitud.EN_AUTORIZACION,
+        EstadoSolicitud.VERIFICADA,
+      ];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no válido para devolución: ${solicitud.estadoSolicitud}. La comisión debe estar en EN_AUTORIZACION.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.EN_VERIFICACION;
+      solicitud.autorizadorId = usuarioId;
+      solicitud.fechaAutorizacion = new Date();
+      solicitud.observacionesAutorizacion = observaciones.slice(0, 2000);
+      solicitud.motivoDevolucion = observaciones.slice(0, 2000);
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.EN_VERIFICACION,
+        usuarioId,
+        comentarios: `Devuelta por Subdirección de Gestión Corporativa: ${observaciones.slice(0, 255)}`,
+      });
+
+      this.logger.log(
+        `[RF-AUT-001] Solicitud ${solicitud.consecutivoUnico} devuelta por Subdirección por usuario ${usuarioId}`,
+      );
+
+      return saved;
+    });
+
+    // Notificaciones de devolución al analista y al enlace
+    void this.despacharNotificacionesDevolucionAutorizacion(result, observaciones);
+
+    return result;
+  }
+
+  /**
+   * Despacha notificaciones al autorizar la comisión:
+   * 1. Al responsable de tiquetes (in-app y por rol).
+   * 2. Al pasajero/comisionado (in-app y correo electrónico con itinerario/tiquete).
+   * 3. Al enlace/creador (in-app y correo electrónico con confirmación).
+   */
+  private async despacharNotificacionesAutorizacion(
+    solicitud: SolicitudComisionEntity,
+    autorizadorId: string,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico;
+      const destino = `${solicitud.destinoCiudad}, ${solicitud.destinoDepartamento}`;
+
+      // 1. Notificación al Responsable de Tiquetes
+      try {
+        await this.notificationClient.notifyByRole('RESPONSABLE_TIQUETES', {
+          tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_TIQUETES',
+          titulo: `Comisión autorizada para tiquetes: ${consecutivo}`,
+          mensaje: `La comisión ${consecutivo} con destino a ${destino} fue AUTORIZADA corporativamente. Requiere tiquetes: ${solicitud.requiereTiquetes ? 'SÍ' : 'NO'}. Proceder con la emisión y reserva.`,
+          descripcion_corta: `Autorizada · ${consecutivo}`,
+          icono: 'Plane',
+          color: '#0284C7',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Gestionar tiquete',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            requiereTiquetes: solicitud.requiereTiquetes,
+            destinoCiudad: solicitud.destinoCiudad,
+          },
+        });
+      } catch (err: any) {
+        this.logger.warn(`[notify] Error notificando a RESPONSABLE_TIQUETES: ${err?.message}`);
+      }
+
+      // 2. Notificación al Comisionado (Pasajero)
+      let correoPasajero = solicitud.comisionado?.email;
+      let nombrePasajero = '';
+      if (solicitud.comisionado) {
+        nombrePasajero = [
+          solicitud.comisionado.primerNombre,
+          solicitud.comisionado.primerApellido,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+
+      if (solicitud.comisionadoId) {
+        try {
+          await this.notificationClient.send({
+            id_usuario_destinatario: solicitud.comisionadoId,
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
+            titulo: `¡Comisión autorizada!: ${consecutivo}`,
+            mensaje: `Estimado(a) ${nombrePasajero || 'pasajero'}, su comisión de servicios hacia ${destino} ha sido AUTORIZADA por la Subdirección de Gestión Corporativa. Su itinerario y tiquete están confirmados.`,
+            descripcion_corta: `Comisión autorizada · ${consecutivo}`,
+            icono: 'CheckCircle2',
+            color: '#10B981',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver itinerario y tiquete',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+            },
+          });
+        } catch (err: any) {
+          this.logger.warn(`[notify] In-app comisionado: ${err?.message}`);
+        }
+      }
+
+      if (correoPasajero) {
+        const subject = `[ESAP Viáticos] Comisión autorizada y confirmación de itinerario: ${consecutivo}`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+            <div style="background-color: #003DA5; color: #ffffff; padding: 20px; text-align: center;">
+              <h2 style="margin: 0; font-size: 20px;">ESAP — Módulo de Viáticos</h2>
+              <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Autorización Corporativa de Gasto e Itinerario de Viaje</p>
+            </div>
+            <div style="padding: 24px; color: #1e293b; font-size: 14px; line-height: 1.6;">
+              <p>Estimado(a) <strong>${nombrePasajero || 'Comisionado(a)'}</strong>,</p>
+              <p>Nos complace informarle que la comisión de servicios <strong>${consecutivo}</strong> ha sido <strong>AUTORIZADA</strong> por la Subdirección de Gestión Corporativa.</p>
+              
+              <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
+                <strong style="color: #15803d; font-size: 14px;">ESTADO: COMISIÓN AUTORIZADA</strong>
+                <p style="margin: 4px 0 0 0; color: #166534; font-size: 13px;">
+                  Destino: <strong>${destino}</strong><br>
+                  Fecha: Del <strong>${new Date(solicitud.fechaInicio).toLocaleDateString()}</strong> al <strong>${new Date(solicitud.fechaFin).toLocaleDateString()}</strong> (${solicitud.diasComision} día(s))<br>
+                  Transporte: <strong>${solicitud.requiereTiquetes ? 'Aéreo con gestión de tiquetes' : 'Terrestre'}</strong>
+                </p>
+              </div>
+
+              <p>Puede consultar y descargar su constancia de itinerario y tiquete en la plataforma institucional:</p>
+
+              <div style="margin-top: 25px; text-align: center;">
+                <a href="${process.env.APP_BASE_URL || 'http://localhost:3000'}/viaticos" 
+                   style="background-color: #003DA5; color: #ffffff; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: bold; font-size: 13px; display: inline-block;">
+                  Acceder a la Plataforma de Viáticos
+                </a>
+              </div>
+            </div>
+            <div style="background-color: #f8fafc; padding: 12px 20px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+              Mensaje institucional generado automáticamente por la Escuela Superior de Administración Pública - ESAP.
+            </div>
+          </div>
+        `;
+        void this.notificationClient.sendEmail({
+          to: correoPasajero,
+          subject,
+          text: `Comisión ${consecutivo} autorizada con éxito hacia ${destino}.`,
+          html,
+        });
+      }
+
+      // 3. Notificación al Enlace (Creador)
+      if (solicitud.creadoPorUsuarioId && solicitud.creadoPorUsuarioId !== solicitud.comisionadoId) {
+        try {
+          await this.notificationClient.send({
+            id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_ENLACE',
+            titulo: `Comisión autorizada por Subdirección: ${consecutivo}`,
+            mensaje: `La solicitud de comisión ${consecutivo} para ${nombrePasajero || 'el pasajero'} fue autorizada por Subdirección de Gestión Corporativa.`,
+            descripcion_corta: `Autorizada · ${consecutivo}`,
+            icono: 'CheckCircle2',
+            color: '#10B981',
+            prioridad: 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver comisión',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+            },
+          });
+        } catch (err: any) {
+          this.logger.warn(`[notify] In-app enlace: ${err?.message}`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en despacharNotificacionesAutorizacion: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notifica la devolución efectuada por la Subdirección al analista y al enlace.
+   */
+  private async despacharNotificacionesDevolucionAutorizacion(
+    solicitud: SolicitudComisionEntity,
+    observaciones: string,
+  ): Promise<void> {
+    try {
+      const destinatario = solicitud.analistaAsignadoId || solicitud.creadoPorUsuarioId;
+      if (destinatario) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: destinatario,
+          tipo_notificacion: 'VIATICOS_DEVOLUCION_SUBDIRECCION',
+          titulo: `Comisión devuelta por Subdirección: ${solicitud.consecutivoUnico}`,
+          mensaje: `La Subdirección de Gestión Corporativa devolvió la comisión ${solicitud.consecutivoUnico}. Reparos: ${observaciones}`,
+          descripcion_corta: `Devuelta Subdirección · ${solicitud.consecutivoUnico}`,
+          icono: 'AlertTriangle',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Subsanar expediente',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: solicitud.consecutivoUnico,
+            observaciones,
+          },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error enviando notificación de devolución: ${err?.message}`);
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Genera el PDF oficial de Autorización Corporativa de Gasto e Itinerario.
+   */
+  async exportarPdfTiqueteItinerario(
+    solicitudId: string,
+    req?: any,
+  ): Promise<Buffer> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: [
+        'comisionado',
+        'analistaAsignado',
+        'revisorControl',
+        'autorizador',
+        'documentosSoporte',
+      ],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const comisionado = solicitud.comisionado;
+    const PDFDocument = require('pdfkit');
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'letter' });
+      const buffers: Buffer[] = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const drawHeader = () => {
+        doc.fontSize(10).font('Helvetica-Bold');
+        doc.fillColor('#003DA5');
+        doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', {
+          align: 'center',
+        });
+        doc.fontSize(9).font('Helvetica');
+        doc.fillColor('#333333');
+        doc.text('Subdirección de Gestión Corporativa · Módulo de Viáticos', {
+          align: 'center',
+        });
+        doc.text('PBX: +57 (1) 220 2790 · www.esap.edu.co', {
+          align: 'center',
+        });
+        doc.moveDown(0.5);
+
+        doc
+          .strokeColor('#003DA5')
+          .lineWidth(2)
+          .moveTo(50, doc.y)
+          .lineTo(562, doc.y)
+          .stroke();
+        doc.moveDown(0.8);
+      };
+
+      const drawSectionTitle = (title: string) => {
+        doc.fontSize(11).font('Helvetica-Bold');
+        doc.fillColor('#003DA5');
+        doc.text(title);
+        doc.moveDown(0.3);
+      };
+
+      const drawField = (label: string, value: string) => {
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333');
+        doc.text(`${label}: `, { continued: true });
+        doc.font('Helvetica');
+        doc.fillColor('#555555');
+        doc.text(value || 'N/A');
+      };
+
+      const formatCurrency = (amount: number): string => {
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          minimumFractionDigits: 0,
+        }).format(amount || 0);
+      };
+
+      const formatDate = (date: Date | string | null | undefined): string => {
+        if (!date) return 'N/A';
+        const d = typeof date === 'string' ? new Date(date) : date;
+        return d.toLocaleDateString('es-CO', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      };
+
+      const nombreCompleto = [
+        comisionado?.primerNombre,
+        comisionado?.segundoNombre,
+        comisionado?.primerApellido,
+        comisionado?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      drawHeader();
+
+      doc.fontSize(14).font('Helvetica-Bold');
+      doc.fillColor('#003DA5');
+      doc.text('AUTORIZACIÓN CORPORATIVA DE GASTO E ITINERARIO DE VIAJE', {
+        align: 'center',
+      });
+      doc.fontSize(10).font('Helvetica-Bold');
+      doc.fillColor(
+        solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA
+          ? '#15803D'
+          : '#B45309',
+      );
+      doc.text(
+        `ESTADO: ${solicitud.estadoSolicitud} — RADICADO: ${solicitud.consecutivoUnico}`,
+        { align: 'center' },
+      );
+      doc.moveDown(0.8);
+
+      drawSectionTitle('1. DATOS DEL PASAJERO / COMISIONADO');
+      drawField('Nombre Completo', nombreCompleto || 'N/A');
+      drawField('Documento de Identidad', comisionado?.numeroDocumento || 'N/A');
+      drawField('Tipo de Comisionado', comisionado?.tipoComisionado || 'N/A');
+      drawField('Dependencia', comisionado?.idDependencia ? `Dependencia ID: ${comisionado.idDependencia}` : 'N/A');
+      drawField('Correo Electrónico', comisionado?.email || 'N/A');
+      doc.moveDown(0.5);
+
+      drawSectionTitle('2. ITINERARIO DE VIAJE AUTORIZADO');
+      drawField('Ciudad Destino', `${solicitud.destinoCiudad}, ${solicitud.destinoDepartamento}`);
+      drawField('Fecha de Inicio', formatDate(solicitud.fechaInicio));
+      drawField('Fecha de Finalización', formatDate(solicitud.fechaFin));
+      drawField('Duración de la Comisión', `${solicitud.diasComision} día(s)`);
+      drawField('Modalidad de Transporte', solicitud.requiereTiquetes ? 'Aéreo / Terrestre' : 'Terrestre');
+      drawField('Requiere Pasajes / Tiquetes', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+      doc.moveDown(0.5);
+
+      drawSectionTitle('3. LIQUIDACIÓN DEL GASTO AUTORIZADO');
+      drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
+      drawField('Monto Viáticos', formatCurrency(Number(solicitud.montoViaticos)));
+      drawField('Monto Gastos de Viaje', formatCurrency(Number(solicitud.montoGastosViaje)));
+      if (solicitud.requiereTiquetes) {
+        drawField('Costo Estimado Tiquete', formatCurrency(Number(solicitud.costoEstimadoTiquete)));
+      }
+      drawField(
+        'TOTAL GASTO AUTORIZADO',
+        formatCurrency(Number(solicitud.montoViaticos) + Number(solicitud.montoGastosViaje)),
+      );
+      doc.moveDown(0.5);
+
+      drawSectionTitle('4. TRAZABILIDAD Y VISTO BUENO CORPORATIVO');
+      drawField('Fecha de Autorización', formatDate(solicitud.fechaAutorizacion));
+      drawField(
+        'Observaciones Corporativas',
+        solicitud.observacionesAutorizacion || 'Aprobado sin observaciones adicionales.',
+      );
+      doc.moveDown(1.5);
+
+      // Bloque de firmas
+      const yFirmas = doc.y;
+      doc
+        .strokeColor('#94a3b8')
+        .lineWidth(1)
+        .moveTo(60, yFirmas)
+        .lineTo(240, yFirmas)
+        .stroke();
+      doc
+        .strokeColor('#94a3b8')
+        .lineWidth(1)
+        .moveTo(320, yFirmas)
+        .lineTo(500, yFirmas)
+        .stroke();
+
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155');
+      doc.text('Subdirección de Gestión Corporativa', 60, yFirmas + 6, {
+        width: 180,
+        align: 'center',
+      });
+      doc.fontSize(7).font('Helvetica').fillColor('#64748b');
+      doc.text('Autorización y Visto Bueno', 60, yFirmas + 18, {
+        width: 180,
+        align: 'center',
+      });
+
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#334155');
+      doc.text(nombreCompleto || 'Firma Comisionado', 320, yFirmas + 6, {
+        width: 180,
+        align: 'center',
+      });
+      doc.fontSize(7).font('Helvetica').fillColor('#64748b');
+      doc.text('Comisionado / Pasajero', 320, yFirmas + 18, {
+        width: 180,
+        align: 'center',
+      });
+
+      doc.end();
+    });
   }
 }

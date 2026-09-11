@@ -38,9 +38,11 @@ import { ReturnRequestDto } from '../../dto/return-request.dto';
 import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { DevolverAnalistaDto } from '../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
+import { AutorizacionObservacionesDto } from '../../dto/autorizacion-observaciones.dto';
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
 import { SecondLevelSodGuard, SecondLevelSodProtected } from '../../common/second-level-sod.guard';
+import { AuthorizationSodGuard, AuthorizationSodProtected } from '../../common/authorization-sod.guard';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -412,6 +414,9 @@ export class TravelExpensesController {
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:authorize_expense',
+    'travel_expenses:return_authorization',
   )
   async exportarFormato023(
     @Param('id') id: string,
@@ -769,5 +774,190 @@ export class TravelExpensesController {
       data: result,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  /**
+   * RF-AUT-001 — Bandeja de autorizaciones corporativas (Etapa 6).
+   * Consulta las comisiones en estado EN_AUTORIZACION y AUTORIZADA.
+   * Al consultar la bandeja, las comisiones en VERIFICADA se transicionan
+   * automáticamente a EN_AUTORIZACION.
+   */
+  @Get('requests/authorization/inbox')
+  @Permissions('travel_expenses:read_authorizations')
+  @ApiOperation({
+    summary: 'Bandeja de autorizaciones corporativas de la Subdirección (Etapa 6)',
+    description:
+      'Devuelve las comisiones en etapa de autorización. Transiciona atómicamente a EN_AUTORIZACION las comisiones que lleguen en VERIFICADA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de comisiones para visto bueno de gasto e itinerario.',
+  })
+  @ApiBearerAuth()
+  async obtenerBandejaAutorizacion(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('estado') estado?: string,
+  ) {
+    const result = await this.service.obtenerBandejaAutorizacion(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      search,
+      estado,
+    );
+    return {
+      success: true,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-AUT-001 — Autorizar gasto e itinerario de la comisión (Etapa 6).
+   *
+   * Transiciona el estado de EN_AUTORIZACION a AUTORIZADA.
+   * Registra el autorizador y fecha, notifica al responsable de tiquetes y
+   * despacha el PDF/itinerario al comisionado y al enlace.
+   */
+  @Post('requests/:id/authorize')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, AuthorizationSodGuard)
+  @AuthorizationSodProtected('id')
+  @Permissions('travel_expenses:authorize_expense')
+  @ApiOperation({
+    summary: 'Autorizar gasto e itinerario de la comisión (Etapa 6)',
+    description:
+      'Emite visto bueno corporativo a la comisión y la transiciona a AUTORIZADA. Valida SoD estricta (el autorizador no puede ser comisionado ni enlace). Despacha notificaciones y PDF de itinerario/tiquete.',
+  })
+  @ApiBody({
+    description: 'Observaciones opcionales de la autorización corporativa.',
+    type: AutorizacionObservacionesDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisión AUTORIZADA exitosamente. Notificaciones despachadas.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Estado inválido para autorización.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Violación de Segregación de Funciones (SoD).',
+  })
+  @ApiBearerAuth()
+  async autorizarComision(
+    @Param('id') id: string,
+    @Body() dto: AutorizacionObservacionesDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.autorizarComision(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Comisión autorizada exitosamente. Trámite de tiquetes habilitado.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-AUT-001 — Devolver comisión desde autorización con observaciones (Etapa 6).
+   *
+   * Transiciona la comisión de EN_AUTORIZACION a EN_VERIFICACION para subsanación.
+   * Requiere observaciones obligatorias (mínimo 3 caracteres).
+   */
+  @Post('requests/:id/return-authorization')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, AuthorizationSodGuard)
+  @AuthorizationSodProtected('id')
+  @Permissions('travel_expenses:return_authorization')
+  @ApiOperation({
+    summary: 'Devolver comisión con reparos desde autorización (Etapa 6)',
+    description:
+      'Devuelve la comisión al analista para subsanar observaciones de la Subdirección. Requiere observaciones obligatorias.',
+  })
+  @ApiBody({
+    description: 'Observaciones obligatorias del hallazgo detectado.',
+    type: AutorizacionObservacionesDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisión devuelta exitosamente a EN_VERIFICACION.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Observaciones vacías o insuficientes (< 3 caracteres).',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Violación de Segregación de Funciones (SoD).',
+  })
+  @ApiBearerAuth()
+  async devolverComisionAutorizacion(
+    @Param('id') id: string,
+    @Body() dto: AutorizacionObservacionesDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.devolverComisionAutorizacion(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Comisión devuelta al analista con observaciones de la Subdirección.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-AUT-001 — Descargar PDF de Autorización de Gasto e Itinerario (Tiquete).
+   */
+  @Get('requests/:id/ticket-itinerary/pdf')
+  @Permissions(
+    'travel_expenses:read_authorizations',
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_inbox',
+    'travel_expenses:create_request',
+  )
+  @ApiOperation({
+    summary: 'Descargar PDF de Autorización de Gasto e Itinerario de Viaje (Etapa 6)',
+  })
+  async exportarPdfTiqueteItinerario(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.service.exportarPdfTiqueteItinerario(id, req);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Autorizacion-Itinerario-${id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
   }
 }

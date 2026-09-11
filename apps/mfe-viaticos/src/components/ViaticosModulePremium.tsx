@@ -28,6 +28,7 @@ import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
 import AnalystInbox from './AnalystInbox';
 import ControlViaticosModal from './ControlViaticosModal';
+import AutorizacionInbox from './AutorizacionInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -61,20 +62,22 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
-  SOLICITADA_SIIF: 1,
-  VERIFICADA: 2,
-  DEVUELTA: 3,
-  RADICADA: 3,
-  EXTEMPORANEA: 4,
-  SOLICITADO: 5,
-  PENDIENTE: 6,
+  EN_AUTORIZACION: 1,
+  SOLICITADA_SIIF: 2,
+  VERIFICADA: 3,
+  AUTORIZADA: 4,
+  DEVUELTA: 5,
+  RADICADA: 5,
+  EXTEMPORANEA: 6,
+  SOLICITADO: 7,
+  PENDIENTE: 8,
 };
 
 function prioridadEstadoTabla(estado: string): number {
-  return ORDEN_ESTADOS_TABLA[estado] ?? 7;
+  return ORDEN_ESTADOS_TABLA[estado] ?? 9;
 }
 
 export default function ViaticosModulePremium() {
@@ -94,7 +97,15 @@ export default function ViaticosModulePremium() {
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
   const [esAnalista, setEsAnalista] = useState(false);
   const [esControlViaticos, setEsControlViaticos] = useState(false);
-  const [cargandoRol, setCargandoRol] = useState(true);
+  const [esSubdireccion, setEsSubdireccion] = useState(false);
+  const [cargandoRol, setCargandoRol] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      localStorage.getItem('token') ||
+      localStorage.getItem('access_token') ||
+      (window as any).__esap_auth_cache,
+    );
+  });
   const [prioridadSeleccionada, setPrioridadSeleccionada] = useState<string>('');
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
   const [guardandoPrioridad, setGuardandoPrioridad] = useState(false);
@@ -145,6 +156,13 @@ export default function ViaticosModulePremium() {
           color: '#7C3AED',
         },
         {
+          id: 'autorizaciones',
+          label: 'Autorización Corporativa',
+          subtitle: 'Visto bueno de gasto e itinerario (Etapa 6)',
+          icon: <FileCheck className="w-5 h-5" />,
+          color: '#4F46E5',
+        },
+        {
           id: 'configuracion',
           label: 'Configuración',
           subtitle: 'Parametrización de formulario y documentos',
@@ -193,15 +211,20 @@ export default function ViaticosModulePremium() {
 
   useEffect(() => {
     const determinarRol = async () => {
-      setCargandoRol(true);
       try {
         await authService.getCurrentUser();
       } catch {
         // si falla verify, getCurrentUserSync() usará la caché del shell
       } finally {
-        setEsSuperAdmin(authService.isSuperAdmin());
+        const superAdmin = authService.isSuperAdmin();
+        const subdir = authService.isSubdireccionGestionCorporativa();
+        setEsSuperAdmin(superAdmin);
         setEsAnalista(authService.isAnalista());
         setEsControlViaticos(authService.isControlViaticos());
+        setEsSubdireccion(subdir);
+        if (subdir && !superAdmin) {
+          setSeccion('autorizaciones');
+        }
         setCargandoRol(false);
       }
     };
@@ -428,20 +451,39 @@ export default function ViaticosModulePremium() {
     authService.hasPermission('travel_expenses:double_check_request') ||
     authService.hasPermission('travel_expenses:return_to_analyst') ||
     authService.isControlViaticos();
+  const puedeVerAutorizaciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_authorizations') ||
+    authService.hasPermission('travel_expenses:authorize_expense') ||
+    authService.hasPermission('travel_expenses:return_authorization');
 
   const gruposFiltrados: MenuGroup[] = grupos
-    .map((grupo) => ({
-      ...grupo,
-      items: grupo.items.filter((item) => {
+    .map((grupo) => {
+      let items = grupo.items.filter((item) => {
         if (item.id === 'solicitudes') return puedeVerSolicitudes;
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
+        if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
-      }),
-    }))
+      });
+
+      if (esSubdireccion && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'autorizaciones') return -1;
+          if (b.id === 'autorizaciones') return 1;
+          return 0;
+        });
+      }
+
+      return {
+        ...grupo,
+        items,
+      };
+    })
     .filter((grupo) => grupo.items.length > 0);
 
   if (cargandoRol) {
@@ -502,65 +544,66 @@ export default function ViaticosModulePremium() {
         />
       ) : (
         <>
-          {/* ── KPI HEADER ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
-                <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
-                <Plane className="w-6 h-6" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
-                <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                <Clock className="w-6 h-6" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
-                <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                <MapPin className="w-6 h-6" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">
-                  {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
-                </h3>
-                <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                <DollarSign className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-
            {/* ── SOLICITUDES ── */}
            {seccion === 'solicitudes' && puedeVerSolicitudes && (
-             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Plane className="w-5 h-5 text-[#003DA5]" />
-                    Solicitudes de Comisión y Viáticos
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+            <>
+              {/* ── KPI HEADER (Específico de Solicitudes) ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
+                    <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
+                    <Plane className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
+                    <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
+                    <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">
+                      {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
+                    </h3>
+                    <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                    <DollarSign className="w-6 h-6" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Plane className="w-5 h-5 text-[#003DA5]" />
+                     Solicitudes de Comisión y Viáticos
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
                     Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
                   </p>
                 </div>
@@ -594,6 +637,8 @@ export default function ViaticosModulePremium() {
                     id="filtroEstado"
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+                      { value: 'AUTORIZADA', label: 'Autorizada' },
                       { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
                       { value: 'VERIFICADA', label: 'Verificada' },
                       { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
@@ -804,7 +849,8 @@ export default function ViaticosModulePremium() {
                 </div>
               )}
             </div>
-          )}
+          </>
+        )}
 
            {/* ── TIQUETES ── */}
            {seccion === 'tiquetes' && puedeVerTiquetes && (
@@ -875,6 +921,11 @@ export default function ViaticosModulePremium() {
              {/* ── MIS SOLICITUDES ASIGNADAS ── */}
 {seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
                 <SolicitudesAsignadasAnalista />
+              )}
+
+              {/* ── AUTORIZACIÓN CORPORATIVA (ETAPA 6) ── */}
+              {seccion === 'autorizaciones' && puedeVerAutorizaciones && (
+                <AutorizacionInbox />
               )}
 
              {/* ── CONFIGURACIÓN ── */}

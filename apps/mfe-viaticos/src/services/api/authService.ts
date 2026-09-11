@@ -22,6 +22,12 @@ export const ROLES_ANALISTA_VIATICOS = [
   'ANALISTA_VIATICOS',
 ];
 
+export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
+  'SUBDIRECCION_GESTION_CORPORATIVA',
+  'SUBDIRECTOR_GESTION_CORPORATIVA',
+  'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+] as const;
+
 export interface DependenciaUsuario {
   idDependencia?: number;
   codDependencia?: string;
@@ -270,6 +276,23 @@ export class AuthService {
     if (!user || !user.roles.length) return false;
     if (user.esAdmin) return true;
     return user.roles.some((r) => r === 'CONTROL_VIATICOS');
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol de
+   * Subdirección de Gestión Corporativa o el permiso de
+   * autorización corporativa (Etapa 6 - RF-AUT-001).
+   */
+  isSubdireccionGestionCorporativa(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) {
+      return this.hasPermission('travel_expenses:read_authorizations');
+    }
+    const tieneRol = user.roles.some((r) =>
+      (ROLES_SUBDIRECCION_GESTION_CORPORATIVA as readonly string[]).includes(r) ||
+      r.includes('SUBDIRECCION_GESTION_CORPORATIVA'),
+    );
+    return tieneRol || this.hasPermission('travel_expenses:read_authorizations');
   }
 
   private getCurrentUserSync(): UsuarioActual | null {
