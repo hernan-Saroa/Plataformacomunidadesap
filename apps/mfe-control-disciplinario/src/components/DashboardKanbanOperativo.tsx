@@ -6445,8 +6445,8 @@ export function DashboardKanbanOperativo({
       <div className="flex flex-col items-center justify-center py-24 gap-5">
         <div className="w-12 h-12 border-[3px] rounded-full animate-spin" style={{ borderColor: '#E2E8F0', borderTopColor: '#003DA5' }} />
         <div className="text-center">
-          <p className="text-sm font-semibold text-gray-600">Cargando datos</p>
-          <p className="text-xs text-gray-400 mt-1">Conectando con Supabase...</p>
+          <p className="text-sm font-semibold text-gray-600">Cargando datos...</p>
+          {/* <p className="text-xs text-gray-400 mt-1">Conectando con Supabase...</p> */}
         </div>
       </div>
     );
