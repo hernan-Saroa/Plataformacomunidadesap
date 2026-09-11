@@ -64,10 +64,11 @@ describe('VerificacionSIIFModal', () => {
       solicitud: solicitudMock(),
     });
 
-    expect(screen.getByText('COM-2026-0001')).toBeDefined();
+    expect(screen.getAllByText('COM-2026-0001').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Juan Pérez').length).toBeGreaterThan(0);
     expect(screen.getAllByText('123456789').length).toBeGreaterThan(0);
     expect(screen.getByText('Bogotá, Cundinamarca')).toBeDefined();
+    expect(screen.getByText(/Datos limpios y homologados para SIIF Nación/i)).toBeDefined();
   });
 
   it('los checkboxes controlan el estado del botón Registrar Verificación', async () => {

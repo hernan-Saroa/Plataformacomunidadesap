@@ -23,6 +23,10 @@ import {
   esPdfMime,
   formatearMoneda,
   formatearNombreComisionado,
+  sanitizeParaSIIF,
+  sanitizeDocumento,
+  sanitizeNombre,
+  sanitizeTextoPlano,
 } from '../utils/viaticosUtils';
 
 const DEPENDENCIA_LOOKUP = new Map<number, string>();
@@ -66,14 +70,7 @@ const SEMAFORO_CONFIG: Record<SemaforoPresupuestal, { bg: string; text: string; 
   ROJO: { bg: 'bg-red-100', text: 'text-red-700', label: 'Presupuesto crítico' },
 };
 
-function sanitizeParaSIIF(texto: string): string {
-  return texto
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ñ/gi, 'n')
-    .replace(/[^a-zA-Z0-9;,\s]/g, '')
-    .slice(0, 250);
-}
+
 
 function calcularSemaforo(montoTotal: number): SemaforoPresupuestal {
   if (montoTotal > 5_000_000) return 'ROJO';
@@ -693,29 +690,59 @@ export default function VerificacionSIIFModal({
                 </h3>
 
                 <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                  <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg text-[11px] text-blue-900 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#003DA5] shrink-0" />
+                    <span>
+                      <strong>Datos limpios y homologados para SIIF Nación:</strong> Texto sin tildes, eñes ni saltos de línea. El plano CSV incluye 18 columnas con toda la información requerida para el registro presupuestal.
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <CopiableField
+                      label="Cédula / Documento"
+                      value={sanitizeDocumento(comisionado?.numeroDocumento || '')}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Nombre del Comisionado"
+                      value={sanitizeNombre(nombreCompleto)}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Consecutivo de Comisión"
+                      value={solicitud.consecutivoUnico || ''}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Tipo y Facturador"
+                      value={`${comisionado?.tipoComisionado || 'FUNCIONARIO'} · Facturador: ${(comisionado as any)?.esFacturadorElectronico || solicitud.consultaRutFacturador ? 'SI' : 'NO'}`}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Destino (Ciudad, Depto)"
+                      value={`${sanitizeTextoPlano(solicitud.destinoCiudad || '')}, ${sanitizeTextoPlano(solicitud.destinoDepartamento || '')}`.toUpperCase()}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Fechas y Días"
+                      value={`${fmtFecha(solicitud.fechaInicio)} al ${fmtFecha(solicitud.fechaFin)} (${solicitud.diasComision || 1} días)`}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Rubro Presupuestal"
+                      value={sanitizeParaSIIF(solicitud.rubroPresupuestal || '')}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Valor Neto a Liquidar"
+                      value={formatearMoneda(valorNeto)}
+                      onCopy={handleCopy}
+                    />
+                  </div>
+
                   <CopiableField
-                    label="Cédula"
-                    value={comisionado?.numeroDocumento || ''}
-                    onCopy={handleCopy}
-                  />
-                  <CopiableField
-                    label="Nombre"
-                    value={nombreCompleto}
-                    onCopy={handleCopy}
-                  />
-                  <CopiableField
-                    label="Objeto Sanitizado"
+                    label="Objeto Sanitizado y Limpio"
                     value={sanitizeParaSIIF(solicitud.objetoComision || '')}
-                    onCopy={handleCopy}
-                  />
-                  <CopiableField
-                    label="Valor Neto a Liquidar"
-                    value={formatearMoneda(valorNeto)}
-                    onCopy={handleCopy}
-                  />
-                  <CopiableField
-                    label="Rubro Presupuestal"
-                    value={sanitizeParaSIIF(solicitud.rubroPresupuestal || '')}
                     onCopy={handleCopy}
                   />
 

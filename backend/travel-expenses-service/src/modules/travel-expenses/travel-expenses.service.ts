@@ -24,7 +24,14 @@ import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
-import { sanitizeObjetoComision } from '../../common/sanitize.util';
+import {
+  sanitizeObjetoComision,
+  sanitizeTextoPlano,
+  sanitizeDocumento,
+  sanitizeNombre,
+  sanitizeMontoPlano,
+  sanitizeFechaPlano,
+} from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
 import { ConfigService } from '../config/config.service';
@@ -2108,7 +2115,7 @@ export class TravelExpensesService {
         }
       }
 
-      const nombreComisionado = comisionado
+      const nombreComisionadoRaw = comisionado
         ? [
             comisionado.primerNombre,
             comisionado.segundoNombre,
@@ -2120,32 +2127,71 @@ export class TravelExpensesService {
             .trim()
         : '';
 
-      const objetoSanitizado = sanitizeObjetoComision(
-        solicitud.objetoComision || '',
+      const consecutivoLimpio = sanitizeTextoPlano(solicitud.consecutivoUnico || '', 50);
+      const docLimpio = sanitizeDocumento(comisionado?.numeroDocumento || '');
+      const nombreLimpio = sanitizeNombre(nombreComisionadoRaw);
+      const tipoComisionadoLimpio = (comisionado?.tipoComisionado || 'FUNCIONARIO').toUpperCase().trim();
+      const facturadorElecFlag = esFacturador ? 'SI' : 'NO';
+      const depId = String(solicitud.idDependencia ?? comisionado?.idDependencia ?? '');
+      const destinoCiudad = sanitizeTextoPlano(solicitud.destinoCiudad || '', 100).toUpperCase();
+      const destinoDepto = sanitizeTextoPlano(solicitud.destinoDepartamento || '', 100).toUpperCase();
+      const tipoComision = (solicitud.tipoComision || 'TERRESTRE').toUpperCase().trim();
+      const fechaInicioStr = sanitizeFechaPlano(solicitud.fechaInicio);
+      const fechaFinStr = sanitizeFechaPlano(solicitud.fechaFin);
+      const diasComision = String(Math.max(1, Number(solicitud.diasComision || 1)));
+      const rubroSanitizado = sanitizeTextoPlano(solicitud.rubroPresupuestal || '', 100);
+      const montoViaticos = sanitizeMontoPlano(solicitud.montoViaticos);
+      const montoGastosViaje = sanitizeMontoPlano(solicitud.montoGastosViaje);
+      const valorNeto = sanitizeMontoPlano(
+        Number(solicitud.montoViaticos || 0) + Number(solicitud.montoGastosViaje || 0),
       );
-      const rubroSanitizado = sanitizeObjetoComision(
-        solicitud.rubroPresupuestal || '',
-      );
-
-      const valorNeto =
-        Number(solicitud.montoViaticos || 0) +
-        Number(solicitud.montoGastosViaje || 0);
+      const objetoSanitizado = sanitizeTextoPlano(solicitud.objetoComision || '', 250);
+      const fechaExportacionStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
       const headers = [
+        'Consecutivo',
         'Cedula',
         'Nombre',
-        'Objeto',
-        'ValorNeto',
+        'TipoComisionado',
+        'FacturadorElectronico',
+        'IdDependencia',
+        'DestinoCiudad',
+        'DestinoDepartamento',
+        'TipoComision',
+        'FechaInicio',
+        'FechaFin',
+        'DiasComision',
         'RubroPresupuestal',
+        'MontoViaticos',
+        'MontoGastosViaje',
+        'ValorNeto',
+        'Objeto',
+        'FechaExportacion',
       ];
+
       const row = [
-        comisionado?.numeroDocumento || '',
-        `"${nombreComisionado}"`,
-        `"${objetoSanitizado}"`,
-        valorNeto.toFixed(2),
+        `"${consecutivoLimpio}"`,
+        docLimpio,
+        `"${nombreLimpio}"`,
+        `"${tipoComisionadoLimpio}"`,
+        `"${facturadorElecFlag}"`,
+        depId,
+        `"${destinoCiudad}"`,
+        `"${destinoDepto}"`,
+        `"${tipoComision}"`,
+        fechaInicioStr,
+        fechaFinStr,
+        diasComision,
         `"${rubroSanitizado}"`,
+        montoViaticos,
+        montoGastosViaje,
+        valorNeto,
+        `"${objetoSanitizado}"`,
+        `"${fechaExportacionStr}"`,
       ];
-      const csvContent = headers.join(';') + '\n' + row.join(';') + '\n';
+
+      // BOM UTF-8 (\uFEFF) para apertura nativa e inmediata en Excel sin errores de codificación
+      const csvContent = '\uFEFF' + headers.join(';') + '\r\n' + row.join(';') + '\r\n';
       const fechaCorta = new Date().toISOString().slice(0, 10);
       const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
 

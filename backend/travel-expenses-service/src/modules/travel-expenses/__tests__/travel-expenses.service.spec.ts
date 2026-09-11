@@ -2176,8 +2176,14 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       const result = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
 
       expect(result.fileName).toMatch(/^SIIF_COM-2026-0001_\d{4}-\d{2}-\d{2}\.csv$/);
-      expect(result.csvContent).toContain('Cedula;Nombre;Objeto;ValorNeto;RubroPresupuestal');
+      expect(result.csvContent.startsWith('\uFEFF')).toBe(true);
+      expect(result.csvContent).toContain(
+        'Consecutivo;Cedula;Nombre;TipoComisionado;FacturadorElectronico;IdDependencia;DestinoCiudad;DestinoDepartamento;TipoComision;FechaInicio;FechaFin;DiasComision;RubroPresupuestal;MontoViaticos;MontoGastosViaje;ValorNeto;Objeto;FechaExportacion',
+      );
       expect(result.csvContent).toContain('1234567890');
+      expect(result.csvContent).toContain('"COM-2026-0001"');
+      expect(result.csvContent).toContain('"JUAN PABLO PEREZ GOMEZ"');
+      expect(result.csvContent).toContain('600000.00'); // 500000 + 100000
       expect(result.solicitud.siifExportado).toBe(true);
       expect(result.solicitud.fechaExportacionSiif).toBeDefined();
       expect(result.solicitud.usuarioExportadorId).toBe('analista-001');
@@ -2254,6 +2260,90 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(res.solicitud.siifExportado).toBe(true);
       expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(res.csvContent).toContain('123456789');
+    });
+
+    it('debe limpiar los datos del archivo plano (eliminar saltos de linea, tildes, eñes, y reemplazar punto y coma por coma)', async () => {
+      const solicitud = {
+        id: 'sol-002',
+        consecutivoUnico: 'COM-2026-0002',
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        comisionadoId: 'com-002',
+        siifExportado: false,
+        objetoComision: 'Reunión técnica;\r\n revisión de gestión en Bogotá con directores.\t',
+        rubroPresupuestal: 'A-01; SUB-RUBRO',
+        destinoCiudad: 'Bogotá, D.C.',
+        destinoDepartamento: 'Nariño',
+        montoViaticos: 850000.5,
+        montoGastosViaje: 150000,
+        diasComision: 3,
+        fechaInicio: new Date('2026-10-01T00:00:00Z'),
+        fechaFin: new Date('2026-10-03T00:00:00Z'),
+      };
+
+      const comisionado = {
+        id: 'com-002',
+        numeroDocumento: '1.023.456-7',
+        primerNombre: 'María',
+        primerApellido: 'Ñáñez',
+        tipoComisionado: 'CONTRATISTA',
+        esFacturadorElectronico: false,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (s) => s),
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+      };
+
+      const historialRepo = {
+        save: jest.fn().mockResolvedValue({}),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity) => {
+              if (entity === SolicitudComisionEntity) return solicitudRepo;
+              if (entity === ComisionadoEntity) return comisionadoRepo;
+              if (entity === SolicitudHistorialEstadoEntity) return historialRepo;
+              return { save: jest.fn(), findOne: jest.fn() };
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        comisionadoRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.exportarSIIF('sol-002', 'analista-001', ['ANALISTA']);
+
+      // Cedula limpia sin puntos ni guiones
+      expect(res.csvContent).toContain('10234567');
+      // Nombre limpio sin tildes ni eñes, en mayusculas
+      expect(res.csvContent).toContain('"MARIA NANEZ"');
+      // Destino limpio sin tildes ni eñes
+      expect(res.csvContent).toContain('"NARINO"');
+      // Objeto sin saltos de linea, tildes y con punto y coma reemplazado por coma
+      expect(res.csvContent).toContain('"Reunion tecnica, revision de gestion en Bogota con directores."');
+      expect(res.csvContent).toContain('"A-01, SUB-RUBRO"');
+      // Monto con 2 decimales limpios
+      expect(res.csvContent).toContain('1000000.50');
+      // Solo 2 lineas en total (header + 1 fila) demostrando que ningún salto de linea rompio la estructura
+      const lines = res.csvContent.trim().split('\r\n');
+      expect(lines.length).toBe(2);
     });
 
     it('debe lanzar BadRequestException si el estado no esta permitido', async () => {
