@@ -51,7 +51,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps --omit=d
 COPY --from=builder /app/dist ./dist
 
 # Expose the port the app runs on
-EXPOSE 3000
+EXPOSE 3005
 
 # Start the application
-CMD ["node", "dist/src/main"]
+CMD ["node", "dist/main"]
