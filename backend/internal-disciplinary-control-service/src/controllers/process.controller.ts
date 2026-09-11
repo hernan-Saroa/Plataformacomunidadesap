@@ -73,6 +73,7 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
   'SECRETARIA_RADICADOR',
+  'RADICADOR_DISCIPLINARIO',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -361,7 +362,8 @@ export class ProcessController {
     return await this.processService.changeStage(
       id,
       changeStageDto.stageId,
-      changeStageDto.kanbanNotice
+      changeStageDto.kanbanNotice,
+      req.user?.roles
     );
   }
 

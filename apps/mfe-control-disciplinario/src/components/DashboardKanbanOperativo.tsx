@@ -109,6 +109,55 @@ function normalizeText(text: string): string {
     .toLowerCase();
 }
 
+// ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
+export const isSecretarioRadicadorUser = (): boolean => {
+  const user = authService.getCurrentUser?.();
+  const roles = user?.roles || [];
+  return (
+    roles.some((r: any) => {
+      const code = (typeof r === 'string' ? r : (r?.code || r?.name || '')).toUpperCase();
+      return (
+        code === 'SECRETARIA_RADICADOR' ||
+        code === 'RADICADOR_DISCIPLINARIO' ||
+        code === 'SECRETARIO_RADICADOR' ||
+        code.includes('SECRETARI') ||
+        code.includes('RADICADOR')
+      );
+    }) ||
+    authService.hasRole('SECRETARIA_RADICADOR') ||
+    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
+    authService.hasRole('SECRETARIO_RADICADOR')
+  );
+};
+
+export const isEtapaCargos = (etapaNombre?: string): boolean => {
+  if (!etapaNombre) return false;
+  const n = etapaNombre
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  return (
+    n === 'CARGOS' ||
+    n.includes('CARGO') ||
+    n.includes('PLIEGO') ||
+    n === 'EVALUACION' ||
+    n.includes('EVALUAC')
+  );
+};
+
+export const isEtapaJuzgamiento = (etapaNombre?: string): boolean => {
+  if (!etapaNombre) return false;
+  const n = etapaNombre
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  return n === 'JUZGAMIENTO' || n.includes('JUZG');
+};
+
 
 
 /** Busca si `query` (ya normalizado) aparece en algún campo textual del item */
@@ -754,9 +803,20 @@ function TarjetaProceso({
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
 
+  const isRadicador = isSecretarioRadicadorUser();
+  const esProcesoEnCargos = isEtapaCargos(proceso.etapaActual);
+  const puedeArrastrar = !isRadicador || esProcesoEnCargos;
+
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...proceso, tipoItem: 'proceso' },
+    canDrag: () => {
+      // Para Secretario/Radicador, SOLO se permite arrastrar procesos que se encuentren en la etapa Cargos
+      if (isRadicador) {
+        return esProcesoEnCargos;
+      }
+      return true;
+    },
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     })
@@ -795,7 +855,7 @@ function TarjetaProceso({
   return (
     <div
       ref={dragRef}
-      className="cursor-grab active:cursor-grabbing touch-none w-full select-none"
+      className={`${puedeArrastrar ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} touch-none w-full select-none`}
     >
       <motion.div
         id={`proceso-${proceso.id}`}
@@ -1987,6 +2047,14 @@ function ColumnaKanban({
       onDrop(item, etapa);
     },
     canDrop: (item: any) => {
+      const isRadicador = isSecretarioRadicadorUser();
+      const esProceso = item?.tipoItem === 'proceso' || item?.tipo === 'proceso';
+
+      // Para Secretario/Radicador: SOLO puede soltar en Juzgamiento si el proceso proviene de Cargos
+      if (esProceso && isRadicador) {
+        return isEtapaCargos(item.etapaActual) && isEtapaJuzgamiento(etapa);
+      }
+
       // ✅ NUEVO: Validar orden de etapas desde backend config
       if (etapasConfig.length > 0) {
         // Obtener el orden de la etapa actual (donde está el item)
@@ -4375,14 +4443,44 @@ export function DashboardKanbanOperativo({
 
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
-    // ✅ NUEVO: Validar permiso de movimiento en Kanban
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
-      toast.error('No tiene permiso para mover elementos en el Kanban');
-      return;
+    const isRadicador = isSecretarioRadicadorUser();
+    const esProceso = item.tipo === 'proceso' || (item as any).tipoItem === 'proceso';
+    const etapaActualProceso = (item as any).etapaActual;
+    const esTransicionCargosAJuzgamiento =
+      esProceso &&
+      isEtapaCargos(etapaActualProceso) &&
+      isEtapaJuzgamiento(nuevaEtapa);
+    const esTransicionJuzgamientoACargos =
+      esProceso &&
+      isEtapaJuzgamiento(etapaActualProceso) &&
+      isEtapaCargos(nuevaEtapa);
+
+    // Si el usuario tiene el rol Secretario/Radicador:
+    if (isRadicador) {
+      if (esTransicionJuzgamientoACargos) {
+        toast.error('Transición no permitida', {
+          description: 'No está permitido trasladar un proceso desde Juzgamiento hacia Cargos.'
+        });
+        return;
+      }
+
+      if (!esTransicionCargosAJuzgamiento) {
+        toast.error('Acción no permitida para Secretario/Radicador', {
+          description: 'El rol Secretario/Radicador solo tiene permitido realizar el traslado manual de procesos desde la etapa Cargos hacia Juzgamiento.'
+        });
+        return;
+      }
+      // Autorizado: el Secretario/Radicador puede realizar la transición Cargos → Juzgamiento sin requerir el permiso genérico KANBAN_MOVE
+    } else {
+      // ✅ Validar permiso de movimiento en Kanban para los demás roles
+      if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
+        toast.error('No tiene permiso para mover elementos en el Kanban');
+        return;
+      }
     }
 
-    // ✅ NUEVO: Validar orden de etapas desde backend config
-    if (etapasConfig.length > 0) {
+    // ✅ NUEVO: Validar orden de etapas desde backend config (omitido para la transición autorizada Cargos -> Juzgamiento)
+    if (etapasConfig.length > 0 && !esTransicionCargosAJuzgamiento) {
       // Obtener el orden de la etapa actual del item
       let itemOrden: number = 0;
       let etapaActualItem: string = 'Recepción';
@@ -4443,25 +4541,34 @@ export function DashboardKanbanOperativo({
           return; // No continuar con el movimiento hasta que se asigne el profesional
         }
 
-        // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
-        toast.error('No es posible avanzar de etapa mediante arrastre', {
-          description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
-        });
-        return;
+        const puedeAvanzarPorArrastre = isRadicador && esTransicionCargosAJuzgamiento;
 
-        const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+        if (!puedeAvanzarPorArrastre) {
+          // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
+          toast.error('No es posible avanzar de etapa mediante arrastre', {
+            description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
+          });
+          return;
+        }
 
-        // ✅ NUEVO: Persistir cambio de etapa en la base de datos
-        const toastId = toast.loading('Cambiando etapa del proceso...');
+        const currentUser = authService.getCurrentUser?.();
+        const usuario = currentUser?.nombre || currentUser?.email || 'Secretario/Radicador';
+
+        // ✅ Persistir cambio de etapa en la base de datos
+        const toastId = toast.loading('Trasladando proceso a Juzgamiento...');
         try {
-          const backendStage = backendStageForLabel(nuevaEtapa);
-          const stageOrder = getStageOrderForLabel(nuevaEtapa);
+          const etapaJuzgamientoConfig = etapasConfig.find(e => isEtapaJuzgamiento(e.etapa || e.nombre));
+          const stageIdentifier = etapaJuzgamientoConfig?.id || backendStageForLabel(nuevaEtapa);
 
           // Llamar al backend para cambiar la etapa
-          await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
-          toast.success('Etapa actualizada', {
+          await disciplinaryService.cambiarEtapa(
+            item.id,
+            stageIdentifier,
+            'Traslado manual desde Cargos hacia Juzgamiento por Secretario/Radicador'
+          );
+          toast.success('Proceso trasladado a Juzgamiento', {
             id: toastId,
-            description: `${item.numeroProceso} → ${nuevaEtapa}`
+            description: `${item.numeroProceso}: Cargos → Juzgamiento exitoso.`
           });
         } catch (error: any) {
           console.error('Error al cambiar etapa en BD:', error);
@@ -4488,7 +4595,7 @@ export function DashboardKanbanOperativo({
           id: `evt-${Date.now()}`,
           tipo: 'cambio-estado' as const,
           titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
-          descripcion: `El proceso fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante arrastrar y soltar`,
+          descripcion: `El proceso fue trasladado manualmente de "${etapaAnterior}" a "${nuevaEtapa}" por el Secretario/Radicador`,
           usuario: usuario,
           fecha: new Date(),
           procesoId: item.id,
