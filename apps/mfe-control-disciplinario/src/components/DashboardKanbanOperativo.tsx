@@ -6779,7 +6779,7 @@ export function DashboardKanbanOperativo({
                 </KanbanToolbarCTA>
               )}
 
-              {(authService.hasRole('SECRETARIA_RADICADOR') || authService.isSuperAdmin()) && (
+              {(authService.hasRole('SECRETARIA_RADICADOR') || authService.hasRole('RADICADOR_DISCIPLINARIO') || authService.hasRole('ADMIN') || authService.isSuperAdmin()) && (
                 <KanbanToolbarCTA
                   onClick={handleExportarVencimientos}
                   icon={

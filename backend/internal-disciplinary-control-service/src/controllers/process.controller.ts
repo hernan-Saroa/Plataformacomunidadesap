@@ -1307,7 +1307,7 @@ export class ProcessController {
    * Solo disponible para el Radicador (rol SECRETARIA_RADICADOR)
    */
   @Get('export')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
   @ApiOperation({
     summary: 'Exportar informe de vencimientos',
     description: 'Genera y descarga el informe de vencimientos de los procesos disciplinarios en formato Excel',
