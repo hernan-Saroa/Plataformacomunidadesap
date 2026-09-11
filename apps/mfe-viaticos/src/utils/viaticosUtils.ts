@@ -236,6 +236,16 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-fuchsia-100',
     text: 'text-fuchsia-800',
   },
+  VERIFICADA: {
+    label: 'Verificada',
+    bg: 'bg-emerald-100',
+    text: 'text-emerald-800',
+  },
+  EN_VERIFICACION: {
+    label: 'En Verificación',
+    bg: 'bg-amber-100',
+    text: 'text-amber-800',
+  },
 };
 
 export function getConfigEstado(estado: string): ConfigEstado {

@@ -103,6 +103,19 @@ export class TravelExpensesController {
     const superAdmin = normalizedRoles.some((r) =>
       SUPER_ADMIN_ROLES.includes(r),
     );
+    const rawPermissions = Array.isArray(req.user?.permissions)
+      ? req.user.permissions
+      : [];
+    const normalizedPermissions = rawPermissions.map((p: any) =>
+      typeof p === 'string' ? p : p?.code || '',
+    );
+    const isControlViaticos =
+      normalizedRoles.some(
+        (r) => r === 'CONTROL_VIATICOS' || r === 'ROL_CONTROL_VIATICOS',
+      ) ||
+      normalizedPermissions.includes('travel_expenses:read_siif_requested') ||
+      normalizedPermissions.includes('travel_expenses:double_check_request');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerSolicitudes(
@@ -110,6 +123,7 @@ export class TravelExpensesController {
       superAdmin,
       pageNum,
       limitNum,
+      isControlViaticos,
     );
     return {
       data: result.data,

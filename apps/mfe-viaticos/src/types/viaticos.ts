@@ -13,7 +13,9 @@ export type EstadoSolicitudViatico =
   | 'RADICADA'
   | 'EXTEMPORANEA'
   | 'DEVUELTA'
-  | 'SOLICITADA_SIIF';
+  | 'SOLICITADA_SIIF'
+  | 'VERIFICADA'
+  | 'EN_VERIFICACION';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'

@@ -127,12 +127,15 @@ export class TravelExpensesService {
     isSuperAdmin = false,
     page = 1,
     limit = 20,
+    isControlViaticos = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
       usuarioId,
       'isSuperAdmin=',
       isSuperAdmin,
+      'isControlViaticos=',
+      isControlViaticos,
       'page=',
       page,
       'limit=',
@@ -142,21 +145,29 @@ export class TravelExpensesService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if (!isSuperAdmin && usuarioId) {
-      query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+    if (!isSuperAdmin) {
+      if (isControlViaticos) {
+        query.andWhere('s.estado_solicitud IN (:...estadosControl)', {
+          estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'],
+        });
+      } else if (usuarioId) {
+        query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+      }
     }
 
-    // Orden por prioridad de estado (vista general): Radicadas → Extemporáneas →
-    // Solicitadas (en revisión) → Pendientes → resto. Dentro del mismo estado
-    // se ordena por fecha de creación (más reciente primero).
+    // Orden por prioridad de estado (vista general): Solicitadas SIIF → Verificadas →
+    // Radicadas → Extemporáneas → Solicitadas (en revisión) → Pendientes → resto.
+    // Dentro del mismo estado se ordena por fecha de creación (más reciente primero).
     query
       .orderBy(
         `CASE s.estado_solicitud
-           WHEN 'RADICADA' THEN 1
-           WHEN 'EXTEMPORANEA' THEN 2
-           WHEN 'SOLICITADO' THEN 3
-           WHEN 'PENDIENTE' THEN 4
-           ELSE 5
+           WHEN 'SOLICITADA_SIIF' THEN 1
+           WHEN 'VERIFICADA' THEN 2
+           WHEN 'RADICADA' THEN 3
+           WHEN 'EXTEMPORANEA' THEN 4
+           WHEN 'SOLICITADO' THEN 5
+           WHEN 'PENDIENTE' THEN 6
+           ELSE 7
          END`,
         'ASC',
       )

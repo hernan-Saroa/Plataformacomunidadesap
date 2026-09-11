@@ -383,6 +383,45 @@ describe('TravelExpensesService', () => {
 
       expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20 });
     });
+
+    it('debe filtrar solicitudes para rol Control Viáticos (SOLICITADA_SIIF / VERIFICADA)', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        comisionado: mockComisionado,
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: new Date('2026-09-15'),
+        fechaFin: new Date('2026-09-20'),
+        objetoComision: 'Comision de servicios',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        montoViaticos: 560000,
+        montoGastosViaje: 120000,
+        diasComision: 5,
+        estadoSolicitud: 'SOLICITADA_SIIF',
+        radicadoFueraJornada: false,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+        creadoPorUsuarioId: 'user-001',
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudes('user-control-01', false, 1, 20, true);
+
+      expect(result.data).toHaveLength(1);
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        's.estado_solicitud IN (:...estadosControl)',
+        { estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'] },
+      );
+    });
   });
 
   describe('crearSolicitud', () => {

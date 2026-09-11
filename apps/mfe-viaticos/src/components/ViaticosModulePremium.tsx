@@ -26,10 +26,17 @@ import {
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
 import AnalystInbox from './AnalystInbox';
-import ControlViaticosInbox from './ControlViaticosInbox';
+import ControlViaticosModal from './ControlViaticosModal';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
-import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
+import {
+  SolicitudViatico,
+  ResumenEstadisticoViaticos,
+  SolicitudComisionResponse,
+  SolicitudControlViaticosResponse,
+  DocumentoSoporte,
+  ResultadoConsolidacion,
+} from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
@@ -53,18 +60,20 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'control-viaticos';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
-  DEVUELTA: 1,
-  RADICADA: 1,
-  EXTEMPORANEA: 2,
-  SOLICITADO: 3,
-  PENDIENTE: 4,
+  SOLICITADA_SIIF: 1,
+  VERIFICADA: 2,
+  DEVUELTA: 3,
+  RADICADA: 3,
+  EXTEMPORANEA: 4,
+  SOLICITADO: 5,
+  PENDIENTE: 6,
 };
 
 function prioridadEstadoTabla(estado: string): number {
-  return ORDEN_ESTADOS_TABLA[estado] ?? 5;
+  return ORDEN_ESTADOS_TABLA[estado] ?? 7;
 }
 
 export default function ViaticosModulePremium() {
@@ -83,6 +92,7 @@ export default function ViaticosModulePremium() {
   const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
   const [esAnalista, setEsAnalista] = useState(false);
+  const [esControlViaticos, setEsControlViaticos] = useState(false);
   const [cargandoRol, setCargandoRol] = useState(true);
   const [prioridadSeleccionada, setPrioridadSeleccionada] = useState<string>('');
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
@@ -90,6 +100,9 @@ export default function ViaticosModulePremium() {
   const [devolviendo, setDevolviendo] = useState(false);
   const [analistaSeleccionadoId, setAnalistaSeleccionadoId] = useState<string | null>(null);
   const [asignando, setAsignando] = useState(false);
+  const [modalControlViaticosAbierta, setModalControlViaticosAbierta] = useState(false);
+  const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
+  const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
 
   const grupos: MenuGroup[] = [
     {
@@ -102,20 +115,13 @@ export default function ViaticosModulePremium() {
           icon: <Plane className="w-5 h-5" />,
           color: '#003DA5',
         },
-{
-        id: 'mis-solicitudes',
-        label: 'Mis Solicitudes Asignadas',
-        subtitle: 'Solicitudes pendientes de revisión',
-        icon: <UserCheck className="w-5 h-5" />,
-        color: '#10B981',
-      },
-      {
-        id: 'control-viaticos',
-        label: 'Control Viáticos',
-        subtitle: 'Segunda revisión y control cruzado',
-        icon: <ShieldCheck className="w-5 h-5" />,
-        color: '#059669',
-      },
+        {
+          id: 'mis-solicitudes',
+          label: 'Mis Solicitudes Asignadas',
+          subtitle: 'Solicitudes pendientes de revisión',
+          icon: <UserCheck className="w-5 h-5" />,
+          color: '#10B981',
+        },
         {
           id: 'tiquetes',
           label: 'Pasajes y Alojamiento',
@@ -194,6 +200,7 @@ export default function ViaticosModulePremium() {
       } finally {
         setEsSuperAdmin(authService.isSuperAdmin());
         setEsAnalista(authService.isAnalista());
+        setEsControlViaticos(authService.isControlViaticos());
         setCargandoRol(false);
       }
     };
@@ -345,7 +352,31 @@ export default function ViaticosModulePremium() {
     }
   };
 
+  const handleAbrirControlCruzado = async (sol: SolicitudViatico) => {
+    setCargandoControlViaticos(true);
+    setSolicitudControlViaticos(null);
+    setModalControlViaticosAbierta(true);
+    try {
+      const full = await viaticosService.obtenerSolicitudControlViaticos(sol.id);
+      setSolicitudControlViaticos(full);
+    } catch (err) {
+      console.error('Error cargando solicitud para Control Cruzado:', err);
+      setMensajeExito('No fue posible cargar el expediente para control cruzado.');
+    } finally {
+      setCargandoControlViaticos(false);
+    }
+  };
+
+  const currentUser = typeof (authService as any).getCurrentUserSync === 'function'
+    ? (authService as any).getCurrentUserSync()
+    : null;
+  const tieneContextoAuth = Boolean(
+    currentUser &&
+      (currentUser.roles?.length || currentUser.permissions?.length),
+  );
+
   const puedeVerSolicitudes =
+    !tieneContextoAuth ||
     esSuperAdmin ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_SOLICITUDES_READ_OWN,
@@ -353,32 +384,44 @@ export default function ViaticosModulePremium() {
       Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
       Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
       Permissions.VIATICOS_SOLICITUDES_RETURN,
-    ]);
+      'travel_expenses:read_siif_requested',
+      'travel_expenses:double_check_request',
+    ]) ||
+    authService.isControlViaticos();
   const puedeCrearSolicitud =
-    esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE);
+    (!tieneContextoAuth || esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE)) &&
+    !esControlViaticos;
   const puedeVerTiquetes =
+    !tieneContextoAuth ||
     esSuperAdmin ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_TIQUETES_VIEW,
       Permissions.VIATICOS_TIQUETES_MANAGE,
     ]);
   const puedeVerLegalizaciones =
+    !tieneContextoAuth ||
     esSuperAdmin ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_LEGALIZACIONES_VIEW,
       Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
     ]);
   const puedeVerResoluciones =
+    !tieneContextoAuth ||
     esSuperAdmin ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_RESOLUCIONES_VIEW,
       Permissions.VIATICOS_RESOLUCIONES_MANAGE,
     ]);
   const puedeVerConfiguracion =
-    esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
   const puedeVerSolicitudesAsignadas =
-    esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
   const puedeVerControlViaticos =
+    !tieneContextoAuth ||
     esSuperAdmin ||
     authService.hasPermission('travel_expenses:read_siif_requested') ||
     authService.hasPermission('travel_expenses:double_check_request') ||
@@ -391,7 +434,6 @@ export default function ViaticosModulePremium() {
       items: grupo.items.filter((item) => {
         if (item.id === 'solicitudes') return puedeVerSolicitudes;
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
-        if (item.id === 'control-viaticos') return puedeVerControlViaticos;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
@@ -551,6 +593,8 @@ export default function ViaticosModulePremium() {
                     id="filtroEstado"
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
+                      { value: 'VERIFICADA', label: 'Verificada' },
                       { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
@@ -709,6 +753,21 @@ export default function ViaticosModulePremium() {
                                     <Send className="w-3.5 h-3.5" />
                                   </button>
                                 )}
+                                {(sol.estado === 'SOLICITADA_SIIF' || sol.estado === 'VERIFICADA') && puedeVerControlViaticos && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleAbrirControlCruzado(sol)}
+                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                                    title={
+                                      sol.estado === 'SOLICITADA_SIIF'
+                                        ? 'Realizar Control Cruzado (Segunda Revisión)'
+                                        : 'Ver Control Cruzado'
+                                    }
+                                    aria-label="Realizar Control Cruzado"
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -790,11 +849,6 @@ export default function ViaticosModulePremium() {
              {/* ── MIS SOLICITUDES ASIGNADAS ── */}
 {seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
                 <SolicitudesAsignadasAnalista />
-              )}
-
-              {/* ── CONTROL VIÁTICOS ── */}
-              {seccion === 'control-viaticos' && puedeVerControlViaticos && (
-                <ControlViaticosInbox />
               )}
 
              {/* ── CONFIGURACIÓN ── */}
@@ -1045,6 +1099,22 @@ export default function ViaticosModulePremium() {
           )}
         </>
       )}
+
+      <ControlViaticosModal
+        abierta={modalControlViaticosAbierta}
+        solicitud={solicitudControlViaticos}
+        cargando={cargandoControlViaticos}
+        onCerrar={() => {
+          setModalControlViaticosAbierta(false);
+          setSolicitudControlViaticos(null);
+        }}
+        onRefrescar={() => {
+          setModalControlViaticosAbierta(false);
+          setSolicitudControlViaticos(null);
+          setMensajeExito('Segunda revisión completada y actualizada exitosamente.');
+          cargarDatos();
+        }}
+      />
     </ModuleLayout>
   );
 }

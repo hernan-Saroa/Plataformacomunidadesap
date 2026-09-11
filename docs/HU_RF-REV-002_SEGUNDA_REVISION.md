@@ -288,6 +288,7 @@ npm run build
 
 ## 10. Documentos relacionados
 
+- `docs/viaticos/HU_RF-REV-002_PRUEBAS.md`
 - `docs/viaticos/HU_RF-REC-002_TABLERO_CARGA.md`
 - `docs/viaticos/HU_RF-REC-002_PRUEBAS.md`
 - `docs/viaticos/PLAN_PRUEBAS_MODULO_VIATICOS.md`
