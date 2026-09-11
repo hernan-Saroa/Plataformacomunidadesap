@@ -358,6 +358,7 @@ export default function ControlViaticosModal({
     | undefined;
 
   const semaforo = resumenPresupuestal?.semaforo || 'VERDE';
+  const isVerificada = solicitud?.estadoSolicitud === 'VERIFICADA' || verificacionExitosa;
 
   const handleCopy = async (valor: string) => {
     if (!valor) return;
@@ -371,12 +372,15 @@ export default function ControlViaticosModal({
   };
 
   const handleVerificarSegundoNivel = async () => {
-    if (!solicitud) return;
+    if (!solicitud || isVerificada) return;
     setVerificando(true);
     setErrorVerificacion(null);
     try {
       await viaticosService.verificarSegundoNivel(solicitud.id, { observaciones: '' });
       setVerificacionExitosa(true);
+      if (solicitud) {
+        solicitud.estadoSolicitud = 'VERIFICADA';
+      }
       setTimeout(() => {
         setVerificacionExitosa(false);
         onRefrescar();
@@ -392,7 +396,7 @@ export default function ControlViaticosModal({
   };
 
   const handleDevolverAAnalista = async () => {
-    if (!solicitud) return;
+    if (!solicitud || isVerificada) return;
     if (!motivoDevolucion.trim()) {
       setErrorDevolucion('El motivo de la devolución es obligatorio.');
       return;
@@ -415,10 +419,18 @@ export default function ControlViaticosModal({
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl lg:max-w-4xl w-full my-auto max-h-[90vh] overflow-y-auto border border-slate-200">
         <div className="p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-[#003DA5]" />
-              Control Viáticos — Control Cruzado (2do Nivel)
-            </h2>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#003DA5]" />
+                Control Viáticos — Control Cruzado (2do Nivel)
+              </h2>
+              {isVerificada && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  VERIFICADA
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={onCerrar}
@@ -578,113 +590,157 @@ export default function ControlViaticosModal({
               {/* ==================== Section 6: Acciones de Control Cruzado ==================== */}
               <section className="mb-6 border-t border-slate-100 pt-4">
                 <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4" />
+                  <ShieldCheck className="w-4 h-4 text-[#003DA5]" />
                   Acciones de Control Cruzado
                 </h3>
 
-                <div className="border border-slate-200 rounded-xl p-4 space-y-4">
-                  <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span className="text-xs font-bold text-slate-700">Aprobar y Verificar (2do Nivel)</span>
+                {isVerificada ? (
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700 shrink-0">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-emerald-900">
+                            Expediente Verificado en Segundo Nivel
+                          </h4>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-800">
+                            VERIFICADA
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-800">
+                          {verificacionExitosa
+                            ? 'Verificación de 2do nivel registrada exitosamente. La solicitud continúa su curso hacia la expedición de resolución.'
+                            : 'Este expediente ya cuenta con la validación de control cruzado (2do nivel) aprobada. No requiere acciones adicionales de validación y continúa su curso hacia la expedición de resolución.'}
+                        </p>
+                        {verificacionExitosa && (
+                          <div className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            Verificación de 2do nivel registrada
+                          </div>
+                        )}
+                        {(solicitud.fechaSegundaRevision || (solicitud as any).fechaRevision) && (
+                          <div className="mt-2 pt-2 border-t border-emerald-200/60 flex flex-wrap gap-4 text-[11px] text-emerald-800">
+                            <span>
+                              <strong>Fecha de Verificación:</strong>{' '}
+                              {fmtFechaHora(solicitud.fechaSegundaRevision || (solicitud as any).fechaRevision)}
+                            </span>
+                            {solicitud.observacionesSegundaRevision && (
+                              <span>
+                                <strong>Observaciones:</strong> {solicitud.observacionesSegundaRevision}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-600 mb-3">
-                      Confirma que la liquidación, los soportes y la auditoría de 1er nivel son correctos.
-                      La solicitud pasará a estado VERIFICADA y continuará su flujo hacia resolución.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleVerificarSegundoNivel}
-                      disabled={verificando}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors"
-                    >
-                      {verificando ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4" />
-                      )}
-                      {verificando ? 'Verificando...' : 'Aprobar y Verificar (2do Nivel)'}
-                    </button>
-                    {verificacionExitosa && (
-                      <span className="ml-4 text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Verificación de 2do nivel registrada
-                      </span>
-                    )}
-                    {errorVerificacion && (
-                      <span className="ml-4 text-xs text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        {errorVerificacion}
-                      </span>
-                    )}
                   </div>
-
-                  <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="w-4 h-4 text-red-600" />
-                      <span className="text-xs font-bold text-slate-700">Devolver a Analista (1er Nivel)</span>
-                    </div>
-
-                    {!mostrandoDevolucion ? (
+                ) : (
+                  <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span className="text-xs font-bold text-slate-700">Aprobar y Verificar (2do Nivel)</span>
+                      </div>
+                      <p className="text-xs text-slate-600 mb-3">
+                        Confirma que la liquidación, los soportes y la auditoría de 1er nivel son correctos.
+                        La solicitud pasará a estado VERIFICADA y continuará su flujo hacia resolución.
+                      </p>
                       <button
                         type="button"
-                        onClick={() => setMostrandoDevolucion(true)}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 transition-colors"
+                        onClick={handleVerificarSegundoNivel}
+                        disabled={verificando}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors"
                       >
-                        <X className="w-4 h-4" />
-                        Devolver a Analista
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-slate-600">
-                          Ingrese el motivo obligatorio de la devolución. La solicitud volverá al analista
-                          que realizó la verificación de 1er nivel para subsanar observaciones.
-                        </p>
-                        <textarea
-                          value={motivoDevolucion}
-                          onChange={(e) => setMotivoDevolucion(e.target.value)}
-                          placeholder="Describa detalladamente el motivo de la devolución..."
-                          rows={4}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white resize-y"
-                        />
-                        {errorDevolucion && (
-                          <p className="text-xs text-red-600 flex items-center gap-1">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            {errorDevolucion}
-                          </p>
+                        {verificando ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4" />
                         )}
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMostrandoDevolucion(false);
-                              setMotivoDevolucion('');
-                              setErrorDevolucion(null);
-                            }}
-                            className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 font-semibold"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleDevolverAAnalista}
-                            disabled={devolviendo || motivoDevolucion.trim().length < 3}
-                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors ${
-                              !devolviendo && motivoDevolucion.trim()
-                                ? 'bg-red-600 hover:bg-red-700'
-                                : 'bg-red-300 cursor-not-allowed'
-                            }`}
-                          >
-                            {devolviendo ? (
-                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : null}
-                            Confirmar Devolución
-                          </button>
-                        </div>
+                        {verificando ? 'Verificando...' : 'Aprobar y Verificar (2do Nivel)'}
+                      </button>
+                      {verificacionExitosa && (
+                        <span className="ml-4 text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Verificación de 2do nivel registrada
+                        </span>
+                      )}
+                      {errorVerificacion && (
+                        <span className="ml-4 text-xs text-red-600 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {errorVerificacion}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle className="w-4 h-4 text-red-600" />
+                        <span className="text-xs font-bold text-slate-700">Devolver a Analista (1er Nivel)</span>
                       </div>
-                    )}
+
+                      {!mostrandoDevolucion ? (
+                        <button
+                          type="button"
+                          onClick={() => setMostrandoDevolucion(true)}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          Devolver a Analista
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <p className="text-xs text-slate-600">
+                            Ingrese el motivo obligatorio de la devolución. La solicitud volverá al analista
+                            que realizó la verificación de 1er nivel para subsanar observaciones.
+                          </p>
+                          <textarea
+                            value={motivoDevolucion}
+                            onChange={(e) => setMotivoDevolucion(e.target.value)}
+                            placeholder="Describa detalladamente el motivo de la devolución..."
+                            rows={4}
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white resize-y"
+                          />
+                          {errorDevolucion && (
+                            <p className="text-xs text-red-600 flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {errorDevolucion}
+                            </p>
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMostrandoDevolucion(false);
+                                setMotivoDevolucion('');
+                                setErrorDevolucion(null);
+                              }}
+                              className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 font-semibold"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleDevolverAAnalista}
+                              disabled={devolviendo || motivoDevolucion.trim().length < 3}
+                              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors ${
+                                !devolviendo && motivoDevolucion.trim()
+                                  ? 'bg-red-600 hover:bg-red-700'
+                                  : 'bg-red-300 cursor-not-allowed'
+                              }`}
+                            >
+                              {devolviendo ? (
+                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : null}
+                              Confirmar Devolución
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </section>
             </>
           )}

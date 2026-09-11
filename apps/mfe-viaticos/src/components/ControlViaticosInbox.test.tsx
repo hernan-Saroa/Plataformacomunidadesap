@@ -211,4 +211,21 @@ describe('ControlViaticosInbox', () => {
       expect(screen.getByText('Página 1 de 3')).toBeDefined();
     });
   });
+
+  it('debe mostrar botón "Verificado" cuando la solicitud está en estado VERIFICADA', async () => {
+    (viaticosService.obtenerBandejaControlViaticos as any).mockResolvedValue({
+      data: [solMock({ estadoSolicitud: 'VERIFICADA' })],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    render(<ControlViaticosInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Verificado')).toBeDefined();
+      expect(screen.queryByText('Control Cruzado')).toBeNull();
+    });
+  });
 });
+

@@ -382,4 +382,30 @@ describe('ControlViaticosModal', () => {
       expect(screen.getByText('No autorizado para devolver')).toBeDefined();
     });
   });
+
+  it('no muestra los botones de aprobar ni de devolver cuando la solicitud está en estado VERIFICADA', () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({ estadoSolicitud: 'VERIFICADA' }),
+      cargando: false,
+    });
+
+    expect(screen.queryByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Devolver a Analista' })).toBeNull();
+  });
+
+  it('muestra el banner de expediente verificado cuando la solicitud está en estado VERIFICADA', () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        estadoSolicitud: 'VERIFICADA',
+        fechaSegundaRevision: '2026-09-11T12:00:00Z',
+      }),
+      cargando: false,
+    });
+
+    expect(screen.getByText('Expediente Verificado en Segundo Nivel')).toBeDefined();
+    expect(screen.getAllByText('VERIFICADA').length).toBeGreaterThan(0);
+  });
 });
+

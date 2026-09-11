@@ -771,15 +771,27 @@ export default function ViaticosModulePremium() {
                                   <button
                                     type="button"
                                     onClick={() => void handleAbrirControlCruzado(sol)}
-                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                                    className={`p-1.5 rounded-lg transition-colors ${
+                                      sol.estado === 'VERIFICADA'
+                                        ? 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                    }`}
                                     title={
                                       sol.estado === 'SOLICITADA_SIIF'
                                         ? 'Realizar Control Cruzado (Segunda Revisión)'
-                                        : 'Ver Control Cruzado'
+                                        : 'Consultar Expediente Verificado (2do Nivel)'
                                     }
-                                    aria-label="Realizar Control Cruzado"
+                                    aria-label={
+                                      sol.estado === 'SOLICITADA_SIIF'
+                                        ? 'Realizar Control Cruzado'
+                                        : 'Consultar Expediente Verificado'
+                                    }
                                   >
-                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    {sol.estado === 'VERIFICADA' ? (
+                                      <Eye className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                    )}
                                   </button>
                                 )}
                               </div>

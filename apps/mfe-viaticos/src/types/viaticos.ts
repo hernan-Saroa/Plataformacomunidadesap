@@ -663,6 +663,12 @@ export interface SolicitudControlViaticosResponse {
   analistaVerificadorNombre?: string | null;
   /** Timestamp de la verificación de 1er nivel (exportación SIIF). */
   fechaVerificacionPrimerNivel?: string | null;
+  /** Revisor de control que realizó la verificación de 2do nivel. */
+  revisorControlId?: string | null;
+  /** Timestamp de la verificación de 2do nivel. */
+  fechaSegundaRevision?: string | null;
+  /** Observaciones de la segunda revisión. */
+  observacionesSegundaRevision?: string | null;
   /** Datos de liquidación calculada. */
   liquidacion?: LiquidacionResponse['data'];
   /** Validación de tiquete si aplica. */

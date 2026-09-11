@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Clock,
+  Eye,
   FileText,
   LoaderCircle,
   Search,
@@ -257,12 +258,29 @@ export default function ControlViaticosInbox() {
                         <button
                           type="button"
                           onClick={() => handleIniciarControlCruzado(s)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a7d] transition-colors text-[11px] font-semibold"
-                          title="Realizar Control Cruzado"
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors text-[11px] font-semibold ${
+                            s.estadoSolicitud === 'VERIFICADA'
+                              ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
+                              : 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
+                          }`}
+                          title={
+                            s.estadoSolicitud === 'VERIFICADA'
+                              ? 'Consultar Expediente Verificado'
+                              : 'Realizar Control Cruzado'
+                          }
                         >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Control Cruzado</span>
-                          <FileText className="w-3.5 h-3.5" />
+                          {s.estadoSolicitud === 'VERIFICADA' ? (
+                            <>
+                              <Eye className="w-3.5 h-3.5 text-blue-600" />
+                              <span className="hidden sm:inline">Verificado</span>
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Control Cruzado</span>
+                              <FileText className="w-3.5 h-3.5" />
+                            </>
+                          )}
                         </button>
                       </td>
                     </tr>
