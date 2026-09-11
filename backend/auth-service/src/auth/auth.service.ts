@@ -368,6 +368,25 @@ export class AuthService {
       ),
     );
 
+    const isSuperAdminUser = rolesCodes.some((code: string) => {
+      const normalized = String(code || '').toUpperCase().replace(/\s+/g, '_');
+      return [
+        'SUPER_ADMIN',
+        'ADMIN',
+        'SUPERUSER',
+        'SUPER_ADMINISTRADOR',
+        'ADMINISTRATIVO',
+      ].includes(normalized);
+    });
+
+    // Para super usuarios o usuarios con cientos de permisos asignados, el JWT se mantiene compacto
+    // con ['*'] para evitar el error HPE_HEADER_OVERFLOW (límite 16KB de cabecera HTTP/Set-Cookie de Node.js).
+    // La lista completa detallada de permisos se sigue entregando en el cuerpo JSON (user.permissions).
+    const jwtPermissions =
+      isSuperAdminUser || permissionCodes.length > 50
+        ? ['*']
+        : permissionCodes;
+
     const payload = {
       sub: user.id_user,
       username: user.username,
@@ -377,7 +396,7 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
-      permissions: permissionCodes,
+      permissions: jwtPermissions,
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {
