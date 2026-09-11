@@ -57,9 +57,33 @@ export interface SolicitudMantenimiento {
   estado: string;
   observaciones?: string;
   costoEstimado?: number;
+  idAreaSolicitante?: string;
+  nombreAreaSolicitante?: string;
+  piso?: string;
+  salon?: string;
+  ubicacionDetalle?: string;
+  tipoAtencion: string;
+  idCategoria?: string;
+  fechaRadicacion?: string;
+  usuarioSolicitanteId?: string;
+  usuarioSolicitanteEmail?: string;
   createdAt: string;
   sede?: Sede;
   espacio?: EspacioFisico;
+}
+
+export interface CreateMantenimientoPayload {
+  idSede: string;
+  idEspacio?: string;
+  nombreAreaSolicitante: string;
+  idAreaSolicitante?: string;
+  piso: string;
+  salon: string;
+  ubicacionDetalle?: string;
+  tipoMantenimiento: string;
+  descripcion: string;
+  evidenciaInicialUrl?: string;
+  prioridad?: string;
 }
 
 export interface EstadisticasInfraestructura {
@@ -70,126 +94,48 @@ export interface EstadisticasInfraestructura {
   porcentajeOcupacion: number;
 }
 
-const API_BASE_URL = typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL
-  ? `${(window as any).__ESAP_CONFIG__.API_URL}/infraestructura`
-  : '/services/infraestructura';
+const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
+  ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '')
+  : 'http://localhost:4000';
+
+const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
 
 export const infraestructuraService = {
   async getSedes(): Promise<Sede[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/sedes`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Error al obtener sedes');
+      if (!res.ok) throw new Error(`Error al obtener sedes (${res.status})`);
       return await res.json();
-    } catch {
-      return [
-        {
-          idSede: '1',
-          codigo: 'SEDE-CENTRAL',
-          nombre: 'Sede Central - Bogotá D.C.',
-          tipo: 'SEDE_CENTRAL',
-          departamento: 'Bogotá D.C.',
-          municipio: 'Bogotá',
-          direccion: 'Calle 44 # 53 - 37 CAN',
-          telefono: '(601) 7956110',
-          emailContacto: 'infraestructura@esap.edu.co',
-          isActivo: true,
-        },
-        {
-          idSede: '2',
-          codigo: 'TERR-ANTIOQUIA',
-          nombre: 'Territorial Antioquia - Chocó',
-          tipo: 'TERRITORIAL',
-          departamento: 'Antioquia',
-          municipio: 'Medellín',
-          direccion: 'Calle 56 # 41 - 147',
-          telefono: '(604) 5143300',
-          emailContacto: 'antioquia@esap.edu.co',
-          isActivo: true,
-        },
-        {
-          idSede: '3',
-          codigo: 'TERR-VALLE',
-          nombre: 'Territorial Valle del Cauca',
-          tipo: 'TERRITORIAL',
-          departamento: 'Valle del Cauca',
-          municipio: 'Cali',
-          direccion: 'Avenida 2N # 24N - 32',
-          telefono: '(602) 6612000',
-          emailContacto: 'valle@esap.edu.co',
-          isActivo: true,
-        },
-      ];
+    } catch (err) {
+      console.warn('[infraestructuraService] getSedes fallback a lista vacía:', err);
+      return [];
     }
   },
 
   async getEspacios(): Promise<EspacioFisico[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/espacios`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Error al obtener espacios');
+      if (!res.ok) throw new Error(`Error al obtener espacios (${res.status})`);
       return await res.json();
-    } catch {
-      return [
-        {
-          idEspacio: 'e1',
-          idBloque: 'b1',
-          codigo: 'AULA-101',
-          nombre: 'Aula Magistral Camilo Torres',
-          tipo: 'AULA',
-          capacidad: 45,
-          piso: 1,
-          areaM2: 70,
-          tieneAireAcondicionado: true,
-          tieneVideobeam: true,
-          tieneComputadores: false,
-          estado: 'DISPONIBLE',
-          isActivo: true,
-        },
-        {
-          idEspacio: 'e2',
-          idBloque: 'b1',
-          codigo: 'AUD-PRINCIPAL',
-          nombre: 'Auditorio Mayor ESAP',
-          tipo: 'AUDITORIO',
-          capacidad: 250,
-          piso: 1,
-          areaM2: 320,
-          tieneAireAcondicionado: true,
-          tieneVideobeam: true,
-          tieneComputadores: true,
-          estado: 'DISPONIBLE',
-          isActivo: true,
-        },
-        {
-          idEspacio: 'e3',
-          idBloque: 'b2',
-          codigo: 'LAB-INFO-01',
-          nombre: 'Laboratorio de Informática y Estadística',
-          tipo: 'LABORATORIO',
-          capacidad: 35,
-          piso: 2,
-          areaM2: 85,
-          tieneAireAcondicionado: true,
-          tieneVideobeam: true,
-          tieneComputadores: true,
-          estado: 'MANTENIMIENTO',
-          isActivo: true,
-        },
-      ];
+    } catch (err) {
+      console.warn('[infraestructuraService] getEspacios fallback a lista vacía:', err);
+      return [];
     }
   },
 
   async getEstadisticas(): Promise<EstadisticasInfraestructura> {
     try {
       const res = await fetch(`${API_BASE_URL}/espacios/estadisticas`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Error al obtener estadísticas');
+      if (!res.ok) throw new Error(`Error al obtener estadísticas (${res.status})`);
       return await res.json();
-    } catch {
+    } catch (err) {
+      console.warn('[infraestructuraService] getEstadisticas fallback a default:', err);
       return {
-        total: 128,
-        disponibles: 104,
-        enMantenimiento: 8,
-        reservadas: 16,
-        porcentajeOcupacion: 19,
+        total: 0,
+        disponibles: 0,
+        enMantenimiento: 0,
+        reservadas: 0,
+        porcentajeOcupacion: 0,
       };
     }
   },
@@ -214,6 +160,10 @@ export const infraestructuraService = {
           fechaProgramada: '2026-09-12',
           estado: 'EN_PROCESO',
           costoEstimado: 680000,
+          piso: '1',
+          salon: 'Auditorio Principal',
+          nombreAreaSolicitante: 'Dirección Académica',
+          tipoAtencion: 'FISICA',
           createdAt: new Date().toISOString(),
         },
         {
@@ -227,11 +177,58 @@ export const infraestructuraService = {
           solicitanteNombre: 'Coordinación Territorial',
           responsableAsignado: 'Técnico Climatización S.A.S.',
           fechaProgramada: '2026-09-18',
-          estado: 'PENDIENTE',
+          estado: 'RECIBIDA',
           costoEstimado: 1200000,
+          piso: '3',
+          salon: 'Oficina 301',
+          nombreAreaSolicitante: 'Coordinación Territorial',
+          tipoAtencion: 'FISICA',
           createdAt: new Date().toISOString(),
         },
       ];
     }
+  },
+
+  async getMisSolicitudes(): Promise<SolicitudMantenimiento[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/mis-solicitudes`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error('Error al obtener mis solicitudes');
+      return await res.json();
+    } catch (err) {
+      console.warn('No se pudieron cargar mis solicitudes (sin sesion o endpoint indisponible). Retornando placeholder.', err);
+      return [];
+    }
+  },
+
+  async createMantenimiento(payload: CreateMantenimientoPayload): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let mensaje = 'Error al radicar la solicitud';
+      try {
+        const errorBody = await res.json();
+        if (errorBody?.message) {
+          mensaje = Array.isArray(errorBody.message) ? errorBody.message.join(', ') : String(errorBody.message);
+        }
+      } catch {
+        // Ignorar error de parseo del body
+      }
+      throw new Error(mensaje);
+    }
+    return await res.json();
+  },
+
+  async getSedesAlcanceUMI(): Promise<Sede[]> {
+    const todas = await this.getSedes();
+    return todas.filter(
+      (s) => s.isActivo && (s.tipo === 'SEDE_CENTRAL' || s.tipo === 'SEDE_ALTERNA'),
+    );
   },
 };

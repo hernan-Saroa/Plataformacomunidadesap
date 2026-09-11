@@ -1,58 +1,77 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID, MinLength, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateMantenimientoDto {
-  @ApiProperty({ example: 'id-sede-uuid' })
+  @ApiProperty({ example: 'id-sede-uuid', description: 'Sede a la que pertenece la solicitud' })
   @IsString()
   @IsNotEmpty()
+  @IsUUID()
   idSede: string;
 
-  @ApiPropertyOptional({ example: 'id-espacio-uuid' })
+  @ApiPropertyOptional({ example: 'id-espacio-uuid', description: 'Espacio fisico asociado (catálogo de espacios)' })
   @IsString()
   @IsOptional()
+  @IsUUID()
   idEspacio?: string;
 
-  @ApiProperty({ example: 'CORRECTIVO' })
+  @ApiProperty({ example: 'Dirección Académica', description: 'Nombre del area solicitante' })
   @IsString()
   @IsNotEmpty()
-  tipoMantenimiento: string; // PREVENTIVO, CORRECTIVO, LOCATIVO, TECNOLOGICO
+  @MinLength(3)
+  @MaxLength(150)
+  nombreAreaSolicitante: string;
 
-  @ApiProperty({ example: 'ALTA' })
+  @ApiPropertyOptional({ example: 'uuid-area', description: 'Identificador opcional de la dependencia en auth.dependencias' })
   @IsString()
-  @IsNotEmpty()
-  prioridad: string; // BAJA, MEDIA, ALTA, URGENTE
+  @IsOptional()
+  @IsUUID()
+  idAreaSolicitante?: string;
 
-  @ApiProperty({ example: 'Falla en el sistema de aire acondicionado del Aula 204' })
+  @ApiProperty({ example: '2', description: 'Piso o nivel de la ubicación' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(20)
+  piso: string;
+
+  @ApiProperty({ example: 'Aula 204 u Oficina 301', description: 'Salon, oficina o ubicación específica' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  salon: string;
+
+  @ApiPropertyOptional({ example: 'Frente al ascensor, edificio principal', description: 'Detalle adicional de ubicación' })
+  @IsString()
+  @IsOptional()
+  ubicacionDetalle?: string;
+
+  @ApiProperty({ example: 'CORRECTIVO', description: 'Tipo de mantenimiento (hasta EFDS-1732 se usa este campo)' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  tipoMantenimiento: string;
+
+  @ApiProperty({ example: 'Falla en el sistema de aire acondicionado del Aula 204', description: 'Descripción de la solicitud' })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(10)
   descripcion: string;
 
-  @ApiProperty({ example: 'docente.pedro@esap.edu.co' })
-  @IsString()
-  @IsNotEmpty()
-  solicitanteEmail: string;
-
-  @ApiProperty({ example: 'Pedro Gómez' })
-  @IsString()
-  @IsNotEmpty()
-  solicitanteNombre: string;
-
-  @ApiPropertyOptional({ example: '2026-09-15' })
+  @ApiPropertyOptional({ example: 'http://storage/evidencia1.jpg', description: 'Evidencia inicial opcional' })
   @IsString()
   @IsOptional()
-  fechaProgramada?: string;
+  evidenciaInicialUrl?: string;
 
-  @ApiPropertyOptional({ example: 450000 })
-  @IsNumber()
+  @ApiPropertyOptional({ example: 'MEDIA', description: 'Prioridad: BAJA, MEDIA, ALTA, URGENTE' })
+  @IsString()
   @IsOptional()
-  costoEstimado?: number;
+  prioridad?: string;
 }
 
 export class UpdateMantenimientoEstadoDto {
-  @ApiProperty({ example: 'EN_PROCESO' })
+  @ApiProperty({ example: 'EN_ANALISIS', description: 'Nuevo estado de la solicitud' })
   @IsString()
   @IsNotEmpty()
-  estado: string; // PENDIENTE, EN_PROCESO, COMPLETADO, RECHAZADO
+  estado: string;
 
   @ApiPropertyOptional({ example: 'Ing. Carlos Pérez' })
   @IsString()

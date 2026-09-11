@@ -25,10 +25,10 @@ export class SolicitudMantenimiento {
   idSede: string;
 
   @Column({ type: 'varchar', length: 50, name: 'tipo_mantenimiento' })
-  tipoMantenimiento: string; // PREVENTIVO, CORRECTIVO, LOCATIVO, TECNOLOGICO
+  tipoMantenimiento: string;
 
   @Column({ type: 'varchar', length: 30, default: 'MEDIA' })
-  prioridad: string; // BAJA, MEDIA, ALTA, URGENTE
+  prioridad: string;
 
   @Column({ type: 'text' })
   descripcion: string;
@@ -48,14 +48,44 @@ export class SolicitudMantenimiento {
   @Column({ type: 'date', nullable: true, name: 'fecha_ejecucion' })
   fechaEjecucion: string;
 
-  @Column({ type: 'varchar', length: 30, default: 'PENDIENTE' })
-  estado: string; // PENDIENTE, EN_PROCESO, COMPLETADO, RECHAZADO
+  @Column({ type: 'varchar', length: 30, default: 'RECIBIDA' })
+  estado: string;
 
   @Column({ type: 'text', nullable: true })
   observaciones: string;
 
   @Column({ type: 'numeric', precision: 14, scale: 2, default: 0, name: 'costo_estimado' })
   costoEstimado: number;
+
+  @Column({ type: 'uuid', nullable: true, name: 'id_area_solicitante' })
+  idAreaSolicitante: string;
+
+  @Column({ type: 'varchar', length: 150, nullable: true, name: 'nombre_area_solicitante' })
+  nombreAreaSolicitante: string;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  piso: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  salon: string;
+
+  @Column({ type: 'text', nullable: true, name: 'ubicacion_detalle' })
+  ubicacionDetalle: string;
+
+  @Column({ type: 'varchar', length: 20, default: 'FISICA', name: 'tipo_atencion' })
+  tipoAtencion: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'id_categoria' })
+  idCategoria: string;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'fecha_radicacion' })
+  fechaRadicacion: Date;
+
+  @Column({ type: 'uuid', nullable: true, name: 'usuario_solicitante_id' })
+  usuarioSolicitanteId: string;
+
+  @Column({ type: 'varchar', length: 150, nullable: true, name: 'usuario_solicitante_email' })
+  usuarioSolicitanteEmail: string;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
