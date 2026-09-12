@@ -24,7 +24,7 @@ export class UsuarioEntity {
   @Column({ name: 'id_person', type: 'uuid', nullable: true })
   idPerson: string | null;
 
-  @Column({ default: true })
+  @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
   @CreateDateColumn({ name: 'created_at' })

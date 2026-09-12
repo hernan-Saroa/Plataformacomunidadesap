@@ -65,6 +65,7 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT || 3000);
   const server = app.getHttpServer();
+  server.maxHeaderSize = 32 * 1024; // 32KB to avoid HPE_HEADER_OVERFLOW
   server.requestTimeout = requestTimeoutMs;
   server.headersTimeout = requestTimeoutMs + 1000;
   server.keepAliveTimeout = 65000;
