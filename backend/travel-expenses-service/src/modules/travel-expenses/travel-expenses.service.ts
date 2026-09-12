@@ -26,6 +26,10 @@ import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
 import { AutorizacionObservacionesDto } from '../../dto/autorizacion-observaciones.dto';
 import {
+  AutorizacionExtemporaneaDto,
+  RechazoExtemporaneaDto,
+} from '../../dto/autorizacion-extemporanea.dto';
+import {
   sanitizeObjetoComision,
   sanitizeTextoPlano,
   sanitizeDocumento,
@@ -148,6 +152,7 @@ export class TravelExpensesService {
     limit = 20,
     isControlViaticos = false,
     isAnalista = false,
+    isSecretario = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -158,6 +163,8 @@ export class TravelExpensesService {
       isControlViaticos,
       'isAnalista=',
       isAnalista,
+      'isSecretario=',
+      isSecretario,
       'page=',
       page,
       'limit=',
@@ -167,7 +174,7 @@ export class TravelExpensesService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if (!isSuperAdmin) {
+    if (!isSuperAdmin && !isSecretario) {
       if (isControlViaticos) {
         query.andWhere('s.estado_solicitud IN (:...estadosControl)', {
           estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'],
@@ -391,12 +398,17 @@ export class TravelExpensesService {
       throw new NotFoundException('Solicitud no encontrada.');
     }
 
+    const ESTADOS_PERMITIDOS_PRIORIDAD = [
+      EstadoSolicitud.SOLICITADO,
+      EstadoSolicitud.EXTEMPORANEA,
+    ];
+
     if (
       !isSuperAdmin &&
-      solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO
+      !ESTADOS_PERMITIDOS_PRIORIDAD.includes(solicitud.estadoSolicitud)
     ) {
       throw new BadRequestException(
-        `Solo se puede actualizar la prioridad de solicitudes en estado SOLICITADO. Estado actual: ${solicitud.estadoSolicitud}`,
+        `Solo se puede actualizar la prioridad de solicitudes en estado SOLICITADO o EXTEMPORANEA. Estado actual: ${solicitud.estadoSolicitud}`,
       );
     }
 
@@ -2599,7 +2611,10 @@ export class TravelExpensesService {
       }
 
       const estadoAnterior = solicitud.estadoSolicitud;
-      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      const esExtemporanea = Boolean(solicitud.extemporanea);
+      solicitud.estadoSolicitud = esExtemporanea
+        ? EstadoSolicitud.AUTORIZACION_DIRECCION
+        : EstadoSolicitud.VERIFICADA;
       solicitud.revisorControlId = usuarioId;
       solicitud.fechaSegundaRevision = new Date();
       solicitud.observacionesSegundaRevision = observaciones.slice(0, 2000);
@@ -2611,14 +2626,43 @@ export class TravelExpensesService {
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
         estadoAnterior,
-        estadoNuevo: EstadoSolicitud.VERIFICADA,
+        estadoNuevo: solicitud.estadoSolicitud,
         usuarioId: usuarioId,
-        comentarios: `Segunda revisión: ${observaciones.slice(0, 255)}`,
+        comentarios: esExtemporanea
+          ? `Segunda revisión completada. Enrutada a Dirección Nacional por comisión extemporánea (RF-AUT-002): ${observaciones.slice(0, 200)}`
+          : `Segunda revisión: ${observaciones.slice(0, 255)}`,
       });
 
       this.logger.log(
-        `[RF-REV-002] Solicitud ${solicitud.consecutivoUnico} verificada en segunda revisión por usuario ${usuarioId}`,
+        `[RF-REV-002] Solicitud ${solicitud.consecutivoUnico} verificada en segunda revisión por usuario ${usuarioId} (estadoNuevo: ${solicitud.estadoSolicitud})`,
       );
+
+      if (esExtemporanea) {
+        void this.notificationClient
+          .notifyByRole('DIRECCION_NACIONAL', {
+            tipo_notificacion: 'VIATICOS_COMISION_EXTEMPORANEA_PENDIENTE',
+            titulo: `Nueva comisión extemporánea para autorización: ${solicitud.consecutivoUnico || solicitud.id}`,
+            mensaje: `La comisión ${solicitud.consecutivoUnico || solicitud.id} no cumplió los 14 días hábiles y requiere su autorización excepcional en bandeja (RF-AUT-002).`,
+            descripcion_corta: `Extemporánea pendiente · ${solicitud.consecutivoUnico || solicitud.id}`,
+            icono: 'Award',
+            color: '#7C3AED',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Revisar comisión',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: solicitud.consecutivoUnico,
+              extemporanea: true,
+            },
+          })
+          .catch((err) => {
+            this.logger.warn(
+              `Error notificando a Dirección Nacional sobre comisión extemporánea: ${err?.message}`,
+            );
+          });
+      }
 
       return saved;
     });
@@ -2936,7 +2980,7 @@ export class TravelExpensesService {
     page: number;
     limit: number;
   }> {
-    // 1. Transición automática atómica de VERIFICADA -> EN_AUTORIZACION
+    // 1. Transición automática atómica: regulares -> EN_AUTORIZACION, extemporáneas -> AUTORIZACION_DIRECCION
     try {
       const verificadas = await this.solicitudRepo.find({
         where: { estadoSolicitud: EstadoSolicitud.VERIFICADA },
@@ -2945,26 +2989,40 @@ export class TravelExpensesService {
       if (verificadas.length > 0) {
         await this.dataSource.transaction(async (manager) => {
           for (const sol of verificadas) {
-            sol.estadoSolicitud = EstadoSolicitud.EN_AUTORIZACION;
-            await manager.getRepository(SolicitudComisionEntity).save(sol);
+            if (sol.extemporanea) {
+              sol.estadoSolicitud = EstadoSolicitud.AUTORIZACION_DIRECCION;
+              await manager.getRepository(SolicitudComisionEntity).save(sol);
 
-            await manager.getRepository(SolicitudHistorialEstadoEntity).save({
-              solicitudId: sol.id,
-              estadoAnterior: EstadoSolicitud.VERIFICADA,
-              estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
-              usuarioId: sol.revisorControlId || sol.creadoPorUsuarioId,
-              comentarios:
-                'Llegada a la Subdirección de Gestión Corporativa para visto bueno de gasto e itinerario',
-            });
+              await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+                solicitudId: sol.id,
+                estadoAnterior: EstadoSolicitud.VERIFICADA,
+                estadoNuevo: EstadoSolicitud.AUTORIZACION_DIRECCION,
+                usuarioId: sol.revisorControlId || sol.creadoPorUsuarioId,
+                comentarios:
+                  'Enrutada a Dirección Nacional por condición de comisión EXTEMPORÁNEA (RF-AUT-002)',
+              });
+            } else {
+              sol.estadoSolicitud = EstadoSolicitud.EN_AUTORIZACION;
+              await manager.getRepository(SolicitudComisionEntity).save(sol);
+
+              await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+                solicitudId: sol.id,
+                estadoAnterior: EstadoSolicitud.VERIFICADA,
+                estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
+                usuarioId: sol.revisorControlId || sol.creadoPorUsuarioId,
+                comentarios:
+                  'Llegada a la Subdirección de Gestión Corporativa para visto bueno de gasto e itinerario',
+              });
+            }
           }
         });
         this.logger.log(
-          `[RF-AUT-001] Se transicionaron ${verificadas.length} comisiones de VERIFICADA a EN_AUTORIZACION`,
+          `[RF-AUT-001/002] Se enrutaron ${verificadas.length} comisiones desde VERIFICADA`,
         );
       }
     } catch (err: any) {
       this.logger.warn(
-        `[RF-AUT-001] Error en transición automática de VERIFICADA a EN_AUTORIZACION: ${err?.message}`,
+        `[RF-AUT-001] Error en transición automática de VERIFICADA: ${err?.message}`,
       );
     }
 
@@ -2975,6 +3033,7 @@ export class TravelExpensesService {
       .leftJoinAndSelect('s.analistaAsignado', 'a')
       .leftJoinAndSelect('s.revisorControl', 'rc')
       .leftJoinAndSelect('s.autorizador', 'aut')
+      .leftJoinAndSelect('s.autorizadorDireccion', 'autDir')
       .leftJoinAndSelect('s.documentosSoporte', 'docs');
 
     if (estado && Object.values(EstadoSolicitud).includes(estado as EstadoSolicitud)) {
@@ -2987,6 +3046,13 @@ export class TravelExpensesService {
         ],
       });
     }
+
+    // Blindaje estricto: Las comisiones extemporáneas NO pueden llegar a la Subdirección
+    // a menos que hayan sido previamente autorizadas formalmente por la Dirección Nacional.
+    qb.andWhere(
+      '(s.extemporanea = false OR (s.extemporanea = true AND s.decision_direccion = :decisionAut AND s.autorizador_direccion_id IS NOT NULL))',
+      { decisionAut: 'AUTORIZADA' },
+    );
 
     if (search && search.trim()) {
       const term = `%${search.trim().toLowerCase()}%`;
@@ -3013,7 +3079,12 @@ export class TravelExpensesService {
     const [items, total] = await Promise.all([qb.getMany(), qb.getCount()]);
 
     const autorizadorIds = Array.from(
-      new Set(items.map((i) => i.autorizadorId).filter(Boolean) as string[]),
+      new Set(
+        [
+          ...items.map((i) => i.autorizadorId),
+          ...items.map((i) => i.autorizadorDireccionId),
+        ].filter(Boolean) as string[],
+      ),
     );
     const autorizadoresMap = new Map<string, string>();
     if (autorizadorIds.length > 0 && typeof this.dataSource?.query === 'function') {
@@ -3074,6 +3145,7 @@ export class TravelExpensesService {
         montoGastosViaje: s.montoGastosViaje,
         montoTotal: Number(s.montoViaticos || 0) + Number(s.montoGastosViaje || 0),
         estadoSolicitud: s.estadoSolicitud,
+        extemporanea: s.extemporanea,
         siifExportado: s.siifExportado,
         fechaExportacionSiif: s.fechaExportacionSiif,
         revisorControlId: s.revisorControlId,
@@ -3082,6 +3154,12 @@ export class TravelExpensesService {
         autorizadorNombre: s.autorizadorId ? (autorizadoresMap.get(s.autorizadorId) || null) : null,
         fechaAutorizacion: s.fechaAutorizacion,
         observacionesAutorizacion: s.observacionesAutorizacion,
+        autorizadorDireccionId: s.autorizadorDireccionId,
+        autorizadorDireccionNombre: s.autorizadorDireccionId ? (autorizadoresMap.get(s.autorizadorDireccionId) || null) : null,
+        fechaAutorizacionDireccion: s.fechaAutorizacionDireccion,
+        decisionDireccion: s.decisionDireccion,
+        justificacionDireccion: s.justificacionDireccion,
+        esDelegadoDireccion: s.esDelegadoDireccion,
         analistaAsignadoId: s.analistaAsignadoId,
         creadoPorUsuarioId: s.creadoPorUsuarioId,
         documentosSoporte: s.documentosSoporte || [],
@@ -3137,6 +3215,19 @@ export class TravelExpensesService {
         throw new BadRequestException(
           `Estado no válido para autorización: ${solicitud.estadoSolicitud}. La comisión debe estar en EN_AUTORIZACION.`,
         );
+      }
+
+      // Blindaje: Si es extemporánea, la Subdirección NO puede autorizarla sin previa autorización de Dirección Nacional
+      if (solicitud.extemporanea) {
+        if (
+          solicitud.decisionDireccion !== 'AUTORIZADA' ||
+          !solicitud.autorizadorDireccionId ||
+          !solicitud.fechaAutorizacionDireccion
+        ) {
+          throw new BadRequestException(
+            'La comisión es extemporánea y no puede ser autorizada por la Subdirección sin la previa aprobación formal de la Dirección Nacional (RF-AUT-002).',
+          );
+        }
       }
 
       const estadoAnterior = solicitud.estadoSolicitud;
@@ -3216,6 +3307,13 @@ export class TravelExpensesService {
       if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
         throw new BadRequestException(
           `Estado no válido para devolución: ${solicitud.estadoSolicitud}. La comisión debe estar en EN_AUTORIZACION.`,
+        );
+      }
+
+      // Blindaje: Si es extemporánea, no puede devolverse desde Subdirección si no ha pasado por Dirección Nacional
+      if (solicitud.extemporanea && solicitud.decisionDireccion !== 'AUTORIZADA') {
+        throw new BadRequestException(
+          'La comisión es extemporánea y no se encuentra en el flujo de la Subdirección (pendiente de Dirección Nacional).',
         );
       }
 
@@ -3432,6 +3530,474 @@ export class TravelExpensesService {
       }
     } catch (err: any) {
       this.logger.warn(`[notify] Error enviando notificación de devolución: ${err?.message}`);
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Obtener bandeja de comisiones extemporáneas para la Dirección Nacional (Etapa 6).
+   *
+   * Criterio de aceptación 1 (Gherkin):
+   *   Dada una comisión marcada EXTEMPORÁNEA, cuando llega a autorización,
+   *   entonces el sistema la enruta a la Dirección Nacional (no solo a la Subdirección).
+   */
+  async obtenerBandejaDireccionNacional(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    // 1. Transición atómica de solicitudes extemporáneas en VERIFICADA a AUTORIZACION_DIRECCION
+    try {
+      const extemporaneasVerificadas = await this.solicitudRepo.find({
+        where: {
+          estadoSolicitud: EstadoSolicitud.VERIFICADA,
+          extemporanea: true,
+        },
+      });
+
+      if (extemporaneasVerificadas.length > 0) {
+        await this.dataSource.transaction(async (manager) => {
+          for (const sol of extemporaneasVerificadas) {
+            sol.estadoSolicitud = EstadoSolicitud.AUTORIZACION_DIRECCION;
+            await manager.getRepository(SolicitudComisionEntity).save(sol);
+
+            await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+              solicitudId: sol.id,
+              estadoAnterior: EstadoSolicitud.VERIFICADA,
+              estadoNuevo: EstadoSolicitud.AUTORIZACION_DIRECCION,
+              usuarioId: sol.revisorControlId || sol.creadoPorUsuarioId,
+              comentarios:
+                'Enrutada a la Dirección Nacional para autorización de comisión extemporánea (RF-AUT-002)',
+            });
+          }
+        });
+        this.logger.log(
+          `[RF-AUT-002] Se enrutaron ${extemporaneasVerificadas.length} comisiones extemporáneas a Dirección Nacional`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[RF-AUT-002] Error en transición a AUTORIZACION_DIRECCION: ${err?.message}`,
+      );
+    }
+
+    // 2. Consulta de bandeja de comisiones extemporáneas
+    const qb = this.solicitudRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'c')
+      .leftJoinAndSelect('s.analistaAsignado', 'a')
+      .leftJoinAndSelect('s.revisorControl', 'rc')
+      .leftJoinAndSelect('s.autorizador', 'aut')
+      .leftJoinAndSelect('s.autorizadorDireccion', 'autDir')
+      .leftJoinAndSelect('s.documentosSoporte', 'docs')
+      .where('s.extemporanea = :ext', { ext: true });
+
+    if (estado && estado !== 'TODOS') {
+      if (Object.values(EstadoSolicitud).includes(estado as EstadoSolicitud)) {
+        qb.andWhere('s.estadoSolicitud = :estado', { estado });
+      }
+    } else {
+      qb.andWhere('s.estadoSolicitud IN (:...estados)', {
+        estados: [
+          EstadoSolicitud.AUTORIZACION_DIRECCION,
+          EstadoSolicitud.EN_AUTORIZACION,
+          EstadoSolicitud.AUTORIZADA,
+          EstadoSolicitud.RECHAZADO,
+        ],
+      });
+    }
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(s.consecutivoUnico) LIKE :term OR LOWER(s.destinoCiudad) LIKE :term OR LOWER(c.primerNombre) LIKE :term OR LOWER(c.primerApellido) LIKE :term OR LOWER(c.numeroDocumento) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy(
+      `CASE s.estado_solicitud
+         WHEN 'AUTORIZACION_DIRECCION' THEN 1
+         WHEN 'EN_AUTORIZACION' THEN 2
+         WHEN 'AUTORIZADA' THEN 3
+         WHEN 'RECHAZADO' THEN 4
+         ELSE 5
+       END`,
+      'ASC',
+    );
+    qb.addOrderBy('s.actualizadoEn', 'DESC');
+
+    const take = Math.max(1, Math.min(100, Number(limit) || 20));
+    const skip = (Math.max(1, Number(page) || 1) - 1) * take;
+    qb.offset(skip).limit(take);
+
+    const [items, total] = await Promise.all([qb.getMany(), qb.getCount()]);
+
+    const autorizadorIds = Array.from(
+      new Set(
+        [
+          ...items.map((i) => i.autorizadorId),
+          ...items.map((i) => i.autorizadorDireccionId),
+        ].filter(Boolean) as string[],
+      ),
+    );
+    const autorizadoresMap = new Map<string, string>();
+    if (autorizadorIds.length > 0 && typeof this.dataSource?.query === 'function') {
+      try {
+        const rowsAut: any[] = await this.dataSource.query(
+          `SELECT u.id_user, u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.id_user = ANY($1)`,
+          [autorizadorIds],
+        );
+        if (Array.isArray(rowsAut)) {
+          for (const r of rowsAut) {
+            const nombre =
+              r.nom_largo ||
+              [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
+              r.username;
+            autorizadoresMap.set(r.id_user, nombre);
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Error resolviendo nombres de autorizadores en Dirección Nacional: ${e}`);
+      }
+    }
+
+    return {
+      data: items.map((s) => ({
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        comisionado: s.comisionado
+          ? {
+              id: s.comisionado.id,
+              numeroDocumento: s.comisionado.numeroDocumento,
+              nombreCompleto: [
+                s.comisionado.primerNombre,
+                s.comisionado.segundoNombre,
+                s.comisionado.primerApellido,
+                s.comisionado.segundoApellido,
+              ]
+                .filter(Boolean)
+                .join(' '),
+              tipoComisionado: s.comisionado.tipoComisionado,
+              idDependencia: s.comisionado.idDependencia,
+              email: s.comisionado.email,
+            }
+          : null,
+        destinoCiudad: s.destinoCiudad,
+        destinoDepartamento: s.destinoDepartamento,
+        fechaInicio: s.fechaInicio,
+        fechaFin: s.fechaFin,
+        diasComision: s.diasComision,
+        objetoComision: s.objetoComision,
+        prioridad: s.prioridad,
+        rubroPresupuestal: s.rubroPresupuestal,
+        requiereTiquetes: s.requiereTiquetes,
+        costoEstimadoTiquete: s.costoEstimadoTiquete,
+        montoViaticos: s.montoViaticos,
+        montoGastosViaje: s.montoGastosViaje,
+        montoTotal: Number(s.montoViaticos || 0) + Number(s.montoGastosViaje || 0),
+        estadoSolicitud: s.estadoSolicitud,
+        extemporanea: s.extemporanea,
+        motivoDevolucion: s.motivoDevolucion,
+        siifExportado: s.siifExportado,
+        revisorControlId: s.revisorControlId,
+        fechaSegundaRevision: s.fechaSegundaRevision,
+        autorizadorId: s.autorizadorId,
+        autorizadorNombre: s.autorizadorId ? (autorizadoresMap.get(s.autorizadorId) || null) : null,
+        fechaAutorizacion: s.fechaAutorizacion,
+        observacionesAutorizacion: s.observacionesAutorizacion,
+        autorizadorDireccionId: s.autorizadorDireccionId,
+        autorizadorDireccionNombre: s.autorizadorDireccionId ? (autorizadoresMap.get(s.autorizadorDireccionId) || null) : null,
+        fechaAutorizacionDireccion: s.fechaAutorizacionDireccion,
+        decisionDireccion: s.decisionDireccion,
+        justificacionDireccion: s.justificacionDireccion,
+        esDelegadoDireccion: s.esDelegadoDireccion,
+        analistaAsignadoId: s.analistaAsignadoId,
+        creadoPorUsuarioId: s.creadoPorUsuarioId,
+        documentosSoporte: s.documentosSoporte || [],
+        actualizadoEn: s.actualizadoEn,
+      })),
+      total,
+      page: Number(page) || 1,
+      limit: take,
+    };
+  }
+
+  /**
+   * RF-AUT-002 — Autorizar comisión extemporánea por la Dirección Nacional (Etapa 6).
+   *
+   * Criterio de aceptación 2 (Gherkin):
+   *   Dada una extemporánea, cuando la Dirección Nacional la autoriza,
+   *   entonces continúa el flujo normal de autorización corporativa (hacia Subdirección).
+   */
+  async autorizarComisionExtemporanea(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto?: AutorizacionExtemporaneaDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const justificacion = (dto?.justificacion || '').trim();
+    const esDelegado = Boolean(dto?.esDelegado);
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoDAutorizacion(solicitud, usuarioId, rolesUsuario);
+
+      if (!solicitud.extemporanea) {
+        throw new BadRequestException(
+          'La comisión no está marcada como extemporánea. No aplica autorización de Dirección Nacional.',
+        );
+      }
+
+      const estadosPermitidos = [
+        EstadoSolicitud.AUTORIZACION_DIRECCION,
+        EstadoSolicitud.VERIFICADA,
+      ];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no válido para autorización de Dirección Nacional: ${solicitud.estadoSolicitud}. La comisión debe estar en AUTORIZACION_DIRECCION.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.EN_AUTORIZACION;
+      solicitud.autorizadorDireccionId = usuarioId;
+      solicitud.fechaAutorizacionDireccion = new Date();
+      solicitud.decisionDireccion = 'AUTORIZADA';
+      solicitud.justificacionDireccion = justificacion ? justificacion.slice(0, 2000) : null;
+      solicitud.esDelegadoDireccion = esDelegado;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
+        usuarioId,
+        comentarios: `Autorizada excepcionalmente por Dirección Nacional ${esDelegado ? '(como Delegado)' : ''}: ${justificacion ? justificacion.slice(0, 255) : 'Comisión extemporánea avalada, continúa a Subdirección'}`,
+      });
+
+      this.logger.log(
+        `[RF-AUT-002] Solicitud extemporánea ${solicitud.consecutivoUnico} AUTORIZADA por Dirección Nacional (usuario ${usuarioId})`,
+      );
+
+      return saved;
+    });
+
+    void this.despacharNotificacionesAutorizacionDireccion(result, justificacion, esDelegado);
+
+    return result;
+  }
+
+  /**
+   * RF-AUT-002 — Rechazar comisión extemporánea por la Dirección Nacional (Etapa 6).
+   *
+   * Criterio de aceptación 3 (Gherkin):
+   *   Dada una extemporánea, cuando la Dirección Nacional la niega,
+   *   entonces la comisión se rechaza con la justificación registrada.
+   */
+  async rechazarComisionExtemporanea(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: RechazoExtemporaneaDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const justificacion = (dto?.justificacion || '').trim();
+    if (justificacion.length < 5) {
+      throw new BadRequestException(
+        'La justificación del rechazo es obligatoria (mínimo 5 caracteres).',
+      );
+    }
+    const esDelegado = Boolean(dto?.esDelegado);
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      this.validarSoDAutorizacion(solicitud, usuarioId, rolesUsuario);
+
+      if (!solicitud.extemporanea) {
+        throw new BadRequestException(
+          'La comisión no está marcada como extemporánea. No aplica decisión de Dirección Nacional.',
+        );
+      }
+
+      const estadosPermitidos = [
+        EstadoSolicitud.AUTORIZACION_DIRECCION,
+        EstadoSolicitud.VERIFICADA,
+      ];
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no válido para rechazo de Dirección Nacional: ${solicitud.estadoSolicitud}. La comisión debe estar en AUTORIZACION_DIRECCION.`,
+        );
+      }
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.RECHAZADO;
+      solicitud.autorizadorDireccionId = usuarioId;
+      solicitud.fechaAutorizacionDireccion = new Date();
+      solicitud.decisionDireccion = 'RECHAZADA';
+      solicitud.justificacionDireccion = justificacion.slice(0, 2000);
+      solicitud.motivoDevolucion = justificacion.slice(0, 2000);
+      solicitud.esDelegadoDireccion = esDelegado;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.RECHAZADO,
+        usuarioId,
+        comentarios: `Negada y rechazada por Dirección Nacional ${esDelegado ? '(como Delegado)' : ''}: ${justificacion.slice(0, 255)}`,
+      });
+
+      this.logger.log(
+        `[RF-AUT-002] Solicitud extemporánea ${solicitud.consecutivoUnico} RECHAZADA por Dirección Nacional (usuario ${usuarioId})`,
+      );
+
+      return saved;
+    });
+
+    void this.despacharNotificacionesRechazoDireccion(result, justificacion, esDelegado);
+
+    return result;
+  }
+
+  /**
+   * Notificaciones cuando la Dirección Nacional autoriza la extemporaneidad y pasa a Subdirección.
+   */
+  private async despacharNotificacionesAutorizacionDireccion(
+    solicitud: SolicitudComisionEntity,
+    justificacion: string,
+    esDelegado: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const rolFirmante = esDelegado ? 'Delegado(a) de la Dirección Nacional' : 'Dirección Nacional';
+
+      // 1. Notificación al Enlace Creador
+      if (solicitud.creadoPorUsuarioId) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_AUTORIZADA',
+          titulo: `Comisión extemporánea avalada: ${consecutivo}`,
+          mensaje: `La solicitud ${consecutivo} fue autorizada de manera excepcional por ${rolFirmante}. Continúa a la Subdirección para autorización corporativa.`,
+          descripcion_corta: `Aval Dirección · ${consecutivo}`,
+          icono: 'Award',
+          color: '#7C3AED',
+          prioridad: 'Media',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver estado',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            justificacion,
+          },
+        });
+      }
+
+      // 2. Notificación in-app a la bandeja de Subdirección de Gestión Corporativa
+      await this.notificationClient.notifyByRole('SUBDIRECCION_GESTION_CORPORATIVA', {
+        tipo_notificacion: 'VIATICOS_EXTEMPORANEA_EN_SUBDIRECCION',
+        titulo: `Nueva comisión extemporánea para visto bueno: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} cuenta con aval excepcional de ${rolFirmante} y se encuentra en su bandeja para visto bueno de gasto e itinerario.`,
+        descripcion_corta: `Extemporánea en bandeja · ${consecutivo}`,
+        icono: 'FileCheck',
+        color: '#4F46E5',
+        prioridad: 'Alta',
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Revisar comisión',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          autorizadoPorDireccion: true,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en despacharNotificacionesAutorizacionDireccion: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notificaciones cuando la Dirección Nacional niega y rechaza la comisión extemporánea.
+   */
+  private async despacharNotificacionesRechazoDireccion(
+    solicitud: SolicitudComisionEntity,
+    justificacion: string,
+    esDelegado: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const rolFirmante = esDelegado ? 'Delegado(a) de la Dirección Nacional' : 'Dirección Nacional';
+
+      // Notificación al Enlace Creador
+      if (solicitud.creadoPorUsuarioId) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
+          titulo: `Comisión extemporánea rechazada: ${consecutivo}`,
+          mensaje: `La solicitud ${consecutivo} fue rechazada por ${rolFirmante}. Motivo: ${justificacion}`,
+          descripcion_corta: `Rechazada Dirección · ${consecutivo}`,
+          icono: 'AlertTriangle',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver solicitud',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            motivo: justificacion,
+          },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en despacharNotificacionesRechazoDireccion: ${err?.message}`);
     }
   }
 

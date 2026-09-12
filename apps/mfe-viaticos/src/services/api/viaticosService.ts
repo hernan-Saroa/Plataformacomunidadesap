@@ -43,6 +43,8 @@ import {
   DevolverAutorizacionRequest,
   DevolverAutorizacionResponse,
   BandejaAutorizacionResponse,
+  AutorizarExtemporaneaPayload,
+  RechazarExtemporaneaPayload,
 } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
@@ -1405,6 +1407,71 @@ export class ViaticosService {
       return await response.blob();
     } catch (error) {
       console.error('[viaticos] Error descargando PDF de itinerario/tiquete:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Consulta la bandeja de comisiones extemporáneas para Dirección Nacional (Etapa 6).
+   */
+  async obtenerBandejaDireccionNacional(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<BandejaAutorizacionResponse> {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', String(page));
+      params.append('limit', String(limit));
+      if (search?.trim()) params.append('search', search.trim());
+      if (estado?.trim()) params.append('estado', estado.trim());
+
+      return await apiClient.get<BandejaAutorizacionResponse>(
+        `/viaticos/api/v1/requests/extemporaneous-authorization/inbox?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de Dirección Nacional:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Autoriza de manera excepcional una comisión extemporánea (Dirección Nacional).
+   * Transiciona la solicitud a EN_AUTORIZACION para que continúe a la Subdirección.
+   */
+  async autorizarComisionExtemporanea(
+    solicitudId: string,
+    justificacion?: string,
+    esDelegado?: boolean,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/authorize-extemporaneous`,
+        { justificacion, esDelegado },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error autorizando comisión extemporánea:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Niega y rechaza una comisión extemporánea (Dirección Nacional).
+   * Transiciona la solicitud a RECHAZADO con justificación motivada.
+   */
+  async rechazarComisionExtemporanea(
+    solicitudId: string,
+    justificacion: string,
+    esDelegado?: boolean,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/reject-extemporaneous`,
+        { justificacion, esDelegado },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error rechazando comisión extemporánea:', error);
       throw error;
     }
   }

@@ -16,6 +16,7 @@ export type EstadoSolicitudViatico =
   | 'SOLICITADA_SIIF'
   | 'VERIFICADA'
   | 'EN_VERIFICACION'
+  | 'AUTORIZACION_DIRECCION'
   | 'EN_AUTORIZACION'
   | 'AUTORIZADA';
 
@@ -805,6 +806,8 @@ export interface SolicitudAutorizacion {
   montoGastosViaje: number;
   montoTotal: number;
   estadoSolicitud: EstadoSolicitudViatico;
+  extemporanea?: boolean;
+  motivoDevolucion?: string | null;
   siifExportado: boolean;
   fechaExportacionSiif: string | null;
   revisorControlId: string | null;
@@ -813,6 +816,12 @@ export interface SolicitudAutorizacion {
   autorizadorNombre?: string | null;
   fechaAutorizacion: string | null;
   observacionesAutorizacion: string | null;
+  autorizadorDireccionId?: string | null;
+  autorizadorDireccionNombre?: string | null;
+  fechaAutorizacionDireccion?: string | null;
+  decisionDireccion?: string | null;
+  justificacionDireccion?: string | null;
+  esDelegadoDireccion?: boolean;
   analistaAsignadoId: string | null;
   creadoPorUsuarioId: string;
   documentosSoporte: DocumentoSoporte[];
@@ -825,5 +834,15 @@ export interface BandejaAutorizacionResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface AutorizarExtemporaneaPayload {
+  justificacion?: string;
+  esDelegado?: boolean;
+}
+
+export interface RechazarExtemporaneaPayload {
+  justificacion: string;
+  esDelegado?: boolean;
 }
 

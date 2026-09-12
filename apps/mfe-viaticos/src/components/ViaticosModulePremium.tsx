@@ -23,12 +23,15 @@ import {
   Flag,
   Undo2,
   ShieldCheck,
+  Award,
+  UserPlus,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
 import AnalystInbox from './AnalystInbox';
 import ControlViaticosModal from './ControlViaticosModal';
 import AutorizacionInbox from './AutorizacionInbox';
+import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -62,7 +65,7 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   EN_AUTORIZACION: 1,
@@ -95,9 +98,11 @@ export default function ViaticosModulePremium() {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
+  const [esSecretario, setEsSecretario] = useState(false);
   const [esAnalista, setEsAnalista] = useState(false);
   const [esControlViaticos, setEsControlViaticos] = useState(false);
   const [esSubdireccion, setEsSubdireccion] = useState(false);
+  const [esDireccionNacional, setEsDireccionNacional] = useState(false);
   const [cargandoRol, setCargandoRol] = useState(() => {
     if (typeof window === 'undefined') return false;
     return Boolean(
@@ -163,6 +168,13 @@ export default function ViaticosModulePremium() {
           color: '#4F46E5',
         },
         {
+          id: 'autorizaciones-direccion',
+          label: 'Autorización Extemporánea',
+          subtitle: 'Visto bueno Dirección Nacional (Etapa 6)',
+          icon: <Award className="w-5 h-5" />,
+          color: '#9333EA',
+        },
+        {
           id: 'configuracion',
           label: 'Configuración',
           subtitle: 'Parametrización de formulario y documentos',
@@ -178,15 +190,21 @@ export default function ViaticosModulePremium() {
     try {
       const { solicitudes: list } = await viaticosService.obtenerSolicitudes();
 
-      const esSecretario = authService.hasAnyPermission([
-        Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
-        Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
-        Permissions.VIATICOS_SOLICITUDES_RETURN,
-      ]);
+      const esSecretarioRol =
+        esSuperAdmin ||
+        authService.hasRole('SECRETARIO') ||
+        authService.hasRole('SECRETARIO_VIATICOS') ||
+        authService.hasRole('SUPERVISOR') ||
+        authService.hasAnyPermission([
+          Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+          Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+          Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
+          Permissions.VIATICOS_SOLICITUDES_RETURN,
+        ]);
 
       let solicitudesCombinadas = [...list];
 
-      if (esSecretario) {
+      if (esSecretarioRol) {
         try {
           const bandeja = await viaticosService.obtenerBandejaSecretario();
           const solicitudesBandeja = bandeja.data.map((item) => viaticosService.mapearSolicitudLista(item));
@@ -218,11 +236,27 @@ export default function ViaticosModulePremium() {
       } finally {
         const superAdmin = authService.isSuperAdmin();
         const subdir = authService.isSubdireccionGestionCorporativa();
+        const dirNac = authService.isDireccionNacional();
+        const secretario =
+          superAdmin ||
+          authService.hasRole('SECRETARIO') ||
+          authService.hasRole('SECRETARIO_VIATICOS') ||
+          authService.hasRole('SUPERVISOR') ||
+          authService.hasAnyPermission([
+            Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+            Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+            Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
+            Permissions.VIATICOS_SOLICITUDES_RETURN,
+          ]);
         setEsSuperAdmin(superAdmin);
+        setEsSecretario(secretario);
         setEsAnalista(authService.isAnalista());
         setEsControlViaticos(authService.isControlViaticos());
         setEsSubdireccion(subdir);
-        if (subdir && !superAdmin) {
+        setEsDireccionNacional(dirNac);
+        if (dirNac && !superAdmin && !subdir) {
+          setSeccion('autorizaciones-direccion');
+        } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
         }
         setCargandoRol(false);
@@ -292,13 +326,20 @@ export default function ViaticosModulePremium() {
 
   const handleVerDetalle = async (sol: SolicitudViatico) => {
     setSolicitudSeleccionada(sol);
-    setPrioridadSeleccionada('MEDIA');
+    setPrioridadSeleccionada(sol.prioridad || 'MEDIA');
+    setAnalistaSeleccionadoId(sol.analistaAsignadoId || null);
     setMotivoDevolucion('');
     setCargandoDocumentos(true);
     setDocumentosSoporte([]);
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
       setDocumentosSoporte(completa.documentosSoporte || []);
+      if (completa.analistaAsignadoId) {
+        setAnalistaSeleccionadoId(completa.analistaAsignadoId);
+      }
+      if (completa.prioridad) {
+        setPrioridadSeleccionada(completa.prioridad);
+      }
     } catch (e) {
       console.error('Error cargando documentos de soporte:', e);
       setMensajeExito('No fue posible cargar los documentos de soporte de esta solicitud.');
@@ -457,6 +498,13 @@ export default function ViaticosModulePremium() {
     authService.hasPermission('travel_expenses:read_authorizations') ||
     authService.hasPermission('travel_expenses:authorize_expense') ||
     authService.hasPermission('travel_expenses:return_authorization');
+  const puedeVerAutorizacionesDireccion =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esDireccionNacional ||
+    authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+    authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
+    authService.hasPermission('travel_expenses:reject_extemporaneous');
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -467,11 +515,18 @@ export default function ViaticosModulePremium() {
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
+        if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
       });
 
-      if (esSubdireccion && !esSuperAdmin) {
+      if (esDireccionNacional && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'autorizaciones-direccion') return -1;
+          if (b.id === 'autorizaciones-direccion') return 1;
+          return 0;
+        });
+      } else if (esSubdireccion && !esSuperAdmin) {
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones') return -1;
           if (b.id === 'autorizaciones') return 1;
@@ -669,14 +724,14 @@ export default function ViaticosModulePremium() {
                          <th className="px-4 py-3">Tipo & Transporte</th>
                          <th className="px-4 py-3">Monto Estimado</th>
                          <th className="px-4 py-3">Estado</th>
-                          {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && <th className="px-4 py-3">Prioridad</th>}
+                          {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && <th className="px-4 py-3">Prioridad</th>}
                          <th className="px-4 py-3 text-right">Acciones</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100 bg-white">
                        {solicitudesFiltradas.length === 0 ? (
                          <tr>
-                            <td colSpan={(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
+                            <td colSpan={(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
                              No se encontraron solicitudes de viáticos registradas.
                            </td>
                          </tr>
@@ -747,9 +802,36 @@ export default function ViaticosModulePremium() {
                                 )}
                               </div>
                             </td>
-                             {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && (
+                             {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && (
                               <td className="px-4 py-3">
-                                {sol.prioridad ? (
+                                {['SOLICITADO', 'EXTEMPORANEA'].includes(sol.estado) ? (
+                                  <select
+                                    value={sol.prioridad || 'MEDIA'}
+                                    onChange={async (e) => {
+                                      const nueva = e.target.value;
+                                      try {
+                                        await viaticosService.actualizarPrioridad(sol.id, nueva);
+                                        setMensajeExito(`Prioridad de ${sol.codigo || 'la solicitud'} actualizada a ${nueva}.`);
+                                        cargarDatos();
+                                      } catch (err) {
+                                        console.error(err);
+                                        setMensajeExito('No fue posible actualizar la prioridad.');
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                                      sol.prioridad === 'ALTA'
+                                        ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-400'
+                                        : sol.prioridad === 'MEDIA'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400'
+                                          : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400'
+                                    }`}
+                                    title="Cambiar prioridad de revisión"
+                                  >
+                                    <option value="ALTA">Alta</option>
+                                    <option value="MEDIA">Media</option>
+                                    <option value="BAJA">Baja</option>
+                                  </select>
+                                ) : sol.prioridad ? (
                                   <span
                                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
                                       sol.prioridad === 'ALTA'
@@ -787,6 +869,24 @@ export default function ViaticosModulePremium() {
                                 >
                                   <Eye className="w-3.5 h-3.5 text-slate-500" />
                                 </button>
+                                {['SOLICITADO', 'EXTEMPORANEA'].includes(sol.estado) &&
+                                  (esSuperAdmin ||
+                                    esSecretario ||
+                                    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleVerDetalle(sol)}
+                                      className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors"
+                                      title={
+                                        sol.analistaAsignadoId
+                                          ? 'Reasignar Analista / Cambiar Prioridad'
+                                          : 'Asignar Analista (Etapa 4)'
+                                      }
+                                      aria-label="Asignar Analista"
+                                    >
+                                      <UserPlus className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                                 {sol.estado === 'PENDIENTE' && (
                                   <button
                                     type="button"
@@ -928,6 +1028,11 @@ export default function ViaticosModulePremium() {
                 <AutorizacionInbox />
               )}
 
+              {/* ── AUTORIZACIÓN EXTEMPORÁNEA DIRECCIÓN NACIONAL (ETAPA 6) ── */}
+              {seccion === 'autorizaciones-direccion' && puedeVerAutorizacionesDireccion && (
+                <AutorizacionDireccionInbox />
+              )}
+
              {/* ── CONFIGURACIÓN ── */}
              {seccion === 'configuracion' && puedeVerConfiguracion && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
@@ -1063,7 +1168,7 @@ export default function ViaticosModulePremium() {
                      )}
                    </div>
 
-                   {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                   {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
                      <div className="mt-4 space-y-3">
                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                          <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>
@@ -1142,7 +1247,7 @@ export default function ViaticosModulePremium() {
                      </div>
                    )}
 
-                   {(esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && solicitudSeleccionada.estado === 'SOLICITADO' && (
+                   {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
                      <div className="mt-4 space-y-3">
                        <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
                          <span className="text-[10px] uppercase tracking-wider text-indigo-600 font-bold block mb-2">Asignar Solicitud a Analista (RF-REC-002)</span>

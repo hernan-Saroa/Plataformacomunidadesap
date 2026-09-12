@@ -320,7 +320,34 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('debe lanzar 400 si la solicitud no está en SOLICITADO (rol no superadmin)', async () => {
+    it('debe permitir actualizar prioridad de solicitud en estado EXTEMPORANEA', async () => {
+      const solicitud = {
+        id: 'sol-ext-01',
+        consecutivoUnico: 'COM-2026-EXT1',
+        estadoSolicitud: 'EXTEMPORANEA',
+        prioridad: 'BAJA',
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.actualizarPrioridad(
+        'sol-ext-01',
+        'ALTA',
+        'secretario-01',
+        false,
+      );
+
+      expect(result.prioridad).toBe('ALTA');
+    });
+
+    it('debe lanzar 400 si la solicitud no está en SOLICITADO ni EXTEMPORANEA (rol no superadmin)', async () => {
       const solicitudRepo = {
         findOne: jest.fn().mockResolvedValue({
           id: 'sol-001',

@@ -295,6 +295,11 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-amber-100',
     text: 'text-amber-800',
   },
+  AUTORIZACION_DIRECCION: {
+    label: 'Aut. Dirección Nacional',
+    bg: 'bg-purple-100',
+    text: 'text-purple-800',
+  },
   EN_AUTORIZACION: {
     label: 'En Autorización',
     bg: 'bg-indigo-100',

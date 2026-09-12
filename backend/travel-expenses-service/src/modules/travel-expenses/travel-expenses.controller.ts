@@ -39,6 +39,10 @@ import { VerifyAuditDto } from '../../dto/verify-audit.dto';
 import { DevolverAnalistaDto } from '../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../dto/segunda-revision-observaciones.dto';
 import { AutorizacionObservacionesDto } from '../../dto/autorizacion-observaciones.dto';
+import {
+  AutorizacionExtemporaneaDto,
+  RechazoExtemporaneaDto,
+} from '../../dto/autorizacion-extemporanea.dto';
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
 import { SecondLevelSodGuard, SecondLevelSodProtected } from '../../common/second-level-sod.guard';
@@ -125,6 +129,17 @@ export class TravelExpensesController {
       normalizedPermissions.includes('travel_expenses:verify_request') ||
       normalizedPermissions.includes('travel_expenses:view_assigned_requests');
 
+    const isSecretario =
+      normalizedRoles.some(
+        (r) =>
+          r === 'SECRETARIO' ||
+          r === 'SECRETARIO_VIATICOS' ||
+          r === 'SUPERVISOR',
+      ) ||
+      normalizedPermissions.includes('travel_expenses:assign_analyst') ||
+      normalizedPermissions.includes('travel_expenses:set_priority') ||
+      normalizedPermissions.includes('travel_expenses:read_inbox');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerSolicitudes(
@@ -134,6 +149,7 @@ export class TravelExpensesController {
       limitNum,
       isControlViaticos,
       isAnalista,
+      isSecretario,
     );
     return {
       data: result.data,
@@ -959,5 +975,159 @@ export class TravelExpensesController {
       'Content-Length': pdfBuffer.length,
     });
     res.send(pdfBuffer);
+  }
+
+  /**
+   * RF-AUT-002 — Obtener bandeja de comisiones extemporáneas para la Dirección Nacional (Etapa 6).
+   */
+  @Get('requests/extemporaneous-authorization/inbox')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:read_extemporaneous_authorizations')
+  @ApiOperation({
+    summary: 'Bandeja de comisiones extemporáneas para Dirección Nacional (Etapa 6 — RF-AUT-002)',
+    description:
+      'Retorna las comisiones radicadas con anticipación menor a 14 días hábiles pendientes o gestionadas por Dirección Nacional. Transiciona atómicamente a AUTORIZACION_DIRECCION las que lleguen en VERIFICADA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de comisiones extemporáneas para revisión de Dirección Nacional.',
+  })
+  @ApiBearerAuth()
+  async obtenerBandejaDireccionNacional(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('estado') estado?: string,
+  ) {
+    const result = await this.service.obtenerBandejaDireccionNacional(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      search,
+      estado,
+    );
+    return {
+      success: true,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-AUT-002 — Autorizar comisión extemporánea (Dirección Nacional).
+   *
+   * Transiciona la comisión de AUTORIZACION_DIRECCION a EN_AUTORIZACION
+   * para continuar el flujo ordinario hacia la Subdirección de Gestión Corporativa.
+   */
+  @Post('requests/:id/authorize-extemporaneous')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, AuthorizationSodGuard)
+  @AuthorizationSodProtected('id')
+  @Permissions('travel_expenses:authorize_extemporaneous')
+  @ApiOperation({
+    summary: 'Autorizar comisión extemporánea por Dirección Nacional (Etapa 6 — RF-AUT-002)',
+    description:
+      'Emite aval excepcional de Dirección Nacional a una comisión extemporánea (< 14 días hábiles). La transiciona a EN_AUTORIZACION para que continúe a la Subdirección. Valida SoD estricta.',
+  })
+  @ApiBody({
+    description: 'Justificación opcional y bandera de delegación formal.',
+    type: AutorizacionExtemporaneaDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisión extemporánea autorizada. Enrutada a Subdirección de Gestión Corporativa.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Comisión no extemporánea o estado inválido.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Violación de Segregación de Funciones (SoD).',
+  })
+  @ApiBearerAuth()
+  async autorizarComisionExtemporanea(
+    @Param('id') id: string,
+    @Body() dto: AutorizacionExtemporaneaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.autorizarComisionExtemporanea(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Comisión extemporánea autorizada exitosamente. Enrutada a Subdirección de Gestión Corporativa.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-AUT-002 — Rechazar comisión extemporánea (Dirección Nacional).
+   *
+   * Transiciona la comisión a RECHAZADO con justificación obligatoria.
+   */
+  @Post('requests/:id/reject-extemporaneous')
+  @UseGuards(JwtAuthGuard, PermissionsGuard, AuthorizationSodGuard)
+  @AuthorizationSodProtected('id')
+  @Permissions('travel_expenses:reject_extemporaneous')
+  @ApiOperation({
+    summary: 'Rechazar comisión extemporánea por Dirección Nacional (Etapa 6 — RF-AUT-002)',
+    description:
+      'Niega y rechaza de forma definitiva la comisión extemporánea con justificación obligatoria (mínimo 5 caracteres). Valida SoD estricta.',
+  })
+  @ApiBody({
+    description: 'Justificación obligatoria del rechazo de la extemporaneidad.',
+    type: RechazoExtemporaneaDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisión extemporánea rechazada con justificación motivada.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Justificación vacía o insuficiente (< 5 caracteres).',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Violación de Segregación de Funciones (SoD).',
+  })
+  @ApiBearerAuth()
+  async rechazarComisionExtemporanea(
+    @Param('id') id: string,
+    @Body() dto: RechazoExtemporaneaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.rechazarComisionExtemporanea(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Comisión extemporánea rechazada por Dirección Nacional.',
+      timestamp: new Date().toISOString(),
+    };
   }
 }

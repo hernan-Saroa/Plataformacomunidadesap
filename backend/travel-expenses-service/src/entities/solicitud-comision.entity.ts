@@ -199,6 +199,25 @@ export class SolicitudComisionEntity {
   })
   observacionesAutorizacion: string | null;
 
+  @Column({ name: 'autorizador_direccion_id', type: 'uuid', nullable: true })
+  autorizadorDireccionId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'autorizador_direccion_id' })
+  autorizadorDireccion: UsuarioEntity;
+
+  @Column({ name: 'fecha_autorizacion_direccion', type: 'timestamp', nullable: true })
+  fechaAutorizacionDireccion: Date | null;
+
+  @Column({ name: 'decision_direccion', type: 'varchar', length: 20, nullable: true })
+  decisionDireccion: string | null;
+
+  @Column({ name: 'justificacion_direccion', type: 'text', nullable: true })
+  justificacionDireccion: string | null;
+
+  @Column({ name: 'es_delegado_direccion', type: 'boolean', default: false })
+  esDelegadoDireccion: boolean;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

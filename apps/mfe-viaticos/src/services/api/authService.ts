@@ -28,6 +28,14 @@ export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
   'SUBDIRECCION_DE_GESTION_CORPORATIVA',
 ] as const;
 
+export const ROLES_DIRECCION_NACIONAL = [
+  'DIRECCION_NACIONAL',
+  'DIRECTOR_NACIONAL',
+  'DELEGADO_DIRECCION_NACIONAL',
+  'DIRECCION_GENERAL',
+  'DIRECTOR_GENERAL',
+] as const;
+
 export interface DependenciaUsuario {
   idDependencia?: number;
   codDependencia?: string;
@@ -293,6 +301,31 @@ export class AuthService {
       r.includes('SUBDIRECCION_GESTION_CORPORATIVA'),
     );
     return tieneRol || this.hasPermission('travel_expenses:read_authorizations');
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol de
+   * Dirección Nacional o delegado, o el permiso de
+   * autorización extemporánea (Etapa 6 - RF-AUT-002).
+   */
+  isDireccionNacional(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) {
+      return (
+        this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+        this.hasPermission('travel_expenses:authorize_extemporaneous')
+      );
+    }
+    const tieneRol = user.roles.some((r) =>
+      (ROLES_DIRECCION_NACIONAL as readonly string[]).includes(r) ||
+      r.includes('DIRECCION_NACIONAL') ||
+      r.includes('DIRECTOR_NACIONAL'),
+    );
+    return (
+      tieneRol ||
+      this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+      this.hasPermission('travel_expenses:authorize_extemporaneous')
+    );
   }
 
   private getCurrentUserSync(): UsuarioActual | null {

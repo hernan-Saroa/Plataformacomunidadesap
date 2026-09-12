@@ -16,6 +16,7 @@ import {
   Search,
   ShieldCheck,
   User,
+  Award,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudAutorizacion } from '../types/viaticos';
@@ -54,7 +55,14 @@ export const AutorizacionInbox: React.FC = () => {
         busqueda,
         filtroEstado || undefined,
       );
-      setSolicitudes(response.data || []);
+      const items = (response.data || []).filter(
+        (s) =>
+          !s.extemporanea ||
+          (s.extemporanea &&
+            s.decisionDireccion === 'AUTORIZADA' &&
+            s.autorizadorDireccionId),
+      );
+      setSolicitudes(items);
       setTotalRegistros(response.total || 0);
       setPaginaActual(response.page || page);
     } catch (err: any) {
@@ -292,10 +300,18 @@ export const AutorizacionInbox: React.FC = () => {
                     className="p-4 space-y-3 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer"
                   >
                     {/* Fila 1: Consecutivo y Estado */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-black text-[#003DA5] tracking-tight">
-                        {sol.consecutivoUnico}
-                      </span>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-black text-[#003DA5] tracking-tight">
+                          {sol.consecutivoUnico}
+                        </span>
+                        {sol.extemporanea && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                            <Award className="h-3 w-3 text-purple-600" />
+                            <span>Extemporánea · Aval Dirección Nal.</span>
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black border ${
                           estaAutorizada
@@ -414,8 +430,16 @@ export const AutorizacionInbox: React.FC = () => {
                         onClick={() => abrirModal(sol)}
                       >
                         {/* Consecutivo */}
-                        <td className="py-3.5 px-4 font-black text-[#003DA5]">
-                          {sol.consecutivoUnico}
+                        <td className="py-3.5 px-4">
+                          <div className="font-black text-[#003DA5]">
+                            {sol.consecutivoUnico}
+                          </div>
+                          {sol.extemporanea && (
+                            <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                              <Award className="h-2.5 w-2.5 text-purple-600" />
+                              <span>Extemporánea (Avalada)</span>
+                            </span>
+                          )}
                         </td>
 
                         {/* Pasajero */}

@@ -45,8 +45,17 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
   if (!isOpen || !solicitud) return null;
 
   const estaAutorizada = solicitud.estadoSolicitud === 'AUTORIZADA';
+  const extemporaneaSinAval =
+    Boolean(solicitud.extemporanea) &&
+    (solicitud.decisionDireccion !== 'AUTORIZADA' || !solicitud.autorizadorDireccionId);
 
   const handleAutorizar = async () => {
+    if (extemporaneaSinAval) {
+      setError(
+        'Esta comisión es extemporánea y no puede ser autorizada por la Subdirección sin la previa aprobación formal de la Dirección Nacional.',
+      );
+      return;
+    }
     setProcesando(true);
     setError(null);
     try {
@@ -221,6 +230,46 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
 
         {/* Cuerpo del modal con scroll interno suave */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
+          {/* Banner de Comisión Extemporánea */}
+          {solicitud.extemporanea && (
+            extemporaneaSinAval ? (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs">
+                  <span className="font-black text-amber-900 block">
+                    Pendiente de Aprobación por Dirección Nacional (RF-AUT-002)
+                  </span>
+                  <p className="text-amber-700 mt-1">
+                    Esta comisión fue radicada extemporáneamente (&lt; 14 días hábiles) y requiere autorización excepcional previa de la Dirección Nacional o su delegado antes de que la Subdirección pueda emitir visto bueno corporativo.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-4 flex items-start gap-3">
+                <Award className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+                <div className="text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-black text-purple-900">
+                      Comisión Extemporánea (RF-AUT-002)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-200 text-purple-800">
+                      {solicitud.esDelegadoDireccion ? 'Autorizada por Delegado Dirección' : 'Autorizada por Dirección Nacional'}
+                    </span>
+                  </div>
+                  <p className="text-purple-700 mt-1">
+                    Esta comisión no cumplió los 14 días hábiles de anticipación reglamentarios pero cuenta con la autorización excepcional de la Dirección Nacional para continuar con el visto bueno de la Subdirección.
+                  </p>
+                  {solicitud.justificacionDireccion && (
+                    <div className="mt-2 text-slate-700 bg-white/80 p-2.5 rounded-lg border border-purple-100 font-medium">
+                      <span className="text-[10px] font-bold uppercase text-purple-800 block">Justificación Dirección Nacional:</span>
+                      "{solicitud.justificacionDireccion}"
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
           {/* Tarjeta 1: Pasajero / Comisionado */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center space-x-2">
@@ -528,9 +577,18 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               <button
                 type="button"
                 onClick={handleAutorizar}
-                disabled={procesando}
-                style={{ backgroundColor: '#059669', color: '#ffffff' }}
-                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 text-xs sm:text-sm font-black rounded-xl shadow-xs transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+                disabled={procesando || extemporaneaSinAval}
+                title={
+                  extemporaneaSinAval
+                    ? 'Requiere previa aprobación formal de la Dirección Nacional'
+                    : undefined
+                }
+                style={
+                  extemporaneaSinAval
+                    ? { backgroundColor: '#94A3B8', color: '#ffffff', cursor: 'not-allowed' }
+                    : { backgroundColor: '#059669', color: '#ffffff' }
+                }
+                className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 text-xs sm:text-sm font-black rounded-xl shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer"
               >
                 {procesando ? (
                   <LoaderCircle className="h-4 w-4 animate-spin text-white" />
