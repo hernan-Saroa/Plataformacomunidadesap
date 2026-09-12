@@ -32,6 +32,9 @@ export enum EstadoSolicitud {
   LEGALIZADO = 'LEGALIZADO',
   RECHAZADO = 'RECHAZADO',
   SOLICITADA_SIIF = 'SOLICITADA_SIIF',
+  AUTORIZACION_DIRECCION = 'AUTORIZACION_DIRECCION',
+  EN_AUTORIZACION = 'EN_AUTORIZACION',
+  AUTORIZADA = 'AUTORIZADA',
 }
 
 export const ESTADOS_SOLICITUD = Object.values(EstadoSolicitud);
@@ -55,6 +58,9 @@ export const ESTADOS_CONSOLIDABLES: ReadonlySet<EstadoSolicitud> = new Set([
  */
 export const ESTADOS_SOLO_LECTURA: ReadonlySet<EstadoSolicitud> = new Set([
   EstadoSolicitud.SOLICITADO,
+  EstadoSolicitud.AUTORIZACION_DIRECCION,
+  EstadoSolicitud.EN_AUTORIZACION,
+  EstadoSolicitud.AUTORIZADA,
   EstadoSolicitud.APROBADO_JEFE,
   EstadoSolicitud.APROBADO_TALENTO_HUMANO,
   EstadoSolicitud.RESOLUCION_EMITIDA,

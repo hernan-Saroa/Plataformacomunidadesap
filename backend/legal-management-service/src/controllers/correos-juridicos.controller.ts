@@ -12,7 +12,7 @@ import {
     Req,
 } from '@nestjs/common';
 import { CorreosJuridicosService } from '../services/correos-juridicos.service';
-import type { EmailFilters, DerivarNuevoProcesoResult } from '../services/correos-juridicos.service';
+import type { EmailFilters, DerivarNuevoProcesoResult, TransferenciaDisciplinariaDto } from '../services/correos-juridicos.service';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 
 // DTO as class for decorator compatibility (must be a class, not imported interface)
@@ -134,6 +134,17 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Recepción directa de transferencia o pliego de cargos desde Control Interno Disciplinario
+     */
+    @Post('transferencia-disciplinario')
+    @HttpCode(HttpStatus.OK)
+    async registrarTransferenciaDisciplinaria(
+        @Body() body: TransferenciaDisciplinariaDto,
+    ) {
+        return this.correosService.registrarTransferenciaDisciplinaria(body);
+    }
+
+    /**
      * Get all emails with filters
      */
     @Get()
@@ -217,6 +228,18 @@ export class CorreosJuridicosController {
     @Get(':id/adjuntos')
     async getAttachments(@Param('id') id: string) {
         return this.correosService.getAttachments(id);
+    }
+
+    /**
+     * Sincroniza bajo demanda los documentos del expediente disciplinario a los adjuntos del correo
+     */
+    @Post(':id/sincronizar-expediente')
+    @HttpCode(HttpStatus.OK)
+    async sincronizarExpediente(
+        @Param('id') id: string,
+        @Body() body?: { radicadoOProcesoId?: string },
+    ) {
+        return this.correosService.sincronizarDocumentosExpedienteDisciplinario(id, body?.radicadoOProcesoId);
     }
 
     /**

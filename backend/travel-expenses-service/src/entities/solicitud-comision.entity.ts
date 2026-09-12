@@ -162,8 +162,61 @@ export class SolicitudComisionEntity {
   @Column({ name: 'usuario_exportador_id', type: 'uuid', nullable: true })
   usuarioExportadorId: string | null;
 
+  @Column({ name: 'revisor_control_id', type: 'uuid', nullable: true })
+  revisorControlId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'revisor_control_id' })
+  revisorControl: UsuarioEntity;
+
+  @Column({ name: 'fecha_segunda_revision', type: 'timestamp', nullable: true })
+  fechaSegundaRevision: Date | null;
+
+  @Column({
+    name: 'observaciones_segunda_revision',
+    type: 'text',
+    nullable: true,
+  })
+  observacionesSegundaRevision: string | null;
+
   @Column({ name: 'consulta_rut_facturador', type: 'boolean', default: false })
   consultaRutFacturador: boolean;
+
+  @Column({ name: 'autorizador_id', type: 'uuid', nullable: true })
+  autorizadorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'autorizador_id' })
+  autorizador: UsuarioEntity;
+
+  @Column({ name: 'fecha_autorizacion', type: 'timestamp', nullable: true })
+  fechaAutorizacion: Date | null;
+
+  @Column({
+    name: 'observaciones_autorizacion',
+    type: 'text',
+    nullable: true,
+  })
+  observacionesAutorizacion: string | null;
+
+  @Column({ name: 'autorizador_direccion_id', type: 'uuid', nullable: true })
+  autorizadorDireccionId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'autorizador_direccion_id' })
+  autorizadorDireccion: UsuarioEntity;
+
+  @Column({ name: 'fecha_autorizacion_direccion', type: 'timestamp', nullable: true })
+  fechaAutorizacionDireccion: Date | null;
+
+  @Column({ name: 'decision_direccion', type: 'varchar', length: 20, nullable: true })
+  decisionDireccion: string | null;
+
+  @Column({ name: 'justificacion_direccion', type: 'text', nullable: true })
+  justificacionDireccion: string | null;
+
+  @Column({ name: 'es_delegado_direccion', type: 'boolean', default: false })
+  esDelegadoDireccion: boolean;
 
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;

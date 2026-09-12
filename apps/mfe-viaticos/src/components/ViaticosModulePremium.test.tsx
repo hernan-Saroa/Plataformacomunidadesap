@@ -139,7 +139,7 @@ describe('ViaticosModulePremium', () => {
 
     await waitFor(() => expect(viaticosService.obtenerCiudadesPorDepartamento).toHaveBeenCalledWith(13));
 
-    const ciudadSelect = screen.getByLabelText(/Ciudad/i);
+    const ciudadSelect = document.getElementById('destinoCiudad') || screen.getByRole('button', { name: /Seleccione una ciudad/i });
     fireEvent.click(ciudadSelect);
     await userEvent.type(screen.getByPlaceholderText('Buscar...'), 'Cartagena');
     await screen.findByText('Cartagena');

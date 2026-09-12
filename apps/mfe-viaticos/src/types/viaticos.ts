@@ -13,7 +13,12 @@ export type EstadoSolicitudViatico =
   | 'RADICADA'
   | 'EXTEMPORANEA'
   | 'DEVUELTA'
-  | 'SOLICITADA_SIIF';
+  | 'SOLICITADA_SIIF'
+  | 'VERIFICADA'
+  | 'EN_VERIFICACION'
+  | 'AUTORIZACION_DIRECCION'
+  | 'EN_AUTORIZACION'
+  | 'AUTORIZADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -86,7 +91,9 @@ export type TipoDocumentoSoporte =
   | 'CONTRATO_SECOP'
   | 'PASAPORTE'
   | 'CARTA_INVITACION'
-  | 'RESOLUCION_ACTO';
+  | 'RESOLUCION_ACTO'
+  | 'FACTURA'
+  | 'FACTURA_ELECTRONICA';
 
 /** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
 export interface Comisionado {
@@ -99,6 +106,7 @@ export interface Comisionado {
   email: string;
   telefonoContacto: string;
   tipoComisionado: TipoComisionado;
+  esFacturadorElectronico?: boolean;
   origenDatos: 'HUMANO' | 'ESAP' | 'SECOP';
   autorizacionHabeasData: boolean;
   fechaAutorizacionHabeasData?: Date;
@@ -159,6 +167,10 @@ export interface SolicitudComisionResponse {
   siifExportado?: boolean;
   fechaExportacionSiif?: string | null;
   consultaRutFacturador?: boolean;
+  motivoDevolucion?: string | null;
+  observacionesSegundaRevision?: string | null;
+  fechaSegundaRevision?: string | null;
+  revisorControlNombre?: string | null;
   resumenPresupuestal?: {
     totalGastado: number;
     cantidadSolicitudes: number;
@@ -219,6 +231,7 @@ export interface SolicitudListaResponse {
     | 'primerApellido'
     | 'segundoApellido'
     | 'tipoComisionado'
+    | 'esFacturadorElectronico'
     | 'email'
     | 'telefonoContacto'
     | 'autorizacionHabeasData'
@@ -243,6 +256,13 @@ export interface SolicitudListaResponse {
   creadoEn: string;
   actualizadoEn: string;
   motivoDevolucion?: string | null;
+  observacionesSegundaRevision?: string | null;
+  fechaSegundaRevision?: string | null;
+  revisorControlId?: string | null;
+  revisorControl?: { id: string; username: string } | null;
+  revisorControlNombre?: string | null;
+  consultaRutFacturador?: boolean;
+  documentosSoporte?: DocumentoSoporte[];
   fechaRevision?: string | null;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
@@ -301,6 +321,10 @@ export interface SolicitudViatico {
   esCreadoPorMi?: boolean;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  motivoDevolucion?: string | null;
+  observacionesSegundaRevision?: string | null;
+  fechaSegundaRevision?: string | null;
+  revisorControlId?: string | null;
 }
 
 export interface TiqueteAereo {
@@ -603,3 +627,222 @@ export interface SolicitudAsignadaAnalistaResponse {
   total: number;
   timestamp: string;
 }
+
+// =========================================================================
+// RF-REV-002 — Control Viáticos (Segundo Nivel / Control Cruzado)
+// =========================================================================
+
+/** Solicitud en estado SOLICITADA_SIIF para la bandeja de Control Viáticos. */
+export interface SolicitudControlViaticosResponse {
+  id: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  comisionado: Pick<
+    Comisionado,
+    | 'id'
+    | 'numeroDocumento'
+    | 'primerNombre'
+    | 'segundoNombre'
+    | 'primerApellido'
+    | 'segundoApellido'
+    | 'tipoComisionado'
+    | 'email'
+    | 'telefonoContacto'
+    | 'autorizacionHabeasData'
+    | 'idDependencia'
+  > | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  estadoSolicitud: string;
+  radicadoFueraJornada: boolean;
+  extemporanea: boolean;
+  creadoPorUsuarioId?: string;
+  esCreadoPorMi?: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+  motivoDevolucion?: string | null;
+  fechaRevision?: string | null;
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
+  analistaAsignadoId?: string | null;
+  idDependencia?: number | string | null;
+  /** Analista que realizó la verificación de 1er nivel (auditoría). */
+  analistaVerificadorId?: string | null;
+  /** Nombre completo del analista verificador de 1er nivel. */
+  analistaVerificadorNombre?: string | null;
+  /** Timestamp de la verificación de 1er nivel (exportación SIIF). */
+  fechaVerificacionPrimerNivel?: string | null;
+  /** Revisor de control que realizó la verificación de 2do nivel. */
+  revisorControlId?: string | null;
+  /** Timestamp de la verificación de 2do nivel. */
+  fechaSegundaRevision?: string | null;
+  /** Observaciones de la segunda revisión. */
+  observacionesSegundaRevision?: string | null;
+  /** Datos de liquidación calculada. */
+  liquidacion?: LiquidacionResponse['data'];
+  /** Validación de tiquete si aplica. */
+  validacionTiquete?: TicketValidationResult;
+  /** Documentos de soporte (PDFs). */
+  documentosSoporte?: DocumentoSoporte[];
+}
+
+export interface BandejaControlViaticosResponse {
+  data: SolicitudControlViaticosResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Payload para verificar en segundo nivel (Control Cruzado). */
+export interface VerificarSegundoNivelRequest {
+  observaciones?: string;
+}
+
+/** Respuesta al verificar en segundo nivel. */
+export interface VerificarSegundoNivelResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    fechaVerificacionSegundoNivel: string;
+    verificadoPorUsuarioId: string;
+  };
+  timestamp: string;
+}
+
+/** Payload para devolver al analista de 1er nivel con observaciones obligatorias. */
+export interface DevolverAAnalistaRequest {
+  motivo: string;
+}
+
+/** Respuesta al devolver al analista. */
+export interface DevolverAAnalistaResponse {
+  success: boolean;
+  data: {
+    id: string;
+    estadoSolicitud: string;
+    motivoDevolucion: string;
+    devueltoPorUsuarioId: string;
+  };
+  timestamp: string;
+}
+
+/** Modelo de presentación para la tabla de Control Viáticos. */
+export interface SolicitudControlViatico {
+  id: string;
+  codigo: string;
+  cedulaComisionado: string;
+  nombreComisionado: string;
+  cargoComisionado: string;
+  dependencia: string;
+  ciudadDestino: string;
+  departamentoDestino: string;
+  fechaInicio: string;
+  fechaFin: string;
+  diasComision: number;
+  prioridad: string;
+  analistaVerificadorNombre: string | null;
+  fechaVerificacionPrimerNivel: string | null;
+}
+
+// ============================================================================
+// Tipos e interfaces de la Etapa 6 — Autorización Corporativa (RF-AUT-001)
+// ============================================================================
+
+export interface AutorizarComisionRequest {
+  observaciones?: string;
+}
+
+export interface AutorizarComisionResponse {
+  success: boolean;
+  data: any;
+  message?: string;
+  timestamp?: string;
+}
+
+export interface DevolverAutorizacionRequest {
+  observaciones: string;
+}
+
+export interface DevolverAutorizacionResponse {
+  success: boolean;
+  data: any;
+  message?: string;
+  timestamp?: string;
+}
+
+export interface SolicitudAutorizacion {
+  id: string;
+  consecutivoUnico: string;
+  comisionado: {
+    id: string;
+    numeroDocumento: string;
+    nombreCompleto: string;
+    tipoComisionado?: string;
+    cargo?: string;
+    dependencia?: string;
+    email?: string;
+  } | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  diasComision: number;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  costoEstimadoTiquete: number;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  montoTotal: number;
+  estadoSolicitud: EstadoSolicitudViatico;
+  extemporanea?: boolean;
+  motivoDevolucion?: string | null;
+  siifExportado: boolean;
+  fechaExportacionSiif: string | null;
+  revisorControlId: string | null;
+  fechaSegundaRevision: string | null;
+  autorizadorId: string | null;
+  autorizadorNombre?: string | null;
+  fechaAutorizacion: string | null;
+  observacionesAutorizacion: string | null;
+  autorizadorDireccionId?: string | null;
+  autorizadorDireccionNombre?: string | null;
+  fechaAutorizacionDireccion?: string | null;
+  decisionDireccion?: string | null;
+  justificacionDireccion?: string | null;
+  esDelegadoDireccion?: boolean;
+  analistaAsignadoId: string | null;
+  creadoPorUsuarioId: string;
+  documentosSoporte: DocumentoSoporte[];
+  actualizadoEn: string;
+}
+
+export interface BandejaAutorizacionResponse {
+  success: boolean;
+  data: SolicitudAutorizacion[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AutorizarExtemporaneaPayload {
+  justificacion?: string;
+  esDelegado?: boolean;
+}
+
+export interface RechazarExtemporaneaPayload {
+  justificacion: string;
+  esDelegado?: boolean;
+}
+

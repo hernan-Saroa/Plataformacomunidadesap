@@ -18,6 +18,13 @@ export interface SendNotificationDto {
   datos_adicionales?: Record<string, any>;
 }
 
+export interface SendEmailDto {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+}
+
 @Injectable()
 export class NotificationClientService {
   private readonly logger = new Logger(NotificationClientService.name);
@@ -69,23 +76,97 @@ export class NotificationClientService {
     await this.sendMany(notifications);
   }
 
+  /**
+   * Envía una notificación a la bandeja de notificaciones del software (in-app).
+   * Intenta primero por HTTP hacia el microservicio de notificaciones y,
+   * en caso de contingencia, inserta directamente en la tabla notifications.notificacion.
+   */
   async send(dto: SendNotificationDto): Promise<void> {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/notificaciones/api/v1/notifications`,
-        {
+    const urls = [
+      `${this.baseUrl}/notificaciones/api/v1/notifications`,
+      `${this.baseUrl}/api/v1/notifications`,
+    ];
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dto),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        });
+        if (response.ok) {
+          return;
+        }
+      } catch {
+        // continúa al siguiente endpoint o fallback
       }
+    }
+
+    // Fallback: inserción directa en la base de datos de notificaciones
+    try {
+      await this.dataSource.query(
+        `INSERT INTO notifications.notificacion
+          (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
+           icono, color, prioridad, categoria, tiene_accion, texto_boton_accion, url_accion, datos_adicionales)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          dto.id_usuario_destinatario,
+          dto.tipo_notificacion,
+          dto.titulo,
+          dto.mensaje,
+          dto.descripcion_corta ?? null,
+          dto.icono ?? null,
+          dto.color ?? null,
+          dto.prioridad ?? 'Media',
+          dto.categoria ?? null,
+          dto.tiene_accion ?? false,
+          dto.texto_boton_accion ?? null,
+          dto.url_accion ?? null,
+          dto.datos_adicionales
+            ? JSON.stringify(dto.datos_adicionales)
+            : null,
+        ],
+      );
+      this.logger.log(
+        `[NotificationClient] Notificación in-app insertada directamente en BD para ${dto.id_usuario_destinatario}`,
+      );
     } catch (err: any) {
       this.logger.warn(
-        `No se pudo enviar notificación a ${dto.id_usuario_destinatario}: ${err?.message}`,
+        `[NotificationClient] No se pudo guardar notificación in-app para ${dto.id_usuario_destinatario}: ${err?.message}`,
       );
+    }
+  }
+
+  /**
+   * Envía un correo electrónico institucional a través del servicio de correos/notificaciones.
+   */
+  async sendEmail(dto: SendEmailDto): Promise<void> {
+    if (!dto.to || !dto.subject) {
+      return;
+    }
+    const urls = [
+      `${this.baseUrl}/api/v1/emails/send`,
+      `${this.baseUrl}/notificaciones/api/v1/emails/send`,
+    ];
+    let sent = false;
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dto),
+        });
+        if (response.ok) {
+          this.logger.log(`[NotificationClient] Correo enviado exitosamente a ${dto.to} vía ${url}`);
+          sent = true;
+          break;
+        }
+      } catch (err: any) {
+        this.logger.warn(`[NotificationClient] Error conectando a ${url}: ${err?.message}`);
+      }
+    }
+    if (!sent) {
+      this.logger.warn(`[NotificationClient] No se pudo despachar correo a ${dto.to}`);
     }
   }
 

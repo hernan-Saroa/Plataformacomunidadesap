@@ -264,7 +264,59 @@ describe('AssignmentsService — RF-REC-002', () => {
       );
     });
 
-    it('debe lanzar 400 si la solicitud no está en SOLICITADO', async () => {
+    it('debe asignar exitosamente una solicitud en estado EXTEMPORANEA', async () => {
+      const solicitud = {
+        id: 'sol-ext-001',
+        consecutivoUnico: 'COM-2026-0002',
+        estadoSolicitud: EstadoSolicitud.EXTEMPORANEA,
+        analistaAsignadoId: null,
+      };
+
+      const analistaRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({
+            id: 'analista-1',
+            usuarioId: 'user-analista-1',
+            username: 'analista1',
+          }),
+        }),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((data) => data),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const module = await createMockModule({
+        analistaRepo,
+        solicitudRepo,
+        historialRepo,
+      });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      const resultado = await svc.asignarAnalista(
+        'sol-ext-001',
+        'user-analista-1',
+        'secretario-1',
+      );
+
+      expect(resultado.solicitud.estadoSolicitud).toBe(
+        EstadoSolicitud.EN_VERIFICACION,
+      );
+      expect(resultado.solicitud.analistaAsignadoId).toBe('user-analista-1');
+    });
+
+    it('debe lanzar 400 si la solicitud no está en SOLICITADO ni EXTEMPORANEA', async () => {
       const solicitud = {
         id: 'sol-001',
         consecutivoUnico: 'COM-2026-0001',

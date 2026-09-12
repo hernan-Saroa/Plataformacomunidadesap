@@ -22,6 +22,20 @@ export const ROLES_ANALISTA_VIATICOS = [
   'ANALISTA_VIATICOS',
 ];
 
+export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
+  'SUBDIRECCION_GESTION_CORPORATIVA',
+  'SUBDIRECTOR_GESTION_CORPORATIVA',
+  'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+] as const;
+
+export const ROLES_DIRECCION_NACIONAL = [
+  'DIRECCION_NACIONAL',
+  'DIRECTOR_NACIONAL',
+  'DELEGADO_DIRECCION_NACIONAL',
+  'DIRECCION_GENERAL',
+  'DIRECTOR_GENERAL',
+] as const;
+
 export interface DependenciaUsuario {
   idDependencia?: number;
   codDependencia?: string;
@@ -256,6 +270,62 @@ export class AuthService {
     if (!user || !user.roles.length) return false;
     if (user.esAdmin) return false;
     return user.roles.some((r) => ROLES_ANALISTA_VIATICOS.includes(r));
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol técnico
+   * `CONTROL_VIATICOS` (segunda revisión / control cruzado).
+   *
+   * Un usuario con rol `SUPER_ADMIN` o `ADMIN` también puede acceder
+   * a la bandeja por herencia administrativa.
+   */
+  isControlViaticos(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) return false;
+    if (user.esAdmin) return true;
+    return user.roles.some((r) => r === 'CONTROL_VIATICOS');
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol de
+   * Subdirección de Gestión Corporativa o el permiso de
+   * autorización corporativa (Etapa 6 - RF-AUT-001).
+   */
+  isSubdireccionGestionCorporativa(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) {
+      return this.hasPermission('travel_expenses:read_authorizations');
+    }
+    const tieneRol = user.roles.some((r) =>
+      (ROLES_SUBDIRECCION_GESTION_CORPORATIVA as readonly string[]).includes(r) ||
+      r.includes('SUBDIRECCION_GESTION_CORPORATIVA'),
+    );
+    return tieneRol || this.hasPermission('travel_expenses:read_authorizations');
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol de
+   * Dirección Nacional o delegado, o el permiso de
+   * autorización extemporánea (Etapa 6 - RF-AUT-002).
+   */
+  isDireccionNacional(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user || !user.roles.length) {
+      return (
+        this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+        this.hasPermission('travel_expenses:authorize_extemporaneous')
+      );
+    }
+    const tieneRol = user.roles.some((r) =>
+      (ROLES_DIRECCION_NACIONAL as readonly string[]).includes(r) ||
+      r.includes('DIRECCION_NACIONAL') ||
+      r.includes('DIRECTOR_NACIONAL'),
+    );
+    return (
+      tieneRol ||
+      this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+      this.hasPermission('travel_expenses:authorize_extemporaneous')
+    );
   }
 
   private getCurrentUserSync(): UsuarioActual | null {
