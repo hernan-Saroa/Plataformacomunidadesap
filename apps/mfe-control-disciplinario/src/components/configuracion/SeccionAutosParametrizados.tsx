@@ -19,7 +19,7 @@ import {
   CreateAutoConfigurationDto, 
   UpdateAutoConfigurationDto,
   disciplinaryService 
-} from '../../../../services/api/disciplinary.service';
+} from '@/services/api/disciplinary.service';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
@@ -33,6 +33,29 @@ const ETAPAS_STAGE = [
   { value: 'JUZGAMIENTO', label: 'Juzgamiento' },
   { value: 'FALLO', label: 'Fallo' },
   { value: 'SEGUNDA_INSTANCIA', label: 'Segunda Instancia' },
+];
+
+// Tipos de auto predefinidos
+const TIPOS_AUTO_PREDEFINIDOS = [
+  { value: 'AUTO_NORMAL', label: 'Auto Normal' },
+  { value: 'AUTO_APERTURA_INVESTIGACION', label: 'Auto de Apertura de Investigación' },
+  { value: 'AUTO_APERTURA_INDAGACION', label: 'Auto de Apertura de Indagación' },
+  { value: 'AUTO_APERTURA_JUZGAMIENTO', label: 'Auto de Apertura de Juzgamiento' },
+  { value: 'AUTO_FORMULACION_PLIEGO', label: 'Auto de Formulación de Pliego de Cargos' },
+  { value: 'PLIEGO_CARGOS', label: 'Pliego de Cargos' },
+  { value: 'AUTO_CALIFICACION', label: 'Auto de Calificación' },
+  { value: 'AUTO_CIERRE_INVESTIGACION', label: 'Auto de Cierre de Investigación' },
+  { value: 'AUTO_ARCHIVO', label: 'Auto de Archivo' },
+  { value: 'AUTO_PRORROGA', label: 'Auto de Prórroga' },
+  { value: 'AUTO_INHIBITORIO', label: 'Auto Inhibitorio' },
+  { value: 'AUTO_FALLO', label: 'Auto de Fallo' },
+  { value: 'OTRO', label: 'Otro (personalizado)' },
+];
+
+// Tipos de auto que requieren configuración de etapa siguiente
+const TIPOS_AUTO_CON_ETAPA_SIGUIENTE = [
+  'AUTO_FORMULACION_PLIEGO',
+  'PLIEGO_CARGOS',
 ];
 
 interface SeccionAutosParametrizadosProps {
@@ -57,6 +80,7 @@ export function SeccionAutosParametrizados() {
     estado: 'activo',
     plantilla: '',
     stage: '',
+    nextStage: '',
     orden: 0
   });
   
@@ -110,6 +134,7 @@ export function SeccionAutosParametrizados() {
       estado: 'activo',
       plantilla: '',
       stage: '',
+      nextStage: '',
       orden: autos.length + 1
     });
     setShowModalAgregar(true);
@@ -150,6 +175,7 @@ export function SeccionAutosParametrizados() {
       estado: auto.estado as 'activo' | 'inactivo',
       plantilla: auto.plantilla || '',
       stage: auto.stage || '',
+      nextStage: auto.nextStage || '',
       orden: auto.orden
     });
     setShowModalEditar(true);
@@ -380,6 +406,9 @@ export function SeccionAutosParametrizados() {
                   Etapa
                 </th>
                 <th className="px-5 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider hidden lg:table-cell">
+                  Próxima Etapa
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider hidden lg:table-cell">
                   Plantilla
                 </th>
                 <th className="px-5 py-3 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
@@ -390,7 +419,7 @@ export function SeccionAutosParametrizados() {
             <tbody className="bg-white divide-y divide-gray-200">
               {autos.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center">
+                  <td colSpan={7} className="px-5 py-12 text-center">
                     <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                     <p className="text-sm text-gray-600 mb-2">
                       No hay autos parametrizados en la base de datos
@@ -445,6 +474,17 @@ export function SeccionAutosParametrizados() {
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${getEtapaColor(auto.stage)}`}>
                           {getEtapaLabel(auto.stage)}
                         </span>
+                      </td>
+
+                      {/* Próxima Etapa */}
+                      <td className="px-5 py-3 hidden lg:table-cell">
+                        {auto.nextStage ? (
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${getEtapaColor(auto.nextStage)}`}>
+                            {getEtapaLabel(auto.nextStage)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No definida</span>
+                        )}
                       </td>
 
                       {/* Plantilla */}
@@ -540,13 +580,16 @@ export function SeccionAutosParametrizados() {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
                       Tipo (código) *
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={formData.tipo}
-                      onChange={(e) => setFormData({ ...formData, tipo: e.target.value.toUpperCase() })}
+                      onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
-                      placeholder="AUTO_NUEVO"
-                    />
+                    >
+                      <option value="">Seleccionar tipo de auto...</option>
+                      {TIPOS_AUTO_PREDEFINIDOS.map(tipo => (
+                        <option key={tipo.value} value={tipo.value}>{tipo.label} ({tipo.value})</option>
+                      ))}
+                    </select>
                     <p className="text-xs text-gray-500 mt-1">Código único del tipo de auto</p>
                   </div>
 
@@ -578,6 +621,28 @@ export function SeccionAutosParametrizados() {
                       ))}
                     </select>
                   </div>
+
+                  {TIPOS_AUTO_CON_ETAPA_SIGUIENTE.includes(formData.tipo.toUpperCase()) && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Etapa siguiente al aprobar *
+                      </label>
+                      <select
+                        value={formData.nextStage || ''}
+                        onChange={(e) => setFormData({ ...formData, nextStage: e.target.value || undefined })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                      >
+                        <option value="">Seleccionar etapa siguiente...</option>
+                        {ETAPAS_STAGE.map(etapa => (
+                          <option key={etapa.value} value={etapa.value}>{etapa.label}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Define a qué etapa pasa el proceso cuando este auto se aprueba
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -684,6 +749,28 @@ export function SeccionAutosParametrizados() {
                       ))}
                     </select>
                   </div>
+
+                  {TIPOS_AUTO_CON_ETAPA_SIGUIENTE.includes(formData.tipo.toUpperCase()) && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        Etapa siguiente al aprobar *
+                      </label>
+                      <select
+                        value={formData.nextStage || ''}
+                        onChange={(e) => setFormData({ ...formData, nextStage: e.target.value || undefined })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                      >
+                        <option value="">Seleccionar etapa siguiente...</option>
+                        {ETAPAS_STAGE.map(etapa => (
+                          <option key={etapa.value} value={etapa.value}>{etapa.label}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Define a qué etapa pasa el proceso cuando este auto se aprueba
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">

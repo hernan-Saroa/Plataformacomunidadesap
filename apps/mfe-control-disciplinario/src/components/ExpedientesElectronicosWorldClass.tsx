@@ -421,7 +421,15 @@ const DOCUMENTOS_CRONOLOGICOS: Documento[] = [
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function ExpedientesElectronicosWorldClass() {
+interface ExpedientesElectronicosProps {
+  initialExpedienteId?: string;
+  initialRadicado?: string;
+}
+
+export function ExpedientesElectronicosWorldClass({
+  initialExpedienteId,
+  initialRadicado,
+}: ExpedientesElectronicosProps = {}) {
   const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE);
 
   if (!hasAccess) {
@@ -717,6 +725,49 @@ export function ExpedientesElectronicosWorldClass() {
   useEffect(() => {
     cargarDatos();
   }, [cargarDatos]);
+
+  // ✅ Seleccionar y expandir automáticamente el expediente especificado (por URL o notificación)
+  useEffect(() => {
+    let targetId = initialExpedienteId;
+    let targetRadicado = initialRadicado;
+
+    if (!targetId && !targetRadicado) {
+      try {
+        const raw = sessionStorage.getItem('control-disciplinario:pendingOpenExpediente');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          targetId = parsed.processId || null;
+          targetRadicado = parsed.radicado || null;
+        }
+      } catch {}
+    }
+
+    if (!targetId && !targetRadicado && typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      targetId = sp.get('processId') || undefined;
+      targetRadicado = sp.get('radicado') || undefined;
+    }
+
+    if ((targetId || targetRadicado) && expedientes.length > 0) {
+      const match = expedientes.find(
+        (e) =>
+          (targetId && e.id === targetId) ||
+          (targetRadicado && (
+            e.radicado?.toLowerCase() === targetRadicado.toLowerCase() ||
+            e.radicadoNoticia?.toLowerCase() === targetRadicado.toLowerCase()
+          ))
+      );
+
+      if (match) {
+        setExpedienteSeleccionado(match.id);
+        setExpedientesExpandidos((prev) => new Set([...prev, match.id]));
+        setBusqueda(match.radicado);
+        try {
+          sessionStorage.removeItem('control-disciplinario:pendingOpenExpediente');
+        } catch {}
+      }
+    }
+  }, [initialExpedienteId, initialRadicado, expedientes]);
 
   // Toggle expandir/colapsar expediente
   const toggleExpediente = (expedienteId: string) => {
@@ -1217,22 +1268,39 @@ export function ExpedientesElectronicosWorldClass() {
       let downloadUrl = '';
       const fullFilename = (d.archivoAcceso || d.archivoNombre || d.nombre || '').trim();
 
-      // ✅ El enlace debe contener el nombre de archivo completo si existe
-      if (fullFilename && !/^https?:\/\//i.test(fullFilename)) {
-        downloadUrl = disciplinaryService.getAbsoluteFileUrl(`/files/${encodeURIComponent(fullFilename)}`);
-      } else if (d.downloadUrl && (d.downloadUrl.startsWith('http://') || d.downloadUrl.startsWith('https://'))) {
+      // ✅ 1. Si ya viene una URL absoluta (http/https), usarla directamente
+      if (d.downloadUrl && (d.downloadUrl.startsWith('http://') || d.downloadUrl.startsWith('https://'))) {
         downloadUrl = d.downloadUrl;
-      } else if (d.downloadUrl && d.downloadUrl.startsWith('/files/')) {
+      }
+      // ✅ 2. Si es una ruta física de archivos /files/... (adjuntos de noticia o guardados físicamente)
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/files/')) {
         downloadUrl = disciplinaryService.getAbsoluteFileUrl(d.downloadUrl);
-      } else if (d.downloadUrl && d.downloadUrl.startsWith('/disciplinary-autos/')) {
+      }
+      // ✅ 3. Si es un auto procesal /disciplinary-autos/... (descarga/visualización de auto)
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/disciplinary-autos/')) {
         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? d.downloadUrl : `/api/v1${d.downloadUrl}`);
-      } else if (d.downloadUrl && d.downloadUrl.startsWith('/control-disciplinario/')) {
+      }
+      // ✅ 4. Si ya incluye el prefijo de servicio /control-disciplinario/...
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/control-disciplinario/')) {
         const cleanPath = d.downloadUrl.replace(/^\/control-disciplinario(\/api\/v1)?/, '');
         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? cleanPath : `/api/v1${cleanPath}`);
-      } else if (d.expedienteId && d.id) {
+      }
+      // ✅ 5. Si tiene expedienteId e id de documento (documentos de proceso / evidencias)
+      else if (d.expedienteId && d.id) {
         const restPath = `/disciplinary-processes/${d.expedienteId}/documents/${d.id}/download?view=true`;
         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
       }
+      // ✅ 6. Si d.downloadUrl viene como otra ruta relativa
+      else if (d.downloadUrl) {
+        downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? d.downloadUrl : `/api/v1${d.downloadUrl}`);
+      }
+      // ✅ 7. Fallback únicamente si no existe ninguna URL de descarga previa
+      else if (fullFilename && !/^https?:\/\//i.test(fullFilename)) {
+        downloadUrl = disciplinaryService.getAbsoluteFileUrl(`/files/${encodeURIComponent(fullFilename)}`);
+      } else if (fullFilename) {
+        downloadUrl = fullFilename;
+      }
+
       if (downloadUrl && typeof window !== 'undefined') {
         const token = authService.getToken?.() || localStorage.getItem('token') || '';
         if (token && !downloadUrl.includes('token=')) {

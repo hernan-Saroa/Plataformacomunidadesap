@@ -2,9 +2,12 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import {
   DisciplinaryProcess,
   ProcessStatus,
@@ -53,6 +56,7 @@ export class ProcessService {
     private newsService: NewsService,
     private alertasService: AlertasService,
     private notificationClient: NotificationClientService,
+    @Optional() private readonly httpService?: HttpService,
   ) { }
 
   private normalizeAccessEmail(email?: string | null): string | null {
@@ -656,6 +660,23 @@ export class ProcessService {
             datos_adicionales: { procesoId: resultado.id, radicado: resultado.radicadoProceso },
           }).catch(() => {});
         }
+
+        // Notificar también a todos los radicadores del nuevo proceso creado y asignado
+        await this.notificarRadicadoresProceso(
+          `[NUEVO PROCESO] Proceso disciplinario asignado: ${resultado.radicadoProceso}`,
+          'Nuevo proceso disciplinario creado y asignado',
+          `Se ha creado el proceso disciplinario ${resultado.radicadoProceso} y se ha asignado al profesional ${resultado.abogadoAsignadoNombre}.`,
+          [
+            { label: 'Radicado del Proceso', valor: resultado.radicadoProceso },
+            { label: 'Profesional Asignado', valor: resultado.abogadoAsignadoNombre },
+            { label: 'Etapa Inicial', valor: resultado.etapaActual || 'Indagación Previa' },
+            ...(comentario ? [{ label: 'Observaciones', valor: comentario }] : []),
+          ],
+          'PROCESO_CREADO_RADICADOR',
+          'Briefcase',
+          '#2563EB',
+          { procesoId: resultado.id, radicado: resultado.radicadoProceso },
+        );
       } catch (notifError) {
         console.error('Error creando notificación de asignación:', notifError);
         // No fallamos la transacción principal si falla la notificación
@@ -1981,6 +2002,23 @@ export class ProcessService {
       }).catch(() => {});
     }
 
+    // Notificar a todos los radicadores sobre la asociación de procesos
+    await this.notificarRadicadoresProceso(
+      `[PROCESOS ASOCIADOS] Asociación entre ${procesoOrigen.radicadoProceso} y ${procesoDestino.radicadoProceso}`,
+      'Procesos disciplinarios asociados',
+      `El proceso ${procesoOrigen.radicadoProceso} ha sido asociado con el proceso ${procesoDestino.radicadoProceso} (tipo: ${tipoAsociacion}). Justificación: ${justificacion}`,
+      [
+        { label: 'Proceso Origen', valor: procesoOrigen.radicadoProceso },
+        { label: 'Proceso Destino', valor: procesoDestino.radicadoProceso },
+        { label: 'Tipo de Asociación', valor: tipoAsociacion },
+        { label: 'Justificación', valor: justificacion },
+      ],
+      'PROCESOS_ASOCIADOS_RADICADOR',
+      'GitMerge',
+      '#0891B2',
+      { procesoOrigenId, procesoDestinoId, tipoAsociacion },
+    );
+
     return procesoOrigenActualizado;
   }
 
@@ -2104,5 +2142,167 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
        };
      });
    }
- }
+
+  /**
+   * Notifica a todos los usuarios con rol/permiso Radicador en la plataforma
+   * mediante notificación in-app y correo electrónico institucional ESAP.
+   */
+  private async notificarRadicadoresProceso(
+    asunto: string,
+    titulo: string,
+    mensaje: string,
+    detalles: Array<{ label: string; valor: string }>,
+    tipoNotificacion: string,
+    icono: string = 'Briefcase',
+    color: string = '#2563EB',
+    datosAdicionales?: Record<string, any>,
+  ): Promise<void> {
+    try {
+      const radicadoresRows: any[] = await this.processRepository.manager.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role r ON r.id = ur.id_rol
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
+                OR UPPER(r.code) LIKE '%RADICADOR%'
+                OR UPPER(r.name) LIKE '%RADICADOR%')`,
+      );
+
+      const radicadores = (radicadoresRows || []).map((r) => ({
+        id: r.id_user,
+        email: (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim(),
+        nombre: r.nom_largo || r.username || 'Radicador',
+      }));
+
+      if (!radicadores.length) return;
+
+      const baseUrl = (
+        process.env.PUBLIC_APP_URL ||
+        process.env.PUBLIC_FRONTEND_URL ||
+        process.env.FRONTEND_URL ||
+        process.env.FRONTEND_BASE_URL ||
+        'http://localhost:3000'
+      ).replace(/\/$/, '');
+      const processId = datosAdicionales?.processId || '';
+      const radicadoProceso = datosAdicionales?.radicadoProceso || detalles[0]?.valor || '';
+      const urlAccion = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(processId)}&radicado=${encodeURIComponent(radicadoProceso)}`;
+
+      // In-app notifications
+      const notifs = radicadores.map((rad) => ({
+        id_usuario_destinatario: rad.id,
+        tipo_notificacion: tipoNotificacion,
+        titulo,
+        mensaje,
+        descripcion_corta: `${titulo} - ${detalles[0]?.valor || ''}`,
+        icono,
+        color,
+        prioridad: 'Media' as const,
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver proceso',
+        url_accion: urlAccion,
+        datos_adicionales: datosAdicionales,
+      }));
+      await this.notificationClient.sendMany(notifs).catch(() => {});
+
+      // Email institucional ESAP
+      const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+      const filasDetalle = detalles
+        .map(
+          (d) => `
+          <tr>
+            <td style="padding: 10px 14px; font-weight: 600; color: #374151; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; width: 38%; font-size: 13px;">${d.label}</td>
+            <td style="padding: 10px 14px; color: #1f2937; background-color: #ffffff; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${d.valor}</td>
+          </tr>`,
+        )
+        .join('');
+
+      const html = `
+        <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+          <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+            <table cellspacing="0" cellpadding="0" border="0" style="max-width:580px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07);">
+              <tr>
+                <td style="background-image:linear-gradient(135deg,#001A6E 0%,#003DA5 100%);background-color:#001A6E;padding:0;">
+                  <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr><td style="height:4px;background-color:#60A5FA;font-size:0;line-height:0;">&nbsp;</td></tr>
+                    <tr><td style="padding:22px 28px 18px 28px;">
+                      <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                        <td>
+                          <div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">ESAP</div>
+                          <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;">Control Interno Disciplinario</div>
+                        </td>
+                        <td align="right">
+                          <span style="background-color:#003DA5;color:#ffffff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:0.3px;display:inline-block;">Aviso</span>
+                        </td>
+                      </tr></table>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:28px;">
+                  <h1 style="margin:0 0 14px 0;font-size:19px;font-weight:700;color:#111827;line-height:1.4;">${titulo}</h1>
+                  <p style="margin:0 0 20px 0;font-size:14px;color:#4b5563;line-height:1.6;">${mensaje}</p>
+
+                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;border-collapse:collapse;">
+                    ${filasDetalle}
+                  </table>
+
+                  <div style="text-align: center; margin-top: 26px;">
+                    <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+                      <tr>
+                        <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                          <a href="${urlAccion}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
+                            <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                              Ingresar a la Plataforma &rarr;
+                            </span>
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
+                      Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
+                      <a href="${urlAccion}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAccion}</a>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                  <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">ESAP — Escuela Superior de Administración Pública &bull; Oficina de Control Interno Disciplinario</p>
+                  <p style="margin:4px 0 0 0;font-size:11px;color:#cbd5e1;text-align:center;">Este correo fue generado automáticamente. Por favor no responder.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr></table>
+        </div>
+      `;
+
+      await Promise.all(
+        radicadores
+          .filter((rad) => rad.email && rad.email.length > 0)
+          .map(async (rad) => {
+            try {
+              if (this.httpService) {
+                await firstValueFrom(
+                  this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+                    to: rad.email,
+                    subject: asunto,
+                    html,
+                    text: mensaje,
+                  }),
+                );
+              }
+            } catch (err: any) {
+              console.warn(`[ProcessService] No se pudo enviar correo a ${rad.email}:`, err?.message || err);
+            }
+          }),
+      );
+    } catch (error: any) {
+      console.error('Error notificando a radicadores en ProcessService:', error?.message || error);
+    }
+  }
+}
 

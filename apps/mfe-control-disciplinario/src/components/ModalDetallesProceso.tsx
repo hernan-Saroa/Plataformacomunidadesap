@@ -4675,9 +4675,10 @@ export function ModalDetallesProceso({
                       }
 
                       if (autoPliego.estado === 'aprobado') {
+                        const esJuzgamiento = proceso.etapaActual?.toLowerCase().trim() === 'juzgamiento';
                         return (
                           <div className="space-y-2">
-                            {!isJefe && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                            {!isJefe && esJuzgamiento && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
                               <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
                                 <button
                                   onClick={() => setMostrarModalEnvioJuridica(true)}
@@ -4688,7 +4689,18 @@ export function ModalDetallesProceso({
                                   Enviar a Jurídica
                                 </button>
                                 <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
-                                  Auto aprobado — listo para enviar a Oficina Jurídica
+                                  Auto aprobado en Juzgamiento — listo para enviar a Oficina Jurídica
+                                </p>
+                              </div>
+                            )}
+                            {!esJuzgamiento && autoPliego.estado === 'aprobado' && (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
+                                <div className="flex items-center justify-center gap-2 text-amber-700 font-semibold text-sm">
+                                  <AlertCircle className="w-4 h-4" />
+                                  Esperando etapa de Juzgamiento
+                                </div>
+                                <p className="text-[10px] text-amber-600 mt-1">
+                                  El envío a Jurídica estará disponible cuando el proceso esté en etapa de Juzgamiento
                                 </p>
                               </div>
                             )}

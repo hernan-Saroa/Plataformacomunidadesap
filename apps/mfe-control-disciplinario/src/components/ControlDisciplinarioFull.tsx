@@ -143,6 +143,53 @@ export function ControlDisciplinarioFull() {
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
   const [authUserRenderKey, setAuthUserRenderKey] = useState(getAuthUserRenderKey);
   const [radicadoresMap, setRadicadoresMap] = useState<Record<string, string>>({});
+  const [targetExpedienteId, setTargetExpedienteId] = useState<string | null>(null);
+  const [targetRadicado, setTargetRadicado] = useState<string | null>(null);
+
+  // ✅ Abrir expediente directamente si viene por URL o notificación interna
+  useEffect(() => {
+    const checkNavigation = () => {
+      let processId: string | null = null;
+      let radicado: string | null = null;
+
+      try {
+        const raw = sessionStorage.getItem('control-disciplinario:pendingOpenExpediente');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          processId = parsed.processId || null;
+          radicado = parsed.radicado || null;
+        }
+      } catch {}
+
+      if (!processId && !radicado && typeof window !== 'undefined') {
+        const sp = new URLSearchParams(window.location.search);
+        processId = sp.get('processId');
+        radicado = sp.get('radicado');
+      }
+
+      if (processId || radicado) {
+        setTargetExpedienteId(processId);
+        setTargetRadicado(radicado);
+        setCurrentSection('expediente');
+      }
+    };
+
+    checkNavigation();
+
+    const handleOpenEvent = (e: any) => {
+      const detail = e?.detail || {};
+      if (detail.processId || detail.radicado) {
+        setTargetExpedienteId(detail.processId || null);
+        setTargetRadicado(detail.radicado || null);
+        setCurrentSection('expediente');
+      }
+    };
+
+    window.addEventListener('control-disciplinario:open-expediente', handleOpenEvent);
+    return () => {
+      window.removeEventListener('control-disciplinario:open-expediente', handleOpenEvent);
+    };
+  }, []);
 
   useEffect(() => {
     const handleAuthUserChanged = () => {
@@ -680,7 +727,12 @@ export function ControlDisciplinarioFull() {
           modoEnvioJuridica={isModoEnvioJuridica}
         />
       )}
-      {currentSection === 'expediente' && <ExpedientesElectronicosWorldClass />}
+      {currentSection === 'expediente' && (
+        <ExpedientesElectronicosWorldClass
+          initialExpedienteId={targetExpedienteId || undefined}
+          initialRadicado={targetRadicado || undefined}
+        />
+      )}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
       {/* {currentSection === 'terminos' && <GestionTerminosAlertasWorldClass />} */}
       {currentSection === 'profesionales' && <GestionProfesionalesWorldClass onVerProcesos={handleVerProcesosProfesional} />}

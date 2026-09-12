@@ -268,6 +268,7 @@ export interface AutoConfiguration {
     estado: string;
     plantilla?: string;
     stage: string | null;
+    nextStage?: string | null;
     orden: number;
     createdAt: string;
     updatedAt: string;
@@ -285,6 +286,7 @@ export interface CreateAutoConfigurationDto {
     estado?: 'activo' | 'inactivo';
     plantilla?: string;
     stage?: string;
+    nextStage?: string;
     orden?: number;
 }
 
@@ -295,6 +297,7 @@ export interface UpdateAutoConfigurationDto {
     estado?: 'activo' | 'inactivo';
     plantilla?: string;
     stage?: string;
+    nextStage?: string;
     orden?: number;
     // Campos de plantilla
     nombre_plantilla?: string;
