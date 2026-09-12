@@ -560,6 +560,8 @@ export class NewsService {
     const noticiaGuardada = await this.newsRepository.save(noticia);
 
     const radicadorIdDestino = returnNewsDto.radicadorId ?? noticia.radicadorId;
+
+    // Notificación directa de compatibilidad
     if (radicadorIdDestino) {
       this.notificationClient.send({
         id_usuario_destinatario: radicadorIdDestino,
@@ -576,6 +578,36 @@ export class NewsService {
         datos_adicionales: { noticiaId: noticia.id, radicado: noticia.radicado },
       }).catch(() => {});
     }
+
+    // Notificación en plataforma y correo institucional a TODOS los radicadores
+    const fechaStr = new Date().toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const asunto = `[DEVOLUCIÓN NOTICIA] Noticia disciplinaria devuelta: ${noticia.radicado}`;
+    const mensaje = `La noticia disciplinaria ${noticia.radicado} ha sido devuelta por el Jefe OCID con observaciones.`;
+
+    await this.notificarRadicadoresNoticia(
+      noticiaGuardada,
+      asunto,
+      mensaje,
+      'NOTICIA_DEVUELTA',
+      'Noticia disciplinaria devuelta por el Jefe OCID',
+      'ArrowLeft',
+      '#DC2626',
+      [
+        { label: 'Radicado de la Noticia', valor: noticia.radicado },
+        { label: 'Estado', valor: 'DEVUELTA' },
+        { label: 'Fecha de Devolución', valor: fechaStr },
+        { label: 'Observaciones / Motivo', valor: returnNewsDto.observaciones || 'Sin observaciones' },
+      ],
+      'Por favor ingrese al sistema para revisar las observaciones indicadas, subsanar la información de la noticia y proceder a su reenvío para valoración del Jefe OCID.',
+      radicadorIdDestino,
+    );
 
     return noticiaGuardada;
   }
@@ -598,7 +630,25 @@ export class NewsService {
     };
     noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
 
-    return await this.newsRepository.save(noticia);
+    const noticiaGuardada = await this.newsRepository.save(noticia);
+
+    // Notificar a todos los radicadores del archivo de la noticia
+    await this.notificarRadicadoresNoticia(
+      noticiaGuardada,
+      `[NOTICIA ARCHIVADA] Noticia disciplinaria archivada: ${noticia.radicado}`,
+      `La noticia disciplinaria ${noticia.radicado} ha sido archivada. Motivo: ${reason}`,
+      'NOTICIA_ARCHIVADA',
+      'Noticia disciplinaria archivada',
+      'Archive',
+      '#6B7280',
+      [
+        { label: 'Radicado de la Noticia', valor: noticia.radicado },
+        { label: 'Estado', valor: 'ARCHIVADA' },
+        { label: 'Motivo de Archivo', valor: reason },
+      ],
+    );
+
+    return noticiaGuardada;
   }
 
   async restore(id: string): Promise<DisciplinaryNews> {
@@ -822,6 +872,22 @@ export class NewsService {
           datos_adicionales: { noticiaId: newsId, procesoId: procesoDestinoId },
         }).catch(() => {});
       }
+
+      // Notificar también a todos los radicadores por correo y plataforma
+      await this.notificarRadicadoresNoticia(
+        noticia,
+        `[NOTICIA ASOCIADA] Noticia ${noticia.radicado} asociada al proceso ${proceso.radicadoProceso}`,
+        `Se ha asociado la noticia ${noticia.radicado} al proceso disciplinario ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
+        'NOTICIA_ASOCIADA_PROCESO',
+        'Noticia disciplinaria asociada a proceso',
+        'Link',
+        '#7C3AED',
+        [
+          { label: 'Radicado de la Noticia', valor: noticia.radicado },
+          { label: 'Proceso Asociado', valor: proceso.radicadoProceso },
+          { label: 'Justificación', valor: justificacion },
+        ],
+      );
 
       return {
         message: 'Asociación creada exitosamente',
@@ -1208,5 +1274,264 @@ export class NewsService {
         </table>
       </div>
     `;
+  }
+
+  /**
+   * Obtiene la lista completa de radicadores asociados a la noticia y usuarios activos con rol/permiso Radicador
+   */
+  async obtenerRadicadores(
+    noticia?: DisciplinaryNews,
+    radicadorIdDestino?: string | null,
+  ): Promise<Array<{ id: string; nombre: string; email: string }>> {
+    const radicadoresMap = new Map<string, { id: string; nombre: string; email: string }>();
+
+    // 1. Radicador directo de destino o de la noticia
+    const directoId = radicadorIdDestino || noticia?.radicadorId;
+    if (directoId) {
+      try {
+        const rows: any[] = await this.connection.query(
+          `SELECT u.id_user, u.username, p.nom_largo, p.dir_email
+           FROM auth.user u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.id_user = $1
+           LIMIT 1`,
+          [directoId],
+        );
+        if (rows && rows.length > 0) {
+          const r = rows[0];
+          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+          radicadoresMap.set(r.id_user, {
+            id: r.id_user,
+            nombre: r.nom_largo || r.username || 'Radicador',
+            email,
+          });
+        } else {
+          radicadoresMap.set(directoId, {
+            id: directoId,
+            nombre: 'Radicador',
+            email: '',
+          });
+        }
+      } catch (err) {
+        console.warn('Error resolviendo radicador directo en NewsService:', err);
+        radicadoresMap.set(directoId, {
+          id: directoId,
+          nombre: 'Radicador',
+          email: '',
+        });
+      }
+    }
+
+    // 2. Todos los usuarios activos con rol SECRETARIA_RADICADOR, RADICADOR_DISCIPLINARIO o afines
+    try {
+      const roleUsers: any[] = await this.connection.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role r ON r.id = ur.id_rol
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
+                OR UPPER(r.code) LIKE '%RADICADOR%'
+                OR UPPER(r.name) LIKE '%RADICADOR%')`,
+      );
+      for (const r of roleUsers) {
+        if (r.id_user) {
+          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+          radicadoresMap.set(r.id_user, {
+            id: r.id_user,
+            nombre: r.nom_largo || r.username || 'Radicador',
+            email,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Error consultando usuarios con rol Radicador en NewsService:', err);
+    }
+
+    // 3. Usuarios con permiso de radicación
+    try {
+      const permUsers: any[] = await this.connection.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
+         LEFT JOIN auth.personas per ON per.id_person = u.id_person
+         WHERE u.is_active = true
+           AND p.code = $1`,
+        ['control-disciplinario.noticia-disciplinaria.view_mine'],
+      );
+      for (const r of permUsers) {
+        if (r.id_user) {
+          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+          if (!radicadoresMap.has(r.id_user)) {
+            radicadoresMap.set(r.id_user, {
+              id: r.id_user,
+              nombre: r.nom_largo || r.username || 'Radicador',
+              email,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error consultando usuarios con permiso Radicador en NewsService:', err);
+    }
+
+    return Array.from(radicadoresMap.values());
+  }
+
+  private async enviarEmailDirecto(to: string, subject: string, html: string, text?: string): Promise<void> {
+    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    try {
+      await firstValueFrom(
+        this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+          to,
+          subject,
+          html,
+          ...(text ? { text } : {}),
+        }),
+      );
+    } catch (error: any) {
+      console.warn(`[NewsService] No se pudo enviar correo a ${to}:`, error?.message || error);
+    }
+  }
+
+  private buildEmailTemplateNoticiaESAP(
+    titulo: string,
+    mensajePrincipal: string,
+    detalles: Array<{ label: string; valor: string }>,
+    badge: string = 'Noticia Disciplinaria',
+    badgeBg: string = '#DC2626',
+    accionesRequeridas?: string,
+  ): string {
+    const filasDetalle = detalles
+      .map(
+        (d) => `
+        <tr>
+          <td style="padding: 10px 14px; font-weight: 600; color: #374151; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; width: 38%; font-size: 13px;">${d.label}</td>
+          <td style="padding: 10px 14px; color: #1f2937; background-color: #ffffff; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${d.valor}</td>
+        </tr>`,
+      )
+      .join('');
+
+    const seccionAcciones = accionesRequeridas
+      ? `
+      <div style="margin-top: 20px; padding: 16px; background-color: #fef2f2; border-left: 4px solid ${badgeBg}; border-radius: 4px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px;">Acciones Requeridas</p>
+        <p style="margin: 0; font-size: 13px; color: #7f1d1d; line-height: 1.5;">${accionesRequeridas}</p>
+      </div>`
+      : '';
+
+    return `
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:580px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07);">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#001A6E 0%,#003DA5 100%);background-color:#001A6E;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#60A5FA;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td>
+                        <div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">ESAP</div>
+                        <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;">Control Interno Disciplinario</div>
+                      </td>
+                      <td align="right">
+                        <span style="background-color:${badgeBg};color:#ffffff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:0.3px;display:inline-block;">${badge}</span>
+                      </td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;">
+                <h1 style="margin:0 0 14px 0;font-size:19px;font-weight:700;color:#111827;line-height:1.4;">${titulo}</h1>
+                <p style="margin:0 0 20px 0;font-size:14px;color:#4b5563;line-height:1.6;">${mensajePrincipal}</p>
+
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;border-collapse:collapse;">
+                  ${filasDetalle}
+                </table>
+
+                ${seccionAcciones}
+
+                <div style="text-align: center; margin-top: 24px;">
+                  <a href="#" style="display:inline-block;background-color:#003DA5;color:#ffffff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:6px;text-decoration:none;">Ingresar a la Plataforma</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">ESAP — Escuela Superior de Administración Pública &bull; Oficina de Control Interno Disciplinario</p>
+                <p style="margin:4px 0 0 0;font-size:11px;color:#cbd5e1;text-align:center;">Este correo fue generado automáticamente. Por favor no responder.</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
+      </div>
+    `;
+  }
+
+  private async notificarRadicadoresNoticia(
+    noticia: DisciplinaryNews,
+    asunto: string,
+    mensaje: string,
+    tipoNotificacion: string,
+    tituloNotificacion: string,
+    icono: string = 'FileText',
+    color: string = '#2563EB',
+    detalles: Array<{ label: string; valor: string }> = [],
+    accionesRequeridas?: string,
+    radicadorIdDestino?: string | null,
+  ): Promise<void> {
+    try {
+      const radicadores = await this.obtenerRadicadores(noticia, radicadorIdDestino);
+      if (!radicadores.length) return;
+
+      // 1. Notificaciones en campana / in-app
+      const dtos: any[] = radicadores.map((rad) => ({
+        id_usuario_destinatario: rad.id,
+        tipo_notificacion: tipoNotificacion,
+        titulo: tituloNotificacion,
+        mensaje,
+        descripcion_corta: `${tituloNotificacion} - ${noticia.radicado}`,
+        icono,
+        color,
+        prioridad: 'Alta' as const,
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver noticia',
+        datos_adicionales: {
+          noticiaId: noticia.id,
+          radicado: noticia.radicado,
+        },
+      }));
+      await this.notificationClient.sendMany(dtos).catch(() => {});
+
+      // 2. Correo electrónico institucional estilo ESAP
+      const badge = tipoNotificacion === 'NOTICIA_DEVUELTA' ? 'Devolución de Noticia' : 'Noticia Disciplinaria';
+      const badgeBg = tipoNotificacion === 'NOTICIA_DEVUELTA' ? '#DC2626' : '#2563EB';
+      const html = this.buildEmailTemplateNoticiaESAP(
+        tituloNotificacion,
+        mensaje,
+        detalles,
+        badge,
+        badgeBg,
+        accionesRequeridas,
+      );
+
+      await Promise.all(
+        radicadores
+          .filter((rad) => rad.email && rad.email.trim().length > 0)
+          .map((rad) =>
+            this.enviarEmailDirecto(rad.email.trim(), asunto, html, mensaje).catch((err) =>
+              console.error(`Error enviando correo de noticia a ${rad.email}:`, err),
+            ),
+          ),
+      );
+    } catch (error) {
+      console.error('Error en notificarRadicadoresNoticia:', error);
+    }
   }
 }

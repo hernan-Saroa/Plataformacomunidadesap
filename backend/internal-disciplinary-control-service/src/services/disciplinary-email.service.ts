@@ -75,9 +75,147 @@ export class DisciplinaryEmailService {
       );
       this.logger.log(`Email de reasignación enviado exitosamente a ${to}`);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error enviando email de reasignación a ${to}: ${error.message}`);
       return false;
     }
+  }
+
+  /**
+   * Envía un correo genérico con template HTML
+   */
+  async sendEmail(
+    to: string,
+    subject: string,
+    html: string,
+    text?: string,
+  ): Promise<boolean> {
+    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    try {
+      await firstValueFrom(
+        this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+          to,
+          subject,
+          html,
+          ...(text ? { text } : {}),
+        }),
+      );
+      this.logger.log(`Email enviado exitosamente a ${to}`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Error enviando email a ${to}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Construye el template HTML institucional ESAP para avisos y notificaciones
+   */
+  buildEmailTemplateESAP(
+    titulo: string,
+    mensajePrincipal: string,
+    detalles: Array<{ label: string; valor: string }>,
+    badge: string = 'Aviso',
+    badgeBg: string = '#003DA5',
+    accionesRequeridas?: string,
+  ): string {
+    const filasDetalle = detalles
+      .map(
+        (d) => `
+        <tr>
+          <td style="padding: 10px 14px; font-weight: 600; color: #374151; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; width: 38%; font-size: 13px;">${d.label}</td>
+          <td style="padding: 10px 14px; color: #1f2937; background-color: #ffffff; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${d.valor}</td>
+        </tr>`,
+      )
+      .join('');
+
+    const seccionAcciones = accionesRequeridas
+      ? `
+      <div style="margin-top: 20px; padding: 16px; background-color: #fef2f2; border-left: 4px solid #dc2626; border-radius: 4px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px;">Acciones Requeridas</p>
+        <p style="margin: 0; font-size: 13px; color: #7f1d1d; line-height: 1.5;">${accionesRequeridas}</p>
+      </div>`
+      : '';
+
+    return `
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:580px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07);">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#001A6E 0%,#003DA5 100%);background-color:#001A6E;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#60A5FA;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td>
+                        <div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">ESAP</div>
+                        <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;">Control Interno Disciplinario</div>
+                      </td>
+                      <td align="right">
+                        <span style="background-color:${badgeBg};color:#ffffff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:0.3px;display:inline-block;">${badge}</span>
+                      </td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;">
+                <h1 style="margin:0 0 14px 0;font-size:19px;font-weight:700;color:#111827;line-height:1.4;">${titulo}</h1>
+                <p style="margin:0 0 20px 0;font-size:14px;color:#4b5563;line-height:1.6;">${mensajePrincipal}</p>
+
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;border-collapse:collapse;">
+                  ${filasDetalle}
+                </table>
+
+                ${seccionAcciones}
+
+                <div style="text-align: center; margin-top: 24px;">
+                  <a href="#" style="display:inline-block;background-color:#003DA5;color:#ffffff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:6px;text-decoration:none;">Ingresar a la Plataforma</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">ESAP — Escuela Superior de Administración Pública &bull; Oficina de Control Interno Disciplinario</p>
+                <p style="margin:4px 0 0 0;font-size:11px;color:#cbd5e1;text-align:center;">Este correo fue generado automáticamente. Por favor no responder.</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
+      </div>
+    `;
+  }
+
+  /**
+   * Envía un aviso por correo a múltiples destinatarios
+   */
+  async sendBulkNotification(
+    destinatarios: Array<{ email: string; nombre?: string }>,
+    asunto: string,
+    titulo: string,
+    mensajePrincipal: string,
+    detalles: Array<{ label: string; valor: string }>,
+    badge: string = 'Aviso',
+    badgeBg: string = '#003DA5',
+    accionesRequeridas?: string,
+  ): Promise<void> {
+    const html = this.buildEmailTemplateESAP(
+      titulo,
+      mensajePrincipal,
+      detalles,
+      badge,
+      badgeBg,
+      accionesRequeridas,
+    );
+    await Promise.all(
+      destinatarios
+        .filter((d) => d.email && d.email.trim().length > 0)
+        .map((d) =>
+          this.sendEmail(d.email.trim(), asunto, html, mensajePrincipal).catch((err) =>
+            this.logger.error(`Error enviando correo bulk a ${d.email}: ${err.message}`),
+          ),
+        ),
+    );
   }
 }

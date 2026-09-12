@@ -47,6 +47,11 @@ const SEMAFORO_STYLES: Record<string, SemaforoStyle> = {
   VENCIDO: { fill: 'FFFEE2E2', font: 'FF991B1B', bold: true },
   'ETAPA POR VENCER': { fill: 'FFFEF3C7', font: 'FF92400E', bold: true },
   'EN TÉRMINOS': { fill: 'FFD1FAE5', font: 'FF065F46', bold: true },
+  'CARGOS - VENCIDO': { fill: 'FFFEE2E2', font: 'FF991B1B', bold: true },
+  'CARGOS - ETAPA POR VENCER': { fill: 'FFFEF3C7', font: 'FF92400E', bold: true },
+  'CARGOS - EN TÉRMINOS': { fill: 'FFD1FAE5', font: 'FF065F46', bold: true },
+  'CARGOS - Sin datos': { fill: 'FFF3F4F6', font: 'FF6B7280', bold: false },
+  CARGOS: { fill: 'FFFEF3C7', font: 'FF92400E', bold: true },
   ARCHIVADO: { fill: 'FFE2E8F0', font: 'FF334155', bold: true },
   INHIBIDO: { fill: 'FFEDE9FE', font: 'FF5B21B6', bold: true },
   'Sin datos': { fill: 'FFF3F4F6', font: 'FF6B7280', bold: false },
@@ -358,7 +363,10 @@ export class ProcessExportService {
         fechaVencimientoEtapaActual = null;
       } else if (process.etapaActual === 'EVALUACION') {
         fechaVencimientoEtapaActual = fechaVencimientoEvaluacion;
-      } else if (process.etapaActual === 'JUZGAMIENTO') {
+      } else if (
+        process.etapaActual === 'JUZGAMIENTO' ||
+        process.etapaActual === ProcessStage.JUZGAMIENTO
+      ) {
         const fechaEntradaCargos =
           fechasEtapa?.get('JUZGAMIENTO') ||
           process.fechaInicioEtapa ||
@@ -386,18 +394,34 @@ export class ProcessExportService {
         }
       }
 
+      // Si tiene auto de pliego / formulación de cargos pero aún no tenía vencimiento calculado
+      if (!fechaVencimientoEtapaActual && autoPliego && !isInhibido && !isArchivado) {
+        const fAprob = fechaAprobacionAuto(autoPliego);
+        if (fAprob) {
+          const resultado = await this.terminosCalculatorService.calculateVencimientoEtapa(
+            'JUZGAMIENTO',
+            new Date(fAprob),
+          );
+          fechaVencimientoEtapaActual = resultado.fechaVencimiento;
+        }
+      }
+
       // Si no se pudo calcular por falta de actuaciones pero el proceso tiene fechaVencimientoEtapa registrada:
       if (!fechaVencimientoEtapaActual && process.fechaVencimientoEtapa && !isInhibido && !isArchivado) {
         fechaVencimientoEtapaActual = new Date(process.fechaVencimientoEtapa);
       }
 
       let decisionTexto = '';
-      if (autoPliego) {
-        decisionTexto = 'Formulación de Cargos';
+      if (isInhibido) {
+        decisionTexto = 'Auto Inhibitorio';
       } else if (isArchivado) {
         decisionTexto = 'Auto de Archivo';
-      } else if (isInhibido) {
-        decisionTexto = 'Auto Inhibitorio';
+      } else if (
+        autoPliego ||
+        process.etapaActual === ProcessStage.JUZGAMIENTO ||
+        (process as any).etapaActual === 'JUZGAMIENTO'
+      ) {
+        decisionTexto = 'Formulación de Cargos';
       }
 
       const values: Record<number, any> = {
@@ -459,11 +483,44 @@ export class ProcessExportService {
 
       // Columna 24 (X): Vencimientos (Última Columna)
       // Se calcula el estado precalculado para visualización inmediata y semaforización
+      const esCargos =
+        !isInhibido &&
+        !isArchivado &&
+        (decisionTexto === 'Formulación de Cargos' ||
+          decisionTexto === 'Pliego de Cargos' ||
+          Boolean(autoPliego) ||
+          process.etapaActual === ProcessStage.JUZGAMIENTO ||
+          (process as any).etapaActual === 'JUZGAMIENTO' ||
+          etapaLabel === '05 CARGOS' ||
+          etapaLabel === 'CARGOS');
+
+      const fechaRefCargos =
+        fechaVencimientoEtapaActual ||
+        fechaVencimientoEvaluacion ||
+        (process.fechaVencimientoEtapa ? new Date(process.fechaVencimientoEtapa) : null);
+
       let resultadoVencimiento = 'Sin datos';
       if (isInhibido) {
         resultadoVencimiento = 'INHIBIDO';
       } else if (isArchivado) {
         resultadoVencimiento = 'ARCHIVADO';
+      } else if (esCargos) {
+        if (!fechaRefCargos) {
+          resultadoVencimiento = 'CARGOS - Sin datos';
+        } else {
+          const hoyDate = new Date(y, m - 1, d);
+          const fvDate = new Date(fechaRefCargos);
+          fvDate.setHours(0, 0, 0, 0);
+          if (fvDate < hoyDate) {
+            resultadoVencimiento = 'CARGOS - VENCIDO';
+          } else {
+            const diasHabiles = calculateNetworkDays(hoyDate, fvDate);
+            resultadoVencimiento =
+              diasHabiles <= umbralDias + 1
+                ? 'CARGOS - ETAPA POR VENCER'
+                : 'CARGOS - EN TÉRMINOS';
+          }
+        }
       } else if (process.etapaActual === 'EVALUACION') {
         if (!fechaVencimientoEvaluacion) {
           resultadoVencimiento = 'Sin datos';
@@ -494,10 +551,14 @@ export class ProcessExportService {
         }
       }
 
-      // La fórmula contempla Evaluación en F y en V, además de los estados ARCHIVADO e INHIBIDO
+      // La fórmula contempla ARCHIVADO, INHIBIDO, Formulación de Cargos (CARGOS), Evaluación y demás etapas
       const formulaVencimientos =
-        `IF(OR(F${r}="ARCHIVADO",F${r}="06 ARCHIVADO"),"ARCHIVADO",` +
-        `IF(OR(F${r}="INHIBIDO",F${r}="INHIBITORIO",F${r}="00 INHIBITORIO"),"INHIBIDO",` +
+        `IF(OR(F${r}="ARCHIVADO",F${r}="06 ARCHIVADO",W${r}="Auto de Archivo"),"ARCHIVADO",` +
+        `IF(OR(F${r}="INHIBIDO",F${r}="INHIBITORIO",F${r}="00 INHIBITORIO",W${r}="Auto Inhibitorio"),"INHIBIDO",` +
+        `IF(OR(W${r}="Formulación de Cargos",W${r}="Pliego de Cargos",F${r}="05 CARGOS",F${r}="CARGOS"),` +
+        `IF(IF(T${r}<>"",T${r},V${r})="","CARGOS - Sin datos",` +
+        `IF(IF(T${r}<>"",T${r},V${r})<DATE(${y},${m},${d}),"CARGOS - VENCIDO",` +
+        `IF(NETWORKDAYS(DATE(${y},${m},${d}),IF(T${r}<>"",T${r},V${r}))<=${umbralDias + 1},"CARGOS - ETAPA POR VENCER","CARGOS - EN TÉRMINOS"))),` +
         `IF(OR(F${r}="04 EVALUACIÓN ID",F${r}="EVALUACION",F${r}="EVALUACIÓN"),` +
         `IF(IF(V${r}<>"",V${r},T${r})="","Sin datos",` +
         `IF(IF(V${r}<>"",V${r},T${r})<DATE(${y},${m},${d}),"VENCIDO",` +
@@ -603,6 +664,16 @@ export class ProcessExportService {
             style: {
               fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } },
               font: { color: { argb: 'FF6B7280' } },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'CARGOS',
+            priority: 7,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
+              font: { color: { argb: 'FF92400E' }, bold: true },
             },
           },
         ],
