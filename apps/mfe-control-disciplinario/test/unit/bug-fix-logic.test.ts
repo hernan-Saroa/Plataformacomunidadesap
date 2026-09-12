@@ -1,98 +1,149 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-// Test the stage normalization logic used in ModalDetallesProceso
-function isJuzgamientoStage(etapaActual: string | undefined | null): boolean {
-  return etapaActual?.toLowerCase().trim() === 'juzgamiento';
+// Resilient stage normalization logic used in ModalDetallesProceso & DashboardKanbanOperativo
+function isEtapaJuzgamiento(etapaNombre?: string | null): boolean {
+  if (!etapaNombre) return false;
+  const n = etapaNombre
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  return n === 'JUZGAMIENTO' || n.includes('JUZG');
 }
 
-describe('Stage normalization logic - Juzgamiento check', () => {
+// Role and permission evaluation logic for sending to Jurídica
+function canUserSendJuridica(
+  roles: (string | { code: string })[],
+  permissions: string[]
+): boolean {
+  const roleCodes = roles.map(r => (typeof r === 'string' ? r : r?.code));
+  const isSuperAdmin = roleCodes.includes('SUPER_ADMIN');
+  const isAdmin = roleCodes.includes('ADMIN');
+  const isRadicador = roleCodes.some(
+    r => r === 'SECRETARIA_RADICADOR' || r === 'RADICADOR_DISCIPLINARIO' || r === 'RADICADOR'
+  );
+  const hasPermission = permissions.includes('control-disciplinario.procesos.send_to_juridica');
+
+  return hasPermission || isSuperAdmin || isAdmin || isRadicador;
+}
+
+// Detection of Pliego de Cargos autos
+function esPliegoAuto(auto: { tipo?: string; titulo?: string; plantilla?: string }): boolean {
+  const tipo = (auto.tipo || '').toUpperCase();
+  const titulo = (auto.titulo || '').toLowerCase();
+  const plantilla = (auto.plantilla || '').toLowerCase();
+
+  return (
+    tipo === 'AUTO_FORMULACION_PLIEGO' ||
+    tipo === 'PLIEGO_CARGOS' ||
+    titulo.includes('pliego') ||
+    titulo.includes('cargo') ||
+    plantilla.includes('pliego') ||
+    plantilla.includes('cargo')
+  );
+}
+
+describe('Stage normalization logic - isEtapaJuzgamiento', () => {
   it('returns true for exact match "Juzgamiento"', () => {
-    expect(isJuzgamientoStage('Juzgamiento')).toBe(true);
+    expect(isEtapaJuzgamiento('Juzgamiento')).toBe(true);
   });
 
   it('returns true for lowercase "juzgamiento"', () => {
-    expect(isJuzgamientoStage('juzgamiento')).toBe(true);
+    expect(isEtapaJuzgamiento('juzgamiento')).toBe(true);
   });
 
   it('returns true for uppercase "JUZGAMIENTO"', () => {
-    expect(isJuzgamientoStage('JUZGAMIENTO')).toBe(true);
+    expect(isEtapaJuzgamiento('JUZGAMIENTO')).toBe(true);
   });
 
   it('returns true for mixed case "JuzGaMiEnTo"', () => {
-    expect(isJuzgamientoStage('JuzGaMiEnTo')).toBe(true);
+    expect(isEtapaJuzgamiento('JuzGaMiEnTo')).toBe(true);
   });
 
-  it('returns true for trimmed " Juzgamiento " ', () => {
-    expect(isJuzgamientoStage(' Juzgamiento ')).toBe(true);
+  it('returns true for padded spaces "  Juzgamiento  "', () => {
+    expect(isEtapaJuzgamiento('  Juzgamiento  ')).toBe(true);
   });
 
-  it('returns false for "Formulación de Cargos"', () => {
-    expect(isJuzgamientoStage('Formulación de Cargos')).toBe(false);
+  it('returns true for multi-word variants containing "Juzgamiento"', () => {
+    expect(isEtapaJuzgamiento('Etapa de Juzgamiento')).toBe(true);
+    expect(isEtapaJuzgamiento('Juzgamiento Disciplinario')).toBe(true);
   });
 
-  it('returns false for "Investigación"', () => {
-    expect(isJuzgamientoStage('Investigación')).toBe(false);
+  it('returns false for other stages', () => {
+    expect(isEtapaJuzgamiento('Formulación de Cargos')).toBe(false);
+    expect(isEtapaJuzgamiento('Investigación')).toBe(false);
+    expect(isEtapaJuzgamiento('Valoración')).toBe(false);
+    expect(isEtapaJuzgamiento('Indagación')).toBe(false);
+    expect(isEtapaJuzgamiento('Fallo')).toBe(false);
+    expect(isEtapaJuzgamiento('Recepción')).toBe(false);
+    expect(isEtapaJuzgamiento('ARCHIVO')).toBe(false);
+    expect(isEtapaJuzgamiento('INHIBITORIO')).toBe(false);
   });
 
-  it('returns false for "Valoración"', () => {
-    expect(isJuzgamientoStage('Valoración')).toBe(false);
-  });
-
-  it('returns false for "Indagación"', () => {
-    expect(isJuzgamientoStage('Indagación')).toBe(false);
-  });
-
-  it('returns false for "Fallo"', () => {
-    expect(isJuzgamientoStage('Fallo')).toBe(false);
-  });
-
-  it('returns false for undefined', () => {
-    expect(isJuzgamientoStage(undefined)).toBe(false);
-  });
-
-  it('returns false for null', () => {
-    expect(isJuzgamientoStage(null)).toBe(false);
-  });
-
-  it('returns false for empty string', () => {
-    expect(isJuzgamientoStage('')).toBe(false);
+  it('returns false for falsy values', () => {
+    expect(isEtapaJuzgamiento(undefined)).toBe(false);
+    expect(isEtapaJuzgamiento(null)).toBe(false);
+    expect(isEtapaJuzgamiento('')).toBe(false);
   });
 });
 
-// Test the auto types that require nextStage
-const TIPOS_AUTO_CON_ETAPA_SIGUIENTE = ['AUTO_FORMULACION_PLIEGO'];
-
-describe('Auto types requiring nextStage', () => {
-  it('includes AUTO_FORMULACION_PLIEGO', () => {
-    expect(TIPOS_AUTO_CON_ETAPA_SIGUIENTE).toContain('AUTO_FORMULACION_PLIEGO');
+describe('Role and permission check - canUserSendJuridica', () => {
+  it('allows user with SECRETARIA_RADICADOR role', () => {
+    expect(canUserSendJuridica(['SECRETARIA_RADICADOR'], [])).toBe(true);
+    expect(canUserSendJuridica([{ code: 'SECRETARIA_RADICADOR' }], [])).toBe(true);
   });
 
-  it('does not include AUTO_INDAGACION', () => {
-    expect(TIPOS_AUTO_CON_ETAPA_SIGUIENTE).not.toContain('AUTO_INDAGACION');
+  it('allows user with RADICADOR_DISCIPLINARIO role', () => {
+    expect(canUserSendJuridica(['RADICADOR_DISCIPLINARIO'], [])).toBe(true);
+    expect(canUserSendJuridica([{ code: 'RADICADOR_DISCIPLINARIO' }], [])).toBe(true);
   });
 
-  it('does not include AUTO_CALIFICACION', () => {
-    expect(TIPOS_AUTO_CON_ETAPA_SIGUIENTE).not.toContain('AUTO_CALIFICACION');
+  it('allows user with generic RADICADOR role', () => {
+    expect(canUserSendJuridica(['RADICADOR'], [])).toBe(true);
   });
 
-  it('does not include AUTO_APERTURA_INVESTIGACION', () => {
-    expect(TIPOS_AUTO_CON_ETAPA_SIGUIENTE).not.toContain('AUTO_APERTURA_INVESTIGACION');
+  it('allows ADMIN and SUPER_ADMIN roles', () => {
+    expect(canUserSendJuridica(['ADMIN'], [])).toBe(true);
+    expect(canUserSendJuridica(['SUPER_ADMIN'], [])).toBe(true);
   });
 
-  it('does not include AUTO_CIERRE_INVESTIGACION', () => {
-    expect(TIPOS_AUTO_CON_ETAPA_SIGUIENTE).not.toContain('AUTO_CIERRE_INVESTIGACION');
+  it('allows user with explicit send_to_juridica permission regardless of role', () => {
+    expect(
+      canUserSendJuridica(['OTRO_ROL'], ['control-disciplinario.procesos.send_to_juridica'])
+    ).toBe(true);
   });
 
-  it('does not include AUTO_FALLO', () => {
-    expect(TIPOS_AUTO_CON_ETAPA_SIGUIENTE).not.toContain('AUTO_FALLO');
+  it('denies user without permission or radicador/admin role', () => {
+    expect(canUserSendJuridica(['PROFESIONAL_DISCIPLINARIO'], [])).toBe(false);
+    expect(canUserSendJuridica(['INVESTIGADOR'], ['control-disciplinario.procesos.view'])).toBe(false);
+    expect(canUserSendJuridica([], [])).toBe(false);
   });
 });
 
-// Test permission constant
-const PERMISSION_SEND_TO_JURIDICA = 'control-disciplinario.procesos.send_to_juridica';
+describe('Pliego auto detection - esPliegoAuto', () => {
+  it('identifies AUTO_FORMULACION_PLIEGO', () => {
+    expect(esPliegoAuto({ tipo: 'AUTO_FORMULACION_PLIEGO' })).toBe(true);
+  });
 
-describe('Permission constant', () => {
-  it('matches expected permission string', () => {
-    expect(PERMISSION_SEND_TO_JURIDICA).toBe('control-disciplinario.procesos.send_to_juridica');
+  it('identifies PLIEGO_CARGOS', () => {
+    expect(esPliegoAuto({ tipo: 'PLIEGO_CARGOS' })).toBe(true);
+  });
+
+  it('identifies by title containing "pliego"', () => {
+    expect(esPliegoAuto({ titulo: 'Auto de Pliego de Cargos' })).toBe(true);
+  });
+
+  it('identifies by title containing "cargos"', () => {
+    expect(esPliegoAuto({ titulo: 'Auto Formulación de Cargos No. 045' })).toBe(true);
+  });
+
+  it('identifies by plantilla containing "pliego"', () => {
+    expect(esPliegoAuto({ plantilla: 'plantilla_pliego_definitivo' })).toBe(true);
+  });
+
+  it('returns false for unrelated autos', () => {
+    expect(esPliegoAuto({ tipo: 'AUTO_INDAGACION', titulo: 'Auto de Indagación Previa' })).toBe(false);
+    expect(esPliegoAuto({ tipo: 'AUTO_ARCHIVO', titulo: 'Auto de Archivo Definitivo' })).toBe(false);
   });
 });

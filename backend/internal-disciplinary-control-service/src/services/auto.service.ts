@@ -1100,15 +1100,19 @@ export class AutoService {
     // notificados + evidencias + adjuntos de la noticia.
     (async () => {
       let adjuntos: EmailAdjunto[] = [];
+      let evidencias: any[] = [];
+      let autosDocumentables: any[] = [];
+      let adjuntosNoticia: any[] = [];
       try {
-        const [evidencias, autosProceso] = await Promise.all([
+        const [evidenciasRes, autosProceso] = await Promise.all([
           this.processService.getEvidenceByProcessId(auto.processId),
           this.findByProcessId(auto.processId),
         ]);
-        const autosDocumentables = (autosProceso || []).filter((a) =>
+        evidencias = evidenciasRes || [];
+        autosDocumentables = (autosProceso || []).filter((a) =>
           [AutoStatus.APROBADO, AutoStatus.FIRMADO, AutoStatus.NOTIFICADO].includes(a.estado),
         );
-        const adjuntosNoticia = Array.isArray((auto.process as any)?.news?.adjuntos)
+        adjuntosNoticia = Array.isArray((auto.process as any)?.news?.adjuntos)
           ? (auto.process as any).news.adjuntos
           : [];
         adjuntos = await this.juridicaEmailService.recolectarAdjuntosExpediente(
@@ -1119,6 +1123,16 @@ export class AutoService {
       } catch (err: any) {
         console.error(`No se pudieron recolectar los adjuntos del expediente: ${err?.message}`);
       }
+
+      // Notificar directamente al módulo de Gestión Legal (Centro de Comunicaciones)
+      await this.juridicaEmailService.notificarTransferenciaAModuloLegal(
+        auto.processId,
+        datosConsolidados,
+        evidencias,
+        autosDocumentables,
+        adjuntosNoticia,
+        adjuntos,
+      );
 
       const enviado = await this.juridicaEmailService.enviarCorreoJuridica(
         auto.processId,

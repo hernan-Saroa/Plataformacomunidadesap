@@ -758,6 +758,7 @@ interface TarjetaProcesoProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  onEnviarJuridica?: (proceso: Proceso) => void; // ✅ NUEVO: Enviar a Jurídica desde Juzgamiento
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -780,6 +781,7 @@ function TarjetaProceso({
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
+  onEnviarJuridica, // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -802,6 +804,19 @@ function TarjetaProceso({
   const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+  const canSendJuridica =
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    authService.isSuperAdmin() ||
+    authService.hasRole('ADMIN') ||
+    authService.hasRole('SECRETARIA_RADICADOR') ||
+    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
+    authService.hasRole('RADICADOR');
+  const esProcesoEnJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
+  const isArchivado =
+    proceso.etapaActual === 'ARCHIVO' ||
+    proceso.estadoActual === 'ARCHIVADO' ||
+    proceso.etapaActual === 'INHIBITORIO' ||
+    proceso.estadoActual === 'INHIBIDO';
 
   const isRadicador = isSecretarioRadicadorUser();
   const esProcesoEnCargos = isEtapaCargos(proceso.etapaActual);
@@ -1173,6 +1188,18 @@ function TarjetaProceso({
                 Aprobar Documento
               </KanbanButtonSemantic>
             )}
+
+            {esProcesoEnJuzgamiento && canSendJuridica && !isArchivado && onEnviarJuridica && (
+              <KanbanButtonSemantic
+                variant="info"
+                onClick={(e) => { e.stopPropagation(); onEnviarJuridica(proceso); }}
+                icon={<Send className="w-3.5 h-3.5" />}
+                title="Enviar a Jurídica"
+                className="w-full !border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
+              >
+                Enviar a Jurídica
+              </KanbanButtonSemantic>
+            )}
           </KanbanActionSection>
         </KanbanCard>
       </motion.div>
@@ -1186,6 +1213,7 @@ interface VistaListaProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  onEnviarJuridica?: (proceso: Proceso) => void; // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -1215,6 +1243,7 @@ function VistaLista({
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
+  onEnviarJuridica, // ✅ NUEVO
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -1254,6 +1283,13 @@ function VistaLista({
   const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
   const canAssociateProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+  const canSendJuridica =
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    authService.isSuperAdmin() ||
+    authService.hasRole('ADMIN') ||
+    authService.hasRole('SECRETARIA_RADICADOR') ||
+    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
+    authService.hasRole('RADICADOR');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1645,6 +1681,17 @@ function VistaLista({
                             Aprobar Documento
                           </KanbanButtonSemantic>
                         )}
+                        {isEtapaJuzgamiento(proceso!.etapaActual) && canSendJuridica && proceso!.estadoActual !== 'ARCHIVADO' && proceso!.estadoActual !== 'INHIBIDO' && onEnviarJuridica && (
+                          <KanbanButtonSemantic
+                            variant="info"
+                            onClick={() => onEnviarJuridica(proceso!)}
+                            icon={<Send className="w-3 h-3" />}
+                            title="Enviar a Jurídica"
+                            className="!border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
+                          >
+                            Enviar a Jurídica
+                          </KanbanButtonSemantic>
+                        )}
                       </>
                     )}
                   </div>
@@ -1927,6 +1974,17 @@ function VistaLista({
                                   Aprobar Documento
                                 </KanbanButtonSemantic>
                               )}
+                              {isEtapaJuzgamiento(proceso!.etapaActual) && canSendJuridica && proceso!.estadoActual !== 'ARCHIVADO' && proceso!.estadoActual !== 'INHIBIDO' && onEnviarJuridica && (
+                                <KanbanButtonSemantic
+                                  variant="info"
+                                  onClick={() => onEnviarJuridica(proceso!)}
+                                  icon={<Send className="w-3.5 h-3.5" />}
+                                  title="Enviar a Jurídica"
+                                  className="!border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
+                                >
+                                  Enviar a Jurídica
+                                </KanbanButtonSemantic>
+                              )}
                             </>
                           )}
                         </div>
@@ -1980,6 +2038,7 @@ interface ColumnaKanbanProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  onEnviarJuridica?: (proceso: Proceso) => void; // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -2022,6 +2081,7 @@ function ColumnaKanban({
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
+  onEnviarJuridica, // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -2406,6 +2466,7 @@ function ColumnaKanban({
               onVerDetalles={onVerDetalles}
               onAprobarBorrador={onAprobarBorrador}
               onVerExpediente={onVerExpediente}
+              onEnviarJuridica={onEnviarJuridica}
               onGestionAutos={onGestionAutos}
               onGestionEvidencias={onGestionEvidencias}
               onGestionOficios={onGestionOficios}
@@ -3548,6 +3609,7 @@ export function DashboardKanbanOperativo({
 
   // ✅ ESTADO PARA MODALES
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
+  const [abrirEnvioJuridicaDirecto, setAbrirEnvioJuridicaDirecto] = useState<boolean>(false);
 
   // ✅ USUARIO ACTUAL
   const currentUser = authService.getCurrentUser();
@@ -5990,6 +6052,25 @@ export function DashboardKanbanOperativo({
     const enriched = { ...proceso, archivosAdjuntos: enrichedArchivos, news: rawNews || null };
     console.log('[Kanban] handleVerDetalles enriched archivosAdjuntos:', enrichedArchivos);
     setItemSeleccionado(enriched);
+    setAbrirEnvioJuridicaDirecto(false);
+    setModalActivo('ver-detalles');
+  };
+
+  // ✅ NUEVO: Handler para enviar a jurídica directamente desde la tarjeta en Juzgamiento
+  const handleEnviarJuridica = (proceso: Proceso) => {
+    const rawNews = (proceso as any).news;
+    const enrichedArchivos = proceso.archivosAdjuntos?.length
+      ? proceso.archivosAdjuntos
+      : (rawNews?.adjuntos || []).map((url: string, i: number) => ({
+          nombre: url.split('/').pop() || `evidencia-${i}`,
+          tipo: 'evidencia',
+          tamano: 0,
+          fechaSubida: new Date().toISOString(),
+          url
+        }));
+    const enriched = { ...proceso, archivosAdjuntos: enrichedArchivos, news: rawNews || null };
+    setItemSeleccionado(enriched);
+    setAbrirEnvioJuridicaDirecto(true);
     setModalActivo('ver-detalles');
   };
 
@@ -6951,6 +7032,7 @@ export function DashboardKanbanOperativo({
                           onVerDetalles={handleVerDetalles}
                           onAprobarBorrador={handleAprobarBorrador}
                           onVerExpediente={handleVerExpediente}
+                          onEnviarJuridica={handleEnviarJuridica}
                           onGestionAutos={handleGestionAutos}
                           onGestionEvidencias={handleGestionEvidencias}
                           onGestionOficios={handleGestionOficios}
@@ -7013,6 +7095,7 @@ export function DashboardKanbanOperativo({
             onVerDetalles={handleVerDetalles}
             onAprobarBorrador={handleAprobarBorrador}
             onVerExpediente={handleVerExpediente}
+            onEnviarJuridica={handleEnviarJuridica}
             onGestionAutos={handleGestionAutos}
             onGestionEvidencias={handleGestionEvidencias}
             onGestionOficios={handleGestionOficios}
@@ -7933,7 +8016,13 @@ export function DashboardKanbanOperativo({
         {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (
           <ModalDetallesProceso
             proceso={itemSeleccionado as Proceso}
-            onClose={() => { setModalActivo(null); setItemSeleccionado(null); cargarDatos(); }}
+            abrirEnvioJuridicaDirecto={abrirEnvioJuridicaDirecto}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+              setAbrirEnvioJuridicaDirecto(false);
+              cargarDatos();
+            }}
             onReabrir={() => {
               setModalActivo('ver-detalles');
             }}
