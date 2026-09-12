@@ -2178,6 +2178,17 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
 
       if (!radicadores.length) return;
 
+      const baseUrl = (
+        process.env.PUBLIC_APP_URL ||
+        process.env.PUBLIC_FRONTEND_URL ||
+        process.env.FRONTEND_URL ||
+        process.env.FRONTEND_BASE_URL ||
+        'http://localhost:3000'
+      ).replace(/\/$/, '');
+      const processId = datosAdicionales?.processId || '';
+      const radicadoProceso = datosAdicionales?.radicadoProceso || detalles[0]?.valor || '';
+      const urlAccion = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(processId)}&radicado=${encodeURIComponent(radicadoProceso)}`;
+
       // In-app notifications
       const notifs = radicadores.map((rad) => ({
         id_usuario_destinatario: rad.id,
@@ -2191,6 +2202,7 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
         categoria: 'DISCIPLINARIO',
         tiene_accion: true,
         texto_boton_accion: 'Ver proceso',
+        url_accion: urlAccion,
         datos_adicionales: datosAdicionales,
       }));
       await this.notificationClient.sendMany(notifs).catch(() => {});
@@ -2238,8 +2250,22 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
                     ${filasDetalle}
                   </table>
 
-                  <div style="text-align: center; margin-top: 24px;">
-                    <a href="#" style="display:inline-block;background-color:#003DA5;color:#ffffff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:6px;text-decoration:none;">Ingresar a la Plataforma</a>
+                  <div style="text-align: center; margin-top: 26px;">
+                    <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+                      <tr>
+                        <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                          <a href="${urlAccion}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
+                            <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                              Ingresar a la Plataforma &rarr;
+                            </span>
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
+                      Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
+                      <a href="${urlAccion}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAccion}</a>
+                    </p>
                   </div>
                 </td>
               </tr>

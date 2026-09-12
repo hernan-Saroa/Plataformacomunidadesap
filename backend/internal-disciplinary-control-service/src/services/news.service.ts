@@ -1397,6 +1397,16 @@ export class NewsService {
     }
   }
 
+  private getFrontendBaseUrl(): string {
+    return (
+      process.env.PUBLIC_APP_URL ||
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
+  }
+
   private buildEmailTemplateNoticiaESAP(
     titulo: string,
     mensajePrincipal: string,
@@ -1404,7 +1414,12 @@ export class NewsService {
     badge: string = 'Noticia Disciplinaria',
     badgeBg: string = '#DC2626',
     accionesRequeridas?: string,
+    urlAcceso?: string,
+    textoBoton: string = 'Ingresar a la Plataforma',
   ): string {
+    const baseUrl = this.getFrontendBaseUrl();
+    const finalUrlAcceso = urlAcceso || `${baseUrl}/?module=control-disciplinario`;
+
     const filasDetalle = detalles
       .map(
         (d) => `
@@ -1456,8 +1471,22 @@ export class NewsService {
 
                 ${seccionAcciones}
 
-                <div style="text-align: center; margin-top: 24px;">
-                  <a href="#" style="display:inline-block;background-color:#003DA5;color:#ffffff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:6px;text-decoration:none;">Ingresar a la Plataforma</a>
+                <div style="text-align: center; margin-top: 26px;">
+                  <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+                    <tr>
+                      <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                        <a href="${finalUrlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
+                          <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                            ${textoBoton} &rarr;
+                          </span>
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
+                    Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
+                    <a href="${finalUrlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${finalUrlAcceso}</a>
+                  </p>
                 </div>
               </td>
             </tr>
@@ -1489,6 +1518,9 @@ export class NewsService {
       const radicadores = await this.obtenerRadicadores(noticia, radicadorIdDestino);
       if (!radicadores.length) return;
 
+      const baseUrl = this.getFrontendBaseUrl();
+      const urlAccion = `${baseUrl}/?module=control-disciplinario&noticiaId=${encodeURIComponent(noticia.id)}&radicado=${encodeURIComponent(noticia.radicado || '')}`;
+
       // 1. Notificaciones en campana / in-app
       const dtos: any[] = radicadores.map((rad) => ({
         id_usuario_destinatario: rad.id,
@@ -1502,6 +1534,7 @@ export class NewsService {
         categoria: 'DISCIPLINARIO',
         tiene_accion: true,
         texto_boton_accion: 'Ver noticia',
+        url_accion: urlAccion,
         datos_adicionales: {
           noticiaId: noticia.id,
           radicado: noticia.radicado,
@@ -1519,6 +1552,8 @@ export class NewsService {
         badge,
         badgeBg,
         accionesRequeridas,
+        urlAccion,
+        'Ver Noticia en Plataforma',
       );
 
       await Promise.all(

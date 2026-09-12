@@ -1479,6 +1479,16 @@ export class AutoService {
     }
   }
 
+  private getFrontendBaseUrl(): string {
+    return (
+      process.env.PUBLIC_APP_URL ||
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
+  }
+
   /**
    * Envía una notificación interna y correo institucional a todos los radicadores asociados y activos
    */
@@ -1500,6 +1510,9 @@ export class AutoService {
       const radicadoresFiltrados = radicadoresIds.filter((id) => id && id !== excluirUserId);
       if (radicadoresFiltrados.length === 0) return;
 
+      const baseUrl = this.getFrontendBaseUrl();
+      const urlAccion = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(proceso.id)}&radicado=${encodeURIComponent(proceso.radicadoProceso)}`;
+
       // 1. Notificaciones en plataforma (in-app)
       const notificaciones: import('./notification-client.service').SendNotificationDto[] = radicadoresFiltrados.map((radicadorId) => ({
         id_usuario_destinatario: radicadorId,
@@ -1513,6 +1526,7 @@ export class AutoService {
         categoria: 'DISCIPLINARIO',
         tiene_accion: true,
         texto_boton_accion: 'Ver proceso',
+        url_accion: urlAccion,
         datos_adicionales: {
           processId: proceso.id,
           radicadoProceso: proceso.radicadoProceso,
@@ -1523,7 +1537,7 @@ export class AutoService {
       await this.notificationClient.sendMany(notificaciones).catch(() => {});
 
       // 2. Correo electrónico institucional estilo ESAP
-      const html = this.buildEmailTemplateAvisoESAP(asunto, mensaje);
+      const html = this.buildEmailTemplateAvisoESAP(asunto, mensaje, urlAccion, 'Ingresar al Proceso');
       await Promise.all(
         radicadoresFiltrados.map(async (radicadorId) => {
           try {
@@ -1541,11 +1555,38 @@ export class AutoService {
     }
   }
 
-  private buildEmailTemplateAvisoESAP(titulo: string, mensaje: string): string {
+  private buildEmailTemplateAvisoESAP(
+    titulo: string,
+    mensaje: string,
+    urlAcceso?: string,
+    textoBoton: string = 'Ingresar a la Plataforma',
+  ): string {
+    const seccionBoton = urlAcceso
+      ? `
+        <div style="text-align: center; margin-top: 28px;">
+          <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+            <tr>
+              <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
+                  <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                    ${textoBoton} &rarr;
+                  </span>
+                </a>
+              </td>
+            </tr>
+          </table>
+          <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
+            Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
+            <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAcceso}</a>
+          </p>
+        </div>
+      `
+      : '';
+
     return `
       <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
         <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
-          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);">
             <tr>
               <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
                 <table width="100%" cellspacing="0" cellpadding="0" border="0">
@@ -1568,6 +1609,7 @@ export class AutoService {
               <td style="padding:32px 28px 28px 28px;">
                 <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:700;color:#111827;line-height:1.4;">${titulo}</h1>
                 <p style="margin:0;font-size:14px;color:#4b5563;line-height:1.7;">${mensaje}</p>
+                ${seccionBoton}
               </td>
             </tr>
             <tr>
@@ -1581,13 +1623,19 @@ export class AutoService {
     `;
   }
 
-  private async enviarCorreoNotificacion(userIdOrProfId: string, asunto: string, mensaje: string): Promise<void> {
+  private async enviarCorreoNotificacion(
+    userIdOrProfId: string,
+    asunto: string,
+    mensaje: string,
+    urlAcceso?: string,
+    textoBoton?: string,
+  ): Promise<void> {
     try {
       const datos = await this.resolverDestinatario(userIdOrProfId);
       const email = datos.email;
       if (!email) return;
 
-      const html = this.buildEmailTemplateAvisoESAP(asunto, mensaje);
+      const html = this.buildEmailTemplateAvisoESAP(asunto, mensaje, urlAcceso, textoBoton);
       await this.enviarEmailDirecto(email, asunto, html, mensaje);
     } catch (error) {
       console.error('Error enviando correo de notificación de auto:', error);
@@ -1746,8 +1794,15 @@ export class AutoService {
     jefeNombre: string;
     observaciones: string;
     fechaDevolucion: string;
+    processId?: string;
+    urlAcceso?: string;
   }): string {
     const tipoFormateado = this.formatearTipoAuto(data.tipoAuto);
+    const baseUrl = this.getFrontendBaseUrl();
+    const urlAcceso =
+      data.urlAcceso ||
+      `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(data.processId || '')}&radicado=${encodeURIComponent(data.radicadoProceso || '')}`;
+
     return `
       <!DOCTYPE html>
       <html lang="es">
@@ -1777,8 +1832,6 @@ export class AutoService {
           .action-box { background-color: #EFF6FF; border-left: 4px solid #2563EB; border-radius: 6px; padding: 16px; margin-bottom: 24px; }
           .action-title { font-size: 12px; font-weight: 700; color: #1E40AF; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; }
           .action-text { font-size: 13px; color: #1E3A8A; margin: 0; line-height: 1.5; }
-          .btn-container { text-align: center; margin: 24px 0 16px 0; }
-          .btn { display: inline-block; background-color: #003DA5; color: #ffffff !important; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 13px; box-shadow: 0 2px 4px rgba(0, 61, 165, 0.2); }
           .footer { background-color: #F8FAFC; padding: 20px 28px; font-size: 11px; color: #64748B; text-align: center; border-top: 1px solid #E2E8F0; }
           .footer-brand { font-weight: 700; color: #334155; margin-bottom: 4px; }
         </style>
@@ -1847,8 +1900,23 @@ export class AutoService {
               </p>
             </div>
 
-            <div class="btn-container">
-              <a href="#" class="btn">Ingresar a la Plataforma</a>
+            <!-- Botón de acción con estilo inline garantizado y enlace directo a la plataforma -->
+            <div style="text-align: center; margin: 30px 0 16px 0;">
+              <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+                <tr>
+                  <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                    <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 44px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 32px; box-shadow: 0 4px 6px -1px rgba(0, 61, 165, 0.25);">
+                      <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                        Ingresar a la Plataforma &rarr;
+                      </span>
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 14px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.5;">
+                Si el botón no abre directamente, copie y pegue el siguiente enlace en su navegador:<br>
+                <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAcceso}</a>
+              </p>
             </div>
           </div>
           <div class="footer">
@@ -1904,6 +1972,8 @@ export class AutoService {
 
       const motivoTexto = observaciones?.trim() || 'Sin observaciones registradas';
       const tipoAutoFormateado = this.formatearTipoAuto(auto.tipo);
+      const baseUrl = this.getFrontendBaseUrl();
+      const urlAcceso = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(auto.processId || '')}&radicado=${encodeURIComponent(proceso.radicadoProceso || '')}`;
 
       for (const idDestinatario of destinatariosIds) {
         try {
@@ -1922,6 +1992,7 @@ export class AutoService {
             categoria: 'DISCIPLINARIO',
             tiene_accion: true,
             texto_boton_accion: 'Ver auto',
+            url_accion: urlAcceso,
             datos_adicionales: {
               processId: auto.processId,
               radicadoProceso: proceso.radicadoProceso,
@@ -1966,6 +2037,8 @@ export class AutoService {
                 month: 'long',
                 day: 'numeric',
               }),
+              processId: auto.processId,
+              urlAcceso,
             });
 
             await this.enviarEmailDirecto(

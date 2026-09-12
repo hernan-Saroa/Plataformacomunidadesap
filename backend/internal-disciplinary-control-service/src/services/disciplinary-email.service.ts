@@ -8,17 +8,29 @@ export class DisciplinaryEmailService {
 
   constructor(private readonly httpService: HttpService) {}
 
+  private getFrontendBaseUrl(): string {
+    return (
+      process.env.PUBLIC_APP_URL ||
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
+  }
+
   /**
-   * Envía un correo de notificación de reasignación a un profesional
+   * Envía un correo directo a un profesional cuando un proceso le es reasignado
    */
   async sendReassignmentEmail(
     to: string,
-    radicadoProceso: string,
     profesionalNombre: string,
+    radicadoProceso: string,
     justificacion: string,
     observacionesJefe?: string,
   ): Promise<boolean> {
     const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const baseUrl = this.getFrontendBaseUrl();
+    const urlAcceso = `${baseUrl}/?module=control-disciplinario&radicado=${encodeURIComponent(radicadoProceso)}`;
 
     const html = `
       <!DOCTYPE html>
@@ -31,7 +43,6 @@ export class DisciplinaryEmailService {
           .content { padding: 32px; }
           .info-box { background-color: #f9fafb; padding: 24px; border-radius: 8px; margin: 24px 0; border: 1px solid #f3f4f6; }
           .footer { background-color: #f9fafb; padding: 24px; font-size: 12px; color: #6b7280; text-align: center; border-top: 1px solid #f3f4f6; }
-          .btn { display: inline-block; background-color: #2563EB; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin-top: 16px; }
         </style>
       </head>
       <body>
@@ -45,15 +56,29 @@ export class DisciplinaryEmailService {
             <p>Se te ha reasignado formalmente un nuevo proceso disciplinario en la plataforma SIGL-ESAP.</p>
             
             <div class="info-box">
-              <p style="margin-top:0;"><strong>Radicado del Proceso:</strong><br><span style="color: #2563EB; font-size: 18px; font-weight: 700;">${radicadoProceso}</span></p>
+              <p style="margin-top:0;"><strong>Radicado del Proceso:</strong><br><span style="color: #003DA5; font-size: 18px; font-weight: 700;">${radicadoProceso}</span></p>
               <p><strong>Justificación:</strong><br>${justificacion}</p>
               ${observacionesJefe ? `<p><strong>Observaciones del Jefe:</strong><br>${observacionesJefe}</p>` : ''}
             </div>
             
             <p>Por favor, ingresa a la plataforma para revisar los detalles del expediente y continuar con el trámite correspondiente.</p>
             
-            <div style="text-align: center;">
-              <a href="#" class="btn">Ir a la Plataforma</a>
+            <div style="text-align: center; margin-top: 26px;">
+              <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+                <tr>
+                  <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                    <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
+                      <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                        Ir a la Plataforma &rarr;
+                      </span>
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
+                Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
+                <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAcceso}</a>
+              </p>
             </div>
           </div>
           <div class="footer">
@@ -118,7 +143,12 @@ export class DisciplinaryEmailService {
     badge: string = 'Aviso',
     badgeBg: string = '#003DA5',
     accionesRequeridas?: string,
+    urlAcceso?: string,
+    textoBoton: string = 'Ingresar a la Plataforma',
   ): string {
+    const baseUrl = this.getFrontendBaseUrl();
+    const finalUrlAcceso = urlAcceso || `${baseUrl}/?module=control-disciplinario`;
+
     const filasDetalle = detalles
       .map(
         (d) => `
@@ -170,8 +200,22 @@ export class DisciplinaryEmailService {
 
                 ${seccionAcciones}
 
-                <div style="text-align: center; margin-top: 24px;">
-                  <a href="#" style="display:inline-block;background-color:#003DA5;color:#ffffff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:6px;text-decoration:none;">Ingresar a la Plataforma</a>
+                <div style="text-align: center; margin-top: 26px;">
+                  <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
+                    <tr>
+                      <td align="center" style="border-radius: 6px; background-color: #003DA5;">
+                        <a href="${finalUrlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
+                          <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
+                            ${textoBoton} &rarr;
+                          </span>
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
+                    Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
+                    <a href="${finalUrlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${finalUrlAcceso}</a>
+                  </p>
                 </div>
               </td>
             </tr>

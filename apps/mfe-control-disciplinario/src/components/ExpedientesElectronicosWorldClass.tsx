@@ -421,7 +421,15 @@ const DOCUMENTOS_CRONOLOGICOS: Documento[] = [
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function ExpedientesElectronicosWorldClass() {
+interface ExpedientesElectronicosProps {
+  initialExpedienteId?: string;
+  initialRadicado?: string;
+}
+
+export function ExpedientesElectronicosWorldClass({
+  initialExpedienteId,
+  initialRadicado,
+}: ExpedientesElectronicosProps = {}) {
   const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE);
 
   if (!hasAccess) {
@@ -717,6 +725,49 @@ export function ExpedientesElectronicosWorldClass() {
   useEffect(() => {
     cargarDatos();
   }, [cargarDatos]);
+
+  // ✅ Seleccionar y expandir automáticamente el expediente especificado (por URL o notificación)
+  useEffect(() => {
+    let targetId = initialExpedienteId;
+    let targetRadicado = initialRadicado;
+
+    if (!targetId && !targetRadicado) {
+      try {
+        const raw = sessionStorage.getItem('control-disciplinario:pendingOpenExpediente');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          targetId = parsed.processId || null;
+          targetRadicado = parsed.radicado || null;
+        }
+      } catch {}
+    }
+
+    if (!targetId && !targetRadicado && typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      targetId = sp.get('processId') || undefined;
+      targetRadicado = sp.get('radicado') || undefined;
+    }
+
+    if ((targetId || targetRadicado) && expedientes.length > 0) {
+      const match = expedientes.find(
+        (e) =>
+          (targetId && e.id === targetId) ||
+          (targetRadicado && (
+            e.radicado?.toLowerCase() === targetRadicado.toLowerCase() ||
+            e.radicadoNoticia?.toLowerCase() === targetRadicado.toLowerCase()
+          ))
+      );
+
+      if (match) {
+        setExpedienteSeleccionado(match.id);
+        setExpedientesExpandidos((prev) => new Set([...prev, match.id]));
+        setBusqueda(match.radicado);
+        try {
+          sessionStorage.removeItem('control-disciplinario:pendingOpenExpediente');
+        } catch {}
+      }
+    }
+  }, [initialExpedienteId, initialRadicado, expedientes]);
 
   // Toggle expandir/colapsar expediente
   const toggleExpediente = (expedienteId: string) => {
