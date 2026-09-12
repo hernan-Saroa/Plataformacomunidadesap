@@ -243,6 +243,39 @@ describe('TareasNotasService', () => {
             expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
         });
 
+        it('resuelve id_usuario_destinatario contra auth.user en vez de confiar en responsableId crudo (bug: la notificación nunca llegaba porque responsableId no siempre es el id_user real)', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100' });
+            // El expediente guarda un public_id / id legado distinto al id_user real del usuario en auth.
+            mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'id-user-real', email: 'resuelve@esap.edu.co' });
+
+            await (service as any).notificarTareaAsignada({
+                id: 'tarea-14',
+                expedienteId: 'exp-1',
+                titulo: 'Contestar demanda',
+                responsableId: 'public-id-legado',
+            });
+
+            expect(mockNotificationClient.getUserDetailsById).toHaveBeenCalledWith('public-id-legado');
+            const dto = mockNotificationClient.sendMany.mock.calls[0][0][0];
+            expect(dto.id_usuario_destinatario).toBe('id-user-real');
+            expect(dto.id_usuario_destinatario).not.toBe('public-id-legado');
+        });
+
+        it('NO notifica (ni in-app ni por correo) si el responsableId no resuelve a ningún usuario en auth', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100' });
+            mockNotificationClient.getUserDetailsById.mockResolvedValue(null);
+
+            await (service as any).notificarTareaAsignada({
+                id: 'tarea-15',
+                expedienteId: 'exp-1',
+                titulo: 'Contestar demanda',
+                responsableId: 'id-inexistente',
+            });
+
+            expect(mockNotificationClient.sendMany).not.toHaveBeenCalled();
+            expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        });
+
         it('usa tipo_notificacion TAREA_REASIGNADA y el texto "reasignó" cuando esReasignacion=true', async () => {
             mockExpedienteRepo.findOne.mockResolvedValue({ id: 'exp-1', radicado: 'RAD-100' });
 
