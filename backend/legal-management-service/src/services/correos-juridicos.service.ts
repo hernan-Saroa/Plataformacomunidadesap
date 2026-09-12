@@ -69,6 +69,7 @@ export interface DocumentoTransferenciaDisciplinaria {
     contentBase64?: string;
     archivoUrl?: string;
     downloadUrl?: string;
+    url?: string;
 }
 
 export interface TransferenciaDisciplinariaDto {
