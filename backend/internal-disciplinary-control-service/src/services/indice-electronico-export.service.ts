@@ -168,20 +168,24 @@ export class IndiceElectronicoExportService {
       const textK = nombreCompleto || descLimpia || 'Ver documento';
 
       let linkUrl = '';
-      if (nombreCompleto && doc.urlAcceso && (doc.urlAcceso.includes(encodeURIComponent(nombreCompleto)) || doc.urlAcceso.includes(nombreCompleto))) {
+      const baseUrl =
+        process.env.PUBLIC_APP_URL ||
+        process.env.PUBLIC_API_URL ||
+        (process.env.API_GATEWAY_URL && !process.env.API_GATEWAY_URL.includes('api-gateway:')
+          ? process.env.API_GATEWAY_URL
+          : 'http://localhost:4000');
+
+      if (doc.urlAcceso && /^https?:\/\//i.test(doc.urlAcceso)) {
         linkUrl = doc.urlAcceso;
+      } else if (doc.urlAcceso) {
+        const cleanPath = doc.urlAcceso.startsWith('/') ? doc.urlAcceso : `/${doc.urlAcceso}`;
+        linkUrl = cleanPath.startsWith('/control-disciplinario')
+          ? `${baseUrl}${cleanPath}`
+          : `${baseUrl}/control-disciplinario${cleanPath}`;
       } else if (nombreCompleto && /^https?:\/\//i.test(nombreCompleto)) {
         linkUrl = nombreCompleto;
       } else if (nombreCompleto) {
-        const baseUrl =
-          process.env.PUBLIC_APP_URL ||
-          process.env.PUBLIC_API_URL ||
-          (process.env.API_GATEWAY_URL && !process.env.API_GATEWAY_URL.includes('api-gateway:')
-            ? process.env.API_GATEWAY_URL
-            : 'http://localhost:4000');
         linkUrl = `${baseUrl}/control-disciplinario/files/${encodeURIComponent(nombreCompleto)}`;
-      } else if (doc.urlAcceso) {
-        linkUrl = doc.urlAcceso;
       }
 
       if (linkUrl) {

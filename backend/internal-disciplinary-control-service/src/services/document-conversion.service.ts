@@ -403,30 +403,8 @@ export class DocumentConversionService {
       const hasHeader = headerImagesHtml.length > 0 || headerTextHtml.length > 0;
       const hasFooter = footerImagesHtml.length > 0 || footerTextHtml.length > 0;
 
-      // Puppeteer no hereda los estilos de la página en las plantillas de
-      // encabezado/pie y fija un tamaño de fuente diminuto por defecto: se fuerzan
-      // los estilos en línea y se deja padding lateral igual al margen del cuerpo.
-      // El "Página X de Y" del pie original es un campo de Word (no <w:t>), así que
-      // no lo trae la extracción: se reconstruye con los contadores de Puppeteer.
-      const footerPageNumberHtml =
-        '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
-
-      // La imagen del membrete va a sangre (ancho completo). El texto del pie
-      // (dirección) se superpone sobre el banner por la izquierda, como en el
-      // documento original; si no hay imagen, simplemente se apila.
-      const headerTemplate = hasHeader
-        ? `<div style="width:100%; -webkit-print-color-adjust:exact;">${headerImagesHtml}${
-            headerTextHtml
-              ? `<div style="padding:1mm 2cm 0; box-sizing:border-box;">${headerTextHtml}</div>`
-              : ''
-          }</div>`
-        : '<div></div>';
-      const footerBodyHtml = footerImagesHtml
-        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
-        : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
-      const footerTemplate = hasFooter
-        ? `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`
-        : '<div></div>';
+      const headerTemplate = this.buildHeaderTemplate(headerImagesHtml, headerTextHtml);
+      const footerTemplate = this.buildFooterTemplate(footerImagesHtml, footerTextHtml);
 
       // Crear HTML completo con estilos limpios sin doble margen de body
       const fullHtml = `
@@ -515,6 +493,48 @@ export class DocumentConversionService {
         await browser.close();
       }
     }
+  }
+
+  /**
+   * Construye la plantilla HTML del encabezado para la exportación a PDF.
+   * La imagen del membrete se renderiza a ancho completo y el texto institucional
+   * se superpone de forma absoluta en el espacio superior del banner, evitando que
+   * se desplace hacia abajo y se solape con el cuerpo del auto.
+   */
+  buildHeaderTemplate(headerImagesHtml: string, headerTextHtml: string): string {
+    const hasHeader = Boolean(headerImagesHtml || headerTextHtml);
+    if (!hasHeader) {
+      return '<div></div>';
+    }
+
+    const headerBodyHtml = headerImagesHtml
+      ? `<div style="position:relative; width:100%;">${headerImagesHtml}${
+          headerTextHtml
+            ? `<div style="position:absolute; left:0; top:8px; width:100%; padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`
+            : ''
+        }</div>`
+      : `<div style="padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`;
+
+    return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">${headerBodyHtml}</div>`;
+  }
+
+  /**
+   * Construye la plantilla HTML del pie de página para la exportación a PDF.
+   */
+  buildFooterTemplate(footerImagesHtml: string, footerTextHtml: string): string {
+    const hasFooter = Boolean(footerImagesHtml || footerTextHtml);
+    if (!hasFooter) {
+      return '<div></div>';
+    }
+
+    const footerPageNumberHtml =
+      '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+
+    const footerBodyHtml = footerImagesHtml
+      ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
+      : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
+
+    return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`;
   }
 
   private escapePowerShellString(value: string): string {

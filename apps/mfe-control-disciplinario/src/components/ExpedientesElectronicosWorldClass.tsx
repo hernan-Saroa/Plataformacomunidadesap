@@ -1268,22 +1268,39 @@ export function ExpedientesElectronicosWorldClass({
       let downloadUrl = '';
       const fullFilename = (d.archivoAcceso || d.archivoNombre || d.nombre || '').trim();
 
-      // ✅ El enlace debe contener el nombre de archivo completo si existe
-      if (fullFilename && !/^https?:\/\//i.test(fullFilename)) {
-        downloadUrl = disciplinaryService.getAbsoluteFileUrl(`/files/${encodeURIComponent(fullFilename)}`);
-      } else if (d.downloadUrl && (d.downloadUrl.startsWith('http://') || d.downloadUrl.startsWith('https://'))) {
+      // ✅ 1. Si ya viene una URL absoluta (http/https), usarla directamente
+      if (d.downloadUrl && (d.downloadUrl.startsWith('http://') || d.downloadUrl.startsWith('https://'))) {
         downloadUrl = d.downloadUrl;
-      } else if (d.downloadUrl && d.downloadUrl.startsWith('/files/')) {
+      }
+      // ✅ 2. Si es una ruta física de archivos /files/... (adjuntos de noticia o guardados físicamente)
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/files/')) {
         downloadUrl = disciplinaryService.getAbsoluteFileUrl(d.downloadUrl);
-      } else if (d.downloadUrl && d.downloadUrl.startsWith('/disciplinary-autos/')) {
+      }
+      // ✅ 3. Si es un auto procesal /disciplinary-autos/... (descarga/visualización de auto)
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/disciplinary-autos/')) {
         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? d.downloadUrl : `/api/v1${d.downloadUrl}`);
-      } else if (d.downloadUrl && d.downloadUrl.startsWith('/control-disciplinario/')) {
+      }
+      // ✅ 4. Si ya incluye el prefijo de servicio /control-disciplinario/...
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/control-disciplinario/')) {
         const cleanPath = d.downloadUrl.replace(/^\/control-disciplinario(\/api\/v1)?/, '');
         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? cleanPath : `/api/v1${cleanPath}`);
-      } else if (d.expedienteId && d.id) {
+      }
+      // ✅ 5. Si tiene expedienteId e id de documento (documentos de proceso / evidencias)
+      else if (d.expedienteId && d.id) {
         const restPath = `/disciplinary-processes/${d.expedienteId}/documents/${d.id}/download?view=true`;
         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
       }
+      // ✅ 6. Si d.downloadUrl viene como otra ruta relativa
+      else if (d.downloadUrl) {
+        downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? d.downloadUrl : `/api/v1${d.downloadUrl}`);
+      }
+      // ✅ 7. Fallback únicamente si no existe ninguna URL de descarga previa
+      else if (fullFilename && !/^https?:\/\//i.test(fullFilename)) {
+        downloadUrl = disciplinaryService.getAbsoluteFileUrl(`/files/${encodeURIComponent(fullFilename)}`);
+      } else if (fullFilename) {
+        downloadUrl = fullFilename;
+      }
+
       if (downloadUrl && typeof window !== 'undefined') {
         const token = authService.getToken?.() || localStorage.getItem('token') || '';
         if (token && !downloadUrl.includes('token=')) {
