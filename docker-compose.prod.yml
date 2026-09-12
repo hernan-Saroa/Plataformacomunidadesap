@@ -280,6 +280,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3005
+      TZ: America/Bogota
 
       DB_HOST: db
       DB_PORT: 5432

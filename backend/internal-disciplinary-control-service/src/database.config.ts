@@ -61,8 +61,28 @@ import { DisciplinaryNewsProcess } from './entities/disciplinary-news-process.en
 import { DisciplinaryProcessReassignmentRequest } from './entities/disciplinary-process-reassignment-request.entity';
 import { DisciplinaryBehavior } from './entities/disciplinary-behavior.entity';
 
+import { types } from 'pg';
+
+// Configurar parser de fechas para TIMESTAMP WITHOUT TIME ZONE (OID 1114).
+// Dado que la base de datos esap_db opera en zona horaria America/Bogota (UTC-5),
+// cualquier columna TIMESTAMP sin zona almacena la hora local colombiana.
+// Este parser garantiza que Node.js (incluso en contenedores Docker donde TZ=UTC)
+// interprete el instante correctamente en UTC-5 y no se desplace 5 horas en el frontend.
+types.setTypeParser(1114, (stringValue: string) => {
+  if (!stringValue) return null;
+  const isoStr = stringValue.replace(' ', 'T');
+  return new Date(
+    isoStr.includes('Z') || isoStr.includes('+') || isoStr.includes('-05')
+      ? isoStr
+      : `${isoStr}-05:00`
+  );
+});
+
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
+  extra: {
+    timezone: 'America/Bogota',
+  },
   host: process.env.DB_HOST ?? process.env.DATABASE_HOST ?? 'localhost',
   port: parseInt(process.env.DB_PORT ?? process.env.DATABASE_PORT ?? '5432', 10),
   username: process.env.DB_USER ?? process.env.DATABASE_USER ?? 'postgres',

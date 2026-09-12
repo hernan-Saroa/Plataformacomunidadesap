@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Upload, CheckCircle2, AlertTriangle, FileText, Download } from 'lucide-react';
+import { Upload, CheckCircle2, AlertTriangle, FileText, Download, Eye } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { DocumentoExpediente } from '../../types';
+import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
 
 interface Props {
   procesoId: string;
@@ -23,22 +24,45 @@ const MIME_ACEPTADOS = '.pdf,.doc,.docx';
 export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado }: Props) {
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const adjuntos = documentos.filter((d) => d.tipo === 'ADJUNTO');
   const tieneEstudio = adjuntos.length > 0;
 
-  const subir = async (archivo: File) => {
+  /**
+   * Los archivos elegidos, uno tras otro.
+   *
+   * El estudio previo no es un documento suelto: va con sus anexos —la
+   * justificación, el análisis del sector, las cotizaciones— y hasta ahora
+   * había que subirlos de uno en uno, abriendo el selector otras tantas veces.
+   *
+   * En serie y no en paralelo a propósito: el servicio los registra dentro de
+   * una transacción por documento, y mandarlos a la vez multiplica los
+   * conflictos sobre la misma fila de la actividad sin ganar tiempo real.
+   *
+   * Un fallo corta el resto y dice cuáles quedaron: seguir en silencio dejaría
+   * al usuario creyendo que subió seis cuando subieron cuatro.
+   */
+  const subir = async (archivos: File[]) => {
     setSubiendo(true);
     setError(null);
+    let subidos = 0;
     try {
-      await contratacionService.adjuntarDocumento(procesoId, archivo);
-      onAdjuntado();
+      for (const archivo of archivos) {
+        await contratacionService.adjuntarDocumento(procesoId, archivo);
+        subidos += 1;
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(
+        subidos > 0
+          ? `${err.message} · se adjuntaron ${subidos} de ${archivos.length}`
+          : err.message,
+      );
     } finally {
       setSubiendo(false);
       if (inputRef.current) inputRef.current.value = '';
+      if (subidos > 0) onAdjuntado();
     }
   };
 
@@ -70,7 +94,7 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
             >
               {tieneEstudio
                 ? 'El documento firmado quedó registrado en el expediente electrónico.'
-                : 'Adjunta el estudio previo diligenciado y firmado para poder enviarlo a revisión.'}
+                : 'Adjunta el estudio previo firmado y sus anexos para poder enviarlo a revisión: puedes elegir varios a la vez.'}
             </p>
           </div>
           {!bloqueado && (
@@ -78,9 +102,13 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
               <input
                 ref={inputRef}
                 type="file"
+                multiple
                 className="hidden"
                 accept={MIME_ACEPTADOS}
-                onChange={(e) => e.target.files?.[0] && subir(e.target.files[0])}
+                onChange={(e) => {
+                  const elegidos = Array.from(e.target.files ?? []);
+                  if (elegidos.length) subir(elegidos);
+                }}
               />
               <button
                 type="button"
@@ -133,19 +161,40 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
                   </p>
                 </div>
                 {doc.descargaUrl && (
-                  <a
-                    href={contratacionService.urlDescarga(doc.descargaUrl)}
-                    className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-[#003DA5] hover:bg-gray-50"
-                    title={`Descargar ${doc.nombre}`}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </a>
+                  <>
+                    {/* Ver antes que descargar: quien revisa quiere leerlo, no
+                        llevárselo. La descarga sigue ahí para quien la
+                        necesite —firmar, archivar fuera—. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setViendo({
+                          nombre: doc.nombre,
+                          descargaUrl: doc.descargaUrl!,
+                          detalle: `${new Date(doc.createdAt).toLocaleDateString('es-CO')} · ${doc.subidoPor ?? ''}`,
+                        })
+                      }
+                      className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-[#003DA5] hover:bg-gray-50"
+                      title={`Ver ${doc.nombre}`}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                    <a
+                      href={contratacionService.urlDescarga(doc.descargaUrl)}
+                      className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-[#003DA5] hover:bg-gray-50"
+                      title={`Descargar ${doc.nombre}`}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                  </>
                 )}
               </li>
             );
           })}
         </ul>
       )}
+
+      <VisorDocumento documento={viendo} onClose={() => setViendo(null)} />
     </section>
   );
 }

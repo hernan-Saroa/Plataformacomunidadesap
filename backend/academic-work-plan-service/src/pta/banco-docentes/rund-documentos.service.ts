@@ -1,3 +1,4 @@
+import { assertRundEvidenceData } from './rund-evidence-data';
 import { lockEvidenceProfile, resetEvidenceBlock, validateEvidenceType } from './rund-evidence-workflow';
 import {
   BadRequestException,
@@ -17,6 +18,7 @@ type DocumentUploadData = {
   categoria: string;
   bloque?: string;
   tipoSoporte?: string;
+  campo?: string;
   descripcion?: string;
 };
 
@@ -94,6 +96,7 @@ export class RundDocumentosService {
       }
     }
 
+    await assertRundEvidenceData(this.dataSource, docente.id, data.tipoSoporte, data.campo);
     const id = randomUUID();
     const logicalId = randomUUID();
     const checksum = this.checksum(file!.buffer);
@@ -109,6 +112,7 @@ export class RundDocumentosService {
     await runner.startTransaction();
     try {
       await lockEvidenceProfile(runner, docente.id);
+      await assertRundEvidenceData(runner, docente.id, data.tipoSoporte, data.campo);
       if (data.tipoSoporte) {
         const duplicates = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil"
           WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'`, [docente.id, data.tipoSoporte]);
@@ -167,6 +171,7 @@ export class RundDocumentosService {
     actorId: string,
     descripcion?: string,
     ip?: string,
+    campo?: string,
   ) {
     const docente = await this.requireDocente(docenteId);
     const current = await this.requireDocument(docente.id, documentId, true);
@@ -180,6 +185,7 @@ export class RundDocumentosService {
     await runner.startTransaction();
     try {
       await lockEvidenceProfile(runner, docente.id);
+      await assertRundEvidenceData(runner, docente.id, current.tipo_soporte, campo);
       const [active] = await runner.query(`SELECT id FROM academic_work_plan."RundDocumentoPerfil" WHERE id = $1 AND estado = 'ACTIVO'`, [current.id]);
       if (!active) throw new ConflictException('El documento fue reemplazado o eliminado. Actualice el listado.');
       stored = await this.storage.store({
@@ -214,7 +220,7 @@ export class RundDocumentosService {
         await runner.query(
           `UPDATE academic_work_plan."RundSoporteCampo"
            SET documento_perfil_id = $1, documento_carpeta_id = $2,
-               nombre_archivo = $3, estado = 'Pendiente', observacion = NULL, cargado_por = $4
+               nombre_archivo = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, cargado_por = $4
            WHERE id = $5`,
           [nextId, this.contentUrl(docente.id, nextId), file!.originalname, actorId, current.rund_soporte_id],
         );

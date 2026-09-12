@@ -1,30 +1,108 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
 import { createHash } from 'crypto';
 
-import { Proceso } from '../../entities/proceso.entity';
+import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { NUMERAL_ESTUDIO_PREVIO, ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  EstadoActividad,
+  NUMERAL_ESTUDIO_PREVIO,
+  ProcesoActividad,
+} from '../../entities/proceso-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
-import { Revision } from '../../entities/revision.entity';
+import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import {
+  PERMISO_ACTIVIDAD_APROBAR,
+  PERMISO_PROCESO_TOMAR,
+  PERMISO_PROCESO_VER_TODOS,
+  tienePermiso,
+} from '../../auth/permisos';
+import { PermisosService } from '../../auth/permisos.service';
+import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
+import { ParticipacionService, esSuya } from '../participacion/participacion.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
+
+/**
+ * En qué queda la actividad según lo que decidió el revisor (EFDS-1183).
+ *
+ * Devolver la regresa a BORRADOR para que el área corrija y reenvíe. Negar la
+ * deja NEGADA, que no vuelve a ser editable: si negar reusara DEVUELTO, el riel
+ * le ofrecería al área editar y reenviar algo que ya nadie va a mirar.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad {
+  if (decision === 'APROBADO') return 'APROBADO';
+  if (decision === 'NEGADO') return 'NEGADO';
+  return 'BORRADOR';
+}
+
+/**
+ * Numeral 3.2: el análisis del sector, que el área entrega junto al estudio
+ * previo y que la 3.4 revisa con él.
+ */
+export const NUMERAL_ANALISIS_SECTOR = '3.2';
+
+/**
+ * Numeral 3.4: la revisión, que se resuelve desde el estudio previo.
+ *
+ * No tiene panel ni tarjeta en el riel: el abogado decide leyendo la 3.1, y
+ * pedirle además que entre a otra actividad a dejar constancia sería un paso
+ * que no aporta. Pero la actividad existe en la matriz, así que su estado sigue
+ * la decisión en vez de quedarse en borrador para siempre —el expediente diría
+ * que la revisión está pendiente cuando ya se resolvió—.
+ */
+export const NUMERAL_REVISION = '3.4';
+
+/**
+ * Si el estudio previo de este proceso es de quien intenta tocarlo (EFDS-1183).
+ *
+ * `contratacion.actividad.edit` dice que alguien diligencia estudios previos, no
+ * que diligencie el de cualquier expediente de la entidad. Hasta ahora era lo
+ * segundo: un estructurador de un área podía abrir y reescribir el estudio
+ * previo que otra área había radicado.
+ *
+ * Es suyo si lo radicó —el área responde por lo que cargó— o si está en el
+ * proceso, que es el caso de la Dirección cuando lo recibe y tiene que
+ * completar algo antes de repartirlo.
+ *
+ * Tener «ver todos» no basta: ver el expediente de toda la entidad y poder
+ * reescribirlo son cosas distintas, y confundirlas convierte un permiso de
+ * consulta en uno de edición.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function esSuElEstudioPrevio(loRadico: boolean, estaEnElProceso: boolean): boolean {
+  return loRadico || estaEnElProceso;
+}
+
+/**
+ * Si la decisión termina el proceso, y con qué desenlace.
+ *
+ * Solo negar. Dejar el proceso EN_CURSO con su estudio previo negado haría que
+ * el listado y las estadísticas contaran como vivo un expediente que nadie va a
+ * volver a tocar.
+ */
+export function desenlaceTrasDecision(decision: DecisionRevision): EstadoProceso | null {
+  return decision === 'NEGADO' ? 'NEGADO' : null;
+}
 
 /**
  * "Vacío" depende del tipo: un 0 en un campo numérico está diligenciado,
@@ -80,7 +158,51 @@ export class EstudioPrevioService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
     private readonly configuracionService: ConfiguracionService,
+    private readonly participacion: ParticipacionService,
+    private readonly permisos: PermisosService,
+    private readonly aprobacion: AprobacionService,
   ) {}
+
+  /**
+   * Quién es el abogado del proceso y si quien pregunta puede decidir por él.
+   *
+   * Lo usan la pantalla —para no ofrecer botones que la API va a rechazar— y
+   * las tres decisiones, que lo exigen. Tenerlo en un solo sitio es lo que
+   * impide que el aviso de la pantalla y el rechazo del servidor digan cosas
+   * distintas sobre el mismo proceso.
+   */
+  /**
+   * Exige que el estudio previo sea de quien lo está tocando.
+   *
+   * Se comprueba en guardar y en enviar, que son los dos puntos por donde entra
+   * contenido. Leerlo sigue abierto a quien tenga acceso al proceso: el
+   * problema nunca fue que se viera, sino que cualquiera pudiera reescribirlo.
+   */
+  private async exigirQueSeaSuyo(procesoId: string, acceso: HiringAccess) {
+    const proceso = await this.dataSource.getRepository(Proceso).findOne({
+      where: { id: procesoId },
+    });
+    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+
+    const loRadico =
+      !!proceso.createdBy &&
+      !!acceso.userName &&
+      proceso.createdBy.trim().toLowerCase() === acceso.userName.trim().toLowerCase();
+
+    const enElProceso = (await this.participacion.procesosDe(acceso)).includes(procesoId);
+
+    if (!esSuElEstudioPrevio(loRadico, enElProceso)) {
+      // «Ver todos» sigue sin bastar: ver el expediente de toda la entidad y
+      // poder reescribirlo son cosas distintas.
+      throw new ForbiddenException(
+        'Este estudio previo lo diligencia el área que radicó el proceso: tener permiso de editar no da acceso a los expedientes de otras áreas',
+      );
+    }
+  }
+
+  private quienDecide(procesoId: string, acceso: HiringAccess) {
+    return this.participacion.quienDecide(procesoId, acceso);
+  }
 
   // ------------------------------------------------------------- proceso ---
 
@@ -153,12 +275,72 @@ export class EstudioPrevioService {
     });
   }
 
-  async obtenerProceso(procesoId: string) {
+  /**
+   * Si le corresponde ver los procesos de toda la entidad.
+   *
+   * El permiso se resuelve también contra la base, no solo contra la tabla de
+   * roles del código: el JWT lleva los roles pero no los permisos —se mantiene
+   * compacto a propósito— así que `tienePermiso` cae en `ROLES_QUE_OTORGAN`,
+   * que solo conoce los roles previstos al escribirla. Un rol creado después
+   * desde la administración quedaba sin ninguno.
+   */
+  private async puedeVerTodos(acceso?: HiringAccess): Promise<boolean> {
+    if (!acceso) return true;
+    if (tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS)) return true;
+
+    const suyos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
+    return suyos.includes(PERMISO_PROCESO_VER_TODOS);
+  }
+
+  /**
+   * Un proceso, si a quien pregunta le corresponde verlo.
+   *
+   * Filtrar solo el listado no basta: con el id a la mano se entraba igual al
+   * expediente de otra dependencia, y el id viaja en cada enlace que se
+   * comparte. Se responde 404 y no 403 para no confirmar que el proceso
+   * existe a quien no debe verlo.
+   */
+  async obtenerProceso(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.dataSource.getRepository(Proceso).findOne({
       where: { id: procesoId },
       relations: ['expediente'],
     });
     if (!proceso) throw new NotFoundException('Proceso no encontrado');
+
+    /**
+     * Estar en el proceso también da acceso (EFDS-1183).
+     *
+     * El filtro original solo conocía a quien lo radicó, y desde que existe el
+     * reparto eso deja fuera a media Dirección: el abogado al que le asignaron
+     * el expediente recibiría 404 al abrir el suyo, y quien lo tomó de la
+     * bandeja, otro tanto. Se comprueba en último lugar porque es la única de
+     * las tres que consulta otra tabla.
+     */
+    if (acceso && proceso.createdBy !== acceso.userName) {
+      const verTodos = await this.puedeVerTodos(acceso);
+      const enElProceso =
+        verTodos || (await this.participacion.procesosDe(acceso)).includes(procesoId);
+
+      /**
+       * Y la bandeja, que es la cuarta vía y la más fácil de olvidar.
+       *
+       * Un proceso sin recibir no es de nadie todavía: quien puede tomarlo
+       * tiene que poder abrirlo, o el listado le enseñaría lo que llegó a la
+       * Dirección y al pulsarlo le diría que no existe. Es exactamente lo que
+       * pasaba: la lista lo mostraba «en bandeja» y el detalle respondía 404.
+       */
+      const puedeRecibirlo =
+        enElProceso ||
+        (tienePermiso(acceso, PERMISO_PROCESO_TOMAR) &&
+          (await this.participacion.estaEnLaBandeja(procesoId)));
+
+      if (!puedeRecibirlo) {
+        // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
+        // no debe verlo que el proceso existe.
+        throw new NotFoundException('Proceso no encontrado');
+      }
+    }
+
     return proceso;
   }
 
@@ -177,15 +359,36 @@ export class EstudioPrevioService {
    * se devuelve todo, que es el comportamiento anterior.
    */
   async listarProcesos(acceso?: HiringAccess) {
-    const verTodos =
-      !acceso || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const verTodos = await this.puedeVerTodos(acceso);
+
+    /**
+     * «Los míos» son tres cosas y no una (EFDS-1183): los que radiqué, los que
+     * me repartieron, y —si puedo tomar— los que están en la bandeja esperando
+     * que alguien los reciba.
+     *
+     * La tercera es la que hace posible el reparto por bandeja compartida: sin
+     * ella el listado solo devuelve procesos en los que ya estás, así que nadie
+     * podría ver, ni mucho menos tomar, uno que todavía no es de nadie.
+     *
+     * Las condiciones se construyen en vez de meter siempre un `In`: con la
+     * lista vacía —un abogado al que aún no le han repartido nada— el `IN ()`
+     * que genera TypeORM no es el filtro que uno espera, y aquí el error se
+     * pagaría enseñando procesos ajenos.
+     */
+    const mios: FindOptionsWhere<Proceso>[] = [];
+    if (!verTodos) {
+      mios.push({ createdBy: acceso!.userName });
+
+      const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
+      if (tienePermiso(acceso!, PERMISO_PROCESO_TOMAR)) {
+        for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
+      }
+      if (alcanzables.size) mios.push({ id: In([...alcanzables]) });
+    }
 
     const procesos = await this.dataSource.getRepository(Proceso).find({
       relations: ['expediente'],
-      // `createdBy` guarda el nombre de usuario de quien radicó: es lo que hoy
-      // relaciona un proceso con una persona, porque la asignación a un abogado
-      // todavía no existe.
-      where: verTodos ? {} : { createdBy: acceso!.userName },
+      where: verTodos ? {} : mios,
       order: { createdAt: 'DESC' },
       take: 100,
     });
@@ -212,6 +415,11 @@ export class EstudioPrevioService {
       (await this.dataSource.getRepository(Modalidad).find()).map((m) => [m.codigo, m.nombre]),
     );
 
+    // Quién está en cada proceso, en una sola consulta para todo el listado.
+    // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
+    // uno que sigue en la bandeja esperando que lo reciban.
+    const participantes = await this.participacion.vigentesDe(ids);
+
     const porProceso = new Map<string, ProcesoActividad[]>();
     for (const a of actividades) {
       if (!porProceso.has(a.procesoId)) porProceso.set(a.procesoId, []);
@@ -226,11 +434,30 @@ export class EstudioPrevioService {
         ? obligatorios.filter((c) => esVacio(c.tipo, estudioPrevio.datos?.[c.codigo])).length
         : obligatorios.length;
 
+      const enElProceso = participantes.get(proceso.id) ?? [];
+      const quien = (papel: 'CONTRATACION' | 'ABOGADO') => {
+        const p = enElProceso.find((x) => x.papel === papel);
+        return p
+          ? { nombre: p.nombre, usuarioNombre: p.usuarioNombre, esMio: acceso ? esSuya(p, acceso) : false }
+          : null;
+      };
+      const contratacion = quien('CONTRATACION');
+
       return {
         ...proceso,
         modalidadNombre: proceso.modalidad
           ? (nombreModalidad.get(proceso.modalidad) ?? proceso.modalidad)
           : null,
+        /**
+         * Quién lo lleva. `enBandeja` no es «falta un dato»: es un proceso que
+         * llegó a la Dirección y que nadie ha recibido, y decirlo es lo único
+         * que impide que se quede ahí semanas.
+         */
+        participacion: {
+          contratacion,
+          abogado: quien('ABOGADO'),
+          enBandeja: !contratacion && estudioPrevio?.estado === 'EN_REVISION',
+        },
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
         estudioPrevio: estudioPrevio
           ? {
@@ -249,8 +476,8 @@ export class EstudioPrevioService {
   // ------------------------------------------------------ estudio previo ---
 
   /** Devuelve los datos y la definición de campos: el front dibuja desde aquí. */
-  async obtener(procesoId: string) {
-    const proceso = await this.obtenerProceso(procesoId);
+  async obtener(procesoId: string, acceso?: HiringAccess) {
+    const proceso = await this.obtenerProceso(procesoId, acceso);
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
     const campos = await this.camposDe(this.dataSource.manager);
 
@@ -282,11 +509,34 @@ export class EstudioPrevioService {
       datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado } as Record<string, any>,
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
+      /**
+       * Quién resuelve la 3.4 y si le toca a quien está mirando (EFDS-1183).
+       *
+       * Va aquí y no en una consulta aparte porque la pantalla lo necesita en
+       * el mismo momento en que dibuja los botones: pedirlo después dejaría un
+       * instante en que ofrece decidir a quien no puede.
+       */
+      revision: acceso ? await this.quienRevisa(procesoId, acceso) : null,
+    };
+  }
+
+  /** El abogado del proceso y por qué quien pregunta puede o no decidir. */
+  private async quienRevisa(procesoId: string, acceso: HiringAccess) {
+    const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
+    return {
+      abogado: abogado
+        ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
+        : null,
+      puedeDecidir: motivo === null,
+      /** Para que la pantalla explique en vez de esconder sin más. */
+      motivo,
     };
   }
 
   /** Guarda sin validar obligatorios: el usuario puede dejarlo a medias. */
   async guardarBorrador(procesoId: string, dto: GuardarBorradorDto, acceso: HiringAccess) {
+    await this.exigirQueSeaSuyo(procesoId, acceso);
+
     return this.dataSource.transaction(async (em) => {
       await this.validarEtapa(em, procesoId);
 
@@ -322,6 +572,8 @@ export class EstudioPrevioService {
    * del expediente electrónico.
    */
   async enviar(procesoId: string, acceso: HiringAccess) {
+    await this.exigirQueSeaSuyo(procesoId, acceso);
+
     return this.dataSource.transaction(async (em) => {
       await this.validarEtapa(em, procesoId);
 
@@ -379,7 +631,28 @@ export class EstudioPrevioService {
         subidoPor: acceso.userName,
       } as Partial<Documento>);
 
-      actividad.estado = 'EN_REVISION';
+      /*
+       * Entra en revisión solo si alguien la revisa.
+       *
+       * Antes se forzaba EN_REVISION siempre, aunque nadie estuviera
+       * configurado para aprobarla: el estudio previo quedaba «pendiente de
+       * revisión» sin que existiera revisor, y a quien lo envió se le ofrecían
+       * los botones de aprobar y devolver que el servicio le iba a rechazar.
+       *
+       * La matriz pone la revisión del estudio previo en la 3.4 —«revisiones,
+       * mesas de trabajo y observaciones al estudio previo»—, no aquí. Si el
+       * área decide además revisarlo en la 3.1, lo configura y esto lo respeta,
+       * igual que en las otras treinta y siete actividades.
+       */
+      // La modalidad importa: una regla puede exigir revisión solo en algunas.
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      const revisan = await this.aprobacion.aprobadoresDe(
+        NUMERAL_ESTUDIO_PREVIO,
+        proceso?.modalidad ?? null,
+        em,
+      );
+
+      actividad.estado = revisan ? 'EN_REVISION' : 'APROBADO';
       actividad.enviadoPor = acceso.userName;
       actividad.enviadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
@@ -446,12 +719,51 @@ export class EstudioPrevioService {
     return this.decidirRevision(procesoId, 'DEVUELTO', observaciones, acceso);
   }
 
+  /**
+   * Niega el proceso: la contratación no procede (EFDS-1183).
+   *
+   * No es devolver. Devolver es «corrígelo y vuelve» y deja el proceso vivo
+   * esperando una corrección; negar cierra el expediente y no admite reenvío.
+   * Antes solo existía la primera, así que un proceso rechazado de plano se
+   * devolvía —y el área se quedaba esperando saber qué corregir— o se quedaba
+   * en revisión para siempre.
+   *
+   * El desenlace es del proceso y no solo de la actividad: si la Dirección dice
+   * que la contratación no procede, lo que termina es la contratación.
+   *
+   * No se puede deshacer mientras la Dirección de Contratación no diga lo
+   * contrario: reabrir un proceso negado es una actuación con su propia
+   * justificación, no un botón de «me equivoqué».
+   */
+  async negar(procesoId: string, observaciones: string, acceso: HiringAccess) {
+    if (!observaciones?.trim()) {
+      throw new BadRequestException(
+        'El motivo es obligatorio al negar: a quien le niegan un proceso hay que decirle por qué, y no va a tener ocasión de preguntarlo corrigiendo',
+      );
+    }
+    return this.decidirRevision(procesoId, 'NEGADO', observaciones, acceso);
+  }
+
   private async decidirRevision(
     procesoId: string,
-    decision: 'APROBADO' | 'DEVUELTO',
+    decision: DecisionRevision,
     observaciones: string | undefined,
     acceso: HiringAccess,
   ) {
+    // Quién puede decidir se resuelve antes de abrir la transacción: no toca
+    // nada y así el error de autorización no arrastra un lock.
+    const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
+    if (motivo === 'SIN_ABOGADO') {
+      throw new ConflictException(
+        'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
+      );
+    }
+    if (motivo === 'NO_ES_TUYO') {
+      throw new ForbiddenException(
+        `Este proceso lo revisa ${abogado!.nombre}: la 3.4 la resuelve el abogado al que se le asignó`,
+      );
+    }
+
     return this.dataSource.transaction(async (em) => {
       // Lock pesimista: dos revisores simultáneos no deben registrar dos
       // decisiones sobre el mismo envío.
@@ -474,18 +786,31 @@ export class EstudioPrevioService {
         revisadoPorId: acceso.userId,
       } as Partial<Revision>);
 
-      // Devolver lo regresa a BORRADOR para que el gestor pueda editarlo.
-      actividad.estado = decision === 'APROBADO' ? 'APROBADO' : 'BORRADOR';
+      actividad.estado = estadoTrasDecision(decision);
       actividad.revisadoPor = acceso.userName;
       actividad.revisadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
+
+      // La 3.4 revisa lo que el área entregó en 3.1 **y en 3.2**, así que la
+      // decisión alcanza a las dos. Devolver solo la 3.1 dejaba al área
+      // corrigiendo el estudio previo mientras su análisis del sector seguía
+      // dado por bueno, y negar dejaba una actividad aprobada colgando de un
+      // proceso muerto.
+      await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
+      await this.cerrarLaRevision(em, procesoId, decision, acceso);
+
+      // El proceso termina con la actividad cuando la decisión lo cierra.
+      const desenlace = desenlaceTrasDecision(decision);
+      if (desenlace) {
+        await em.update(Proceso, { id: procesoId }, { estado: desenlace });
+      }
 
       await this.traza(
         em,
         procesoId,
         'estudio_previo',
         actividad.id,
-        decision === 'APROBADO' ? 'APROBAR' : 'DEVOLVER',
+        decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'RECHAZAR' : 'DEVOLVER',
         acceso,
         { version: actividad.version, observaciones },
       );
@@ -497,6 +822,63 @@ export class EstudioPrevioService {
         revisadoAt: actividad.revisadoAt,
       };
     });
+  }
+
+  /**
+   * Lleva la 3.2 al mismo sitio que la 3.1 cuando la 3.4 la devuelve o la niega.
+   *
+   * Solo hacia atrás: aprobar la 3.1 no aprueba la 3.2, porque el análisis del
+   * sector tiene su propio registro y darlo por bueno desde aquí sellaría como
+   * revisado algo que nadie miró.
+   *
+   * Una 3.2 que no aplica a la modalidad se queda como está: NO_APLICA no es un
+   * estado del que se pueda devolver a nadie.
+   */
+  private async arrastrarALaDelSector(
+    em: EntityManager,
+    procesoId: string,
+    estadoDeLa31: EstadoActividad,
+  ) {
+    if (estadoDeLa31 !== 'BORRADOR' && estadoDeLa31 !== 'NEGADO') return;
+
+    const sector = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_ANALISIS_SECTOR },
+    });
+    if (!sector || sector.estado === 'NO_APLICA') return;
+
+    sector.estado = estadoDeLa31;
+    sector.revisadoPor = null as any;
+    sector.revisadoAt = null as any;
+    await em.save(ProcesoActividad, sector);
+  }
+
+  /**
+   * Deja la 3.4 al día con lo que el abogado acaba de decidir.
+   *
+   * Aprobar y negar la cierran: la revisión ocurrió y concluyó, con las dos.
+   * Devolver la reabre, porque el estudio previo va a volver y habrá que
+   * mirarlo otra vez.
+   *
+   * Sin esto la actividad se quedaba en BORRADOR aunque la decisión estuviera
+   * tomada, y el expediente decía que la revisión seguía pendiente.
+   */
+  private async cerrarLaRevision(
+    em: EntityManager,
+    procesoId: string,
+    decision: DecisionRevision,
+    acceso: HiringAccess,
+  ) {
+    const revision = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_REVISION },
+    });
+    if (!revision || revision.estado === 'NO_APLICA') return;
+
+    const concluida = decision !== 'DEVUELTO';
+
+    revision.estado = concluida ? 'APROBADO' : 'BORRADOR';
+    revision.revisadoPor = concluida ? acceso.userName : (null as any);
+    revision.revisadoAt = concluida ? new Date() : (null as any);
+    await em.save(ProcesoActividad, revision);
   }
 
   /** Historial de revisiones del estudio previo, de la más reciente a la más antigua. */

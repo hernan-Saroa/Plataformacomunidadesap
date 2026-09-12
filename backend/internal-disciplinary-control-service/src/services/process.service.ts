@@ -89,6 +89,7 @@ export class ProcessService {
     process: {
       abogadoAsignadoId?: string | null;
       abogadoAsignado?: { email?: string | null } | null;
+      autos?: Array<{ radicadorAsignadoId?: string | null }>;
     },
     professionalIds: Set<string>,
     normalizedEmail: string | null,
@@ -98,7 +99,16 @@ export class ProcessService {
     }
 
     const assignedEmail = this.normalizeAccessEmail(process.abogadoAsignado?.email);
-    return Boolean(normalizedEmail && assignedEmail && assignedEmail === normalizedEmail);
+    if (normalizedEmail && assignedEmail && assignedEmail === normalizedEmail) {
+      return true;
+    }
+
+    const userId = Array.from(professionalIds)[0];
+    if (userId && process.autos?.some(auto => auto.radicadorAsignadoId === userId)) {
+      return true;
+    }
+
+    return false;
   }
 
   async findAllAccessible(
@@ -125,7 +135,7 @@ export class ProcessService {
 
   async findByIdAccessible(
     id: string,
-    includeAutos: boolean,
+    includeAutos: boolean = true,
     userId?: string,
     email?: string,
   ): Promise<DisciplinaryProcess> {
@@ -154,7 +164,7 @@ export class ProcessService {
     userId?: string,
     email?: string,
   ): Promise<DisciplinaryProcess> {
-    const process = await this.findByRadicado(radicadoProceso);
+    const process = await this.findByRadicado(radicadoProceso, true);
     const { professionalIds, normalizedEmail } =
       await this.resolveAccessibleProfessionalContext(userId, email);
 
@@ -1000,20 +1010,26 @@ export class ProcessService {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
   }
 
+  private isCargosStage(stageName: string): boolean {
+    if (!stageName) return false;
+    const s = stageName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    return s === 'CARGOS' || s.includes('CARGO') || s.includes('PLIEGO') || s === 'EVALUACION' || s.includes('EVALUAC');
+  }
+
+  private isJuzgamientoStage(stageName: string): boolean {
+    if (!stageName) return false;
+    const s = stageName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    return s === 'JUZGAMIENTO' || s.includes('JUZG');
+  }
+
   async changeStage(
     id: string,
     stageId: string,
-    kanbanNotice?: string
+    kanbanNotice?: string,
+    userRoles?: unknown,
   ): Promise<DisciplinaryProcess> {
     try {
       const proceso = await this.findById(id, false);
-
-      // if (proceso.estado === ProcessStatus.CERRADO) {
-      //   throw new HttpException(
-      //     'No se puede cambiar la etapa de un proceso CERRADO',
-      //     HttpStatus.FORBIDDEN,
-      //   );
-      // }
 
       let newStageConfig: StageConfiguration | null;
 
@@ -1025,6 +1041,21 @@ export class ProcessService {
         newStageConfig = await this.stageConfigurationRepository.findOne({
           where: { etapa: stageId, activo: true },
         });
+        if (!newStageConfig) {
+          // Búsqueda insensible a mayúsculas/minúsculas
+          newStageConfig = await this.stageConfigurationRepository
+            .createQueryBuilder('stage')
+            .where('LOWER(stage.etapa) = LOWER(:stageId)', { stageId })
+            .andWhere('stage.activo = true')
+            .getOne();
+        }
+        if (!newStageConfig && this.isJuzgamientoStage(stageId)) {
+          newStageConfig = await this.stageConfigurationRepository
+            .createQueryBuilder('stage')
+            .where('UPPER(stage.etapa) LIKE :juzg', { juzg: '%JUZG%' })
+            .andWhere('stage.activo = true')
+            .getOne();
+        }
       }
 
       if (!newStageConfig) {
@@ -1045,13 +1076,48 @@ export class ProcessService {
         );
       }
 
+      // Validación de rol Secretario/Radicador: solo puede trasladar Cargos → Juzgamiento
+      if (userRoles) {
+        const rolesArray: string[] = Array.isArray(userRoles)
+          ? userRoles.map((r: any) => typeof r === 'string' ? r : (r?.code || r?.name || '')).filter(Boolean)
+          : [];
+        const isRadicador = rolesArray.some((r: string) => {
+          const u = r.toUpperCase();
+          return u === 'SECRETARIA_RADICADOR' || u === 'RADICADOR_DISCIPLINARIO' || u.includes('RADICADOR');
+        });
+        const isAdminOrJefe = rolesArray.some((r: string) => {
+          const u = r.toUpperCase();
+          return u === 'SUPER_ADMIN' || u === 'ADMIN' || u.includes('JEFE');
+        });
+
+        if (isRadicador && !isAdminOrJefe) {
+          if (this.isJuzgamientoStage(proceso.etapaActual) && this.isCargosStage(newStageConfig.etapa)) {
+            throw new HttpException(
+              'No está permitido el traslado desde Juzgamiento hacia Cargos',
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+          if (!(this.isCargosStage(proceso.etapaActual) && this.isJuzgamientoStage(newStageConfig.etapa))) {
+            throw new HttpException(
+              'El rol Secretario/Radicador únicamente puede realizar el traslado de procesos desde la etapa Cargos hacia Juzgamiento',
+              HttpStatus.FORBIDDEN,
+            );
+          }
+        }
+      }
+
       if (kanbanNotice !== undefined) {
         proceso.kanbanNotice = kanbanNotice || null;
       }
 
       if (proceso.etapaActual !== newStageConfig.etapa) {
         if (proceso.estado === ProcessStatus.ACTIVO) {
-          this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+          this.validarTransicionEtapa(
+            currentStageConfig.orden,
+            newStageConfig.orden,
+            currentStageConfig.etapa,
+            newStageConfig.etapa,
+          );
         }
 
         // Calcular nuevo vencimiento
@@ -1417,10 +1483,15 @@ export class ProcessService {
   /**
    * Obtener proceso por radicado del proceso
    */
-  async findByRadicado(radicadoProceso: string): Promise<DisciplinaryProcess> {
+  async findByRadicado(radicadoProceso: string, includeAutos: boolean = false): Promise<DisciplinaryProcess> {
+    const relations = ['news', 'abogadoAsignado'];
+    if (includeAutos) {
+      relations.push('autos');
+    }
+
     const proceso = await this.processRepository.findOne({
       where: { radicadoProceso },
-      relations: ['news', 'abogadoAsignado'],
+      relations,
     });
 
     if (!proceso) {
@@ -1583,7 +1654,12 @@ export class ProcessService {
    * NOTA: Se permiten movimientos hacia ATRÁS (a etapas anteriores) para dar flexibilidad.
    * Los movimientos hacia adelante deben seguir el flujo específico definido.
    */
-  private validarTransicionEtapa(ordenActual: number, ordenNueva: number): void {
+  private validarTransicionEtapa(
+    ordenActual: number,
+    ordenNueva: number,
+    etapaActualNombre?: string,
+    etapaNuevaNombre?: string,
+  ): void {
     console.log('Validating transition from orden', ordenActual, 'to orden', ordenNueva);
 
     // No puede pasar a la misma etapa
@@ -1592,6 +1668,20 @@ export class ProcessService {
         `No se puede pasar de la etapa con orden ${ordenActual} a la misma etapa`,
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    // Regla especial explícita: No se permite traslado desde Juzgamiento hacia Cargos
+    if (etapaActualNombre && etapaNuevaNombre && this.isJuzgamientoStage(etapaActualNombre) && this.isCargosStage(etapaNuevaNombre)) {
+      throw new HttpException(
+        'No está permitido el traslado desde Juzgamiento hacia Cargos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Regla especial explícita: Traslado desde Cargos hacia Juzgamiento siempre es válido
+    if (etapaActualNombre && etapaNuevaNombre && this.isCargosStage(etapaActualNombre) && this.isJuzgamientoStage(etapaNuevaNombre)) {
+      console.log('Transición permitida: Cargos → Juzgamiento');
+      return;
     }
 
     // SEGUNDA_INSTANCIA (orden 9) es etapa final, no puede salir de aquí

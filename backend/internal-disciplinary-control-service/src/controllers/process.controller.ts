@@ -29,6 +29,12 @@ import { NewsService } from '../services/news.service';
 import { AutoService } from '../services/auto.service';
 import { ProcessExportService } from '../services/process-export.service';
 import {
+  IndiceElectronicoExportService,
+  IndiceElectronicoDocumentoDto,
+  IndiceElectronicoExpedienteDto,
+  limpiarNombreArchivo,
+} from '../services/indice-electronico-export.service';
+import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
@@ -67,6 +73,7 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
   'SECRETARIA_RADICADOR',
+  'RADICADOR_DISCIPLINARIO',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -109,6 +116,7 @@ export class ProcessController {
     private httpService: HttpService,
     private permissionsService: PermissionsService,
     private processExportService: ProcessExportService,
+    private indiceElectronicoExportService: IndiceElectronicoExportService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -354,7 +362,8 @@ export class ProcessController {
     return await this.processService.changeStage(
       id,
       changeStageDto.stageId,
-      changeStageDto.kanbanNotice
+      changeStageDto.kanbanNotice,
+      req.user?.roles
     );
   }
 
@@ -996,7 +1005,8 @@ export class ProcessController {
             esAutoDigital: true,
             estado: auto.estado,
             tipoAuto: auto.tipo, // Tipo específico para edición
-            numero: auto.numero // Número para pre-llenar título
+            numero: auto.numero, // Número para pre-llenar título
+            radicadorAsignadoId: auto.radicadorAsignadoId || null,
           },
         };
       });
@@ -1064,6 +1074,40 @@ export class ProcessController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Descargar el Índice Electrónico del expediente en el formato oficial EI-FO-020 (Excel).
+   * Recibe el mismo listado de documentos que ya se muestra en la pestaña Índice Electrónico
+   * (calculado por el frontend con getDocuments) para garantizar que el archivo generado
+   * corresponda exactamente a lo que el usuario está viendo en pantalla.
+   */
+  @Post(':id/indice-electronico')
+  @ApiOperation({
+    summary: 'Descargar Índice Electrónico (EI-FO-020)',
+    description: 'Genera el Índice Electrónico del expediente en el formato oficial EI-FO-020, a partir de los documentos visibles en la pestaña Índice Electrónico',
+  })
+  async descargarIndiceElectronico(
+    @Param('id') id: string,
+    @Body() body: { expediente: IndiceElectronicoExpedienteDto; documentos: IndiceElectronicoDocumentoDto[] },
+    @Res() res: Response,
+  ): Promise<void> {
+    const workbook = await this.indiceElectronicoExportService.generar(
+      body.expediente,
+      body.documentos || [],
+    );
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="IndiceElectronico_${body.expediente?.radicado || id}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   }
 
   /**
@@ -1138,7 +1182,8 @@ export class ProcessController {
     }
 
     // Obtener el nombre original del archivo para la cabecera Content-Disposition
-    const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+    const rawNombre = documento.filename || documento.nombreDocumento || 'documento';
+    const nombreArchivo = limpiarNombreArchivo(rawNombre) || rawNombre;
 
     // Si es para visualización, enviar con content-type adecuado y disposition inline
     if (view === 'true') {
@@ -1262,7 +1307,7 @@ export class ProcessController {
    * Solo disponible para el Radicador (rol SECRETARIA_RADICADOR)
    */
   @Get('export')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
   @ApiOperation({
     summary: 'Exportar informe de vencimientos',
     description: 'Genera y descarga el informe de vencimientos de los procesos disciplinarios en formato Excel',

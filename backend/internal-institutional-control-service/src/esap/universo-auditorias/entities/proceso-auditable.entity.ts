@@ -53,6 +53,9 @@ export class ProcesoAuditable {
   @JoinColumn({ name: 'tipo_proceso_id' })
   tipoProceso?: TipoProceso;
 
+  @Column({ name: 'es_especial', type: 'boolean', nullable: false, default: false })
+  esEspecial: boolean;
+
   @Column({ type: 'varchar', length: 255, nullable: true })
   macroproceso?: string;
 

@@ -111,3 +111,123 @@ describe('VistaProcesos · selector de modalidad', () => {
     );
   });
 });
+
+/**
+ * La bandeja en el listado (EFDS-1183).
+ *
+ * El reparto es por bandeja compartida: quien llega primero se queda con el
+ * proceso. Para que eso funcione la lista tiene que distinguir un proceso que
+ * alguien lleva de uno que llegó a la Dirección y nadie ha recibido — si los
+ * dos se ven igual, el segundo se queda ahí semanas.
+ */
+describe('VistaProcesos · la bandeja', () => {
+  const proceso = (participacion: unknown) => ({
+    id: 'p-1',
+    radicado: 'CTO-2026-0014',
+    objeto: 'Servicio de vigilancia para la sede central',
+    modalidad: 'MINIMA_CUANTIA',
+    modalidadNombre: 'Mínima Cuantía',
+    valorEstimado: 30000000,
+    etapa: 3,
+    fechaRadicacion: '2026-09-09T00:00:00.000Z',
+    estudioPrevio: null,
+    actividades: [],
+    participacion,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.modalidades.mockResolvedValue(MODALIDADES);
+    servicio.sugerenciaModalidad.mockResolvedValue({ modalidad: null, forzosa: false });
+  });
+
+  it('señala los que llegaron y nadie ha recibido', async () => {
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({ contratacion: null, abogado: null, enBandeja: true }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/En bandeja · sin recibir/)).toBeInTheDocument();
+  });
+
+  it('en los recibidos dice quién los lleva y quién los revisa', async () => {
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({
+        contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: true },
+        abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
+        enBandeja: false,
+      }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/Laura Pineda \(tú\)/)).toBeInTheDocument();
+    expect(screen.getByText(/revisa Andrés Rojas/)).toBeInTheDocument();
+  });
+
+  it('avisa cuando un proceso recibido se quedó sin abogado', async () => {
+    // Es el estado que nadie pide pero ocurre: quitar sin poner otro. Mientras
+    // dure, la 3.4 no la puede resolver nadie.
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({
+        contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
+        abogado: null,
+        enBandeja: false,
+      }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/sin abogado/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Qué botones ve cada rol (EFDS-1183).
+ *
+ * El menú lateral ya se filtraba por permisos, pero los botones de acción no:
+ * a un ente de control —que solo consulta— se le ofrecía «Nuevo proceso», y al
+ * pulsarlo recibía un 403 que no puede interpretar.
+ */
+describe('VistaProcesos · acciones según el permiso', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    servicio.listarProcesos.mockResolvedValue([]);
+    servicio.modalidades.mockResolvedValue(MODALIDADES);
+  });
+
+  const sesionCon = (...permisos: string[]) =>
+    localStorage.setItem('user', JSON.stringify({ roles: [], permissions: permisos }));
+
+  it('ofrece crear a quien radica', async () => {
+    sesionCon('contratacion.proceso.create');
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();
+  });
+
+  it('no se lo ofrece a quien solo consulta', async () => {
+    sesionCon('contratacion.expediente.auditar');
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    await waitFor(() => expect(servicio.listarProcesos).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /Nuevo proceso/ })).toBeNull();
+  });
+
+  it('a quien solo consulta le explica el vacío sin pedirle que cree', async () => {
+    // «Crea el primero» sobre una lista vacía es una instrucción que ese rol
+    // no puede seguir.
+    sesionCon('contratacion.expediente.auditar');
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByText(/cuando haya alguno radicado/)).toBeInTheDocument();
+  });
+
+  it('sin sesión no esconde nada', async () => {
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();
+  });
+});

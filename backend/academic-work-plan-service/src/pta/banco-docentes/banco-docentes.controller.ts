@@ -623,7 +623,7 @@ export class BancoDocentesController {
     @Req() req: any,
   ) {
     const actor = this.requestActor(req);
-    const data = await this.documentos.replace(id, documentId, file, actor.actorId, body?.descripcion, actor.ip);
+    const data = await this.documentos.replace(id, documentId, file, actor.actorId, body?.descripcion, actor.ip, body?.campo);
     return { success: true, data: this.documentos.protectMetadata(data, actor.fullAccess) };
   }
 
@@ -886,11 +886,12 @@ export class BancoDocentesController {
             .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
           const actor = this.requestActor(req);
           const document = existing
-            ? await this.documentos.replace(id, existing.id, memoryFile, actor.actorId, body.descripcion, actor.ip)
+            ? await this.documentos.replace(id, existing.id, memoryFile, actor.actorId, body.descripcion, actor.ip, body.campo)
             : await this.documentos.create(id, {
                 categoria: body.categoria || this.supportCategory(bloque, body.tipoSoporte),
                 bloque,
                 tipoSoporte: body.tipoSoporte,
+                campo: body.campo,
                 descripcion: body.descripcion,
               }, memoryFile, actor.actorId, actor.ip);
           return { success: true, data: { ...this.documentos.protectMetadata(document, actor.fullAccess), validacionTipo } };
@@ -927,11 +928,12 @@ export class BancoDocentesController {
     const existing = (await this.documentos.list(id))
       .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
     const document = existing
-      ? await this.documentos.replace(id, existing.id, file, actorId, body.descripcion)
+      ? await this.documentos.replace(id, existing.id, file, actorId, body.descripcion, undefined, body.campo)
       : await this.documentos.create(id, {
           categoria: body.categoria || this.supportCategory(bloque, body.tipoSoporte),
           bloque,
           tipoSoporte: body.tipoSoporte,
+          campo: body.campo,
           descripcion: body.descripcion,
         }, file, actorId);
     return { success: true, data: this.documentos.protectMetadata(document, false) };

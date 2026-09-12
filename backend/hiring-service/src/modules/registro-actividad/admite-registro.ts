@@ -15,9 +15,12 @@
 export const NUMERALES_CON_REGISTRO = [
   // Etapa 3 · lo que acompaña al estudio previo
   '3.2',
-  '3.3',
-  '3.4',
-  '3.5',
+  // La 3.3, la 3.4 y la 3.5 salieron de la lista con EFDS-1183. Eran el caso
+  // más claro de lo que el comentario de arriba anticipaba: no es que nadie las
+  // recogiera, es que no caben en una fecha y un documento. Radicar es recibir
+  // el proceso en la Dirección y ponerle responsable; la 3.4 es la decisión del
+  // abogado sobre el estudio previo; y la 3.5 es ratificar la modalidad que el
+  // área eligió —subir un papel la daba por definida sin que nadie la mirara—.
   // La causal la elige el abogado leyendo el Decreto 1082/2015 contra el
   // objeto, y el comité sesiona en la Dirección de Contratación: ninguna de las
   // dos es un cálculo que la plataforma pueda hacer ni un trámite que reciba.

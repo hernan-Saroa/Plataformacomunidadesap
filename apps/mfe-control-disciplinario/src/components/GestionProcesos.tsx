@@ -75,6 +75,8 @@ function mapEtapa(etapa: string): string {
     'JUZGAMIENTO': 'Juzgamiento',
     'FALLO': 'Fallo',
     'SEGUNDA_INSTANCIA': 'Segunda Instancia',
+    'INHIBITORIO': 'Inhibido',
+    'ARCHIVO': 'Archivo'
   };
   return MAP[etapa] || etapa;
 }
@@ -743,6 +745,21 @@ export function GestionProcesos() {
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [procesoEditar, setProcesoEditar] = useState<Proceso | undefined>();
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
+
+  // ✅ Exportar informe de vencimientos
+  const handleExportar = async () => {
+    setExportando(true);
+    try {
+      await disciplinaryService.exportarInformeVencimientos();
+      toast.success('Informe de vencimientos descargado');
+    } catch (err: any) {
+      console.error('Error exportando informe de vencimientos:', err);
+      toast.error('No se pudo generar el informe de vencimientos');
+    } finally {
+      setExportando(false);
+    }
+  };
 
   // ✅ Cargar procesos desde la API
   const cargarProcesos = useCallback(async () => {
@@ -909,11 +926,16 @@ export function GestionProcesos() {
 
           {/* Exportar */}
           <button
-            onClick={() => toast.info('Exportando a Excel...')}
-            className="px-4 py-3 rounded-xl font-semibold flex items-center gap-2"
+            onClick={handleExportar}
+            disabled={exportando}
+            className="px-4 py-3 rounded-xl font-semibold flex items-center gap-2 disabled:opacity-60"
             style={{ background: '#10B981', color: '#FFFFFF' }}
           >
-            <Download className="w-4 h-4" />
+            {exportando ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
             Exportar
           </button>
         </div>

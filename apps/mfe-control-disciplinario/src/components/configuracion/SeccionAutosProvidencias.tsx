@@ -66,13 +66,21 @@ export const ETAPAS_PROCESO = {
     icon: Gavel,
     orden: 6
   },
+  INHIBITORIO: {
+    id: 'inhibitorio',
+    nombre: 'Inhibitorio',
+    descripcion: 'Inhibición antes de iniciar actuación disciplinaria (art. 209)',
+    color: '#6B7280',
+    icon: Archive,
+    orden: 7
+  },
   ARCHIVO: {
     id: 'archivo',
     nombre: 'Archivo',
-    descripcion: 'Archivos en cualquier etapa del proceso',
+    descripcion: 'Archivo dentro de actuación disciplinaria',
     color: '#DC2626',
     icon: Archive,
-    orden: 7
+    orden: 8
   },
   GENERAL: {
     id: 'general',
@@ -80,7 +88,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Autos que aplican en cualquier etapa',
     color: '#64748B',
     icon: CheckCircle,
-    orden: 8
+    orden: 9
   }
 } as const;
 

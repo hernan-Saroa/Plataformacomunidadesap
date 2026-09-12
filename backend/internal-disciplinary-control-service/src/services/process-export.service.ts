@@ -2,10 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import ExcelJS from 'exceljs';
-import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
+import { DisciplinaryProcess, ProcessStage, ProcessStatus } from '../entities/disciplinary-process.entity';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 import { ReglaAlerta } from '../entities/regla-alerta.entity';
 import { AutoStatus, AutoType } from '../entities/legal-auto.entity';
+import { TerminosCalculatorService } from './terminos-calculator.service';
 
 const HEADERS = [
   'No. DE TRAMITE DISCIPLINARIO',
@@ -36,6 +37,40 @@ const HEADERS = [
 
 const DATE_COLUMNS = [2, 3, 13, 14, 15, 16, 18, 20, 21, 22]; // B,C,M,N,O,P,R,T,U,V
 
+interface SemaforoStyle {
+  fill: string;
+  font: string;
+  bold: boolean;
+}
+
+const SEMAFORO_STYLES: Record<string, SemaforoStyle> = {
+  VENCIDO: { fill: 'FFFEE2E2', font: 'FF991B1B', bold: true },
+  'ETAPA POR VENCER': { fill: 'FFFEF3C7', font: 'FF92400E', bold: true },
+  'EN TÉRMINOS': { fill: 'FFD1FAE5', font: 'FF065F46', bold: true },
+  ARCHIVADO: { fill: 'FFE2E8F0', font: 'FF334155', bold: true },
+  INHIBIDO: { fill: 'FFEDE9FE', font: 'FF5B21B6', bold: true },
+  'Sin datos': { fill: 'FFF3F4F6', font: 'FF6B7280', bold: false },
+};
+
+function calculateNetworkDays(startDate: Date, endDate: Date): number {
+  let count = 0;
+  const cur = new Date(startDate);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+
+  if (cur > end) return 0;
+
+  while (cur <= end) {
+    const dayOfWeek = cur.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      count++;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
 function mapEtapaToLabel(etapa: string | null | undefined): string {
   switch (etapa) {
     case 'RECEPCION':
@@ -50,6 +85,10 @@ function mapEtapaToLabel(etapa: string | null | undefined): string {
       return '04 EVALUACIÓN ID';
     case 'JUZGAMIENTO':
       return '05 CARGOS';
+    case 'SEGUNDA_INSTANCIA':
+      return '07 SEGUNDA INSTANCIA';
+    case 'FALLO':
+      return '08 FALLO';
     default:
       return etapa || '';
   }
@@ -63,7 +102,11 @@ function getImplicado(news: DisciplinaryProcess['news']): any {
 
 function latestAprobado(autos: DisciplinaryProcess['autos'], tipos: string[]) {
   return (autos || [])
-    .filter((a) => tipos.includes(a.tipo) && a.estado === AutoStatus.APROBADO)
+    .filter(
+      (a) =>
+        tipos.includes(a.tipo) &&
+        [AutoStatus.APROBADO, AutoStatus.FIRMADO, AutoStatus.NOTIFICADO].includes(a.estado),
+    )
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
 }
 
@@ -88,18 +131,21 @@ export class ProcessExportService {
     private actuacionesRepository: Repository<DisciplinaryProcessActuacion>,
     @InjectRepository(ReglaAlerta)
     private reglaAlertaRepository: Repository<ReglaAlerta>,
+    private terminosCalculatorService: TerminosCalculatorService,
   ) {}
 
   private async buildActuacionesPorProceso(processIds: string[]): Promise<{
     fechasEtapa: Map<string, Map<string, Date>>;
     fechaProrroga: Map<string, Date>;
+    fechaUltimaReactivacion: Map<string, Date>;
   }> {
     const fechasEtapa = new Map<string, Map<string, Date>>();
     const fechaProrroga = new Map<string, Date>();
-    if (processIds.length === 0) return { fechasEtapa, fechaProrroga };
+    const fechaUltimaReactivacion = new Map<string, Date>();
+    if (processIds.length === 0) return { fechasEtapa, fechaProrroga, fechaUltimaReactivacion };
 
     const actuaciones = await this.actuacionesRepository.find({
-      where: { tipo: In(['cambio_etapa', 'PRORROGA']), processId: In(processIds) },
+      where: { processId: In(processIds) },
       order: { fechaActuacion: 'ASC' },
     });
 
@@ -121,9 +167,20 @@ export class ProcessExportService {
         // La más reciente: coincide con la última prórroga aprobada, que es la que se reporta.
         fechaProrroga.set(actuacion.processId, actuacion.fechaActuacion);
       }
+
+      // Actuaciones que indican reactivación, desarchivo, apelación o reversión del auto
+      const tipoLower = (actuacion.tipo || '').toLowerCase();
+      const esReactivacion =
+        ['reversion_aprobacion', 'restaurar', 'desarchivar', 'apelacion', 'recurso'].includes(tipoLower) ||
+        /revers|restaur|apelac|desarchiv/i.test(actuacion.descripcion || '') ||
+        /revers|restaur|apelac|desarchiv/i.test(actuacion.observaciones || '');
+
+      if (esReactivacion) {
+        fechaUltimaReactivacion.set(actuacion.processId, actuacion.fechaActuacion);
+      }
     }
 
-    return { fechasEtapa, fechaProrroga };
+    return { fechasEtapa, fechaProrroga, fechaUltimaReactivacion };
   }
 
   // Reutiliza el umbral de "próximo a vencer" ya configurado en Configuración > Reglas de Alerta,
@@ -143,8 +200,11 @@ export class ProcessExportService {
       this.getUmbralPorVencerDias(),
     ]);
 
-    const { fechasEtapa: fechasEtapaPorProceso, fechaProrroga: fechaProrrogaPorProceso } =
-      await this.buildActuacionesPorProceso(processes.map((p) => p.id));
+    const {
+      fechasEtapa: fechasEtapaPorProceso,
+      fechaProrroga: fechaProrrogaPorProceso,
+      fechaUltimaReactivacion: fechaReactivacionPorProceso,
+    } = await this.buildActuacionesPorProceso(processes.map((p) => p.id));
 
     const now = new Date();
     const y = now.getFullYear();
@@ -167,10 +227,10 @@ export class ProcessExportService {
     });
     headerRow.height = 30;
 
-    processes.forEach((process, i) => {
+    for (let i = 0; i < processes.length; i++) {
+      const process = processes[i];
       const r = i + 2;
       const implicado = getImplicado(process.news);
-      const etapaLabel = mapEtapaToLabel(process.etapaActual);
       const fechasEtapa = fechasEtapaPorProceso.get(process.id);
 
       const fechaIndagacionPrevia =
@@ -189,6 +249,156 @@ export class ProcessExportService {
         AutoType.AUTO_FORMULACION_PLIEGO,
         AutoType.PLIEGO_CARGOS,
       ]);
+      const autoArchivo = latestAprobado(process.autos, [AutoType.AUTO_ARCHIVO]);
+      const autoInhibitorio = latestAprobado(process.autos, [AutoType.AUTO_INHIBITORIO]);
+
+      // --- VALIDACIÓN ROBUSTA DE ARCHIVO / INHIBITORIO ---
+      // No se puede fiar solo de que exista un auto aprobado de tipo archivo o inhibitorio,
+      // porque el proceso pudo haber sido RESTAURADO (restore), su aprobación REVERSADA por el Jefe,
+      // APELADO a segunda instancia (recurso de apelación) o continuado con autos posteriores.
+
+      const isProcesoActivo =
+        process.estado === ProcessStatus.ACTIVO ||
+        process.estado === 'ACTIVO' ||
+        (process.restaurado === true && process.estado !== ProcessStatus.ARCHIVADO);
+
+      const isEnSegundaInstancia =
+        process.etapaActual === ProcessStage.SEGUNDA_INSTANCIA ||
+        process.etapaActual === 'SEGUNDA_INSTANCIA';
+
+      const fechaAutoArchivo = fechaAprobacionAuto(autoArchivo);
+      const fechaAutoInhibitorio = fechaAprobacionAuto(autoInhibitorio);
+      const fechaCorteArchivo = fechaAutoArchivo || fechaAutoInhibitorio;
+
+      const fechaReactivacion = fechaReactivacionPorProceso.get(process.id);
+      const fueReactivadoPosterior = Boolean(
+        fechaReactivacion &&
+        fechaCorteArchivo &&
+        new Date(fechaReactivacion).getTime() >= new Date(fechaCorteArchivo).getTime(),
+      );
+
+      const tieneAutoPosterior = fechaCorteArchivo
+        ? (process.autos || []).some((a) => {
+            const esMismoAuto =
+              (autoArchivo && a.id === autoArchivo.id) ||
+              (autoInhibitorio && a.id === autoInhibitorio.id);
+            if (esMismoAuto) return false;
+            const esAprobado = [
+              AutoStatus.APROBADO,
+              AutoStatus.FIRMADO,
+              AutoStatus.NOTIFICADO,
+            ].includes(a.estado);
+            const fechaA = fechaAprobacionAuto(a);
+            return (
+              esAprobado &&
+              fechaA &&
+              new Date(fechaA).getTime() > new Date(fechaCorteArchivo).getTime()
+            );
+          })
+        : false;
+
+      // El proceso solo se considera formalmente archivado si su estado es ARCHIVADO
+      // y no se encuentra activo por restauración, apelación o actuaciones posteriores.
+      const isEstadoArchivado =
+        (process.estado === ProcessStatus.ARCHIVADO ||
+          (process as any).estadoActual === 'ARCHIVADO') &&
+        !isProcesoActivo;
+
+      const isArchivadoEfectivo =
+        isEstadoArchivado &&
+        !isEnSegundaInstancia &&
+        !fueReactivadoPosterior &&
+        !tieneAutoPosterior;
+
+      const isInhibido =
+        isArchivadoEfectivo &&
+        (process.etapaActual === ProcessStage.INHIBITORIO ||
+          (process as any).estadoActual === 'INHIBIDO' ||
+          Boolean(
+            autoInhibitorio &&
+              (!autoArchivo ||
+                (fechaAutoInhibitorio &&
+                  fechaAutoArchivo &&
+                  new Date(fechaAutoInhibitorio).getTime() >= new Date(fechaAutoArchivo).getTime())),
+          ));
+
+      const isArchivado = isArchivadoEfectivo && !isInhibido;
+
+      let etapaLabel = mapEtapaToLabel(process.etapaActual);
+      if (isInhibido) {
+        etapaLabel = 'INHIBIDO';
+      } else if (isArchivado) {
+        etapaLabel = 'ARCHIVADO';
+      } else if (process.estado === ProcessStatus.SUSPENDIDO) {
+        etapaLabel = 'SUSPENDIDO';
+      }
+
+      // Fecha en que entró a evaluación (auto de cierre o registro en actuaciones / inicio etapa)
+      const fechaEntradaEvaluacion =
+        fechasEtapa?.get('EVALUACION') ||
+        (process.etapaActual === 'EVALUACION' ? process.fechaInicioEtapa : null) ||
+        fechaAprobacionAuto(autoCierre);
+
+      let fechaVencimientoEvaluacion: Date | null = null;
+      if (fechaEntradaEvaluacion) {
+        if (process.etapaActual === 'EVALUACION' && process.fechaVencimientoEtapa) {
+          fechaVencimientoEvaluacion = new Date(process.fechaVencimientoEtapa);
+        } else {
+          const resultado = await this.terminosCalculatorService.calculateVencimientoEtapa(
+            'EVALUACION',
+            new Date(fechaEntradaEvaluacion),
+          );
+          fechaVencimientoEvaluacion = resultado.fechaVencimiento;
+        }
+      }
+
+      // Vencimiento de la etapa activa del proceso
+      let fechaVencimientoEtapaActual: Date | null = null;
+      if (isInhibido || isArchivado) {
+        fechaVencimientoEtapaActual = null;
+      } else if (process.etapaActual === 'EVALUACION') {
+        fechaVencimientoEtapaActual = fechaVencimientoEvaluacion;
+      } else if (process.etapaActual === 'JUZGAMIENTO') {
+        const fechaEntradaCargos =
+          fechasEtapa?.get('JUZGAMIENTO') ||
+          process.fechaInicioEtapa ||
+          fechaAprobacionAuto(autoPliego);
+        if (fechaEntradaCargos) {
+          const resultado = await this.terminosCalculatorService.calculateVencimientoEtapa(
+            'JUZGAMIENTO',
+            new Date(fechaEntradaCargos),
+          );
+          fechaVencimientoEtapaActual = resultado.fechaVencimiento;
+        }
+      } else {
+        const esEtapaInicial = ['RECEPCION', 'VALORACION'].includes(process.etapaActual);
+        const fechaEntradaEtapaActual =
+          fechasEtapa?.get(process.etapaActual) ||
+          process.fechaInicioEtapa ||
+          (esEtapaInicial ? process.createdAt : null) ||
+          null;
+        if (fechaEntradaEtapaActual) {
+          const resultado = await this.terminosCalculatorService.calculateVencimientoEtapa(
+            process.etapaActual,
+            new Date(fechaEntradaEtapaActual),
+          );
+          fechaVencimientoEtapaActual = resultado.fechaVencimiento;
+        }
+      }
+
+      // Si no se pudo calcular por falta de actuaciones pero el proceso tiene fechaVencimientoEtapa registrada:
+      if (!fechaVencimientoEtapaActual && process.fechaVencimientoEtapa && !isInhibido && !isArchivado) {
+        fechaVencimientoEtapaActual = new Date(process.fechaVencimientoEtapa);
+      }
+
+      let decisionTexto = '';
+      if (autoPliego) {
+        decisionTexto = 'Formulación de Cargos';
+      } else if (isArchivado) {
+        decisionTexto = 'Auto de Archivo';
+      } else if (isInhibido) {
+        decisionTexto = 'Auto Inhibitorio';
+      }
 
       const values: Record<number, any> = {
         1: process.radicadoProceso,
@@ -199,8 +409,6 @@ export class ProcessExportService {
         8: implicado?.nombre || '',
         9: implicado?.cargo || '',
         10: process.news?.territorial || '',
-        // EFDS-1563: "conductas" incluye la original del Radicador más las que agregue el Jefe;
-        // si existe, es la fuente más completa. "conducta" es el respaldo para procesos anteriores.
         11: process.news?.conductas?.length
           ? process.news.conductas.join(', ')
           : process.news?.conducta || '',
@@ -211,8 +419,8 @@ export class ProcessExportService {
         17: autoProrroga ? 'SI' : 'NO',
         18: (autoProrroga && fechaProrrogaPorProceso.get(process.id)) || fechaAprobacionAuto(autoProrroga),
         19: autoProrroga?.prorrogaMeses ?? null,
-        21: fechaAprobacionAuto(autoCierre),
-        23: autoPliego ? 'Formulación de Cargos' : '',
+        21: fechaEntradaEvaluacion || fechaAprobacionAuto(autoCierre),
+        23: decisionTexto,
       };
 
       Object.entries(values).forEach(([col, value]) => {
@@ -228,30 +436,178 @@ export class ProcessExportService {
       worksheet.getCell(r, 14).value = {
         formula: `IF(ISNUMBER(M${r}),DATE(YEAR(M${r})+5,MONTH(M${r}),DAY(M${r})),"Faltan datos/Vacia")`,
       } as any;
+
+      // Columna 20 (T): Fecha Vencimiento IP ID y P
+      const vencimientoEtapaLiteral = fechaVencimientoEtapaActual
+        ? `DATE(${fechaVencimientoEtapaActual.getFullYear()},${fechaVencimientoEtapaActual.getMonth() + 1},${fechaVencimientoEtapaActual.getDate()})`
+        : '""';
       worksheet.getCell(r, 20).value = {
-        formula:
-          `IF(Q${r}="SI",EDATE(R${r},S${r}),` +
-          `IF(F${r}="01 NOTICIA DISCIPLINARIA",B${r}+10,` +
-          `IF(F${r}="02 INDAGACIÓN PREVIA",IF(O${r}<>"",EDATE(O${r},6),""),` +
-          `IF(F${r}="03 INVESTIGACIÓN DISCIPLINARIA",IF(P${r}<>"",EDATE(P${r},6),""),` +
-          `IF(F${r}="04 EVALUACIÓN ID",IF(U${r}<>"",U${r}+40,""),` +
-          `IF(F${r}="05 CARGOS",IF(U${r}<>"",EDATE(U${r},3),""),` +
-          `""))))))`,
+        formula: `IF(Q${r}="SI",EDATE(R${r},S${r}),${vencimientoEtapaLiteral})`,
+        result: autoProrroga ? undefined : (fechaVencimientoEtapaActual || undefined),
       } as any;
-      worksheet.getCell(r, 22).value = {
-        formula: `WORKDAY(U${r},41)`,
+
+      // Columna 22 (V): Fecha Vencimiento Evaluacion ID
+      if (fechaVencimientoEvaluacion) {
+        const fvLiteral = `DATE(${fechaVencimientoEvaluacion.getFullYear()},${fechaVencimientoEvaluacion.getMonth() + 1},${fechaVencimientoEvaluacion.getDate()})`;
+        worksheet.getCell(r, 22).value = {
+          formula: `IF(U${r}="","",${fvLiteral})`,
+          result: fechaVencimientoEvaluacion,
+        } as any;
+      } else {
+        worksheet.getCell(r, 22).value = null;
+      }
+
+      // Columna 24 (X): Vencimientos (Última Columna)
+      // Se calcula el estado precalculado para visualización inmediata y semaforización
+      let resultadoVencimiento = 'Sin datos';
+      if (isInhibido) {
+        resultadoVencimiento = 'INHIBIDO';
+      } else if (isArchivado) {
+        resultadoVencimiento = 'ARCHIVADO';
+      } else if (process.etapaActual === 'EVALUACION') {
+        if (!fechaVencimientoEvaluacion) {
+          resultadoVencimiento = 'Sin datos';
+        } else {
+          const hoyDate = new Date(y, m - 1, d);
+          const fvDate = new Date(fechaVencimientoEvaluacion);
+          fvDate.setHours(0, 0, 0, 0);
+          if (fvDate < hoyDate) {
+            resultadoVencimiento = 'VENCIDO';
+          } else {
+            const diasHabiles = calculateNetworkDays(hoyDate, fvDate);
+            resultadoVencimiento = diasHabiles <= umbralDias + 1 ? 'ETAPA POR VENCER' : 'EN TÉRMINOS';
+          }
+        }
+      } else {
+        if (!fechaVencimientoEtapaActual) {
+          resultadoVencimiento = 'Sin datos';
+        } else {
+          const hoyDate = new Date(y, m - 1, d);
+          const fvDate = new Date(fechaVencimientoEtapaActual);
+          fvDate.setHours(0, 0, 0, 0);
+          if (fvDate < hoyDate) {
+            resultadoVencimiento = 'VENCIDO';
+          } else {
+            const diasHabiles = calculateNetworkDays(hoyDate, fvDate);
+            resultadoVencimiento = diasHabiles <= umbralDias + 1 ? 'ETAPA POR VENCER' : 'EN TÉRMINOS';
+          }
+        }
+      }
+
+      // La fórmula contempla Evaluación en F y en V, además de los estados ARCHIVADO e INHIBIDO
+      const formulaVencimientos =
+        `IF(OR(F${r}="ARCHIVADO",F${r}="06 ARCHIVADO"),"ARCHIVADO",` +
+        `IF(OR(F${r}="INHIBIDO",F${r}="INHIBITORIO",F${r}="00 INHIBITORIO"),"INHIBIDO",` +
+        `IF(OR(F${r}="04 EVALUACIÓN ID",F${r}="EVALUACION",F${r}="EVALUACIÓN"),` +
+        `IF(IF(V${r}<>"",V${r},T${r})="","Sin datos",` +
+        `IF(IF(V${r}<>"",V${r},T${r})<DATE(${y},${m},${d}),"VENCIDO",` +
+        `IF(NETWORKDAYS(DATE(${y},${m},${d}),IF(V${r}<>"",V${r},T${r}))<=${umbralDias + 1},"ETAPA POR VENCER","EN TÉRMINOS"))),` +
+        `IF(T${r}="","Sin datos",` +
+        `IF(T${r}<DATE(${y},${m},${d}),"VENCIDO",` +
+        `IF(NETWORKDAYS(DATE(${y},${m},${d}),T${r})<=${umbralDias + 1},"ETAPA POR VENCER","EN TÉRMINOS"))))))`;
+
+      const cellX = worksheet.getCell(r, 24);
+      cellX.value = {
+        formula: formulaVencimientos,
+        result: resultadoVencimiento,
       } as any;
-      worksheet.getCell(r, 24).value = {
-        formula:
-          `IF(T${r}="","Sin datos",` +
-          `IF(T${r}<DATE(${y},${m},${d}),"VENCIDO",` +
-          `IF(NETWORKDAYS(DATE(${y},${m},${d}),T${r})<=${umbralDias + 1},"ETAPA POR VENCER","EN TÉRMINOS")))`,
-      } as any;
+
+      // Colorear celda directamente según formato (semaforización visual en descarga)
+      const styleVencimiento = SEMAFORO_STYLES[resultadoVencimiento] || SEMAFORO_STYLES['Sin datos'];
+      cellX.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: styleVencimiento.fill },
+      };
+      cellX.font = {
+        color: { argb: styleVencimiento.font },
+        bold: styleVencimiento.bold,
+      };
+      cellX.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      // Estilo de Columna 6 (Estado)
+      const cellF = worksheet.getCell(r, 6);
+      if (isInhibido) {
+        cellF.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } };
+        cellF.font = { color: { argb: 'FF5B21B6' }, bold: true };
+      } else if (isArchivado) {
+        cellF.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        cellF.font = { color: { argb: 'FF334155' }, bold: true };
+      }
 
       DATE_COLUMNS.forEach((col) => {
         worksheet.getCell(r, col).numFmt = 'dd/mm/yyyy';
       });
-    });
+    }
+
+    // Reglas de formato condicional en columna "Vencimientos" (X, la última)
+    if (processes.length > 0) {
+      worksheet.addConditionalFormatting({
+        ref: `X2:X${processes.length + 1}`,
+        rules: [
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'VENCIDO',
+            priority: 1,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } },
+              font: { color: { argb: 'FF991B1B' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'ETAPA POR VENCER',
+            priority: 2,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
+              font: { color: { argb: 'FF92400E' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'EN TÉRMINOS',
+            priority: 3,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } },
+              font: { color: { argb: 'FF065F46' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'ARCHIVADO',
+            priority: 4,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } },
+              font: { color: { argb: 'FF334155' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'INHIBIDO',
+            priority: 5,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } },
+              font: { color: { argb: 'FF5B21B6' }, bold: true },
+            },
+          },
+          {
+            type: 'containsText',
+            operator: 'containsText',
+            text: 'Sin datos',
+            priority: 6,
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } },
+              font: { color: { argb: 'FF6B7280' } },
+            },
+          },
+        ],
+      });
+    }
 
     return workbook;
   }

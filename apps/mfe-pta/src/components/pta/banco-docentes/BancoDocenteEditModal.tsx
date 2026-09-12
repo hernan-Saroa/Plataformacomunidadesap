@@ -785,8 +785,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Teléfono" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Teléfono / Celular" error={fieldErrors.telefono} hint="Entre 7 y 15 dígitos; no admite letras ni símbolos.">
-                        <input className="wizard-field" style={fieldStyle} value={form.telefono} onChange={(e) => setValue('telefono', sanitizeManualPhone(e.target.value))} placeholder="Ej: 3001234567" inputMode="numeric" maxLength={15} aria-invalid={Boolean(fieldErrors.telefono)} />
+                      <FloatingField label="Teléfono / Celular" error={fieldErrors.telefono} hint="Cada número debe tener entre 7 y 15 dígitos. Separe varios con un guion.">
+                        <input className="wizard-field" style={fieldStyle} value={form.telefono} onChange={(e) => setValue('telefono', sanitizeManualPhone(e.target.value))} placeholder="Ej: 3106791787 - 6723168" inputMode="tel" maxLength={255} aria-invalid={Boolean(fieldErrors.telefono)} />
                       </FloatingField>
                     </div>
                   </div>

@@ -396,7 +396,7 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
-      permissions: jwtPermissions,
+      // permissions: permissionCodes, // Se quita porque al momento de generar el JWT sale error: "Parse Error: Header overflow"
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {
