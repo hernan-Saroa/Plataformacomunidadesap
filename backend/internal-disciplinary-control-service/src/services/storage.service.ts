@@ -13,6 +13,7 @@ export const DEFAULT_UPLOAD_DIR = './uploads';
 
 export const getUploadRootDir = (): string =>
   process.env.DISCIPLINARY_STORAGE_PATH ||
+  process.env.STORAGE_PATH ||
   process.env.FILES_UPLOAD_BASE_PATH ||
   process.env.UPLOAD_DIR ||
   DEFAULT_UPLOAD_DIR;

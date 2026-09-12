@@ -4,12 +4,21 @@ import apiClient from './apiClient';
 import { buildApiUrl } from '../../../config/environment';
 import dependenciasService from '../../../../shell/src/services/api/dependencias.service';
 import { fallbackGeopolitica } from '../../utils/viaticosUtils';
+import type { AxiosResponse } from 'axios';
 
 vi.mock('./apiClient');
 vi.mock('../../../config/environment');
 vi.mock('../../../../shell/src/services/api/dependencias.service');
 vi.mock('../../utils/viaticosUtils');
-vi.mock('../../../../shell/src/services/api/offlineCache');
+vi.mock('../../../../shell/src/services/api/offlineCache', () => ({
+  offlineCache: {
+    getCache: vi.fn(),
+    setCache: vi.fn(),
+    queueMutation: vi.fn(),
+    getQueuedMutations: vi.fn(),
+    clearMutation: vi.fn(),
+  },
+}));
 
 const mockedApiClient = apiClient as ReturnType<typeof vi.fn> & {
   get: ReturnType<typeof vi.fn>;
@@ -162,6 +171,308 @@ describe('ViaticosService — RF-REC-002', () => {
       const result = await service.obtenerSolicitudesAsignadas();
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('obtenerBandejaControlViaticos', () => {
+    it('debe retornar la bandeja de Control Viáticos con parametros de paginación', async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: 'sol-001',
+            consecutivoUnico: 'COM-2026-0001',
+            estadoSolicitud: 'SOLICITADA_SIIF',
+            analistaVerificadorNombre: 'María López',
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+      };
+
+      mockedApiClient.get.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.obtenerBandejaControlViaticos({ page: 1, limit: 20 });
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.get).toHaveBeenCalledWith(
+        '/viaticos/api/v1/requests/siif-requested?page=1&limit=20',
+      );
+    });
+
+    it('debe retornar datos vacíos con filtros de dependencia y prioridad', async () => {
+      const mockResponse = { data: [], total: 0, page: 1, limit: 20 };
+
+      mockedApiClient.get.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.obtenerBandejaControlViaticos({
+        dependenciaId: '42',
+        prioridad: 'ALTA',
+        page: 2,
+        limit: 10,
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.get).toHaveBeenCalledWith(
+        '/viaticos/api/v1/requests/siif-requested?dependencia_id=42&prioridad=ALTA&page=2&limit=10',
+      );
+    });
+
+    it('debe retornar datos vacíos si hay error', async () => {
+      mockedApiClient.get.mockRejectedValue(new Error('Network error'));
+
+      const service = new ViaticosService();
+      const result = await service.obtenerBandejaControlViaticos();
+
+      expect(result).toEqual({ data: [], total: 0, page: 1, limit: 20 });
+    });
+  });
+
+  describe('verificarSegundoNivel', () => {
+    it('debe llamar al endpoint correcto con observaciones', async () => {
+      const mockResponse = {
+        success: true,
+        data: {
+          id: 'sol-001',
+          estadoSolicitud: 'VERIFICADA',
+          fechaVerificacionSegundoNivel: '2026-09-10T15:00:00.000Z',
+          verificadoPorUsuarioId: 'revisor-001',
+        },
+        timestamp: '2026-09-10T15:00:00.000Z',
+      };
+
+      mockedApiClient.post.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.verificarSegundoNivel('sol-001', {
+        observaciones: 'Verificado correctamente',
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.post).toHaveBeenCalledWith(
+        '/viaticos/api/v1/requests/sol-001/verify-second-level',
+        { observaciones: 'Verificado correctamente' },
+      );
+    });
+
+    it('debe funcionar con dto vacío (observaciones opcionales)', async () => {
+      const mockResponse = {
+        success: true,
+        data: { id: 'sol-001', estadoSolicitud: 'VERIFICADA' },
+        timestamp: '2026-09-10T15:00:00.000Z',
+      };
+
+      mockedApiClient.post.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.verificarSegundoNivel('sol-001');
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.post).toHaveBeenCalledWith(
+        '/viaticos/api/v1/requests/sol-001/verify-second-level',
+        {},
+      );
+    });
+
+    it('debe propagar el error si la verificación falla', async () => {
+      mockedApiClient.post.mockRejectedValue(
+        new Error('Violación de Segregación de Funciones'),
+      );
+
+      const service = new ViaticosService();
+
+      await expect(
+        service.verificarSegundoNivel('sol-001', { observaciones: 'test' }),
+      ).rejects.toThrow('Violación de Segregación de Funciones');
+    });
+  });
+
+  describe('devolverAAnalista', () => {
+    it('debe llamar al endpoint correcto con observaciones', async () => {
+      const mockResponse = {
+        success: true,
+        data: {
+          id: 'sol-001',
+          estadoSolicitud: 'EN_VERIFICACION',
+          motivoDevolucion: 'Faltan documentos de soporte',
+          devueltoPorUsuarioId: 'revisor-001',
+        },
+        timestamp: '2026-09-10T15:00:00.000Z',
+      };
+
+      mockedApiClient.post.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.devolverAAnalista(
+        'sol-001',
+        'Faltan documentos de soporte',
+      );
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.post).toHaveBeenCalledWith(
+        '/viaticos/api/v1/requests/sol-001/return-to-analyst',
+        { observaciones: 'Faltan documentos de soporte' },
+      );
+    });
+
+    it('debe propagar el error si la devolución falla', async () => {
+      mockedApiClient.post.mockRejectedValue(new Error('Observaciones obligatorias'));
+
+      const service = new ViaticosService();
+
+      await expect(
+        service.devolverAAnalista('sol-001', 'ab'),
+      ).rejects.toThrow('Observaciones obligatorias');
+    });
+  });
+
+  describe('obtenerSolicitudControlViaticos', () => {
+    it('debe retornar el detalle de la solicitud para Control Viáticos', async () => {
+      const mockResponse = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: 'SOLICITADA_SIIF',
+        comisionado: { id: 'com-001', numeroDocumento: '1234567890' },
+        analistaVerificadorNombre: 'María López',
+        fechaVerificacionPrimerNivel: '2026-09-08T10:00:00.000Z',
+        documentosSoporte: [{ id: 'doc-001', tipoDocumento: 'CDP' }],
+      };
+
+      mockedApiClient.get.mockResolvedValue(mockResponse);
+
+      const service = new ViaticosService();
+      const result = await service.obtenerSolicitudControlViaticos('sol-001');
+
+      expect(result).toEqual(mockResponse);
+      expect(mockedApiClient.get).toHaveBeenCalledWith(
+        '/viaticos/api/v1/requests/sol-001/control-viaticos',
+      );
+    });
+
+    it('debe retornar null si hay error (404 u otro)', async () => {
+      mockedApiClient.get.mockRejectedValue(new Error('Not Found'));
+
+      const service = new ViaticosService();
+      const result = await service.obtenerSolicitudControlViaticos('no-existe');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('RF-AUT-001 — Etapa 6: Autorización Corporativa', () => {
+    describe('obtenerBandejaAutorizacion', () => {
+      it('debe consultar la bandeja de autorización con parámetros por defecto', async () => {
+        const mockResponse = {
+          data: [
+            {
+              id: 'sol-001',
+              consecutivoUnico: 'COM-2026-0001',
+              estadoSolicitud: 'EN_AUTORIZACION',
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 20,
+        };
+
+        mockedApiClient.get.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.obtenerBandejaAutorizacion();
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.get).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/authorization/inbox?page=1&limit=20',
+        );
+      });
+
+      it('debe incluir búsqueda y filtro de estado en la query URL', async () => {
+        const mockResponse = { data: [], total: 0, page: 2, limit: 10 };
+        mockedApiClient.get.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.obtenerBandejaAutorizacion(
+          2,
+          10,
+          'Cali',
+          'AUTORIZADA',
+        );
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.get).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/authorization/inbox?page=2&limit=10&search=Cali&estado=AUTORIZADA',
+        );
+      });
+    });
+
+    describe('autorizarComision', () => {
+      it('debe enviar la solicitud de autorización con observaciones', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            id: 'sol-001',
+            estadoSolicitud: 'AUTORIZADA',
+            autorizadorId: 'subdirector-001',
+          },
+          message: 'Comisión autorizada exitosamente.',
+        };
+
+        mockedApiClient.post.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.autorizarComision('sol-001', 'Visto bueno corporativo OK');
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.post).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/sol-001/authorize',
+          { observaciones: 'Visto bueno corporativo OK' },
+        );
+      });
+
+      it('debe propagar errores al autorizar', async () => {
+        mockedApiClient.post.mockRejectedValue(new Error('Violación SoD'));
+
+        const service = new ViaticosService();
+        await expect(service.autorizarComision('sol-001')).rejects.toThrow('Violación SoD');
+      });
+    });
+
+    describe('devolverComisionAutorizacion', () => {
+      it('debe enviar la solicitud de devolución con observaciones obligatorias', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            id: 'sol-001',
+            estadoSolicitud: 'EN_VERIFICACION',
+          },
+          message: 'Comisión devuelta a verificación.',
+        };
+
+        mockedApiClient.post.mockResolvedValue(mockResponse);
+
+        const service = new ViaticosService();
+        const result = await service.devolverComisionAutorizacion(
+          'sol-001',
+          'El itinerario requiere justificación en fin de semana',
+        );
+
+        expect(result).toEqual(mockResponse);
+        expect(mockedApiClient.post).toHaveBeenCalledWith(
+          '/viaticos/api/v1/requests/sol-001/return-authorization',
+          { observaciones: 'El itinerario requiere justificación en fin de semana' },
+        );
+      });
+
+      it('debe propagar errores si la observación es rechazada', async () => {
+        mockedApiClient.post.mockRejectedValue(new Error('Observaciones obligatorias'));
+
+        const service = new ViaticosService();
+        await expect(
+          service.devolverComisionAutorizacion('sol-001', 'ab'),
+        ).rejects.toThrow('Observaciones obligatorias');
+      });
     });
   });
 });

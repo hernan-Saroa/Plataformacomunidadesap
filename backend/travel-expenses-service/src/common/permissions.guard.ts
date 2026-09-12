@@ -18,6 +18,43 @@ const SUPER_ADMIN_ROLES = [
   'superuser',
 ];
 
+const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
+  CONTROL_VIATICOS: [
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:double_check_request',
+    'travel_expenses:return_to_analyst',
+  ],
+  ROL_CONTROL_VIATICOS: [
+    'travel_expenses:read_siif_requested',
+    'travel_expenses:double_check_request',
+    'travel_expenses:return_to_analyst',
+  ],
+  ANALISTA: [
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:export_siif',
+    'travel_expenses:return_assigned',
+  ],
+  ROL_ANALISTA: [
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:export_siif',
+    'travel_expenses:return_assigned',
+  ],
+  SECRETARIO: [
+    'travel_expenses:read_inbox',
+    'travel_expenses:set_priority',
+    'travel_expenses:return_request',
+    'travel_expenses:assign_analyst',
+  ],
+  SOLICITANTE: [
+    'travel_expenses:create_request',
+    'travel_expenses:read_my_requests',
+  ],
+};
+
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -55,13 +92,35 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    if (!user.permissions) {
-      throw new ForbiddenException(
-        'No tiene permisos para acceder a este recurso.',
-      );
+    const rawPermissions = Array.isArray(user.permissions)
+      ? user.permissions
+      : [];
+    const userPermissions = new Set<string>(
+      rawPermissions.map((p: any) =>
+        typeof p === 'string' ? p : p?.code || '',
+      ),
+    );
+
+    // Fallback: incluir permisos asociados a los roles reconocidos
+    userRoles.forEach((role) => {
+      const normalized = (
+        typeof role === 'string' ? role : (role as any)?.code || ''
+      )
+        .toUpperCase()
+        .replace(/\s+/g, '_');
+      const fallbackPerms = ROLE_PERMISSIONS_FALLBACK[normalized];
+      if (fallbackPerms) {
+        fallbackPerms.forEach((p) => userPermissions.add(p));
+      }
+    });
+
+    if (
+      userPermissions.has('*') ||
+      userPermissions.has('travel_expenses:*')
+    ) {
+      return true;
     }
 
-    const userPermissions = new Set(user.permissions);
     const hasPermission = requiredPermissions.some((permission) =>
       userPermissions.has(permission),
     );

@@ -52,6 +52,13 @@ export class ComisionadoEntity {
   @Column({ name: 'tipo_comisionado', type: 'varchar', length: 50 })
   tipoComisionado: string;
 
+  @Column({
+    name: 'es_facturador_electronico',
+    type: 'boolean',
+    default: false,
+  })
+  esFacturadorElectronico: boolean;
+
   @Column({ name: 'origen_datos', type: 'varchar', length: 50 })
   origenDatos: string;
 

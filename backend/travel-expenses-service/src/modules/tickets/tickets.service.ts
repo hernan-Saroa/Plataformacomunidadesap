@@ -148,6 +148,83 @@ export class TicketsService {
   // ========================================================================
 
   /**
+   * Resuelve el SaldoTiqueteEntity buscando tanto por el ID/código provisto
+   * como por su correspondencia en auth.dependencias (para soportar tanto 'DEP-PLAN-01' como '1').
+   */
+  async buscarSaldoDependencia(
+    dependenciaId: string,
+    manager?: EntityManager,
+    pessimisticLock = false,
+  ): Promise<SaldoTiqueteEntity | null> {
+    const depStr = String(dependenciaId || '').trim();
+    if (!depStr) return null;
+
+    const repo = manager
+      ? manager.getRepository(SaldoTiqueteEntity)
+      : this.saldoRepo;
+
+    if (pessimisticLock && manager) {
+      let fila = await manager
+        .createQueryBuilder(SaldoTiqueteEntity, 's')
+        .setLock('pessimistic_write')
+        .where('s.dependencia_id = :dep', { dep: depStr })
+        .andWhere('s.activo = TRUE')
+        .getOne();
+
+      if (!fila) {
+        try {
+          const depRows: any[] = await this.dataSource.query(
+            `SELECT cod_dependencia, id_dependencia FROM auth.dependencias 
+             WHERE id_dependencia::text = $1 OR cod_dependencia = $1 LIMIT 1`,
+            [depStr],
+          );
+          if (depRows.length > 0) {
+            const codDep = depRows[0].cod_dependencia;
+            const idDepStr = String(depRows[0].id_dependencia);
+            fila = await manager
+              .createQueryBuilder(SaldoTiqueteEntity, 's')
+              .setLock('pessimistic_write')
+              .where('s.dependencia_id IN (:...deps)', { deps: [codDep, idDepStr] })
+              .andWhere('s.activo = TRUE')
+              .getOne();
+          }
+        } catch (e) {
+          this.logger.warn(`[buscarSaldoDependencia] Error con lock: ${e?.message}`);
+        }
+      }
+      return fila;
+    }
+
+    let saldo = await repo.findOne({
+      where: { dependenciaId: depStr, activo: true },
+    });
+
+    if (!saldo) {
+      try {
+        const depRows: any[] = await this.dataSource.query(
+          `SELECT cod_dependencia, id_dependencia FROM auth.dependencias 
+           WHERE id_dependencia::text = $1 OR cod_dependencia = $1 LIMIT 1`,
+          [depStr],
+        );
+        if (depRows.length > 0) {
+          const codDep = depRows[0].cod_dependencia;
+          const idDepStr = String(depRows[0].id_dependencia);
+          saldo = await repo.findOne({
+            where: [
+              { dependenciaId: codDep, activo: true },
+              { dependenciaId: idDepStr, activo: true },
+            ],
+          });
+        }
+      } catch (e) {
+        this.logger.warn(`[buscarSaldoDependencia] Error al consultar dependencias: ${e?.message}`);
+      }
+    }
+
+    return saldo;
+  }
+
+  /**
    * Valida de forma proactiva (sin reservar saldo) si una solicitud de tiquete
    * aéreo es viable para una dependencia y una ruta determinadas.
    *
@@ -174,9 +251,7 @@ export class TicketsService {
       .andWhere('r.activo = TRUE')
       .getOne();
 
-    const saldo = await this.saldoRepo.findOne({
-      where: { dependenciaId: dto.dependenciaId, activo: true },
-    });
+    const saldo = await this.buscarSaldoDependencia(dto.dependenciaId);
 
     const saldoDisponible = saldo ? Number(saldo.presupuestoDisponible) : 0;
     const cupoInicial = saldo ? Number(saldo.presupuestoInicial) : 0;
@@ -245,12 +320,11 @@ export class TicketsService {
   ): Promise<SaldoTiqueteEntity> {
     return this.dataSource.transaction(async (manager) => {
       // Bloqueo pesimista: la fila queda retenida hasta el COMMIT.
-      const fila = await manager
-        .createQueryBuilder(SaldoTiqueteEntity, 's')
-        .setLock('pessimistic_write')
-        .where('s.dependencia_id = :dep', { dep: dto.dependenciaId })
-        .andWhere('s.activo = TRUE')
-        .getOne();
+      const fila = await this.buscarSaldoDependencia(
+        dto.dependenciaId,
+        manager,
+        true,
+      );
 
       if (!fila) {
         throw new NotFoundException(
@@ -293,12 +367,11 @@ export class TicketsService {
    */
   async liberarSaldo(dto: LiberarSaldoTiqueteDto): Promise<SaldoTiqueteEntity> {
     return this.dataSource.transaction(async (manager) => {
-      const fila = await manager
-        .createQueryBuilder(SaldoTiqueteEntity, 's')
-        .setLock('pessimistic_write')
-        .where('s.dependencia_id = :dep', { dep: dto.dependenciaId })
-        .andWhere('s.activo = TRUE')
-        .getOne();
+      const fila = await this.buscarSaldoDependencia(
+        dto.dependenciaId,
+        manager,
+        true,
+      );
 
       if (!fila) {
         throw new NotFoundException(
@@ -415,7 +488,7 @@ export class TicketsService {
   async obtenerSaldoPorDependencia(
     dependenciaId: string,
   ): Promise<SaldoTiqueteEntity | null> {
-    return this.saldoRepo.findOne({ where: { dependenciaId } });
+    return this.buscarSaldoDependencia(dependenciaId);
   }
 
   async crearSaldo(dto: CreateSaldoTiqueteDto): Promise<SaldoTiqueteEntity> {
