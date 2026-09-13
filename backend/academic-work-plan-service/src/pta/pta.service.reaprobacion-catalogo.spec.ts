@@ -111,6 +111,15 @@ describe('PtaService - catálogo histórico durante la reaprobación parcial', (
     },
   );
 
+  it('registra la identidad de la sesión al reenviar sin autor ni rol en el formulario', async () => {
+    const { service } = setup();
+    await service.updatePTAStatus('pta-1', { accion: 'reenviar_corregido' }, { userId: 'user-1', roles: ['ROL_PORTAL'] });
+    expect(service.historialRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      tipoAccion: 'reenviar_corregido', actorId: 'user-1', actorRol: 'Docente',
+    }));
+    expect(service.logEvento).toHaveBeenCalledWith(expect.objectContaining({ actor: 'user-1', actorRol: 'Docente' }));
+  });
+
   it.each(['sin solicitud', 'componente reabierto', 'componente pendiente', 'solicitud sin alcance'])(
     'sigue rechazando opciones retiradas cuando hay %s',
     async caso => {

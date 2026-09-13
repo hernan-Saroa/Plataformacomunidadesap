@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { territorialGrantsFromRoles, PtaTerritorialDecisionGrants } from './pta-territorial-role-scope';
 import {
   PTAComponentKey,
   PTA_COMPONENT_KEYS,
@@ -22,6 +23,8 @@ import {
 const NIVELES_DOCENCIA: PTANivelDocencia[] = ['pregrado', 'posgrado'];
 
 export interface PtaAuthContext {
+  /** Alcance del rol que concede cada permiso territorial, separado por etapa y nivel. */
+  territorialDecisionGrants?: PtaTerritorialDecisionGrants;
   /** Superusuario del sistema (rol SUPER_ADMIN): aprueba todo. */
   isSuperUser: boolean;
   /**
@@ -59,8 +62,8 @@ export interface PtaAuthContext {
 }
 
 /**
- * Resuelve los permisos PTA de un usuario a partir de sus roles (JWT), consultando
- * la tabla auth.role_permissions. Es el reemplazo server-side de los flags que antes
+ * Resuelve los permisos PTA consultando las asignaciones activas de la cuenta y
+ * auth.role_permissions. Es el reemplazo server-side de los flags que antes
  * enviaba el cliente (isSuperUser / componentesAutorizados), que eran manipulables.
  *
  * Modelo: aprobación POR COMPONENTE. Cada componente exige su permiso
@@ -70,12 +73,36 @@ export interface PtaAuthContext {
 export class PtaPermissionsService {
   private readonly logger = new Logger(PtaPermissionsService.name);
 
-  // Caché corto por combinación de roles: los permisos por rol cambian poco y esto
-  // evita una consulta por cada aprobación de componente.
+  // Caché del resolver por roles usado por otros módulos. Las decisiones del PTA
+  // usan resolveForUser, que consulta las asignaciones vigentes sin esta caché.
   private readonly cache = new Map<string, { at: number; value: PtaAuthContext }>();
   private readonly cacheTtlMs = 60_000;
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  /** Permisos vigentes de la cuenta: una sesión abierta puede contener roles antiguos. */
+  async resolveForUser(userId: string): Promise<PtaAuthContext & { roles: string[] }> {
+    try {
+      const rows: Array<{ role_code: string; permission_code: string | null; role_scope?: unknown }> = await this.dataSource.query(
+        `SELECT DISTINCT r.code AS role_code, r.alcance AS role_scope, p.code AS permission_code
+           FROM auth."user" u
+           JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
+           JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+           LEFT JOIN auth.role_permissions rp ON rp.id_rol = r.id AND COALESCE(rp.is_active, true) = true
+           LEFT JOIN auth.permission p ON p.id_permission = rp.id_permission
+             AND COALESCE(p.is_active, true) = true AND p.code LIKE 'pta.%'
+          WHERE u.id_user::text = $1 AND COALESCE(u.is_active, true) = true`,
+        [userId],
+      );
+      const roles = [...new Set(rows.map(row => row.role_code).filter(Boolean))];
+      const permissions = new Set(rows.map(row => row.permission_code).filter((code): code is string => Boolean(code)));
+      return { ...this.buildContext(roles.some(code => SUPER_ADMIN_ROLE_CODES.includes(code)), permissions),
+        roles, territorialDecisionGrants: territorialGrantsFromRoles(rows) };
+    } catch (error: any) {
+      this.logger.error(`No se pudieron verificar los permisos vigentes del usuario: ${error?.message}`);
+      throw new ForbiddenException('No fue posible verificar sus permisos. Intente nuevamente.');
+    }
+  }
 
   private buildContext(isSuperUser: boolean, permissions: Set<string>): PtaAuthContext {
     const approvesAll = isSuperUser || permissions.has(PTA_APPROVE_ALL);
@@ -203,11 +230,9 @@ export class PtaPermissionsService {
   /**
    * Territoriales (auth.seccionales.id_seccional) a las que pertenece el usuario.
    *
-   * Sigue la convención ya documentada en `auth.role.alcance` para
-   * JEFATURA_TERRITORIAL: *"El rol se filtra por la seccional asignada a la persona,
-   * no por roles separados"* → la territorial NO vive en el rol sino en
-   * auth.personas.id_seccional. Se usa para que un aprobador/revisor territorial solo
-   * pueda actuar sobre las asignaturas de SU territorial.
+   * Respaldo para roles sin alcance administrativo explícito y roles históricos
+   * JEFATURA_TERRITORIAL basados en la seccional de la persona. Los alcances
+   * Global/Filtrado se resuelven por separado desde el rol que concede el permiso.
    *
    * Devuelve [] si no se puede resolver; quien lo consuma decide (los llamadores
    * tratan el vacío como "sin alcance territorial", que es fail-closed para el
