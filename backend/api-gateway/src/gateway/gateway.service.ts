@@ -186,11 +186,17 @@ export class GatewayService {
       cookieToken && !req.headers.authorization
         ? { authorization: `Bearer ${cookieToken}` }
         : {};
+    const queryToken = (req.query?.token as string) || '';
+    const authHeaderFromToken =
+      !req.headers.authorization && !cookieToken && queryToken
+        ? { authorization: `Bearer ${queryToken}` }
+        : {};
 
     const forwardHeaders: Record<string, any> = {
       ...req.headers,
       ...userHeaders,
       ...authHeaderFromCookie,
+      ...authHeaderFromToken,
       host: undefined, // Eliminar host para evitar conflictos
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
@@ -207,10 +213,12 @@ export class GatewayService {
     }
 
     try {
-      // Detectar si se espera un archivo binario basándose en el Accept header
+      // Detectar si se espera un archivo binario basándose en el Accept header o ruta
       const acceptHeader = (req.headers['accept'] as string) || '';
       const isBinaryFileRoute =
-        /\/(?:documentos|evidencias)\/[^/]+\/(?:preview|download)(?:\?|$)/i.test(req.originalUrl);
+        /\/(?:documentos|evidencias|documents)\/[^/]+\/(?:preview|download)(?:\?|$)/i.test(req.originalUrl) ||
+        /\.pdf(?:\?|$)/i.test(req.originalUrl) ||
+        /\/disciplinary-autos\/[^/]+\/pdf(?:\?|$)/i.test(req.originalUrl);
       const expectsBinaryFile = acceptHeader.includes('application/zip') ||
                                 acceptHeader.includes('application/octet-stream') ||
                                 acceptHeader.includes('application/pdf') ||
@@ -347,12 +355,18 @@ export class GatewayService {
     const targetUrl = `${serviceUrl}${pathWithoutService}`;
 
     try {
+      const headers = { ...req.headers };
+      const queryToken = (req.query?.token as string) || '';
+      if (!headers.authorization && queryToken) {
+        headers.authorization = `Bearer ${queryToken}`;
+      }
+
       const response = await lastValueFrom(
         this.http.request({
           method: req.method,
           url: targetUrl,
           data: req.body,
-          headers: req.headers,
+          headers,
           responseType: 'stream',
         }),
       );
@@ -363,13 +377,17 @@ export class GatewayService {
         if (value) res.setHeader(key, value as any);
       });
       response.data.pipe(res);
-    } catch (error) {
+    } catch (error: any) {
       const status = error.response?.status || 500;
-      const msg =
-        typeof error.response?.data === 'string'
-          ? error.response.data
-          : error.response?.data?.message || 'Error at API Gateway';
-      return res.status(status).send(msg);
+      let msg = 'Error at API Gateway';
+      if (typeof error.response?.data === 'string') {
+        msg = error.response.data;
+      } else if (error.response?.data?.message) {
+        msg = error.response.data.message;
+      } else if (error.message) {
+        msg = error.message;
+      }
+      return res.status(status).json({ message: msg, statusCode: status });
     }
   }
 }

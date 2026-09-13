@@ -133,9 +133,14 @@ export class AssignmentsService {
       order: { nombreCompleto: 'ASC' },
     });
 
-    const analistasFiltrados = dependenciaFiltro
+    let analistasFiltrados = dependenciaFiltro
       ? analistas.filter((a) => a.dependenciaId === dependenciaFiltro)
       : analistas;
+
+    // Si la dependencia no tiene analistas asignados específicamente, ofrecer todos los analistas activos
+    if (analistasFiltrados.length === 0) {
+      analistasFiltrados = analistas;
+    }
 
     const solicitudesActivas = await this.dataSource.query(
       `
@@ -243,9 +248,13 @@ export class AssignmentsService {
       }
 
       // 2. Validar estado actual
-      if (solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO) {
+      const ESTADOS_ASIGNABLES = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EXTEMPORANEA,
+      ];
+      if (!ESTADOS_ASIGNABLES.includes(solicitud.estadoSolicitud)) {
         throw new BadRequestException(
-          `Solo se pueden asignar solicitudes en estado SOLICITADO. Estado actual: ${solicitud.estadoSolicitud}`,
+          `Solo se pueden asignar solicitudes en estado SOLICITADO o EXTEMPORANEA. Estado actual: ${solicitud.estadoSolicitud}`,
         );
       }
 

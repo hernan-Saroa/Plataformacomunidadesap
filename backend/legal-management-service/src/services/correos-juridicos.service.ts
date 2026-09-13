@@ -60,6 +60,29 @@ export interface SendEmailDto {
     buzon?: string; // JUDICIAL | CORREOS — cuenta remitente según el tab
 }
 
+export interface DocumentoTransferenciaDisciplinaria {
+    id?: string;
+    nombre: string;
+    tipo?: string;
+    tamanio?: number;
+    contentType?: string;
+    contentBase64?: string;
+    archivoUrl?: string;
+    downloadUrl?: string;
+    url?: string;
+}
+
+export interface TransferenciaDisciplinariaDto {
+    processId: string;
+    radicado: string;
+    asunto?: string;
+    remitenteEmail?: string;
+    remitenteNombre?: string;
+    datosConsolidados?: any;
+    cuerpoHtml?: string;
+    documentos?: DocumentoTransferenciaDisciplinaria[];
+}
+
 import { ActuacionService } from './actuacion.service';
 
 @Injectable()
@@ -1283,14 +1306,491 @@ export class CorreosJuridicosService {
      * Get attachments for a specific email
      */
     async getAttachments(correoId: string): Promise<AdjuntoCorreo[]> {
-        return this.adjuntoRepo.find({
+        let adjuntos = await this.adjuntoRepo.find({
             where: { correoId },
             order: { nombre: 'ASC' },
         });
+
+        // Auto-hidratación si el correo no tiene adjuntos y corresponde a un proceso disciplinario
+        if (adjuntos.length === 0) {
+            adjuntos = await this.sincronizarDocumentosExpedienteDisciplinario(correoId);
+        }
+
+        return adjuntos;
     }
 
     /**
-     * Download attachment from Graph API
+     * Sincroniza e hidrata los documentos del Expediente Electrónico de Control Disciplinario
+     * hacia la tabla adjuntos_correo para una comunicación específica.
+     */
+    async sincronizarDocumentosExpedienteDisciplinario(
+        correoId: string,
+        radicadoOProcesoId?: string,
+    ): Promise<AdjuntoCorreo[]> {
+        const path = require('path');
+        const correo = await this.correoRepo.findOne({ where: { id: correoId } });
+        if (!correo) {
+            return [];
+        }
+
+        // 1. Extraer identificador de proceso (radicado o UUID)
+        let identificador = radicadoOProcesoId || correo.procesoIdSugerido;
+        if (!identificador && correo.asunto) {
+            const match = correo.asunto.match(/(?:\[PLIEGO DE CARGOS\]\s*Proceso\s+|Proceso\s+|Radicado\s+|#\s*)([A-Za-z0-9._-]+)/i);
+            if (match && match[1]) {
+                identificador = match[1].trim();
+            }
+        }
+
+        if (!identificador && correo.cuerpoTexto) {
+            const match = correo.cuerpoTexto.match(/Radicado[:\s*]+([A-Za-z0-9._-]+)/i);
+            if (match && match[1]) {
+                identificador = match[1].trim();
+            }
+        }
+
+        if (!identificador && correo.cuerpoHtml) {
+            const match = correo.cuerpoHtml.match(/Radicado<\/td>\s*<td><strong>([A-Za-z0-9._-]+)<\/strong>/i);
+            if (match && match[1]) {
+                identificador = match[1].trim();
+            }
+        }
+
+        if (!identificador) {
+            return [];
+        }
+
+        try {
+            // 2. Buscar proceso disciplinario en la base de datos (esquema compartido)
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identificador);
+            const queryProceso = isUuid
+                ? `SELECT id, "radicadoProceso", "newsId" FROM internal_disciplinary_control.disciplinary_processes WHERE id = $1 LIMIT 1`
+                : `SELECT id, "radicadoProceso", "newsId" FROM internal_disciplinary_control.disciplinary_processes WHERE "radicadoProceso" = $1 OR "radicadoProceso" ILIKE $1 LIMIT 1`;
+
+            const procesos = await this.expedienteRepo.query(queryProceso, [identificador]).catch(() => []);
+            if (!procesos || procesos.length === 0) {
+                this.logger.warn(`[Auto-hidratación] No se encontró proceso disciplinario para identificador: ${identificador}`);
+                return [];
+            }
+
+            const proc = procesos[0];
+            const processId = proc.id;
+
+            // 3. Consultar evidencias del proceso
+            const evidencias = await this.expedienteRepo.query(
+                `SELECT id, "processId", "archivoUrl", "nombreArchivo", "nombreDocumento", "tipoDocumento", "fileType", "fileSize", url
+                 FROM internal_disciplinary_control.evidence
+                 WHERE "processId" = $1`,
+                [processId]
+            ).catch(() => []);
+
+            // 4. Consultar autos aprobados/firmados/notificados
+            const autos = await this.expedienteRepo.query(
+                `SELECT id, "processId", numero, tipo, estado, "documentUrl", "documentName", "documentType", "documentSize", contenido, "firmaUrl"
+                 FROM internal_disciplinary_control.legal_autos
+                 WHERE "processId" = $1 AND estado IN ('APROBADO', 'FIRMADO', 'NOTIFICADO')`,
+                [processId]
+            ).catch(() => []);
+
+            // 5. Consultar adjuntos de la noticia inicial
+            const noticias = await this.expedienteRepo.query(
+                `SELECT dn.adjuntos
+                 FROM internal_disciplinary_control.disciplinary_news dn
+                 JOIN internal_disciplinary_control.disciplinary_processes dp ON dp."newsId" = dn.id
+                 WHERE dp.id = $1`,
+                [processId]
+            ).catch(() => []);
+
+            const adjuntosNoticia = Array.isArray(noticias?.[0]?.adjuntos) ? noticias[0].adjuntos : [];
+
+            // 6. Obtener adjuntos ya existentes para no duplicar
+            const existentes = await this.adjuntoRepo.find({ where: { correoId } });
+            const nombresExistentes = new Set(existentes.map(a => a.nombre.toLowerCase().trim()));
+
+            const nuevosAdjuntos: AdjuntoCorreo[] = [];
+
+            // Procesar autos
+            for (const auto of autos) {
+                const ext = auto.documentType === 'application/pdf' || !auto.documentType || (auto.documentUrl && auto.documentUrl.endsWith('.pdf'))
+                    ? 'pdf'
+                    : (auto.contenido ? 'html' : 'docx');
+                const nombreAuto = auto.documentName || `${auto.tipo || 'Auto'}-${auto.numero || auto.id}.${ext}`;
+                if (nombresExistentes.has(nombreAuto.toLowerCase().trim())) continue;
+
+                const adj = this.adjuntoRepo.create({
+                    correoId: correo.id,
+                    graphMessageId: correo.graphMessageId || `DISC_${processId}`,
+                    graphAttachmentId: `DISC_AUTO_${auto.id}`,
+                    nombre: nombreAuto,
+                    contentType: auto.documentType || (ext === 'pdf' ? 'application/pdf' : (ext === 'html' ? 'text/html' : 'application/octet-stream')),
+                    tamanio: auto.documentSize || (auto.contenido ? Buffer.byteLength(auto.contenido, 'utf8') : 0),
+                    descargado: false,
+                    archivoLocalUrl: auto.documentUrl || `/disciplinary-autos/${auto.id}/pdf`,
+                });
+                nuevosAdjuntos.push(adj);
+                nombresExistentes.add(nombreAuto.toLowerCase().trim());
+            }
+
+            // Procesar evidencias
+            for (const ev of evidencias) {
+                const nombreEv = ev.nombreDocumento || ev.nombreArchivo || 'Evidencia.pdf';
+                if (nombresExistentes.has(nombreEv.toLowerCase().trim())) continue;
+
+                const adj = this.adjuntoRepo.create({
+                    correoId: correo.id,
+                    graphMessageId: correo.graphMessageId || `DISC_${processId}`,
+                    graphAttachmentId: `DISC_EVID_${ev.id}`,
+                    nombre: nombreEv,
+                    contentType: ev.fileType || 'application/pdf',
+                    tamanio: ev.fileSize || 0,
+                    descargado: false,
+                    archivoLocalUrl: ev.archivoUrl || ev.url || `/disciplinary-processes/${processId}/documents/${ev.id}/download`,
+                });
+                nuevosAdjuntos.push(adj);
+                nombresExistentes.add(nombreEv.toLowerCase().trim());
+            }
+
+            // Procesar adjuntos de la noticia inicial
+            for (let i = 0; i < adjuntosNoticia.length; i++) {
+                const adjItem = adjuntosNoticia[i];
+                if (!adjItem) continue;
+                const ref = typeof adjItem === 'string' ? adjItem : (adjItem.url || adjItem.path || adjItem.filename);
+                const nombre = typeof adjItem === 'object' && adjItem.nombre ? adjItem.nombre : (ref ? path.basename(ref) : `Adjunto_Noticia_${i + 1}`);
+                if (nombresExistentes.has(nombre.toLowerCase().trim())) continue;
+
+                const adj = this.adjuntoRepo.create({
+                    correoId: correo.id,
+                    graphMessageId: correo.graphMessageId || `DISC_${processId}`,
+                    graphAttachmentId: `DISC_NOTICIA_${i}_${processId}`,
+                    nombre: nombre,
+                    contentType: 'application/octet-stream',
+                    tamanio: 0,
+                    descargado: false,
+                    archivoLocalUrl: ref || `/files/${nombre}`,
+                });
+                nuevosAdjuntos.push(adj);
+                nombresExistentes.add(nombre.toLowerCase().trim());
+            }
+
+            if (nuevosAdjuntos.length > 0) {
+                await this.adjuntoRepo.save(nuevosAdjuntos);
+                if (!correo.tieneAdjuntos) {
+                    correo.tieneAdjuntos = true;
+                    if (!correo.procesoIdSugerido) correo.procesoIdSugerido = proc.radicadoProceso;
+                    await this.correoRepo.save(correo);
+                }
+                this.logger.log(`Auto-hidratados ${nuevosAdjuntos.length} documentos del expediente disciplinario ${proc.radicadoProceso} en correo ${correoId}`);
+            }
+
+            return this.adjuntoRepo.find({ where: { correoId }, order: { nombre: 'ASC' } });
+        } catch (error: any) {
+            this.logger.error(`Error sincronizando documentos disciplinarios para correo ${correoId}: ${error?.message}`);
+            return this.adjuntoRepo.find({ where: { correoId }, order: { nombre: 'ASC' } });
+        }
+    }
+
+    /**
+     * Registra directamente la transferencia de un proceso desde Control Interno Disciplinario
+     * creando o actualizando la comunicación en Centro de Comunicaciones con todos sus documentos.
+     */
+    async registrarTransferenciaDisciplinaria(
+        dto: TransferenciaDisciplinariaDto,
+    ): Promise<{ correo: CorreoJuridico; adjuntos: AdjuntoCorreo[] }> {
+        const fs = require('fs');
+        const path = require('path');
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        const asuntoDefault = `[PLIEGO DE CARGOS] Proceso ${dto.radicado} - Traslado a Oficina Jurídica`;
+        const asuntoFinal = dto.asunto || asuntoDefault;
+
+        // Buscar si ya existe una comunicación para este proceso
+        let correo = await this.correoRepo.findOne({
+            where: [
+                { asunto: Like(`%${dto.radicado}%`) },
+                { procesoIdSugerido: dto.radicado },
+            ],
+            order: { fechaRecepcion: 'DESC' },
+        });
+
+        const hasDocs = Array.isArray(dto.documentos) && dto.documentos.length > 0;
+
+        if (!correo) {
+            correo = this.correoRepo.create({
+                graphMessageId: `DISC_TRANSFER_${dto.processId}_${Date.now()}`,
+                asunto: asuntoFinal,
+                remitenteEmail: dto.remitenteEmail || 'control.disciplinario@esap.edu.co',
+                remitenteNombre: dto.remitenteNombre || 'Control Interno Disciplinario',
+                destinatarios: JSON.stringify([process.env.LEGAL_EMAIL_ACCOUNT || 'juridica@esap.edu.co']),
+                fechaRecepcion: new Date(),
+                cuerpoHtml: dto.cuerpoHtml || undefined,
+                cuerpoTexto: `Traslado a Oficina Jurídica del Proceso Disciplinario ${dto.radicado}.`,
+                tieneAdjuntos: hasDocs,
+                leido: false,
+                archivado: false,
+                urgente: false,
+                buzon: 'CORREOS',
+                tipo: 'CORREO',
+                categoria: 'Pliego de Cargos',
+                moduloSugerido: 'JUZGAMIENTO_DISCIPLINARIO',
+                confianzaClasificacion: 0.99,
+                procesoIdSugerido: dto.radicado,
+                direccion: 'ENTRANTE',
+            });
+            correo = await this.correoRepo.save(correo);
+            await this.registrarAccion(correo.id, 'RECIBIDO', `Traslado de proceso disciplinario ${dto.radicado} registrado`);
+        } else {
+            if (hasDocs && !correo.tieneAdjuntos) {
+                correo.tieneAdjuntos = true;
+                if (dto.cuerpoHtml && !correo.cuerpoHtml) correo.cuerpoHtml = dto.cuerpoHtml;
+                await this.correoRepo.save(correo);
+            }
+        }
+
+        const existentes = await this.adjuntoRepo.find({ where: { correoId: correo.id } });
+        const nombresExistentes = new Set(existentes.map(a => a.nombre.toLowerCase().trim()));
+        const guardados: AdjuntoCorreo[] = [];
+
+        if (hasDocs) {
+            for (const doc of dto.documentos!) {
+                const nombreDoc = doc.nombre || 'Documento.pdf';
+                if (nombresExistentes.has(nombreDoc.toLowerCase().trim())) continue;
+
+                let archivoLocalUrl: string | undefined;
+                let descargado = false;
+
+                if (doc.contentBase64) {
+                    try {
+                        const buffer = Buffer.from(doc.contentBase64, 'base64');
+                        const safeName = (nombreDoc || 'adjunto').replace(/[^a-zA-Z0-9.-]/g, '_');
+                        const uniqueFilename = `recv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+                        const filepath = path.join(uploadsDir, uniqueFilename);
+                        fs.writeFileSync(filepath, buffer);
+                        archivoLocalUrl = filepath;
+                        descargado = true;
+                    } catch (err: any) {
+                        this.logger.warn(`No se pudo persistir adjunto ${nombreDoc}: ${err?.message}`);
+                    }
+                } else if (doc.archivoUrl) {
+                    archivoLocalUrl = doc.archivoUrl;
+                } else if (doc.downloadUrl) {
+                    archivoLocalUrl = doc.downloadUrl;
+                } else if (doc.url) {
+                    archivoLocalUrl = doc.url;
+                }
+
+                const adj = this.adjuntoRepo.create({
+                    correoId: correo.id,
+                    graphMessageId: correo.graphMessageId || `DISC_${dto.processId}`,
+                    graphAttachmentId: `DISC_${doc.tipo || 'DOC'}_${doc.id || randomUUID()}`,
+                    nombre: nombreDoc,
+                    contentType: doc.contentType || (nombreDoc.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+                    tamanio: doc.tamanio || 0,
+                    descargado,
+                    archivoLocalUrl,
+                });
+                const saved = await this.adjuntoRepo.save(adj);
+                guardados.push(saved);
+                nombresExistentes.add(nombreDoc.toLowerCase().trim());
+            }
+        }
+
+        // Si faltaron adjuntos o no se pasaron documentos en el payload, intentar auto-hidratar desde BD
+        if (guardados.length === 0 && existentes.length === 0) {
+            await this.sincronizarDocumentosExpedienteDisciplinario(correo.id, dto.radicado || dto.processId);
+        }
+
+        const totalAdjuntos = await this.adjuntoRepo.find({ where: { correoId: correo.id }, order: { nombre: 'ASC' } });
+        return { correo, adjuntos: totalAdjuntos };
+    }
+
+    /**
+     * Resuelve y descarga el contenido de un documento que proviene del módulo de Control Disciplinario.
+     */
+    private async descargarAdjuntoDisciplinario(adjunto: AdjuntoCorreo): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+        size: number;
+    } | null> {
+        const fs = require('fs');
+        const path = require('path');
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        const safeName = `${adjunto.id}_${(adjunto.nombre || 'adjunto').replace(/[^a-z0-9.]/gi, '_')}`;
+        const localPath = path.join(uploadsDir, safeName);
+
+        // A. Si ya existe en uploads/adjuntos/
+        if (fs.existsSync(localPath)) {
+            const buffer = fs.readFileSync(localPath);
+            adjunto.archivoLocalUrl = localPath;
+            adjunto.descargado = true;
+            await this.adjuntoRepo.save(adjunto).catch(() => {});
+            return {
+                name: adjunto.nombre,
+                contentType: adjunto.contentType || 'application/octet-stream',
+                contentBytes: buffer.toString('base64'),
+                size: buffer.length,
+            };
+        }
+
+        // B. Buscar en disco en rutas conocidas de Control Disciplinario
+        const candidateRoots = [
+            process.env.DISCIPLINARY_STORAGE_PATH,
+            path.resolve(process.cwd(), '../internal-disciplinary-control-service/uploads'),
+            path.resolve(process.cwd(), '../internal-disciplinary-control-service/uploads/expedientes'),
+            path.resolve(process.cwd(), 'uploads'),
+            '/app/uploads',
+        ].filter(Boolean) as string[];
+
+        const rawRef = (adjunto.archivoLocalUrl || '').replace(/^\/files\//, '').replace(/^\/+/, '');
+
+        for (const root of candidateRoots) {
+            if (!fs.existsSync(root)) continue;
+
+            const directCandidates = [
+                path.resolve(root, rawRef),
+                path.resolve(root, decodeURIComponent(rawRef)),
+                path.resolve(root, path.basename(rawRef)),
+                path.resolve(root, adjunto.nombre),
+            ];
+
+            for (const cand of directCandidates) {
+                if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+                    const buffer = fs.readFileSync(cand);
+                    fs.writeFileSync(localPath, buffer);
+                    adjunto.archivoLocalUrl = localPath;
+                    adjunto.descargado = true;
+                    await this.adjuntoRepo.save(adjunto).catch(() => {});
+                    return {
+                        name: adjunto.nombre,
+                        contentType: adjunto.contentType || 'application/octet-stream',
+                        contentBytes: buffer.toString('base64'),
+                        size: buffer.length,
+                    };
+                }
+            }
+
+            // Búsqueda recursiva por nombre
+            const found = this.buscarArchivoEnDisco(root, [adjunto.nombre, path.basename(rawRef)], 4);
+            if (found && fs.existsSync(found) && fs.statSync(found).isFile()) {
+                const buffer = fs.readFileSync(found);
+                fs.writeFileSync(localPath, buffer);
+                adjunto.archivoLocalUrl = localPath;
+                adjunto.descargado = true;
+                await this.adjuntoRepo.save(adjunto).catch(() => {});
+                return {
+                    name: adjunto.nombre,
+                    contentType: adjunto.contentType || 'application/octet-stream',
+                    contentBytes: buffer.toString('base64'),
+                    size: buffer.length,
+                };
+            }
+        }
+
+        // C. Intentar descarga vía HTTP al internal-disciplinary-control-service
+        const discBaseUrl =
+            process.env.INTERNAL_DISCIPLINARY_CONTROL_SERVICE_URL ||
+            'http://internal-disciplinary-control-service:3005';
+        const urlsToTry: string[] = [];
+
+        if (adjunto.archivoLocalUrl && adjunto.archivoLocalUrl.startsWith('http')) {
+            urlsToTry.push(adjunto.archivoLocalUrl);
+        } else if (adjunto.archivoLocalUrl && adjunto.archivoLocalUrl.includes('/')) {
+            const cleanPath = adjunto.archivoLocalUrl.startsWith('/') ? adjunto.archivoLocalUrl : `/${adjunto.archivoLocalUrl}`;
+            urlsToTry.push(`${discBaseUrl}${cleanPath}`);
+            urlsToTry.push(`http://localhost:3005${cleanPath}`);
+        }
+
+        if (adjunto.graphAttachmentId?.startsWith('DISC_AUTO_')) {
+            const autoId = adjunto.graphAttachmentId.replace('DISC_AUTO_', '');
+            urlsToTry.push(`${discBaseUrl}/disciplinary-autos/${autoId}/pdf`);
+            urlsToTry.push(`http://localhost:3005/disciplinary-autos/${autoId}/pdf`);
+        }
+
+        for (const targetUrl of urlsToTry) {
+            try {
+                const axios = require('axios');
+                const resp = await axios.get(targetUrl, {
+                    responseType: 'arraybuffer',
+                    timeout: 10000,
+                });
+                if (resp.status === 200 && resp.data) {
+                    const buffer = Buffer.from(resp.data);
+                    fs.writeFileSync(localPath, buffer);
+                    adjunto.archivoLocalUrl = localPath;
+                    adjunto.descargado = true;
+                    await this.adjuntoRepo.save(adjunto).catch(() => {});
+                    return {
+                        name: adjunto.nombre,
+                        contentType: resp.headers?.['content-type'] || adjunto.contentType || 'application/octet-stream',
+                        contentBytes: buffer.toString('base64'),
+                        size: buffer.length,
+                    };
+                }
+            } catch {}
+        }
+
+        // D. Si es un auto sin archivo físico generado, obtener contenido HTML desde base de datos
+        if (adjunto.graphAttachmentId?.startsWith('DISC_AUTO_')) {
+            const autoId = adjunto.graphAttachmentId.replace('DISC_AUTO_', '');
+            try {
+                const autoRows = await this.expedienteRepo.query(
+                    `SELECT contenido, numero, tipo FROM internal_disciplinary_control.legal_autos WHERE id::text = $1`,
+                    [autoId]
+                );
+                if (autoRows?.[0]?.contenido) {
+                    const autoHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${autoRows[0].tipo || 'Auto'} ${autoRows[0].numero || ''}</title></head>
+<body>${autoRows[0].contenido}</body></html>`;
+                    const buffer = Buffer.from(autoHtml, 'utf8');
+                    fs.writeFileSync(localPath, buffer);
+                    adjunto.archivoLocalUrl = localPath;
+                    adjunto.descargado = true;
+                    await this.adjuntoRepo.save(adjunto).catch(() => {});
+                    return {
+                        name: adjunto.nombre.endsWith('.html') ? adjunto.nombre : `${adjunto.nombre}.html`,
+                        contentType: 'text/html',
+                        contentBytes: buffer.toString('base64'),
+                        size: buffer.length,
+                    };
+                }
+            } catch {}
+        }
+
+        return null;
+    }
+
+    private buscarArchivoEnDisco(dir: string, targets: string[], maxDepth: number): string | null {
+        if (maxDepth < 0) return null;
+        const fs = require('fs');
+        const path = require('path');
+        try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isFile()) {
+                    if (targets.includes(entry.name) || targets.includes(decodeURIComponent(entry.name))) {
+                        return path.join(dir, entry.name);
+                    }
+                }
+            }
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    const res = this.buscarArchivoEnDisco(path.join(dir, entry.name), targets, maxDepth - 1);
+                    if (res) return res;
+                }
+            }
+        } catch {}
+        return null;
+    }
+
+    /**
+     * Download attachment from Graph API or local disciplinary cache
      * Returns the attachment data (base64)
      */
     async downloadAttachment(adjuntoId: string): Promise<{
@@ -1321,13 +1821,27 @@ export class CorreosJuridicosService {
             }
         }
 
-        // 2. Not local? Download from Graph
+        // 2. Si es un adjunto de Control Disciplinario, resolver mediante el gestor disciplinario
+        const isDisciplinary =
+            adjunto.graphAttachmentId?.startsWith('DISC_') ||
+            adjunto.graphMessageId?.startsWith('DISC_') ||
+            adjunto.archivoLocalUrl?.includes('disciplinary') ||
+            adjunto.archivoLocalUrl?.includes('files/');
+
+        if (isDisciplinary) {
+            const discData = await this.descargarAdjuntoDisciplinario(adjunto);
+            if (discData) {
+                return discData;
+            }
+        }
+
+        // 3. Not local? Download from Graph
         const attachment = await this.graphService.downloadAttachment(
             adjunto.graphMessageId,
             adjunto.graphAttachmentId
         );
 
-        // 3. Save locally for next time (Lazy Cache)
+        // 4. Save locally for next time (Lazy Cache)
         try {
             const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
             if (!fs.existsSync(uploadsDir)) {

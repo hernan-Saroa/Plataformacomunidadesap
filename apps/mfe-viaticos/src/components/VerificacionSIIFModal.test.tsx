@@ -64,10 +64,11 @@ describe('VerificacionSIIFModal', () => {
       solicitud: solicitudMock(),
     });
 
-    expect(screen.getByText('COM-2026-0001')).toBeDefined();
+    expect(screen.getAllByText('COM-2026-0001').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Juan Pérez').length).toBeGreaterThan(0);
     expect(screen.getAllByText('123456789').length).toBeGreaterThan(0);
     expect(screen.getByText('Bogotá, Cundinamarca')).toBeDefined();
+    expect(screen.getByText(/Datos limpios y homologados para SIIF Nación/i)).toBeDefined();
   });
 
   it('los checkboxes controlan el estado del botón Registrar Verificación', async () => {
@@ -86,17 +87,19 @@ describe('VerificacionSIIFModal', () => {
     await waitFor(() => expect(registrarBtn).toBeEnabled());
   });
 
-  it('llama a verificarAuditoria al registrar', async () => {
+  it('llama a verificarAuditoria al registrar, refresca la vista y cierra el modal', async () => {
     (viaticosService.verificarAuditoria as any).mockResolvedValue({
       success: true,
       data: { id: 'sol-001', estadoSolicitud: 'VERIFICADO' },
     });
 
     const onRefrescar = vi.fn();
+    const onClosing = vi.fn();
     renderModal({
       abierta: true,
       solicitud: solicitudMock(),
       onRefrescar,
+      onClosing,
     });
 
     const checkboxes = screen.getAllByRole('checkbox');
@@ -111,6 +114,8 @@ describe('VerificacionSIIFModal', () => {
         'sol-001',
         expect.any(Object),
       );
+      expect(onRefrescar).toHaveBeenCalled();
+      expect(onClosing).toHaveBeenCalled();
     });
   });
 
@@ -204,5 +209,208 @@ describe('VerificacionSIIFModal', () => {
     await waitFor(() => {
       expect(viaticosService.devolverAnalista).toHaveBeenCalledWith('sol-001', 'Falta documento');
     });
+  });
+
+  it('bloquea el registro de verificación y devolución cuando está en SOLICITADA_SIIF', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({ estadoSolicitud: 'SOLICITADA_SIIF' }),
+    });
+
+    // Título en modo consulta
+    expect(screen.getByText('Expediente y Consulta SIIF')).toBeDefined();
+
+    // Banner de advertencia informativo
+    expect(screen.getByText(/En Segunda Revisión · Control Viáticos/i)).toBeDefined();
+
+    // El botón 'Registrar Verificación' NO debe existir
+    expect(screen.queryByText('Registrar Verificación')).toBeNull();
+
+    // Mensaje de verificación completada
+    expect(screen.getByText(/Verificación de analista completada/i)).toBeDefined();
+
+    // El botón 'Devolver a Enlace' NO debe existir
+    expect(screen.queryByText('Devolver a Enlace')).toBeNull();
+
+    // Los checkboxes están deshabilitados
+    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    checkboxes.forEach((cb) => {
+      expect(cb.disabled).toBe(true);
+    });
+  });
+
+  it('muestra badge de contratista facturador electrónico en el encabezado del comisionado', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        comisionado: {
+          primerNombre: 'Laura',
+          primerApellido: 'García',
+          numeroDocumento: '987654321',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+      }),
+    });
+
+    expect(screen.getByText('Contratista')).toBeDefined();
+    expect(screen.getByText('Facturador Electrónico')).toBeDefined();
+  });
+
+  it('bloquea la descarga de CSV SIIF cuando contratista es facturador electrónico sin factura adjunta', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        comisionado: {
+          primerNombre: 'Laura',
+          primerApellido: 'García',
+          numeroDocumento: '987654321',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+        documentosSoporte: [],
+      }),
+    });
+
+    // Banner de bloqueo visible
+    expect(screen.getByText(/Exportación SIIF Bloqueada: Falta Factura Electrónica/i)).toBeDefined();
+    expect(screen.getByText(/Cargar Factura Electrónica/i)).toBeDefined();
+    expect(screen.getByText(/Devolver a Enlace para solicitar factura/i)).toBeDefined();
+
+    // Botón CSV deshabilitado
+    const downloadBtn = screen.getByText('Descargar Archivo Plano CSV para SIIF').closest('button');
+    expect(downloadBtn).toBeDisabled();
+  });
+
+  it('permite la descarga de CSV SIIF cuando contratista facturador ya tiene factura cargada', async () => {
+    const blob = new Blob(['csv'], { type: 'text/csv' });
+    (viaticosService.exportarSIIF as any).mockResolvedValue(blob);
+
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        comisionado: {
+          primerNombre: 'Laura',
+          primerApellido: 'García',
+          numeroDocumento: '987654321',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+        documentosSoporte: [
+          {
+            id: 'doc-fac-1',
+            tipoDocumento: 'FACTURA',
+            nombreArchivoOriginal: 'factura_electronica_fe01.pdf',
+            urlRepositorio: 'https://storage/factura.pdf',
+          },
+        ],
+      }),
+    });
+
+    // No debe mostrar banner de bloqueo
+    expect(screen.queryByText(/Exportación SIIF Bloqueada: Falta Factura Electrónica/i)).toBeNull();
+
+    const downloadBtn = screen.getByText('Descargar Archivo Plano CSV para SIIF').closest('button');
+    expect(downloadBtn).toBeEnabled();
+
+    fireEvent.click(downloadBtn!);
+    await waitFor(() => {
+      expect(viaticosService.exportarSIIF).toHaveBeenCalledWith('sol-001');
+    });
+  });
+
+  it('muestra banner de devolución con trazabilidad del responsable', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        estadoSolicitud: 'EN_VERIFICACION',
+        revisorControlNombre: 'Andrés López',
+        observacionesSegundaRevision: 'Inconsistencia en días de pernoctación.',
+      }),
+    });
+
+    expect(screen.getByText(/Devuelta por Control Viáticos/i)).toBeDefined();
+    expect(screen.getByText(/Responsable: Andrés López/i)).toBeDefined();
+    expect(screen.getByText(/Inconsistencia en días de pernoctación/i)).toBeDefined();
+  });
+
+  it('muestra los documentos soportes del expediente y abre el visor al pulsar Ver Soporte', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        documentosSoporte: [
+          {
+            id: 'doc-ss-1',
+            tipoDocumento: 'SEGURIDAD_SOCIAL',
+            nombreArchivoOriginal: 'planilla_seguridad_social_abril.pdf',
+            urlRepositorio: '/uploads/sol-001/planilla.pdf',
+            tipoMime: 'application/pdf',
+          },
+          {
+            id: 'doc-rut-1',
+            tipoDocumento: 'RUT',
+            nombreArchivoOriginal: 'rut_actualizado_2026.pdf',
+            urlRepositorio: '/uploads/sol-001/rut.pdf',
+            tipoMime: 'application/pdf',
+          },
+        ],
+      }),
+    });
+
+    // Encabezado de la sección de soportes
+    expect(screen.getByText(/Documentos de Soporte del Expediente/i)).toBeDefined();
+    expect(screen.getByText('planilla_seguridad_social_abril.pdf')).toBeDefined();
+    expect(screen.getByText('rut_actualizado_2026.pdf')).toBeDefined();
+
+    // Botones de previsualización
+    const verBtns = screen.getAllByText('Ver Soporte');
+    expect(verBtns.length).toBe(2);
+
+    // Al hacer clic en Ver Soporte se abre el visor integrado
+    fireEvent.click(verBtns[0]);
+
+    expect(screen.getByTitle('Cerrar visor')).toBeDefined();
+    expect(screen.getByText('Abrir en pestaña nueva')).toBeDefined();
+
+    // Al cerrar el visor
+    fireEvent.click(screen.getByTitle('Cerrar visor'));
+    expect(screen.queryByTitle('Cerrar visor')).toBeNull();
+  });
+
+  it('no muestra el botón de descarga del itinerario para el rol analista', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        requiereTiquetes: true,
+      }),
+    });
+
+    // Formato 023 debe estar disponible
+    expect(screen.getByText('Formato 023 (PDF)')).toBeDefined();
+    // La descarga de itinerario no debe estar a la vista del rol analista
+    expect(screen.queryByText('Itinerario (PDF)')).toBeNull();
+    expect(screen.queryByTitle(/Descargar detalle del itinerario/i)).toBeNull();
+  });
+
+  it('bloquea opciones de validación y devolución si la comisión está AUTORIZADA', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        estadoSolicitud: 'AUTORIZADA',
+      }),
+    });
+
+    // Banner de Comisión Autorizada
+    expect(screen.getByText('Comisión Autorizada')).toBeDefined();
+    expect(screen.getByText(/Aprobación Corporativa Culminada/i)).toBeDefined();
+
+    // Mensaje de solo lectura en el checklist
+    expect(screen.getByText(/Comisión AUTORIZADA — Ha superado todas las etapas de verificación/i)).toBeDefined();
+
+    // No debe dar la opción de registrar verificación
+    expect(screen.queryByText('Registrar Verificación')).toBeNull();
+
+    // No debe dar la opción de devolver a enlace
+    expect(screen.queryByText('Devolver a Enlace')).toBeNull();
   });
 });

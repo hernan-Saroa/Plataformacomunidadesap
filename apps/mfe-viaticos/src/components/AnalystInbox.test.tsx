@@ -20,6 +20,7 @@ const solMock = (overrides: any = {}) => ({
     primerNombre: 'Juan',
     primerApellido: 'Pérez',
     numeroDocumento: '123456789',
+    tipoComisionado: 'FUNCIONARIO',
   },
   destinoCiudad: 'Bogotá',
   destinoDepartamento: 'Cundinamarca',
@@ -40,7 +41,7 @@ describe('AnalystInbox', () => {
 
     render(<AnalystInbox />);
 
-    expect(screen.getByText('Cargando solicitudes...')).toBeDefined();
+    expect(screen.getByText(/Cargando solicitudes/i)).toBeDefined();
   });
 
   it('renderiza las solicitudes después de fetch', async () => {
@@ -62,11 +63,11 @@ describe('AnalystInbox', () => {
     render(<AnalystInbox />);
 
     await waitFor(() => {
-      expect(screen.getByText('No tienes solicitudes asignadas.')).toBeDefined();
+      expect(screen.getByText(/No tienes solicitudes asignadas/i)).toBeDefined();
     });
   });
 
-it('filtra por búsqueda', async () => {
+  it('filtra por búsqueda', async () => {
     (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
       solMock({ consecutivoUnico: 'COM-2026-0001', comisionado: { primerNombre: 'Juan', primerApellido: 'Pérez', numeroDocumento: '123456789' } }),
       solMock({ id: 'sol-002', consecutivoUnico: 'COM-2026-0002', comisionado: { primerNombre: 'Ana', primerApellido: 'Gómez', numeroDocumento: '987654321' } }),
@@ -76,12 +77,73 @@ it('filtra por búsqueda', async () => {
 
     await waitFor(() => expect(screen.getByText('COM-2026-0001')).toBeDefined());
 
-    const input = screen.getByPlaceholderText('Buscar por consecutivo, comisionado, documento, ciudad o estado...');
+    const input = screen.getByPlaceholderText(/Buscar por consecutivo/i);
     fireEvent.change(input, { target: { value: 'Ana' } });
 
     await waitFor(() => {
       expect(screen.queryByText('COM-2026-0001')).toBeNull();
       expect(screen.getByText('COM-2026-0002')).toBeDefined();
+    });
+  });
+
+  it('muestra badge de facturador electrónico para contratistas marcados', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        consecutivoUnico: 'COM-2026-0003',
+        comisionado: {
+          primerNombre: 'Carlos',
+          primerApellido: 'Mora',
+          numeroDocumento: '778899',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0003')).toBeDefined();
+      expect(screen.getByText('Facturador Electrónico')).toBeDefined();
+    });
+  });
+
+  it('filtra y muestra solicitudes en la Bandeja de Devoluciones', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-dev-1',
+        consecutivoUnico: 'COM-2026-DEV1',
+        estadoSolicitud: 'DEVUELTA',
+        motivoDevolucion: 'Falta RUT actualizado y soporte de transporte',
+        comisionado: {
+          primerNombre: 'Diana',
+          primerApellido: 'Ríos',
+          numeroDocumento: '556677',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: true,
+        },
+        revisorControlNombre: 'Pedro Control',
+      }),
+      solMock({
+        id: 'sol-ok-2',
+        consecutivoUnico: 'COM-2026-OK2',
+        estadoSolicitud: 'EN_VERIFICACION',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => expect(screen.getByText('COM-2026-DEV1')).toBeDefined());
+
+    // Switch to tab Devoluciones
+    const tabDevoluciones = screen.getByRole('button', { name: /Bandeja de Devoluciones/i });
+    fireEvent.click(tabDevoluciones);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-DEV1')).toBeDefined();
+      expect(screen.getByText(/Falta RUT actualizado y soporte de transporte/i)).toBeDefined();
+      expect(screen.getByText('Subsanar / Auditar')).toBeDefined();
+      expect(screen.queryByText('COM-2026-OK2')).toBeNull();
     });
   });
 
@@ -112,6 +174,28 @@ it('filtra por búsqueda', async () => {
 
     await waitFor(() => {
       expect(screen.getByText('Auditoría de Soportes y Exportación SIIF')).toBeDefined();
+    });
+  });
+
+  it('no muestra comisiones en estado AUTORIZADA en el perfil de analista', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-aut-1',
+        consecutivoUnico: 'COM-2026-AUT1',
+        estadoSolicitud: 'AUTORIZADA',
+      }),
+      solMock({
+        id: 'sol-valid-1',
+        consecutivoUnico: 'COM-2026-SOL1',
+        estadoSolicitud: 'SOLICITADO',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-SOL1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-AUT1')).toBeNull();
     });
   });
 });

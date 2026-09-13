@@ -414,5 +414,127 @@ describe('ProcessExportService', () => {
       const cellX = worksheet.getCell(2, 24);
       expect((cellX.value as any).result).toBe('EN TÉRMINOS');
     });
+
+    it('debe clasificar los procesos con Formulación de Cargos como CARGOS acompañado del estado de vencimiento', async () => {
+      const now = new Date();
+      const fvFuture = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 25);
+      const fvPorVencer = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+      const fvVencido = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 3);
+
+      mockReglaAlertaRepository.find.mockResolvedValue([
+        { diasAnticipacion: 5, activa: true },
+      ]);
+      mockActuacionesRepository.find.mockResolvedValue([]);
+
+      mockTerminosCalculatorService.calculateVencimientoEtapa
+        .mockResolvedValueOnce({ dias: 30, fechaVencimiento: fvFuture })
+        .mockResolvedValueOnce({ dias: 30, fechaVencimiento: fvPorVencer })
+        .mockResolvedValueOnce({ dias: 30, fechaVencimiento: fvVencido });
+
+      // Proceso 1: En etapa Juzgamiento / Cargos en términos
+      const procCargosEnTerminos: Partial<DisciplinaryProcess> = {
+        id: 'proc-cargos-1',
+        radicadoProceso: 'P-CARGOS-001',
+        etapaActual: ProcessStage.JUZGAMIENTO,
+        estado: ProcessStatus.ACTIVO,
+        fechaInicioEtapa: now,
+        createdAt: now,
+        autos: [
+          {
+            id: 'auto-pliego-1',
+            tipo: AutoType.AUTO_FORMULACION_PLIEGO,
+            estado: AutoStatus.APROBADO,
+            updatedAt: now,
+          } as any,
+        ],
+      };
+
+      // Proceso 2: Con Auto de Formulación de Cargos por vencer
+      const procCargosPorVencer: Partial<DisciplinaryProcess> = {
+        id: 'proc-cargos-2',
+        radicadoProceso: 'P-CARGOS-002',
+        etapaActual: ProcessStage.JUZGAMIENTO,
+        estado: ProcessStatus.ACTIVO,
+        fechaInicioEtapa: now,
+        createdAt: now,
+        autos: [
+          {
+            id: 'auto-pliego-2',
+            tipo: AutoType.PLIEGO_CARGOS,
+            estado: AutoStatus.APROBADO,
+            updatedAt: now,
+          } as any,
+        ],
+      };
+
+      // Proceso 3: Con Formulación de Cargos vencido
+      const procCargosVencido: Partial<DisciplinaryProcess> = {
+        id: 'proc-cargos-3',
+        radicadoProceso: 'P-CARGOS-003',
+        etapaActual: ProcessStage.JUZGAMIENTO,
+        estado: ProcessStatus.ACTIVO,
+        fechaInicioEtapa: now,
+        createdAt: now,
+        autos: [
+          {
+            id: 'auto-pliego-3',
+            tipo: AutoType.AUTO_FORMULACION_PLIEGO,
+            estado: AutoStatus.APROBADO,
+            updatedAt: now,
+          } as any,
+        ],
+      };
+
+      mockProcessRepository.find.mockResolvedValue([
+        procCargosEnTerminos,
+        procCargosPorVencer,
+        procCargosVencido,
+      ]);
+
+      const workbook = await service.generateVencimientosReport();
+      const worksheet = workbook.getWorksheet('Base');
+
+      // Proceso 1: CARGOS - EN TÉRMINOS
+      expect(worksheet.getCell(2, 6).value).toBe('05 CARGOS');
+      expect(worksheet.getCell(2, 23).value).toBe('Formulación de Cargos');
+      const cellX1 = worksheet.getCell(2, 24);
+      const cellX1Val = cellX1.value as any;
+      expect(cellX1Val.result).toBe('CARGOS - EN TÉRMINOS');
+      expect(cellX1Val.formula).toContain('Formulación de Cargos');
+      expect(cellX1Val.formula).toContain('05 CARGOS');
+      expect(cellX1Val.formula).toContain('CARGOS - EN TÉRMINOS');
+      expect(cellX1Val.formula).toContain('CARGOS - ETAPA POR VENCER');
+      expect(cellX1Val.formula).toContain('CARGOS - VENCIDO');
+      expect(cellX1.fill).toEqual({
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD1FAE5' },
+      });
+      expect(cellX1.font?.color).toEqual({ argb: 'FF065F46' });
+
+      // Proceso 2: CARGOS - ETAPA POR VENCER
+      expect(worksheet.getCell(3, 6).value).toBe('05 CARGOS');
+      expect(worksheet.getCell(3, 23).value).toBe('Formulación de Cargos');
+      const cellX2 = worksheet.getCell(3, 24);
+      expect((cellX2.value as any).result).toBe('CARGOS - ETAPA POR VENCER');
+      expect(cellX2.fill).toEqual({
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFEF3C7' },
+      });
+      expect(cellX2.font?.color).toEqual({ argb: 'FF92400E' });
+
+      // Proceso 3: CARGOS - VENCIDO
+      expect(worksheet.getCell(4, 6).value).toBe('05 CARGOS');
+      expect(worksheet.getCell(4, 23).value).toBe('Formulación de Cargos');
+      const cellX3 = worksheet.getCell(4, 24);
+      expect((cellX3.value as any).result).toBe('CARGOS - VENCIDO');
+      expect(cellX3.fill).toEqual({
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFEE2E2' },
+      });
+      expect(cellX3.font?.color).toEqual({ argb: 'FF991B1B' });
+    });
   });
 });

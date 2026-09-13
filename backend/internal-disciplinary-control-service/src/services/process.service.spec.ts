@@ -16,6 +16,7 @@ import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
 import { NotificationClientService } from './notification-client.service';
 import { TerminosCalculatorService } from './terminos-calculator.service';
+import { of } from 'rxjs';
 import { AlertasService } from './alertas.service';
 import { HttpService } from '@nestjs/axios';
 import { Connection } from 'typeorm';
@@ -101,6 +102,8 @@ describe('ProcessService', () => {
           useValue: {
             sendNotification: jest.fn(),
             send: jest.fn().mockResolvedValue(true),
+            sendMany: jest.fn().mockResolvedValue(true),
+            notifyByRole: jest.fn().mockResolvedValue(true),
           },
         },
         {
@@ -116,11 +119,14 @@ describe('ProcessService', () => {
           provide: AlertasService,
           useValue: {
             notificarCambioEtapa: jest.fn(),
+            crearNotificacionAuto: jest.fn().mockResolvedValue({}),
           },
         },
         {
           provide: HttpService,
-          useValue: {},
+          useValue: {
+            post: jest.fn().mockReturnValue(of({ data: {} })),
+          },
         },
         {
           provide: Connection,
@@ -201,6 +207,16 @@ describe('ProcessService', () => {
       jest.spyOn(professionalRepository, 'findOne').mockResolvedValue({ id: 'prof-1' } as any);
       jest.spyOn(stageConfigurationRepository, 'findOne').mockResolvedValue(mockStage as any);
       jest.spyOn(sequenceService, 'generateProcessRadicado').mockResolvedValue('PD-2026-0001');
+      (processRepository as any).manager = {
+        query: jest.fn().mockResolvedValue([
+          {
+            id_user: 'rad-1',
+            username: 'radicador@esap.edu.co',
+            nom_largo: 'Radicador Principal',
+            dir_email: 'radicador@esap.edu.co',
+          },
+        ]),
+      };
       jest.spyOn(processRepository, 'create').mockReturnValue(mockProcess as any);
       jest.spyOn(processRepository, 'save').mockResolvedValue(mockProcess as any);
 
@@ -212,6 +228,23 @@ describe('ProcessService', () => {
 
       expect(result.id).toEqual(mockProcess.id);
       expect(result.radicadoProceso).toEqual(mockProcess.radicadoProceso);
+
+      expect(notificationClient.sendMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id_usuario_destinatario: 'rad-1',
+            tipo_notificacion: 'PROCESO_CREADO_RADICADOR',
+          }),
+        ]),
+      );
+
+      expect(httpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'radicador@esap.edu.co',
+          subject: expect.stringContaining('PD-2026-0001'),
+        }),
+      );
     });
   });
 

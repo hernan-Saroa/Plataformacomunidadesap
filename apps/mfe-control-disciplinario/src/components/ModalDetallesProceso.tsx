@@ -227,6 +227,8 @@ interface ModalDetallesProcesoProps {
   onEnviarARevision?: (borrador: BorradorPendiente) => void;
   /** Callback para navegar al módulo de Revisión y Aprobación */
   onNavigateToRevision?: () => void;
+  /** Abre directamente el modal de confirmación de Envío a Jurídica */
+  abrirEnvioJuridicaDirecto?: boolean;
 }
 
 
@@ -2208,6 +2210,7 @@ export function ModalDetallesProceso({
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
   onHistorial, onExpediente, onActualizarProceso,
   onEnviarARevision, onNavigateToRevision,
+  abrirEnvioJuridicaDirecto,
 }: ModalDetallesProcesoProps) {
   const [tabActiva, setTabActiva] = useState<Tab>('general');
   const [busqueda,  setBusqueda]  = useState('');
@@ -2281,12 +2284,40 @@ export function ModalDetallesProceso({
     || currentUser?.email
     || 'Sistema';
   const isJefe = (currentUser?.roles || []).some((r: any) => {
-    const code = typeof r === 'string' ? r : r?.code;
+    const code = typeof r === 'string' ? r : r?.code || r?.name;
     return code === 'JEFE_DE_LA_OCID';
   });
+  const isRadicador = (currentUser?.roles || []).some((r: any) => {
+    const code = (typeof r === 'string' ? r : r?.code || r?.name || '').toUpperCase();
+    return code === 'SECRETARIA_RADICADOR' || code === 'RADICADOR_DISCIPLINARIO' || code === 'RADICADOR';
+  });
+  const canSendJuridica =
+    isRadicador ||
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    authService.isSuperAdmin() ||
+    (currentUser?.roles || []).some((r: any) => {
+      const code = (typeof r === 'string' ? r : r?.code || r?.name || '').toUpperCase();
+      return code === 'SUPER_ADMIN' || code === 'ADMIN';
+    });
+  const isEtapaJuzgamiento = (etapaNombre?: string): boolean => {
+    if (!etapaNombre) return false;
+    const n = etapaNombre
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase();
+    return n === 'JUZGAMIENTO' || n.includes('JUZG');
+  };
   const esRadicadorAsignado = currentUser?.id
     ? archivosBackend.some(a => a.tipo === 'auto' && a.radicadorAsignadoId === currentUser.id)
     : false;
+
+  useEffect(() => {
+    if (abrirEnvioJuridicaDirecto) {
+      setMostrarModalEnvioJuridica(true);
+    }
+  }, [abrirEnvioJuridicaDirecto]);
 
   // ═══ Cargar noticia asociada ═══
   useEffect(() => {
@@ -2374,9 +2405,10 @@ export function ModalDetallesProceso({
     }
 
     try {
-      const [res, radicadores] = await Promise.all([
+      const [res, radicadores, autosList] = await Promise.all([
         disciplinaryService.getDocumentosExpediente(proceso.id),
         disciplinaryService.getRadicadoresDisponibles(),
+        disciplinaryService.getAutosPorProceso(proceso.id).catch(() => []),
       ]);
       const radicadoresNombres: Record<string, string> = {};
       (radicadores || []).forEach((r: any) => {
@@ -2386,10 +2418,11 @@ export function ModalDetallesProceso({
 
       const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
         const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
-        const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
-          ? doc.tipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
-          : 'evidencia';
-        const estadoAuto = doc.metadatos?.estado;
+        const rawTipo = (doc.tipo || '').toLowerCase();
+        const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(rawTipo)
+          ? rawTipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
+          : (doc.metadatos?.tipoAuto || rawTipo.includes('auto')) ? 'auto' : 'evidencia';
+        const estadoAuto = (doc.metadatos?.estado || doc.estado || '').toUpperCase();
         const estado: Archivo['estado'] = estadoAuto === 'NOTIFICADO'
           ? 'notificado'
           : estadoAuto === 'FIRMADO' || estadoAuto === 'APROBADO'
@@ -2422,6 +2455,42 @@ export function ModalDetallesProceso({
           radicadorAsignadoId: radicadorId || undefined,
           radicadorAsignadoNombre: radicadorId ? (radicadoresNombres[radicadorId] || 'Radicador asignado') : undefined,
         };
+      });
+
+      // Asegurar que autos legales de autosList que no estén en mapped se agreguen
+      (autosList || []).forEach((autoItem: any) => {
+        const yaExiste = mapped.some(m => m.id === autoItem.id);
+        if (!yaExiste) {
+          const autoEstadoRaw = (autoItem.estado || '').toUpperCase();
+          const estado: Archivo['estado'] = autoEstadoRaw === 'NOTIFICADO'
+            ? 'notificado'
+            : autoEstadoRaw === 'FIRMADO' || autoEstadoRaw === 'APROBADO'
+            ? 'aprobado'
+            : autoEstadoRaw === 'EN_REVISION' || autoEstadoRaw === 'REVISION_JEFE' ? 'en_revision'
+            : autoEstadoRaw === 'DEVUELTO' ? 'devuelto'
+            : autoEstadoRaw === 'BORRADOR' ? 'borrador'
+            : 'aprobado';
+          mapped.push({
+            id: autoItem.id,
+            nombre: autoItem.titulo || autoItem.tipo || 'Auto',
+            numero: autoItem.numero || undefined,
+            tipo: 'auto',
+            fecha: autoItem.createdAt ? autoItem.createdAt.split('T')[0] : '',
+            firmante: autoItem.profesional?.nombreCompleto || 'Sistema',
+            estado,
+            tamaño: '0 B',
+            extension: 'pdf',
+            version: autoItem.versionActual || 1,
+            etapaProceso: autoItem.etapaActual || autoItem.etapa || '',
+            downloadUrl: autoItem.archivoUrl || null,
+            urlExterna: autoItem.archivoUrl || null,
+            archivoNombre: autoItem.titulo || `${autoItem.tipo}.pdf`,
+            fileType: 'application/pdf',
+            tipoAuto: autoItem.tipo || undefined,
+            radicadorAsignadoId: autoItem.radicadorAsignadoId || undefined,
+            radicadorAsignadoNombre: autoItem.radicadorAsignadoId ? (radicadoresNombres[autoItem.radicadorAsignadoId] || 'Radicador asignado') : undefined,
+          });
+        }
       });
 
       // ═══ Incluir archivos adjuntos de la noticia ═══ no se lo trporque duplica la evidencia
@@ -4594,32 +4663,34 @@ export function ModalDetallesProceso({
                     </div>
 
                     {/* Acciones del Proceso — botón dinámico según estado del auto de pliego */}
-                    {proceso.estadoActual === 'ACTIVO' && (() => {
+                    {!isArchivado && (() => {
                       // Preferir el auto real (tipo 'auto'); solo caer a cualquier
-                      // documento con "pliego" en el nombre si no hay auto.
-                      const esPliego = (a: Archivo) =>
-                        a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
-                        a.nombre?.includes('PLIEGO_CARGOS') ||
-                        a.nombre?.toLowerCase().includes('pliego');
+                      // documento con "pliego" o "cargo" en el nombre si no hay auto.
+                      const esPliego = (a: Archivo) => {
+                        const n = (a.nombre || '').toLowerCase();
+                        const t = (a.tipoAuto || '').toLowerCase();
+                        const f = (a.archivoNombre || '').toLowerCase();
+                        return (
+                          n.includes('pliego') ||
+                          n.includes('cargo') ||
+                          t.includes('pliego') ||
+                          t.includes('cargo') ||
+                          f.includes('pliego') ||
+                          f.includes('cargo') ||
+                          a.tipoAuto === 'AUTO_FORMULACION_PLIEGO' ||
+                          a.tipoAuto === 'PLIEGO_CARGOS'
+                        );
+                      };
+
+                      const esJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
+
                       const autoPliego =
                         archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
-                        archivosBackend.find(esPliego);
+                        archivosBackend.find(esPliego) ||
+                        (esJuzgamiento ? archivosBackend.find(a => a.tipo === 'auto' && a.estado === 'aprobado') : undefined);
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
-                            // <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                            //   <button
-                            //     onClick={() => setMostrarModalPliego(true)}
-                            //     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                            //     style={{ background: '#D97706', color: 'white' }}
-                            //   >
-                            //     <FileText className="w-4 h-4" />
-                            //     Auto Pliego de Cargos
-                            //   </button>
-                            //   <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                            //     Cierra el proceso y traslada a Oficina Jurídica
-                            //   </p>
-                            // </div>
                             null
                         ) : null;
                       }
@@ -4677,18 +4748,29 @@ export function ModalDetallesProceso({
                       if (autoPliego.estado === 'aprobado') {
                         return (
                           <div className="space-y-2">
-                            {!isJefe && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                            {canSendJuridica && esJuzgamiento && (
                               <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
                                 <button
                                   onClick={() => setMostrarModalEnvioJuridica(true)}
-                                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90 shadow-sm"
                                   style={{ background: '#2563EB', color: 'white' }}
                                 >
                                   <Send className="w-4 h-4" />
                                   Enviar a Jurídica
                                 </button>
-                                <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
-                                  Auto aprobado — listo para enviar a Oficina Jurídica
+                                <p className="text-[10px] text-center mt-1.5 font-medium" style={{ color: '#1E40AF' }}>
+                                  Auto aprobado en Juzgamiento — listo para enviar a Oficina Jurídica
+                                </p>
+                              </div>
+                            )}
+                            {!esJuzgamiento && (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
+                                <div className="flex items-center justify-center gap-2 text-amber-700 font-semibold text-sm">
+                                  <AlertCircle className="w-4 h-4" />
+                                  Esperando etapa de Juzgamiento
+                                </div>
+                                <p className="text-[10px] text-amber-600 mt-1">
+                                  El envío a Jurídica estará disponible cuando el proceso sea trasladado a la etapa de Juzgamiento.
                                 </p>
                               </div>
                             )}
@@ -6564,13 +6646,26 @@ export function ModalDetallesProceso({
       <AnimatePresence>
         {/* Modal confirmación envío a jurídica */}
         {mostrarModalEnvioJuridica && (() => {
-          const esPliego = (a: Archivo) =>
-            a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
-            a.nombre?.includes('PLIEGO_CARGOS') ||
-            a.nombre?.toLowerCase().includes('pliego');
+          const esPliego = (a: Archivo) => {
+            const n = (a.nombre || '').toLowerCase();
+            const t = (a.tipoAuto || '').toLowerCase();
+            const f = (a.archivoNombre || '').toLowerCase();
+            return (
+              n.includes('pliego') ||
+              n.includes('cargo') ||
+              t.includes('pliego') ||
+              t.includes('cargo') ||
+              f.includes('pliego') ||
+              f.includes('cargo') ||
+              a.tipoAuto === 'AUTO_FORMULACION_PLIEGO' ||
+              a.tipoAuto === 'PLIEGO_CARGOS'
+            );
+          };
+          const esJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
           const autoPliego =
             archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
-            archivosBackend.find(esPliego);
+            archivosBackend.find(esPliego) ||
+            (esJuzgamiento ? archivosBackend.find(a => a.tipo === 'auto' && a.estado === 'aprobado') : undefined);
           return (
             <motion.div
               initial={{ opacity: 0 }}

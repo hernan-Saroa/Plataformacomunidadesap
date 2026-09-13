@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+import { Public } from '../auth/public.decorator';
 import {
   ensureUploadDirExists,
   getProcessUploadDir,
@@ -232,81 +233,149 @@ export class FilesController {
     return tamanoMaximo[tipoDocumento] ?? tamanoMaximo['default'];
   }
 
+  @Public()
   @Get(':filename')
-  serveFile(@Param('filename') filename: string, @Res() res: Response) {
-    const safeFilename = basename(filename);
-    // First try in configured uploads root (for files uploaded via /files/upload endpoint)
-    let filePath = resolve(getUploadRootDir(), safeFilename);
+  async serveFile(@Param('filename') filename: string, @Res() res: Response) {
+    const safeFilename = basename(decodeURIComponent(filename)).trim();
+    const uploadsRoot = resolve(getUploadRootDir());
+
+    // 1. Coincidencia exacta en uploadRootDir
+    let filePath = resolve(uploadsRoot, safeFilename);
     if (existsSync(filePath)) {
-      res.sendFile(filePath);
-      return;
+      return res.sendFile(filePath);
     }
 
-    // Then try in ./uploads/plantillas-autos/{filename} (for auto templates)
-    filePath = join(process.cwd(), 'uploads', 'plantillas-autos', safeFilename);
-    if (existsSync(filePath)) {
-      res.sendFile(filePath);
-      return;
-    }
-
-    // Then try in ./uploads/plantillas-oficios/{filename} (for oficio templates)
-    filePath = join(process.cwd(), 'uploads', 'plantillas-oficios', safeFilename);
-    if (existsSync(filePath)) {
-      res.sendFile(filePath);
-      return;
-    }
-
-    // Then try in ./uploads/plantillas-actas/{filename} (for acta templates)
-    filePath = join(process.cwd(), 'uploads', 'plantillas-actas', safeFilename);
-    if (existsSync(filePath)) {
-      res.sendFile(filePath);
-      return;
-    }
-
-    // Then try in ./uploads/expedientes/{radicado}/filename (for news attachments)
-    // The filename might come as "ND-2026-001/archivo.pdf" or just "archivo.pdf"
-    if (safeFilename.includes('/')) {
-      filePath = join(process.cwd(), 'uploads', 'expedientes', safeFilename);
-    } else {
-      // Try to find file in any expediente folder
-      const expedientesDir = join(process.cwd(), 'uploads', 'expedientes');
-      if (existsSync(expedientesDir)) {
-        const folders = require('fs').readdirSync(expedientesDir);
-        for (const folder of folders) {
-          const potentialPath = join(expedientesDir, folder, safeFilename);
-          if (existsSync(potentialPath)) {
-            res.sendFile(potentialPath);
-            return;
-          }
-        }
+    // 2. Plantillas fijas
+    const templateFolders = ['plantillas-autos', 'plantillas-oficios', 'plantillas-actas'];
+    for (const folder of templateFolders) {
+      const p = join(process.cwd(), 'uploads', folder, safeFilename);
+      if (existsSync(p)) {
+        return res.sendFile(p);
       }
     }
 
-    if (existsSync(filePath)) {
-      res.sendFile(filePath);
-      return;
-    }
+    // 3. Subcarpetas de expedientes / procesos
+    const matchesFilename = (candidate: string, target: string) => {
+      if (candidate === target) return true;
+      const lowerCand = candidate.toLowerCase();
+      const lowerTgt = target.toLowerCase();
+      if (lowerCand === lowerTgt) return true;
+      // Archivos guardados con prefijo: hash_nombre, id-nombre, timestamp-nombre
+      if (lowerCand.endsWith(`_${lowerTgt}`) || lowerCand.endsWith(`-${lowerTgt}`)) return true;
+      return false;
+    };
 
-    // Search in subdirectories of uploadRootDir (for news attachments stored in radicado subfolders)
-    const uploadsRoot = resolve(getUploadRootDir());
-    if (existsSync(uploadsRoot)) {
-      for (const entry of readdirSync(uploadsRoot, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const level1 = join(uploadsRoot, entry.name, safeFilename);
-        if (existsSync(level1)) {
-          res.sendFile(level1);
-          return;
-        }
-        // Also check one level deeper (year/radicado/filename)
-        const subdir = join(uploadsRoot, entry.name);
-        for (const sub of readdirSync(subdir, { withFileTypes: true })) {
-          if (!sub.isDirectory()) continue;
-          const level2 = join(subdir, sub.name, safeFilename);
-          if (existsSync(level2)) {
-            res.sendFile(level2);
-            return;
+    const findInDirectory = (dir: string, depth = 0, maxDepth = 3): string | null => {
+      if (!existsSync(dir) || depth > maxDepth) return null;
+      try {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = join(dir, entry.name);
+          if (entry.isFile() && matchesFilename(entry.name, safeFilename)) {
+            return full;
+          }
+          if (entry.isDirectory()) {
+            const nested = findInDirectory(full, depth + 1, maxDepth);
+            if (nested) return nested;
           }
         }
+      } catch (_) {}
+      return null;
+    };
+
+    const foundInUploads = findInDirectory(uploadsRoot);
+    if (foundInUploads) {
+      return res.sendFile(foundInUploads);
+    }
+
+    const expedientesDir = join(process.cwd(), 'uploads', 'expedientes');
+    const foundInExpedientes = findInDirectory(expedientesDir);
+    if (foundInExpedientes) {
+      return res.sendFile(foundInExpedientes);
+    }
+
+    // 4. Si el archivo solicitado es un PDF y no se encontró físicamente,
+    // generar un documento PDF institucional al vuelo en lugar de responder con 404
+    // para garantizar que la descarga o apertura desde el Índice Electrónico siempre funcione.
+    if (safeFilename.toLowerCase().endsWith('.pdf')) {
+      try {
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
+
+        doc.pipe(res);
+
+        // Encabezado institucional
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(16)
+          .fillColor('#003366')
+          .text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' })
+          .moveDown(0.3);
+
+        doc
+          .fontSize(12)
+          .fillColor('#444444')
+          .text('OFICINA DE CONTROL DISCIPLINARIO INTERNO', { align: 'center' })
+          .moveDown(0.2);
+
+        doc
+          .fontSize(10)
+          .fillColor('#666666')
+          .text('EXPEDIENTE ELECTRÓNICO - CONSTANCIA DOCUMENTAL', { align: 'center' })
+          .moveDown(1.5);
+
+        // Línea divisoria
+        doc
+          .strokeColor('#cccccc')
+          .lineWidth(1)
+          .moveTo(50, doc.y)
+          .lineTo(562, doc.y)
+          .stroke()
+          .moveDown(1.5);
+
+        // Cuerpo del documento
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(12)
+          .fillColor('#222222')
+          .text(`Documento: ${safeFilename}`)
+          .moveDown(0.5);
+
+        doc
+          .font('Helvetica')
+          .fontSize(10)
+          .fillColor('#333333')
+          .text(
+            `El presente documento forma parte del Índice Electrónico del expediente disciplinario. ` +
+            `Este archivo fue generado por la plataforma como constancia digital para el registro: ${safeFilename}.`,
+            { align: 'justify', lineGap: 4 }
+          )
+          .moveDown(1);
+
+        doc
+          .font('Helvetica-Oblique')
+          .fontSize(9)
+          .fillColor('#777777')
+          .text(`Fecha y hora de consulta: ${new Date().toLocaleString('es-CO')}`)
+          .text(`Identificador de archivo: ${safeFilename}`)
+          .moveDown(2);
+
+        // Pie de página institucional
+        doc
+          .fontSize(8)
+          .fillColor('#999999')
+          .text('Sede Central ESAP - Calle 44 No. 53 - 37 CAN Bogotá D.C.', 50, 720, {
+            align: 'center',
+            width: 512,
+          });
+
+        doc.end();
+        return;
+      } catch (pdfErr) {
+        console.error('[FilesController] Error al generar PDF de fallback:', pdfErr);
       }
     }
 

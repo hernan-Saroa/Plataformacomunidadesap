@@ -467,4 +467,143 @@ export class JuridicaEmailService {
       }
     }
   }
+
+  /**
+   * Conecta directamente con legal-management-service para transferir el proceso
+   * disciplinario y sus documentos adjuntos al Centro de Comunicaciones de Gestión Legal.
+   */
+  async notificarTransferenciaAModuloLegal(
+    processId: string,
+    datosConsolidados: {
+      radicado: string;
+      etapaAlCierre?: string;
+      profesionalResponsable?: string;
+      fechaCreacion?: string;
+      fechaCierre?: string;
+      fechaVencimiento?: string;
+      disciplinable?: any;
+      hechos?: string;
+      autosGenerados?: number;
+      enviadoPorNombre?: string;
+      profesionalEmail?: string;
+      enviadoPorEmail?: string;
+    },
+    evidencias: any[] = [],
+    autosDocumentables: any[] = [],
+    adjuntosNoticia: any[] = [],
+    adjuntosBase64: EmailAdjunto[] = [],
+  ): Promise<boolean> {
+    const legalUrl =
+      process.env.LEGAL_MANAGEMENT_SERVICE_URL ||
+      process.env.LEGAL_SERVICE_URL ||
+      'http://localhost:3008';
+
+    try {
+      const documentos: Array<{
+        id?: string;
+        nombre: string;
+        tipo: string;
+        url?: string;
+        contentType?: string;
+        tamano?: number;
+        contentBytes?: string;
+        fechaCarga?: any;
+      }> = [];
+
+      for (const ev of evidencias) {
+        const ref = ev?.archivoUrl || ev?.url || ev?.filename || null;
+        const nombre = ev.nombreDocumento || ev.nombreArchivo || ev.filename || 'Documento_Evidencia.pdf';
+        const base64Match = adjuntosBase64.find(
+          (a) => a.filename.toLowerCase() === nombre.toLowerCase(),
+        );
+
+        documentos.push({
+          id: ev.id,
+          nombre,
+          tipo: 'EVIDENCIA',
+          url: ref,
+          contentType: ev.fileType || base64Match?.contentType || 'application/pdf',
+          tamano: ev.fileSize || (base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined),
+          contentBytes: base64Match?.contentBase64,
+          fechaCarga: ev.fechaCarga || ev.createdAt,
+        });
+      }
+
+      for (const auto of autosDocumentables) {
+        const ref = auto?.firmaUrl || auto?.documentUrl;
+        const ext = auto.documentType === 'application/pdf' || !auto.documentType || ref?.endsWith('.pdf') ? 'pdf' : 'docx';
+        const cleanTipo = (auto.tipo || 'Auto').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const defaultName = auto.documentName || `${cleanTipo}-${auto.numero || auto.id}.${ext}`;
+        const base64Match = adjuntosBase64.find(
+          (a) =>
+            a.filename.toLowerCase() === defaultName.toLowerCase() ||
+            a.filename.toLowerCase() === `${cleanTipo}-${auto.numero || auto.id}.html`.toLowerCase(),
+        );
+
+        documentos.push({
+          id: auto.id,
+          nombre: base64Match ? base64Match.filename : defaultName,
+          tipo: 'AUTO',
+          url: ref,
+          contentType: base64Match?.contentType || auto.documentType || (ext === 'pdf' ? 'application/pdf' : undefined),
+          tamano: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
+          contentBytes: base64Match?.contentBase64,
+          fechaCarga: auto.fechaExpedicion || auto.createdAt,
+        });
+      }
+
+      for (const adj of adjuntosNoticia) {
+        if (!adj) continue;
+        const ref = typeof adj === 'string' ? adj : (adj?.url || adj?.path || adj?.filename || null);
+        const nombre = typeof adj === 'object' && adj?.nombre ? adj.nombre : (ref ? path.basename(ref) : 'Adjunto_Noticia');
+        const base64Match = adjuntosBase64.find(
+          (a) => a.filename.toLowerCase() === nombre.toLowerCase(),
+        );
+
+        documentos.push({
+          id: typeof adj === 'object' ? adj?.id : undefined,
+          nombre,
+          tipo: 'NOTICIA',
+          url: ref,
+          contentType: typeof adj === 'object' ? adj?.tipo || adj?.contentType : base64Match?.contentType,
+          tamano: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
+          contentBytes: base64Match?.contentBase64,
+        });
+      }
+
+      const payload = {
+        processId,
+        radicado: datosConsolidados.radicado,
+        asunto: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
+        remitente: {
+          nombre: datosConsolidados.enviadoPorNombre || datosConsolidados.profesionalResponsable || 'Control Interno Disciplinario',
+          email: datosConsolidados.enviadoPorEmail || datosConsolidados.profesionalEmail || 'disciplinario@esap.edu.co',
+        },
+        destinatario: process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co',
+        fechaEnvio: new Date().toISOString(),
+        datosConsolidados,
+        documentos,
+      };
+
+      this.logger.log(
+        `Notificando transferencia al módulo de Gestión Legal (${legalUrl}/correos/transferencia-disciplinario) con ${documentos.length} documento(s)`,
+      );
+
+      const resp = await firstValueFrom(
+        this.httpService.post(`${legalUrl}/correos/transferencia-disciplinario`, payload, {
+          timeout: 15000,
+        }),
+      );
+
+      this.logger.log(
+        `Transferencia a Gestión Legal exitosa para proceso ${datosConsolidados.radicado}: ${JSON.stringify(resp?.data)}`,
+      );
+      return true;
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo sincronizar directamente con legal-management-service (${legalUrl}): ${error?.message}. Se preserva el flujo principal.`,
+      );
+      return false;
+    }
+  }
 }

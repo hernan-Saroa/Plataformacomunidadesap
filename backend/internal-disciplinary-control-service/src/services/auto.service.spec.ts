@@ -474,6 +474,188 @@ describe('AutoService', () => {
         }),
       );
     });
+
+    it('EFDS-1582: should include Radicador role associated with process in email and platform notifications upon return (devolución)', async () => {
+      const mockAuto = {
+        id: 'auto-return-radicador',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-rad-123',
+        process: {
+          id: 'process-rad-123',
+          radicadoProceso: 'D-2026-999',
+          abogadoAsignadoId: 'prof-uuid-456',
+          news: {
+            id: 'news-uuid-111',
+            radicadorId: 'radicador-user-uuid',
+          },
+        },
+        currentVersion: 1,
+        contenido: '<p>Contenido auto</p>',
+        tipo: 'AUTO_APERTURA_INVESTIGACION',
+        documentUrl: '/files/auto.docx',
+        documentName: 'auto.docx',
+      };
+
+      const mockProfessional = {
+        id: 'prof-uuid-456',
+        idUser: 'prof-auth-uuid',
+        nombreCompleto: 'Dra. María Abogada',
+        email: 'maria.abogada@esap.edu.co',
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({ securitySettings: { auditEnabled: false } });
+      mockProfessionalRepository.findOne.mockImplementation(({ where }: any) => {
+        if (where?.id === 'prof-uuid-456') return Promise.resolve(mockProfessional);
+        return Promise.resolve(null);
+      });
+
+      mockAutoRepository.manager.query.mockImplementation((sql: string, params: any[]) => {
+        if (sql.includes('auth.user') && params?.[0] === 'radicador-user-uuid') {
+          return Promise.resolve([
+            {
+              id_user: 'radicador-user-uuid',
+              username: 'radicador.ocid@esap.edu.co',
+              nom_largo: 'Carlos Radicador OCID',
+              dir_email: 'radicador.ocid@esap.edu.co',
+            },
+          ]);
+        }
+        if (sql.includes('auth.user') && params?.[0] === 'prof-uuid-456') {
+          return Promise.resolve([
+            {
+              id_user: 'prof-auth-uuid',
+              username: 'maria.abogada@esap.edu.co',
+              nom_largo: 'Dra. María Abogada',
+              dir_email: 'maria.abogada@esap.edu.co',
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      mockAutoRepository.save.mockImplementation((entity: any) =>
+        Promise.resolve({ ...entity, id: entity.id || 'auto-return-radicador' }),
+      );
+
+      await service.approve(
+        'auto-return-radicador',
+        {
+          action: ReviewAction.RETURN,
+          observaciones: 'Falta informe técnico de soporte.',
+        } as any,
+        'jefe-user-id',
+      );
+
+      // 1. Notificación interna en plataforma al Radicador asociado
+      expect(mockNotificationClient.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_usuario_destinatario: 'radicador-user-uuid',
+          tipo_notificacion: 'AUTO_DEVUELTO',
+          categoria: 'DISCIPLINARIO',
+        }),
+      );
+
+      // 2. Correo electrónico enviado al Radicador asociado
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'radicador.ocid@esap.edu.co',
+          subject: expect.stringContaining('[AUTO DEVUELTO]'),
+          html: expect.stringContaining('Carlos Radicador OCID'),
+        }),
+      );
+
+      // 3. Correo electrónico enviado también al Profesional responsable
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'maria.abogada@esap.edu.co',
+          subject: expect.stringContaining('[AUTO DEVUELTO]'),
+        }),
+      );
+    });
+
+    it('EFDS-1582: should include Radicador role associated with process in email and platform notifications upon approval (aprobación)', async () => {
+      const mockAuto = {
+        id: 'auto-approve-radicador',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-rad-123',
+        process: {
+          id: 'process-rad-123',
+          radicadoProceso: 'D-2026-999',
+          abogadoAsignadoId: 'prof-uuid-456',
+          news: {
+            id: 'news-uuid-111',
+            radicadorId: 'radicador-user-uuid',
+          },
+        },
+        currentVersion: 1,
+        contenido: '<p>Contenido auto</p>',
+        tipo: 'AUTO_ARCHIVO',
+        documentUrl: '/files/auto.docx',
+        documentName: 'auto.docx',
+      };
+
+      const mockProfessional = {
+        id: 'prof-uuid-456',
+        idUser: 'prof-auth-uuid',
+        nombreCompleto: 'Dra. María Abogada',
+        email: 'maria.abogada@esap.edu.co',
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({ securitySettings: { auditEnabled: false } });
+      mockProfessionalRepository.findOne.mockImplementation(({ where }: any) => {
+        if (where?.id === 'prof-uuid-456') return Promise.resolve(mockProfessional);
+        return Promise.resolve(null);
+      });
+
+      mockAutoRepository.manager.query.mockImplementation((sql: string, params: any[]) => {
+        if (sql.includes('auth.user') && params?.[0] === 'radicador-user-uuid') {
+          return Promise.resolve([
+            {
+              id_user: 'radicador-user-uuid',
+              username: 'radicador.ocid@esap.edu.co',
+              nom_largo: 'Carlos Radicador OCID',
+              dir_email: 'radicador.ocid@esap.edu.co',
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      mockAutoRepository.save.mockImplementation((entity: any) =>
+        Promise.resolve({ ...entity, id: entity.id || 'auto-approve-radicador', estado: AutoStatus.APROBADO }),
+      );
+
+      await service.approve(
+        'auto-approve-radicador',
+        {
+          action: ReviewAction.APPROVE,
+        } as any,
+        'jefe-user-id',
+      );
+
+      // Notificación enviada al Radicador asociado al proceso
+      expect(mockNotificationClient.sendMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id_usuario_destinatario: 'radicador-user-uuid',
+            tipo_notificacion: 'NUEVO_AUTO_RADICADOR',
+          }),
+        ]),
+      );
+
+      // Correo electrónico enviado al Radicador asociado
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'radicador.ocid@esap.edu.co',
+          subject: expect.stringContaining('Auto aprobado:'),
+        }),
+      );
+    });
   });
 
   describe('sign', () => {

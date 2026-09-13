@@ -439,15 +439,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     .map(normalizeRoleCode)
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
+  const urlParamModule = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('module') as ModuleView | null)
+    : null;
+  const isUrlDisciplinario = typeof window !== 'undefined' && (
+    urlParamModule === 'control-disciplinario' ||
+    window.location.pathname.startsWith('/control-disciplinario')
+  );
+
   const finalInitialModule =
+    (isUrlDisciplinario ? 'control-disciplinario' : undefined) ??
+    (urlParamModule && isViewAccessible(urlParamModule) ? urlParamModule : undefined) ??
     (hasDashboardAccess ? 'executive' : undefined) ??
     moduleFromArray ??
     (isViewAccessible(initialModule as ModuleView) ? initialModule : undefined) ??
     (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
 
   const getDefaultSidebarModule = (view: ModuleView) => MODULE_TO_DEFAULT_SIDEBAR[view] || '';
-
-
 
   // Siempre iniciar en la primera vista habilitada del menu visible para el rol.
   const [currentModule, setCurrentModule] = useState<ModuleView>(
@@ -531,11 +539,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         }
       };
 
+      const handleOpenDisciplinario = () => {
+        setCurrentModule('control-disciplinario');
+        setCurrentSidebarModule('control-disciplinario');
+      };
+
+      // Si hay un expediente disciplinario pendiente de abrir, conmutar al módulo
+      if (sessionStorage.getItem('control-disciplinario:pendingOpenExpediente')) {
+        handleOpenDisciplinario();
+      }
+
       window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
       window.addEventListener('portal-view-change', handlePortalViewChange);
+      window.addEventListener('control-disciplinario:open-expediente', handleOpenDisciplinario);
       return () => {
         window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
         window.removeEventListener('portal-view-change', handlePortalViewChange);
+        window.removeEventListener('control-disciplinario:open-expediente', handleOpenDisciplinario);
       };
     }, []);
 

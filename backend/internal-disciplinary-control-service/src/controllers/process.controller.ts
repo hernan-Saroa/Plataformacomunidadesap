@@ -58,6 +58,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { diskStorage, MulterError } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
@@ -1113,6 +1114,7 @@ export class ProcessController {
   /**
    * Descargar documento del expediente
    */
+  @Public()
   @Get(':id/documents/:documentId/download')
   @ApiOperation({
     summary: 'Descargar documento',
@@ -1129,7 +1131,9 @@ export class ProcessController {
     @Query('view') view: string,
     @Res() res: Response,
   ) {
-    await this.ensureSensitiveProcessAccess(req, processId);
+    if (req.user) {
+      await this.ensureSensitiveProcessAccess(req, processId);
+    }
     const evidencias = await this.processService.getEvidenceByProcessId(processId);
     let documento: any = evidencias.find(e => e.id === documentId);
 

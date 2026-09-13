@@ -85,6 +85,7 @@ describe('CorreosJuridicosService', () => {
         };
         mockExpedienteRepo = {
             update: jest.fn().mockResolvedValue({ affected: 1 }),
+            query: jest.fn(),
         };
         mockConsultaRepo = {
             update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -644,6 +645,107 @@ describe('CorreosJuridicosService', () => {
             expect(mockSmartService.train).toHaveBeenCalledWith('Oficio recibido cuerpo', 'OFICIO');
             const saved = mockCorreoRepo.save.mock.calls[0][0];
             expect(saved.tipo).toBe('OFICIO');
+        });
+    });
+
+    describe('Integración con Control Interno Disciplinario (Expediente Electrónico)', () => {
+        it('registrarTransferenciaDisciplinaria: debe registrar correo y adjuntos desde transferencia directa', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue(null);
+            mockCorreoRepo.create.mockImplementation((d: any) => d);
+            mockCorreoRepo.save.mockImplementation(async (d: any) => ({ id: 'correo-transf-1', ...d }));
+            mockAdjuntoRepo.find
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([
+                    { id: 'adj-1', nombre: 'Prueba_Documental.pdf', contentType: 'application/pdf' },
+                ]);
+
+            const dto = {
+                processId: 'proc-123',
+                radicado: 'RAD-DISC-2026-001',
+                asunto: '[PLIEGO DE CARGOS] Proceso RAD-DISC-2026-001 - Traslado a Oficina Jurídica',
+                remitente: {
+                    nombre: 'Radicador Disciplinario',
+                    email: 'radicador@esap.edu.co',
+                },
+                documentos: [
+                    {
+                        id: 'ev-1',
+                        nombre: 'Prueba_Documental.pdf',
+                        tipo: 'EVIDENCIA',
+                        url: 'uploads/expedientes/2026/Prueba_Documental.pdf',
+                        contentType: 'application/pdf',
+                        tamano: 1024,
+                    },
+                ],
+            };
+
+            const result = await service.registrarTransferenciaDisciplinaria(dto);
+
+            expect(result.correo).toBeDefined();
+            expect(result.correo.asunto).toContain('RAD-DISC-2026-001');
+            expect(result.adjuntos.length).toBe(1);
+            expect(mockAdjuntoRepo.save).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    nombre: 'Prueba_Documental.pdf',
+                    contentType: 'application/pdf',
+                }),
+            );
+        });
+
+        it('sincronizarDocumentosExpedienteDisciplinario: debe hidratar adjuntos consultando schema disciplinario', async () => {
+            const correoMock = {
+                id: 'correo-disc-1',
+                asunto: '[PLIEGO DE CARGOS] Proceso RAD-2026-099 - Traslado a Oficina Jurídica',
+                cuerpoTexto: 'Contenido del correo',
+            };
+            mockCorreoRepo.findOne.mockResolvedValue(correoMock);
+            mockAdjuntoRepo.find
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([
+                    { id: 'adj-1', nombre: 'Queja.pdf' },
+                    { id: 'adj-2', nombre: 'Auto-001.pdf' },
+                ]);
+
+            mockExpedienteRepo.query
+                .mockResolvedValueOnce([{ id: 'proc-99', radicadoProceso: 'RAD-2026-099', newsId: 'news-99' }])
+                .mockResolvedValueOnce([
+                    { id: 'ev-99', nombreDocumento: 'Queja.pdf', archivoUrl: 'uploads/Queja.pdf', fileType: 'application/pdf' },
+                ])
+                .mockResolvedValueOnce([
+                    { id: 'auto-99', tipo: 'PLIEGO_CARGOS', numero: '001', firmaUrl: 'uploads/Auto.pdf', documentType: 'application/pdf' },
+                ])
+                .mockResolvedValueOnce([]);
+
+            const result = await service.sincronizarDocumentosExpedienteDisciplinario('correo-disc-1');
+
+            expect(result.length).toBe(2);
+            expect(mockAdjuntoRepo.save).toHaveBeenCalled();
+        });
+
+        it('getAttachments: debe invocar sincronizarDocumentosExpedienteDisciplinario si adjuntos está vacío y es correo disciplinario', async () => {
+            const correoMock = {
+                id: 'correo-disc-auto',
+                asunto: '[PLIEGO DE CARGOS] Proceso RAD-2026-888',
+                cuerpoTexto: '',
+            };
+            mockCorreoRepo.findOne.mockResolvedValue(correoMock);
+            mockAdjuntoRepo.find
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([
+                    { id: 'adj-auto-1', name: 'Auto_Pliego.pdf', isDisciplinarioDoc: true },
+                ]);
+
+            mockExpedienteRepo.query
+                .mockResolvedValueOnce([{ id: 'proc-888', radicado: 'RAD-2026-888' }])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{ id: 'auto-888', tipo: 'PLIEGO_CARGOS', numero: '888', contenido: '<p>Auto</p>' }])
+                .mockResolvedValueOnce([]);
+
+            const attachments = await service.getAttachments('correo-disc-auto');
+
+            expect(mockExpedienteRepo.query).toHaveBeenCalled();
+            expect(attachments.length).toBe(1);
         });
     });
 });
