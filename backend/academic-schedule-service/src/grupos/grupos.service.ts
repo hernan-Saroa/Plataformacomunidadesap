@@ -80,11 +80,12 @@ export class GruposService {
   }
 
   /** Grupos de una asignatura, en orden de numeración. */
-  listarPorAsignatura(idAsignatura: string): Promise<GrupoEntity[]> {
-    return this.grupoRepo.find({
-      where: { idAsignatura: String(idAsignatura) },
-      order: { numeroGrupo: 'ASC' },
-    });
+  listarPorAsignatura(idAsignatura: string, idPeriodo?: string): Promise<GrupoEntity[]> {
+    // Con periodo, solo los grupos de ESE periodo: un grupo creado en 2027-1 no
+    // debe aparecer al programar 2026-1. Sin periodo, todos (compatibilidad).
+    const where: any = { idAsignatura: String(idAsignatura) };
+    if (idPeriodo) where.idPeriodo = idPeriodo;
+    return this.grupoRepo.find({ where, order: { numeroGrupo: 'ASC' } });
   }
 
   async obtener(idGrupo: string): Promise<GrupoEntity> {

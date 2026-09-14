@@ -26,7 +26,7 @@ const NIVELES: Array<{ valor: NivelAcademico; etiqueta: string }> = [
   { valor: 'posgrado', etiqueta: 'Posgrado' },
 ];
 
-export function SelectorCatalogo() {
+export function SelectorCatalogo({ idPeriodo }: { idPeriodo: string }) {
   const [programas, setProgramas] = useState<ProgramaCatalogo[]>([]);
   const [cargandoProgramas, setCargandoProgramas] = useState(true);
   const [errorProgramas, setErrorProgramas] = useState('');
@@ -293,6 +293,7 @@ export function SelectorCatalogo() {
               idAsignatura={asignaturaSel.id}
               nombreAsignatura={asignaturaSel.nombre}
               codigoAsignatura={asignaturaSel.codigo}
+              idPeriodo={idPeriodo}
             />
           </div>
         </div>

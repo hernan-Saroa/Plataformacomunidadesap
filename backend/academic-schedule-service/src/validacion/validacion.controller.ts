@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 
 import { ValidacionService } from './validacion.service.js';
 
@@ -12,16 +12,21 @@ import { ValidacionService } from './validacion.service.js';
 export class ValidacionController {
   constructor(private readonly validacion: ValidacionService) {}
 
-  /** GET /validacion/historico — cruces del Excel 2026-1 / 2026-V1. */
+  /**
+   * GET /validacion/historico?periodo=<codigo> — cruces del histórico.
+   *
+   * Con `periodo` acota a ese periodo (un periodo nuevo → 0; solo 2026-1 /
+   * 2026-V1 traen los suyos). Sin él, todo el histórico (compatibilidad).
+   */
   @Get('historico')
-  async historico() {
+  async historico(@Query('periodo') periodo?: string) {
     return {
       success: true,
       data: {
         origen: 'historico',
-        periodos: ['2026-1', '2026-V1'],
-        resumen: await this.validacion.resumen(),
-        cruces: await this.validacion.crucesHistoricos(),
+        periodos: periodo ? [periodo] : ['2026-1', '2026-V1'],
+        resumen: await this.validacion.resumen(periodo),
+        cruces: await this.validacion.crucesHistoricos(periodo),
       },
     };
   }

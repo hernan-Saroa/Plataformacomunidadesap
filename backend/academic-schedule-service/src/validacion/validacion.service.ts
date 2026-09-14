@@ -41,8 +41,16 @@ export interface CruceHistorico {
 export class ValidacionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  /** Cruces detectados en la programación histórica cargada. */
-  async crucesHistoricos(): Promise<CruceHistorico[]> {
+  /**
+   * Cruces detectados en la programación histórica cargada.
+   *
+   * @param periodo si viene, acota al histórico de ESE periodo (por su código,
+   * p. ej. '2026-1'). Es lo que hace que Validación pertenezca al periodo
+   * seleccionado: un periodo nuevo no tiene histórico → 0 cruces, y solo al
+   * mirar 2026-1 / 2026-V1 aparecen los suyos. El dato no se borra: se filtra.
+   */
+  async crucesHistoricos(periodo?: string): Promise<CruceHistorico[]> {
+    const filtroPeriodo = periodo ? 'AND periodo = $1' : '';
     return this.dataSource.query(
       `WITH base AS (
          SELECT id, periodo, dia, aula, cedula_docente, nombre_docente,
@@ -52,6 +60,7 @@ export class ValidacionService {
           WHERE dia <> ''
             AND hora_inicio ~ '^[0-9]{2}:[0-9]{2}$'
             AND hora_fin   ~ '^[0-9]{2}:[0-9]{2}$'
+            ${filtroPeriodo}
        ),
        -- Un docente SÍ choca consigo mismo aunque las clases sean virtuales:
        -- nadie dicta dos a la vez. La exclusión es solo del espacio.
@@ -88,12 +97,13 @@ export class ValidacionService {
               asig_a, asig_b, prog_a, prog_b
          FROM par WHERE choca_doc
         ORDER BY 1, 2, 3, 4`,
+      periodo ? [periodo] : undefined,
     );
   }
 
   /** Resumen por tipo, para el contador de la sección. */
-  async resumen(): Promise<{ aula: number; docente: number; total: number }> {
-    const cruces = await this.crucesHistoricos();
+  async resumen(periodo?: string): Promise<{ aula: number; docente: number; total: number }> {
+    const cruces = await this.crucesHistoricos(periodo);
     const aula = cruces.filter((c) => c.tipo === 'aula').length;
     const docente = cruces.filter((c) => c.tipo === 'docente').length;
     return { aula, docente, total: aula + docente };

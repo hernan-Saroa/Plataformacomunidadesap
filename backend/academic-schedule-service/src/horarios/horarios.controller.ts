@@ -15,10 +15,10 @@ export class HorariosController {
    * con una constante del front. Ahora la ausencia de grupo significa "todas".
    */
   @Get()
-  async listar(@Query('grupo') idGrupo?: string) {
+  async listar(@Query('grupo') idGrupo?: string, @Query('periodo') idPeriodo?: string) {
     const data = idGrupo
       ? await this.horarios.listarPorGrupo(idGrupo)
-      : await this.horarios.listarTodas();
+      : await this.horarios.listarTodas(idPeriodo);
     return { success: true, data };
   }
 

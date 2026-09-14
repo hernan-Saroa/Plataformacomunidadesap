@@ -17,9 +17,11 @@ interface Props {
   idAsignatura: string;
   nombreAsignatura: string;
   codigoAsignatura: string | null;
+  /** Periodo activo: los grupos se listan y se crean dentro de él (§1.0). */
+  idPeriodo: string;
 }
 
-export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura }: Props) {
+export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura, idPeriodo }: Props) {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -31,19 +33,19 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const recargar = () => {
     setCargando(true);
     setError('');
-    getGrupos(idAsignatura)
+    getGrupos(idAsignatura, idPeriodo)
       .then(setGrupos)
       .catch((e) => setError(e?.message || 'No se pudieron cargar los grupos.'))
       .finally(() => setCargando(false));
   };
 
-  useEffect(recargar, [idAsignatura]);
+  useEffect(recargar, [idAsignatura, idPeriodo]);
 
   const onCrear = async () => {
     setCreando(true);
     setError('');
     try {
-      await crearGrupos(idAsignatura, cantidad);
+      await crearGrupos(idAsignatura, cantidad, idPeriodo);
       recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudieron crear los grupos.');

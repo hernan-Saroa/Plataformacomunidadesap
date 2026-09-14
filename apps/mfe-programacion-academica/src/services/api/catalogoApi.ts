@@ -118,15 +118,18 @@ async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   return (cuerpo?.data ?? cuerpo) as T;
 }
 
-export function getGrupos(idAsignatura: string): Promise<Grupo[]> {
-  return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}`, { method: 'GET' });
+export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Grupo[]> {
+  const q = idPeriodo ? `&periodo=${encodeURIComponent(idPeriodo)}` : '';
+  return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}${q}`, { method: 'GET' });
 }
 
 /** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
-export function crearGrupos(idAsignatura: string, cantidad: number): Promise<Grupo[]> {
+export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null): Promise<Grupo[]> {
   return pedirJson<Grupo[]>(BASE_GRUPOS, {
     method: 'POST',
-    body: JSON.stringify({ idAsignatura, cantidad }),
+    // El periodo del grupo es el seleccionado en la cabecera: sin él, el grupo
+    // nace huérfano (id_periodo NULL) y publicar/validar no lo alcanzan.
+    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null }),
   });
 }
 
@@ -166,17 +169,20 @@ export interface FranjaConContexto extends Sesion {
   asignatura: string | null;
   programa: string | null;
   docente: string | null;
+  /** Periodo al que pertenece (vía grupo). Null = sin periodo. */
+  idPeriodo: string | null;
+  periodoCodigo: string | null;
 }
 
 const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
 
 /**
- * TODAS las sesiones programadas, sin filtrar por grupo. Es lo que alimenta los
- * contadores del panel: antes salían de una constante en el front y mostraban
- * "4 franjas activas" con la base vacía.
+ * Sesiones del periodo indicado (si se pasa `idPeriodo`), o todas. Es lo que
+ * hace que cada vista pertenezca al periodo seleccionado en la cabecera.
  */
-export function getTodasLasSesiones(): Promise<FranjaConContexto[]> {
-  return pedirJson<FranjaConContexto[]>(BASE_HORARIOS, { method: 'GET' });
+export function getTodasLasSesiones(idPeriodo?: string): Promise<FranjaConContexto[]> {
+  const q = idPeriodo ? `?periodo=${encodeURIComponent(idPeriodo)}` : '';
+  return pedirJson<FranjaConContexto[]>(`${BASE_HORARIOS}${q}`, { method: 'GET' });
 }
 
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
@@ -450,8 +456,9 @@ export interface ValidacionHistorico {
  * Cruces detectados en la programación HISTÓRICA. No son fallas del sistema:
  * el sistema no permite crearlos. Por eso van aparte del contador del panel.
  */
-export function getCrucesHistoricos(): Promise<ValidacionHistorico> {
-  return pedirJson<ValidacionHistorico>('/programacion-academica/api/v1/validacion/historico', { method: 'GET' });
+export function getCrucesHistoricos(periodoCodigo?: string): Promise<ValidacionHistorico> {
+  const q = periodoCodigo ? `?periodo=${encodeURIComponent(periodoCodigo)}` : '';
+  return pedirJson<ValidacionHistorico>(`/programacion-academica/api/v1/validacion/historico${q}`, { method: 'GET' });
 }
 
 /**

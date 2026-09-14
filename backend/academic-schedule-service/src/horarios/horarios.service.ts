@@ -40,6 +40,9 @@ export interface FranjaConContexto {
   asignatura: string | null;
   programa: string | null;
   docente: string | null;
+  /** Periodo al que pertenece la franja (vía grupo.id_periodo). Null = sin periodo. */
+  idPeriodo: string | null;
+  periodoCodigo: string | null;
 }
 
 export interface PeriodoGrupoDto {
@@ -69,7 +72,13 @@ export class HorariosService {
    * El docente sale de la asignación ASIGNADA del grupo; si el grupo no tiene
    * docente asignado, viene en null y el front muestra el vacío, no un invento.
    */
-  async listarTodas(): Promise<FranjaConContexto[]> {
+  /**
+   * @param idPeriodo si viene, acota a las franjas de ESE periodo (vía
+   * grupo.id_periodo). Es lo que permite que cada vista del módulo pertenezca al
+   * periodo seleccionado en la cabecera: sin él, la tabla mezclaba periodos.
+   */
+  async listarTodas(idPeriodo?: string): Promise<FranjaConContexto[]> {
+    const filtro = idPeriodo ? 'WHERE g.id_periodo = $1' : '';
     return this.franjaRepo.query(
       `SELECT f.id_franja                       AS "idFranja",
               f.id_grupo::text                  AS "idGrupo",
@@ -83,17 +92,22 @@ export class HorariosService {
               g.numero_grupo                    AS "numeroGrupo",
               g.fecha_inicio::text              AS "fechaInicioGrupo",
               g.fecha_fin::text                 AS "fechaFinGrupo",
+              g.id_periodo::text                AS "idPeriodo",
+              pp.codigo                         AS "periodoCodigo",
               a.nombre                          AS "asignatura",
               pr.nombre                         AS "programa",
               per.nom_largo                     AS "docente"
          FROM "academic-schedule".franja_horaria f
          LEFT JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
+         LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
          LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
          LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
          LEFT JOIN "academic-schedule".asignacion_docente ad
                 ON ad.id_grupo = g.id_grupo AND ad.estado = 'ASIGNADO'
          LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
+        ${filtro}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
+      idPeriodo ? [idPeriodo] : undefined,
     );
   }
 
