@@ -7,6 +7,7 @@
  * banner o al exportar.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Clock, CheckCircle2, PencilLine, Download, History, X as XIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../services/api/controlInternoService';
@@ -59,6 +60,7 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
   const [modalGenerar, setModalGenerar] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [modalHistorial, setModalHistorial] = useState(false);
+  const [pestanaHistorial, setPestanaHistorial] = useState<'versiones' | 'log'>('versiones');
   const [versiones, setVersiones] = useState<ResumenVersionProgramaAnual[]>([]);
   const [log, setLog] = useState<EntradaLogProgramaAnual[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -140,6 +142,7 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
   };
 
   const abrirHistorial = () => {
+    setPestanaHistorial('versiones');
     setModalHistorial(true);
     cargarHistorial();
   };
@@ -244,82 +247,98 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
         </div>
       </div>
 
-      {modalGenerar && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="px-6 py-4 rounded-t-2xl bg-[#003DA5] flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-black text-white">Generar versión del Programa Anual {vigencia}</h3>
-                <p className="text-sm text-white/90">
-                  La versión queda como registro histórico de solo consulta.
+      {/* Los modales van al body: dentro de la pantalla un contenedor animado los descuadra. */}
+      {modalGenerar &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+              <div className="px-6 py-4 bg-[#003DA5] flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-white">Generar versión del Programa Anual {vigencia}</h3>
+                  <p className="text-sm text-white/90">La versión queda como registro histórico de solo consulta.</p>
+                </div>
+                <button onClick={() => setModalGenerar(false)} className="p-2 hover:bg-white/20 rounded-lg" aria-label="Cerrar">
+                  <XIcon className="w-5 h-5 text-white" />
+                </button>
+              </div>
+              <div className="p-6 space-y-3">
+                <p className="text-sm text-gray-700">
+                  {actual
+                    ? `Cambios frente a la versión ${etiquetaVersion(actual.version)}: ${estado.cambiosPendientes}. Si no hay cambios no se crea una versión nueva.`
+                    : 'Se generará la primera versión formal del programa.'}
                 </p>
+                <label className="block text-sm font-semibold text-gray-800">
+                  Motivo del cambio <span className="font-normal text-gray-500">(opcional)</span>
+                  <textarea
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    maxLength={1000}
+                    rows={3}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-normal"
+                    placeholder="Ej.: Reprogramación aprobada por el Comité Institucional de Coordinación de Control Interno"
+                  />
+                </label>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setModalGenerar(false)}
+                    className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={generarVersion}
+                    disabled={procesando}
+                    className="px-4 py-2 bg-[#003DA5] hover:bg-[#1e5da8] text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                  >
+                    {procesando ? 'Generando...' : 'Generar versión'}
+                  </button>
+                </div>
               </div>
-              <button onClick={() => setModalGenerar(false)} className="p-2 hover:bg-white/20 rounded-lg" aria-label="Cerrar">
-                <XIcon className="w-5 h-5 text-white" />
-              </button>
             </div>
-            <div className="p-6 space-y-3">
-              <p className="text-sm text-gray-700">
-                {actual
-                  ? `Cambios frente a la versión ${etiquetaVersion(actual.version)}: ${estado.cambiosPendientes}. Si no hay cambios no se crea una versión nueva.`
-                  : 'Se generará la primera versión formal del programa.'}
-              </p>
-              <label className="block text-sm font-semibold text-gray-800">
-                Motivo del cambio <span className="font-normal text-gray-500">(opcional)</span>
-                <textarea
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  maxLength={1000}
-                  rows={3}
-                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-normal"
-                  placeholder="Ej.: Reprogramación aprobada por el Comité Institucional de Coordinación de Control Interno"
-                />
-              </label>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setModalGenerar(false)}
-                  className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700"
-                >
-                  Cancelar
+          </div>,
+          document.body,
+        )}
+
+      {modalHistorial &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+              <div className="px-6 py-4 bg-[#003DA5] flex items-start justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-white mb-1">Historial del Programa Anual {vigencia}</h3>
+                  <p className="text-sm text-white/90">Versiones de solo consulta y log de cambios del programa.</p>
+                </div>
+                <button onClick={() => setModalHistorial(false)} className="p-2 hover:bg-white/20 rounded-lg" aria-label="Cerrar">
+                  <XIcon className="w-5 h-5 text-white" />
                 </button>
-                <button
-                  onClick={generarVersion}
-                  disabled={procesando}
-                  className="px-4 py-2 bg-[#003DA5] hover:bg-[#1e5da8] text-white rounded-lg text-sm font-semibold disabled:opacity-50"
-                >
-                  {procesando ? 'Generando...' : 'Generar versión'}
-                </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {modalHistorial && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
-            <div className="px-6 py-4 rounded-t-2xl bg-[#003DA5] flex items-start justify-between">
-              <div>
-                <h3 className="text-xl font-black text-white mb-1">Historial del Programa Anual {vigencia}</h3>
-                <p className="text-sm text-white/90">Versiones de solo consulta y log de cambios del programa.</p>
+              <div className="px-6 flex gap-4 border-b border-gray-200">
+                {(['versiones', 'log'] as const).map((pestana) => (
+                  <button
+                    key={pestana}
+                    onClick={() => setPestanaHistorial(pestana)}
+                    className={`py-3 text-sm font-semibold border-b-2 transition-colors ${
+                      pestanaHistorial === pestana
+                        ? 'border-[#003DA5] text-[#003DA5]'
+                        : 'border-transparent text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    {pestana === 'versiones' ? `Versiones (${versiones.length})` : `Log de cambios (${log.length})`}
+                  </button>
+                ))}
               </div>
-              <button onClick={() => setModalHistorial(false)} className="p-2 hover:bg-white/20 rounded-lg" aria-label="Cerrar">
-                <XIcon className="w-5 h-5 text-white" />
-              </button>
-            </div>
 
-            <div className="p-6 overflow-y-auto space-y-6">
-              {cargandoHistorial && <p className="text-sm text-gray-500">Cargando historial...</p>}
+              <div className="p-6 overflow-y-auto">
+                {cargandoHistorial && <p className="text-sm text-gray-500">Cargando historial...</p>}
 
-              {!cargandoHistorial && (
-                <>
-                  <section className="space-y-3">
-                    <h4 className="text-sm font-black text-gray-900 uppercase">Versiones</h4>
+                {!cargandoHistorial && pestanaHistorial === 'versiones' && (
+                  <div className="space-y-3">
                     {versiones.length === 0 && (
                       <p className="text-sm text-gray-600">Aún no se ha generado una versión formal.</p>
                     )}
                     {versiones.map((v) => (
-                      <div key={v.id} className="border-2 border-gray-200 rounded-xl p-4">
+                      <div key={v.id} className="border border-gray-200 rounded-xl p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-base font-black text-gray-900">
@@ -334,7 +353,7 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
                           <button
                             onClick={() => descargarVersion(v.version)}
                             disabled={descargando === v.version}
-                            className="px-3 py-2 bg-white border-2 border-gray-300 hover:border-[#2962FF] rounded-lg text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-50"
+                            className="px-3 py-2 bg-white border border-gray-300 hover:border-[#2962FF] rounded-lg text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-50"
                           >
                             <Download className="w-4 h-4" />
                             {descargando === v.version ? 'Descargando...' : 'Descargar'}
@@ -362,44 +381,33 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
                         )}
                       </div>
                     ))}
-                  </section>
+                  </div>
+                )}
 
-                  <section className="space-y-2">
-                    <h4 className="text-sm font-black text-gray-900 uppercase">Log de cambios del programa</h4>
+                {!cargandoHistorial && pestanaHistorial === 'log' && (
+                  <>
                     {log.length === 0 && <p className="text-sm text-gray-600">Sin cambios registrados.</p>}
                     {log.length > 0 && (
-                      <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                        <table className="w-full text-xs">
-                          <thead className="bg-gray-50 text-gray-700">
-                            <tr>
-                              <th className="text-left px-3 py-2 font-bold">Fecha</th>
-                              <th className="text-left px-3 py-2 font-bold">Tipo</th>
-                              <th className="text-left px-3 py-2 font-bold">Autor</th>
-                              <th className="text-left px-3 py-2 font-bold">Auditoría</th>
-                              <th className="text-left px-3 py-2 font-bold">Detalle</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {log.map((entrada, i) => (
-                              <tr key={`${entrada.fecha}-${i}`} className="border-t border-gray-100 align-top">
-                                <td className="px-3 py-2 whitespace-nowrap">{fechaHora(entrada.fecha)}</td>
-                                <td className="px-3 py-2 whitespace-nowrap font-semibold">{ETIQUETAS_LOG[entrada.tipo]}</td>
-                                <td className="px-3 py-2">{entrada.autor}</td>
-                                <td className="px-3 py-2 whitespace-nowrap">{entrada.auditoria || '—'}</td>
-                                <td className="px-3 py-2 text-gray-700">{entrada.detalle}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ul className="divide-y divide-gray-100 border border-gray-200 rounded-xl">
+                        {log.map((entrada, i) => (
+                          <li key={`${entrada.fecha}-${i}`} className="px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="px-2 py-0.5 rounded-md bg-gray-100 font-bold text-gray-700">{ETIQUETAS_LOG[entrada.tipo]}</span>
+                              {entrada.auditoria && <span className="font-semibold text-gray-900">{entrada.auditoria}</span>}
+                              <span className="ml-auto text-gray-500">{fechaHora(entrada.fecha)} · {entrada.autor}</span>
+                            </div>
+                            <p className="mt-1 text-sm text-gray-700">{entrada.detalle}</p>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </section>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
