@@ -338,6 +338,49 @@ export interface CreateTareaAuditoriaDto {
   notas?: string;
 }
 
+/** Fila del Programa Anual tal como la imprime el documento exportado (EFDS-1919). */
+export interface FilaProgramaAnual {
+  id: string;
+  codigo: string;
+  nombre: string;
+  areaObjetivo: string | null;
+  tipo: 'Regular' | 'Territorial' | 'Especial';
+  territorial: string | null;
+  responsableArea: string;
+  observaciones: string;
+  fechaInicio: string | null;
+  fechaFinPlaneacion: string | null;
+  fechaInicioEjecucion: string | null;
+  fechaFinEjecucion: string | null;
+  fechaInicioComunicacion: string | null;
+  fechaFin: string | null;
+}
+
+export interface CambioProgramaAnual {
+  tipo: 'agregada' | 'eliminada' | 'modificada';
+  codigo: string;
+  nombre: string;
+  campos?: Array<{ campo: string; antes: string | null; despues: string | null }>;
+}
+
+export interface VersionProgramaAnual {
+  version: number;
+  nueva: boolean;
+  fecha: string;
+  generadaPor: string;
+  filas: FilaProgramaAnual[];
+  cambios: CambioProgramaAnual[];
+}
+
+export interface ResumenVersionProgramaAnual {
+  id: string;
+  vigencia: number;
+  version: number;
+  fecha: string;
+  generadaPor: string;
+  cambios: CambioProgramaAnual[];
+}
+
 export interface UpdateTareaAuditoriaDto {
   titulo?: string;
   descripcion?: string;
@@ -1340,6 +1383,25 @@ class ControlInternoService {
     };
   }> {
     return client.post(`/plan-anual-5-roles/auditorias/recalcular/${año}`, {});
+  }
+
+  // ==========================================================================
+  // VERSIONES DEL PROGRAMA ANUAL (EFDS-1919)
+  // ==========================================================================
+
+  /** Versión vigente del programa; el backend la crea si lo impreso cambió. */
+  async resolverVersionProgramaAnual(vigencia: number): Promise<VersionProgramaAnual> {
+    return client.post<VersionProgramaAnual>(`/programa-anual-versiones/${vigencia}/resolver`, {});
+  }
+
+  /** Histórico de versiones de la vigencia, sin las filas. */
+  async getVersionesProgramaAnual(vigencia: number): Promise<ResumenVersionProgramaAnual[]> {
+    return client.get<ResumenVersionProgramaAnual[]>(`/programa-anual-versiones/${vigencia}`);
+  }
+
+  /** Una versión con sus filas, para volver a descargarla. */
+  async getVersionProgramaAnual(vigencia: number, version: number): Promise<VersionProgramaAnual> {
+    return client.get<VersionProgramaAnual>(`/programa-anual-versiones/${vigencia}/${version}`);
   }
 
   // ==========================================================================
