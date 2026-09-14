@@ -95,6 +95,32 @@ export class AuditoriasService {
   }
 
   /**
+   * Traduce el usuario autenticado (auth.user.id_user, que viaja en el token) a
+   * su persona (auth.personas.id_person). Si ya es una persona, la devuelve; si
+   * no se encuentra, devuelve null para no romper la llave foránea.
+   */
+  private async resolverPersonaDeUsuario(usuarioId?: string | null): Promise<string | null> {
+    if (!usuarioId || !this.isValidUUID(String(usuarioId))) return null;
+    try {
+      const rows = await this.auditoriaRepository.query(
+        `SELECT p.id_person
+           FROM auth.personas p
+          WHERE p.id_person = $1::uuid
+         UNION ALL
+         SELECT u.id_person
+           FROM auth."user" u
+          WHERE u.id_user = $1::uuid AND u.id_person IS NOT NULL
+         LIMIT 1`,
+        [usuarioId],
+      );
+      return rows?.[0]?.id_person ? String(rows[0].id_person) : null;
+    } catch (error) {
+      console.error('[AuditoriasService] No se pudo resolver la persona del usuario:', error);
+      return null;
+    }
+  }
+
+  /**
    * Mapea id_tercero (bigint) a id_person (UUID) de auth.personas
    * Si ya viene id_person (UUID), se valida y se devuelve tal cual.
    * La migración 159 cambió las FKs de control_interno a usar id_person
@@ -412,6 +438,46 @@ export class AuditoriasService {
       console.error('[AuditoriasService.getPersonasNames] Error:', error);
       return new Map();
     }
+  }
+
+  /**
+   * Describe con nombres el cambio de auditores para la bitácora. Solo reporta
+   * lo que realmente cambió; si no se pueden resolver los nombres, usa los IDs
+   * para no impedir la actualización.
+   */
+  private async describirCambioAuditores(
+    antes: { lider: string | null; asignado: string | null; equipo: string[] },
+    despues: { lider?: string | null; asignado?: string | null; equipo?: string[] },
+  ): Promise<string[]> {
+    const ids = [antes.lider, antes.asignado, ...antes.equipo, despues.lider, despues.asignado, ...(despues.equipo || [])]
+      .filter((x): x is string => Boolean(x));
+
+    let nombres = new Map<string, { nombre: string; email: string; cargo: string }>();
+    try {
+      nombres = await this.getPersonasDetailsMap(Array.from(new Set(ids)));
+    } catch (error) {
+      console.error('[AuditoriasService] No se pudieron resolver nombres de auditores:', error);
+    }
+
+    const nombre = (id?: string | null) => (id ? nombres.get(id)?.nombre || id : 'Sin asignar');
+    const lista = (xs: string[]) => (xs.length ? xs.map(nombre).join(', ') : 'Sin equipo');
+    const descripciones: string[] = [];
+
+    if (despues.lider !== undefined && despues.lider !== antes.lider) {
+      descripciones.push(`Auditor líder: ${nombre(antes.lider)} -> ${nombre(despues.lider)}`);
+    }
+    if (despues.asignado !== undefined && despues.asignado !== antes.asignado) {
+      descripciones.push(`Auditor asignado: ${nombre(antes.asignado)} -> ${nombre(despues.asignado)}`);
+    }
+    if (despues.equipo !== undefined) {
+      const previo = [...antes.equipo].sort();
+      const nuevo = [...despues.equipo].sort();
+      if (previo.join('|') !== nuevo.join('|')) {
+        descripciones.push(`Equipo auditor: ${lista(previo)} -> ${lista(nuevo)}`);
+      }
+    }
+
+    return descripciones;
   }
 
   private async getPersonasDetailsMap(personaIds: string[]): Promise<Map<string, { nombre: string; email: string; cargo: string }>> {
@@ -1573,6 +1639,16 @@ export class AuditoriasService {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
     }
 
+    // Auditores antes del cambio: la bitácora debe decir quién salió y quién
+    // entró, porque ese cambio no genera versión del Programa Anual (EFDS-1919).
+    const auditoresAntes = {
+      lider: auditoria.auditorLiderId ? String(auditoria.auditorLiderId) : null,
+      asignado: auditoria.auditorAsignadoId ? String(auditoria.auditorAsignadoId) : null,
+      equipo: (auditoria.equipoAuditores || [])
+        .filter((e) => e.activo && e.personaId)
+        .map((e) => String(e.personaId)),
+    };
+
     // Validar fechas si se actualizan
     if (updateDto.fechaInicio || updateDto.fechaFin || updateDto.fechaFinPlaneacion || updateDto.fechaFinEjecucion) {
       const fechaInicio = updateDto.fechaInicio 
@@ -1853,9 +1929,17 @@ export class AuditoriasService {
     }
     if (updateDto.nombre) cambios.push('Nombre actualizado');
     if (updateDto.fechaInicio || updateDto.fechaFin) cambios.push('Fechas actualizadas');
-    if (updateDto.auditorLiderId !== undefined) cambios.push('Auditor líder actualizado');
-    if (updateDto.auditorAsignadoId !== undefined) cambios.push('Auditor asignado actualizado');
-    if (updateDto.equipoAuditores !== undefined) cambios.push('Equipo auditor actualizado');
+    cambios.push(
+      ...(await this.describirCambioAuditores(auditoresAntes, {
+        lider: updateDto.auditorLiderId !== undefined
+          ? (updateDto.auditorLiderId ? String(updateDto.auditorLiderId) : null)
+          : undefined,
+        asignado: updateDto.auditorAsignadoId !== undefined
+          ? (updateDto.auditorAsignadoId ? String(updateDto.auditorAsignadoId) : null)
+          : undefined,
+        equipo: equipoAuditorPersonaIdsActualizados,
+      })),
+    );
 
     // Crear notificaciones si hay cambios importantes
     if (cambios.length > 0) {
@@ -1966,7 +2050,10 @@ export class AuditoriasService {
         historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
         historialActualizacion.fecha = fecha;
         historialActualizacion.hora = hora;
-        historialActualizacion.usuarioId = usuarioId || null;
+        // historial_auditoria.usuario_id apunta a auth.personas, pero el token trae
+        // auth.user.id_user: sin traducirlo la inserción fallaba por llave foránea
+        // y la bitácora de actualizaciones nunca se guardaba.
+        historialActualizacion.usuarioId = await this.resolverPersonaDeUsuario(usuarioId);
         historialActualizacion.accion = 'Auditoría actualizada';
         historialActualizacion.descripcion = `Cambios realizados: ${cambios.join(', ')}`;
         historialActualizacion.estadoAnterior = estadoAnterior || undefined;
