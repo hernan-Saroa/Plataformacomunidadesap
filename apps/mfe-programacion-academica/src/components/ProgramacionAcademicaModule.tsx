@@ -27,7 +27,8 @@ import {
 
 import {
   getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura, getOfertas,
-  type FranjaConContexto, type ValidacionHistorico, type Oferta,
+  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
+  type FranjaConContexto, type ValidacionHistorico, type Oferta, type EstadoPublicacion,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
@@ -144,6 +145,34 @@ export function ProgramacionAcademicaModule() {
   const elegirPeriodo = (id: string) => {
     setPeriodoSel(id);
     try { localStorage.setItem('prog-periodo-sel', id); } catch { /* storage no disponible */ }
+  };
+
+  // §1.2 — Publicar/retirar el periodo activo DESDE la vista de programación, sin
+  // ir a buscarlo a otra sección. El backend valida sin cruces al publicar y
+  // rechaza retirar si alguien tomó franjas; el mensaje se muestra tal cual.
+  const [estadoPub, setEstadoPub] = useState<EstadoPublicacion | null>(null);
+  const [avisoPub, setAvisoPub] = useState('');
+  const [pubOcupado, setPubOcupado] = useState(false);
+  const cargarEstadoPub = (id: string) => getEstadoPublicacion(id).then(setEstadoPub).catch(() => setEstadoPub(null));
+  useEffect(() => { if (periodoSel) cargarEstadoPub(periodoSel); }, [periodoSel]);
+
+  const publicar = async () => {
+    setAvisoPub(''); setPubOcupado(true);
+    try {
+      const e = await publicarProgramacion(periodoSel);
+      setEstadoPub(e);
+      const s = await getTodasLasSesiones(periodoSel); setScheduleList(s.map(sesionAFranja));
+    } catch (err: any) { setAvisoPub(err?.message || 'No se pudo publicar.'); }
+    finally { setPubOcupado(false); }
+  };
+  const retirarPub = async () => {
+    setAvisoPub(''); setPubOcupado(true);
+    try {
+      const e = await retirarProgramacion(periodoSel);
+      setEstadoPub(e);
+      const s = await getTodasLasSesiones(periodoSel); setScheduleList(s.map(sesionAFranja));
+    } catch (err: any) { setAvisoPub(err?.message || 'No se pudo retirar.'); }
+    finally { setPubOcupado(false); }
   };
 
   // Franjas y validación se recargan cada vez que cambia el periodo seleccionado.
@@ -326,6 +355,40 @@ export function ProgramacionAcademicaModule() {
           </div>
         </div>
       </div>
+
+      {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
+      {seccion === 'horarios' && estadoPub && periodoActual && periodoActual.estado !== 'cerrado' && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-bold text-slate-700">Programación de {periodoActual.codigo}:</span>
+              <span>{estadoPub.programado} programadas</span>
+              <span className="text-indigo-600">{estadoPub.publicada} publicadas</span>
+              <span className="text-violet-600">{estadoPub.tomada} tomadas</span>
+              <span className="text-emerald-700">{estadoPub.aprobada} aprobadas</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {estadoPub.publicada === 0 && estadoPub.tomada === 0 && estadoPub.aprobada === 0 ? (
+                <button type="button" disabled={pubOcupado || estadoPub.total === 0} onClick={publicar}
+                  className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
+                  {pubOcupado ? 'Publicando…' : 'Publicar programación'}
+                </button>
+              ) : (
+                <>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">Publicada</span>
+                  <button type="button" disabled={pubOcupado} onClick={retirarPub}
+                    className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 disabled:opacity-40 active:scale-95 transition-all">
+                    {pubOcupado ? 'Retirando…' : 'Retirar publicación'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {avisoPub && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">{avisoPub}</div>
+          )}
+        </div>
+      )}
 
       {/* ── ACCIONES Y BÚSQUEDA ──
           Solo en Programación General: el buscador, el filtro de jornada y el

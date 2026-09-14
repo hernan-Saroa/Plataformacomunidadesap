@@ -38,4 +38,10 @@ export class HorariosController {
   async periodo(@Param('id') id: string, @Body() body: PeriodoGrupoDto) {
     return { success: true, data: await this.horarios.definirPeriodo(id, body) };
   }
+
+  /** GET /horarios/grupo/:id/horas — programadas vs requeridas (§1.3). */
+  @Get('grupo/:id/horas')
+  async horas(@Param('id') id: string) {
+    return { success: true, data: await this.horarios.horasGrupo(id) };
+  }
 }

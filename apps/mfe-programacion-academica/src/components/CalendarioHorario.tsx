@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Clock, Loader2, MapPin, Monitor, Trash2, X } from 'lucide-react';
 
 import {
-  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getAulas,
-  type Sesion, type TipoSesion, type Aula,
+  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getAulas, getHorasGrupo,
+  type Sesion, type TipoSesion, type Aula, type HorasGrupo,
 } from '../services/api/catalogoApi';
 
 /**
@@ -90,6 +90,10 @@ export function CalendarioHorario({
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // §1.3 — Horas programadas vs requeridas por el catálogo, en vivo.
+  const [resumenHoras, setResumenHoras] = useState<HorasGrupo | null>(null);
+  const cargarHoras = () => getHorasGrupo(idGrupo).then(setResumenHoras).catch(() => setResumenHoras(null));
+
   const recargar = () => {
     setCargando(true);
     setError('');
@@ -97,6 +101,7 @@ export function CalendarioHorario({
       .then(setSesiones)
       .catch((e) => setError(e?.message || 'No se pudieron cargar las sesiones.'))
       .finally(() => setCargando(false));
+    cargarHoras();
   };
 
   useEffect(recargar, [idGrupo]);
@@ -173,6 +178,7 @@ export function CalendarioHorario({
         fechaFin: fechaFin || null,
       });
       setAvisoPeriodo('Periodo guardado.');
+      cargarHoras(); // las semanas cambian ⇒ recalcular horas programadas.
     } catch (e: any) {
       setAvisoPeriodo(e?.message || 'No se pudo guardar el periodo.');
     }
@@ -203,9 +209,22 @@ export function CalendarioHorario({
           </div>
           <p className="text-xs text-slate-500 font-medium mt-0.5">{nombreAsignatura}</p>
         </div>
-        <p className="text-xs text-slate-400 font-medium">
-          Haga clic en el calendario para agregar una sesión.
-        </p>
+        <div className="flex flex-col items-end gap-1">
+          {/* §1.3 — Horas programadas vs requeridas por el plan, en vivo. */}
+          {resumenHoras && resumenHoras.requeridas != null && (
+            resumenHoras.programadas == null ? (
+              <span className="text-[11px] text-slate-400">Define el ciclo para ver las horas · plan {resumenHoras.requeridas}h</span>
+            ) : (
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${resumenHoras.excede ? 'bg-red-50 text-red-700' : resumenHoras.programadas > resumenHoras.requeridas ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                {resumenHoras.programadas}h programadas / {resumenHoras.requeridas}h del plan
+                {resumenHoras.excede && ' · excede el tope'}
+              </span>
+            )
+          )}
+          <p className="text-xs text-slate-400 font-medium">
+            Haga clic en el calendario para agregar una sesión.
+          </p>
+        </div>
       </div>
 
       {/* Periodo del ciclo de clases, propio de este grupo */}

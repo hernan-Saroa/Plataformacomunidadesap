@@ -138,9 +138,13 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
     'los 80 catedraticos del historico: no asignables por falta de dato, no por situacion',
     async () => {
       const { rows } = await client!.query(
-        `SELECT "situacionCategoria" AS categoria, "situacionAdministrativa" AS descripcion
-           FROM academic_work_plan."Docente"
-          WHERE "tipoVinculacion" = 'Cátedra'`,
+        `SELECT d."situacionCategoria" AS categoria, d."situacionAdministrativa" AS descripcion
+           FROM academic_work_plan."Docente" d
+           JOIN auth.personas p ON p.id_person = d."personaId"
+          WHERE d."tipoVinculacion" = 'Cátedra'
+            -- qa.docente se siembra como cátedra para probar el portal (migración
+            -- 033); no es un catedrático del histórico, así que se excluye.
+            AND p.num_identificacion <> '1020304053'`,
       );
       expect(rows).toHaveLength(80);
 

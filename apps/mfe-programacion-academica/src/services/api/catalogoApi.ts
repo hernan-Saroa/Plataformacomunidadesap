@@ -185,6 +185,17 @@ export function getTodasLasSesiones(idPeriodo?: string): Promise<FranjaConContex
   return pedirJson<FranjaConContexto[]>(`${BASE_HORARIOS}${q}`, { method: 'GET' });
 }
 
+/** Horas del grupo: programadas (Σ semanal × semanas) vs requeridas por catálogo (§1.3). */
+export interface HorasGrupo {
+  programadas: number | null;
+  requeridas: number | null;
+  semanas: number | null;
+  excede: boolean;
+}
+export function getHorasGrupo(idGrupo: string): Promise<HorasGrupo> {
+  return pedirJson<HorasGrupo>(`${BASE_HORARIOS}/grupo/${encodeURIComponent(idGrupo)}/horas`, { method: 'GET' });
+}
+
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
   return pedirJson<Sesion[]>(`${BASE_HORARIOS}?grupo=${encodeURIComponent(idGrupo)}`, { method: 'GET' });
 }

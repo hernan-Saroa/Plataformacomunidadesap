@@ -11,6 +11,14 @@ import {
 } from './solapamiento.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
 
+/**
+ * Margen del tope de horas del grupo (§1.3). Se publica solo si las horas
+ * programadas no superan las requeridas por el catálogo en más de un 30%. El
+ * margen es amplio a propósito: el histórico real desvía (mediana 1.06×, 58%
+ * dentro de ±25%), así que un tope estricto rechazaría programación legítima.
+ */
+export const FACTOR_TOPE_HORAS = 1.3;
+
 export interface CrearSesionDto {
   idGrupo: string;
   diaSemana: DiaSemana;
@@ -221,6 +229,48 @@ export class HorariosService {
     if (!franja) throw new NotFoundException('Sesión no encontrada.');
     await this.franjaRepo.remove(franja);
     return { eliminado: true };
+  }
+
+  /**
+   * Horas del grupo: PROGRAMADAS (Σ duración semanal × semanas del ciclo) frente
+   * a las REQUERIDAS por el catálogo (asignatura.horas_clase, RN de la Circular
+   * 003: nunca se recalculan). EFDS-1373-bis / §1.3.
+   *
+   * Las SEMANAS salen de las fechas de ciclo del grupo; sin ellas no se puede
+   * validar (semanas=null) y no se bloquea. El tope se fija con margen (×1.3)
+   * porque el histórico real desvía: la mediana programa 1.06× lo requerido y
+   * solo el 58% cae dentro de ±25%. Un margen estricto rechazaría programación
+   * legítima; ×1.3 igual atrapa el error grueso (p. ej. 160h sobre 64h = 2.5×).
+   */
+  async horasGrupo(idGrupo: string): Promise<{
+    programadas: number | null; requeridas: number | null; semanas: number | null; excede: boolean;
+  }> {
+    const grupo = await this.grupoRepo.findOne({ where: { idGrupo } });
+    if (!grupo) throw new NotFoundException('El grupo no existe.');
+
+    const req = await this.franjaRepo.query(
+      `SELECT horas_clase FROM academic_work_plan.asignatura WHERE id = $1`,
+      [(grupo as any).idAsignatura],
+    );
+    const requeridas = req.length && req[0].horas_clase != null ? Number(req[0].horas_clase) : null;
+
+    const fi = (grupo as any).fechaInicio, ff = (grupo as any).fechaFin;
+    let semanas: number | null = null;
+    if (fi && ff) {
+      const dias = Math.round((new Date(ff).getTime() - new Date(fi).getTime()) / 86400000) + 1;
+      semanas = Math.max(1, Math.round(dias / 7));
+    }
+
+    const franjas = await this.franjaRepo.find({ where: { idGrupo } });
+    const horasSemana = franjas.reduce((s, f) => {
+      const ini = aMinutos(String(f.horaInicio).slice(0, 5));
+      const fin = aMinutos(String(f.horaFin).slice(0, 5));
+      return s + Math.max(0, fin - ini) / 60;
+    }, 0);
+
+    const programadas = semanas != null ? Math.round(horasSemana * semanas * 100) / 100 : null;
+    const excede = programadas != null && requeridas != null && programadas > requeridas * FACTOR_TOPE_HORAS;
+    return { programadas, requeridas, semanas, excede };
   }
 
   /** Periodo del ciclo de clases del grupo (AC-01). */

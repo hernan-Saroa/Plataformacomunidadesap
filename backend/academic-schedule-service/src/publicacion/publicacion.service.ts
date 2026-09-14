@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { seSolapan } from '../horarios/solapamiento.js';
+import { FACTOR_TOPE_HORAS } from '../horarios/horarios.service.js';
 
 /**
  * Publicación de la programación — NUEVA-1 / EFDS-1937.
@@ -163,6 +164,36 @@ export class PublicacionService {
         + `de ${c.horaInicio} a ${c.horaFin}`).join('; ');
       throw new BadRequestException(
         `No se puede publicar: hay ${cruces.length} cruce(s) sin resolver (${detalle}).`,
+      );
+    }
+
+    // §1.3 — Las horas programadas de cada grupo no deben superar en más de 30%
+    // las requeridas por el catálogo (asignatura.horas_clase, nunca recalculadas,
+    // Circular 003). Se avisa durante el armado; aquí, al publicar, se bloquea.
+    // Los grupos sin ciclo definido no se pueden validar y no bloquean.
+    const excesos = await this.dataSource.query(
+      `WITH g AS (
+         SELECT gr.id_grupo, a.nombre AS asignatura, a.horas_clase AS requeridas,
+                GREATEST(1, ROUND((gr.fecha_fin - gr.fecha_inicio + 1) / 7.0)) AS semanas,
+                SUM(EXTRACT(EPOCH FROM (f.hora_fin - f.hora_inicio)) / 3600.0) AS horas_semana
+           FROM "academic-schedule".grupo gr
+           JOIN "academic-schedule".franja_horaria f ON f.id_grupo = gr.id_grupo
+           JOIN academic_work_plan.asignatura a ON a.id = gr.id_asignatura
+          WHERE gr.id_periodo = $1 AND gr.fecha_inicio IS NOT NULL AND gr.fecha_fin IS NOT NULL
+            AND a.horas_clase IS NOT NULL AND a.horas_clase > 0
+          GROUP BY gr.id_grupo, a.nombre, a.horas_clase, gr.fecha_inicio, gr.fecha_fin
+       )
+       SELECT asignatura, requeridas::int AS requeridas,
+              ROUND(horas_semana * semanas)::int AS programadas
+         FROM g WHERE horas_semana * semanas > requeridas * ${FACTOR_TOPE_HORAS}
+        ORDER BY programadas DESC`,
+      [idPeriodo],
+    );
+    if (excesos.length > 0) {
+      const d = excesos.slice(0, 3).map((e: any) =>
+        `${e.asignatura} (${e.programadas}h programadas vs ${e.requeridas}h del plan)`).join('; ');
+      throw new BadRequestException(
+        `No se puede publicar: ${excesos.length} grupo(s) exceden las horas del plan de estudios (${d}).`,
       );
     }
 
