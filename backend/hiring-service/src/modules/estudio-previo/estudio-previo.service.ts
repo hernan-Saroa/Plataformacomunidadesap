@@ -26,6 +26,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
   PERMISO_ACTIVIDAD_APROBAR,
+  PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_PROCESO_TOMAR,
   PERMISO_PROCESO_VER_TODOS,
   tienePermiso,
@@ -332,7 +333,11 @@ export class EstudioPrevioService {
       const puedeRecibirlo =
         enElProceso ||
         (tienePermiso(acceso, PERMISO_PROCESO_TOMAR) &&
-          (await this.participacion.estaEnLaBandeja(procesoId)));
+          (await this.participacion.estaEnLaBandeja(procesoId))) ||
+        // Y la solicitud de CDP sin atender, por lo mismo: el listado se la
+        // enseña a la Financiera y al pulsarla le diría que no existe.
+        (tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR) &&
+          (await this.participacion.estaEnLaBandejaFinanciera(procesoId)));
 
       if (!puedeRecibirlo) {
         // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
@@ -362,9 +367,10 @@ export class EstudioPrevioService {
     const verTodos = await this.puedeVerTodos(acceso);
 
     /**
-     * «Los míos» son tres cosas y no una (EFDS-1183): los que radiqué, los que
-     * me repartieron, y —si puedo tomar— los que están en la bandeja esperando
-     * que alguien los reciba.
+     * «Los míos» son cuatro cosas y no una (EFDS-1183): los que radiqué, los
+     * que me repartieron, —si puedo tomar— los que están en la bandeja
+     * esperando que alguien los reciba, y —si gestiono presupuesto— aquellos
+     * cuya solicitud de CDP nadie ha atendido todavía.
      *
      * La tercera es la que hace posible el reparto por bandeja compartida: sin
      * ella el listado solo devuelve procesos en los que ya estás, así que nadie
@@ -382,6 +388,19 @@ export class EstudioPrevioService {
       const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
       if (tienePermiso(acceso!, PERMISO_PROCESO_TOMAR)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
+      }
+      /**
+       * Y la bandeja de la Financiera, que es la cuarta vía.
+       *
+       * Sin ella la Dirección Financiera abre el módulo y no ve nada: no radicó
+       * ningún proceso, nadie se lo repartió y no puede tomar de la bandeja de
+       * Contratación, así que las tres vías anteriores le devuelven la lista
+       * vacía aunque tenga solicitudes de CDP esperándola.
+       */
+      if (tienePermiso(acceso!, PERMISO_PRESUPUESTO_GESTIONAR)) {
+        for (const id of await this.participacion.idsEnBandejaFinanciera()) {
+          alcanzables.add(id);
+        }
       }
       if (alcanzables.size) mios.push({ id: In([...alcanzables]) });
     }

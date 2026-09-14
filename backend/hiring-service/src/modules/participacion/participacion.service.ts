@@ -17,6 +17,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
   PERMISO_ACTIVIDAD_APROBAR,
+  PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_PROCESO_ASIGNAR,
   PERMISO_PROCESO_TOMAR,
   tienePermiso,
@@ -117,11 +118,25 @@ export class ParticipacionService {
 
     const contratacion = vigente('CONTRATACION');
     const abogado = vigente('ABOGADO');
+    const financiera = vigente('FINANCIERA');
 
     // Quien tomó el proceso es quien reparte el abogado. El Director también,
     // porque `proceso.assign` es suyo y tiene que poder corregir un reparto.
     const soyElDeContratacion = !!contratacion && esSuya(contratacion, acceso);
     const puedeRepartir = soyElDeContratacion || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
+
+    /**
+     * Ofrecer tomar la solicitud solo donde hay una que tomar.
+     *
+     * Se comprueba contra la bandeja y no solo contra el permiso porque si no
+     * la pantalla enseñaría el botón en todos los procesos, incluidos los que
+     * no han pedido CDP y los que ya lo tienen expedido, y la API lo rechazaría
+     * cuando ya es tarde.
+     */
+    const puedeTomarFinanciera =
+      !financiera &&
+      tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR) &&
+      (await this.estaEnLaBandejaFinanciera(procesoId));
 
     return {
       /** Sin tomar: el proceso está en la bandeja y nadie responde por él. */
@@ -129,6 +144,9 @@ export class ParticipacionService {
       puedeRepartir,
       contratacion: contratacion ? this.aVista(contratacion, acceso) : null,
       abogado: abogado ? this.aVista(abogado, acceso) : null,
+      /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
+      financiera: financiera ? this.aVista(financiera, acceso) : null,
+      puedeTomarFinanciera,
       /**
        * No debería pasar, pero quitar un abogado sin poner otro es una
        * situación real. En vez de impedirla se dice, para que el proceso no se
@@ -163,6 +181,22 @@ export class ParticipacionService {
    */
   async abogados(termino = ''): Promise<CuentaCandidata[]> {
     return this.cuentasCon(PERMISO_ACTIVIDAD_APROBAR, termino);
+  }
+
+  /**
+   * Las cuentas de la Dirección Financiera que pueden resolver un CDP.
+   *
+   * Por permiso y no por rol, igual que los abogados: quien pueda gestionar el
+   * presupuesto es quien verifica la disponibilidad y expide. Nombrar aquí
+   * `ESTRUCTURADOR_FINANCIERO` ataría la etapa 4 a un código de rol que el
+   * administrador puede renombrar o desdoblar mañana desde el backoffice.
+   *
+   * No lo consume un desplegable —la solicitud no se reparte, se toma— sino el
+   * aviso: mientras nadie la ha tomado no hay responsable a quien notificar, y
+   * esta es la lista a la que se le manda.
+   */
+  async financieros(termino = ''): Promise<CuentaCandidata[]> {
+    return this.cuentasCon(PERMISO_PRESUPUESTO_GESTIONAR, termino);
   }
 
   // ------------------------------------------------------------ el proceso --
@@ -200,6 +234,62 @@ export class ParticipacionService {
 
       await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
         papel: 'CONTRATACION',
+        quien: cuenta.nombre,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Tomar la solicitud de CDP de la bandeja de la Financiera (actividad 4.1).
+   *
+   * Mismo acto que `tomar` y por el mismo motivo: nadie la entrega, la toma
+   * quien va a resolverla. Lo que cambia es de qué bandeja sale —una solicitud
+   * sin atender, no un proceso sin recibir— y que aquí no se cierra ninguna
+   * actividad: la 4.1 la cumple la solicitud misma, no el hecho de tomarla.
+   *
+   * Tomarla es lo que pone nombre al responsable, y con eso el aviso deja de ir
+   * a toda la Dirección Financiera y pasa a ser suyo.
+   */
+  async tomarFinanciera(procesoId: string, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirProceso(em, procesoId, true);
+
+      const actual = await this.vigente(procesoId, 'FINANCIERA', em);
+      if (actual) {
+        throw new ConflictException(
+          esSuya(actual, acceso)
+            ? 'Ya habías tomado esta solicitud'
+            : `${actual.nombre} tomó esta solicitud antes que tú`,
+        );
+      }
+
+      // Que la solicitud exista y siga sin resolver. Sin esto se podría tomar
+      // el CDP de un proceso que no lo ha pedido —o uno ya expedido—, y el
+      // responsable quedaría puesto sobre algo que nadie tiene que atender.
+      const [solicitud] = await em.query(
+        `SELECT 1
+           FROM hiring.cdp
+          WHERE proceso_id = $1
+            AND modificacion_id IS NULL
+            AND estado = 'SOLICITADO'
+          LIMIT 1`,
+        [procesoId],
+      );
+      if (!solicitud) {
+        throw new ConflictException(
+          'Este proceso no tiene una solicitud de CDP esperando a que la atiendan',
+        );
+      }
+
+      const cuenta = await this.exigirCuenta(acceso.userId, acceso.userName);
+      const nueva = await this.guardar(em, procesoId, 'FINANCIERA', cuenta, acceso);
+
+      // RADICAR y no DESIGNAR, con el criterio con que se eligió para la 3.3:
+      // designar es poner a otro, y aquí nadie entrega nada.
+      await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
+        papel: 'FINANCIERA',
         quien: cuenta.nombre,
       });
     });
@@ -406,6 +496,43 @@ export class ParticipacionService {
    */
   async estaEnLaBandeja(procesoId: string): Promise<boolean> {
     return (await this.idsEnBandeja(procesoId)).length > 0;
+  }
+
+  /**
+   * Las solicitudes de CDP que están en la bandeja de la Financiera.
+   *
+   * «Estar» es tener un CDP en SOLICITADO que nadie ha tomado. Se define por el
+   * estado del CDP y no por la etapa del proceso a propósito: `procesos.etapa`
+   * es dónde se está trabajando, y un proceso puede haber avanzado mientras la
+   * solicitud sigue sin resolver.
+   *
+   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
+   * adición es suyo y no entra a esta bandeja.
+   */
+  async idsEnBandejaFinanciera(soloEste?: string): Promise<string[]> {
+    const filas: { id: string }[] = await this.dataSource.query(
+      `SELECT p.id
+         FROM hiring.procesos p
+         JOIN hiring.cdp c
+           ON c.proceso_id = p.id
+          AND c.modificacion_id IS NULL
+          AND c.estado = 'SOLICITADO'
+        WHERE p.estado = 'EN_CURSO'
+          AND ($1::uuid IS NULL OR p.id = $1::uuid)
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.participaciones_proceso pp
+             WHERE pp.proceso_id = p.id
+               AND pp.papel = 'FINANCIERA'
+               AND pp.estado = 'VIGENTE'
+          )`,
+      [soloEste ?? null],
+    );
+    return filas.map((f) => f.id);
+  }
+
+  /** Si esa solicitud concreta sigue en la bandeja de la Financiera. */
+  async estaEnLaBandejaFinanciera(procesoId: string): Promise<boolean> {
+    return (await this.idsEnBandejaFinanciera(procesoId)).length > 0;
   }
 
   /** Quién está en cada proceso del listado, en una sola consulta. */

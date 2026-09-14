@@ -472,7 +472,7 @@ export interface Participante {
 
 /** Uno de los que estuvieron antes, con el motivo de su salida. */
 export interface ParticipacionRelevada {
-  papel: 'CONTRATACION' | 'ABOGADO';
+  papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
   nombre: string;
   cargo: string | null;
   asignadoAt: string;
@@ -489,6 +489,16 @@ export interface EstadoParticipacion {
   puedeRepartir: boolean;
   contratacion: Participante | null;
   abogado: Participante | null;
+  /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
+  financiera: Participante | null;
+  /**
+   * Hay una solicitud de CDP sin atender y quien mira puede hacerse cargo.
+   *
+   * Lo resuelve el backend contra la bandeja y no solo contra el permiso: en un
+   * proceso que no ha pedido CDP, o que ya lo tiene expedido, no hay nada que
+   * tomar y el botón no debe aparecer.
+   */
+  puedeTomarFinanciera: boolean;
   /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
   sinAbogado: boolean;
   historial: ParticipacionRelevada[];
