@@ -651,6 +651,23 @@ export const contratacionService = {
   abogados: (q = '') =>
     pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
 
+  /**
+   * Actividad 4.1: toma la solicitud de CDP de la bandeja de la Financiera.
+   *
+   * Igual que `tomarProceso` y por lo mismo: nadie la entrega, la toma quien va
+   * a resolverla. Desde ese momento los avisos de esa solicitud son suyos y
+   * dejan de sonarle al resto de la Dirección Financiera.
+   */
+  tomarSolicitudCdp: (procesoId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/financiera/tomar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  /** Quiénes pueden resolver un CDP: los que gestionan presupuesto. */
+  financieros: (q = '') =>
+    pedir<CuentaCandidata[]>(`/participacion/financieros?q=${encodeURIComponent(q)}`),
+
   /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
   asignarAbogado: (procesoId: string, usuarioId: string) =>
     pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
