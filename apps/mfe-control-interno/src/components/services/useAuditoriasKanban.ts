@@ -646,8 +646,8 @@ export function useAuditoriasKanban(planFilters?: {
       toast.success('Auditoría eliminada');
       setAuditorias(prev => prev.filter(a => a.id !== id));
       return true;
-    } catch (err: any) {
-      toast.error('Error al eliminar auditoría', { description: err?.message });
+    } catch (err) {
+      toast.error('Error al eliminar auditoría');
       return false;
     }
   }, []);

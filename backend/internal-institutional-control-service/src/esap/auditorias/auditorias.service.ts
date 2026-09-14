@@ -3638,14 +3638,13 @@ export class AuditoriasService {
     usuarioIdOrUUID?: number | string,
     userRoles?: string[],
   ): Promise<Auditoria> {
-    // El token trae auth.user.id_user: el líder y el historial se guardan por
-    // persona, y auth.user no tiene id_tercero, así que se traduce a la persona.
+    // Convertir UUID a id_tercero si es necesario
     let usuarioIdTercero: number | null = null;
-    let personaSolicitante: string | null = null;
-
+    
     if (typeof usuarioIdOrUUID === 'string') {
-      personaSolicitante = await this.resolverPersonaDeUsuario(usuarioIdOrUUID);
-      if (!personaSolicitante) {
+      // Es un UUID, convertir a id_tercero
+      usuarioIdTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
+      if (!usuarioIdTercero) {
         throw new NotFoundException(`Usuario con UUID ${usuarioIdOrUUID} no encontrado en auth.personas`);
       }
     } else if (typeof usuarioIdOrUUID === 'number') {
@@ -3683,7 +3682,7 @@ export class AuditoriasService {
       
       // Verificar que el auditor líder esté asignado a esta auditoría
       // Comparar convirtiendo id_tercero a id_person (UUID)
-      const usuarioIdPerson = personaSolicitante ?? await this.mapIdTerceroToIdPerson(usuarioIdTercero as number);
+      const usuarioIdPerson = await this.mapIdTerceroToIdPerson(usuarioIdTercero);
       if (auditoria.auditorLiderId !== usuarioIdPerson) {
         throw new ForbiddenException('Solo el Auditor Líder asignado a esta auditoría puede solicitar ampliación de plazo');
       }
@@ -3741,7 +3740,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historial.fecha = fecha;
     historial.hora = hora;
-    const uuidPersona = personaSolicitante ?? (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
+    const uuidPersona = typeof usuarioIdOrUUID === 'string' ? usuarioIdOrUUID : (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
     historial.usuarioId = uuidPersona;
     historial.accion = 'Solicitud de ampliación de plazo';
     historial.descripcion = `Solicitud de ampliación de plazo para auditoría ${auditoria.codigo}`;
@@ -3773,7 +3772,7 @@ export class AuditoriasService {
         auditoriaId,
         auditoria.codigo,
         auditoria.nombre,
-        `Usuario ${personaSolicitante ?? usuarioIdTercero}`,
+        `Usuario ${usuarioIdTercero}`,
         solicitarDto.justificacion,
       );
     } catch (error) {
@@ -3797,11 +3796,18 @@ export class AuditoriasService {
     usuarioIdOrUUID?: number | string,
     userRoles?: string[],
   ): Promise<Auditoria> {
-    // Con UUID (auth.user.id_user del token) el historial se guarda por persona;
-    // auth.user no tiene id_tercero.
+    // Convertir UUID a id_tercero numérico si es necesario
     let usuarioIdTercero: number;
     if (typeof usuarioIdOrUUID === 'string') {
-      usuarioIdTercero = 1;
+      // Es un UUID, buscar el id_tercero usando el método existente
+      const idTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
+      
+      if (idTercero) {
+        usuarioIdTercero = idTercero;
+      } else {
+        console.warn(`Usuario con UUID ${usuarioIdOrUUID} no encontrado, usando fallback`);
+        usuarioIdTercero = 1; // Fallback
+      }
     } else if (typeof usuarioIdOrUUID === 'number') {
       // Ya es un id_tercero
       usuarioIdTercero = usuarioIdOrUUID;
@@ -3812,7 +3818,7 @@ export class AuditoriasService {
     /** UUID de persona (auth.personas) para historial_auditoria.usuario_id */
     const historialUsuarioUuid: string | null =
       typeof usuarioIdOrUUID === 'string'
-        ? await this.resolverPersonaDeUsuario(usuarioIdOrUUID)
+        ? usuarioIdOrUUID
         : await this.mapIdTerceroToIdPerson(usuarioIdTercero);
     
     // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
@@ -3933,11 +3939,18 @@ export class AuditoriasService {
     usuarioIdOrUUID?: number | string,
     userRoles?: string[],
   ): Promise<Auditoria> {
-    // Con UUID (auth.user.id_user del token) el historial se guarda por persona;
-    // auth.user no tiene id_tercero.
+    // Convertir UUID a id_tercero numérico si es necesario
     let usuarioIdTercero: number;
     if (typeof usuarioIdOrUUID === 'string') {
-      usuarioIdTercero = 1;
+      // Es un UUID, buscar el id_tercero usando el método existente
+      const idTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
+      
+      if (idTercero) {
+        usuarioIdTercero = idTercero;
+      } else {
+        console.warn(`Usuario con UUID ${usuarioIdOrUUID} no encontrado, usando fallback`);
+        usuarioIdTercero = 1; // Fallback
+      }
     } else if (typeof usuarioIdOrUUID === 'number') {
       // Ya es un id_tercero
       usuarioIdTercero = usuarioIdOrUUID;
@@ -3947,7 +3960,7 @@ export class AuditoriasService {
 
     const historialUsuarioUuidRechazo: string | null =
       typeof usuarioIdOrUUID === 'string'
-        ? await this.resolverPersonaDeUsuario(usuarioIdOrUUID)
+        ? usuarioIdOrUUID
         : await this.mapIdTerceroToIdPerson(usuarioIdTercero);
     
     // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
