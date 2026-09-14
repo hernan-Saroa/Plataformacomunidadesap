@@ -180,10 +180,7 @@ export class TravelExpensesService {
           estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'],
         });
       } else if (isAnalista && usuarioId) {
-        query.andWhere(
-          '(s.creadoPorUsuarioId = :usuarioId OR s.analistaAsignadoId = :usuarioId)',
-          { usuarioId },
-        );
+        query.andWhere('s.analistaAsignadoId = :usuarioId', { usuarioId });
       } else if (usuarioId) {
         query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
       }
@@ -1874,23 +1871,19 @@ export class TravelExpensesService {
       throw new BadRequestException('analistaId es obligatorio.');
     }
 
-    const esSuperAdmin = this.esSuperAdmin(rolesUsuario);
-
     const estadosActivosAnalista = [
       EstadoSolicitud.SOLICITADO,
       EstadoSolicitud.EN_VERIFICACION,
+      EstadoSolicitud.EXTEMPORANEA,
       EstadoSolicitud.VERIFICADA,
+      EstadoSolicitud.SOLICITADA_SIIF,
       EstadoSolicitud.DEVUELTA,
     ];
 
-    const whereCondition: any = esSuperAdmin
-      ? {
-          estadoSolicitud: In(estadosActivosAnalista),
-        }
-      : {
-          analistaAsignadoId: analistaId,
-          estadoSolicitud: In(estadosActivosAnalista),
-        };
+    const whereCondition: any = {
+      analistaAsignadoId: analistaId,
+      estadoSolicitud: In(estadosActivosAnalista),
+    };
 
     return this.solicitudRepo.find({
       where: whereCondition,
@@ -1902,7 +1895,8 @@ export class TravelExpensesService {
   /**
    * RF-REC-002 Etapa 5 — Registra el checklist de verificacion del analista.
    * Valida Segregacion de Funciones y estado de la solicitud. Almacena el
-   * resultado del checklist en el historial y actualiza el flag de consulta RUT.
+   * resultado del checklist en el historial, actualiza el flag de consulta RUT
+   * y transiciona el estado de la solicitud a VERIFICADA.
    */
   async verificarAuditoria(
     solicitudId: string,
@@ -1928,12 +1922,21 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
-      if (
-        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
-        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
-      ) {
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
         throw new BadRequestException(
-          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+          'La comisión se encuentra DEVUELTA al enlace de dependencia. No se puede verificar hasta que el enlace subsane las observaciones y radique nuevamente la corrección.',
+        );
+      }
+
+      const estadosPermitidos = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
+      ];
+
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION o EXTEMPORANEA.`,
         );
       }
 
@@ -1943,10 +1946,13 @@ export class TravelExpensesService {
         consulta_rut_facturador: dto.consultaRutFacturador ?? false,
       });
 
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
-        estadoAnterior: solicitud.estadoSolicitud,
-        estadoNuevo: solicitud.estadoSolicitud,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.VERIFICADA,
         usuarioId: usuarioId,
         comentarios:
           comentarioChecklist.length > 255
@@ -2015,12 +2021,22 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
-      if (
-        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
-        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
-      ) {
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
         throw new BadRequestException(
-          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+          'La comisión ya se encuentra devuelta al enlace de dependencia.',
+        );
+      }
+
+      const estadosPermitidosDevolucion = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
+        EstadoSolicitud.VERIFICADA,
+      ];
+
+      if (!estadosPermitidosDevolucion.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, EXTEMPORANEA o VERIFICADA.`,
         );
       }
 
@@ -2080,15 +2096,22 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
+        throw new BadRequestException(
+          'La comisión se encuentra devuelta al enlace de dependencia y no puede exportarse a SIIF.',
+        );
+      }
+
       const estadosPermitidos = [
         EstadoSolicitud.SOLICITADO,
         EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
         EstadoSolicitud.VERIFICADA,
         EstadoSolicitud.SOLICITADA_SIIF,
       ];
       if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
         throw new BadRequestException(
-          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, VERIFICADA o SOLICITADA_SIIF.`,
+          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, EXTEMPORANEA, VERIFICADA o SOLICITADA_SIIF.`,
         );
       }
 

@@ -275,13 +275,17 @@ export default function ViaticosModulePremium() {
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
       const termino = busqueda.toLowerCase();
+      const esExt = Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA');
       const cumpleBusqueda =
         !termino ||
         sol.nombreComisionado.toLowerCase().includes(termino) ||
         sol.codigo.toLowerCase().includes(termino) ||
         sol.ciudadDestino.toLowerCase().includes(termino) ||
-        sol.dependencia.toLowerCase().includes(termino);
-      const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
+        sol.dependencia.toLowerCase().includes(termino) ||
+        (esExt && ('extemporanea'.includes(termino) || 'extemporánea'.includes(termino)));
+      const cumpleEstado =
+        filtroEstado === 'TODOS' ||
+        (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
       return cumpleBusqueda && cumpleEstado;
     })
     .sort(
@@ -693,11 +697,13 @@ export default function ViaticosModulePremium() {
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
                       { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+                      { value: 'EXTEMPORANEA', label: 'Extemporánea' },
                       { value: 'AUTORIZADA', label: 'Autorizada' },
                       { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
                       { value: 'VERIFICADA', label: 'Verificada' },
                       { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
+                      { value: 'DEVUELTA', label: 'Devuelta' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
                       { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
                       { value: 'EN_COMISION', label: 'En Comisión' },
@@ -739,8 +745,17 @@ export default function ViaticosModulePremium() {
                         solicitudesFiltradas.map((sol) => (
                           <tr key={sol.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono text-[10px] text-slate-400 tracking-wide">{sol.codigo}</span>
+                                {Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA') && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300"
+                                    title="Comisión Extemporánea (menos de 14 días hábiles de anticipación)"
+                                  >
+                                    <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                    Extemporánea
+                                  </span>
+                                )}
                                 {authService.isSuperAdmin() && sol.esCreadoPorMi && (
                                   <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
                                     <UserCheck className="w-3 h-3" />
@@ -783,6 +798,15 @@ export default function ViaticosModulePremium() {
                               <div className="flex flex-col gap-1 items-start">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {getBadgeEstado(sol.estado)}
+                                  {Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA') && sol.estado !== 'EXTEMPORANEA' && (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                                      title="Comisión Extemporánea (conserva condición para Dirección Nacional)"
+                                    >
+                                      <Clock className="w-2.5 h-2.5 text-amber-600" />
+                                      Extemporánea
+                                    </span>
+                                  )}
                                   {sol.radicadoFueraJornada && (
                                     <span className="inline-flex items-center text-amber-600" title="Radicado fuera de jornada">
                                       <AlertCircle className="w-3.5 h-3.5" />

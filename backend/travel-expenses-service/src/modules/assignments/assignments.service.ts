@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { AnalistaEntity } from '../../entities/analista.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
@@ -316,11 +316,21 @@ export class AssignmentsService {
       throw new BadRequestException('analistaId es obligatorio.');
     }
 
+    const estados = [
+      EstadoSolicitud.SOLICITADO,
+      EstadoSolicitud.EN_VERIFICACION,
+      EstadoSolicitud.EXTEMPORANEA,
+      EstadoSolicitud.VERIFICADA,
+      EstadoSolicitud.SOLICITADA_SIIF,
+      EstadoSolicitud.DEVUELTA,
+    ];
+
     return this.dataSource.getRepository(SolicitudComisionEntity).find({
       where: {
         analistaAsignadoId: analistaId,
-        estadoSolicitud: this.ESTADOS_ACTIVOS as any,
+        estadoSolicitud: In(estados),
       },
+      relations: ['comisionado', 'documentosSoporte'],
       order: { creadoEn: 'DESC' },
     });
   }

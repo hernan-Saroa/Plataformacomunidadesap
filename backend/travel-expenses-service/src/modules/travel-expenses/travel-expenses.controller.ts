@@ -130,15 +130,16 @@ export class TravelExpensesController {
       normalizedPermissions.includes('travel_expenses:view_assigned_requests');
 
     const isSecretario =
-      normalizedRoles.some(
+      !isAnalista &&
+      (normalizedRoles.some(
         (r) =>
           r === 'SECRETARIO' ||
           r === 'SECRETARIO_VIATICOS' ||
           r === 'SUPERVISOR',
       ) ||
-      normalizedPermissions.includes('travel_expenses:assign_analyst') ||
-      normalizedPermissions.includes('travel_expenses:set_priority') ||
-      normalizedPermissions.includes('travel_expenses:read_inbox');
+        normalizedPermissions.includes('travel_expenses:assign_analyst') ||
+        normalizedPermissions.includes('travel_expenses:set_priority') ||
+        normalizedPermissions.includes('travel_expenses:read_inbox'));
 
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);

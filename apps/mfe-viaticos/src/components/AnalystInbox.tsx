@@ -55,7 +55,7 @@ const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
   'LEGALIZADO',
 ]);
 
-export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'DEVOLUCIONES';
+export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
 
 export default function AnalystInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudListaResponse[]>([]);
@@ -112,27 +112,44 @@ export default function AnalystInbox() {
   }, [dependencias]);
 
   // Clasificación por categorías / tabs
-  const { devueltas, pendientes } = useMemo(() => {
+  const { devueltas, pendientes, extemporaneas } = useMemo(() => {
     const devList: SolicitudListaResponse[] = [];
     const pendList: SolicitudListaResponse[] = [];
+    const extList: SolicitudListaResponse[] = [];
 
     solicitudes.forEach((s) => {
       const est = (s.estadoSolicitud || '').toUpperCase();
       if (ESTADOS_EXCLUIDOS_ANALISTA.has(est)) return;
 
+      const esExtemporanea = Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA');
+      if (esExtemporanea) {
+        extList.push(s);
+      }
+
       const esDevuelta =
         s.estadoSolicitud === 'DEVUELTA' ||
         Boolean(s.motivoDevolucion && s.motivoDevolucion.trim().length > 0) ||
-        Boolean((s as any).observacionesSegundaRevision && String((s as any).observacionesSegundaRevision).trim().length > 0);
+        Boolean(
+          (s as any).observacionesSegundaRevision &&
+            String((s as any).observacionesSegundaRevision).trim().length > 0,
+        );
 
       if (esDevuelta) {
         devList.push(s);
-      } else if (['SOLICITADO', 'EN_VERIFICACION'].includes(s.estadoSolicitud)) {
+      } else if (
+        [
+          'SOLICITADO',
+          'EN_VERIFICACION',
+          'EXTEMPORANEA',
+          'VERIFICADA',
+          'SOLICITADA_SIIF',
+        ].includes(s.estadoSolicitud)
+      ) {
         pendList.push(s);
       }
     });
 
-    return { devueltas: devList, pendientes: pendList };
+    return { devueltas: devList, pendientes: pendList, extemporaneas: extList };
   }, [solicitudes]);
 
   const solicitudesPorTab = useMemo(() => {
@@ -140,15 +157,21 @@ export default function AnalystInbox() {
       (s) => !ESTADOS_EXCLUIDOS_ANALISTA.has((s.estadoSolicitud || '').toUpperCase()),
     );
     if (tabActual === 'DEVOLUCIONES') return devueltas;
+    if (tabActual === 'EXTEMPORANEAS') return extemporaneas;
     if (tabActual === 'PENDIENTES') return pendientes;
     return base;
-  }, [tabActual, solicitudes, devueltas, pendientes]);
+  }, [tabActual, solicitudes, devueltas, pendientes, extemporaneas]);
 
   const solicitudesFiltradas = useMemo(() => {
     const termino = busqueda.toLowerCase().trim();
     if (!termino) return solicitudesPorTab;
     return solicitudesPorTab.filter((s) => {
+      const esExt = Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA');
+      const coincideExtemporanea =
+        esExt && ('extemporanea'.includes(termino) || 'extemporánea'.includes(termino));
+
       return (
+        coincideExtemporanea ||
         s.consecutivoUnico.toLowerCase().includes(termino) ||
         (s.comisionado?.primerNombre?.toLowerCase().includes(termino) ?? false) ||
         (s.comisionado?.primerApellido?.toLowerCase().includes(termino) ?? false) ||
@@ -313,6 +336,28 @@ export default function AnalystInbox() {
 
         <button
           type="button"
+          onClick={() => setTabActual('EXTEMPORANEAS')}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            tabActual === 'EXTEMPORANEAS'
+              ? 'border-amber-500 text-amber-800'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Clock className="w-3.5 h-3.5 text-amber-600" />
+          <span>Extemporáneas</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              tabActual === 'EXTEMPORANEAS'
+                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {extemporaneas.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setTabActual('DEVOLUCIONES')}
           className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
             tabActual === 'DEVOLUCIONES'
@@ -354,11 +399,19 @@ export default function AnalystInbox() {
       ) : solicitudesFiltradas.length === 0 ? (
         <div className="py-10 text-center">
           <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
-            {tabActual === 'DEVOLUCIONES' ? <RotateCcw className="w-5 h-5" /> : <Inbox className="w-5 h-5" />}
+            {tabActual === 'DEVOLUCIONES' ? (
+              <RotateCcw className="w-5 h-5" />
+            ) : tabActual === 'EXTEMPORANEAS' ? (
+              <Clock className="w-5 h-5 text-amber-500" />
+            ) : (
+              <Inbox className="w-5 h-5" />
+            )}
           </div>
           <p className="text-xs text-slate-500 font-medium">
             {tabActual === 'DEVOLUCIONES'
               ? 'No hay comisiones devueltas ni observaciones pendientes de subsanar.'
+              : tabActual === 'EXTEMPORANEAS'
+              ? 'No tienes comisiones extemporáneas asignadas en este momento.'
               : tabActual === 'PENDIENTES'
               ? 'No hay solicitudes pendientes de verificación inicial.'
               : 'No tienes solicitudes asignadas en este momento.'}
@@ -394,9 +447,18 @@ export default function AnalystInbox() {
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-rose-50/30 transition-colors">
                     <td className="py-3 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                         <span>{s.consecutivoUnico}</span>
+                        {Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA') && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300"
+                            title="Comisión Extemporánea (menos de 14 días hábiles de anticipación)"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-700" />
+                            Extemporánea
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
@@ -438,15 +500,27 @@ export default function AnalystInbox() {
                       {fechaDev ? new Date(fechaDev).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleIniciarAuditoria(s)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-[11px] font-semibold shadow-xs"
-                        title="Subsanar observaciones y verificar soportes"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Subsanar / Auditar</span>
-                      </button>
+                      {s.estadoSolicitud === 'DEVUELTA' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleIniciarAuditoria(s)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
+                          title="Comisión devuelta al enlace de dependencia. En espera de subsanación y reenvío por el enlace."
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Consultar Devolución</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleIniciarAuditoria(s)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-[11px] font-semibold shadow-xs"
+                          title="Devuelta por Control Viáticos al analista para subsanar observaciones"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Subsanar / Auditar</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -455,7 +529,7 @@ export default function AnalystInbox() {
           </table>
         </div>
       ) : (
-        /* =================== Vista Estándar: Todas / Pendientes =================== */
+        /* =================== Vista Estándar: Todas / Pendientes / Extemporáneas =================== */
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-xs">
             <thead>
@@ -476,13 +550,27 @@ export default function AnalystInbox() {
                 const nombre = nombreComisionado(s);
                 const dep = dependenciaOrigen(s);
                 const esFacturador = esContratistaFacturador(s);
+                const esExt = Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA');
                 const tieneDevolucion =
                   s.estadoSolicitud === 'DEVUELTA' ||
                   Boolean(s.motivoDevolucion || (s as any).observacionesSegundaRevision);
 
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                    <td className="py-2 px-2 font-mono font-bold text-slate-800">{s.consecutivoUnico}</td>
+                    <td className="py-2 px-2 font-mono font-bold text-slate-800">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{s.consecutivoUnico}</span>
+                        {esExt && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300"
+                            title="Comisión Extemporánea (menos de 14 días hábiles de anticipación)"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-700" />
+                            Extemporánea
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-2 px-2 text-slate-700">
                       <div className="font-semibold text-slate-800">{nombre}</div>
                       <div className="flex items-center gap-1 mt-0.5">
@@ -511,9 +599,20 @@ export default function AnalystInbox() {
                     </td>
                     <td className="py-2 px-2">
                       <div className="flex flex-col gap-1 items-start">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${ec.bg} ${ec.text}`}>
-                          {ec.label}
-                        </span>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${ec.bg} ${ec.text}`}>
+                            {ec.label}
+                          </span>
+                          {esExt && s.estadoSolicitud !== 'EXTEMPORANEA' && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                              title="Conserva la condición de extemporánea para su posterior enrutamiento a Dirección Nacional"
+                            >
+                              <Clock className="w-2.5 h-2.5 text-amber-600" />
+                              Extemporánea
+                            </span>
+                          )}
+                        </div>
                         {tieneDevolucion && (
                           <span
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 max-w-[180px] truncate"
@@ -526,7 +625,17 @@ export default function AnalystInbox() {
                       </div>
                     </td>
                     <td className="py-2 px-2 text-center">
-                      {s.estadoSolicitud === 'SOLICITADA_SIIF' || s.estadoSolicitud === 'VERIFICADA' ? (
+                      {s.estadoSolicitud === 'DEVUELTA' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleIniciarAuditoria(s)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors text-[11px] font-semibold"
+                          title="Comisión devuelta al enlace de dependencia. Bloqueada para validación hasta que el enlace subsane y reenvíe."
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                          <span className="hidden sm:inline">Ver Devolución</span>
+                        </button>
+                      ) : s.estadoSolicitud === 'SOLICITADA_SIIF' || s.estadoSolicitud === 'VERIFICADA' ? (
                         <button
                           type="button"
                           onClick={() => handleIniciarAuditoria(s)}

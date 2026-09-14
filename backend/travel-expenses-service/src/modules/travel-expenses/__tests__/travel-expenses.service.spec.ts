@@ -1572,10 +1572,13 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       expect(solicitudRepo.find).toHaveBeenCalledWith({
         where: {
+          analistaAsignadoId: 'analista-001',
           estadoSolicitud: In([
             EstadoSolicitud.SOLICITADO,
             EstadoSolicitud.EN_VERIFICACION,
+            EstadoSolicitud.EXTEMPORANEA,
             EstadoSolicitud.VERIFICADA,
+            EstadoSolicitud.SOLICITADA_SIIF,
             EstadoSolicitud.DEVUELTA,
           ]),
         },
@@ -1682,10 +1685,84 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       );
 
       expect(result.consultaRutFacturador).toBe(true);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-001',
+          estadoNuevo: EstadoSolicitud.VERIFICADA,
           comentarios: expect.stringContaining('VERIFICACION_ANALISTA'),
+        }),
+      );
+    });
+
+    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a VERIFICADA', async () => {
+      const solicitud = {
+        id: 'sol-ext-001',
+        consecutivoUnico: 'COM-2026-0012',
+        estadoSolicitud: EstadoSolicitud.EXTEMPORANEA,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+        extemporanea: true,
+        consultaRutFacturador: false,
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-002' }),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockImplementation((entity: any) => {
+              const nombre = entity?.name || entity?.constructor?.name || '';
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
+              return {};
+            }),
+          };
+          return cb(manager);
+        }),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.verificarAuditoria(
+        'sol-ext-001',
+        'analista-001',
+        ['ANALISTA'],
+        { seguridadSocialVigente: true, consultaRutFacturador: false },
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(historialRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          solicitudId: 'sol-ext-001',
+          estadoAnterior: EstadoSolicitud.EXTEMPORANEA,
+          estadoNuevo: EstadoSolicitud.VERIFICADA,
         }),
       );
     });
@@ -1777,6 +1854,51 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         ),
       ).rejects.toThrow(
         'Estado no valido para verificacion: APROBADO_JEFE',
+      );
+    });
+
+    it('debe lanzar BadRequestException cuando la solicitud esta DEVUELTA al enlace', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        estadoSolicitud: EstadoSolicitud.DEVUELTA,
+        comisionadoId: 'com-001',
+        creadoPorUsuarioId: 'user-creador-1',
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue(solicitudRepo),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.verificarAuditoria(
+          'sol-001',
+          'analista-001',
+          ['ANALISTA'],
+          {} as VerifyAuditDto,
+        ),
+      ).rejects.toThrow(
+        'La comisión se encuentra DEVUELTA al enlace de dependencia. No se puede verificar hasta que el enlace subsane las observaciones y radique nuevamente la corrección.',
       );
     });
 

@@ -269,6 +269,8 @@ export default function VerificacionSIIFModal({
   const estaEnControlViaticos = solicitud?.estadoSolicitud === 'SOLICITADA_SIIF';
   const estaVerificada = solicitud?.estadoSolicitud === 'VERIFICADA';
   const estadoUpper = (solicitud?.estadoSolicitud || '').toUpperCase();
+  const esDevuelta = estadoUpper === 'DEVUELTA';
+  const esExtemporanea = Boolean(solicitud?.extemporanea || estadoUpper === 'EXTEMPORANEA');
   const estaAutorizada = [
     'AUTORIZADA',
     'RESOLUCION_EMITIDA',
@@ -277,7 +279,7 @@ export default function VerificacionSIIFModal({
     'PENDIENTE_LEGALIZACION',
     'LEGALIZADO',
   ].includes(estadoUpper);
-  const esSoloLectura = estaEnControlViaticos || estaVerificada || estaAutorizada;
+  const esSoloLectura = estaEnControlViaticos || estaVerificada || estaAutorizada || esDevuelta;
 
   const todosCheckMandatory =
     checkLiquidacion && checkSeguridadSocial && checkItinerario;
@@ -338,7 +340,7 @@ export default function VerificacionSIIFModal({
   };
 
   const handleRegistrarVerificacion = async () => {
-    if (!solicitud || !todosCheckMandatory) return;
+    if (!solicitud || !todosCheckMandatory || esDevuelta) return;
     setRegistrando(true);
     setRegistroError(null);
     try {
@@ -359,7 +361,7 @@ export default function VerificacionSIIFModal({
   };
 
   const handleDescargarCsv = async () => {
-    if (!solicitud) return;
+    if (!solicitud || esDevuelta) return;
     try {
       const blob = await viaticosService.exportarSIIF(solicitud.id);
       const url = URL.createObjectURL(blob);
@@ -381,7 +383,7 @@ export default function VerificacionSIIFModal({
   };
 
   const handleDevolverEnlace = async () => {
-    if (!solicitud) return;
+    if (!solicitud || esDevuelta) return;
     if (!motivoDevolucion.trim()) {
       setErrorDevolucion('El motivo de devolución es obligatorio.');
       return;
@@ -424,6 +426,28 @@ export default function VerificacionSIIFModal({
             </div>
           ) : (
             <>
+              {/* ==================== Banner Comisión Extemporánea ==================== */}
+              {esExtemporanea && (
+                <div className="mb-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl shadow-xs flex items-start gap-3">
+                  <div className="p-1.5 bg-amber-100 rounded-xl text-amber-700 shrink-0 mt-0.5">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white">
+                        Comisión Extemporánea
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-800">
+                        (Radicada con menos de 14 días hábiles de anticipación)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 mt-1 font-normal">
+                      Esta comisión conserva su identificación como extemporánea en todo el proceso. Una vez completada la verificación del analista y la segunda revisión de control de viáticos, el sistema la enrutará a la Dirección Nacional para autorización excepcional (RF-AUT-002).
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ==================== Banner Alerta de Devolución ==================== */}
               {(solicitud.estadoSolicitud === 'DEVUELTA' ||
                 (solicitud.estadoSolicitud === 'EN_VERIFICACION' &&
@@ -874,19 +898,21 @@ export default function VerificacionSIIFModal({
                   <button
                     type="button"
                     onClick={handleDescargarCsv}
-                    disabled={bloqueoFacturaActivo}
+                    disabled={bloqueoFacturaActivo || esDevuelta}
                     className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                      bloqueoFacturaActivo
+                      bloqueoFacturaActivo || esDevuelta
                         ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
                         : 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
                     }`}
                     title={
-                      bloqueoFacturaActivo
+                      esDevuelta
+                        ? 'Bloqueado: La comisión se encuentra DEVUELTA al enlace de dependencia'
+                        : bloqueoFacturaActivo
                         ? 'Bloqueado: Debe cargar la factura electrónica del contratista para continuar'
                         : undefined
                     }
                   >
-                    {bloqueoFacturaActivo ? (
+                    {bloqueoFacturaActivo || esDevuelta ? (
                       <Lock className="w-4 h-4" />
                     ) : (
                       <Download className="w-4 h-4" />
@@ -901,7 +927,9 @@ export default function VerificacionSIIFModal({
                   )}
                 </div>
                 <p className="mt-2 text-[10px] text-slate-400">
-                  {estaAutorizada
+                  {esDevuelta
+                    ? 'Comisión DEVUELTA al enlace de dependencia. La exportación a SIIF se encuentra bloqueada hasta que el enlace subsane y radique nuevamente.'
+                    : estaAutorizada
                     ? 'Comisión AUTORIZADA corporativamente. El archivo plano CSV se encuentra disponible para fines informativos y de consulta.'
                     : esSoloLectura
                     ? 'La solicitud ya fue exportada a SIIF Nación y transferida a Control Viáticos. Puede descargar una copia del archivo plano si lo requiere.'
@@ -1036,10 +1064,22 @@ export default function VerificacionSIIFModal({
 
                 <div className="mt-4 flex items-center justify-between">
                   {esSoloLectura ? (
-                    <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs font-semibold w-full">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div
+                      className={`flex items-center gap-2 p-3 border rounded-xl text-xs font-semibold w-full ${
+                        esDevuelta
+                          ? 'bg-rose-50 border-rose-200 text-rose-800'
+                          : 'bg-slate-50 border-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {esDevuelta ? (
+                        <RotateCcw className="w-4 h-4 text-rose-600 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
                       <span>
-                        {estaAutorizada
+                        {esDevuelta
+                          ? 'Comisión DEVUELTA al Enlace de Dependencia — El proceso está bloqueado hasta que el enlace subsane las observaciones, adjunte los soportes requeridos y vuelva a radicar la solicitud. No es posible registrar validación ni verificación en este estado.'
+                          : estaAutorizada
                           ? 'Comisión AUTORIZADA — Ha superado todas las etapas de verificación y cuenta con aprobación corporativa. Modo solo lectura.'
                           : estaVerificada
                           ? 'Auditoría y control cruzado completados — Comisión en estado VERIFICADA.'
