@@ -113,7 +113,8 @@ export class ProgramaAnualVersionesService {
 
   /**
    * Estado del programa para el banner: versión vigente, si hay un ajuste
-   * abierto y cuántos cambios hay sin versionar.
+   * abierto y cuántos cambios hay sin versionar. Modificar el programa activa el
+   * ajuste aunque nadie lo haya iniciado (EFDS-1919).
    */
   async obtenerEstado(vigencia: number) {
     const [ultima, filas, ajuste] = await Promise.all([
@@ -129,14 +130,14 @@ export class ProgramaAnualVersionesService {
         ? { version: ultima.version, fecha: ultima.createdAt, generadaPor: ultima.generadaPor, motivo: ultima.motivo ?? null }
         : null,
       enAjuste: ajuste ? { iniciadoPor: ajuste.iniciado_por, iniciadoEn: ajuste.iniciado_at } : null,
-      soloConsulta: Boolean(ultima) && !ajuste,
       cambiosPendientes,
     };
   }
 
   /**
-   * Habilita la edición del programa sobre la última versión vigente. La
-   * siguiente versión generada cierra el ajuste (EFDS-1919).
+   * Abre el ajuste sobre la última versión vigente: los cambios que se hagan dan
+   * origen a la siguiente versión, que lo cierra. La versión vigente no se toca
+   * (EFDS-1919).
    */
   async iniciarAjuste(vigencia: number, usuario: UsuarioVersion) {
     await this.dataSource.transaction(async (manager) => {

@@ -140,40 +140,6 @@ export class AuditoriasService {
   }
 
   /**
-   * Con una versión generada el Programa Anual queda en solo consulta hasta que
-   * se inicie un ajuste (EFDS-1919). La ampliación de plazo aprobada no pasa por
-   * aquí: es una reprogramación autorizada.
-   */
-  private async asegurarProgramaEditable(vigencias: Array<number | null | undefined>): Promise<void> {
-    const lista = [...new Set(vigencias.filter((v): v is number => Number.isInteger(v)))];
-    if (lista.length === 0) return;
-
-    let bloqueadas: Array<{ vigencia: number }> = [];
-    try {
-      bloqueadas = await this.auditoriaRepository.query(
-        `SELECT DISTINCT v.vigencia
-           FROM control_interno.version_programa_anual v
-          WHERE v.vigencia = ANY($1::int[])
-            AND NOT EXISTS (
-              SELECT 1 FROM control_interno.programa_anual_ajuste j
-               WHERE j.vigencia = v.vigencia AND j.cerrado_at IS NULL)`,
-        [lista],
-      );
-    } catch (error: any) {
-      // Sin las migraciones de versionamiento no hay versiones que proteger.
-      if (error?.code === '42P01') return;
-      throw error;
-    }
-
-    if (bloqueadas.length > 0) {
-      throw new BadRequestException(
-        `El Programa Anual ${bloqueadas[0].vigencia} tiene una versión vigente y está en solo consulta. ` +
-          'Para modificarlo, inicie un ajuste desde Programa de Auditoría.',
-      );
-    }
-  }
-
-  /**
    * Mapea id_tercero (bigint) a id_person (UUID) de auth.personas
    * Si ya viene id_person (UUID), se valida y se devuelve tal cual.
    * La migración 159 cambió las FKs de control_interno a usar id_person
@@ -1416,9 +1382,6 @@ export class AuditoriasService {
       throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
     }
 
-    // Agregar una auditoría modifica el Programa Anual de su vigencia (EFDS-1919).
-    await this.asegurarProgramaEditable([createDto.planAnualVigencia ?? Number(this.serializeDate(fechaInicio).slice(0, 4))]);
-
     // Generar código automático
     const equipoAuditorPersonaIds = await this.resolverEquipoAuditorIds(createDto.equipoAuditores);
     await this.asegurarDisponibilidadEquipoAuditorOrThrow(
@@ -1950,13 +1913,10 @@ export class AuditoriasService {
       auditoria.activa = updateDto.activa;
     }
 
-    // Lo que cambia en el documento del Programa Anual exige un ajuste abierto (EFDS-1919).
+    // Lo que cambia en el documento del Programa Anual queda detallado en el historial (EFDS-1919).
     const impresoDespues = this.datosImpresosPrograma(auditoria);
     const camposImpresosCambiados = (Object.keys(impresoAntes) as Array<keyof typeof impresoAntes>)
       .filter((campo) => impresoAntes[campo] !== impresoDespues[campo]);
-    if (camposImpresosCambiados.length > 0 && (impresoAntes.enPrograma || impresoDespues.enPrograma)) {
-      await this.asegurarProgramaEditable([impresoAntes.vigencia, impresoDespues.vigencia]);
-    }
 
     // Detectar cambios importantes antes de guardar
     const estadoAnterior = auditoria.estadoKanban || auditoria.fase;
@@ -2162,8 +2122,6 @@ export class AuditoriasService {
    */
   async delete(id: string): Promise<void> {
     const auditoria = await this.findOne(id);
-    const impreso = this.datosImpresosPrograma(auditoria);
-    if (impreso.enPrograma) await this.asegurarProgramaEditable([impreso.vigencia]);
     await this.auditoriaRepository.remove(auditoria);
   }
 

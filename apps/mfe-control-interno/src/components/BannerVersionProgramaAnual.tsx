@@ -1,9 +1,10 @@
 /**
  * Banner de versionamiento del Programa Anual de Auditoría (EFDS-1919 / EFDS-1639).
  *
- * Muestra la versión vigente y su estado. Una versión generada deja el programa
- * en solo consulta; para modificarlo se inicia un ajuste, y la siguiente versión
- * (desde este banner o al exportar) lo cierra.
+ * Muestra la versión vigente y su estado. Las versiones generadas son de solo
+ * consulta; el programa se sigue modificando, y cualquier modificación (o
+ * "Iniciar ajuste") abre el ajuste que la siguiente versión cierra, desde este
+ * banner o al exportar.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Clock, CheckCircle2, PencilLine, Download, History, X as XIcon } from 'lucide-react';
@@ -130,7 +131,7 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
     setProcesando(true);
     try {
       setEstado(await controlInternoService.iniciarAjusteProgramaAnual(vigencia));
-      toast.success('Ajuste iniciado: ya puede modificar la programación del Programa Anual');
+      toast.success('Ajuste iniciado: los cambios del programa darán origen a la siguiente versión');
     } catch (error: any) {
       toast.error('No se pudo iniciar el ajuste', { description: error?.message });
     } finally {
@@ -161,23 +162,26 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
   if (!estado) return null;
 
   const actual = estado.versionActual;
-  const vigente = Boolean(actual) && !estado.enAjuste;
-  const puedeGenerar = !actual || Boolean(estado.enAjuste) || estado.cambiosPendientes > 0;
+  // Modificar el programa activa el ajuste aunque nadie lo haya iniciado.
+  const enAjuste = Boolean(actual) && (Boolean(estado.enAjuste) || estado.cambiosPendientes > 0);
+  const vigente = Boolean(actual) && !enAjuste;
+  const puedeGenerar = !actual || enAjuste;
 
   const titulo = `Versión actual: ${etiquetaVersion(actual?.version ?? 1)}`;
   let etiqueta = 'Borrador';
   let detalle = 'Aún no se ha generado una versión formal · sin fecha de publicación';
-  if (actual && estado.enAjuste) {
+  if (actual && enAjuste) {
     etiqueta = 'En ajuste';
     detalle =
-      `Ajuste iniciado el ${fecha(estado.enAjuste.iniciadoEn)} por ${estado.enAjuste.iniciadoPor}` +
-      ` · ${estado.cambiosPendientes} cambio(s) sin versionar`;
+      (estado.enAjuste
+        ? `Ajuste iniciado el ${fecha(estado.enAjuste.iniciadoEn)} por ${estado.enAjuste.iniciadoPor}`
+        : 'Hay modificaciones del programa sin versionar') +
+      ` · ${estado.cambiosPendientes} cambio(s) sin versionar · borrador de la ${etiquetaVersion(actual.version + 1)}`;
   } else if (actual) {
-    etiqueta = 'Vigente · solo consulta';
+    etiqueta = 'Vigente';
     detalle =
       `Publicada el ${fecha(actual.fecha)} por ${actual.generadaPor}` +
-      (actual.motivo ? ` · Motivo: ${actual.motivo}` : '') +
-      (estado.cambiosPendientes > 0 ? ` · ${estado.cambiosPendientes} reprogramación(es) autorizada(s) sin versionar` : '');
+      (actual.motivo ? ` · Motivo: ${actual.motivo}` : '');
   }
 
   return (
