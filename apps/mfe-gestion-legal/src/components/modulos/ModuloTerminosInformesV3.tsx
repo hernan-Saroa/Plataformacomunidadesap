@@ -93,6 +93,33 @@ function formatearDiasRestantes(diasRestantes: number): { texto: string; color: 
   return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#10B981', bg: '#D1FAE5' };
 }
 
+/** Mapea un TerminoProcesal del backend a la forma que usa el frontend (SolicitudInforme). */
+function mapTerminoASolicitud(t: any): SolicitudInforme {
+  return {
+    id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
+    etapa: t.estado as any,
+    tipoInforme: t.origenModulo,
+    moduloOrigen: t.origenModulo, // Add this for filter compatibility
+    enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
+    destinatario: t.destinatario || '',
+    fundamentoNormativo: t.fundamentoNormativo || [],
+    radicadoExterno: t.numeroRadicado || 'N/A',
+    asunto: t.nombreActuacion,
+    descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '',
+
+    responsable: nombreLegible(t.responsableNombre) || nombreLegible(t.responsableId) || 'Sin asignar',
+    responsableId: t.responsableId || null, // Preserve UUID for filtering
+    fechaSolicitud: new Date(t.fechaBase),
+    fechaVencimiento: new Date(t.fechaVencimiento),
+    diasTotales: t.diasTermino,
+    diasRestantes: t.calculo?.diasRestantes ?? 0,
+    datosRequeridos: [],
+    horasAnticipacionAlertaPersonalizada: t.horasAnticipacionAlertaPersonalizada ?? null,
+    recordatorioManualHorasAnticipacion: t.recordatorioManualHorasAnticipacion ?? null,
+    metadata: { uuid: t.id, updatedAt: t.updatedAt }, // Store real UUID here
+  } as SolicitudInforme;
+}
+
 /** Agrupa solicitudes por período (mes-año de vencimiento) para "VistaLista". */
 function agruparPorPeriodo(solicitudes: SolicitudInforme[]): Array<{ clave: string; etiqueta: string; items: SolicitudInforme[] }> {
   const grupos: Record<string, SolicitudInforme[]> = {};
@@ -146,6 +173,7 @@ export function ModuloTerminosInformesV3() {
   const [formatoExportar, setFormatoExportar] = useState<'pdf' | 'excel'>('pdf');
 
   const [loading, setLoading] = useState(true);
+  const [terminosEliminados, setTerminosEliminados] = useState<SolicitudInforme[]>([]);
 
   // NOTA: Las notificaciones de términos urgentes/críticos se manejan
   // ahora centralmente en GestionLegalFull para mayor consistencia
@@ -179,13 +207,36 @@ export function ModuloTerminosInformesV3() {
       }));
   }, [solicitudes]);
 
-  // ✅ Función para restaurar una solicitud archivada
-  // `itemId` ya es el UUID real de backend (ver itemsArchivados), no el radicado visible.
+  // ✅ Items eliminados (soft delete) para la pestaña "Eliminados" de Archivados.
+  const itemsEliminados = useMemo(() => {
+    return terminosEliminados.map(s => ({
+      id: s.metadata?.uuid || s.id,
+      codigo: s.id,
+      nombre: s.asunto || 'Sin título',
+      tipo: s.tipoInforme || 'Término',
+      estado: 'ELIMINADO' as const,
+      fechaArchivado: s.metadata?.updatedAt ? new Date(s.metadata.updatedAt) : new Date(),
+      usuarioArchivo: s.responsable || 'Sistema',
+      motivoArchivo: s.descripcion || 'Término eliminado desde el Timeline de Vencimientos.',
+      metadatos: {
+        'Módulo': s.moduloOrigen || 'N/A',
+        'Responsable': s.responsable,
+      }
+    }));
+  }, [terminosEliminados]);
+
+  const itemsArchivadosYEliminados = useMemo(
+    () => [...itemsArchivados, ...itemsEliminados],
+    [itemsArchivados, itemsEliminados]
+  );
+
+  // ✅ Función para restaurar una solicitud archivada o eliminada
+  // `itemId` ya es el UUID real de backend (ver itemsArchivados/itemsEliminados), no el radicado visible.
   const handleRestaurar = async (itemId: string) => {
     try {
       await legalService.updateTermino(itemId, { estado: 'PENDIENTE', closedAt: null });
       toast.success('Término restaurado exitosamente');
-      await fetchData();
+      await Promise.all([fetchData(), fetchEliminados()]);
     } catch (e) {
       toast.error('Error al restaurar término');
     }
@@ -204,11 +255,14 @@ export function ModuloTerminosInformesV3() {
       // `id` ya es el UUID real de backend, asignado en el momento del clic (ver handleEliminar,
       // VistaTimeline/VistaLista y ModalDetalleSolicitudInforme). No se vuelve a buscar por el id
       // visible (radicado), que puede repetirse entre varios términos del mismo expediente.
-      await legalService.eliminarTermino(id);
+      // Un delete "normal" (papelera del Timeline) es soft delete: el término pasa a la
+      // pestaña "Eliminados" de Archivados en vez de borrarse de una vez. Solo "Eliminar
+      // Permanentemente" desde esa pestaña hace un borrado real e irreversible.
+      await legalService.eliminarTermino(id, permanente);
       toast.success(permanente ? 'Término eliminado permanentemente' : 'Término eliminado');
       setModalDetalleOpen(false);
       setModalEliminarOpen(false);
-      await fetchData();
+      await Promise.all([fetchData(), fetchEliminados()]);
     } catch (e) {
       toast.error('Error al eliminar término');
     }
@@ -222,29 +276,7 @@ export function ModuloTerminosInformesV3() {
       setLoading(true);
       const data = await legalService.getTerminosListado();
       // Map backend TerminoProcesal to frontend SolicitudInforme
-      const mapped: SolicitudInforme[] = data.map((t: any) => ({
-        id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
-        etapa: t.estado as any,
-        tipoInforme: t.origenModulo,
-        moduloOrigen: t.origenModulo, // Add this for filter compatibility
-        enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
-        destinatario: t.destinatario || '',
-        fundamentoNormativo: t.fundamentoNormativo || [],
-        radicadoExterno: t.numeroRadicado || 'N/A',
-        asunto: t.nombreActuacion,
-        descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
-
-        responsable: nombreLegible(t.responsableNombre) || nombreLegible(t.responsableId) || 'Sin asignar',
-        responsableId: t.responsableId || null, // Preserve UUID for filtering
-        fechaSolicitud: new Date(t.fechaBase),
-        fechaVencimiento: new Date(t.fechaVencimiento),
-        diasTotales: t.diasTermino,
-        diasRestantes: t.calculo?.diasRestantes ?? 0,
-        datosRequeridos: [],
-        horasAnticipacionAlertaPersonalizada: t.horasAnticipacionAlertaPersonalizada ?? null,
-        recordatorioManualHorasAnticipacion: t.recordatorioManualHorasAnticipacion ?? null,
-        metadata: { uuid: t.id } // Store real UUID here
-      }));
+      const mapped: SolicitudInforme[] = data.map(mapTerminoASolicitud);
 
       // ✅ Filtrado por rol RESUELVE_GESTION_LEGAL
       const currentUser = authService.getCurrentUser() as any;
@@ -304,9 +336,21 @@ export function ModuloTerminosInformesV3() {
     }
   };
 
+  // Términos eliminados (soft delete), para la pestaña "Eliminados" de Archivados.
+  // El listado principal excluye ELIMINADO por defecto, así que se piden aparte.
+  const fetchEliminados = async () => {
+    try {
+      const data = await legalService.getTerminosListado(undefined, 'ELIMINADO');
+      setTerminosEliminados(data.map(mapTerminoASolicitud));
+    } catch (error) {
+      console.error('Error fetching términos eliminados:', error);
+    }
+  };
+
 
   useEffect(() => {
     fetchData();
+    fetchEliminados();
   }, []);
 
   // NOTA: La generación de notificaciones para términos urgentes/críticos
@@ -753,7 +797,7 @@ export function ModuloTerminosInformesV3() {
       {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={canModifyTerminos ? handleArchivar : undefined} onEliminar={canModifyTerminos ? handleEliminar : undefined} />}
       {vistaActual === 'archivados' && (
         <VistaArchivados
-          items={itemsArchivados}
+          items={itemsArchivadosYEliminados}
           moduloNombre="Términos e Informes"
           onRestaurar={canModifyTerminos ? handleRestaurar : undefined}
           onEliminarPermanente={canModifyTerminos ? handleEliminarPermanente : undefined}
@@ -804,7 +848,9 @@ export function ModuloTerminosInformesV3() {
                 <div>
                   <h3 className="font-bold text-gray-900">Eliminar Término</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    ¿Confirma que desea eliminar este término? Esta acción no se puede deshacer.
+                    {terminoAEliminar?.permanente
+                      ? '¿Confirma que desea eliminar este término? Esta acción no se puede deshacer.'
+                      : '¿Confirma que desea eliminar este término? Pasará a "Archivados > Eliminados", donde podrá restaurarlo o eliminarlo de forma permanente.'}
                   </p>
                 </div>
               </div>
