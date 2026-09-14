@@ -28,6 +28,8 @@ import { ProcessService } from '../services/process.service';
 import { StorageService } from '../services/storage.service';
 import { AutoService } from '../services/auto.service';
 import * as fs from 'fs';
+import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
+import { buildEmailButton } from '../common/email-button.util';
 import * as path from 'path';
 
 @UseGuards(JwtAuthGuard)
@@ -45,18 +47,8 @@ export class CompartirExpedienteController {
    * Obtener la URL base del frontend desde los headers
    * Sigue el mismo patrón que graduation-certificates.controller
    */
-  private getFrontendBaseUrl(req: ExpressRequest): string | undefined {
-    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-    return frontendBaseUrl;
+  private getFrontendBaseUrl(req?: ExpressRequest): string {
+    return resolveFrontendBaseUrl();
   }
 
   /**
@@ -77,8 +69,7 @@ export class CompartirExpedienteController {
     // Determinar la URL base del frontend:
     // 1. Primero: usar la URL proporcionada directamente por el cliente (prioridad más alta)
     // 2. Segundo: intentar obtener desde los headers (origin/referer)
-    // 3. Tercero: usar variables de entorno del backend
-    const frontendBaseUrl = dto.frontendBaseUrl || this.getFrontendBaseUrl(expressReq);
+    const frontendBaseUrl = resolveFrontendBaseUrl(dto.frontendBaseUrl);
     const urlExpediente = this.compartirService.generarUrlPublica(compartido.tokenAcceso, frontendBaseUrl);
 
     // Si es tipo EMAIL, enviar el correo con el enlace
@@ -89,21 +80,18 @@ export class CompartirExpedienteController {
 
         // Construir contenido HTML del correo
         const emailHtml = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #2962FF;">📋 Expediente Compartido - Control Disciplinario ESAP</h2>
-            <p>Se ha compartido un expediente disciplinario con usted.</p>
-            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
-              <p><strong>Enlace de acceso:</strong></p>
-              <a href="${urlExpediente}" style="color: #2962FF; font-size: 16px;">${urlExpediente}</a>
-            </div>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #dde3ed; border-radius: 8px; padding: 24px;">
+            <h2 style="color: #003DA5; margin-top: 0;">📋 Expediente Compartido - Control Disciplinario ESAP</h2>
+            <p style="color: #374151; font-size: 14px;">Se ha compartido un expediente disciplinario con usted.</p>
+            ${buildEmailButton(urlExpediente, 'Acceder al Expediente')}
             ${dto.requiereClave && dto.clave ? `
-              <p><strong>Clave de acceso:</strong> ${dto.clave}</p>
+              <p style="margin-top: 16px;"><strong>Clave de acceso:</strong> <code style="background: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 14px;">${dto.clave}</code></p>
             ` : ''}
             ${dto.mensajeAdicional ? `
               <p><strong>Mensaje adicional:</strong></p>
-              <p>${dto.mensajeAdicional}</p>
+              <p style="color: #4b5563;">${dto.mensajeAdicional}</p>
             ` : ''}
-            <p style="color: #666; font-size: 12px; margin-top: 30px;">
+            <p style="color: #666; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
               Este enlace fue generado por el Sistema de Gestión Integral de la ESAP.
               ${compartido.tiempoExpiracionHoras ? ` | Expira en ${compartido.tiempoExpiracionHoras} horas.` : ''}
             </p>
