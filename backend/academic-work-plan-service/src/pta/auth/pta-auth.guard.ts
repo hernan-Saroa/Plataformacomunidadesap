@@ -65,10 +65,10 @@ export class PtaAuthGuard implements CanActivate {
       throw new UnauthorizedException('Sesión inválida o expirada.');
     }
 
-    const roles = Array.isArray(payload?.roles) ? payload.roles : [];
     const userId = payload?.sub ? String(payload.sub) : null;
+    if (!userId) throw new UnauthorizedException('La sesión no identifica una cuenta válida.');
     const [ctx, territorialIds] = await Promise.all([
-      this.ptaPermissions.resolveForRoles(roles),
+      this.ptaPermissions.resolveForUser(userId),
       this.ptaPermissions.resolveTerritorialIdsForUser(userId),
     ]);
 
@@ -76,7 +76,6 @@ export class PtaAuthGuard implements CanActivate {
       userId,
       name: payload?.name ? String(payload.name) : null,
       email: payload?.email ? String(payload.email) : null,
-      roles: roles.map((r: unknown) => String(r || '')).filter(Boolean),
       territorialIds,
       ...ctx,
     };

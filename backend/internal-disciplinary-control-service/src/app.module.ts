@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { resolve } from 'path';
@@ -107,6 +107,7 @@ import { NotificationClientService } from './services/notification-client.servic
 import { RolesGuard } from './auth/roles.guard';
 import { PermissionsService } from './auth/services/permissions.service';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { frontendContextMiddleware } from './common/url-resolver.util';
 
 @Module({
   imports: [
@@ -217,4 +218,8 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     PermissionsGuard,
   ],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(frontendContextMiddleware).forRoutes('*');
+  }
+}

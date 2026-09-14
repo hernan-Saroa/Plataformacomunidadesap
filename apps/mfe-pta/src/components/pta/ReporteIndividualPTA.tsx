@@ -12,6 +12,7 @@
  */
 
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { motion } from 'motion/react';
 import {
   FileText, Download, ChevronLeft, CheckCircle2, X,
@@ -144,7 +145,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       })
       .catch(() => { /* si no está disponible, se muestran como pendientes */ });
     return () => { cancelled = true; };
-  }, [pta?.id]);
+  }, [pta]);
 
   if (!pta) return null;
 
@@ -253,7 +254,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           : (en === 'Pendiente Gestión Profesoral' || en === 'Pendiente Gestion Profesoral') ? 'N2 — Decanatura'
           : (en === 'Aprobado DEF' || en === 'Aprobado') ? 'N3 — Gestión Profesoral'
           : en,
-        aprobador: getField(h, 'actorRol', 'actor_rol') || getField(h, 'actorId', 'actor') || 'N/A',
+        aprobador: getPtaHistoryActorLabel(h, pta),
         fecha: fecha ? new Date(fecha).toLocaleDateString('es-CO') : 'N/A',
         observaciones: getField(h, 'comentarios', 'observaciones') || 'Sin observaciones',
         aprobado: true,

@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { ExpedienteCompartido, TipoCompartido, EstadoCompartido } from '../entities/expediente-compartido.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { CrearCompartidoDto, AccederCompartidoDto } from '../dtos/compartir-expediente.dto';
+import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 
 @Injectable()
 export class CompartirExpedienteService {
@@ -210,12 +211,7 @@ export class CompartirExpedienteService {
     }
 
     // Usar la URL base proporcionada o detectar automáticamente
-    const baseUrl = frontendBaseUrl ||
-      process.env.PUBLIC_APP_URL ||
-      process.env.PUBLIC_FRONTEND_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.FRONTEND_BASE_URL ||
-      'https://esap.edu.co';
+    const baseUrl = resolveFrontendBaseUrl(frontendBaseUrl);
 
     // Retornar información pública del proceso
     return {
@@ -264,20 +260,7 @@ export class CompartirExpedienteService {
    * Permite pasar frontendBaseUrl como parámetro o usar variables de entorno
    */
   generarUrlPublica(token: string, frontendBaseUrl?: string): string {
-    // El orden de prioridad es:
-    // 1. frontendBaseUrl pasado como parámetro (del header x-forwarded-host o similar)
-    // 2. PUBLIC_APP_URL (variable de entorno custom)
-    // 3. PUBLIC_FRONTEND_URL (variable de entorno estándar)
-    // 4. FRONTEND_URL (variable de entorno alternativa)
-    // 5. FRONTEND_BASE_URL (variable de entorno alternativa)
-    // 6. Fallback: https://esap.edu.co
-    const baseUrl =
-      frontendBaseUrl ||
-      process.env.PUBLIC_APP_URL ||
-      process.env.PUBLIC_FRONTEND_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.FRONTEND_BASE_URL ||
-      'https://esap.edu.co';
+    const baseUrl = resolveFrontendBaseUrl(frontendBaseUrl);
     return `${baseUrl}/expediente-compartido/${token}`;
   }
 

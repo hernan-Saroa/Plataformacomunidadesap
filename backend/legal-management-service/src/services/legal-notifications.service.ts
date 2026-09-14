@@ -105,6 +105,18 @@ function buildTerminoVencimientoEmailHtml(nombreActuacion: string, radicado: str
   `;
 }
 
+/**
+ * Valida que un string tenga forma de correo electrónico. `getUserDetailsById`/`getUsersDetailsByRole`
+ * resuelven "email" como `COALESCE(dir_email, username)` — si `dir_email` está vacío (registros
+ * legacy/migrados en lote), el valor que llega aquí puede ser en realidad el `username` (un texto
+ * libre sin garantía de ser un correo real, p. ej. "jperez"). Sin esta validación, ese valor se
+ * enviaba igual a `sendEmail`, fallaba en el SMTP, y el error quedaba atrapado en un try/catch sin
+ * ninguna señal clara de qué pasó — indistinguible de un simple problema de configuración de correo.
+ */
+function esCorreoValido(valor: string | null | undefined): valor is string {
+  return !!valor && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+}
+
 /** Escapa caracteres HTML especiales en texto de usuario (nombreActuacion, radicado, periodicidad) antes de interpolarlo en el correo. */
 function escapeHtml(texto: string): string {
   return texto
@@ -971,7 +983,7 @@ export class LegalNotificationsService {
     try {
       await this.notificationClient.notifyUserById(params.responsableId, dto);
       const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
-      if (detail?.email) {
+      if (esCorreoValido(detail?.email)) {
         const emailSubject = `Término ${accion} — ${params.numeroRadicado || params.nombreActuacion}`;
         const emailHtml = buildTerminoAsignacionEmailHtml({
           nombreActuacion: params.nombreActuacion,
@@ -983,6 +995,14 @@ export class LegalNotificationsService {
           url,
         });
         await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      } else if (detail?.email) {
+        // Hay un valor en "email" pero no tiene forma de correo — casi seguro es el fallback a
+        // `username` porque `dir_email` está vacío en auth.personas para este usuario.
+        this.logger.warn(
+          `Responsable ${params.responsableId} del término ${params.terminoId}: el valor resuelto como correo ("${detail.email}") no tiene formato de email válido (probable dir_email vacío en auth.personas, usando username como fallback) — no se envía el correo de asignación.`,
+        );
+      } else {
+        this.logger.warn(`Responsable ${params.responsableId} del término ${params.terminoId} no tiene ningún correo registrado — no se envía el correo de asignación.`);
       }
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar asignación de responsable del término ${params.terminoId}: ${err?.message}`);
@@ -1059,10 +1079,16 @@ export class LegalNotificationsService {
         await this.notificationClient.notifyUserById(params.responsableId, dto);
         try {
           const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
-          if (detail?.email) {
+          if (esCorreoValido(detail?.email)) {
             const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
             const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
             await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+          } else if (detail?.email) {
+            this.logger.warn(
+              `Responsable ${params.responsableId} del término ${params.terminoId}: el valor resuelto como correo ("${detail.email}") no tiene formato de email válido (probable dir_email vacío en auth.personas) — no se envía el correo de vencimiento.`,
+            );
+          } else {
+            this.logger.warn(`Responsable ${params.responsableId} del término ${params.terminoId} no tiene ningún correo registrado — no se envía el correo de vencimiento.`);
           }
         } catch (emailErr: any) {
           this.logger.warn(`In-app entregado, pero falló el correo de vencimiento del término ${params.terminoId}: ${emailErr?.message}`);

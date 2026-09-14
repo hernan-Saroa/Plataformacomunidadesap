@@ -18,6 +18,8 @@ import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
 import { NotificationClientService } from './notification-client.service';
 import { TerminosCalculatorService } from './terminos-calculator.service';
+import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
+import { buildEmailButton } from '../common/email-button.util';
 
 interface FileData {
   buffer: Buffer;
@@ -1398,13 +1400,7 @@ export class NewsService {
   }
 
   private getFrontendBaseUrl(): string {
-    return (
-      process.env.PUBLIC_APP_URL ||
-      process.env.PUBLIC_FRONTEND_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.FRONTEND_BASE_URL ||
-      'http://localhost:3000'
-    ).replace(/\/$/, '');
+    return resolveFrontendBaseUrl();
   }
 
   private buildEmailTemplateNoticiaESAP(
@@ -1471,23 +1467,7 @@ export class NewsService {
 
                 ${seccionAcciones}
 
-                <div style="text-align: center; margin-top: 26px;">
-                  <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
-                    <tr>
-                      <td align="center" style="border-radius: 6px; background-color: #003DA5;">
-                        <a href="${finalUrlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
-                          <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
-                            ${textoBoton} &rarr;
-                          </span>
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-                  <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
-                    Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
-                    <a href="${finalUrlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${finalUrlAcceso}</a>
-                  </p>
-                </div>
+                ${buildEmailButton(finalUrlAcceso, textoBoton)}
               </td>
             </tr>
             <tr>

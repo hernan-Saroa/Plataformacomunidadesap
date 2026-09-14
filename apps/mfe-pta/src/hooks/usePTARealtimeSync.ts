@@ -39,6 +39,8 @@ export interface UsePTARealtimeSyncOptions {
   docenteId?: string;
   /** Callback when new data is detected */
   onDataChanged?: (events: PTASyncEvent[]) => void;
+  /** Refresh visible server data even when a partial decision emitted no event. */
+  onRefresh?: () => void | Promise<unknown>;
   /** Whether sync is enabled */
   enabled?: boolean;
 }
@@ -72,6 +74,7 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
     interval = 10000,
     docenteId,
     onDataChanged,
+    onRefresh,
     enabled = true,
   } = options;
 
@@ -82,23 +85,20 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
   const [secondsSinceLastSync, setSecondsSinceLastSync] = useState(0);
   const [isPolling, setIsPolling] = useState(false);
 
-  const counterRef = useRef(0);
+  const counterRef = useRef<number | null>(null);
   const lastEventTimestampRef = useRef<string>('');
-  const pollIntervalRef = useRef<any>(null);
   const tickIntervalRef = useRef<any>(null);
   const onDataChangedRef = useRef(onDataChanged);
+  const onRefreshRef = useRef(onRefresh);
   const abortControllerRef = useRef<AbortController | null>(null);
   const consecutiveFailuresRef = useRef(0);
   const mountedRef = useRef(true);
   onDataChangedRef.current = onDataChanged;
+  onRefreshRef.current = onRefresh;
 
   const checkForUpdates = useCallback(async () => {
-    if (!enabled || !mountedRef.current) return;
-
-    // Abort any in-flight request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (!enabled || !mountedRef.current || document.visibilityState === 'hidden' || navigator.onLine === false) return;
+    if (abortControllerRef.current) return;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -115,9 +115,11 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
         setLastSyncTime(new Date().toISOString());
         setSecondsSinceLastSync(0);
         consecutiveFailuresRef.current = 0; // Reset backoff on success
+        await onRefreshRef.current?.();
+        if (!mountedRef.current || controller.signal.aborted) return;
 
         // Detect changes
-        if (serverCounter !== counterRef.current && counterRef.current > 0) {
+        if (counterRef.current !== null && serverCounter !== counterRef.current) {
           console.log(`[PTA Sync] Change detected! Counter: ${counterRef.current} → ${serverCounter}`);
 
           // Fetch recent events
@@ -137,7 +139,8 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
 
           if (eventsRes.success && recentEvents.length > 0) {
             const newEvents = recentEvents as PTASyncEvent[];
-            // Filter out events from our own system if needed
+            // Notifications can exclude our channel; data must also reflect
+            // decisions made by other users in that same channel.
             const crossSystemEvents = newEvents.filter(e => e.sistema_origen !== sistema);
 
             if (crossSystemEvents.length > 0) {
@@ -147,31 +150,34 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
                 return [...truly_new, ...prev].slice(0, 50);
               });
 
-              // Callback
-              onDataChangedRef.current?.(crossSystemEvents);
             }
+            onDataChangedRef.current?.(newEvents);
 
             // Update timestamp reference
             if (newEvents[0]?.timestamp) {
               lastEventTimestampRef.current = newEvents[0].timestamp;
             }
+          } else {
+            // Event retrieval is auxiliary: a changed counter still invalidates data.
+            onDataChangedRef.current?.([]);
           }
         }
 
         counterRef.current = serverCounter;
         setLastCounter(serverCounter);
-      } else if (res._networkError) {
-        // Network error — apply backoff
+      } else {
+        // A failed status read cannot certify that the view is synchronized.
         consecutiveFailuresRef.current += 1;
         setIsConnected(false);
       }
     } catch (error: any) {
-      if (error?.name === 'AbortError' || !mountedRef.current) return;
+      if (error?.name === 'AbortError' || !mountedRef.current || controller.signal.aborted) return;
       console.warn('[PTA Sync] Poll error:', error?.message);
       consecutiveFailuresRef.current += 1;
       setIsConnected(false);
     } finally {
-      if (mountedRef.current) {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+      if (mountedRef.current && !controller.signal.aborted) {
         setIsPolling(false);
       }
     }
@@ -180,7 +186,10 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
   // Start polling with adaptive interval (backoff on failures)
   useEffect(() => {
     if (!enabled) return;
+    let disposed = false;
     mountedRef.current = true;
+    counterRef.current = null;
+    setUnreadEvents([]);
 
     // Baseline: solo interesan eventos DESDE que este cliente empezó a escuchar. Sin
     // esto, el primer fetch disparado por un cambio de counter no tenía `since` (aún
@@ -188,14 +197,7 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
     // TODA la tabla de eventos (getRecentEvents con since vacío) — inundando de golpe
     // con un toast por cada una la primera vez que se detectaba cualquier cambio, en
     // vez de mostrar solo lo nuevo desde que se abrió la pantalla.
-    if (!lastEventTimestampRef.current) {
-      lastEventTimestampRef.current = new Date().toISOString();
-    }
-
-    // Initial check with a small delay to let the app settle
-    const initialDelay = setTimeout(() => {
-      if (mountedRef.current) checkForUpdates();
-    }, 1500);
+    lastEventTimestampRef.current = new Date().toISOString();
 
     // Adaptive polling: increase interval on consecutive failures (max 60s)
     const getEffectiveInterval = () => {
@@ -208,20 +210,24 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
     // Use a recursive setTimeout instead of setInterval for adaptive timing
     let pollTimeout: any = null;
     const schedulePoll = () => {
+      if (disposed) return;
       const effectiveInterval = getEffectiveInterval();
       pollTimeout = setTimeout(() => {
-        if (mountedRef.current) {
+        if (!disposed) {
           checkForUpdates().finally(() => {
-            if (mountedRef.current) schedulePoll();
+            if (!disposed) schedulePoll();
           });
         }
       }, effectiveInterval);
     };
 
-    // Start the adaptive polling chain after initial check
-    const startPolling = setTimeout(() => {
-      if (mountedRef.current) schedulePoll();
-    }, 2000 + interval);
+    const initialDelay = setTimeout(() => {
+      void checkForUpdates().finally(() => { if (!disposed) schedulePoll(); });
+    }, 1500);
+    const resume = () => { void checkForUpdates(); };
+    window.addEventListener('focus', resume);
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', resume);
 
     // Set up seconds counter
     tickIntervalRef.current = setInterval(() => {
@@ -229,12 +235,16 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
     }, 1000);
 
     return () => {
+      disposed = true;
       mountedRef.current = false;
       clearTimeout(initialDelay);
-      clearTimeout(startPolling);
       if (pollTimeout) clearTimeout(pollTimeout);
       if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      window.removeEventListener('focus', resume);
+      window.removeEventListener('online', resume);
+      document.removeEventListener('visibilitychange', resume);
     };
   }, [enabled, interval, checkForUpdates]);
 
