@@ -54,6 +54,19 @@ describe('§1.1 :: rutas del cliente vs controladores del backend', () => {
     expect(faltantes).toEqual([]);
   });
 
+  it('§2.1 :: las opciones de jornada del filtro son los valores del backend', () => {
+    // El bug: el filtro comparaba 'Diurna' (etiqueta) contra 'DIURNA' (dato), y
+    // nunca casaba. Los <option value="..."> del filtro deben ser exactamente el
+    // conjunto del CHECK de la base (DIURNA/NOCTURNA/FIN_DE_SEMANA).
+    const modulo = readFileSync(
+      resolve(REPO, 'apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx'), 'utf8');
+    const opciones = (modulo.match(/<option value="(DIURNA|NOCTURNA|FIN_DE_SEMANA|Diurna|Nocturna|Fin de Semana|Fin de semana)"/g) || [])
+      .map((s) => s.replace(/<option value="|"/g, ''));
+    const ENUM = ['DIURNA', 'NOCTURNA', 'FIN_DE_SEMANA'];
+    // Todas las opciones de jornada (más allá de TODAS) están en el enum del backend.
+    expect(opciones.sort()).toEqual([...ENUM].sort());
+  });
+
   it('toda ruta del modulo en el cliente lleva el prefijo /api/v1/', () => {
     const txt = readFileSync(CLIENTE, 'utf8');
     // Cualquier literal que empiece por /programacion-academica debe incluir /api/v1/.

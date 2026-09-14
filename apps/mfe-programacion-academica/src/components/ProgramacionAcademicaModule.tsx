@@ -416,19 +416,26 @@ export function ProgramacionAcademicaModule() {
               onChange={(e) => setSelectedJornada(e.target.value)}
               className="bg-transparent font-semibold text-slate-800 focus:outline-none"
             >
+              {/* §2.1 — Los valores deben ser los del dato del backend
+                  (DIURNA/NOCTURNA/FIN_DE_SEMANA), no 'Diurna': la comparacion es
+                  exacta y con la etiqueta bonita nunca casaba. */}
               <option value="TODAS">Todas las jornadas</option>
-              <option value="Diurna">Diurna</option>
-              <option value="Nocturna">Nocturna</option>
-              <option value="Fin de Semana">Fin de Semana</option>
+              <option value="DIURNA">Diurna</option>
+              <option value="NOCTURNA">Nocturna</option>
+              <option value="FIN_DE_SEMANA">Fin de semana</option>
             </select>
           </div>
 
+          {/* §2.2 — Una franja se crea siempre desde un grupo (asignatura →
+              grupo → calendario). No hay atajo directo, así que el botón lleva al
+              inicio real de ese flujo, el catálogo, y el texto lo dice sin
+              prometer una creación que no puede cumplir aquí. */}
           <button
             onClick={() => setSeccion('catalogo')}
             className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 font-semibold text-xs rounded-xl shadow-md transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Nueva Franja Lectiva</span>
+            <span>Programar franja (elegir asignatura)</span>
           </button>
 
         </div>
