@@ -38,6 +38,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       username: payload.username,
       roles: payload.roles,
       email: payload.email,
+      /**
+       * Los permisos del token, cuando vengan.
+       *
+       * auth-service los calcula al iniciar sesión pero arma el JWT solo con
+       * los roles, así que hoy esto llega vacío y `permisosDelUsuario` cae al
+       * mapa de respaldo. Se propaga igual: sin esta línea, el día que el
+       * payload los incluya se seguirían perdiendo aquí y el módulo nunca
+       * pasaría a usarlos.
+       */
+      permissions: payload.permissions,
     };
   }
 }

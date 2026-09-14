@@ -16,12 +16,13 @@ import {
   UploadedFile,
   BadRequestException,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { extname, join, basename, resolve } from 'path';
+import { existsSync, mkdirSync, readdirSync } from 'fs';
 import {
   ApiTags,
   ApiOperation,
@@ -29,6 +30,7 @@ import {
 } from '@nestjs/swagger';
 import { AutoService } from '../services/auto.service';
 import { OnlyOfficeService } from '../services/onlyoffice.service';
+import { StorageService, getUploadRootDir } from '../services/storage.service';
 import {
   CreateLegalAutoDto,
 } from '../dtos/create-legal-auto.dto';
@@ -58,6 +60,7 @@ export class AutoController {
   constructor(
     private autoService: AutoService,
     private onlyOfficeService: OnlyOfficeService,
+    @Optional() private storageService?: StorageService,
   ) { }
 
   /**
@@ -148,6 +151,18 @@ export class AutoController {
   }
 
   /**
+   * Obtener listado de Secretarios/Radicadores disponibles con su carga laboral
+   */
+  @Get('radicadores-disponibles')
+  @ApiOperation({
+    summary: 'Radicadores Disponibles',
+    description: 'Retorna los usuarios con rol SECRETARIA_RADICADOR y su porcentaje de carga laboral',
+  })
+  async getRadicadoresDisponibles() {
+    return await this.autoService.getAvailableRadicadores();
+  }
+
+  /**
    * Obtener Auto por ID
    */
   @Get(':id')
@@ -185,30 +200,48 @@ export class AutoController {
   }
 
   /**
-   * H4: Aprobar/Firmar auto (operación de Jefe)
-   */
-  @Patch(':id/approve')
-  @ApiOperation({
-    summary: 'Aprobar y Firmar Auto',
-    description: 'El Jefe aprueba el auto y genera la firma',
-  })
-  async approve(
-    @Param('id') id: string,
-    @Body() reviewAutoDto: ReviewAutoDto,
-    @Query('aprobadoPorId') aprobadoPorId: string,
-    @Req() req: AuthenticatedRequest,
-  ): Promise<LegalAuto> {
-    if (!aprobadoPorId) {
-      throw new Error('aprobadoPorId es requerido');
+    * H4: Aprobar/Firmar auto (operación de Jefe)
+    */
+   @Patch(':id/approve')
+   @ApiOperation({
+     summary: 'Aprobar y Firmar Auto',
+     description: 'El Jefe aprueba el auto y genera la firma',
+   })
+    async approve(
+      @Param('id') id: string,
+      @Body() reviewAutoDto: ReviewAutoDto,
+      @Query('aprobadoPorId') aprobadoPorId: string,
+      @Req() req: AuthenticatedRequest,
+    ): Promise<LegalAuto> {
+      if (!aprobadoPorId) {
+        throw new Error('aprobadoPorId es requerido');
+      }
+      return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId, req?.user?.name, reviewAutoDto.radicadorAsignadoId);
     }
-    return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId, req?.user?.name);
-  }
+
+    /**
+     * Asignar radicador a un auto aprobado
+     */
+   @Patch(':id/assign-radicador')
+   @ApiOperation({
+     summary: 'Asignar Radicador a Auto',
+     description: 'Asigna un radicador/secretario a un auto aprobado',
+   })
+   async assignRadicador(
+     @Param('id') id: string,
+     @Body() body: { radicadorAsignadoId: string },
+   ): Promise<LegalAuto> {
+     if (!body.radicadorAsignadoId) {
+       throw new Error('radicadorAsignadoId es requerido');
+     }
+     return await this.autoService.assignRadicador(id, body.radicadorAsignadoId);
+   }
 
   /**
    * Enviar auto pliego de cargos aprobado a Oficina Jurídica
    */
   @Patch(':id/send-juridica')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID', 'JEFE_OCID')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
   @ApiOperation({
     summary: 'Enviar Pliego de Cargos a Jurídica',
     description: 'Envía el auto pliego de cargos aprobado a la Oficina Jurídica, cerrando el proceso',
@@ -216,12 +249,16 @@ export class AutoController {
   async sendPliegoToJuridica(
     @Param('id') id: string,
     @Body() body: { enviadoPorId: string; enviadoPorEmail?: string; enviadoPorNombre?: string },
-  ): Promise<void> {
+  ): Promise<{ success: boolean; message: string }> {
     const { enviadoPorId, enviadoPorEmail, enviadoPorNombre } = body || {};
     if (!enviadoPorId) {
-      throw new Error('enviadoPorId es requerido');
+      throw new BadRequestException('enviadoPorId es requerido');
     }
-    return await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
+    await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
+    return {
+      success: true,
+      message: 'Auto pliego enviado a jurídica exitosamente',
+    };
   }
 
   /**
@@ -404,12 +441,44 @@ export class AutoController {
   }
 
   /**
-   * Descargar PDF (Generado desde HTML)
+   * Helper para localizar un archivo físico en disco
    */
+  private findStoredAutoFile(documentUrl: string): string | null {
+    const safeFilename = basename(documentUrl);
+    if (this.storageService) {
+      const p = this.storageService.getFullPath(documentUrl);
+      if (existsSync(p)) return p;
+    }
+    const root = resolve(getUploadRootDir());
+    const direct = resolve(root, safeFilename);
+    if (existsSync(direct)) return direct;
+
+    // Buscar recursivamente en subcarpetas de uploads
+    if (existsSync(root)) {
+      for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const l1 = join(root, entry.name, safeFilename);
+        if (existsSync(l1)) return l1;
+        const l1dir = join(root, entry.name);
+        for (const sub of readdirSync(l1dir, { withFileTypes: true })) {
+          if (!sub.isDirectory()) continue;
+          const l2 = join(l1dir, sub.name, safeFilename);
+          if (existsSync(l2)) return l2;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Descargar PDF del Auto
+   * Público para permitir apertura directa desde enlaces del Índice Electrónico
+   */
+  @Public()
   @Get(':id/pdf')
   @ApiOperation({
     summary: 'Descargar PDF del Auto',
-    description: 'Genera y descarga el PDF del auto (Visualización HTML por ahora)',
+    description: 'Genera y descarga el PDF del auto',
   })
   async downloadPdf(@Param('id') id: string, @Res() res: Response) {
     const auto = await this.autoService.findById(id);
@@ -420,11 +489,17 @@ export class AutoController {
         auto.documentName?.toLowerCase().endsWith('.pdf') ||
         auto.documentUrl.toLowerCase().endsWith('.pdf'));
 
-    if (isStoredPdf) {
-      return res.redirect(auto.documentUrl);
+    if (isStoredPdf && auto.documentUrl) {
+      const diskPath = this.findStoredAutoFile(auto.documentUrl);
+      if (diskPath) {
+        res.setHeader('Content-Type', 'application/pdf');
+        const filename = auto.documentName || `Auto-${auto.numero || id}.pdf`;
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+        return res.sendFile(diskPath);
+      }
     }
 
-    // Por ahora retornamos HTML renderizable
+    // Retornar HTML renderizable si no hay archivo físico generado
     res.setHeader('Content-Type', 'text/html');
     res.setHeader('Content-Disposition', `inline; filename="Auto-${auto.numero || 'borrador'}.html"`);
 
@@ -458,6 +533,7 @@ export class AutoController {
   /**
    * Descargar PDF de una Versión Específica
    */
+  @Public()
   @Get(':id/versions/:version/pdf')
   @ApiOperation({
     summary: 'Descargar PDF de Versión',
@@ -470,14 +546,14 @@ export class AutoController {
   ) {
     const versionAuto = await this.autoService.getAutoVersionContent(id, Number(version));
 
-    // Si la versión tiene archivo adjunto, REDIRIGIR a él (o servirlo)
     if (versionAuto.documentUrl) {
-      // Opción A: Redirigir (Frontend hace fetch de esto)
-      // return res.redirect(versionAuto.documentUrl); 
-      // Opción B: Leer y devolver stream (más complejo si es S3/externo)
-      // Como downloadUrl en frontend maneja fetch, lo ideal es que si es .pdf, el frontend lo reciba.
-      // Si devolvemos redirect 302, el fetch lo sigue.
-      return res.redirect(versionAuto.documentUrl);
+      const diskPath = this.findStoredAutoFile(versionAuto.documentUrl);
+      if (diskPath) {
+        res.setHeader('Content-Type', 'application/pdf');
+        const filename = `Auto-${id}-v${version}.pdf`;
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+        return res.sendFile(diskPath);
+      }
     }
 
     res.setHeader('Content-Type', 'text/html');

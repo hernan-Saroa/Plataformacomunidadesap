@@ -12,6 +12,7 @@ import {
 import { ComisionadoEntity } from './comisionado.entity';
 import { DocumentoSoporteEntity } from './documento-soporte.entity';
 import { EstadoSolicitud, ESTADOS_SOLICITUD } from './estado-solicitud.enum';
+import { UsuarioEntity } from './usuario.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'solicitudes_comision' })
 @Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], {
@@ -22,6 +23,7 @@ import { EstadoSolicitud, ESTADOS_SOLICITUD } from './estado-solicitud.enum';
   'fechaInicio',
   'fechaFin',
 ])
+@Index('idx_solicitudes_siif_exportado', ['siifExportado'])
 export class SolicitudComisionEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -103,6 +105,12 @@ export class SolicitudComisionEntity {
   @Column({ name: 'extemporanea', type: 'boolean', default: false })
   extemporanea: boolean;
 
+  @Column({ name: 'motivo_devolucion', type: 'text', nullable: true })
+  motivoDevolucion: string | null;
+
+  @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
+  fechaRevision: Date | null;
+
   @Column({
     name: 'tipo_comision',
     type: 'varchar',
@@ -114,8 +122,101 @@ export class SolicitudComisionEntity {
   @Column({ name: 'es_internacional', type: 'boolean', default: false })
   esInternacional: boolean;
 
+  @Column({
+    name: 'salario_basico',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
+  salarioBasico: number;
+
+  @Column({
+    name: 'costo_estimado_tiquete',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
+  costoEstimadoTiquete: number;
+
   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
   creadoPorUsuarioId: string;
+
+  @Column({ name: 'analista_asignado_id', type: 'uuid', nullable: true })
+  analistaAsignadoId: string | null;
+
+  @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
+  idDependencia: number | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'analista_asignado_id' })
+  analistaAsignado: UsuarioEntity;
+
+  @Column({ name: 'siif_exportado', type: 'boolean', default: false })
+  siifExportado: boolean;
+
+  @Column({ name: 'fecha_exportacion_siif', type: 'timestamp', nullable: true })
+  fechaExportacionSiif: Date | null;
+
+  @Column({ name: 'usuario_exportador_id', type: 'uuid', nullable: true })
+  usuarioExportadorId: string | null;
+
+  @Column({ name: 'revisor_control_id', type: 'uuid', nullable: true })
+  revisorControlId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'revisor_control_id' })
+  revisorControl: UsuarioEntity;
+
+  @Column({ name: 'fecha_segunda_revision', type: 'timestamp', nullable: true })
+  fechaSegundaRevision: Date | null;
+
+  @Column({
+    name: 'observaciones_segunda_revision',
+    type: 'text',
+    nullable: true,
+  })
+  observacionesSegundaRevision: string | null;
+
+  @Column({ name: 'consulta_rut_facturador', type: 'boolean', default: false })
+  consultaRutFacturador: boolean;
+
+  @Column({ name: 'autorizador_id', type: 'uuid', nullable: true })
+  autorizadorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'autorizador_id' })
+  autorizador: UsuarioEntity;
+
+  @Column({ name: 'fecha_autorizacion', type: 'timestamp', nullable: true })
+  fechaAutorizacion: Date | null;
+
+  @Column({
+    name: 'observaciones_autorizacion',
+    type: 'text',
+    nullable: true,
+  })
+  observacionesAutorizacion: string | null;
+
+  @Column({ name: 'autorizador_direccion_id', type: 'uuid', nullable: true })
+  autorizadorDireccionId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'autorizador_direccion_id' })
+  autorizadorDireccion: UsuarioEntity;
+
+  @Column({ name: 'fecha_autorizacion_direccion', type: 'timestamp', nullable: true })
+  fechaAutorizacionDireccion: Date | null;
+
+  @Column({ name: 'decision_direccion', type: 'varchar', length: 20, nullable: true })
+  decisionDireccion: string | null;
+
+  @Column({ name: 'justificacion_direccion', type: 'text', nullable: true })
+  justificacionDireccion: string | null;
+
+  @Column({ name: 'es_delegado_direccion', type: 'boolean', default: false })
+  esDelegadoDireccion: boolean;
 
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;

@@ -61,6 +61,8 @@ const mapTipoAccionToBackend = (tipoAccion: string, etapa: string): string => {
       return 'AUTO_PRORROGA';
     case 'PLIEGO':
       return 'AUTO_FORMULACION_PLIEGO';
+    case 'INHIBITORIO':
+      return 'AUTO_INHIBITORIO';
     default:
       return 'AUTO_NO_PREVISTO';
   }
@@ -77,6 +79,8 @@ const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
       return 'PRORROGA';
     case 'AUTO_FORMULACION_PLIEGO':
       return 'PLIEGO';
+    case 'AUTO_INHIBITORIO':
+      return 'INHIBITORIO';
     default:
       // Para tipos dinámicos de apertura: AUTO_APERTURA_*
       if (tipoBackend.startsWith('AUTO_APERTURA_')) {

@@ -22,4 +22,12 @@ export class Modalidad {
   /** Las derogadas dejan de ofrecerse sin romper los procesos que las usan. */
   @Column({ type: 'boolean', default: true })
   activa: boolean;
+
+  /**
+   * False cuando la modalidad se elige por la causal y no por el monto:
+   * contratación directa, régimen especial 092 de 2017 y enajenación por
+   * subasta. Distingue "no se decide por cuantía" de "le falta el umbral".
+   */
+  @Column({ name: 'determinada_por_cuantia', type: 'boolean', default: true })
+  determinadaPorCuantia: boolean;
 }

@@ -59,6 +59,8 @@ import {
 import { esFestivo } from '../gestion-legal/utils/diasHabiles';
 import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
 import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
+import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
+import { EVENTO_VERSION_PROGRAMA } from './BannerVersionProgramaAnual';
 
 
 /** Colores por columna del tablero (misma semántica que `resolverColumnaKanban`) */
@@ -568,6 +570,29 @@ export function CronogramaAuditoriasPremium({
 
   const handleExportExcel = async () => {
     toast.info('Generando archivo Excel...');
+
+    // El Programa Anual se exporta desde la versión que resuelve el backend: el
+    // documento sale de la base de datos y queda versionado (EFDS-1919 / EFDS-1639).
+    try {
+      const resultado = await exportarProgramaAnualVersionado(vigencia);
+      if (resultado.exito) {
+        toast.success(
+          resultado.nueva
+            ? `Programa Anual exportado. Se generó la versión ${resultado.version}.`
+            : `Programa Anual exportado (versión ${resultado.version}, sin cambios).`,
+        );
+        if (resultado.nueva) {
+          window.dispatchEvent(new CustomEvent(EVENTO_VERSION_PROGRAMA, { detail: { vigencia } }));
+        }
+      } else {
+        toast.error('Error al exportar: ' + resultado.error);
+      }
+      return;
+    } catch (error) {
+      console.error('[Cronograma] No se pudo resolver la versión del Programa Anual:', error);
+      toast.warning('No se pudo registrar la versión. Se exporta lo que muestra la pantalla.');
+    }
+
     const datosExcel = auditoriasFiltradas.map((a: any) => {
       // Obtener el líder
       const liderNombre = safeNombre(a.auditorLider);

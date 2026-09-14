@@ -42,6 +42,7 @@ services:
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service:3010
       AUDIT_SERVICE_URL: http://audit-service:3011
       HIRING_SERVICE_URL: http://hiring-service:3012
+      ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
     ports:
       - "3000:3000"
     depends_on:
@@ -57,6 +58,7 @@ services:
       - travel-expenses-service
       - audit-service
       - hiring-service
+      - academic-schedule-service
     networks:
       - superapp-net
 
@@ -203,6 +205,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3005
+      TZ: America/Bogota
 
       JWT_SECRET: esap-super-secret-jwt-key-2024
 
@@ -216,6 +219,8 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://localhost:3000}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     ports:
       - "3005:3005"
@@ -430,6 +435,35 @@ services:
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
       - "3012:3012"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ ACADEMIC SCHEDULE SERVICE ============
+  academic-schedule-service:
+    build:
+      context: ./backend/academic-schedule-service
+      dockerfile: Dockerfile
+    container_name: academic-schedule-service
+    env_file:
+      - ./backend/academic-schedule-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3013
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: password
+      DB_NAME: esap_db
+      DB_SCHEMA: academic-schedule
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3013:3013"
     depends_on:
       - db
       - redis

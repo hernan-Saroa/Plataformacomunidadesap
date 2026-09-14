@@ -44,7 +44,7 @@ describe('MacroDocenteController - getHistorial (F020)', () => {
       docenteId: 'doc-1',
       periodo: '2025-2',
       totalResultados: 1,
-      failClosed: false,
+      failClosed: true,
     }));
     // CONTROL_INTERNO no está en la lista blanca de acceso completo a datos
     // sensibles del RUND (banco-docentes-sensitive-data.ts), así que cada item
@@ -100,6 +100,24 @@ describe('MacroDocenteController - getHistorial (F020)', () => {
 });
 
 describe('MacroDocenteController - getConsultaPuntual (F022)', () => {
+  it('identifica los campos consultados sin copiarlos y falla cerrado si no puede auditar', async () => {
+    const { controller, service } = buildController({
+      getConsultaPuntual: jest.fn().mockResolvedValue([{ docente_id: 'doc-1', documento_identidad: '1234567890' }]),
+    });
+    await controller.getConsultaPuntual('doc-1', '2025-2', reqConUsuario);
+    expect(service.logConsulta).toHaveBeenCalledWith(expect.objectContaining({
+      failClosed: true,
+      filtros: { proteccionDatos: {
+        campos: ['DOCUMENTO_IDENTIDAD'], docentes: ['doc-1'], resultado: 'ENMASCARADO', valoresIncluidosEnLog: false,
+      } },
+    }));
+    expect(JSON.stringify(service.logConsulta.mock.calls)).not.toContain('1234567890');
+    service.logConsulta.mockRejectedValue(new Error('audit unavailable'));
+    await expect(controller.getConsultaPuntual('doc-1', '2025-2', reqConUsuario)).rejects.toThrow('audit unavailable');
+    await expect(controller.getHistorial(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, reqConUsuario))
+      .rejects.toThrow('audit unavailable');
+  });
+
   it('delega en el service y registra la bitácora con el total de resultados', async () => {
     const { controller, service } = buildController({
       getConsultaPuntual: jest.fn().mockResolvedValue([{ asignatura_codigo: 'A1' }, { asignatura_codigo: 'A2' }]),

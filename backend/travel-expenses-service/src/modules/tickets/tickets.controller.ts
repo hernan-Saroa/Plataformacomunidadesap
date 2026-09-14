@@ -49,7 +49,7 @@ export class TicketsController {
    * Usado por el frontend antes de permitir la radicación.
    */
   @Post('validate')
-  @Permissions('travel_expenses:read')
+  @Permissions('travel_expenses:create_request')
   @ApiOperation({
     summary: 'Valida ruta restringida y saldo presupuestal para tiquetes',
     description:
@@ -104,10 +104,6 @@ export class TicketsController {
   }
 
   @Get('excepciones/:solicitudId')
-  @Permissions('travel_expenses:read')
-  @ApiOperation({
-    summary: 'Lista las excepciones registradas para una solicitud',
-  })
   listarExcepciones(@Param('solicitudId') solicitudId: string) {
     return this.ticketsService.obtenerExcepcionesPorSolicitud(solicitudId);
   }
@@ -115,14 +111,6 @@ export class TicketsController {
   // ---------- Parámetro global de holgura (RF-LIQ-004) ----------
 
   @Get('config/holgura')
-  @Permissions('travel_expenses:read')
-  @ApiOperation({
-    summary:
-      'Obtiene el porcentaje de holgura global aplicado a las reservas de tiquetes',
-    description:
-      'RF-LIQ-004. Margen de holgura parametrizable (default 15%) que absorbe ' +
-      'la volatilidad del precio del tiquete entre la radicación y la emisión.',
-  })
   obtenerHolgura() {
     return this.ticketsService.obtenerParametroHolgura();
   }
@@ -139,21 +127,19 @@ export class TicketsController {
   @ApiResponse({ status: 200, description: 'Parámetro actualizado.' })
   @ApiResponse({ status: 400, description: 'Valor fuera del rango 0-100.' })
   actualizarHolgura(@Body() dto: UpdateHolguraTiqueteDto) {
-    return this.ticketsService.actualizarParametroHolgura(dto.holguraPorcentaje);
+    return this.ticketsService.actualizarParametroHolgura(
+      dto.holguraPorcentaje,
+    );
   }
 
   // ---------- Saldos (CRUD) ----------
 
   @Get('saldos')
-  @Permissions('travel_expenses:read')
-  @ApiOperation({ summary: 'Lista los saldos de tiquetes por dependencia' })
   obtenerSaldos() {
     return this.ticketsService.obtenerSaldos();
   }
 
   @Get('saldos/:dependenciaId')
-  @Permissions('travel_expenses:read')
-  @ApiOperation({ summary: 'Obtiene el saldo de una dependencia específica' })
   obtenerSalporDep(@Param('dependenciaId') dependenciaId: string) {
     return this.ticketsService.obtenerSaldoPorDependencia(dependenciaId);
   }
@@ -184,8 +170,6 @@ export class TicketsController {
   // ---------- Rutas restringidas (CRUD) ----------
 
   @Get('rutas-restringidas')
-  @Permissions('travel_expenses:read')
-  @ApiOperation({ summary: 'Lista las rutas restringidas activas' })
   obtenerRutas() {
     return this.ticketsService.obtenerRutasRestringidas();
   }

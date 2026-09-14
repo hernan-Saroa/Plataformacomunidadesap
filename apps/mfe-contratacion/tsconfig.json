@@ -17,6 +17,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@esap-mfe/shared-ui": ["../../packages/shared-ui/src"],
+      "@esap-mfe/shared-ui/*": ["../../packages/shared-ui/src/*"],
       "@esap-mfe/shared-types": ["../../packages/shared-types/src"]
     }
   },

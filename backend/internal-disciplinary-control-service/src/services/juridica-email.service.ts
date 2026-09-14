@@ -160,26 +160,98 @@ export class JuridicaEmailService {
    * process.controller.ts::downloadDocument (getFullPath + búsqueda en
    * subcarpetas por año/radicado).
    */
+  /**
+   * Localiza un archivo del expediente en disco de forma recursiva y tolerante a
+   * subcarpetas (año, radicado, expedientes, plantillas) y codificación URI.
+   */
   private resolverRutaArchivo(referencia?: string | null): string | null {
     if (!referencia) return null;
-    const limpia = referencia.replace(/^\/files\//, '').replace(/^\/+/, '');
-    const rutaDirecta = this.storageService.getFullPath(limpia);
-    if (fs.existsSync(rutaDirecta)) return rutaDirecta;
+
+    let limpia = referencia;
+    if (/^https?:\/\//i.test(referencia)) {
+      try {
+        const urlObj = new URL(referencia);
+        limpia = urlObj.pathname;
+      } catch {
+        limpia = referencia;
+      }
+    }
+
+    limpia = limpia.replace(/^\/files\//, '').replace(/^\/+/, '');
+    let decodedLimpia = limpia;
+    try {
+      decodedLimpia = decodeURIComponent(limpia);
+    } catch {
+      decodedLimpia = limpia;
+    }
+
+    const uploadsRoot = path.resolve(getUploadRootDir());
+    const cwdUploads = path.resolve(process.cwd(), 'uploads');
+
+    const posiblesDirectas = [
+      this.storageService.getFullPath(limpia),
+      this.storageService.getFullPath(decodedLimpia),
+      path.resolve(uploadsRoot, limpia),
+      path.resolve(uploadsRoot, decodedLimpia),
+      path.resolve(cwdUploads, limpia),
+      path.resolve(cwdUploads, decodedLimpia),
+      path.resolve(process.cwd(), limpia),
+      path.resolve(process.cwd(), decodedLimpia),
+    ];
+
+    for (const ruta of posiblesDirectas) {
+      if (fs.existsSync(ruta)) {
+        try {
+          if (fs.statSync(ruta).isFile()) return ruta;
+        } catch {
+          // Continuar si falla stat
+        }
+      }
+    }
 
     const nombreBase = path.basename(limpia);
-    const uploadsRoot = path.resolve(getUploadRootDir());
-    if (!nombreBase || !fs.existsSync(uploadsRoot)) return null;
+    const decodedNombreBase = path.basename(decodedLimpia);
+    const targets = Array.from(new Set([nombreBase, decodedNombreBase])).filter(Boolean);
 
-    for (const entrada of fs.readdirSync(uploadsRoot, { withFileTypes: true })) {
-      if (!entrada.isDirectory()) continue;
-      const nivel1 = path.join(uploadsRoot, entrada.name, nombreBase);
-      if (fs.existsSync(nivel1)) return nivel1;
-      const dirNivel1 = path.join(uploadsRoot, entrada.name);
-      for (const sub of fs.readdirSync(dirNivel1, { withFileTypes: true })) {
-        if (!sub.isDirectory()) continue;
-        const nivel2 = path.join(dirNivel1, sub.name, nombreBase);
-        if (fs.existsSync(nivel2)) return nivel2;
+    if (fs.existsSync(uploadsRoot)) {
+      const encontrada = this.buscarArchivoRecursivo(uploadsRoot, targets, 4);
+      if (encontrada) return encontrada;
+    }
+
+    if (cwdUploads !== uploadsRoot && fs.existsSync(cwdUploads)) {
+      const encontrada = this.buscarArchivoRecursivo(cwdUploads, targets, 4);
+      if (encontrada) return encontrada;
+    }
+
+    return null;
+  }
+
+  private buscarArchivoRecursivo(dir: string, targets: string[], maxDepth: number): string | null {
+    if (maxDepth < 0) return null;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile()) {
+          const decodedEntryName = (() => {
+            try {
+              return decodeURIComponent(entry.name);
+            } catch {
+              return entry.name;
+            }
+          })();
+          if (targets.includes(entry.name) || targets.includes(decodedEntryName)) {
+            return path.join(dir, entry.name);
+          }
+        }
       }
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const res = this.buscarArchivoRecursivo(path.join(dir, entry.name), targets, maxDepth - 1);
+          if (res) return res;
+        }
+      }
+    } catch {
+      // Ignorar errores de acceso a carpetas
     }
     return null;
   }
@@ -190,7 +262,18 @@ export class JuridicaEmailService {
     contentType?: string | null,
   ): Promise<EmailAdjunto | null> {
     try {
-      // URL externa (http/https): descargar por HTTP.
+      // 1. Intentar resolver localmente en disco primero
+      const ruta = this.resolverRutaArchivo(referencia);
+      if (ruta) {
+        const buffer = await fs.promises.readFile(ruta);
+        return {
+          filename: nombreVisible,
+          contentBase64: buffer.toString('base64'),
+          contentType: contentType || undefined,
+        };
+      }
+
+      // 2. Si no está en disco y es URL externa (http/https), descargar vía HTTP
       if (referencia && /^https?:\/\//i.test(referencia)) {
         const resp = await firstValueFrom(
           this.httpService.get(referencia, {
@@ -206,17 +289,8 @@ export class JuridicaEmailService {
         };
       }
 
-      const ruta = this.resolverRutaArchivo(referencia);
-      if (!ruta) {
-        this.logger.warn(`Adjunto no encontrado en disco, se omite del correo: ${referencia}`);
-        return null;
-      }
-      const buffer = await fs.promises.readFile(ruta);
-      return {
-        filename: nombreVisible,
-        contentBase64: buffer.toString('base64'),
-        contentType: contentType || undefined,
-      };
+      this.logger.warn(`Adjunto no encontrado en disco ni accesible vía HTTP, se omite: ${referencia}`);
+      return null;
     } catch (e: any) {
       this.logger.warn(`No se pudo leer el adjunto "${nombreVisible}": ${e?.message}`);
       return null;
@@ -232,37 +306,72 @@ export class JuridicaEmailService {
   async recolectarAdjuntosExpediente(
     evidencias: any[] = [],
     autos: any[] = [],
-    adjuntosNoticia: string[] = [],
+    adjuntosNoticia: any[] = [],
   ): Promise<EmailAdjunto[]> {
+    const adjuntos: EmailAdjunto[] = [];
+    let totalBytes = 0;
     const candidatos: Array<{ ref: string | null; nombre: string; contentType?: string | null }> = [];
 
     for (const auto of autos) {
-      if (!auto?.documentUrl) continue; // autos solo-HTML no tienen archivo físico
-      const ext = auto.documentType === 'application/pdf' || !auto.documentType ? 'pdf' : 'docx';
-      candidatos.push({
-        ref: auto.documentUrl,
-        nombre: auto.documentName || `${auto.tipo || 'Auto'}-${auto.numero || auto.id}.${ext}`,
-        contentType: auto.documentType || 'application/pdf',
-      });
+      const refArchivo = auto?.firmaUrl || auto?.documentUrl;
+      if (refArchivo) {
+        const ext = auto.documentType === 'application/pdf' || !auto.documentType || refArchivo.endsWith('.pdf') ? 'pdf' : 'docx';
+        candidatos.push({
+          ref: refArchivo,
+          nombre: auto.documentName || `${auto.tipo || 'Auto'}-${auto.numero || auto.id}.${ext}`,
+          contentType: auto.documentType || (ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+        });
+      } else if (auto?.contenido) {
+        // Auto redactado directamente con contenido HTML en el editor
+        const autoHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>${auto.tipo || 'Auto'} - ${auto.numero || ''}</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; line-height: 1.6; color: #111827; }
+    h1, h2, h3 { color: #1e3a8a; }
+    table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+    th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+    th { background-color: #f3f4f6; }
+  </style>
+</head>
+<body>
+  ${auto.contenido}
+</body>
+</html>`;
+        const autoBuffer = Buffer.from(autoHtml, 'utf-8');
+        const bytes = autoBuffer.length;
+        if (totalBytes + bytes <= MAX_ADJUNTOS_BYTES) {
+          totalBytes += bytes;
+          const cleanTipo = (auto.tipo || 'Auto').replace(/[^a-zA-Z0-9_-]/g, '_');
+          adjuntos.push({
+            filename: `${cleanTipo}-${auto.numero || auto.id}.html`,
+            contentBase64: autoBuffer.toString('base64'),
+            contentType: 'text/html',
+          });
+        }
+      }
     }
 
     for (const ev of evidencias) {
-      const ref = ev?.url || ev?.archivoUrl || ev?.filename || null;
+      const ref = ev?.archivoUrl || ev?.url || ev?.filename || null;
       if (!ref) continue;
       candidatos.push({
         ref,
-        nombre: ev.nombreDocumento || ev.filename || ev.nombreArchivo || 'Documento.pdf',
+        nombre: ev.nombreDocumento || ev.nombreArchivo || ev.filename || 'Documento.pdf',
         contentType: ev.fileType || null,
       });
     }
 
     for (const adj of adjuntosNoticia) {
       if (!adj) continue;
-      candidatos.push({ ref: adj, nombre: path.basename(adj), contentType: null });
+      const ref = typeof adj === 'string' ? adj : (adj?.url || adj?.path || adj?.filename || null);
+      if (!ref) continue;
+      const nombre = typeof adj === 'object' && adj?.nombre ? adj.nombre : path.basename(ref);
+      candidatos.push({ ref, nombre, contentType: null });
     }
 
-    const adjuntos: EmailAdjunto[] = [];
-    let totalBytes = 0;
     for (const c of candidatos) {
       const leido = await this.leerAdjunto(c.ref, c.nombre, c.contentType);
       if (!leido) continue;
@@ -356,6 +465,145 @@ export class JuridicaEmailService {
         );
         console.error('[JuridicaEmailService] Full error on internal notification:', error);
       }
+    }
+  }
+
+  /**
+   * Conecta directamente con legal-management-service para transferir el proceso
+   * disciplinario y sus documentos adjuntos al Centro de Comunicaciones de Gestión Legal.
+   */
+  async notificarTransferenciaAModuloLegal(
+    processId: string,
+    datosConsolidados: {
+      radicado: string;
+      etapaAlCierre?: string;
+      profesionalResponsable?: string;
+      fechaCreacion?: string;
+      fechaCierre?: string;
+      fechaVencimiento?: string;
+      disciplinable?: any;
+      hechos?: string;
+      autosGenerados?: number;
+      enviadoPorNombre?: string;
+      profesionalEmail?: string;
+      enviadoPorEmail?: string;
+    },
+    evidencias: any[] = [],
+    autosDocumentables: any[] = [],
+    adjuntosNoticia: any[] = [],
+    adjuntosBase64: EmailAdjunto[] = [],
+  ): Promise<boolean> {
+    const legalUrl =
+      process.env.LEGAL_MANAGEMENT_SERVICE_URL ||
+      process.env.LEGAL_SERVICE_URL ||
+      'http://localhost:3008';
+
+    try {
+      const documentos: Array<{
+        id?: string;
+        nombre: string;
+        tipo: string;
+        url?: string;
+        contentType?: string;
+        tamano?: number;
+        contentBytes?: string;
+        fechaCarga?: any;
+      }> = [];
+
+      for (const ev of evidencias) {
+        const ref = ev?.archivoUrl || ev?.url || ev?.filename || null;
+        const nombre = ev.nombreDocumento || ev.nombreArchivo || ev.filename || 'Documento_Evidencia.pdf';
+        const base64Match = adjuntosBase64.find(
+          (a) => a.filename.toLowerCase() === nombre.toLowerCase(),
+        );
+
+        documentos.push({
+          id: ev.id,
+          nombre,
+          tipo: 'EVIDENCIA',
+          url: ref,
+          contentType: ev.fileType || base64Match?.contentType || 'application/pdf',
+          tamano: ev.fileSize || (base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined),
+          contentBytes: base64Match?.contentBase64,
+          fechaCarga: ev.fechaCarga || ev.createdAt,
+        });
+      }
+
+      for (const auto of autosDocumentables) {
+        const ref = auto?.firmaUrl || auto?.documentUrl;
+        const ext = auto.documentType === 'application/pdf' || !auto.documentType || ref?.endsWith('.pdf') ? 'pdf' : 'docx';
+        const cleanTipo = (auto.tipo || 'Auto').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const defaultName = auto.documentName || `${cleanTipo}-${auto.numero || auto.id}.${ext}`;
+        const base64Match = adjuntosBase64.find(
+          (a) =>
+            a.filename.toLowerCase() === defaultName.toLowerCase() ||
+            a.filename.toLowerCase() === `${cleanTipo}-${auto.numero || auto.id}.html`.toLowerCase(),
+        );
+
+        documentos.push({
+          id: auto.id,
+          nombre: base64Match ? base64Match.filename : defaultName,
+          tipo: 'AUTO',
+          url: ref,
+          contentType: base64Match?.contentType || auto.documentType || (ext === 'pdf' ? 'application/pdf' : undefined),
+          tamano: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
+          contentBytes: base64Match?.contentBase64,
+          fechaCarga: auto.fechaExpedicion || auto.createdAt,
+        });
+      }
+
+      for (const adj of adjuntosNoticia) {
+        if (!adj) continue;
+        const ref = typeof adj === 'string' ? adj : (adj?.url || adj?.path || adj?.filename || null);
+        const nombre = typeof adj === 'object' && adj?.nombre ? adj.nombre : (ref ? path.basename(ref) : 'Adjunto_Noticia');
+        const base64Match = adjuntosBase64.find(
+          (a) => a.filename.toLowerCase() === nombre.toLowerCase(),
+        );
+
+        documentos.push({
+          id: typeof adj === 'object' ? adj?.id : undefined,
+          nombre,
+          tipo: 'NOTICIA',
+          url: ref,
+          contentType: typeof adj === 'object' ? adj?.tipo || adj?.contentType : base64Match?.contentType,
+          tamano: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
+          contentBytes: base64Match?.contentBase64,
+        });
+      }
+
+      const payload = {
+        processId,
+        radicado: datosConsolidados.radicado,
+        asunto: `[PLIEGO DE CARGOS] Proceso ${datosConsolidados.radicado} - Traslado a Oficina Jurídica`,
+        remitente: {
+          nombre: datosConsolidados.enviadoPorNombre || datosConsolidados.profesionalResponsable || 'Control Interno Disciplinario',
+          email: datosConsolidados.enviadoPorEmail || datosConsolidados.profesionalEmail || 'disciplinario@esap.edu.co',
+        },
+        destinatario: process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co',
+        fechaEnvio: new Date().toISOString(),
+        datosConsolidados,
+        documentos,
+      };
+
+      this.logger.log(
+        `Notificando transferencia al módulo de Gestión Legal (${legalUrl}/correos/transferencia-disciplinario) con ${documentos.length} documento(s)`,
+      );
+
+      const resp = await firstValueFrom(
+        this.httpService.post(`${legalUrl}/correos/transferencia-disciplinario`, payload, {
+          timeout: 15000,
+        }),
+      );
+
+      this.logger.log(
+        `Transferencia a Gestión Legal exitosa para proceso ${datosConsolidados.radicado}: ${JSON.stringify(resp?.data)}`,
+      );
+      return true;
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo sincronizar directamente con legal-management-service (${legalUrl}): ${error?.message}. Se preserva el flujo principal.`,
+      );
+      return false;
     }
   }
 }

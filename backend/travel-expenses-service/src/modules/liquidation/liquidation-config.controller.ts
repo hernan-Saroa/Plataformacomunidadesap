@@ -34,7 +34,6 @@ export class LiquidationConfigController {
   // ==================== ESCALAS ====================
 
   @Get('escalas')
-  @Permissions('travel_expenses:read')
   obtenerEscalas() {
     return this.configService.obtenerEscalas();
   }
@@ -63,7 +62,6 @@ export class LiquidationConfigController {
   // ==================== TARIFAS INVESTIGADOR ====================
 
   @Get('tarifas-investigadores')
-  @Permissions('travel_expenses:read')
   obtenerTarifasInvestigadores() {
     return this.configService.obtenerTarifasInvestigadores();
   }
@@ -92,13 +90,11 @@ export class LiquidationConfigController {
   // ==================== EXCEPCIONES REGIONALES ====================
 
   @Get('excepciones-regionales')
-  @Permissions('travel_expenses:read')
   obtenerExcepcionesRegionales() {
     return this.configService.obtenerExcepcionesRegionales();
   }
 
   @Get('catalogo-departamentos')
-  @Permissions('travel_expenses:read')
   obtenerCatalogoDepartamentos() {
     return this.configService.obtenerCatalogoDepartamentos();
   }
@@ -127,7 +123,6 @@ export class LiquidationConfigController {
   // ==================== PARÁMETROS GLOBALES ====================
 
   @Get('parametros')
-  @Permissions('travel_expenses:read')
   obtenerParametros() {
     return this.configService.obtenerParametros();
   }

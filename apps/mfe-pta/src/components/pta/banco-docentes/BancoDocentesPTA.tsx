@@ -171,6 +171,7 @@ export function BancoDocentesPTA() {
   const [bulkResult, setBulkResult] = useState<any>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const searchTimeout = useRef<any>(null);
+  const listadoRequest = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);  const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -243,6 +244,7 @@ export function BancoDocentesPTA() {
 
   useEffect(() => {
     setSearch('');
+    setSelectedDocente(null);
     setFilterTerritorial('');
     setFilterDedicacion('');
     setFilterVinculacion('');
@@ -263,12 +265,14 @@ export function BancoDocentesPTA() {
   };
 
   const loadData = useCallback(async (p = page) => {
+    const requestId = ++listadoRequest.current;
     setLoading(true);
     try {
       const [res, listStatsRes] = await Promise.all([
         getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
         getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
       ]);
+      if (requestId !== listadoRequest.current) return;
       if (res.success && res.data) {
         const apiItems = res.data.items || res.data.data || [];
         const normalizedItems = apiItems.map((docente: any) => ({
@@ -287,7 +291,7 @@ export function BancoDocentesPTA() {
     } catch {
       // Fallback silencioso: los servicios ya manejan errores internamente
     } finally {
-      setLoading(false);
+      if (requestId === listadoRequest.current) setLoading(false);
     }
   }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, search, page, filterPeriodo]);
 
@@ -296,8 +300,11 @@ export function BancoDocentesPTA() {
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => { loadData(1); setPage(1); }, 400);
     return () => clearTimeout(searchTimeout.current);
-  }, [search]);
-  useEffect(() => { loadData(page); }, [page]);
+  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado]);
+  useEffect(() => {
+    clearTimeout(searchTimeout.current);
+    loadData(page);
+  }, [page]);
 
   const handleBulkUpload = async () => {
     if (!bulkFile) return;
@@ -737,7 +744,8 @@ export function BancoDocentesPTA() {
 
                         {/* ── Celda CATEGORÍA ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle', fontSize: '13px', color: '#374151' }}>
-                          {d.categoria || '—'}
+                          <div>{d.vinculacion || '—'}</div>
+                          {d.categoria && <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>Categoría: {d.categoria}</div>}
                         </td>
 
                         {/* ── Celda ESTADO — Badge con icono estilo Personas ── */}
@@ -831,8 +839,8 @@ export function BancoDocentesPTA() {
                       {selectedDocente === d.id && (
                         <BancoDocenteDetalleInline
                           docente={d}
-                          onClose={() => setSelectedDocente(null)}
-                          onEdit={(doc) => { setSelectedDocente(null); setEditDocente(doc); }}
+                          periodoCarga={filterPeriodo || undefined}
+                          onUpdated={() => { void loadData(); }}
                         />
                       )}
                     </React.Fragment>

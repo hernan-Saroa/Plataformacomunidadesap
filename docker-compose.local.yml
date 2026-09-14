@@ -194,6 +194,18 @@ services:
       redis:
         condition: service_started
 
+  academic-schedule-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: academic-schedule-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on: {}
+
   frontend:
     extends:
       file: ./docker-compose.frontend-mfe.yml
@@ -278,6 +290,11 @@ services:
     extends:
       file: ./docker-compose.frontend-mfe.yml
       service: frontend-mfe-viaticos
+
+  frontend-mfe-programacion-academica:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-programacion-academica
 networks:
   superapp-net:
     driver: bridge

@@ -39,13 +39,11 @@ export class ConfigController {
   constructor(private readonly configService: ConfigService) {}
 
   @Get('campos-formulario')
-  @Permissions('travel_expenses:read')
   obtenerCamposFormulario() {
     return this.configService.obtenerCamposFormulario();
   }
 
   @Get('campos-formulario/:clave')
-  @Permissions('travel_expenses:read')
   async obtenerCampoPorClave(@Param('clave') clave: string) {
     const campo = await this.configService.obtenerCampoPorClave(clave);
     if (!campo) {
@@ -76,25 +74,21 @@ export class ConfigController {
   }
 
   @Get('tipos-documento-soporte')
-  @Permissions('travel_expenses:read')
   obtenerTiposDocumentoSoporte() {
     return this.configService.obtenerTodosTiposDocumentoSoporte();
   }
 
   @Get('config-tipo-comisionado')
-  @Permissions('travel_expenses:read')
   obtenerTodasConfiguraciones() {
     return this.configService.obtenerTodasConfiguraciones();
   }
 
   @Get('config-tipo-comisionado/default')
-  @Permissions('travel_expenses:read')
   async obtenerConfiguracionPorDefecto() {
     return this.configService.obtenerConfiguracionPorDefecto();
   }
 
   @Get('config-tipo-comisionado/formulario/:codigo')
-  @Permissions('travel_expenses:read')
   async obtenerConfiguracionPorCodigoFormulario(
     @Param('codigo') codigo: string,
   ) {
@@ -111,7 +105,6 @@ export class ConfigController {
   }
 
   @Get('config-tipo-comisionado/:tipo')
-  @Permissions('travel_expenses:read')
   async obtenerConfiguracionPorTipo(@Param('tipo') tipo: string) {
     const config = await this.configService.obtenerConfiguracionPorTipo(tipo);
     if (!config) {
@@ -140,7 +133,6 @@ export class ConfigController {
   }
 
   @Get('resumen')
-  @Permissions('travel_expenses:read')
   obtenerResumen() {
     return this.configService.obtenerResumenParametrizacion();
   }

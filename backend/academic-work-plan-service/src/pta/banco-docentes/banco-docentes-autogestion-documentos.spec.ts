@@ -5,10 +5,11 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
   const DOCENTE_ID = '11111111-1111-4111-8111-111111111111';
   const invitation = {
     id: 'invite-1',
-    tokenAcceso: 'token-valido',
+    tokenAcceso: 'a'.repeat(64),
     correoInstitucional: 'docente@esap.edu.co',
     estado: 'Gestionada',
     fechaExpiracion: new Date(Date.now() + 60_000),
+    sesionExpiraEn: new Date(Date.now() + 60_000),
   };
 
   const build = (overrides: any = {}) => {
@@ -33,7 +34,7 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
   };
 
   it('autoriza únicamente la invitación gestionada que pertenece al perfil', async () => {
-    await expect(build().authorizeAutogestionDocumentUpload(DOCENTE_ID, 'token-valido'))
+    await expect(build().authorizeAutogestionDocumentUpload(DOCENTE_ID, 'a'.repeat(64)))
       .resolves.toBe('AUTOGESTION:invite-1');
   });
 
@@ -51,7 +52,7 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
           .mockResolvedValueOnce({ id: DOCENTE_ID, correoInstitucional: 'otra@esap.edu.co' }),
       },
     });
-    await expect(service.authorizeAutogestionDocumentUpload(DOCENTE_ID, 'token-valido'))
+    await expect(service.authorizeAutogestionDocumentUpload(DOCENTE_ID, 'a'.repeat(64)))
       .rejects.toThrow(ForbiddenException);
   });
 });

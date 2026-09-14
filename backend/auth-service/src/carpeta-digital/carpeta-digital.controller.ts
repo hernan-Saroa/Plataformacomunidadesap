@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -60,8 +60,8 @@ export class CarpetaDigitalController {
   // ═══════════════════════════════════════════════════════════════════
 
   @Get('carpeta-digital/persona/:personaId/documentos')
-  async getDocumentosByPersona(@Param('personaId') personaId: string) {
-    const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId);
+  async getDocumentosByPersona(@Param('personaId') personaId: string, @Req() req?: any) {
+    const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId, req?.user);
     return { success: true, data };
   }
 
@@ -84,6 +84,7 @@ export class CarpetaDigitalController {
     @Param('personaId') personaId: string,
     @Body() body: any,
     @UploadedFile() file?: any,
+    @Req() req?: any,
   ) {
     if (!file) return { success: false, message: 'Archivo requerido' };
     const cleanId = String(personaId || '').replace(/^carpeta:/, '');
@@ -115,7 +116,7 @@ export class CarpetaDigitalController {
       tipoArchivo: extname(file.originalname).replace('.', '').toLowerCase(),
       tamanoBytes: file.size,
       comentarios: body?.descripcion || null,
-    });
+    }, req?.user);
     // validacionTipo se EMBEBE en data porque el apiClient del shell desenvuelve
     // {success, data} y descartaría cualquier campo hermano de data.
     const data = (created && typeof created === 'object' && !Array.isArray(created))
@@ -125,27 +126,27 @@ export class CarpetaDigitalController {
   }
 
   @Put('carpeta-digital/documentos/:id/reclassify')
-  async reclassifyDocumento(@Param('id') id: string, @Body() body: any) {
+  async reclassifyDocumento(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
     const data = await this.carpetaDigitalService.reclassifyDocumento(id, {
       tipoDocumentoId: body?.tipo_documento_id || body?.tipoDocumentoId,
       categoria: body?.categoria,
-    });
+    }, req?.user);
     return { success: true, data };
   }
 
   @Put('carpeta-digital/documentos/:id/validate')
-  async validateDocumento(@Param('id') id: string, @Body() body: any) {
+  async validateDocumento(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
     const data = await this.carpetaDigitalService.validateDocumento(id, {
       estado: body?.estado,
       comentarios: body?.comentarios,
       validadoPor: body?.validadoPor,
-    });
+    }, req?.user);
     return { success: true, data };
   }
 
   @Delete('carpeta-digital/documentos/:id')
-  async deleteDocumento(@Param('id') id: string) {
-    const data = await this.carpetaDigitalService.deleteDocumento(id);
+  async deleteDocumento(@Param('id') id: string, @Req() req?: any) {
+    const data = await this.carpetaDigitalService.deleteDocumento(id, req?.user);
     return { success: true, data };
   }
 }

@@ -253,6 +253,11 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         newErrors.program = 'Requerido';
         errorMessage = 'Debe seleccionar un programa académico para el estudiante.';
       }
+
+      if (!formData.idDependencia) {
+        newErrors.idDependencia = 'Requerido';
+        errorMessage = 'Debe seleccionar una dependencia.';
+      }
     }
     
     setErrors(newErrors);
@@ -517,11 +522,11 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-white p-5 rounded-lg border border-purple-100 shadow-sm">
                       <div><InputLabel label="Empresa Contratista" /><input type="text" value={formData.empresaContratista} onChange={(e) => handleChange('empresaContratista', e.target.value)} className={inputClass(false)} /></div>
                       <div>
-                        <InputLabel label="Dependencia" />
+                        <InputLabel label="Dependencia" required />
                         <select
                           value={formData.idDependencia ?? ''}
                           onChange={(e) => handleChange('idDependencia', e.target.value ? Number(e.target.value) : null)}
-                          className={inputClass(false)}
+                          className={inputClass(!!errors.idDependencia)}
                           disabled={isLoadingDependencias}
                         >
                           <option value="">Seleccionar dependencia...</option>

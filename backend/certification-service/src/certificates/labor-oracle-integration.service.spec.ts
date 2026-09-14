@@ -12,6 +12,18 @@ describe('LaborOracleIntegrationService', () => {
   const buildSuggestedRequest = (row: Record<string, unknown>) =>
     service['buildSuggestedRequest'](row);
 
+  it('mapea CENTROCOSTO como grupo interno cuando Oracle no informa otro grupo', () => {
+    expect(buildSuggestedRequest({ CENTROCOSTO: 'Grupo Académico' }).internal_group)
+      .toBe('Grupo Académico');
+  });
+
+  it('prioriza el grupo explícito y usa CENTROCOSTO si contiene N/A', () => {
+    expect(buildSuggestedRequest({ GRUPO_INTERNO: 'Grupo Académico', CENTROCOSTO: 'CC-100' }).internal_group)
+      .toBe('Grupo Académico');
+    expect(buildSuggestedRequest({ GRUPO_INTERNO: 'N/A', CENTROCOSTO: 'Grupo Académico' }).internal_group)
+      .toBe('Grupo Académico');
+  });
+
   it('prioriza CENTROCOSTO para la dependencia del certificado', () => {
     const request = buildSuggestedRequest({
       CENTROCOSTO: 'Grupo de Seguridad y Salud en el Trabajo',

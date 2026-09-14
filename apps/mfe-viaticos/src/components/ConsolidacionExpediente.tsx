@@ -271,6 +271,12 @@ export default function ConsolidacionExpediente({
         <div className="divide-y divide-slate-100 text-[11px]">
           <Row label="Viáticos (autoliquidación, Decreto 314 de 2026)" value={formatearMoneda(solicitud.montoViaticos)} />
           <Row label="Gastos de viaje" value={formatearMoneda(solicitud.montoGastosViaje)} />
+          {solicitud.salarioBasico > 0 && (
+            <Row label="Salario básico mensual" value={formatearMoneda(solicitud.salarioBasico)} />
+          )}
+          {solicitud.costoEstimadoTiquete > 0 && (
+            <Row label="Costo estimado del tiquete" value={formatearMoneda(solicitud.costoEstimadoTiquete)} />
+          )}
           <Row label="Total estimado del expediente" value={formatearMoneda(totalEstimado)} strong />
         </div>
       </section>

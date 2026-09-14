@@ -6,6 +6,7 @@ import { ComisionadoEntity } from '../../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../../entities/documento-soporte.entity';
 import { ConfigService } from '../../config/config.service';
+import { NotificationClientService } from '../../../common/notification-client.service';
 
 /**
  * Pruebas de inmutabilidad del expediente (RF-LIQ-004).
@@ -17,12 +18,15 @@ import { ConfigService } from '../../config/config.service';
 describe('TravelExpensesService — Inmutabilidad del expediente consolidado', () => {
   let service: TravelExpensesService;
 
-  const createModule = (overrides: {
-    solicitudRepo?: any;
-    documentoRepo?: any;
-    dataSource?: any;
-    configService?: any;
-  } = {}) => {
+  const createModule = (
+    overrides: {
+      solicitudRepo?: any;
+      documentoRepo?: any;
+      dataSource?: any;
+      configService?: any;
+      notificationClient?: any;
+    } = {},
+  ) => {
     const {
       solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) },
       documentoRepo = {
@@ -32,7 +36,18 @@ describe('TravelExpensesService — Inmutabilidad del expediente consolidado', (
         delete: jest.fn(),
       },
       dataSource = { transaction: jest.fn() },
-      configService = { obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue(null) },
+      configService = {
+        obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue(null),
+      },
+      notificationClient = {
+        archiveNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
+        send: jest.fn().mockResolvedValue(undefined),
+      },
     } = overrides;
 
     return Test.createTestingModule({
@@ -42,10 +57,20 @@ describe('TravelExpensesService — Inmutabilidad del expediente consolidado', (
           provide: getRepositoryToken(ComisionadoEntity),
           useValue: { findOne: jest.fn().mockResolvedValue(null) },
         },
-        { provide: getRepositoryToken(SolicitudComisionEntity), useValue: solicitudRepo },
-        { provide: getRepositoryToken(DocumentoSoporteEntity), useValue: documentoRepo },
+        {
+          provide: getRepositoryToken(SolicitudComisionEntity),
+          useValue: solicitudRepo,
+        },
+        {
+          provide: getRepositoryToken(DocumentoSoporteEntity),
+          useValue: documentoRepo,
+        },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: ConfigService, useValue: configService },
+        {
+          provide: NotificationClientService,
+          useValue: notificationClient,
+        },
       ],
     }).compile();
   };

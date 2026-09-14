@@ -177,9 +177,9 @@ export class PortalController {
    * Documentos persistidos (UNIÓN auth.documento_carpeta_digital + RUND soportes).
    */
   @Get('carpeta-digital/:personaId/documentos')
-  async getDocumentosByPersona(@Param('personaId') personaId: string) {
+  async getDocumentosByPersona(@Param('personaId') personaId: string, @Req() req?: any) {
     try {
-      const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId);
+      const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId, req?.user);
       return { success: true, data: Array.isArray(data) ? data : [] };
     } catch (err: any) {
       return { success: true, data: [], message: err?.message };
@@ -206,7 +206,7 @@ export class PortalController {
       },
     }),
   }))
-  async uploadDocumento(@Body() body: any, @UploadedFile() file?: any) {
+  async uploadDocumento(@Body() body: any, @UploadedFile() file?: any, @Req() req?: any) {
     if (!file) return { success: false, message: 'Archivo requerido' };
     const personaId = String(body?.personaId || body?.persona_id || '').replace(/^carpeta:/, '');
     if (!personaId) return { success: false, message: 'personaId es requerido' };
@@ -222,7 +222,7 @@ export class PortalController {
         tipoArchivo: extname(file.originalname).replace('.', '').toLowerCase(),
         tamanoBytes: file.size,
         comentarios: body?.descripcion || null,
-      });
+      }, req?.user);
       return { success: true, data };
     } catch (err: any) {
       return { success: false, message: err?.message || 'Error al guardar documento' };
@@ -233,12 +233,12 @@ export class PortalController {
    * PUT /portal/carpeta-digital/documentos/:id/reclassify
    */
   @Put('carpeta-digital/documentos/:id/reclassify')
-  async reclassifyDocumento(@Param('id') id: string, @Body() body: any) {
+  async reclassifyDocumento(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
     try {
       const data = await this.carpetaDigitalService.reclassifyDocumento(id, {
         tipoDocumentoId: body?.tipo_documento_id || body?.tipoDocumentoId,
         categoria: body?.categoria,
-      });
+      }, req?.user);
       return { success: true, data };
     } catch (err: any) {
       return { success: false, message: err?.message };
@@ -249,13 +249,13 @@ export class PortalController {
    * PUT /portal/carpeta-digital/documentos/:id/validate
    */
   @Put('carpeta-digital/documentos/:id/validate')
-  async validateDocumento(@Param('id') id: string, @Body() body: any) {
+  async validateDocumento(@Param('id') id: string, @Body() body: any, @Req() req?: any) {
     try {
       const data = await this.carpetaDigitalService.validateDocumento(id, {
         estado: body?.estado,
         comentarios: body?.comentarios,
         validadoPor: body?.validadoPor,
-      });
+      }, req?.user);
       return { success: true, data };
     } catch (err: any) {
       return { success: false, message: err?.message };
@@ -266,9 +266,9 @@ export class PortalController {
    * DELETE /portal/carpeta-digital/documentos/:id
    */
   @Delete('carpeta-digital/documentos/:id')
-  async deleteDocumento(@Param('id') id: string) {
+  async deleteDocumento(@Param('id') id: string, @Req() req?: any) {
     try {
-      const data = await this.carpetaDigitalService.deleteDocumento(id);
+      const data = await this.carpetaDigitalService.deleteDocumento(id, req?.user);
       return { success: true, data };
     } catch (err: any) {
       return { success: false, message: err?.message };
@@ -280,12 +280,12 @@ export class PortalController {
    * Resumen agregado: carpeta + documentos + tipos. Conserva el contrato anterior.
    */
   @Get('carpeta-digital/:id')
-  async getCarpetaDigital(@Param('id') id: string) {
+  async getCarpetaDigital(@Param('id') id: string, @Req() req?: any) {
     const cleanId = String(id || '').replace(/^carpeta:/, '');
     try {
       const [carpeta, documentos, checklist] = await Promise.all([
         this.carpetaDigitalService.getCarpetaByPersona(cleanId).catch(() => null),
-        this.carpetaDigitalService.listDocumentosByPersona(cleanId).catch(() => []),
+        this.carpetaDigitalService.listDocumentosByPersona(cleanId, req?.user).catch(() => []),
         this.carpetaDigitalService.getChecklistForPersona(cleanId).catch(() => ({ tiposDocumentos: [] })),
       ]);
       return {

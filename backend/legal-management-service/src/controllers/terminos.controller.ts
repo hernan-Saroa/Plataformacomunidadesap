@@ -82,11 +82,16 @@ export class TerminosController {
     }
 
     @Get('listado')
-    async getListado(@Query('responsableId') responsableId?: string, @Req() req?: any) {
+    async getListado(
+        @Query('responsableId') responsableId?: string,
+        @Query('estado') estado?: string,
+        @Req() req?: any,
+    ) {
         const access = getLegalAccessFromRequest(req);
         return this.terminosService.getSemaforoList({
             responsableId: access.esResuelveSolo ? undefined : responsableId,
             responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+            estado,
         });
     }
 
@@ -118,8 +123,8 @@ export class TerminosController {
     }
 
     @Delete(':id')
-    async remove(@Param('id') id: string) {
-        return this.terminosService.remove(id);
+    async remove(@Param('id') id: string, @Query('permanente') permanente?: string) {
+        return this.terminosService.remove(id, permanente === 'true');
     }
 
     @Get(':id/exportar/pdf')

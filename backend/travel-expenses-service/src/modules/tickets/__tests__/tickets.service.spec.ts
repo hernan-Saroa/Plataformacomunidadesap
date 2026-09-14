@@ -435,12 +435,12 @@ describe('TicketsService', () => {
     it('rechaza valores fuera del rango 0-100', async () => {
       const module = await createMockModule();
       const service = module.get<TicketsService>(TicketsService);
-      await expect(service.actualizarParametroHolgura(150)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-      await expect(service.actualizarParametroHolgura(-5)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.actualizarParametroHolgura(150),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.actualizarParametroHolgura(-5),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('crea el parámetro si no existe al actualizar', async () => {

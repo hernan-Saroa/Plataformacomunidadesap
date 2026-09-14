@@ -1,0 +1,267 @@
+{
+  "archivo": "CargaDocentes_RUND_2025-1_FINAL.xlsx",
+  "sha256": "3feb58dac68420a422d64cb1e543f6a04cb77adb0abd03d503d6a551ab1d04e5",
+  "filas": 263,
+  "columnasReales": 38,
+  "sinMapeo": [],
+  "soportesCoincidentes": [
+    {
+      "archivo": "CargaDocentes_RUND_2025-1_FINAL.xlsx",
+      "estado": "COMPLETADA"
+    }
+  ],
+  "periodos": {
+    "2026-2": {
+      "coincidentes": 263,
+      "columnas": {
+        "DOCUMENTO_IDENTIDAD": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TIPO_DOCUMENTO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 261,
+          "diferentes": 2
+        },
+        "NOMBRE_COMPLETO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "GENERO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "SEXO_BIOLOGICO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "FECHA_NACIMIENTO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "EDAD": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 122,
+          "diferentes": 141
+        },
+        "RANGO_EDAD": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "CORREO_INSTITUCIONAL": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 262,
+          "diferentes": 1
+        },
+        "CORREO_PERSONAL": {
+          "enExcel": 182,
+          "enBD": 182,
+          "iguales": 259,
+          "diferentes": 4
+        },
+        "TELEFONO": {
+          "enExcel": 245,
+          "enBD": 245,
+          "iguales": 229,
+          "diferentes": 34
+        },
+        "VINCULACION": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "REGIMEN_NORMATIVO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "HORAS_PTA": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TERRITORIAL": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "DEDICACION": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "DEDICACION_HORAS_SEMANA": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "CATEGORIA_ESCALAFON": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "INICIO_VINCULACION": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "FIN_VINCULACION": {
+          "enExcel": 159,
+          "enBD": 159,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "ESTADO_DOCENTE": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 262,
+          "diferentes": 1
+        },
+        "ACTO_ADMINISTRATIVO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "ORIGEN_VINCULACION": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "PUNTAJE_SALARIAL": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 255,
+          "diferentes": 8
+        },
+        "SITUACION_ADMINISTRATIVA": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "SITUACION_CATEGORIA": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "NIVEL_FORMACION": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TITULO_PREGRADO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TITULO_ESPECIALIZACION": {
+          "enExcel": 152,
+          "enBD": 152,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TITULO_MAESTRIA": {
+          "enExcel": 226,
+          "enBD": 226,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TITULO_DOCTORADO": {
+          "enExcel": 99,
+          "enBD": 99,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "TITULO_POSDOCTORADO": {
+          "enExcel": 4,
+          "enBD": 4,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "NUCLEO_TEMATICO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "PERFIL_ACADEMICO": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "INVESTIGACION_ACTIVA": {
+          "enExcel": 0,
+          "enBD": 0,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "ULTIMA_EVALUACION": {
+          "enExcel": 263,
+          "enBD": 263,
+          "iguales": 263,
+          "diferentes": 0
+        },
+        "OBSERVACIONES": {
+          "enExcel": 19,
+          "enBD": 19,
+          "iguales": 260,
+          "diferentes": 3
+        },
+        "ID_RUND": {
+          "enExcel": 0,
+          "enBD": 263,
+          "iguales": 0,
+          "diferentes": 263
+        }
+      },
+      "territoriales": {
+        "24: META": 15,
+        "18: BOYACÁ": 13,
+        "14: SEDE_CENTRAL": 50,
+        "25: NARIÑO": 15,
+        "28: NORTESANTANDER": 14,
+        "20: CAUCA": 14,
+        "27: RISARALDA": 14,
+        "23: HUILA": 18,
+        "19: CALDAS": 10,
+        "21: CHOCÓ": 6,
+        "28: SANTANDER": 8,
+        "29: TOLIMA": 18,
+        "16: ATLÁNTICO": 20,
+        "17: BOLÍVAR": 14,
+        "22: CUNDINAMARCA": 15,
+        "30: VALLE": 11,
+        "15: ANTIOQUIA": 8
+      }
+    }
+  }
+}

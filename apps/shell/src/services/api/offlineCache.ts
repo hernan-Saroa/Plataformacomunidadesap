@@ -1,4 +1,5 @@
 // apps/shell/src/services/api/offlineCache.ts
+import { excludesRundCache } from './rundCachePolicy';
 
 const DB_NAME = 'esap_offline_db';
 const CACHE_STORE = 'api_cache';
@@ -37,6 +38,14 @@ class OfflineCacheManager {
 
       request.onsuccess = (event) => {
         this.db = (event.target as IDBOpenDBRequest).result;
+        // Retirar únicamente copias históricas de respuestas RUND, sin borrar otros módulos.
+        const cleanup = this.db.transaction([CACHE_STORE], 'readwrite').objectStore(CACHE_STORE).openCursor();
+        cleanup.onsuccess = () => {
+          const cursor = cleanup.result;
+          if (!cursor) return;
+          if (excludesRundCache(cursor.value.url, cursor.value.data)) cursor.delete();
+          cursor.continue();
+        };
         resolve(this.db);
       };
 
@@ -71,7 +80,8 @@ class OfflineCacheManager {
         const request = store.get(url);
 
         request.onsuccess = () => {
-          resolve(request.result ? request.result.data : null);
+          const data = request.result?.data;
+          resolve(excludesRundCache(url, data) ? null : data ?? null);
         };
         request.onerror = () => reject(request.error);
       });
@@ -82,6 +92,7 @@ class OfflineCacheManager {
   }
 
   async setCache(url: string, data: any): Promise<void> {
+    if (excludesRundCache(url, data)) return;
     try {
       const db = await this.init();
       return new Promise((resolve, reject) => {

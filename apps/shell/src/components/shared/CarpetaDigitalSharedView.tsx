@@ -58,6 +58,7 @@ export interface CarpetaDocumento {
   fecha_vencimiento?: string;
   tipo_documento_id?: string;
   url_archivo?: string;
+  contenido_restringido?: boolean;
 }
 
 export interface TipoDocumentoRequerido {
@@ -754,6 +755,7 @@ export function CarpetaDigitalSharedView({
         estado,
         fecha_subida: sop.createdAt || sop.fecha_carga || new Date().toISOString(),
         url_archivo: fileUrl,
+        contenido_restringido: Boolean(sop.contenidoRestringido || sop.contenido_restringido),
         version_actual: 1,
         comentarios: sop.observacion || '',
       });
@@ -1204,6 +1206,10 @@ export function CarpetaDigitalSharedView({
     soportes?.find((s: any) => s.tipo_soporte === tipo || s.tipo === tipo);
 
   const handlePreview = useCallback((doc: CarpetaDocumento) => {
+    if (doc.contenido_restringido) {
+      toast.info('El documento original de RUND está restringido para su rol.');
+      return;
+    }
     setPreviewDoc(doc);
     setZoomScale(1);
     setRotateAngle(0);
@@ -1282,6 +1288,10 @@ export function CarpetaDigitalSharedView({
   }, [activePreviewIndex, currentFolderDocs]);
 
   const handleDownload = useCallback((doc: CarpetaDocumento) => {
+    if (doc.contenido_restringido) {
+      toast.info('El documento original de RUND está restringido para su rol.');
+      return;
+    }
     if (doc.categoria === 'rund') {
       if (doc.url_archivo) {
         window.open(doc.url_archivo, '_blank');

@@ -1,6 +1,18 @@
 import { BancoDocentesService } from './banco-docentes.service';
 
 describe('BancoDocentesService - auditoría de accesos sensibles', () => {
+  it('propaga el fallo de persistencia de accesos sensibles', async () => {
+    const service = Object.create(BancoDocentesService.prototype) as any;
+    service.auditLogRepo = {
+      create: jest.fn((entry) => entry),
+      save: jest.fn().mockRejectedValue(new Error('auditoría no disponible')),
+    };
+    await expect(service.logSensitiveDataAccess([{
+      docenteId: '11111111-1111-4111-8111-111111111111', actorId: 'ggp-1',
+      roles: ['GESTION_PROFESORAL'], fields: ['DOCUMENTO_IDENTIDAD'], endpoint: 'PERFIL_RUND_POR_ID', fullAccess: true,
+    }])).rejects.toThrow('auditoría no disponible');
+  });
+
   it('registra actor, campos, endpoint y resultado sin copiar los valores sensibles', async () => {
     const auditLogRepo = {
       create: jest.fn((entry) => entry),

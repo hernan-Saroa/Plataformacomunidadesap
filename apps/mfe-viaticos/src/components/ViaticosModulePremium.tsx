@@ -4,6 +4,7 @@ import {
   FileText,
   Clock,
   AlertCircle,
+  AlertTriangle,
   Plus,
   Search,
   Filter,
@@ -19,31 +20,67 @@ import {
   Settings,
   Download,
   Send,
+  Flag,
+  Undo2,
+  ShieldCheck,
+  Award,
+  UserPlus,
 } from 'lucide-react';
+import TableroCargaAnalistas from './TableroCargaAnalistas';
+import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
+import AnalystInbox from './AnalystInbox';
+import ControlViaticosModal from './ControlViaticosModal';
+import AutorizacionInbox from './AutorizacionInbox';
+import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
-import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
+import {
+  SolicitudViatico,
+  ResumenEstadisticoViaticos,
+  SolicitudComisionResponse,
+  SolicitudControlViaticosResponse,
+  DocumentoSoporte,
+  ResultadoConsolidacion,
+} from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
+const Permissions = {
+  VIATICOS_SOLICITUDES_READ_OWN: 'travel_expenses:view_own_requests',
+  VIATICOS_SOLICITUDES_CREATE: 'travel_expenses:create_request',
+  VIATICOS_SOLICITUDES_READ_INBOX: 'travel_expenses:read_inbox',
+  VIATICOS_SOLICITUDES_SET_PRIORITY: 'travel_expenses:set_priority',
+  VIATICOS_SOLICITUDES_RETURN: 'travel_expenses:return_request',
+  VIATICOS_SOLICITUDES_ASSIGN_ANALYST: 'travel_expenses:assign_analyst',
+  VIATICOS_SOLICITUDES_VIEW_ASSIGNED: 'travel_expenses:view_assigned_requests',
+  VIATICOS_TIQUETES_VIEW: 'travel_expenses:tickets.view',
+  VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
+  VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
+  VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
+  VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
+  VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
+} as const;
 
-/**
- * Orden de la vista general de solicitudes por estado (según requerimiento):
- * 1) Radicadas, 2) Extemporáneas, 3) Solicitadas (en revisión), 4) Pendientes
- * (borradores) y el resto al final.
- */
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion';
+
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
-  RADICADA: 1,
-  EXTEMPORANEA: 2,
-  SOLICITADO: 3,
-  PENDIENTE: 4,
+  EN_AUTORIZACION: 1,
+  SOLICITADA_SIIF: 2,
+  VERIFICADA: 3,
+  AUTORIZADA: 4,
+  DEVUELTA: 5,
+  RADICADA: 5,
+  EXTEMPORANEA: 6,
+  SOLICITADO: 7,
+  PENDIENTE: 8,
 };
 
 function prioridadEstadoTabla(estado: string): number {
-  return ORDEN_ESTADOS_TABLA[estado] ?? 5;
+  return ORDEN_ESTADOS_TABLA[estado] ?? 9;
 }
 
 export default function ViaticosModulePremium() {
@@ -61,26 +98,28 @@ export default function ViaticosModulePremium() {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
-
-  const cargarDatos = async () => {
-    setCargando(true);
-    try {
-      const { solicitudes: list, esSuperAdmin: esSuperAdminResp } = await viaticosService.obtenerSolicitudes();
-      console.log('[ViaticosModulePremium] solicitudes cargadas=', list.length, 'esSuperAdmin=', esSuperAdminResp);
-      setSolicitudes(list);
-      setEsSuperAdmin(esSuperAdminResp);
-      const res = await viaticosService.obtenerResumenEstadistico();
-      setResumen(res);
-    } catch (e) {
-      console.error('Error cargando viáticos:', e);
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+  const [esSecretario, setEsSecretario] = useState(false);
+  const [esAnalista, setEsAnalista] = useState(false);
+  const [esControlViaticos, setEsControlViaticos] = useState(false);
+  const [esSubdireccion, setEsSubdireccion] = useState(false);
+  const [esDireccionNacional, setEsDireccionNacional] = useState(false);
+  const [cargandoRol, setCargandoRol] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      localStorage.getItem('token') ||
+      localStorage.getItem('access_token') ||
+      (window as any).__esap_auth_cache,
+    );
+  });
+  const [prioridadSeleccionada, setPrioridadSeleccionada] = useState<string>('');
+  const [motivoDevolucion, setMotivoDevolucion] = useState('');
+  const [guardandoPrioridad, setGuardandoPrioridad] = useState(false);
+  const [devolviendo, setDevolviendo] = useState(false);
+  const [analistaSeleccionadoId, setAnalistaSeleccionadoId] = useState<string | null>(null);
+  const [asignando, setAsignando] = useState(false);
+  const [modalControlViaticosAbierta, setModalControlViaticosAbierta] = useState(false);
+  const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
+  const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
 
   const grupos: MenuGroup[] = [
     {
@@ -92,6 +131,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Comisiones de servicios oficiales',
           icon: <Plane className="w-5 h-5" />,
           color: '#003DA5',
+        },
+        {
+          id: 'mis-solicitudes',
+          label: 'Mis Solicitudes Asignadas',
+          subtitle: 'Solicitudes pendientes de revisión',
+          icon: <UserCheck className="w-5 h-5" />,
+          color: '#10B981',
         },
         {
           id: 'tiquetes',
@@ -115,6 +161,20 @@ export default function ViaticosModulePremium() {
           color: '#7C3AED',
         },
         {
+          id: 'autorizaciones',
+          label: 'Autorización Corporativa',
+          subtitle: 'Visto bueno de gasto e itinerario (Etapa 6)',
+          icon: <FileCheck className="w-5 h-5" />,
+          color: '#4F46E5',
+        },
+        {
+          id: 'autorizaciones-direccion',
+          label: 'Autorización Extemporánea',
+          subtitle: 'Visto bueno Dirección Nacional (Etapa 6)',
+          icon: <Award className="w-5 h-5" />,
+          color: '#9333EA',
+        },
+        {
           id: 'configuracion',
           label: 'Configuración',
           subtitle: 'Parametrización de formulario y documentos',
@@ -124,6 +184,93 @@ export default function ViaticosModulePremium() {
       ],
     },
   ];
+
+  const cargarDatos = async () => {
+    setCargando(true);
+    try {
+      const { solicitudes: list } = await viaticosService.obtenerSolicitudes();
+
+      const esSecretarioRol =
+        esSuperAdmin ||
+        authService.hasRole('SECRETARIO') ||
+        authService.hasRole('SECRETARIO_VIATICOS') ||
+        authService.hasRole('SUPERVISOR') ||
+        authService.hasAnyPermission([
+          Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+          Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+          Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
+          Permissions.VIATICOS_SOLICITUDES_RETURN,
+        ]);
+
+      let solicitudesCombinadas = [...list];
+
+      if (esSecretarioRol) {
+        try {
+          const bandeja = await viaticosService.obtenerBandejaSecretario();
+          const solicitudesBandeja = bandeja.data.map((item) => viaticosService.mapearSolicitudLista(item));
+          const map = new Map<string, SolicitudViatico>();
+          solicitudesCombinadas.forEach((s) => map.set(s.id, s));
+          solicitudesBandeja.forEach((s) => map.set(s.id, s));
+          solicitudesCombinadas = Array.from(map.values());
+        } catch (e) {
+          console.error('Error cargando bandeja secretario:', e);
+        }
+      }
+
+      setSolicitudes(solicitudesCombinadas);
+      const res = await viaticosService.obtenerResumenEstadistico();
+      setResumen(res);
+    } catch (e) {
+      console.error('Error cargando viáticos:', e);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => {
+    const determinarRol = async () => {
+      try {
+        await authService.getCurrentUser();
+      } catch {
+        // si falla verify, getCurrentUserSync() usará la caché del shell
+      } finally {
+        const superAdmin = authService.isSuperAdmin();
+        const subdir = authService.isSubdireccionGestionCorporativa();
+        const dirNac = authService.isDireccionNacional();
+        const secretario =
+          superAdmin ||
+          authService.hasRole('SECRETARIO') ||
+          authService.hasRole('SECRETARIO_VIATICOS') ||
+          authService.hasRole('SUPERVISOR') ||
+          authService.hasAnyPermission([
+            Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+            Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+            Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
+            Permissions.VIATICOS_SOLICITUDES_RETURN,
+          ]);
+        setEsSuperAdmin(superAdmin);
+        setEsSecretario(secretario);
+        setEsAnalista(authService.isAnalista());
+        setEsControlViaticos(authService.isControlViaticos());
+        setEsSubdireccion(subdir);
+        setEsDireccionNacional(dirNac);
+        if (dirNac && !superAdmin && !subdir) {
+          setSeccion('autorizaciones-direccion');
+        } else if (subdir && !superAdmin) {
+          setSeccion('autorizaciones');
+        }
+        setCargandoRol(false);
+      }
+    };
+
+    determinarRol();
+  }, []);
+
+  useEffect(() => {
+    if (!cargandoRol && (!esAnalista || esSuperAdmin)) {
+      cargarDatos();
+    }
+  }, [cargandoRol, esAnalista, esSuperAdmin]);
 
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
@@ -137,8 +284,6 @@ export default function ViaticosModulePremium() {
       const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
       return cumpleBusqueda && cumpleEstado;
     })
-    // Orden por prioridad de estado y, dentro del mismo estado, por fecha de
-    // creación (más reciente primero).
     .sort(
       (a, b) =>
         prioridadEstadoTabla(a.estado) - prioridadEstadoTabla(b.estado) ||
@@ -160,14 +305,7 @@ export default function ViaticosModulePremium() {
     cargarDatos();
   };
 
-  /**
-   * RF-LIQ-004 — Maneja la consolidación exitosa del expediente: refresca la
-   * bandeja y muestra el aviso de que el expediente quedó en revisión del
-   * Grupo de Viáticos (estado SOLICITADO / solo lectura).
-   */
-  const handleSolicitudConsolidada = (
-    resultado: ResultadoConsolidacion,
-  ) => {
+  const handleSolicitudConsolidada = (resultado: ResultadoConsolidacion) => {
     const ref = resultado.consecutivoUnico || 'el expediente';
     setMensajeExito(
       `El expediente ${ref} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
@@ -176,7 +314,6 @@ export default function ViaticosModulePremium() {
     cargarDatos();
   };
 
-  /** Abre el modal en modo consolidación (Paso 4) para un expediente radicado. */
   const handleConsolidar = async (sol: SolicitudViatico) => {
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
@@ -189,25 +326,36 @@ export default function ViaticosModulePremium() {
 
   const handleVerDetalle = async (sol: SolicitudViatico) => {
     setSolicitudSeleccionada(sol);
+    setPrioridadSeleccionada(sol.prioridad || 'MEDIA');
+    setAnalistaSeleccionadoId(sol.analistaAsignadoId || null);
+    setMotivoDevolucion('');
     setCargandoDocumentos(true);
     setDocumentosSoporte([]);
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
       setDocumentosSoporte(completa.documentosSoporte || []);
+      if (completa.analistaAsignadoId) {
+        setAnalistaSeleccionadoId(completa.analistaAsignadoId);
+      }
+      if (completa.prioridad) {
+        setPrioridadSeleccionada(completa.prioridad);
+      }
     } catch (e) {
       console.error('Error cargando documentos de soporte:', e);
+      setMensajeExito('No fue posible cargar los documentos de soporte de esta solicitud.');
     } finally {
       setCargandoDocumentos(false);
     }
   };
 
-  const handleExportarPDF = async (solicitud: SolicitudViatico) => {
+  const handleExportarPDF = async (solicitud: { id: string; codigo?: string; consecutivoUnico?: string }) => {
     setExportando(true);
     try {
-      const blob = await viaticosService.exportarFormato023(solicitud.id, solicitud.codigo);
+      const codigo = solicitud.codigo || solicitud.consecutivoUnico || '';
+      const blob = await viaticosService.exportarFormato023(solicitud.id, codigo);
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
-      setMensajeExito(`Formato 023 de la solicitud ${solicitud.codigo} generado.`);
+      setMensajeExito(`Formato 023 de la solicitud ${codigo} generado.`);
       setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       console.error('Error al exportar Formato 023:', error);
@@ -217,18 +365,207 @@ export default function ViaticosModulePremium() {
     }
   };
 
+  const handleGuardarPrioridad = async () => {
+    if (!solicitudSeleccionada || !prioridadSeleccionada) return;
+    setGuardandoPrioridad(true);
+    try {
+      await viaticosService.actualizarPrioridad(solicitudSeleccionada.id, prioridadSeleccionada);
+      setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
+      cargarDatos();
+    } catch (error) {
+      console.error('Error guardando prioridad:', error);
+      setMensajeExito('No fue posible actualizar la prioridad.');
+    } finally {
+      setGuardandoPrioridad(false);
+    }
+  };
+
+  const handleDevolverSolicitud = async () => {
+    if (!solicitudSeleccionada || !motivoDevolucion.trim()) return;
+    setDevolviendo(true);
+    try {
+      await viaticosService.devolverSolicitud(solicitudSeleccionada.id, motivoDevolucion.trim());
+      setMensajeExito('Solicitud devuelta a la dependencia correctamente.');
+      setMotivoDevolucion('');
+      cargarDatos();
+      setSolicitudSeleccionada(null);
+    } catch (error) {
+      console.error('Error devolviendo solicitud:', error);
+      setMensajeExito('No fue posible devolver la solicitud.');
+    } finally {
+      setDevolviendo(false);
+    }
+  };
+
+  const handleConfirmarAsignacion = async () => {
+    if (!solicitudSeleccionada || !analistaSeleccionadoId) return;
+    setAsignando(true);
+    try {
+      await viaticosService.asignarAnalista({
+        solicitudId: solicitudSeleccionada.id,
+        analistaId: analistaSeleccionadoId,
+      });
+      setMensajeExito('Comisión asignada al analista correctamente.');
+      setAnalistaSeleccionadoId(null);
+      cargarDatos();
+      setSolicitudSeleccionada(null);
+    } catch (error) {
+      console.error('Error asignando analista:', error);
+      setMensajeExito('No fue posible asignar la comisión al analista.');
+    } finally {
+      setAsignando(false);
+    }
+  };
+
+  const handleAbrirControlCruzado = async (sol: SolicitudViatico) => {
+    setCargandoControlViaticos(true);
+    setSolicitudControlViaticos(null);
+    setModalControlViaticosAbierta(true);
+    try {
+      const full = await viaticosService.obtenerSolicitudControlViaticos(sol.id);
+      setSolicitudControlViaticos(full);
+    } catch (err) {
+      console.error('Error cargando solicitud para Control Cruzado:', err);
+      setMensajeExito('No fue posible cargar el expediente para control cruzado.');
+    } finally {
+      setCargandoControlViaticos(false);
+    }
+  };
+
+  const currentUser = typeof (authService as any).getCurrentUserSync === 'function'
+    ? (authService as any).getCurrentUserSync()
+    : null;
+  const tieneContextoAuth = Boolean(
+    currentUser &&
+      (currentUser.roles?.length || currentUser.permissions?.length),
+  );
+
+  const puedeVerSolicitudes =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_SOLICITUDES_READ_OWN,
+      Permissions.VIATICOS_SOLICITUDES_CREATE,
+      Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+      Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+      Permissions.VIATICOS_SOLICITUDES_RETURN,
+      'travel_expenses:read_siif_requested',
+      'travel_expenses:double_check_request',
+    ]) ||
+    authService.isControlViaticos();
+  const puedeCrearSolicitud =
+    (!tieneContextoAuth || esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE)) &&
+    !esControlViaticos;
+  const puedeVerTiquetes =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_TIQUETES_VIEW,
+      Permissions.VIATICOS_TIQUETES_MANAGE,
+    ]);
+  const puedeVerLegalizaciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_LEGALIZACIONES_VIEW,
+      Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+    ]);
+  const puedeVerResoluciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_RESOLUCIONES_VIEW,
+      Permissions.VIATICOS_RESOLUCIONES_MANAGE,
+    ]);
+  const puedeVerConfiguracion =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
+  const puedeVerSolicitudesAsignadas =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
+  const puedeVerControlViaticos =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_siif_requested') ||
+    authService.hasPermission('travel_expenses:double_check_request') ||
+    authService.hasPermission('travel_expenses:return_to_analyst') ||
+    authService.isControlViaticos();
+  const puedeVerAutorizaciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_authorizations') ||
+    authService.hasPermission('travel_expenses:authorize_expense') ||
+    authService.hasPermission('travel_expenses:return_authorization');
+  const puedeVerAutorizacionesDireccion =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esDireccionNacional ||
+    authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+    authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
+    authService.hasPermission('travel_expenses:reject_extemporaneous');
+
+  const gruposFiltrados: MenuGroup[] = grupos
+    .map((grupo) => {
+      let items = grupo.items.filter((item) => {
+        if (item.id === 'solicitudes') return puedeVerSolicitudes;
+        if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
+        if (item.id === 'tiquetes') return puedeVerTiquetes;
+        if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
+        if (item.id === 'resoluciones') return puedeVerResoluciones;
+        if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
+        if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
+        if (item.id === 'configuracion') return puedeVerConfiguracion;
+        return true;
+      });
+
+      if (esDireccionNacional && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'autorizaciones-direccion') return -1;
+          if (b.id === 'autorizaciones-direccion') return 1;
+          return 0;
+        });
+      } else if (esSubdireccion && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'autorizaciones') return -1;
+          if (b.id === 'autorizaciones') return 1;
+          return 0;
+        });
+      }
+
+      return {
+        ...grupo,
+        items,
+      };
+    })
+    .filter((grupo) => grupo.items.length > 0);
+
+  if (cargandoRol) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-xs text-slate-400">Cargando módulo de viáticos...</div>
+      </div>
+    );
+  }
+
+  if (esAnalista && !esSuperAdmin) {
+    return <AnalystInbox />;
+  }
+
   return (
     <ModuleLayout
       moduleName="VIÁTICOS Y GASTOS DE VIAJE"
       moduleDescription="Gestión de Comisiones de Servicios y Tiquetes Institucionales · ESAP"
       moduleIcon={<Plane className="w-6 h-6" />}
       moduleColor="#003DA5"
-      groups={grupos}
+      groups={gruposFiltrados}
       activeSection={seccion}
       onSectionChange={(s) => {
         setSeccion(s as Seccion);
         setModalNuevaAbierta(false);
         setSolicitudSeleccionada(null);
+        setSolicitudAResumir(null);
       }}
     >
       {mensajeExito && (
@@ -262,76 +599,79 @@ export default function ViaticosModulePremium() {
         />
       ) : (
         <>
-          {/* ── KPI HEADER ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
-                <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
-                <Plane className="w-6 h-6" />
-              </div>
-            </div>
+           {/* ── SOLICITUDES ── */}
+           {seccion === 'solicitudes' && puedeVerSolicitudes && (
+            <>
+              {/* ── KPI HEADER (Específico de Solicitudes) ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
+                    <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
+                    <Plane className="w-6 h-6" />
+                  </div>
+                </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
-                <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                <Clock className="w-6 h-6" />
-              </div>
-            </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
+                    <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
-                <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                <MapPin className="w-6 h-6" />
-              </div>
-            </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
+                    <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                </div>
 
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
-                <h3 className="text-2xl font-black text-slate-800 mt-1">
-                  {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
-                </h3>
-                <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">
+                      {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
+                    </h3>
+                    <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                    <DollarSign className="w-6 h-6" />
+                  </div>
+                </div>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                <DollarSign className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
 
-          {/* ── SOLICITUDES ── */}
-          {seccion === 'solicitudes' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Plane className="w-5 h-5 text-[#003DA5]" />
-                    Solicitudes de Comisión y Viáticos
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Plane className="w-5 h-5 text-[#003DA5]" />
+                     Solicitudes de Comisión y Viáticos
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
                     Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setModalNuevaAbierta(true)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Nueva Solicitud de Comisión
-                </button>
+                {puedeCrearSolicitud && (
+                  <button
+                    type="button"
+                    onClick={() => setModalNuevaAbierta(true)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nueva Solicitud de Comisión
+                  </button>
+                )}
               </div>
 
               {/* Filtros */}
@@ -352,6 +692,10 @@ export default function ViaticosModulePremium() {
                     id="filtroEstado"
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+                      { value: 'AUTORIZADA', label: 'Autorizada' },
+                      { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
+                      { value: 'VERIFICADA', label: 'Verificada' },
                       { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
@@ -375,32 +719,30 @@ export default function ViaticosModulePremium() {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-3">Código / Solicitante</th>
-                        <th className="px-4 py-3">Destino / Fechas</th>
-                        <th className="px-4 py-3">Tipo & Transporte</th>
-                        <th className="px-4 py-3">Monto Estimado</th>
-                        <th className="px-4 py-3">Estado</th>
-                        <th className="px-4 py-3 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {solicitudesFiltradas.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                            No se encontraron solicitudes de viáticos registradas.
-                          </td>
-                        </tr>
+                         <th className="px-4 py-3">Código / Solicitante</th>
+                         <th className="px-4 py-3">Destino / Fechas</th>
+                         <th className="px-4 py-3">Tipo & Transporte</th>
+                         <th className="px-4 py-3">Monto Estimado</th>
+                         <th className="px-4 py-3">Estado</th>
+                          {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && <th className="px-4 py-3">Prioridad</th>}
+                         <th className="px-4 py-3 text-right">Acciones</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 bg-white">
+                       {solicitudesFiltradas.length === 0 ? (
+                         <tr>
+                            <td colSpan={(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
+                             No se encontraron solicitudes de viáticos registradas.
+                           </td>
+                         </tr>
                       ) : (
                         solicitudesFiltradas.map((sol) => (
                           <tr key={sol.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-[10px] text-slate-400 tracking-wide">{sol.codigo}</span>
-                                {esSuperAdmin && sol.esCreadoPorMi && (
-                                  <span
-                                    className="inline-flex items-center text-blue-500"
-                                    title="Radicada por mí"
-                                  >
+                                {authService.isSuperAdmin() && sol.esCreadoPorMi && (
+                                  <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
                                     <UserCheck className="w-3 h-3" />
                                   </span>
                                 )}
@@ -438,66 +780,167 @@ export default function ViaticosModulePremium() {
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {getBadgeEstado(sol.estado)}
-                                {sol.radicadoFueraJornada && (
-                                  <span
-                                    className="inline-flex items-center text-amber-600"
-                                    title="Radicado fuera de jornada"
+                              <div className="flex flex-col gap-1 items-start">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {getBadgeEstado(sol.estado)}
+                                  {sol.radicadoFueraJornada && (
+                                    <span className="inline-flex items-center text-amber-600" title="Radicado fuera de jornada">
+                                      <AlertCircle className="w-3.5 h-3.5" />
+                                    </span>
+                                  )}
+                                </div>
+                                {(sol.motivoDevolucion || sol.observacionesSegundaRevision) && (
+                                  <div
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 max-w-[200px]"
+                                    title={`Motivo de Devolución: ${sol.motivoDevolucion || sol.observacionesSegundaRevision}`}
                                   >
-                                    <AlertCircle className="w-3.5 h-3.5" />
-                                  </span>
+                                    <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                                    <span className="truncate">
+                                      {sol.motivoDevolucion || sol.observacionesSegundaRevision}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             </td>
-                             <td className="px-4 py-3 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleExportarPDF(sol)}
-                                    disabled={exportando}
-                                    className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors disabled:opacity-50"
-                                    title="Exportar Formato 023"
-                                    aria-label="Exportar Formato 023"
+                             {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && (
+                              <td className="px-4 py-3">
+                                {['SOLICITADO', 'EXTEMPORANEA'].includes(sol.estado) ? (
+                                  <select
+                                    value={sol.prioridad || 'MEDIA'}
+                                    onChange={async (e) => {
+                                      const nueva = e.target.value;
+                                      try {
+                                        await viaticosService.actualizarPrioridad(sol.id, nueva);
+                                        setMensajeExito(`Prioridad de ${sol.codigo || 'la solicitud'} actualizada a ${nueva}.`);
+                                        cargarDatos();
+                                      } catch (err) {
+                                        console.error(err);
+                                        setMensajeExito('No fue posible actualizar la prioridad.');
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                                      sol.prioridad === 'ALTA'
+                                        ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-400'
+                                        : sol.prioridad === 'MEDIA'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400'
+                                          : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400'
+                                    }`}
+                                    title="Cambiar prioridad de revisión"
                                   >
-                                    <Download className="w-3.5 h-3.5" />
-                                  </button>
+                                    <option value="ALTA">Alta</option>
+                                    <option value="MEDIA">Media</option>
+                                    <option value="BAJA">Baja</option>
+                                  </select>
+                                ) : sol.prioridad ? (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                      sol.prioridad === 'ALTA'
+                                        ? 'bg-red-50 text-red-700'
+                                        : sol.prioridad === 'MEDIA'
+                                          ? 'bg-amber-50 text-amber-700'
+                                          : 'bg-emerald-50 text-emerald-700'
+                                    }`}
+                                  >
+                                    {sol.prioridad}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400">—</span>
+                                )}
+                              </td>
+                            )}
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleExportarPDF(sol)}
+                                  disabled={exportando}
+                                  className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors disabled:opacity-50"
+                                  title="Exportar Formato 023"
+                                  aria-label="Exportar Formato 023"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleVerDetalle(sol)}
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                  title="Ver Detalle"
+                                  aria-label="Ver Detalle"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                </button>
+                                {['SOLICITADO', 'EXTEMPORANEA'].includes(sol.estado) &&
+                                  (esSuperAdmin ||
+                                    esSecretario ||
+                                    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && (
                                     <button
                                       type="button"
                                       onClick={() => handleVerDetalle(sol)}
-                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
-                                    title="Ver Detalle"
-                                    aria-label="Ver Detalle"
+                                      className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors"
+                                      title={
+                                        sol.analistaAsignadoId
+                                          ? 'Reasignar Analista / Cambiar Prioridad'
+                                          : 'Asignar Analista (Etapa 4)'
+                                      }
+                                      aria-label="Asignar Analista"
+                                    >
+                                      <UserPlus className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                                {sol.estado === 'PENDIENTE' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+                                      setSolicitudAResumir(completa);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors"
+                                    title="Continuar solicitud en borrador"
+                                    aria-label="Continuar solicitud"
                                   >
-                                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                    <FileText className="w-3.5 h-3.5" />
                                   </button>
-                                  {sol.estado === 'PENDIENTE' && (
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
-                                        setSolicitudAResumir(completa);
-                                      }}
-                                      className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors"
-                                      title="Continuar solicitud en borrador"
-                                      aria-label="Continuar solicitud"
-                                    >
-                                      <FileText className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                  {['RADICADA', 'EXTEMPORANEA', 'DEVUELTA'].includes(sol.estado) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleConsolidar(sol)}
-                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
-                                      title="Consolidar y enviar a revisión (RF-LIQ-004)"
-                                      aria-label="Consolidar y enviar a revisión"
-                                    >
-                                      <Send className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                             </td>
+                                )}
+                                {puedeCrearSolicitud && ['RADICADA', 'DEVUELTA'].includes(sol.estado) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleConsolidar(sol)}
+                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                                    title="Consolidar y enviar a revisión (RF-LIQ-004)"
+                                    aria-label="Consolidar y enviar a revisión"
+                                  >
+                                    <Send className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {(sol.estado === 'SOLICITADA_SIIF' || sol.estado === 'VERIFICADA') && puedeVerControlViaticos && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleAbrirControlCruzado(sol)}
+                                    className={`p-1.5 rounded-lg transition-colors ${
+                                      sol.estado === 'VERIFICADA'
+                                        ? 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                    }`}
+                                    title={
+                                      sol.estado === 'SOLICITADA_SIIF'
+                                        ? 'Realizar Control Cruzado (Segunda Revisión)'
+                                        : 'Consultar Expediente Verificado (2do Nivel)'
+                                    }
+                                    aria-label={
+                                      sol.estado === 'SOLICITADA_SIIF'
+                                        ? 'Realizar Control Cruzado'
+                                        : 'Consultar Expediente Verificado'
+                                    }
+                                  >
+                                    {sol.estado === 'VERIFICADA' ? (
+                                      <Eye className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -506,11 +949,12 @@ export default function ViaticosModulePremium() {
                 </div>
               )}
             </div>
-          )}
+          </>
+        )}
 
-          {/* ── TIQUETES ── */}
-          {seccion === 'tiquetes' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+           {/* ── TIQUETES ── */}
+           {seccion === 'tiquetes' && puedeVerTiquetes && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -532,9 +976,9 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-          {/* ── LEGALIZACIONES ── */}
-          {seccion === 'legalizaciones' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+           {/* ── LEGALIZACIONES ── */}
+           {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -553,26 +997,61 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-          {/* ── RESOLUCIONES ── */}
-          {seccion === 'resoluciones' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <FileCheck className="w-5 h-5 text-purple-600" />
-                    Resoluciones Institucionales de Comisión
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Actos administrativos oficializados por la Subdirección de Gestión Institucional.
-                  </p>
-                </div>
-              </div>
-              <div className="p-8 text-center text-slate-400 text-xs">
-                <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Las resoluciones asociadas a cada solicitud aparecerán aquí tras su aprobación.
-              </div>
-            </div>
-          )}
+            {/* ── RESOLUCIONES ── */}
+            {seccion === 'resoluciones' && puedeVerResoluciones && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6">
+               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <FileCheck className="w-5 h-5 text-purple-600" />
+                     Resoluciones Institucionales de Comisión
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                     Actos administrativos oficializados por la Subdirección de Gestión Institucional.
+                   </p>
+                 </div>
+               </div>
+               <div className="p-8 text-center text-slate-400 text-xs">
+                 <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                 Las resoluciones asociadas a cada solicitud aparecerán aquí tras su aprobación.
+               </div>
+             </div>
+           )}
+
+             {/* ── MIS SOLICITUDES ASIGNADAS ── */}
+{seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
+                <SolicitudesAsignadasAnalista />
+              )}
+
+              {/* ── AUTORIZACIÓN CORPORATIVA (ETAPA 6) ── */}
+              {seccion === 'autorizaciones' && puedeVerAutorizaciones && (
+                <AutorizacionInbox />
+              )}
+
+              {/* ── AUTORIZACIÓN EXTEMPORÁNEA DIRECCIÓN NACIONAL (ETAPA 6) ── */}
+              {seccion === 'autorizaciones-direccion' && puedeVerAutorizacionesDireccion && (
+                <AutorizacionDireccionInbox />
+              )}
+
+             {/* ── CONFIGURACIÓN ── */}
+             {seccion === 'configuracion' && puedeVerConfiguracion && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Settings className="w-5 h-5 text-slate-600" />
+                     Configuración del Módulo de Viáticos
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                     Parámetros, formularios, checklist y reglas de negocio del módulo.
+                   </p>
+                 </div>
+               </div>
+               <div className="mt-4">
+                 <ParametrizacionManager />
+               </div>
+             </div>
+           )}
 
           {/* ── MODAL DETALLE DE SOLICITUD ── */}
           {solicitudSeleccionada && (
@@ -581,17 +1060,18 @@ export default function ViaticosModulePremium() {
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
                   <div className="min-w-0 flex-1 pr-3">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[10px] text-slate-400 tracking-wide truncate">{solicitudSeleccionada.codigo}</span>
-                      {esSuperAdmin && solicitudSeleccionada.esCreadoPorMi && (
-                        <span
-                          className="inline-flex items-center text-blue-500"
-                          title="Radicada por mí"
-                        >
+                      <span className="font-mono text-[10px] text-slate-400 tracking-wide truncate">
+                        {solicitudSeleccionada.codigo}
+                      </span>
+                      {authService.isSuperAdmin() && solicitudSeleccionada.esCreadoPorMi && (
+                        <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
                           <UserCheck className="w-3 h-3" />
                         </span>
                       )}
                     </div>
-                    <h3 className="text-sm font-black text-slate-900 truncate">{solicitudSeleccionada.nombreComisionado}</h3>
+                    <h3 className="text-sm font-black text-slate-900 truncate">
+                      {solicitudSeleccionada.nombreComisionado}
+                    </h3>
                   </div>
                   <button
                     type="button"
@@ -630,49 +1110,168 @@ export default function ViaticosModulePremium() {
                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado</span>
                     <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
                   </div>
+                  {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] uppercase tracking-wider text-rose-800 font-black block">
+                            Devolución de Control Viáticos (Hallazgo para subsanar)
+                          </span>
+                          <p className="text-xs text-rose-900 mt-1 font-mono bg-white/70 p-2.5 rounded-lg border border-rose-200/60 whitespace-pre-wrap leading-relaxed">
+                            {solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Justificación</span>
                     <p className="bg-slate-50 p-2.5 rounded-lg text-slate-700 leading-relaxed border border-slate-100">
                       {solicitudSeleccionada.justificacion}
                     </p>
                   </div>
-                  {cargandoDocumentos ? (
-                    <div className="py-2 text-xs text-slate-400">Cargando archivos...</div>
-                  ) : (
-                    <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Archivos adjuntos</span>
-                      {documentosSoporte.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic">No hay documentos adjuntos.</p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {documentosSoporte.map((doc) => {
-                            const urlArchivo = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
-                            return (
-                              <div
-                                key={doc.id}
-                                className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
-                                  <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
-                                </div>
-                                <div className="shrink-0 ml-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
-                                    className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
-                                    title="Abrir en nueva pestaña"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+
+                   <div>
+                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Archivos adjuntos</span>
+                     {cargandoDocumentos ? (
+                       <div className="py-2 text-xs text-slate-400">Cargando archivos...</div>
+                     ) : documentosSoporte.length === 0 ? (
+                       <p className="text-xs text-slate-500 italic">No hay documentos adjuntos.</p>
+                     ) : (
+                       <div className="space-y-1.5">
+                         {documentosSoporte.map((doc) => {
+                           const urlArchivo = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
+                           return (
+                             <div
+                               key={doc.id}
+                               className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100"
+                             >
+                               <div className="min-w-0 flex-1">
+                                 <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
+                                 <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
+                               </div>
+                               <div className="shrink-0 ml-2">
+                                 <button
+                                   type="button"
+                                   onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
+                                   className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
+                                   title="Abrir en nueva pestaña"
+                                 >
+                                   <Eye className="w-3.5 h-3.5" />
+                                 </button>
+                               </div>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     )}
+                   </div>
+
+                   {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                     <div className="mt-4 space-y-3">
+                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                         <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>
+                         <div className="flex items-center gap-2 mb-2">
+                           <Flag className="w-4 h-4 text-blue-600" />
+                           <span className="text-xs font-bold text-slate-700">Prioridad</span>
+                         </div>
+                         <select
+                           value={prioridadSeleccionada}
+                           onChange={(e) => setPrioridadSeleccionada(e.target.value)}
+                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         >
+                           <option value="ALTA">Alta</option>
+                           <option value="MEDIA">Media</option>
+                           <option value="BAJA">Baja</option>
+                         </select>
+                         <button
+                           type="button"
+                           onClick={async () => {
+                             if (!solicitudSeleccionada) return;
+                             setGuardandoPrioridad(true);
+                             try {
+                               await viaticosService.actualizarPrioridad(solicitudSeleccionada.id, prioridadSeleccionada);
+                               setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
+                               cargarDatos();
+                             } catch (error) {
+                               console.error('Error guardando prioridad:', error);
+                               setMensajeExito('No fue posible actualizar la prioridad.');
+                             } finally {
+                               setGuardandoPrioridad(false);
+                             }
+                           }}
+                           disabled={guardandoPrioridad}
+                           className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {guardandoPrioridad ? 'Guardando...' : 'Guardar Prioridad'}
+                         </button>
+                       </div>
+
+                       <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                         <div className="flex items-center gap-2 mb-2">
+                           <Undo2 className="w-4 h-4 text-red-600" />
+                           <span className="text-xs font-bold text-slate-700">Devolver a Dependencia</span>
+                         </div>
+                         <textarea
+                           value={motivoDevolucion}
+                           onChange={(e) => setMotivoDevolucion(e.target.value)}
+                           placeholder="Escriba el motivo detallado de la devolución..."
+                           rows={3}
+                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                         />
+                         <button
+                           type="button"
+                           onClick={async () => {
+                             if (!solicitudSeleccionada || !motivoDevolucion.trim()) return;
+                             setDevolviendo(true);
+                             try {
+                               await viaticosService.devolverSolicitud(solicitudSeleccionada.id, motivoDevolucion.trim());
+                               setMensajeExito('Solicitud devuelta a la dependencia correctamente.');
+                               setMotivoDevolucion('');
+                               cargarDatos();
+                               setSolicitudSeleccionada(null);
+                             } catch (error) {
+                               console.error('Error devolviendo solicitud:', error);
+                               setMensajeExito('No fue posible devolver la solicitud.');
+                             } finally {
+                               setDevolviendo(false);
+                             }
+                           }}
+                           disabled={devolviendo || !motivoDevolucion.trim()}
+                           className="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {devolviendo ? 'Devolviendo...' : 'Confirmar Devolución'}
+                         </button>
+                       </div>
+                     </div>
+                   )}
+
+                   {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                     <div className="mt-4 space-y-3">
+                       <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                         <span className="text-[10px] uppercase tracking-wider text-indigo-600 font-bold block mb-2">Asignar Solicitud a Analista (RF-REC-002)</span>
+                          <TableroCargaAnalistas
+                            analistaSeleccionadoId={analistaSeleccionadoId}
+                            onSeleccionarAnalista={setAnalistaSeleccionadoId}
+                            analistaAsignadoId={solicitudSeleccionada.analistaAsignadoId}
+                            solicitudId={solicitudSeleccionada.id}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleConfirmarAsignacion}
+                            style={
+                              asignando || !analistaSeleccionadoId
+                                ? { backgroundColor: '#e2e8f0', color: '#475569', cursor: 'not-allowed', pointerEvents: 'none' }
+                                : { backgroundColor: '#4f46e5', color: '#ffffff', cursor: 'pointer' }
+                            }
+                            className="mt-3 w-full px-3 py-2 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            {asignando ? 'Asignando...' : 'Confirmar Asignación'}
+                          </button>
+                       </div>
+                     </div>
+                   )}
                 </div>
                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button
@@ -698,8 +1297,21 @@ export default function ViaticosModulePremium() {
         </>
       )}
 
-      {/* ── CONFIGURACIÓN ── */}
-      {seccion === 'configuracion' && <ParametrizacionManager />}
+      <ControlViaticosModal
+        abierta={modalControlViaticosAbierta}
+        solicitud={solicitudControlViaticos}
+        cargando={cargandoControlViaticos}
+        onCerrar={() => {
+          setModalControlViaticosAbierta(false);
+          setSolicitudControlViaticos(null);
+        }}
+        onRefrescar={() => {
+          setModalControlViaticosAbierta(false);
+          setSolicitudControlViaticos(null);
+          setMensajeExito('Segunda revisión completada y actualizada exitosamente.');
+          cargarDatos();
+        }}
+      />
     </ModuleLayout>
   );
 }

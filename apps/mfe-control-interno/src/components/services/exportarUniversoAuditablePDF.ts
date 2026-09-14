@@ -71,7 +71,21 @@ export interface ProcesoAuditableExport {
   frecuenciaSugerida?: string;
   ultimaAuditoria?: string;
   auditable?: boolean;
+  auditableManual?: boolean | null;
   tiempoUltimaAuditoria?: number;
+  _evaluacionRiesgo?: {
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    tiempoUltimaAuditoria?: number;
+    temasAltaDireccion?: number;
+    objetivosEstrategicos?: number;
+    hallazgosAnteriores?: number;
+    ponderacionFinalDafp?: number;
+    nivelCriticidadDafp?: string;
+    cicloRotacionDafp?: string;
+  };
 }
 
 export interface EstadisticasExport {
@@ -621,34 +635,46 @@ function agregarHeaderFooterTodasPaginas(doc: jsPDF, vigencia: number, startPage
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// EXPORTACIÓN A EXCEL PROFESIONAL (usando ExcelJS)
+// EXPORTACIÓN A EXCEL — FORMATO EM-FO-008 V02 (EFDS-1924)
 // ════════════════════════════════════════════════════════════════════════════
 
 import ExcelJS from 'exceljs';
+import plantillaEmFo008 from '@/assets/EM-FO-008_V02.xlsx?url';
 
-// Colores corporativos para Excel
-const EXCEL_COLORS = {
-  primaryDark: 'FF1B4F72',    // Azul oscuro ESAP
-  primaryLight: 'FF2980B9',   // Azul claro
-  success: 'FF27AE60',        // Verde
-  warning: 'FFF39C12',        // Amarillo/Naranja
-  danger: 'FFE74C3C',         // Rojo
-  white: 'FFFFFFFF',
-  grayLight: 'FFF5F6FA',
-  grayMedium: 'FFBDC3C7',
-  textDark: 'FF2C3E50',
-};
+const HOJA_PRIORIZACION = 'Priorización ';
+const FILA_INICIAL = 9;
+const COLUMNAS = 24; // A..X
+// Hojas ocultas de trabajo que trae el archivo y no hacen parte del formato.
+const HOJAS_SOBRANTES = ['Procesos A Auditar Vs Recursos', 'Seguimiento Programa Anual', 'Hoja1'];
 
-// Colores para niveles de riesgo
-const RISK_COLORS: Record<string, string> = {
-  'EXTREMO': EXCEL_COLORS.danger,
-  'CRÍTICO': EXCEL_COLORS.danger,
-  'ALTO': 'FFFF6B6B',
-  'MODERADO': EXCEL_COLORS.warning,
-  'MEDIO': EXCEL_COLORS.warning,
-  'BAJO': EXCEL_COLORS.success,
-  'MUY BAJO': 'FF00D4AA',
-};
+// Textos de las listas de la hoja Parámetros, en orden de calificación (1 a 5).
+const TIEMPO_ULTIMA_AUDITORIA = ['<= 1 año', '> 1 año <= 2 años', '> 2 años <= 3 años', '> 3 años <= 4 años', '> 4 años'];
+const TEMAS_ALTA_DIRECCION = ['Interés poco relevante', 'Interés bajo', 'Interés medio', 'Interés alto', 'Interés muy relevante'];
+const OBJETIVOS_ESTRATEGICOS = [
+  'No tiene objetivo asociado',
+  '1 objetivo estratégico asociado',
+  '2 objetivos estratégicos asociados',
+  '3 objetivos estratégicos asociados',
+  '4 o más objetivos estratégicos asociados',
+];
+const RESULTADOS_AUDITORIAS = ['Sin hallazgos', '1 a 2 hallazgos', '3 a 4 hallazgos', '5 a 6 hallazgos', '7 o más hallazgos'];
+
+const calificacion = (valor?: number) => (valor && valor >= 1 && valor <= 5 ? valor : null);
+const opcion = (lista: string[], valor?: number) => (calificacion(valor) ? lista[(valor as number) - 1] : null);
+
+/** Años del ciclo de rotación en que se audita la unidad, igual que las columnas U a X del formato. */
+function anosPriorizacion(ciclo: string, auditableManual?: boolean | null): number[] {
+  const anos =
+    ciclo === 'Cada año' || ciclo === 'Todos los años' ? [1, 2, 3, 4]
+      : ciclo === 'Cada 2 años' ? [2, 4]
+        : ciclo === 'Cada 3 años' ? [3]
+          : ciclo === 'Cada 4 años' ? [4]
+            : [];
+  // La priorización manual de la columna Aud. decide si entra al plan del año 1.
+  if (auditableManual === true && !anos.includes(1)) return [1, ...anos];
+  if (auditableManual === false) return anos.filter((a) => a !== 1);
+  return anos;
+}
 
 export async function exportarUniversoAuditableExcel(
   procesos: ProcesoAuditableExport[],
@@ -656,402 +682,106 @@ export async function exportarUniversoAuditableExcel(
   opciones: OpcionesExportacion = {}
 ): Promise<ResultadoExportacion> {
   const vigencia = opciones.vigencia || new Date().getFullYear();
-  const fechaGeneracion = new Date().toLocaleDateString('es-CO', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-  const fechaCorta = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
-  
+  const nombreArchivo = `EM-FO-008_Universo_Auditable_${vigencia}.xlsx`;
+
   try {
+    // Relativa al módulo: el microfrontend puede servirse desde otro origen que el shell.
+    const respuesta = await fetch(new URL(plantillaEmFo008, import.meta.url));
+    if (!respuesta.ok) throw new Error('No se pudo cargar la plantilla EM-FO-008');
+
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'ESAP - Control Interno';
-    workbook.created = new Date();
-    
-    // ✅ Cargar logo ESAP para Excel
-    let logoImageId: number | null = null;
-    try {
-      const logoBase64 = await getLogoBase64();
-      // Extraer solo la parte base64 sin el prefijo data:image/png;base64,
-      const base64Data = logoBase64.includes(',') ? logoBase64.split(',')[1] : logoBase64;
-      logoImageId = workbook.addImage({
-        base64: base64Data,
-        extension: 'png',
-      });
-    } catch (e) {
-      console.warn('No se pudo cargar el logo para Excel:', e);
-    }
-    
-    // ═══════════════════════════════════════════════════════════════════════
-    // HOJA 1: UNIVERSO AUDITABLE
-    // ═══════════════════════════════════════════════════════════════════════
-    const wsUniverso = workbook.addWorksheet('Universo Auditable', {
-      properties: { tabColor: { argb: EXCEL_COLORS.primaryDark } },
-      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true }
+    await workbook.xlsx.load(await respuesta.arrayBuffer());
+
+    HOJAS_SOBRANTES.forEach((nombre) => {
+      const hoja = workbook.getWorksheet(nombre);
+      if (hoja) workbook.removeWorksheet(hoja.id);
     });
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // ENCABEZADO INSTITUCIONAL TIPO EM-PT-005 CON LOGO
-    // Estructura: [LOGO] | [TÍTULO CENTRADO] | [CÓDIGO/VERSIÓN/FECHA]
-    // ═══════════════════════════════════════════════════════════════════════
-    
-    // Configurar altura de filas del encabezado
-    wsUniverso.getRow(1).height = 22;
-    wsUniverso.getRow(2).height = 22;
-    wsUniverso.getRow(3).height = 22;
-    wsUniverso.getRow(4).height = 20;
-    
-    // --- SECCIÓN LOGO (Columnas A-B, Filas 1-3) ---
-    wsUniverso.mergeCells('A1:B3');
-    const logoCell = wsUniverso.getCell('A1');
-    logoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-    logoCell.border = {
-      top: { style: 'thin', color: { argb: '000000' } },
-      left: { style: 'thin', color: { argb: '000000' } },
-      bottom: { style: 'thin', color: { argb: '000000' } },
-      right: { style: 'thin', color: { argb: '000000' } }
-    };
-    
-    // Agregar imagen del logo si está disponible
-    if (logoImageId !== null) {
-      wsUniverso.addImage(logoImageId, {
-        tl: { col: 0.3, row: 0.3 },
-        ext: { width: 55, height: 55 }
-      });
-    } else {
-      // Fallback: texto ESAP si no hay logo
-      logoCell.value = 'ESAP';
-      logoCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
-      logoCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    }
-    
-    // --- SECCIÓN TÍTULO (Columnas C-H, Filas 1-3) ---
-    wsUniverso.mergeCells('C1:H1');
-    const titleCell = wsUniverso.getCell('C1');
-    titleCell.value = 'UNIVERSO AUDITABLE';
-    titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: '000000' } };
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    titleCell.border = {
-      top: { style: 'thin', color: { argb: '000000' } },
-      bottom: { style: 'thin', color: { argb: '000000' } }
-    };
-    
-    wsUniverso.mergeCells('C2:H2');
-    const subtitleCell = wsUniverso.getCell('C2');
-    subtitleCell.value = 'Oficina de Control Interno';
-    subtitleCell.font = { name: 'Calibri', size: 10, color: { argb: '444444' } };
-    subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    subtitleCell.border = {
-      bottom: { style: 'thin', color: { argb: '000000' } }
-    };
-    
-    wsUniverso.mergeCells('C3:H3');
-    const vigenciaCell = wsUniverso.getCell('C3');
-    vigenciaCell.value = `Vigencia ${vigencia}`;
-    vigenciaCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
-    vigenciaCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    vigenciaCell.border = {
-      bottom: { style: 'thin', color: { argb: '000000' } }
-    };
-    
-    // --- SECCIÓN INFO (Columnas I-K, Filas 1-3) ---
-    // Fila 1: CÓDIGO
-    wsUniverso.getCell('I1').value = 'CÓDIGO:';
-    wsUniverso.getCell('I1').font = { name: 'Calibri', size: 9, bold: true };
-    wsUniverso.getCell('I1').alignment = { horizontal: 'right', vertical: 'middle' };
-    wsUniverso.getCell('I1').border = { top: { style: 'thin' }, left: { style: 'thin' } };
-    
-    wsUniverso.mergeCells('J1:K1');
-    wsUniverso.getCell('J1').value = 'EM-PT-005';
-    wsUniverso.getCell('J1').font = { name: 'Calibri', size: 9, color: { argb: EXCEL_COLORS.primaryDark } };
-    wsUniverso.getCell('J1').alignment = { horizontal: 'left', vertical: 'middle' };
-    wsUniverso.getCell('J1').border = { top: { style: 'thin' }, right: { style: 'thin' } };
-    
-    // Fila 2: VERSIÓN
-    wsUniverso.getCell('I2').value = 'VERSIÓN:';
-    wsUniverso.getCell('I2').font = { name: 'Calibri', size: 9, bold: true };
-    wsUniverso.getCell('I2').alignment = { horizontal: 'right', vertical: 'middle' };
-    wsUniverso.getCell('I2').border = { left: { style: 'thin' } };
-    
-    wsUniverso.mergeCells('J2:K2');
-    wsUniverso.getCell('J2').value = '1';
-    wsUniverso.getCell('J2').font = { name: 'Calibri', size: 9 };
-    wsUniverso.getCell('J2').alignment = { horizontal: 'left', vertical: 'middle' };
-    wsUniverso.getCell('J2').border = { right: { style: 'thin' } };
-    
-    // Fila 3: FECHA
-    wsUniverso.getCell('I3').value = 'FECHA:';
-    wsUniverso.getCell('I3').font = { name: 'Calibri', size: 9, bold: true };
-    wsUniverso.getCell('I3').alignment = { horizontal: 'right', vertical: 'middle' };
-    wsUniverso.getCell('I3').border = { left: { style: 'thin' }, bottom: { style: 'thin' } };
-    
-    wsUniverso.mergeCells('J3:K3');
-    wsUniverso.getCell('J3').value = fechaCorta;
-    wsUniverso.getCell('J3').font = { name: 'Calibri', size: 9 };
-    wsUniverso.getCell('J3').alignment = { horizontal: 'left', vertical: 'middle' };
-    wsUniverso.getCell('J3').border = { right: { style: 'thin' }, bottom: { style: 'thin' } };
-    
-    // --- FILA 4: PROCESO ---
-    wsUniverso.mergeCells('A4:K4');
-    const procesoCell = wsUniverso.getCell('A4');
-    procesoCell.value = 'PROCESO: EVALUACIÓN, CONTROL Y MEJORA';
-    procesoCell.font = { name: 'Calibri', size: 9, bold: true };
-    procesoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4F8' } };
-    procesoCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    procesoCell.border = {
-      top: { style: 'thin', color: { argb: '000000' } },
-      left: { style: 'thin', color: { argb: '000000' } },
-      bottom: { style: 'thin', color: { argb: '000000' } },
-      right: { style: 'thin', color: { argb: '000000' } }
-    };
+    const ws = workbook.getWorksheet(HOJA_PRIORIZACION);
+    if (!ws) throw new Error('La plantilla no tiene la hoja Priorización');
 
-    // --- Fila 5: Espacio + Fecha generación ---
-    wsUniverso.mergeCells('A5:K5');
-    const dateCell = wsUniverso.getCell('A5');
-    dateCell.value = `Fecha de generación: ${fechaGeneracion}`;
-    dateCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '666666' } };
-    dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
-    wsUniverso.getRow(5).height = 18;
-
-    // --- Fila 6: Espacio ---
-    wsUniverso.getRow(6).height = 8;
-
-    // --- Encabezados de tabla (Fila 7) ---
-    const headers = ['No.', 'Código', 'Proceso / Elemento', 'Tipo', 'Macroproceso', 'Dependencia Responsable', 'Nivel Riesgo', 'Score', 'Frecuencia Sugerida', 'Última Auditoría', 'Auditable'];
-    const headerRow = wsUniverso.getRow(7);
-    
-    headers.forEach((header, idx) => {
-      const cell = headerRow.getCell(idx + 1);
-      cell.value = header;
-      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.white } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-      cell.border = {
-        top: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } },
-        bottom: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } },
-        left: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } },
-        right: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } }
-      };
+    ws.getCell('V6').value = new Date().toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'America/Bogota',
     });
-    headerRow.height = 35;
 
-    // --- Anchos de columna ---
-    wsUniverso.columns = [
-      { width: 6 },   // No.
-      { width: 12 },  // Código
-      { width: 45 },  // Proceso
-      { width: 15 },  // Tipo
-      { width: 25 },  // Macroproceso
-      { width: 30 },  // Dependencia
-      { width: 14 },  // Nivel Riesgo
-      { width: 10 },  // Score
-      { width: 16 },  // Frecuencia
-      { width: 16 },  // Última Auditoría
-      { width: 12 },  // Auditable
-    ];
+    // La plantilla trae filas de ejemplo con fórmulas: se limpian y cada fila de
+    // datos toma el estilo de la primera fila del formato.
+    const plantillaFila = ws.getRow(FILA_INICIAL);
+    const estilos = Array.from({ length: COLUMNAS }, (_, c) => JSON.stringify(plantillaFila.getCell(c + 1).style));
+    const altura = plantillaFila.height;
+    const ultimaFila = FILA_INICIAL + procesos.length - 1;
 
-    const getUltimaAuditoria = (option?: number): string => {
-      switch (option) {
-        case 1:
-          return '<= 1 año';
-        case 2:
-          return '> 1 año y <= 2 años';
-        case 3:
-          return '> 2 años y <= 3 años';
-        case 4:
-          return '> 3 años y <= 4 años';
-        case 5:
-          return '> 4 años';
-        default:
-          return 'Sin registro';
+    for (let r = FILA_INICIAL; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      for (let c = 1; c <= COLUMNAS; c++) {
+        const cell = row.getCell(c);
+        cell.value = null;
+        if (r > ultimaFila) cell.style = {};
       }
-    };
+    }
 
-    // --- Datos de procesos (empiezan en fila 8) ---
     procesos.forEach((proceso, idx) => {
-      const rowNum = 8 + idx;
-      const dataRow = wsUniverso.getRow(rowNum);
-      const isEven = idx % 2 === 0;
-      
-      const nivelRiesgo = (proceso.nivelRiesgo || 'BAJO').toUpperCase();
-      const riskColor = RISK_COLORS[nivelRiesgo] || EXCEL_COLORS.grayMedium;
-      
-      const rowData = [
+      const ev = proceso._evaluacionRiesgo || {};
+      const extremos = Number(ev.riesgosExtremos) || 0;
+      const altos = Number(ev.riesgosAltos) || 0;
+      const moderados = Number(ev.riesgosModerados) || 0;
+      const bajos = Number(ev.riesgosBajos) || 0;
+      const tiempo = ev.tiempoUltimaAuditoria ?? proceso.tiempoUltimaAuditoria;
+      const ciclo = ev.cicloRotacionDafp || '';
+      const anos = anosPriorizacion(ciclo, proceso.auditableManual);
+      const unidad = proceso.macroproceso ? `${proceso.nombre} - ${proceso.macroproceso}` : proceso.nombre;
+
+      const valores = [
         idx + 1,
-        proceso.codigo || '-',
-        proceso.nombre,
-        proceso.tipo || proceso.tipoProceso || '-',
-        proceso.macroproceso || '-',
-        proceso.dependencia || proceso.dependenciaResponsable || '-',
-        proceso.nivelRiesgo || 'BAJO',
-        proceso.scoreRiesgo ?? proceso.puntajeRiesgo ?? 0,
-        proceso.frecuenciaAuditoria || proceso.frecuenciaSugerida || '-',
-        getUltimaAuditoria(proceso.tiempoUltimaAuditoria),
-        proceso.auditable !== undefined ? (proceso.auditable ? 'Sí' : 'No') : 'Sí'
+        unidad,
+        extremos,
+        altos,
+        moderados,
+        bajos,
+        extremos + altos + moderados + bajos,
+        extremos ? 'Extremo' : altos ? 'Alto' : moderados ? 'Moderado' : 'Bajo',
+        extremos ? 5 : altos ? 4 : moderados ? 3 : bajos ? 2 : 1,
+        opcion(TIEMPO_ULTIMA_AUDITORIA, tiempo),
+        calificacion(tiempo),
+        opcion(TEMAS_ALTA_DIRECCION, ev.temasAltaDireccion),
+        calificacion(ev.temasAltaDireccion),
+        opcion(OBJETIVOS_ESTRATEGICOS, ev.objetivosEstrategicos),
+        calificacion(ev.objetivosEstrategicos),
+        opcion(RESULTADOS_AUDITORIAS, ev.hallazgosAnteriores),
+        calificacion(ev.hallazgosAnteriores),
+        Number(ev.ponderacionFinalDafp) || null,
+        ev.nivelCriticidadDafp || null,
+        ciclo || null,
+        anos.includes(1) ? unidad : null,
+        anos.includes(2) ? unidad : null,
+        anos.includes(3) ? unidad : null,
+        anos.includes(4) ? unidad : null,
       ];
 
-      rowData.forEach((value, colIdx) => {
-        const cell = dataRow.getCell(colIdx + 1);
-        cell.value = value;
-        cell.font = { name: 'Calibri', size: 10, color: { argb: EXCEL_COLORS.textDark } };
-        cell.alignment = { 
-          horizontal: colIdx === 2 || colIdx === 5 ? 'left' : 'center', 
-          vertical: 'middle',
-          wrapText: colIdx === 2 || colIdx === 5 || colIdx === 4
-        };
-        cell.fill = { 
-          type: 'pattern', 
-          pattern: 'solid', 
-          fgColor: { argb: isEven ? EXCEL_COLORS.white : EXCEL_COLORS.grayLight } 
-        };
-        cell.border = {
-          top: { style: 'thin', color: { argb: EXCEL_COLORS.grayMedium } },
-          bottom: { style: 'thin', color: { argb: EXCEL_COLORS.grayMedium } },
-          left: { style: 'thin', color: { argb: EXCEL_COLORS.grayMedium } },
-          right: { style: 'thin', color: { argb: EXCEL_COLORS.grayMedium } }
-        };
-
-        // Formato especial para nivel de riesgo
-        if (colIdx === 6) {
-          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.white } };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: riskColor } };
-        }
-
-        // Formato para Score
-        if (colIdx === 7 && typeof value === 'number') {
-          cell.numFmt = '0.0';
-          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.textDark } };
-        }
-
-        // Formato para Auditable
-        if (colIdx === 10) {
-          const esAuditable = value === 'Sí';
-          cell.font = { 
-            name: 'Calibri', 
-            size: 10, 
-            bold: true, 
-            color: { argb: esAuditable ? EXCEL_COLORS.success : EXCEL_COLORS.grayMedium } 
-          };
-        }
-      });
-      dataRow.height = 22;
-    });
-
-    // --- Totales ---
-    const totalRowNum = 7 + procesos.length + 1;
-    wsUniverso.mergeCells(`A${totalRowNum}:F${totalRowNum}`);
-    const totalLabelCell = wsUniverso.getCell(`A${totalRowNum}`);
-    totalLabelCell.value = `TOTAL PROCESOS: ${procesos.length}`;
-    totalLabelCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.white } };
-    totalLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-    totalLabelCell.alignment = { horizontal: 'right', vertical: 'middle' };
-
-    const auditables = procesos.filter(p => p.auditable !== false).length;
-    wsUniverso.mergeCells(`G${totalRowNum}:K${totalRowNum}`);
-    const totalAuditCell = wsUniverso.getCell(`G${totalRowNum}`);
-    totalAuditCell.value = `Auditables: ${auditables} | No Auditables: ${procesos.length - auditables}`;
-    totalAuditCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.white } };
-    totalAuditCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryLight } };
-    totalAuditCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    wsUniverso.getRow(totalRowNum).height = 28;
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // HOJA 2: RESUMEN ESTADÍSTICO
-    // ═══════════════════════════════════════════════════════════════════════
-    const wsResumen = workbook.addWorksheet('Resumen Estadístico', {
-      properties: { tabColor: { argb: EXCEL_COLORS.success } }
-    });
-
-    // Encabezado
-    wsResumen.mergeCells('A1:D1');
-    const resumenTitle = wsResumen.getCell('A1');
-    resumenTitle.value = `RESUMEN ESTADÍSTICO - UNIVERSO AUDITABLE ${vigencia}`;
-    resumenTitle.font = { name: 'Calibri', size: 14, bold: true, color: { argb: EXCEL_COLORS.white } };
-    resumenTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-    resumenTitle.alignment = { horizontal: 'center', vertical: 'middle' };
-    wsResumen.getRow(1).height = 35;
-
-    wsResumen.columns = [
-      { width: 30 },
-      { width: 15 },
-      { width: 20 },
-      { width: 15 },
-    ];
-
-    // Estadísticas generales
-    const totalAuditables = estadisticas.procesosAuditables ?? procesos.filter(p => p.auditable !== false).length;
-    const criticos = estadisticas.procesosCriticos ?? procesos.filter(p => (p.nivelRiesgo || '').toUpperCase() === 'CRÍTICO').length;
-    const altos = estadisticas.procesosAltos ?? procesos.filter(p => (p.nivelRiesgo || '').toUpperCase() === 'ALTO').length;
-    const medios = estadisticas.procesosMedios ?? procesos.filter(p => (p.nivelRiesgo || '').toUpperCase() === 'MEDIO').length;
-    const bajos = estadisticas.procesosBajos ?? procesos.filter(p => (p.nivelRiesgo || '').toUpperCase() === 'BAJO').length;
-    const muyBajos = procesos.filter(p => (p.nivelRiesgo || '').toUpperCase() === 'MUY BAJO').length;
-    const total = estadisticas.totalProcesos || procesos.length;
-
-    const statsData = [
-      ['', '', '', ''],
-      ['📊 INDICADORES GENERALES', '', '', ''],
-      ['Total de Procesos', total, '', ''],
-      ['Procesos Auditables', totalAuditables, '', ''],
-      ['Cobertura del Universo', `${((totalAuditables / total) * 100).toFixed(1)}%`, '', ''],
-      ['', '', '', ''],
-      ['🎯 DISTRIBUCIÓN POR NIVEL DE RIESGO', '', '', ''],
-      ['Nivel de Riesgo', 'Cantidad', 'Porcentaje', ''],
-      ['Crítico', criticos, `${((criticos / total) * 100).toFixed(1)}%`, ''],
-      ['Alto', altos, `${((altos / total) * 100).toFixed(1)}%`, ''],
-      ['Medio', medios, `${((medios / total) * 100).toFixed(1)}%`, ''],
-      ['Bajo', bajos, `${((bajos / total) * 100).toFixed(1)}%`, ''],
-      ['Muy Bajo', muyBajos, `${((muyBajos / total) * 100).toFixed(1)}%`, ''],
-    ];
-
-    statsData.forEach((rowData, idx) => {
-      const row = wsResumen.getRow(idx + 2);
-      rowData.forEach((value, colIdx) => {
-        const cell = row.getCell(colIdx + 1);
-        cell.value = value;
-        cell.font = { name: 'Calibri', size: 11 };
-        cell.alignment = { vertical: 'middle' };
-        
-        // Estilo para títulos de sección
-        if (typeof value === 'string' && (value.includes('📊') || value.includes('🎯'))) {
-          cell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
-        }
-        
-        // Estilo para encabezados de tabla
-        if (value === 'Nivel de Riesgo' || value === 'Cantidad' || value === 'Porcentaje') {
-          cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.white } };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryLight } };
-        }
-        
-        // Colores para niveles de riesgo
-        if (value === 'Crítico') cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.danger.replace('FF', '') } };
-        if (value === 'Alto') cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF6B6B' } };
-        if (value === 'Medio') cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.warning.replace('FF', '') } };
-        if (value === 'Bajo') cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.success.replace('FF', '') } };
-        if (value === 'Muy Bajo') cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: '00D4AA' } };
+      const row = ws.getRow(FILA_INICIAL + idx);
+      row.height = altura;
+      valores.forEach((valor, c) => {
+        const cell = row.getCell(c + 1);
+        cell.style = JSON.parse(estilos[c]);
+        cell.value = valor;
       });
     });
 
-    // --- Pie de página en resumen ---
-    const footerRow = wsResumen.getRow(20);
-    wsResumen.mergeCells('A20:D20');
-    const footerCell = footerRow.getCell(1);
-    footerCell.value = `Documento generado automáticamente | ${fechaGeneracion}`;
-    footerCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '999999' } };
-    footerCell.alignment = { horizontal: 'center' };
+    // Los semáforos de nivel de riesgo y criticidad cubren solo las filas con datos.
+    (ws as unknown as { conditionalFormattings: { ref: string }[] }).conditionalFormattings.forEach((cf) => {
+      cf.ref = cf.ref.replace(/\d+$/, String(ultimaFila));
+    });
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // GUARDAR Y DESCARGAR
-    // ═══════════════════════════════════════════════════════════════════════
     const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const nombreArchivo = `Universo_Auditable_${vigencia}_ESAP.xlsx`;
     link.download = nombreArchivo;
     link.click();
     window.URL.revokeObjectURL(url);
@@ -1060,7 +790,7 @@ export async function exportarUniversoAuditableExcel(
       exito: true,
       formato: 'Excel',
       nombreArchivo,
-      mensaje: 'Archivo Excel exportado correctamente con formato profesional'
+      mensaje: 'Universo Auditable exportado en el formato EM-FO-008'
     };
 
   } catch (error) {

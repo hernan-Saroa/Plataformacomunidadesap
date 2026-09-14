@@ -3,6 +3,9 @@ import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { json, urlencoded } from 'express';
+import { DataSource } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
+import { rundStaticAccess } from './pta/banco-docentes/rund-static-access';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -25,6 +28,7 @@ async function bootstrap() {
   // existe la carpeta `uploads/`. Antes había DOS '..' que apuntaban a backend/uploads
   // (un nivel arriba) y por eso fallaba con 404.
   const uploadsDir = join(__dirname, '..', 'uploads');
+  app.use(rundStaticAccess(app.get(DataSource), app.get(JwtService)));
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
   });

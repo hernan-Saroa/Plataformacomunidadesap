@@ -13,12 +13,15 @@ import { Public } from '../../auth/public.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentosService } from './rund-documentos.service';
+import { validateEvidenceType } from './rund-evidence-workflow';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import {
   canViewRundSensitiveData,
   findRundSensitiveFields,
   getRequestRoleCodes,
   protectRundSensitiveData,
+  protectRundBulkResponse,
+  RUND_SENSITIVE_FIELDS,
 } from './banco-docentes-sensitive-data';
 
 const RUND_DOCUMENT_UPLOAD_OPTIONS = {
@@ -61,20 +64,16 @@ export class BancoDocentesController {
 
   private requestActor(req: any): { actorId: string; roles: string[]; ip?: string; fullAccess: boolean } {
     const roles = getRequestRoleCodes(req?.user);
-    const permissions: Set<string> = req?.rundPermissions instanceof Set
-      ? req.rundPermissions
-      : new Set<string>();
     const forwarded = req?.headers?.['x-forwarded-for'];
     const ip = String(Array.isArray(forwarded) ? forwarded[0] : forwarded || req?.ip || req?.socket?.remoteAddress || '')
       .split(',')[0]
       .trim() || undefined;
     return {
-      actorId: String(req?.user?.userId || req?.user?.email || req?.user?.username || 'SISTEMA'),
+      actorId: String(req?.user?.userId || req?.user?.sub || req?.user?.email || req?.user?.username || 'SISTEMA'),
       roles,
       ip,
-      fullAccess: canViewRundSensitiveData(req?.user)
-        || permissions.has(RUND_PERMISSIONS.VIEW)
-        || permissions.has(RUND_PERMISSIONS.MANAGE),
+      // Consultar/administrar RUND no autoriza a revelar datos sensibles.
+      fullAccess: canViewRundSensitiveData(req?.user),
     };
   }
 
@@ -87,7 +86,7 @@ export class BancoDocentesController {
         docenteId: String(record?.docente_id || record?.docenteId || record?.id || ''),
         actorId: context.actorId,
         roles: context.roles,
-        fields: findRundSensitiveFields(record),
+        fields: record?.soporteId || record?.soporte_id ? [...RUND_SENSITIVE_FIELDS] : findRundSensitiveFields(record),
         endpoint,
         fullAccess: context.fullAccess,
         ip: context.ip,
@@ -112,6 +111,28 @@ export class BancoDocentesController {
 
     const authenticatedProfile = await this.service.getById(String(req?.user?.userId || ''), periodoCarga);
     if (!authenticatedProfile?.docente_id || authenticatedProfile.docente_id !== docenteId) {
+      throw new ForbiddenException('El docente solo puede consultar su propio perfil RUND.');
+    }
+  }
+
+  /**
+   * Misma regla de propiedad, pero comparando la persona del perfil. La usan
+   * las vistas consolidadas (perfil por cédula y cabezote) porque un registro
+   * histórico puede no tener aún fila en `Docente`.
+   */
+  private async assertOwnProfileByPersona(personaId: string | null | undefined, periodoCarga: string | undefined, req: any): Promise<void> {
+    const roles = getRequestRoleCodes(req?.user);
+    const permissions: Set<string> = req?.rundPermissions instanceof Set
+      ? req.rundPermissions
+      : new Set<string>();
+    const canReadOtherProfiles = roles.some((role) => ['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN'].includes(role))
+      || permissions.has(RUND_PERMISSIONS.VIEW)
+      || permissions.has(RUND_PERMISSIONS.MANAGE);
+    if (canReadOtherProfiles || !roles.includes('DOCENTE')) return;
+
+    const authenticatedProfile = await this.service.getById(String(req?.user?.userId || ''), periodoCarga);
+    const propia = authenticatedProfile?.persona_id ? String(authenticatedProfile.persona_id) : '';
+    if (!personaId || !propia || String(personaId) !== propia) {
       throw new ForbiddenException('El docente solo puede consultar su propio perfil RUND.');
     }
   }
@@ -201,9 +222,9 @@ export class BancoDocentesController {
   @Get('soportes/proximos-vencer')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
-  async soportesProximosVencer(@Query('dias') dias?: string) {
+  async soportesProximosVencer(@Query('dias') dias?: string, @Req() req?: any) {
     const result = await this.service.getSoportesProximosVencer(dias ? parseInt(dias, 10) : 30);
-    return { success: true, data: result };
+    return { success: true, data: await this.protectSensitiveResponse(result, req, 'SOPORTES_RUND_POR_VENCER') };
   }
 
   /** BR-052 — Validar unicidad de documento y correo */
@@ -247,9 +268,9 @@ export class BancoDocentesController {
   @Get('admin/sync-check/:docenteId')
   @Roles('SUPER_ADMIN', 'super_admin', 'GESTION_PROFESORAL')
   @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
-  async syncCheck(@Param('docenteId') docenteId: string) {
+  async syncCheck(@Param('docenteId') docenteId: string, @Req() req?: any) {
     const result = await this.service.syncCheckDocente(docenteId);
-    return { success: true, data: result };
+    return { success: true, data: await this.protectSensitiveResponse(result, req, 'DIAGNOSTICO_SOPORTES_RUND') };
   }
 
 
@@ -417,25 +438,53 @@ export class BancoDocentesController {
         justificacion: String(body?.justificacion || 'Carga masiva de perfiles docentes RUND').trim(),
       },
     });
-    return { success: true, data: result };
+    try {
+      await this.service.logSensitiveResourceAccess({ ...actor, endpoint: dryRun ? 'PREVISUALIZAR_CARGA_RUND' : 'RESULTADO_CARGA_RUND',
+        resourceId: result.soporteCargaMasivaId || undefined, fields: findRundSensitiveFields(result),
+        docenteIds: (result.results || []).map((item: any) => item.docenteId).filter(Boolean),
+      });
+      return { success: true, data: protectRundBulkResponse(result, actor.fullAccess) };
+    } catch (error) {
+      if (dryRun) throw error;
+      // La importación ya confirmó su transacción: devolver un recibo sin datos sensibles evita repetirla.
+      const { total, created, updated, unchanged, errors, soporteCargaMasivaId } = result;
+      return { success: true, data: { total, created, updated, unchanged, errors, soporteCargaMasivaId,
+        results: [], errorDetails: [], detalleNoDisponible: true,
+        message: 'La carga finalizó. El detalle no está disponible temporalmente; consulte el listado antes de volver a importar.',
+      } };
+    }
   }
 
   @Get('bulk/historial')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
-  async bulkHistory(@Query('limit') limit?: string) {
+  async bulkHistory(@Query('limit') limit?: string, @Req() req?: any) {
     const data = await this.service.getBulkHistory(limit ? parseInt(limit, 10) : 50);
-    return { success: true, data };
+    const actor = this.requestActor(req);
+    if (data.length) await this.service.logSensitiveResourceAccess({ ...actor,
+      endpoint: 'HISTORIAL_CARGA_RUND', fields: ['DOCUMENTO_IDENTIDAD', 'PUNTAJE_SALARIAL'],
+    });
+    return { success: true, data: data.map((item) => ({
+      ...item,
+      ...(actor.fullAccess ? {} : { nombre_archivo: 'Archivo de carga RUND', justificacion: null }),
+      resumen: protectRundBulkResponse(item.resumen, actor.fullAccess),
+    })) };
   }
 
   @Get('bulk/:cargaId/soporte')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE)
-  async bulkSupport(@Param('cargaId') cargaId: string, @Res() res: Response) {
+  async bulkSupport(@Param('cargaId') cargaId: string, @Res() res: Response, @Req() req?: any) {
+    const actor = this.requestActor(req);
+    await this.service.logSensitiveResourceAccess({ ...actor, endpoint: 'DESCARGAR_ORIGINAL_CARGA_RUND',
+      resourceId: cargaId, fields: RUND_SENSITIVE_FIELDS, result: actor.fullAccess ? 'COMPLETO' : 'DENEGADO',
+    });
+    if (!actor.fullAccess) throw new ForbiddenException('El archivo original contiene datos sensibles. Su rol puede consultar el listado protegido.');
     const support = await this.service.getBulkSupport(cargaId);
     const safeName = String(support.fileName || 'carga-rund.xlsx').replace(/[\r\n"\\/:*?<>|]/g, '_');
     res.setHeader('Content-Type', support.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
     res.send(support.content);
   }
 
@@ -538,7 +587,11 @@ export class BancoDocentesController {
   ) {
     await this.assertOwnProfileForDocente(id, undefined, req);
     const data = await this.documentos.list(id, categoria, historial === 'true');
-    return { success: true, data };
+    const actor = this.requestActor(req);
+    await this.service.logSensitiveResourceAccess({ ...actor, endpoint: 'LISTAR_ARCHIVOS_PERFIL',
+      fields: data.length ? RUND_SENSITIVE_FIELDS : [], docenteIds: data.map((document) => document.docenteId),
+    });
+    return { success: true, data: data.map((document) => this.documentos.protectMetadata(document, actor.fullAccess)) };
   }
 
   /** REQ-RUND-F010 — Cargar PDF y vincularlo al perfil/categoría. */
@@ -554,7 +607,7 @@ export class BancoDocentesController {
   ) {
     const actor = this.requestActor(req);
     const data = await this.documentos.create(id, body, file, actor.actorId, actor.ip);
-    return { success: true, data };
+    return { success: true, data: this.documentos.protectMetadata(data, actor.fullAccess) };
   }
 
   /** REQ-RUND-F010 — Reemplazar crea una nueva versión inmutable. */
@@ -570,8 +623,8 @@ export class BancoDocentesController {
     @Req() req: any,
   ) {
     const actor = this.requestActor(req);
-    const data = await this.documentos.replace(id, documentId, file, actor.actorId, body?.descripcion, actor.ip);
-    return { success: true, data };
+    const data = await this.documentos.replace(id, documentId, file, actor.actorId, body?.descripcion, actor.ip, body?.campo);
+    return { success: true, data: this.documentos.protectMetadata(data, actor.fullAccess) };
   }
 
   /** REQ-RUND-F010 — Visualizar o descargar el contenido desde el repositorio. */
@@ -586,7 +639,7 @@ export class BancoDocentesController {
     @Req() req?: any,
   ) {
     await this.assertOwnProfileForDocente(id, undefined, req);
-    const content = await this.documentos.content(id, documentId);
+    const content = await this.documentos.content(id, documentId, this.requestActor(req));
     const disposition = download === 'true' ? 'attachment' : 'inline';
     const asciiName = content.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     response.setHeader('Content-Type', content.mimeType);
@@ -666,10 +719,11 @@ export class BancoDocentesController {
           ip: actor.ip,
           accion: 'CREAR',
           metadata: { periodoCarga: body.periodoCarga || body.periodo_carga || null },
+          sensitiveAccess: { roles: actor.roles, fullAccess: actor.fullAccess, endpoint: 'CREAR_PERFIL_RUND' },
         },
       },
     );
-    return { success: true, data: result };
+    return { success: true, data: protectRundSensitiveData(result, actor.fullAccess) };
   }
 
   @Put(':id')
@@ -678,8 +732,10 @@ export class BancoDocentesController {
   async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
     const actor = this.requestActor(req);
-    const result = await this.service.updateDocente(id, { ...body, actorId, cargadoPor: actorId, ip: actor.ip });
-    return { success: true, data: result };
+    const result = await this.service.updateDocente(id, { ...body, actorId, cargadoPor: actorId, ip: actor.ip,
+      rundSensitiveAccess: { roles: actor.roles, fullAccess: actor.fullAccess, endpoint: 'EDITAR_PERFIL_RUND' },
+    });
+    return { success: true, data: protectRundSensitiveData(result, actor.fullAccess) };
   }
 
   @Put(':id/estado')
@@ -707,13 +763,9 @@ export class BancoDocentesController {
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
   async getBloques(@Param('id') id: string, @Req() req: any) {
-    try {
-      await this.assertOwnProfileForDocente(id, undefined, req);
-      const result = await this.service.getBloques(id);
-      return { success: true, data: result };
-    } catch (e: any) {
-      return { success: true, data: [], message: e.message };
-    }
+    await this.assertOwnProfileForDocente(id, undefined, req);
+    const result = await this.service.getBloques(id);
+    return { success: true, data: await this.protectSensitiveResponse(result, req, 'BLOQUES_PERFIL_RUND') };
   }
 
   /** BR-043 — Aprobar un bloque (maker-checker) */
@@ -723,10 +775,10 @@ export class BancoDocentesController {
   async aprobarBloque(
     @Param('id') id: string,
     @Param('bloque') bloque: string,
-    @Body('aprobadorId') aprobadorId: string,
+    @Req() req: any,
   ) {
-    if (!aprobadorId) return { success: false, message: 'aprobadorId es requerido' };
-    const result = await this.service.aprobarBloque(id, bloque, aprobadorId);
+    const actor = this.requestActor(req);
+    const result = await this.service.aprobarBloque(id, bloque, actor.actorId, actor.ip);
     return { success: true, data: result };
   }
 
@@ -737,17 +789,28 @@ export class BancoDocentesController {
   async devolverBloque(
     @Param('id') id: string,
     @Param('bloque') bloque: string,
-    @Body('aprobadorId') aprobadorId: string,
+    @Req() req: any,
     @Body('observacion') observacion: string,
   ) {
-    if (!aprobadorId) return { success: false, message: 'aprobadorId es requerido' };
-    const result = await this.service.devolverBloque(id, bloque, aprobadorId, observacion);
+    const actor = this.requestActor(req);
+    const result = await this.service.devolverBloque(id, bloque, actor.actorId, observacion, actor.ip);
     return { success: true, data: result };
+  }
+
+  @Post(':id/bloques/:bloque/soportes/:soporteId/revision')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @RequireRundPermissions(RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
+  async revisarSoporte(@Param('id') id: string, @Param('bloque') bloque: string,
+    @Param('soporteId') soporteId: string, @Body() body: any, @Req() req: any) {
+    const actor = this.requestActor(req);
+    if (!actor.fullAccess) throw new ForbiddenException('La revisión requiere acceso al contenido original del soporte.');
+    return { success: true, data: await this.service.revisarSoporte(id, bloque, soporteId, body, actor.actorId, actor.ip) };
   }
 
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
   @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     storage: diskStorage({
       destination: (req, file, cb) => {
         const docenteId = req.params.id || 'desconocido';
@@ -774,6 +837,8 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     try {
+      validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
+      if (!file) throw new BadRequestException('Adjunte el archivo de soporte para registrar una carga documental.');
       if (['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(body.tipoSoporte)) {
         const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
         if (!file) {
@@ -821,25 +886,26 @@ export class BancoDocentesController {
             .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
           const actor = this.requestActor(req);
           const document = existing
-            ? await this.documentos.replace(id, existing.id, memoryFile, actor.actorId, body.descripcion, actor.ip)
+            ? await this.documentos.replace(id, existing.id, memoryFile, actor.actorId, body.descripcion, actor.ip, body.campo)
             : await this.documentos.create(id, {
                 categoria: body.categoria || this.supportCategory(bloque, body.tipoSoporte),
                 bloque,
                 tipoSoporte: body.tipoSoporte,
+                campo: body.campo,
                 descripcion: body.descripcion,
               }, memoryFile, actor.actorId, actor.ip);
-          return { success: true, data: { ...document, validacionTipo } };
+          return { success: true, data: { ...this.documentos.protectMetadata(document, actor.fullAccess), validacionTipo } };
         } finally {
           if ((file as any).path && fs.existsSync((file as any).path)) fs.unlinkSync((file as any).path);
         }
       }
-      const result = await this.service.vincularSoporte(id, bloque, body);
+      const result = await this.service.vincularSoporte(id, bloque, { ...body, cargadoPor: this.requestActor(req).actorId });
       // validacionTipo se EMBEBE en data porque el apiClient del shell desenvuelve
       // {success, data} y descartaría cualquier campo hermano de data.
       const data = (result && typeof result === 'object' && !Array.isArray(result))
         ? { ...result, validacionTipo }
         : { resultado: result, validacionTipo };
-      return { success: true, data };
+      return { success: true, data: protectRundSensitiveData(data, this.requestActor(req).fullAccess) };
     } catch (e: any) {
       if ((file as any)?.path && fs.existsSync((file as any).path)) fs.unlinkSync((file as any).path);
       throw e;
@@ -858,17 +924,19 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     const actorId = await this.service.authorizeAutogestionDocumentUpload(id, String(body.autogestionToken || ''));
+    validateEvidenceType(bloque.toUpperCase(), body.tipoSoporte);
     const existing = (await this.documentos.list(id))
       .find((document: any) => document.tipoSoporte === body.tipoSoporte && document.estado === 'ACTIVO');
     const document = existing
-      ? await this.documentos.replace(id, existing.id, file, actorId, body.descripcion)
+      ? await this.documentos.replace(id, existing.id, file, actorId, body.descripcion, undefined, body.campo)
       : await this.documentos.create(id, {
           categoria: body.categoria || this.supportCategory(bloque, body.tipoSoporte),
           bloque,
           tipoSoporte: body.tipoSoporte,
+          campo: body.campo,
           descripcion: body.descripcion,
         }, file, actorId);
-    return { success: true, data: document };
+    return { success: true, data: this.documentos.protectMetadata(document, false) };
   }
 
   @Get(':id/activacion')
@@ -878,6 +946,25 @@ export class BancoDocentesController {
     await this.assertOwnProfileForDocente(id, undefined, req);
     const result = await this.service.verificarActivacion(id);
     return { success: true, data: result };
+  }
+
+  /**
+   * REQ-RUND-F002 — Cabezote del perfil docente.
+   * Solo lectura para todos los roles con acceso al perfil. El docente solo
+   * consulta el suyo. El puntaje salarial se enmascara con el mismo catálogo
+   * central de datos sensibles y el acceso queda auditado.
+   */
+  @Get(':id/cabezote')
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  @RequireRundPermissions(RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE)
+  async getPerfilCabezote(
+    @Param('id') id: string,
+    @Query('periodoCarga') periodoCarga: string | undefined,
+    @Req() req: any,
+  ) {
+    const cabezote = await this.service.getPerfilCabezote(id, periodoCarga);
+    await this.assertOwnProfileByPersona(cabezote.persona_id, periodoCarga, req);
+    return { success: true, data: await this.protectSensitiveResponse(cabezote, req, 'CABEZOTE_PERFIL_RUND') };
   }
 
   /** §6.3 / BR-059 — Tarjeta RUND para Carpeta Digital */
@@ -899,13 +986,9 @@ export class BancoDocentesController {
   @Get(':id/auditoria')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
   @RequireRundPermissions(RUND_PERMISSIONS.VALIDATE, RUND_PERMISSIONS.MANAGE)
-  async getAuditoria(@Param('id') id: string) {
-    try {
-      const result = await this.service.getAuditoria(id);
-      return { success: true, data: result };
-    } catch (e: any) {
-      return { success: true, data: [], message: e.message };
-    }
+  async getAuditoria(@Param('id') id: string, @Req() req?: any) {
+    const result = await this.service.getAuditoria(id);
+    return { success: true, data: await this.protectSensitiveResponse(result, req, 'AUDITORIA_PERFIL_RUND') };
   }
 
 }

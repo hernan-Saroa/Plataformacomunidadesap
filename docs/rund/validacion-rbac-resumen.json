@@ -1,0 +1,65 @@
+{
+  "finalizedAt": "2026-09-07T14:04:23Z",
+  "scope": "REQ-RUND-F003 / REQ-RUND-NF001; EFDS-1801 a EFDS-1806",
+  "fullAccessRoles": [
+    "GESTION_PROFESORAL",
+    "SUPER_ADMIN"
+  ],
+  "tests": [
+    {
+      "service": "academic-work-plan-service",
+      "suitesPassed": 55,
+      "testsPassed": 396,
+      "command": "node node_modules/jest/bin/jest.js --runInBand"
+    },
+    {
+      "service": "auth-service",
+      "suitesPassed": 3,
+      "testsPassed": 16,
+      "note": "Jest/ts-jest del servicio académico; configuración original de auth"
+    },
+    {
+      "service": "api-gateway",
+      "suitesPassed": 4,
+      "testsPassed": 8,
+      "command": "node node_modules/jest/bin/jest.js --runInBand"
+    },
+    {
+      "service": "shell",
+      "suitesPassed": 4,
+      "testsPassed": 26,
+      "command": "node node_modules/vitest/vitest.mjs run src/test/rund-autogestion.test.tsx src/services/api/rundCachePolicy.test.ts src/components/esap/NotificationsContext.test.tsx src/utils/dependencias.utils.spec.ts"
+    }
+  ],
+  "totalTestsPassed": 446,
+  "knownBaselineFailure": {
+    "file": "apps/shell/src/services/api/disciplinary.service.spec.ts",
+    "error": "ReferenceError: jest is not defined",
+    "reason": "Prueba escrita para Jest ejecutada por Vitest; prueba y configuración sin cambios respecto a HEAD",
+    "affectsFullShellTestCommand": true
+  },
+  "buildsPassed": [
+    "academic-work-plan-service",
+    "auth-service",
+    "api-gateway",
+    "@esap-mfe/pta",
+    "@esap-mfe/shell"
+  ],
+  "integration": {
+    "postgresChecksPassed": 8,
+    "chromiumIndexedDbChecksPassed": 5,
+    "businessRecordsModifiedByTests": false
+  },
+  "migration": {
+    "file": "db/migrations/428_complete_rund_sensitive_access.sql",
+    "appliedToLocalDatabase": true,
+    "businessRecordsModified": false
+  },
+  "productionDeployed": false,
+  "lockfilesOrDependenciesChanged": false,
+  "gitDiffCheckPassed": true,
+  "validationLimits": [
+    "No se realizó aceptación con usuarios/correo/repositorio documental reales en producción.",
+    "La prueba preexistente de Disciplinario impide declarar toda la suite del shell en verde."
+  ]
+}

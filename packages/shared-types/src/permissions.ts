@@ -1,6 +1,8 @@
 export enum Permissions {
   // Gestión Legal - Defensa Judicial
   GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE = 'gestion-legal.defensa-judicial.manage',
+  // Permiso exclusivo de visibilidad del submódulo (acceso de solo consulta al menú)
+  GESTION_LEGAL_DEFENSA_JUDICIAL_VER = 'gestion-legal.defensa-judicial.ver',
   GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE = 'gestion-legal.defensa-judicial.create',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD = 'gestion-legal.defensa-judicial.expediente.doc.upload',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE = 'gestion-legal.defensa-judicial.expediente.doc.delete',
@@ -31,6 +33,7 @@ export enum Permissions {
 
   // Gestión Legal - Juzgamiento Disciplinario
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_MANAGE = 'gestion-legal.juzgamiento-disciplinario.manage',
+  GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_VER = 'gestion-legal.juzgamiento-disciplinario.ver',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT = 'gestion-legal.juzgamiento-disciplinario.expediente.edit',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_PRUEBA = 'gestion-legal.juzgamiento-disciplinario.expediente.prueba',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION = 'gestion-legal.juzgamiento-disciplinario.expediente.decision',
@@ -51,6 +54,7 @@ export enum Permissions {
 
   // Gestión Legal - Asesoría Jurídica
   GESTION_LEGAL_ASESORIA_JURIDICA_MANAGE = 'gestion-legal.asesoria-juridica.manage',
+  GESTION_LEGAL_ASESORIA_JURIDICA_VER = 'gestion-legal.asesoria-juridica.ver',
   GESTION_LEGAL_ASESORIA_JURIDICA_CREATE = 'gestion-legal.asesoria-juridica.create',
   GESTION_LEGAL_ASESORIA_JURIDICA_DELETE = 'gestion-legal.asesoria-juridica.delete',
   GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD = 'gestion-legal.asesoria-juridica.expediente.doc.upload',
@@ -63,6 +67,7 @@ export enum Permissions {
 
   // Gestión Legal - Centro de Comunicaciones
   GESTION_LEGAL_COMUNICACIONES_MANAGE = 'gestion-legal.comunicaciones.manage',
+  GESTION_LEGAL_COMUNICACIONES_VER = 'gestion-legal.comunicaciones.ver',
   GESTION_LEGAL_COMUNICACIONES_CREATE = 'gestion-legal.comunicaciones.create',
   GESTION_LEGAL_COMUNICACIONES_LEIDO = 'gestion-legal.comunicaciones.leido',
   GESTION_LEGAL_COMUNICACIONES_ARCHIVAR = 'gestion-legal.comunicaciones.archivar',
@@ -72,9 +77,11 @@ export enum Permissions {
 
   // Gestión Legal - Términos e Informaciones
   GESTION_LEGAL_TERMINOS_MANAGE = 'gestion-legal.terminos.manage',
+  GESTION_LEGAL_TERMINOS_VER = 'gestion-legal.terminos.ver',
 
   // Gestión Legal - Órganos de Control
   GESTION_LEGAL_ORGANOS_CONTROL_MANAGE = 'gestion-legal.organos-control.manage',
+  GESTION_LEGAL_ORGANOS_CONTROL_VER = 'gestion-legal.organos-control.ver',
   GESTION_LEGAL_ORGANOS_CONTROL_CREATE = 'gestion-legal.organos-control.create',
   GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR = 'gestion-legal.organos-control.elaborar',
   GESTION_LEGAL_ORGANOS_CONTROL_DELETE = 'gestion-legal.organos-control.delete',
@@ -86,26 +93,31 @@ export enum Permissions {
 
   // Gestión Legal - Procesos Coactivos
   GESTION_LEGAL_PROCESOS_COACTIVOS_MANAGE = 'gestion-legal.procesos-coactivos.manage',
+  GESTION_LEGAL_PROCESOS_COACTIVOS_VER = 'gestion-legal.procesos-coactivos.ver',
   GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE = 'gestion-legal.procesos-coactivos.create',
   GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT = 'gestion-legal.procesos-coactivos.edit',
   GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE = 'gestion-legal.procesos-coactivos.delete',
 
   // Gestión Legal - Expedientes Electrónicos
   GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_MANAGE = 'gestion-legal.expedientes-electronicos.manage',
+  GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_VER = 'gestion-legal.expedientes-electronicos.ver',
   GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD = 'gestion-legal.expedientes-electronicos.upload',
 
   // Gestión Legal - Plan de Acción
   GESTION_LEGAL_PLAN_ACCION_MANAGE = 'gestion-legal.plan-accion.manage',
+  GESTION_LEGAL_PLAN_ACCION_VER = 'gestion-legal.plan-accion.ver',
   GESTION_LEGAL_PLAN_ACCION_CREATE = 'gestion-legal.plan-accion.create',
 
   // Gestión Legal - Riesgos
   GESTION_LEGAL_RIESGOS_MANAGE = 'gestion-legal.riesgos.manage',
+  GESTION_LEGAL_RIESGOS_VER = 'gestion-legal.riesgos.ver',
   GESTION_LEGAL_RIESGOS_CREATE = 'gestion-legal.riesgos.create',
   GESTION_LEGAL_RIESGOS_EDIT = 'gestion-legal.riesgos.edit',
   GESTION_LEGAL_RIESGOS_DELETE = 'gestion-legal.riesgos.delete',
 
   // Gestión Legal - Planes de Mejoramiento
   GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE = 'gestion-legal.planes-mejoramiento.manage',
+  GESTION_LEGAL_PLANES_MEJORAMIENTO_VER = 'gestion-legal.planes-mejoramiento.ver',
   GESTION_LEGAL_PLANES_MEJORAMIENTO_CREATE = 'gestion-legal.planes-mejoramiento.create',
 
   // Gestión Legal - Reportes
@@ -113,6 +125,7 @@ export enum Permissions {
 
   // Gestión Legal - Configuraciones
   GESTION_LEGAL_CONFIGURACIONES_MANAGE = 'gestion-legal.configuraciones.manage',
+  GESTION_LEGAL_CONFIGURACIONES_VER = 'gestion-legal.configuraciones.ver',
   GESTION_LEGAL_CONFIGURACIONES_CREATE = 'gestion-legal.configuraciones.create',
   GESTION_LEGAL_CONFIGURACIONES_EDIT = 'gestion-legal.configuraciones.edit',
   GESTION_LEGAL_CONFIGURACIONES_DELETE = 'gestion-legal.configuraciones.delete',
@@ -205,6 +218,9 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_CREATE = 'control-disciplinario.configuraciones.conductas.create',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_EDIT = 'control-disciplinario.configuraciones.conductas.edit',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_DELETE = 'control-disciplinario.configuraciones.conductas.delete',
+
+  //Control Disciplinario - Reportes
+  CONTROL_DISCIPLINARIO_REPORTES_MANAGE = 'control-disciplinario.reportes.manage',
 
   // Control Disciplinario - Nuevos Permisos (Granulares)
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL = 'control-disciplinario.procesos.view_all',
@@ -429,4 +445,15 @@ export enum Permissions {
   ESTRUCTURA_ORGANIZACIONAL_NODE_DELETE = 'estructura-organizacional.node.delete',
   ESTRUCTURA_ORGANIZACIONAL_IMPORT = 'estructura-organizacional.import',
   ESTRUCTURA_ORGANIZACIONAL_EXPORT = 'estructura-organizacional.export',
+
+  // Viáticos y Gastos de Viaje
+  VIATICOS_SOLICITUDES_VIEW = 'travel_expenses:read',
+  VIATICOS_SOLICITUDES_CREATE = 'travel_expenses:create_request',
+  VIATICOS_SOLICITUDES_READ_INBOX = 'travel_expenses:read_inbox',
+  VIATICOS_SOLICITUDES_SET_PRIORITY = 'travel_expenses:set_priority',
+  VIATICOS_SOLICITUDES_RETURN = 'travel_expenses:return_request',
+  VIATICOS_TIQUETES_VIEW = 'travel_expenses:tickets.view',
+  VIATICOS_LEGALIZACIONES_VIEW = 'travel_expenses:legalizations.view',
+  VIATICOS_RESOLUCIONES_VIEW = 'travel_expenses:resolutions.view',
+  VIATICOS_CONFIG_MANAGE = 'travel_expenses:manage_config',
 }

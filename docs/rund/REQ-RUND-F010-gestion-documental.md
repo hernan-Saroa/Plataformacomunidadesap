@@ -1,5 +1,7 @@
 # REQ-RUND-F010 — Gestión documental del perfil docente
 
+El flujo vigente de revisión, devolución y reapertura se detalla en [Soportes y aprobación del perfil RUND](FLUJO-SOPORTES-Y-APROBACION.md).
+
 ## Objetivo y alcance
 
 Permitir que Gestión Profesoral (GGP) y los administradores autorizados carguen, consulten, descarguen, reemplacen y eliminen documentos PDF asociados a un perfil docente y organizados por categoría. El docente puede consultar sus propios documentos, pero no usar el CRUD administrativo. La carga de autogestión permanece aislada y exige una invitación OTP vigente perteneciente al mismo perfil.
@@ -56,7 +58,7 @@ El identificador del actor y la IP se toman de la petición autenticada; nunca s
 
 ## Versionamiento y trazabilidad
 
-Cada carga crea un `documento_logico_id` y la versión 1. Reemplazar no sobrescribe: marca la versión vigente como `REEMPLAZADO`, crea la siguiente versión y conserva el historial. Eliminar marca el registro como `ELIMINADO`, retira el contenido del proveedor y oculta el documento del listado vigente.
+Cada carga crea un `documento_logico_id` y la versión 1. Reemplazar no sobrescribe: marca la versión vigente como `REEMPLAZADO`, crea la siguiente versión y conserva el historial. Eliminar marca el registro como `ELIMINADO`, conserva el contenido como evidencia, bloquea su acceso normal y oculta el documento del listado vigente. Esta retirada lógica evita que un fallo de base de datos deje un documento activo sin archivo.
 
 Las acciones `CARGAR_DOCUMENTO`, `REEMPLAZAR_DOCUMENTO` y `ELIMINAR_DOCUMENTO` se registran en `RundAprobacionLog` con actor, fecha, IP, categoría, versión, archivo y proveedor, usando el canal `RUND_DOCUMENTAL`.
 

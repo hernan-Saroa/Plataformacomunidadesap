@@ -96,6 +96,19 @@ const sanitizePersonName = (value: string) =>
 
 const normalizeTextSpaces = (value: string) => value.trim().replace(/\s+/g, " ");
 
+const getNameLengthFeedback = (value: string, min: number, max: number) => {
+  const length = normalizeTextSpaces(value).length;
+  const invalid = value.length > 0 && (length < min || length > max);
+  const message = invalid
+    ? length < min
+      ? `Mínimo ${min} caracteres. Faltan ${min - length}.`
+      : `Máximo ${max} caracteres. Sobran ${length - max}.`
+    : length === max
+      ? `Has alcanzado el máximo de ${max} caracteres.`
+      : `Entre ${min} y ${max} caracteres.`;
+  return { invalid, message: `${message} ${length}/${max}` };
+};
+
 const formatBytes = (bytes?: number) => {
   if (!bytes) return "0 KB";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -263,6 +276,15 @@ export function PublicTitleVerification({
   const [contactPerson, setContactPerson] = useState(""); // Persona de contacto en la empresa
   const [requesterType, setRequesterType] = useState<"empresa" | "graduado">(
     "graduado",
+  );
+  const graduateNameFeedback = getNameLengthFeedback(
+    graduateLastName, PERSON_NAME_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
+  );
+  const companyNameFeedback = getNameLengthFeedback(
+    requesterName, COMPANY_NAME_MIN_LENGTH, COMPANY_NAME_MAX_LENGTH,
+  );
+  const contactPersonFeedback = getNameLengthFeedback(
+    contactPerson, PERSON_NAME_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -2088,9 +2110,22 @@ export function PublicTitleVerification({
                             minLength={COMPANY_NAME_MIN_LENGTH}
                             maxLength={COMPANY_NAME_MAX_LENGTH}
                             placeholder="Ej: Empresa Ejemplo S.A.S."
-                            className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                            aria-describedby="companyNameHelp"
+                            aria-invalid={companyNameFeedback.invalid}
+                            className={`h-10 text-sm focus:ring-1 focus:ring-blue-500/20 ${
+                              companyNameFeedback.invalid
+                                ? "border-red-400 focus:border-red-500"
+                                : "border-gray-300 focus:border-blue-500"
+                            }`}
                             required
                           />
+                          <p
+                            id="companyNameHelp"
+                            aria-live="polite"
+                            className={`text-xs mt-1 ${companyNameFeedback.invalid ? "text-red-600" : "text-gray-500"}`}
+                          >
+                            {companyNameFeedback.message}
+                          </p>
                         </div>
 
                         {/* 3. Correo Empresarial - MANUAL */}
@@ -2141,9 +2176,22 @@ export function PublicTitleVerification({
                             minLength={PERSON_NAME_MIN_LENGTH}
                             maxLength={PERSON_NAME_MAX_LENGTH}
                             placeholder="Ej: María Fernanda Rodríguez"
-                            className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                            aria-describedby="contactPersonHelp"
+                            aria-invalid={contactPersonFeedback.invalid}
+                            className={`h-10 text-sm focus:ring-1 focus:ring-blue-500/20 ${
+                              contactPersonFeedback.invalid
+                                ? "border-red-400 focus:border-red-500"
+                                : "border-gray-300 focus:border-blue-500"
+                            }`}
                             required
                           />
+                          <p
+                            id="contactPersonHelp"
+                            aria-live="polite"
+                            className={`text-xs mt-1 ${contactPersonFeedback.invalid ? "text-red-600" : "text-gray-500"}`}
+                          >
+                            {contactPersonFeedback.message}
+                          </p>
                         </div>
                       </div>
                     )}
@@ -2180,9 +2228,22 @@ export function PublicTitleVerification({
                         minLength={PERSON_NAME_MIN_LENGTH}
                         maxLength={PERSON_NAME_MAX_LENGTH}
                         placeholder="Ej: María Fernanda Rodríguez García"
-                        className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                        aria-describedby="graduateLastNameHelp"
+                        aria-invalid={graduateNameFeedback.invalid}
+                        className={`h-10 text-sm focus:ring-1 focus:ring-blue-500/20 ${
+                          graduateNameFeedback.invalid
+                            ? "border-red-400 focus:border-red-500"
+                            : "border-gray-300 focus:border-blue-500"
+                        }`}
                         required
                       />
+                      <p
+                        id="graduateLastNameHelp"
+                        aria-live="polite"
+                        className={`text-xs mt-1 ${graduateNameFeedback.invalid ? "text-red-600" : "text-gray-500"}`}
+                      >
+                        {graduateNameFeedback.message}
+                      </p>
                     </div>
 
                     {/* Grid de 2 columnas */}

@@ -27,7 +27,7 @@ import {
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
   getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada,
-  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA
+  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA, validarReenvioPTA
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -37,6 +37,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
+import { PTADecisionLoading } from '../../pta/PTADecisionLoading';
 import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
@@ -137,6 +138,7 @@ function DocumentosPendientesAlert({ documentosPendientes }: { documentosPendien
 
 
 interface PTAFormProps {
+  syncVersion?: string | null;
   onBack: () => void;
   userPersonId: string;
   ptaId?: string | null;
@@ -1976,7 +1978,7 @@ function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
   return EXT_SUBSECTION_TO_COMPONENT[section] || 'ext_fortalecimiento';
 }
 
-export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
+export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
   // El mismo formulario se reutiliza en el backoffice. Solo el flujo docente
   // solicitado cambia sus avisos; la experiencia administrativa se conserva.
   const toast = isAdminEdit ? systemToast : docentePtaAlert;
@@ -2862,6 +2864,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Cargar aprobaciones por componente (para detectar devoluciones + comentarios del revisor).
   useEffect(() => {
     if (!ptaId) { setComponentesAprobacion([]); return; }
+    if (saving) return;
     let cancelado = false;
     getComponentesAprobacion(ptaId)
       .then((res: any) => {
@@ -2869,7 +2872,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       })
       .catch((err: any) => console.warn('[PTAForm] No se pudieron cargar aprobaciones por componente:', err?.message || err));
     return () => { cancelado = true; };
-  }, [ptaId]);
+  }, [ptaId, syncVersion, saving]);
 
   // Load active period codigo — solo para PTAs nuevos
   useEffect(() => {
@@ -5167,6 +5170,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     requestingFirmaCodeRef.current = true;
     setRequestingFirmaCode(true);
     try {
+      if (accion === 'via_save' && isEnRevisionDocente) {
+        if (!currentPtaId) throw new Error('No se pudo identificar el PTA para validar el reenvío.');
+        // Ambos botones de reaprobación pasan por aquí. Se comprueba la versión
+        // guardada con las mismas reglas del envío antes de solicitar el OTP.
+        if (savingRef.current) throw new Error('Espera a que termine de guardar el PTA e intenta nuevamente.');
+        const saved = await handleSaveRef.current?.(false, true);
+        if (!saved) return false;
+        const validation = await validarReenvioPTA(currentPtaId);
+        if (!validation.success) {
+          throw new Error(validation.message || 'Revisa las actividades del PTA antes de enviarlo a reaprobación.');
+        }
+      }
       const etapaLabel = getFirmaEtapaLabel();
       const res = await requestPTAFirmaDocenteCode({
         ptaId: currentPtaId,
@@ -5195,7 +5210,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       requestingFirmaCodeRef.current = false;
       setRequestingFirmaCode(false);
     }
-  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, userPersonId, validateEnvioDocente]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, isEnRevisionDocente, periodo, userPersonId, validateEnvioDocente]);
 
   const closeConfirmResumen = useCallback((afterClose?: () => void) => {
     if (confirmResumenClosingRef.current) return;
@@ -5422,6 +5437,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       )}
 
       {/* Firma digital del docente — requerida antes de cada envío y enviar código de aprobación por email */}
+      {requestingFirmaCode && <PTADecisionLoading />}
       {showFirmaDocente && (
         <FirmaDigitalPTA
           ptaId={currentPtaId || ''}
@@ -6581,7 +6597,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         <button
                           type="button"
                           onClick={() => setInvActividades([])}
-                          className="px-3 py-1.5 rounded-lg bg-purple-700 text-white text-xs font-bold hover:bg-purple-800 transition-colors"
+                          className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2"
                         >
                           Conservar proyecto
                         </button>

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } fro
 import { Public } from '../../auth/public.decorator';
 import {
   canViewRundSensitiveData,
+  findRundSensitiveFields,
   getRequestRoleCodes,
   protectRundSensitiveData,
 } from '../banco-docentes/banco-docentes-sensitive-data';
@@ -24,6 +25,15 @@ import { MacroDocenteService } from './macro-docente.service';
 @UseGuards(MacroDocentePermissionGuard)
 export class MacroDocenteController {
   constructor(private readonly service: MacroDocenteService) {}
+
+  private sensitiveAuditContext(items: any[], fullAccess: boolean) {
+    return {
+      campos: findRundSensitiveFields(items),
+      docentes: Array.from(new Set(items.map((item) => item.docente_id).filter(Boolean))),
+      resultado: fullAccess ? 'COMPLETO' : 'ENMASCARADO',
+      valoresIncluidosEnLog: false,
+    };
+  }
 
   private requestContext(req: any): { actorId: string; roles: string[]; ip?: string } {
     const roles = getRequestRoleCodes(req?.user);
@@ -63,18 +73,18 @@ export class MacroDocenteController {
     };
     const result = await this.service.getHistorial(filters);
     const context = this.requestContext(req);
+    const fullAccess = canViewRundSensitiveData(req?.user);
     await this.service.logConsulta({
       tipoConsulta: 'MACRO_DOCENTE',
       actorId: context.actorId,
       roles: context.roles,
       docenteId: docenteId || null,
       periodo: periodo || null,
-      filtros: filters,
+      filtros: { ...filters, proteccionDatos: this.sensitiveAuditContext(result.items, fullAccess) },
       totalResultados: result.total,
       ip: context.ip,
-      failClosed: false,
+      failClosed: true,
     });
-    const fullAccess = canViewRundSensitiveData(req?.user);
     const items = result.items.map((item) => protectRundSensitiveData(item, fullAccess));
     return { success: true, ...result, items };
   }
@@ -89,17 +99,18 @@ export class MacroDocenteController {
   ) {
     const rawItems = await this.service.getConsultaPuntual(docenteId, periodo);
     const context = this.requestContext(req);
+    const fullAccess = canViewRundSensitiveData(req?.user);
     await this.service.logConsulta({
       tipoConsulta: 'CONSULTA_PUNTUAL',
       actorId: context.actorId,
       roles: context.roles,
       docenteId,
       periodo,
+      filtros: { proteccionDatos: this.sensitiveAuditContext(rawItems, fullAccess) },
       totalResultados: rawItems.length,
       ip: context.ip,
-      failClosed: false,
+      failClosed: true,
     });
-    const fullAccess = canViewRundSensitiveData(req?.user);
     const items = rawItems.map((item) => protectRundSensitiveData(item, fullAccess));
     return { success: true, items, total: items.length };
   }
@@ -164,7 +175,7 @@ export class MacroDocenteController {
       accesoExternoId: acceso.id,
       docenteId: acceso.docenteId,
       periodo: periodo || null,
-      filtros: filters,
+      filtros: { ...filters, proteccionDatos: this.sensitiveAuditContext(result.items, false) },
       totalResultados: result.total,
       ip: context.ip,
       failClosed: true,

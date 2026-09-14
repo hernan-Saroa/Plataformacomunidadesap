@@ -23,7 +23,6 @@ import {
   Mail,
   History,
   Percent,
-  ClipboardCheck,
   ChevronDown,
   SlidersHorizontal,
   BookOpenCheck,
@@ -42,6 +41,7 @@ import { PrimaTecnicaModal } from './PrimaTecnicaModal';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
+import { CorrectionsButton } from './CorrectionsButton';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 
 // Tipo de certificado laboral - Solo autoservicio
@@ -773,20 +773,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   aria-label="Vistas principales de certificados laborales"
                 >
                   {canManageCorrections && (
-                    <motion.button
-                      key="correction-requests-action"
-                      onClick={() => onNavigate?.('solicitudes-correccion')}
-                      whileHover={{ y: -2 }}
-                      whileTap={{ scale: 0.97 }}
-                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-                      className="certificates-corrections-button group inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-inset ring-slate-200 transition-[color,background-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 sm:flex-none sm:px-4"
-                      title="Solicitudes de corrección"
-                    >
-                      <span className="certificates-corrections-button__icon flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-all duration-200">
-                        <ClipboardCheck className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-                      </span>
-                      <span>Correcciones</span>
-                    </motion.button>
+                    <CorrectionsButton onClick={() => onNavigate?.('solicitudes-correccion')} />
                   )}
                   {canVerify && (
                     <motion.button

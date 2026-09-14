@@ -4,9 +4,11 @@ setlocal enabledelayedexpansion
 REM =====================================================
 REM Migraciones locales para Windows (equivalente a migrate.local.sh)
 REM Usa variables desde backend/auth-service/.env
-REM Pasos:
-REM 1. chmod +x migrate.local.sh -> No necesario en Windows
-REM 2. ./migrate.local.sh -> Ejecutar este script
+REM Uso:
+REM   migrate.local.windows.bat
+REM   migrate.local.windows.bat all
+REM   migrate.local.windows.bat global
+REM   migrate.local.windows.bat academic-schedule-service
 REM =====================================================
 
 set "ERROR_COUNT=0"
@@ -30,125 +32,153 @@ for /f "usebackq tokens=*" %%A in ("backend\auth-service\.env") do (
 )
 
 REM Verificar que las variables de base de datos estén definidas
-if "%DB_HOST%"=="" (
-    echo Error: DB_HOST no definido en el .env
-    set /a ERROR_COUNT+=1
-)
-if "%DB_PORT%"=="" (
-    echo Error: DB_PORT no definido en el .env
-    set /a ERROR_COUNT+=1
-)
-if "%DB_USER%"=="" (
-    echo Error: DB_USER no definido en el .env
-    set /a ERROR_COUNT+=1
-)
-if "%DB_NAME%"=="" (
-    echo Error: DB_NAME no definido en el .env
-    set /a ERROR_COUNT+=1
-)
-if "%DB_SCHEMA%"=="" (
-    echo Error: DB_SCHEMA no definido en el .env
-    set /a ERROR_COUNT+=1
-)
+if "%DB_HOST%"=="" set /a ERROR_COUNT+=1
+if "%DB_PORT%"=="" set /a ERROR_COUNT+=1
+if "%DB_USER%"=="" set /a ERROR_COUNT+=1
+if "%DB_NAME%"=="" set /a ERROR_COUNT+=1
+if "%DB_SCHEMA%"=="" set /a ERROR_COUNT+=1
 
 if %ERROR_COUNT% gtr 0 (
     echo.
-    echo Por favor verifica que el archivo backend\auth-service\.env contenga las variables necesarias.
+    echo Por favor verifica que el archivo backend\auth-service\.env contenga las variables necesarias: DB_HOST, DB_PORT, DB_USER, DB_NAME, DB_SCHEMA.
     exit /b 1
 )
 
-REM Verificar si PostgreSQL está disponible
-set "PSQL_PATH=C:\Program Files\PostgreSQL\17\bin\psql.exe"
-if not exist "%PSQL_PATH%" (
-    echo Error: PostgreSQL no encontrado en %PSQL_PATH%
-    echo Por favor instala PostgreSQL o ajusta la ruta en este script.
+REM Buscar psql en PATH o rutas comunes
+where psql >nul 2>&1
+if %errorlevel% equ 0 (
+    set "PSQL_PATH=psql"
+) else if exist "C:\Program Files\PostgreSQL\18\bin\psql.exe" (
+    set "PSQL_PATH=C:\Program Files\PostgreSQL\18\bin\psql.exe"
+) else if exist "C:\Program Files\PostgreSQL\17\bin\psql.exe" (
+    set "PSQL_PATH=C:\Program Files\PostgreSQL\17\bin\psql.exe"
+) else if exist "C:\Program Files\PostgreSQL\16\bin\psql.exe" (
+    set "PSQL_PATH=C:\Program Files\PostgreSQL\16\bin\psql.exe"
+) else if exist "C:\Program Files\PostgreSQL\15\bin\psql.exe" (
+    set "PSQL_PATH=C:\Program Files\PostgreSQL\15\bin\psql.exe"
+) else (
+    echo Error: PostgreSQL psql no encontrado en PATH ni en C:\Program Files\PostgreSQL
+    echo Por favor instala PostgreSQL o agrega psql al PATH.
     exit /b 1
 )
 
-REM Directorio de migraciones
-set "MIGRATIONS_DIR=db/migrations"
-
-REM Verificar que el directorio de migraciones exista
-if not exist "%MIGRATIONS_DIR%" (
-    echo No existe la carpeta %MIGRATIONS_DIR%, nada que hacer.
-    exit /b 0
-)
-
-REM Obtener lista de archivos de migración
-set "MIGRATION_FILES="
-for %%F in (%MIGRATIONS_DIR%\*.sql) do (
-    set "MIGRATION_FILES=!MIGRATION_FILES! %%F"
-)
-
-if "%MIGRATION_FILES%"=="" (
-    echo No hay archivos .sql en %MIGRATIONS_DIR%
-    exit /b 0
-)
+set "TARGET_SERVICE=%~1"
+if "%TARGET_SERVICE%"=="" set "TARGET_SERVICE=all"
 
 REM Establecer la contraseña de la base de datos
 set "PGPASSWORD=%DB_PASS%"
 
 echo ========================================
-echo   Ejecutando migraciones locales
+echo   Ejecutando migraciones locales (Windows)
+echo   Target: %TARGET_SERVICE%
 echo   DB: %DB_HOST%:%DB_PORT%/%DB_NAME% (schema: %DB_SCHEMA%)
 echo ========================================
 
 REM Crear esquema y tabla de control si no existen
-echo Creando esquema y tabla de control...
 "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "CREATE SCHEMA IF NOT EXISTS %DB_SCHEMA%;" >nul 2>&1
 "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "CREATE TABLE IF NOT EXISTS %DB_SCHEMA%.migrations_db_log (filename TEXT PRIMARY KEY, executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now());" >nul 2>&1
 
-REM Obtener migraciones ya aplicadas
-set "APPLIED_COUNT=0"
-for /f "tokens=*" %%A in ('"%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -At -c "SELECT filename FROM %DB_SCHEMA%.migrations_db_log;" 2^>nul') do (
-    set "APPLIED_%%A=1"
-    set /a APPLIED_COUNT+=1
-)
-
-echo.
-echo Migraciones previamente aplicadas: %APPLIED_COUNT%
-echo.
+REM Obtener migraciones ya aplicadas en un archivo temporal
+set "TEMP_APPLIED=%TEMP%\applied_migrations_%RANDOM%.txt"
+"%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -At -c "SELECT filename FROM %DB_SCHEMA%.migrations_db_log;" > "%TEMP_APPLIED%" 2>nul
 
 set "MIGRATION_COUNT=0"
 set "MIGRATION_SUCCESS=0"
 set "MIGRATION_FAILED=0"
 
-REM Ejecutar cada migración individualmente
-for /r "%MIGRATIONS_DIR%" %%F in (*.sql) do (
-    set "filename=%%~nxF"
-    set "filepath=%%F"
-    set "relpath=%%F"
-    set "relpath=!relpath:*db\migrations\=!"
-    set "relpath=!relpath:\=/!"
-    
-    REM Omitir archivos dentro de carpetas old o archive
-    if "!relpath:~0,4!"=="old/" (
-        rem Omitir carpeta old
-    ) else if "!relpath:~0,8!"=="archive/" (
-        rem Omitir carpeta archive
-    ) else if defined APPLIED_!relpath! (
-        echo Saltando (ya aplicada): !relpath!
-    ) else if defined APPLIED_!filename! (
-        echo Saltando (ya aplicada): !relpath!
-    ) else (
-        set /a MIGRATION_COUNT+=1
-        echo [%MIGRATION_COUNT%] Ejecutando: !relpath!
-        
-        REM Ejecutar la migración
-        "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -f "!filepath!" >nul 2>&1
-        if !errorlevel! equ 0 (
-            echo     ✓ OK
-            set /a MIGRATION_SUCCESS+=1
-            REM Registrar la migración como aplicada
-            "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "INSERT INTO %DB_SCHEMA%.migrations_db_log (filename) VALUES ('!relpath!') ON CONFLICT (filename) DO NOTHING;" >nul 2>&1
-        ) else (
-            echo     ✗ ERROR
-            set /a MIGRATION_FAILED+=1
-            echo     Detalles del error:
-            "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -f "!filepath!"
+REM Archivo temporal para consolidar lista de archivos .sql a procesar
+set "TEMP_SQL_LIST=%TEMP%\sql_list_%RANDOM%.txt"
+if exist "%TEMP_SQL_LIST%" del "%TEMP_SQL_LIST%"
+
+REM 1. Recolectar archivos según TARGET_SERVICE
+if /i "%TARGET_SERVICE%"=="global" (
+    if exist "db\migrations" (
+        for /r "db\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+) else if /i not "%TARGET_SERVICE%"=="all" (
+    REM Servicio específico
+    if exist "backend\%TARGET_SERVICE%\db\migrations" (
+        for /r "backend\%TARGET_SERVICE%\db\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+    if exist "backend\%TARGET_SERVICE%-service\db\migrations" (
+        for /r "backend\%TARGET_SERVICE%-service\db\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+    if exist "backend\%TARGET_SERVICE%\migrations" (
+        for /r "backend\%TARGET_SERVICE%\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+    if exist "backend\%TARGET_SERVICE%-service\migrations" (
+        for /r "backend\%TARGET_SERVICE%-service\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+    if exist "db\migrations\%TARGET_SERVICE%" (
+        for /r "db\migrations\%TARGET_SERVICE%" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+    if exist "db\migrations\%TARGET_SERVICE%-service" (
+        for /r "db\migrations\%TARGET_SERVICE%-service" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+) else (
+    REM Todos: db/migrations + backend/*/db/migrations + backend/*/migrations
+    if exist "db\migrations" (
+        for /r "db\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+    )
+    for /d %%D in (backend\*) do (
+        if exist "%%D\db\migrations" (
+            for /r "%%D\db\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
+        )
+        if exist "%%D\migrations" (
+            for /r "%%D\migrations" %%F in (*.sql) do echo %%F>> "%TEMP_SQL_LIST%"
         )
     )
 )
+
+if not exist "%TEMP_SQL_LIST%" (
+    echo No hay archivos de migracion para ejecutar.
+    if exist "%TEMP_APPLIED%" del "%TEMP_APPLIED%"
+    exit /b 0
+)
+
+REM 2. Iterar sobre los archivos encontrados
+for /f "usebackq delims=" %%F in ("%TEMP_SQL_LIST%") do (
+    set "filepath=%%F"
+    set "filename=%%~nxF"
+    
+    REM Obtener ruta relativa
+    set "relpath=%%F"
+    set "relpath=!relpath:%CD%\=!"
+    set "relpath=!relpath:\=/!"
+    
+    set "skip=0"
+    echo !relpath! | findstr /i "/old/ /archive/ /\\old\\ /\\archive\\" >nul 2>&1
+    if !errorlevel! equ 0 set "skip=1"
+    
+    if !skip! equ 0 (
+        set "already_applied=0"
+        findstr /x /c:"!relpath!" "%TEMP_APPLIED%" >nul 2>&1
+        if !errorlevel! equ 0 set "already_applied=1"
+        findstr /x /c:"!filename!" "%TEMP_APPLIED%" >nul 2>&1
+        if !errorlevel! equ 0 set "already_applied=1"
+        
+        if !already_applied! equ 1 (
+            echo Saltando (ya aplicada^): !relpath! (!filename!^)
+        ) else (
+            set /a MIGRATION_COUNT+=1
+            echo [!MIGRATION_COUNT!] Ejecutando: !relpath!
+            
+            "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -f "!filepath!"
+            if !errorlevel! equ 0 (
+                echo     [OK] Exitoso
+                set /a MIGRATION_SUCCESS+=1
+                "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "INSERT INTO %DB_SCHEMA%.migrations_db_log (filename) VALUES ('!relpath!') ON CONFLICT (filename) DO NOTHING;" >nul 2>&1
+                "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "INSERT INTO %DB_SCHEMA%.migrations_db_log (filename) VALUES ('!filename!') ON CONFLICT (filename) DO NOTHING;" >nul 2>&1
+            ) else (
+                echo     [ERROR] Fallo la migracion
+                set /a MIGRATION_FAILED+=1
+            )
+        )
+    )
+)
+
+if exist "%TEMP_SQL_LIST%" del "%TEMP_SQL_LIST%"
+if exist "%TEMP_APPLIED%" del "%TEMP_APPLIED%"
 
 echo.
 echo ========================================
@@ -157,11 +187,11 @@ echo ========================================
 
 if %MIGRATION_FAILED% gtr 0 (
     echo.
-    echo ❌ Algunas migraciones fallaron. Por favor revisa los errores anteriores.
+    echo [ERROR] Algunas migraciones fallaron.
     exit /b 1
 ) else (
     echo.
-    echo ✅ Todas las migraciones se ejecutaron exitosamente.
+    echo [EXITO] Migraciones ejecutadas correctamente.
     exit /b 0
 )
 

@@ -487,11 +487,13 @@ export const API_ENDPOINTS = {
 // automáticamente gracias a credentials:'include' en CORS_CONFIG.
 // NO se inyecta el header Authorization desde el frontend.
 export const getDefaultHeaders = (_includeAuth = true): HeadersInit => {
+  const publicBaseUrl = typeof window !== 'undefined' ? getPublicBaseUrl() : undefined;
   return {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json; charset=utf-8',
     'X-Client-Version': '1.0.0',
     'X-Client-Platform': 'web',
+    ...(publicBaseUrl ? { 'X-Frontend-Base-Url': publicBaseUrl } : {}),
   };
 };
 

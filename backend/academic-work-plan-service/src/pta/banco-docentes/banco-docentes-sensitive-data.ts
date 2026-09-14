@@ -8,13 +8,38 @@ const DOCUMENT_KEYS = new Set([
   'num_identificacion',
   'identificacion',
   'documento',
+  'document',
+  'document_number',
+  'documentodeidentidad',
+  'numero_documento',
+  'cedula',
+  'docente_identificacion',
+  'documento_docente',
 ]);
 const SALARY_KEYS = new Set(['puntaje_salarial', 'puntajesalarial']);
+const VALUE_KEYS = new Set(['valor', 'datoprevio', 'datonuevo', 'dato_previo', 'dato_nuevo', 'valoranterior', 'valornuevo', 'datoerrado']);
 
 export type RundSensitiveField = typeof RUND_SENSITIVE_FIELDS[number];
 
 function normalizeKey(value: unknown): string {
-  return String(value || '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+}
+
+function fieldForKey(key: unknown): RundSensitiveField | undefined {
+  const normalized = normalizeKey(key);
+  if (DOCUMENT_KEYS.has(normalized)) return 'DOCUMENTO_IDENTIDAD';
+  if (SALARY_KEYS.has(normalized)) return 'PUNTAJE_SALARIAL';
+  return undefined;
+}
+
+function contextualField(value: Record<string, any>): RundSensitiveField | undefined {
+  return fieldForKey(value.campo || value.campoAfectado || value.campo_afectado || value.columna || value.field);
+}
+
+// Los historiales antiguos pueden guardar snapshots JSON como texto.
+function parsedSnapshot(value: unknown): unknown {
+  if (typeof value !== 'string' || !/^[\s]*[\[{]/.test(value)) return value;
+  try { return JSON.parse(value); } catch { return value; }
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -50,22 +75,19 @@ export function findRundSensitiveFields(value: unknown): RundSensitiveField[] {
     }
     if (!isRecord(current)) return;
 
-    const fieldCode = String(current.campo || '').trim().toUpperCase();
-    if (fieldCode === 'DOCUMENTO_IDENTIDAD' && current.valor !== null && current.valor !== undefined) {
-      fields.add('DOCUMENTO_IDENTIDAD');
-    }
-    if (fieldCode === 'PUNTAJE_SALARIAL' && current.valor !== null && current.valor !== undefined) {
-      fields.add('PUNTAJE_SALARIAL');
+    if ((current.tipo_soporte || current.tipoSoporte || current.documentoLogicoId || current.rundSoporteId || current.rund_soporte_id)
+      && (current.nombre_archivo || current.nombreArchivo || current.documentoCarpetaId || current.documento_carpeta_id || current.contenidoUrl)) {
+      RUND_SENSITIVE_FIELDS.forEach((field) => fields.add(field));
     }
 
+    const fieldCode = contextualField(current);
     Object.entries(current).forEach(([key, nestedValue]) => {
       const normalized = normalizeKey(key);
-      if (DOCUMENT_KEYS.has(normalized) && nestedValue !== null && nestedValue !== undefined) {
-        fields.add('DOCUMENTO_IDENTIDAD');
-      } else if (SALARY_KEYS.has(normalized) && nestedValue !== null && nestedValue !== undefined) {
-        fields.add('PUNTAJE_SALARIAL');
+      const field = fieldForKey(key) || (VALUE_KEYS.has(normalized) ? fieldCode : undefined);
+      if (field && nestedValue !== null && nestedValue !== undefined) {
+        fields.add(field);
       } else {
-        visit(nestedValue);
+        visit(VALUE_KEYS.has(normalized) ? parsedSnapshot(nestedValue) : nestedValue);
       }
     });
   };
@@ -74,32 +96,40 @@ export function findRundSensitiveFields(value: unknown): RundSensitiveField[] {
   return Array.from(fields);
 }
 
-function protectRecursively(value: unknown): any {
-  if (Array.isArray(value)) return value.map(protectRecursively);
+function protectRecursively(value: unknown, supportContext = false): any {
+  if (Array.isArray(value)) return value.map((item) => protectRecursively(item, supportContext));
   if (!isRecord(value)) return value;
 
   const protectedValue: Record<string, any> = {};
-  const fieldCode = String(value.campo || '').trim().toUpperCase();
+  const fieldCode = contextualField(value);
+  const isSupport = supportContext || Boolean(value.tipo_soporte || value.tipoSoporte || value.rundSoporteId || value.rund_soporte_id || value.documentoLogicoId || value.soporteId || value.soporte_id);
   for (const [key, nestedValue] of Object.entries(value)) {
     const normalized = normalizeKey(key);
-    if (DOCUMENT_KEYS.has(normalized)) {
-      protectedValue[key] = maskIdentityDocument(nestedValue);
-    } else if (SALARY_KEYS.has(normalized)) {
+    const field = fieldForKey(key) || (VALUE_KEYS.has(normalized) ? fieldCode : undefined);
+    if (isSupport && ['nombrearchivo', 'nombre_archivo'].includes(normalized)) {
+      protectedValue[key] = 'Documento del perfil';
+    } else if (isSupport && ['documentocarpetaid', 'documento_carpeta_id', 'contenidourl', 'url', 'observacion', 'descripcion'].includes(normalized)) {
       protectedValue[key] = null;
-    } else if (key === 'valor' && fieldCode === 'DOCUMENTO_IDENTIDAD') {
+    } else if (fieldCode && ['observacion', 'observaciones', 'motivo', 'justificacion'].includes(normalized)) {
+      protectedValue[key] = null;
+    } else if (field === 'DOCUMENTO_IDENTIDAD') {
       protectedValue[key] = maskIdentityDocument(nestedValue);
-    } else if (key === 'valor' && fieldCode === 'PUNTAJE_SALARIAL') {
+    } else if (field === 'PUNTAJE_SALARIAL') {
       protectedValue[key] = null;
     } else if (key === 'editable' && (fieldCode === 'DOCUMENTO_IDENTIDAD' || fieldCode === 'PUNTAJE_SALARIAL')) {
       protectedValue[key] = false;
     } else {
-      protectedValue[key] = protectRecursively(nestedValue);
+      const snapshot = VALUE_KEYS.has(normalized) ? parsedSnapshot(nestedValue) : nestedValue;
+      protectedValue[key] = snapshot !== nestedValue
+        ? JSON.stringify(protectRecursively(snapshot, isSupport))
+        : protectRecursively(nestedValue, isSupport);
     }
   }
 
   if (fieldCode === 'DOCUMENTO_IDENTIDAD' || fieldCode === 'PUNTAJE_SALARIAL') {
     protectedValue.restringido = true;
   }
+  if (isSupport) protectedValue.contenidoRestringido = true;
   return protectedValue;
 }
 
@@ -116,4 +146,25 @@ export function protectRundSensitiveData<T>(value: T, allowFullAccess: boolean):
       campos_enmascarados: allowFullAccess ? [] : fields,
     },
   } as T;
+}
+
+/** Conserva la estructura de errores de importación sin repetir datos en el texto libre. */
+export function protectRundBulkResponse<T>(value: T, fullAccess: boolean): T {
+  if (fullAccess) return protectRundSensitiveData(value, true);
+  const result: any = protectRundSensitiveData(value, false);
+  if (Array.isArray(result?.errorDetails)) {
+    result.errorDetails = result.errorDetails.map((error: any) => {
+      const column = String(error.columna || error.field || 'fila');
+      return {
+        ...error,
+        // El detalle estructurado conserva columna, fila y valor esperado; nunca un error SQL o un eco del original.
+        message: `No se pudo procesar la fila. Revise ${column.replace(/[^a-zA-Z_áéíóúÁÉÍÓÚ ]/g, '') || 'los campos indicados'}.`,
+        mensaje: `No se pudo procesar la fila. Revise los campos indicados.`,
+        reasons: undefined,
+        razones: undefined,
+        valorEsperado: findRundSensitiveFields(error).length ? 'Valor válido según el campo indicado' : error.valorEsperado,
+      };
+    });
+  }
+  return result;
 }

@@ -1,5 +1,5 @@
 import apiClient from './apiClient';
-import { buildApiUrl } from '../../../config/environment';
+import { buildApiUrl, getApiGatewayBaseUrl } from '../../../config/environment';
 import {
   SolicitudViatico,
   ResumenEstadisticoViaticos,
@@ -10,20 +10,42 @@ import {
   SolicitudListaResponse,
   EstadoSolicitudViatico,
   Geopolitica,
-   ChecklistDocumentosResponse,
-   FinalizarSolicitudResponse,
-   LiquidacionResponse,
-   CalcularLiquidacionRequest,
-   CategoriaInvestigador,
-   TicketValidationResult,
-   ValidateTicketRequest,
-   SaldoTiquete,
-   RutaRestringida,
-   ExcepcionTiquete,
-   CreateExcepcionTiqueteRequest,
-   ResumenConsolidacion,
-   ResultadoConsolidacion,
-  } from '../../types/viaticos';
+  ChecklistDocumentosResponse,
+  FinalizarSolicitudResponse,
+  LiquidacionResponse,
+  CalcularLiquidacionRequest,
+  CategoriaInvestigador,
+  TicketValidationResult,
+  ValidateTicketRequest,
+  SaldoTiquete,
+  RutaRestringida,
+  ExcepcionTiquete,
+  CreateExcepcionTiqueteRequest,
+  ResumenConsolidacion,
+  ResultadoConsolidacion,
+  BandejaSecretarioResponse,
+  PrioridadUpdateResponse,
+  ReturnRequestResponse,
+  CargaAnalista,
+  AsignacionAnalistaRequest,
+  AsignacionAnalistaResponse,
+  SolicitudAsignadaAnalistaResponse,
+  VerifyAuditResponse,
+  DevolverAnalistaResponse,
+  SolicitudControlViaticosResponse,
+  BandejaControlViaticosResponse,
+  VerificarSegundoNivelRequest,
+  VerificarSegundoNivelResponse,
+  DevolverAAnalistaRequest,
+  DevolverAAnalistaResponse,
+  AutorizarComisionRequest,
+  AutorizarComisionResponse,
+  DevolverAutorizacionRequest,
+  DevolverAutorizacionResponse,
+  BandejaAutorizacionResponse,
+  AutorizarExtemporaneaPayload,
+  RechazarExtemporaneaPayload,
+} from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -144,7 +166,7 @@ export class ViaticosService {
   /**
    * Mapea una solicitud del backend (GET /solicitudes) al modelo de presentación.
    */
-  private mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
+  public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
     return {
@@ -172,9 +194,15 @@ export class ViaticosService {
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
       requiereTiqueteAereo: s.requiereTiquetes,
+      prioridad: s.prioridad,
       creadoEn: s.creadoEn.slice(0, 10),
       actualizadoEn: s.actualizadoEn.slice(0, 10),
       esCreadoPorMi: s.esCreadoPorMi,
+      analistaAsignadoId: s.analistaAsignadoId || null,
+      motivoDevolucion: s.motivoDevolucion || (s as any).observacionesSegundaRevision || null,
+      observacionesSegundaRevision: (s as any).observacionesSegundaRevision || null,
+      fechaSegundaRevision: (s as any).fechaSegundaRevision || null,
+      revisorControlId: (s as any).revisorControlId || null,
     };
   }
 
@@ -1034,6 +1062,416 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('Error actualizando holgura global:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REC-001 — Etapa 4: Revisar solicitud y definir prioridad (Secretario/a de Viáticos)
+  // ========================================================================
+
+  async obtenerBandejaSecretario(filtros: {
+    dependenciaId?: string;
+    prioridad?: string;
+    extemporanea?: boolean;
+    comisionadoDocumento?: string;
+    fechaInicio?: string;
+    fechaFin?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<BandejaSecretarioResponse> {
+    try {
+      const params = new URLSearchParams();
+      if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
+      if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
+      if (typeof filtros.extemporanea === 'boolean') params.set('extemporanea', String(filtros.extemporanea));
+      if (filtros.comisionadoDocumento) params.set('comisionado', filtros.comisionadoDocumento);
+      if (filtros.fechaInicio) params.set('fecha_inicio', filtros.fechaInicio);
+      if (filtros.fechaFin) params.set('fecha_fin', filtros.fechaFin);
+      if (filtros.page) params.set('page', String(filtros.page));
+      if (filtros.limit) params.set('limit', String(filtros.limit));
+
+      const query = params.toString();
+      const response = await apiClient.get<BandejaSecretarioResponse>(
+        `/viaticos/api/v1/requests/inbox/secretary${query ? `?${query}` : ''}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja secretario:', error);
+      return { data: [], total: 0, page: filtros.page || 1, limit: filtros.limit || 20 };
+    }
+  }
+
+  async actualizarPrioridad(
+    solicitudId: string,
+    prioridad: string,
+  ): Promise<PrioridadUpdateResponse> {
+    try {
+      return await apiClient.patch<PrioridadUpdateResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/priority`,
+        { prioridad },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error actualizando prioridad:', error);
+      throw error;
+    }
+  }
+
+  async devolverSolicitud(
+    solicitudId: string,
+    motivo: string,
+  ): Promise<ReturnRequestResponse> {
+    try {
+      return await apiClient.post<ReturnRequestResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return`,
+        { motivo },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo solicitud:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REC-002 — Tablero de carga y asignación de analistas (Etapa 4)
+  // ========================================================================
+
+  async obtenerCargaAnalistas(solicitudId?: string): Promise<{ data: CargaAnalista[]; total: number }> {
+    try {
+      const params = solicitudId ? `?solicitudId=${encodeURIComponent(solicitudId)}` : '';
+      const response = await apiClient.get<{ data: CargaAnalista[]; total: number }>(
+        `/viaticos/api/v1/assignments/workload${params}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo carga de analistas:', error);
+      return { data: [], total: 0 };
+    }
+  }
+
+  async asignarAnalista(data: AsignacionAnalistaRequest): Promise<AsignacionAnalistaResponse> {
+    try {
+      return await apiClient.post<AsignacionAnalistaResponse>(
+        '/viaticos/api/v1/assignments/assign',
+        data,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error asignando analista:', error);
+      throw error;
+    }
+  }
+
+  async obtenerSolicitudesAsignadas(): Promise<SolicitudListaResponse[]> {
+    try {
+      const response = await apiClient.get<{ data: SolicitudListaResponse[]; total: number }>(
+        '/viaticos/api/v1/assignments/my-requests',
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitudes asignadas:', error);
+      return [];
+    }
+  }
+
+  // ========================================================================
+  // RF-VER-SIIF — Verificar y crear comisión en SIIF Nación (Etapa 5)
+  // ========================================================================
+
+  async obtenerSolicitudesAsignadasAnalista(): Promise<SolicitudListaResponse[]> {
+    try {
+      const response = await apiClient.get<SolicitudAsignadaAnalistaResponse>(
+        '/viaticos/api/v1/requests/analyst/inbox',
+      );
+      return response.data;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitudes asignadas (analista):', error);
+      return [];
+    }
+  }
+
+  async verificarAuditoria(
+    solicitudId: string,
+    dto: { seguridadSocialVigente?: boolean; consultaRutFacturador?: boolean },
+  ): Promise<VerifyAuditResponse> {
+    try {
+      return await apiClient.post<VerifyAuditResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/verify-audit`,
+        dto,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error en verificacion de auditoria:', error);
+      throw error;
+    }
+  }
+
+  async devolverAnalista(
+    solicitudId: string,
+    motivo: string,
+  ): Promise<DevolverAnalistaResponse> {
+    try {
+      return await apiClient.post<DevolverAnalistaResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/devolver-analista`,
+        { motivo },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo solicitud (analista):', error);
+      throw error;
+    }
+  }
+
+  async exportarSIIF(solicitudId: string): Promise<Blob> {
+    try {
+      return await apiClient.getBlob(`/viaticos/api/v1/requests/${solicitudId}/siif-export`);
+    } catch (error) {
+      console.error('[viaticos] Error exportando SIIF:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // RF-REV-002 — Control Viáticos (Segundo Nivel / Control Cruzado)
+  // ========================================================================
+
+  /**
+   * Obtiene la bandeja de solicitudes en estado SOLICITADA_SIIF para
+   * el control cruzado de segundo nivel.
+   */
+  async obtenerBandejaControlViaticos(filtros: {
+    dependenciaId?: string;
+    prioridad?: string;
+    comisionadoDocumento?: string;
+    fechaInicio?: string;
+    fechaFin?: string;
+    page?: number;
+    limit?: number;
+  } = {}): Promise<BandejaControlViaticosResponse> {
+    try {
+      const params = new URLSearchParams();
+      if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
+      if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
+      if (filtros.comisionadoDocumento) params.set('comisionado', filtros.comisionadoDocumento);
+      if (filtros.fechaInicio) params.set('fecha_inicio', filtros.fechaInicio);
+      if (filtros.fechaFin) params.set('fecha_fin', filtros.fechaFin);
+      if (filtros.page) params.set('page', String(filtros.page));
+      if (filtros.limit) params.set('limit', String(filtros.limit));
+
+      const query = params.toString();
+      const response = await apiClient.get<BandejaControlViaticosResponse>(
+        `/viaticos/api/v1/requests/siif-requested${query ? `?${query}` : ''}`,
+      );
+      return response;
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja Control Viáticos:', error);
+      return { data: [], total: 0, page: filtros.page || 1, limit: filtros.limit || 20 };
+    }
+  }
+
+  /**
+   * Verifica la solicitud en segundo nivel (Control Cruzado).
+   * Cambia el estado a VERIFICADA y registra el usuario y timestamp.
+   */
+  async verificarSegundoNivel(
+    solicitudId: string,
+    dto: VerificarSegundoNivelRequest = {},
+  ): Promise<VerificarSegundoNivelResponse> {
+    try {
+      return await apiClient.post<VerificarSegundoNivelResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/verify-second-level`,
+        dto,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error verificando segundo nivel:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Devuelve la solicitud al analista de 1er nivel con observaciones obligatorias.
+   * El payload se alinea con `SegundaRevisionObservacionesDto` del backend,
+   * que espera el campo `observaciones` (string de 3 a 2000 caracteres).
+   */
+  async devolverAAnalista(
+    solicitudId: string,
+    observaciones: string,
+  ): Promise<DevolverAAnalistaResponse> {
+    try {
+      return await apiClient.post<DevolverAAnalistaResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return-to-analyst`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo a analista:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene el detalle completo de una solicitud para Control Viáticos,
+   * incluyendo liquidación, validación de tiquete, documentos PDF y
+   * auditoría de 1er nivel.
+   */
+  async obtenerSolicitudControlViaticos(
+    solicitudId: string,
+  ): Promise<SolicitudControlViaticosResponse | null> {
+    try {
+      return await apiClient.get<SolicitudControlViaticosResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/control-viaticos`,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo solicitud Control Viáticos:', error);
+      return null;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Consulta la bandeja de autorizaciones corporativas (Etapa 6).
+   * Al consultar la bandeja, las comisiones en VERIFICADA se transicionan
+   * automáticamente a EN_AUTORIZACION en backend.
+   */
+  async obtenerBandejaAutorizacion(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<BandejaAutorizacionResponse> {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', String(page));
+      params.append('limit', String(limit));
+      if (search?.trim()) params.append('search', search.trim());
+      if (estado?.trim()) params.append('estado', estado.trim());
+
+      return await apiClient.get<BandejaAutorizacionResponse>(
+        `/viaticos/api/v1/requests/authorization/inbox?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de autorización:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Emite visto bueno corporativo a la comisión (Etapa 6).
+   * Transiciona a AUTORIZADA, notifica al responsable de tiquetes y envía
+   * PDF del itinerario/tiquete a pasajero y enlace.
+   */
+  async autorizarComision(
+    solicitudId: string,
+    observaciones?: string,
+  ): Promise<AutorizarComisionResponse> {
+    try {
+      return await apiClient.post<AutorizarComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/authorize`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error autorizando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Devuelve la comisión con reparos u observaciones (Etapa 6).
+   * Requiere observaciones obligatorias (mínimo 3 caracteres).
+   */
+  async devolverComisionAutorizacion(
+    solicitudId: string,
+    observaciones: string,
+  ): Promise<DevolverAutorizacionResponse> {
+    try {
+      return await apiClient.post<DevolverAutorizacionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/return-authorization`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error devolviendo comisión desde autorización:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-001 — Descarga el PDF oficial de Autorización de Gasto e Itinerario (Tiquete).
+   */
+  async descargarPdfTiqueteItinerario(solicitudId: string): Promise<Blob> {
+    try {
+      const url = `${getApiGatewayBaseUrl()}/viaticos/api/v1/requests/${solicitudId}/ticket-itinerary/pdf`;
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`Error al descargar PDF: ${response.statusText}`);
+      }
+      return await response.blob();
+    } catch (error) {
+      console.error('[viaticos] Error descargando PDF de itinerario/tiquete:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Consulta la bandeja de comisiones extemporáneas para Dirección Nacional (Etapa 6).
+   */
+  async obtenerBandejaDireccionNacional(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<BandejaAutorizacionResponse> {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', String(page));
+      params.append('limit', String(limit));
+      if (search?.trim()) params.append('search', search.trim());
+      if (estado?.trim()) params.append('estado', estado.trim());
+
+      return await apiClient.get<BandejaAutorizacionResponse>(
+        `/viaticos/api/v1/requests/extemporaneous-authorization/inbox?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de Dirección Nacional:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Autoriza de manera excepcional una comisión extemporánea (Dirección Nacional).
+   * Transiciona la solicitud a EN_AUTORIZACION para que continúe a la Subdirección.
+   */
+  async autorizarComisionExtemporanea(
+    solicitudId: string,
+    justificacion?: string,
+    esDelegado?: boolean,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/authorize-extemporaneous`,
+        { justificacion, esDelegado },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error autorizando comisión extemporánea:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-AUT-002 — Niega y rechaza una comisión extemporánea (Dirección Nacional).
+   * Transiciona la solicitud a RECHAZADO con justificación motivada.
+   */
+  async rechazarComisionExtemporanea(
+    solicitudId: string,
+    justificacion: string,
+    esDelegado?: boolean,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/reject-extemporaneous`,
+        { justificacion, esDelegado },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error rechazando comisión extemporánea:', error);
       throw error;
     }
   }

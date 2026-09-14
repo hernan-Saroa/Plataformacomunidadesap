@@ -20,6 +20,7 @@ import {
 } from '../../entities/estado-solicitud.enum';
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
+import { NotificationClientService } from '../../common/notification-client.service';
 
 /**
  * Estado al que se transiciona el expediente consolidado (RF-LIQ-004).
@@ -114,6 +115,7 @@ export class ConsolidacionService {
     private readonly historialRepo: Repository<SolicitudHistorialEstadoEntity>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    private readonly notificationClient: NotificationClientService,
   ) {}
 
   // ========================================================================
@@ -137,11 +139,11 @@ export class ConsolidacionService {
     }
 
     const esConsolidablePorEstado = ESTADOS_CONSOLIDABLES.has(
-      expediente.estadoSolicitud as EstadoSolicitud,
+      expediente.estadoSolicitud,
     );
 
     // Rechazo temprano por estado (400 en el envío real; aquí solo informativo).
-    if (ESTADOS_SOLO_LECTURA.has(expediente.estadoSolicitud as EstadoSolicitud)) {
+    if (ESTADOS_SOLO_LECTURA.has(expediente.estadoSolicitud)) {
       return this.construirResumenBloqueado(
         expediente,
         'El expediente ya fue consolidado y se encuentra en estado de solo lectura. No puede enviarse nuevamente.',
@@ -155,9 +157,8 @@ export class ConsolidacionService {
       );
     }
 
-    const { errores, items, documentos } = await this.validarIntegridad(
-      expediente,
-    );
+    const { errores, items, documentos } =
+      await this.validarIntegridad(expediente);
 
     return {
       solicitudId: expediente.id,
@@ -183,7 +184,10 @@ export class ConsolidacionService {
    *  - Bloqueo pesimista de la fila (`SELECT ... FOR UPDATE`) para evitar
    *    colisiones de estado ante envíos concurrentes del mismo expediente.
    *  - Si alguna validación falla se retorna HTTP 422 sin mutar nada (rollback).
-   *  - Si todo es correcto: `SOLICITADO` + registro en el historial inmutable.
+   *  - Si es íntegro, evalúa la anticipación de 14 días hábiles: si la fecha
+   *    de inicio del viaje está a menos de 14 días hábiles, el estado final
+   *    es `EXTEMPORANEA`; en caso contrario es `SOLICITADO` (solo lectura).
+   *  - Registra la transición en `solicitudes_historial_estados`.
    *
    * @throws NotFoundException         si el expediente no existe.
    * @throws BadRequestException(400)  si el estado no permite consolidar.
@@ -237,34 +241,77 @@ export class ConsolidacionService {
         throw new HttpException({ success: false, errors: errores }, 422);
       }
 
-      // 4) Transición y cierre de seguridad (inmutabilidad).
+      // 4) Evaluar anticipación y transición a EXTEMPORANEA o SOLICITADO.
+      const ahora = new Date();
+      const diasHabilesAnticipacion = contarDiasHabilesEntre(
+        ahora,
+        expediente.fechaInicio,
+      );
+      const esExtemporanea = diasHabilesAnticipacion < 14;
+
       const estadoAnterior = expediente.estadoSolicitud;
-      expediente.estadoSolicitud = ESTADO_EXPEDIENTE_SOLICITADO;
+      if (esExtemporanea) {
+        expediente.estadoSolicitud = EstadoSolicitud.EXTEMPORANEA;
+        expediente.extemporanea = true;
+      } else {
+        expediente.estadoSolicitud = EstadoSolicitud.SOLICITADO;
+        expediente.extemporanea = false;
+      }
       await manager.save(SolicitudComisionEntity, expediente);
 
       // 5) Registrar la transición en el historial de auditoría (append-only).
       const historial = manager.create(SolicitudHistorialEstadoEntity, {
         solicitudId: expediente.id,
         estadoAnterior,
-        estadoNuevo: ESTADO_EXPEDIENTE_SOLICITADO,
+        estadoNuevo: expediente.estadoSolicitud,
         usuarioId:
-          usuarioId ?? expediente.creadoPorUsuarioId ?? '00000000-0000-0000-0000-000000000000',
-        comentarios: `Expediente consolidado y enviado a revisión del Grupo de Viáticos (RF-LIQ-004).`,
+          usuarioId ??
+          expediente.creadoPorUsuarioId ??
+          '00000000-0000-0000-0000-000000000000',
+        comentarios: esExtemporanea
+          ? 'Expediente consolidado como EXTEMPORANEA por anticipación menor a 14 días hábiles.'
+          : 'Expediente consolidado y enviado a revisión del Grupo de Viáticos (RF-LIQ-004).',
       });
       await manager.save(SolicitudHistorialEstadoEntity, historial);
 
       this.logger.log(
         `[consolidacion] Expediente ${expediente.consecutivoUnico} consolidado: ` +
-          `${estadoAnterior} -> ${ESTADO_EXPEDIENTE_SOLICITADO}`,
+          `${estadoAnterior} -> ${expediente.estadoSolicitud}`,
       );
+
+      this.notificationClient
+        .notifyByRole('SECRETARIO', {
+          tipo_notificacion: 'VIATICOS_RADICADA',
+          titulo: `Nueva solicitud para revisión: ${expediente.consecutivoUnico}`,
+          mensaje: `El expediente ${expediente.consecutivoUnico} fue radicado y requiere revisión en la bandeja del Grupo de Viáticos.`,
+          descripcion_corta: `Solicitud ${expediente.consecutivoUnico} · ${expediente.comisionado?.numeroDocumento ?? ''}`,
+          icono: 'FileText',
+          color: '#003DA5',
+          prioridad: esExtemporanea ? 'Alta' : 'Media',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver en bandeja',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: expediente.id,
+            consecutivoUnico: expediente.consecutivoUnico,
+          },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `[notify] No se pudo notificar a secretarios para solicitud ${expediente.id}: ${err?.message}`,
+          ),
+        );
 
       return {
         success: true,
         id: expediente.id,
         consecutivoUnico: expediente.consecutivoUnico,
         estadoAnterior,
-        estadoSolicitud: ESTADO_EXPEDIENTE_SOLICITADO,
-        mensaje: `El expediente ${expediente.consecutivoUnico} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
+        estadoSolicitud: expediente.estadoSolicitud,
+        mensaje: esExtemporanea
+          ? `El expediente ${expediente.consecutivoUnico} fue consolidado como EXTEMPORANEA por no cumplir la anticipación mínima de 14 días hábiles.`
+          : `El expediente ${expediente.consecutivoUnico} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
       };
     });
   }
@@ -278,8 +325,10 @@ export class ConsolidacionService {
    * - Ya consolidado / avanzado (solo lectura) -> 400.
    * - Estado distinto a RADICADA/EXTEMPORANEA/DEVUELTA -> 400.
    */
-  private verificarEstadoConsolidable(expediente: SolicitudComisionEntity): void {
-    const estado = expediente.estadoSolicitud as EstadoSolicitud;
+  private verificarEstadoConsolidable(
+    expediente: SolicitudComisionEntity,
+  ): void {
+    const estado = expediente.estadoSolicitud;
     if (ESTADOS_SOLO_LECTURA.has(estado)) {
       throw new BadRequestException(
         `El expediente tiene estado ${expediente.estadoSolicitud} (solo lectura) y no puede consolidarse de nuevo.`,
@@ -339,14 +388,25 @@ export class ConsolidacionService {
       : null;
 
     // ---------- 1) Formato 023: campos obligatorios (según configuración) ----------
-    this.validarCamposFormato023(expediente, comisionado, config, errores, items);
+    this.validarCamposFormato023(
+      expediente,
+      comisionado,
+      config,
+      errores,
+      items,
+    );
 
     // ---------- 2) Autoliquidación financiera ----------
     this.validarAutoliquidacion(expediente, errores, items);
 
     // ---------- 3) Tiquetes y presupuesto (solo si requiere tiquetes) ----------
     if (expediente.requiereTiquetes) {
-      await this.validarTiquetesYPresupuesto(expediente, manager, errores, items);
+      await this.validarTiquetesYPresupuesto(
+        expediente,
+        manager,
+        errores,
+        items,
+      );
     }
 
     // ---------- 4) Checklist de documentos de soporte por rol ----------
@@ -458,7 +518,10 @@ export class ConsolidacionService {
         codigo: 'DIAS_COMISION',
         etiqueta: 'Días de comisión (> 0)',
         ok: dias > 0,
-        detalle: dias <= 0 ? 'La comisión no registra días de comisión válidos.' : undefined,
+        detalle:
+          dias <= 0
+            ? 'La comisión no registra días de comisión válidos.'
+            : undefined,
       },
     ];
 
@@ -538,7 +601,9 @@ export class ConsolidacionService {
           : 'La ruta requiere soporte de excepción aérea: registre el acto administrativo y adjunte el PDF firmado (Dirección Nacional o Sindicato).',
       });
       if (!soporteCompleto) {
-        errores.push('La ruta requiere soporte de excepción aérea (ruta corta restringida).');
+        errores.push(
+          'La ruta requiere soporte de excepción aérea (ruta corta restringida).',
+        );
       }
     }
 
@@ -547,7 +612,8 @@ export class ConsolidacionService {
       ? await manager.findOne(SaldoTiqueteEntity, { where: { activo: true } })
       : await this.saldoRepo.findOne({ where: { activo: true } });
 
-    const presupuestoValidado = Boolean(haySaldoConfigurado) || Boolean(excepcionPresupuesto);
+    const presupuestoValidado =
+      Boolean(haySaldoConfigurado) || Boolean(excepcionPresupuesto);
     items.push({
       codigo: 'SALDO_TIQUETES',
       etiqueta: 'Validación de saldo presupuestal de tiquetes',
@@ -584,10 +650,12 @@ export class ConsolidacionService {
     const documentosEstado: ResumenConsolidacion['documentos'] = [];
 
     const obligatorios = (config?.documentos ?? [])
-      .filter((d) => d.tipoRequisito === 'OBLIGATORIO' && d.tipoDocumentoSoporte)
+      .filter(
+        (d) => d.tipoRequisito === 'OBLIGATORIO' && d.tipoDocumentoSoporte,
+      )
       .map((d) => ({
-        codigo: d.tipoDocumentoSoporte!.codigo,
-        nombre: d.tipoDocumentoSoporte!.nombre,
+        codigo: d.tipoDocumentoSoporte.codigo,
+        nombre: d.tipoDocumentoSoporte.nombre,
       }));
 
     const cargadosPorTipo = new Map<string, DocumentoSoporteEntity[]>();
@@ -602,24 +670,30 @@ export class ConsolidacionService {
       const cargado = docs.length > 0;
       const pdf = docs.some((d) => this.esPdf(d.tipoMime));
 
-      documentosEstado.push({ codigo: req.codigo, nombre: req.nombre, cargado, pdf });
+      documentosEstado.push({
+        codigo: req.codigo,
+        nombre: req.nombre,
+        cargado,
+        pdf,
+      });
 
       itemsDocs.push({
         codigo: req.codigo,
         etiqueta: req.nombre,
         grupo: 'DOCUMENTOS',
         estado: cargado && pdf ? 'OK' : 'FALTA',
-        detalle:
-          !cargado
-            ? `Falta documento obligatorio: ${req.nombre}`
-            : !pdf
-              ? `El documento ${req.nombre} debe cargarse en formato PDF.`
-              : undefined,
+        detalle: !cargado
+          ? `Falta documento obligatorio: ${req.nombre}`
+          : !pdf
+            ? `El documento ${req.nombre} debe cargarse en formato PDF.`
+            : undefined,
       });
       if (!cargado) {
         erroresDocs.push(`Falta documento obligatorio: ${req.nombre}`);
       } else if (!pdf) {
-        erroresDocs.push(`El documento ${req.nombre} debe cargarse en formato PDF.`);
+        erroresDocs.push(
+          `El documento ${req.nombre} debe cargarse en formato PDF.`,
+        );
       }
     }
 
@@ -635,7 +709,9 @@ export class ConsolidacionService {
     expediente: SolicitudComisionEntity,
   ): string | null {
     if (expediente.esInternacional) return 'INTERNACIONAL';
-    if ((expediente.tipoComision || '').toUpperCase() === 'ACTO_ADMINISTRATIVO') {
+    if (
+      (expediente.tipoComision || '').toUpperCase() === 'ACTO_ADMINISTRATIVO'
+    ) {
       return 'ACTO_ADMINISTRATIVO';
     }
     return expediente.comisionado?.tipoComisionado ?? null;
@@ -664,22 +740,26 @@ export class ConsolidacionService {
 
   /** Normaliza una ciudad para compararla contra `rutas_restringidas`. */
   private normalizarCiudad(ciudad: string): string {
-    return (ciudad || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .replace(/\s+/g, ' ')
-      // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
-      // para que coincida con las rutas restringidas registradas como BOGOTA.
-      .replace(/\s*,?\s*D\.?C\.?$/i, '')
-      .trim();
+    return (
+      (ciudad || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/\s+/g, ' ')
+        // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
+        // para que coincida con las rutas restringidas registradas como BOGOTA.
+        .replace(/\s*,?\s*D\.?C\.?$/i, '')
+        .trim()
+    );
   }
 
   /** Indica si un tipo MIME corresponde a un PDF válido. */
   private esPdf(tipoMime: string | undefined | null): boolean {
     if (!tipoMime) return false;
     const mime = tipoMime.toLowerCase();
-    return mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf');
+    return (
+      mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf')
+    );
   }
 }
 
@@ -741,3 +821,23 @@ function campoPresente(valor: unknown): boolean {
   return true;
 }
 
+// ============================================================================
+// Helpers para la regla de 14 días hábiles (evaluada en consolidación).
+// ============================================================================
+
+function esDiaHabil(fecha: Date): boolean {
+  const dia = fecha.getDay();
+  return dia !== 0 && dia !== 6;
+}
+
+function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
+  let count = 0;
+  const fecha = new Date(fechaInicio);
+  while (fecha <= fechaFin) {
+    if (esDiaHabil(fecha)) {
+      count++;
+    }
+    fecha.setDate(fecha.getDate() + 1);
+  }
+  return count;
+}

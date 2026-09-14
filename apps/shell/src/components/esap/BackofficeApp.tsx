@@ -104,6 +104,7 @@ const GestionUsuariosPasswordTracking = lazyRemote(() => import('gestion_persona
 const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'), ['GestionProfesoralApp']);
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
+const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 
@@ -159,6 +160,7 @@ type ModuleView =
   | 'gestion-profesoral'
   | 'contratacion'
   | 'viaticos'
+  | 'programacion-academica'
   | 'modules'
   | 'dependencias';
 
@@ -234,6 +236,8 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'pta': 'pta',
   'contratacion': 'contratacion',
   'viaticos': 'viaticos',
+  'programacion-academica': 'programacion-academica',
+  'academic-schedule': 'programacion-academica',
   'banco-docentes-pta': 'banco-docentes-pta',
   'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
@@ -256,6 +260,7 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'graduates-verification',
   'graduates-certificates',
   'pta',
+  'programacion-academica',
   'certificados-laborales',
   'control-interno',
   'control-disciplinario',
@@ -284,6 +289,7 @@ const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   'programas-academicos': 'programas-academicos',
   'gestion-passwords': 'gestion-passwords',
   pta: 'pta',
+  'programacion-academica': 'programacion-academica',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-profesoral': 'gestion-profesoral',
 };
@@ -433,15 +439,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     .map(normalizeRoleCode)
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
+  const urlParamModule = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('module') as ModuleView | null)
+    : null;
+  const isUrlDisciplinario = typeof window !== 'undefined' && (
+    urlParamModule === 'control-disciplinario' ||
+    window.location.pathname.startsWith('/control-disciplinario')
+  );
+
   const finalInitialModule =
+    (isUrlDisciplinario ? 'control-disciplinario' : undefined) ??
+    (urlParamModule && isViewAccessible(urlParamModule) ? urlParamModule : undefined) ??
     (hasDashboardAccess ? 'executive' : undefined) ??
     moduleFromArray ??
     (isViewAccessible(initialModule as ModuleView) ? initialModule : undefined) ??
     (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
 
   const getDefaultSidebarModule = (view: ModuleView) => MODULE_TO_DEFAULT_SIDEBAR[view] || '';
-
-
 
   // Siempre iniciar en la primera vista habilitada del menu visible para el rol.
   const [currentModule, setCurrentModule] = useState<ModuleView>(
@@ -525,11 +539,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         }
       };
 
+      const handleOpenDisciplinario = () => {
+        setCurrentModule('control-disciplinario');
+        setCurrentSidebarModule('control-disciplinario');
+      };
+
+      // Si hay un expediente disciplinario pendiente de abrir, conmutar al módulo
+      if (sessionStorage.getItem('control-disciplinario:pendingOpenExpediente')) {
+        handleOpenDisciplinario();
+      }
+
       window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
       window.addEventListener('portal-view-change', handlePortalViewChange);
+      window.addEventListener('control-disciplinario:open-expediente', handleOpenDisciplinario);
       return () => {
         window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
         window.removeEventListener('portal-view-change', handlePortalViewChange);
+        window.removeEventListener('control-disciplinario:open-expediente', handleOpenDisciplinario);
       };
     }, []);
 
@@ -827,6 +853,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <ViaticosModulePremium />
+          </Suspense>
+        );
+
+      case 'programacion-academica':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ProgramacionAcademicaModule />
           </Suspense>
         );
 

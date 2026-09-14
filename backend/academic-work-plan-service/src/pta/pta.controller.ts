@@ -7,6 +7,7 @@ import {
   HttpCode,
   Logger,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -16,6 +17,7 @@ import {
   UploadedFiles,
   UseGuards,
   UseInterceptors,
+  SetMetadata,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AnyFilesInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
@@ -25,6 +27,7 @@ import * as fs from 'node:fs';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
 import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaRundSensitiveInterceptor } from './banco-docentes/pta-rund-sensitive.interceptor';
 
 const ensureDir = (dir: string) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -58,6 +61,7 @@ const buildDiskStorage = (folder: string, prefix: string) =>
  */
 @Public()
 @Controller()
+@UseInterceptors(PtaRundSensitiveInterceptor)
 export class PtaController {
   private readonly logger = new Logger(PtaController.name);
 
@@ -168,6 +172,7 @@ export class PtaController {
   // Oferta / Docentes
   // ─────────────────────────────
   @Get('docentes-disponibles')
+  @SetMetadata('isPublic', false)
   async getDocentesDisponibles(@Query() query: any) {
     const data = await this.ptaService.getDocentesDisponibles(query);
     return { success: true, data };
@@ -285,6 +290,13 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Post(':ptaId/validar-reenvio')
+  @UseGuards(PtaAuthGuard)
+  async validarReenvio(@Param('ptaId') ptaId: string, @Req() req: Request) {
+    const data = await this.ptaService.validarReenvioPTA(ptaId, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Post(':ptaId/estado')
   @UseGuards(PtaAuthGuard)
   async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
@@ -300,8 +312,9 @@ export class PtaController {
   }
 
   @Delete(':ptaId')
-  async delete(@Param('ptaId') ptaId: string) {
-    const data = await this.ptaService.deletePTA(ptaId);
+  @UseGuards(PtaAuthGuard)
+  async delete(@Param('ptaId', new ParseUUIDPipe()) ptaId: string, @Req() req: Request) {
+    const data = await this.ptaService.deletePTAAdministrativo(ptaId, req.ptaAuth);
     return { success: true, data };
   }
 
@@ -879,6 +892,18 @@ export class PtaController {
   async getComponentesAprobacion(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesAprobacion(ptaId);
     return { success: true, data };
+  }
+
+  @Get(':ptaId/permisos-decision')
+  @UseGuards(PtaAuthGuard)
+  async getDecisionPermissions(@Param('ptaId') ptaId: string, @Req() req: Request) {
+    return { success: true, data: await this.ptaService.getDecisionPermissions(ptaId, req.ptaAuth!) };
+  }
+
+  @Get('permisos-alcance')
+  @UseGuards(PtaAuthGuard)
+  async getDecisionListScope(@Req() req: Request) {
+    return { success: true, data: await this.ptaService.getDecisionListScope(req.ptaAuth!) };
   }
 
   // Desagregado por territorial del componente "academica_territorial": cuando el

@@ -48,7 +48,9 @@ export function ModuleHeader({
               className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{ background: color }}
             >
-              {icon}
+              {/* Blanco explícito: sin él, el icono hereda el negro del texto
+                  y sobre el fondo sólido de color no se distingue nada. */}
+              <span className="flex text-white">{icon}</span>
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">

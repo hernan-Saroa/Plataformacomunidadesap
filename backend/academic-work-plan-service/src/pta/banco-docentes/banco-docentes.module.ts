@@ -14,18 +14,22 @@ import { RundSoporteCampoEntity } from '../entities/rund-soporte-campo.entity';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentStorageService } from './rund-document-storage.service';
 import { RundDocumentosService } from './rund-documentos.service';
+import { RundPtaConsultaController, RundPtaJwtGuard } from './rund-pta-consulta.controller';
+import { RundPtaConsultaService } from './rund-pta-consulta.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [BancoDocentesController],
+  controllers: [BancoDocentesController, RundPtaConsultaController],
   providers: [
     BancoDocentesService,
     DocumentTypeValidatorService,
     BancoDocentesRolesGuard,
     RundDocumentStorageService,
     RundDocumentosService,
+    RundPtaConsultaService,
+    RundPtaJwtGuard,
   ],
   exports: [BancoDocentesService, DocumentTypeValidatorService, RundDocumentosService],
 })

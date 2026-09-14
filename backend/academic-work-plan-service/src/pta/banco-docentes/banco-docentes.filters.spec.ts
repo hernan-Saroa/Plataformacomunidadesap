@@ -55,7 +55,7 @@ describe('BancoDocentesService - filtros del listado', () => {
     expect(where).toContain('LOWER(genero) = LOWER($5)');
     expect(where).toContain('LOWER(nivel_formacion) = LOWER($6)');
     expect(where).toContain('LOWER(nucleo_tematico) = LOWER($7)');
-    expect(where.match(/ AND /g)?.length).toBe(6);
+    expect(where).toContain('filtro_sec.id_seccional::text = $1');
     expect(params).toEqual(['17', 'CARRERA_003', '2025-2', 'Titular', 'Femenino', 'Maestría', 'Ciencias Sociales']);
   });
 
