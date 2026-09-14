@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { createHash } from 'crypto';
 import { AuditoriasService } from '../auditorias/auditorias.service';
 import {
@@ -39,8 +39,23 @@ export interface VersionResuelta {
   nueva: boolean;
   fecha: Date;
   generadaPor: string;
+  motivo: string | null;
   filas: FilaProgramaAnual[];
   cambios: CambioProgramaAnual[];
+}
+
+export interface OpcionesGeneracion {
+  motivo?: string | null;
+  /** Generar versión desde el banner: si no hubo cambios, cierra el ajuste abierto. */
+  cerrarAjuste?: boolean;
+}
+
+export interface EntradaLogPrograma {
+  fecha: string;
+  tipo: 'version' | 'ajuste' | 'auditores' | 'programacion' | 'ampliacion' | 'creacion';
+  autor: string;
+  auditoria: string | null;
+  detalle: string;
 }
 
 @Injectable()
@@ -55,11 +70,16 @@ export class ProgramaAnualVersionesService {
   /**
    * Devuelve la versión que corresponde al programa actual de la vigencia. Si
    * no hay ninguna, crea la V1; si lo impreso cambió desde la última, crea la
-   * siguiente; si no cambió nada, devuelve la última sin crear otra.
+   * siguiente y cierra el ajuste abierto; si no cambió nada, devuelve la última.
    */
-  async resolverVersion(vigencia: number, usuario: UsuarioVersion): Promise<VersionResuelta> {
+  async resolverVersion(
+    vigencia: number,
+    usuario: UsuarioVersion,
+    opciones: OpcionesGeneracion = {},
+  ): Promise<VersionResuelta> {
     const filas = await this.construirFilas(vigencia);
     const huella = this.calcularHuella(filas);
+    const motivo = opciones.motivo?.trim() || null;
 
     return this.dataSource.transaction(async (manager) => {
       // Dos exportaciones simultáneas no deben crear el mismo número de versión.
@@ -70,21 +90,139 @@ export class ProgramaAnualVersionesService {
       const cambios = ultima ? this.compararFilas(ultima.filas, filas) : [];
 
       if (ultima && (ultima.huella === huella || cambios.length === 0)) {
+        if (opciones.cerrarAjuste) await this.cerrarAjuste(manager, vigencia, null);
         return this.aResuelta(ultima, false);
       }
 
-      const nueva = repo.create({
-        vigencia,
-        version: (ultima?.version ?? 0) + 1,
-        huella,
-        filas,
-        cambios,
-        generadaPor: usuario?.nombre || 'Sistema',
-        generadaPorId: usuario?.id ?? null,
-      });
-
-      return this.aResuelta(await repo.save(nueva), true);
+      const nueva = await repo.save(
+        repo.create({
+          vigencia,
+          version: (ultima?.version ?? 0) + 1,
+          huella,
+          filas,
+          cambios,
+          motivo,
+          generadaPor: usuario?.nombre || 'Sistema',
+          generadaPorId: usuario?.id ?? null,
+        }),
+      );
+      await this.cerrarAjuste(manager, vigencia, nueva.version);
+      return this.aResuelta(nueva, true);
     });
+  }
+
+  /**
+   * Estado del programa para el banner: versión vigente, si hay un ajuste
+   * abierto y cuántos cambios hay sin versionar.
+   */
+  async obtenerEstado(vigencia: number) {
+    const [ultima, filas, ajuste] = await Promise.all([
+      this.versionRepository.findOne({ where: { vigencia }, order: { version: 'DESC' } }),
+      this.construirFilas(vigencia),
+      this.ajusteAbierto(this.dataSource.manager, vigencia),
+    ]);
+    const cambiosPendientes = ultima ? this.compararFilas(ultima.filas, filas).length : filas.length;
+
+    return {
+      vigencia,
+      versionActual: ultima
+        ? { version: ultima.version, fecha: ultima.createdAt, generadaPor: ultima.generadaPor, motivo: ultima.motivo ?? null }
+        : null,
+      enAjuste: ajuste ? { iniciadoPor: ajuste.iniciado_por, iniciadoEn: ajuste.iniciado_at } : null,
+      soloConsulta: Boolean(ultima) && !ajuste,
+      cambiosPendientes,
+    };
+  }
+
+  /**
+   * Habilita la edición del programa sobre la última versión vigente. La
+   * siguiente versión generada cierra el ajuste (EFDS-1919).
+   */
+  async iniciarAjuste(vigencia: number, usuario: UsuarioVersion) {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1, $2)', [1919, vigencia]);
+
+      const ultima = await manager.getRepository(VersionProgramaAnual).findOne({ where: { vigencia }, order: { version: 'DESC' } });
+      if (!ultima) {
+        throw new BadRequestException(
+          `El Programa Anual ${vigencia} aún no tiene versiones: está en elaboración y se puede modificar.`,
+        );
+      }
+      if (await this.ajusteAbierto(manager, vigencia)) return;
+
+      await manager.query(
+        `INSERT INTO control_interno.programa_anual_ajuste (vigencia, iniciado_por, iniciado_por_id)
+         VALUES ($1, $2, $3)`,
+        [vigencia, usuario?.nombre || 'Sistema', usuario?.id ?? null],
+      );
+    });
+    return this.obtenerEstado(vigencia);
+  }
+
+  /**
+   * Log de cambios del programa: versiones, ajustes y lo que se modificó en sus
+   * auditorías, incluido el cambio de auditores que no genera versión.
+   */
+  async obtenerLog(vigencia: number): Promise<EntradaLogPrograma[]> {
+    const [versiones, ajustes, historial] = await Promise.all([
+      this.versionRepository.find({
+        where: { vigencia },
+        select: ['version', 'motivo', 'cambios', 'generadaPor', 'createdAt'],
+      }),
+      this.dataSource.query(
+        `SELECT iniciado_por, iniciado_at, cerrado_at, version_resultante
+           FROM control_interno.programa_anual_ajuste WHERE vigencia = $1`,
+        [vigencia],
+      ),
+      this.dataSource.query(
+        `SELECT to_char(h.fecha, 'YYYY-MM-DD') || 'T' || to_char(h.hora, 'HH24:MI:SS') || '-05:00' AS fecha,
+                h.accion, h.descripcion, a.codigo,
+                COALESCE(p.nom_largo, h.nombre_usuario, 'Sistema') AS autor
+           FROM control_interno.historial_auditoria h
+           JOIN control_interno.auditoria a ON a.id = h.auditoria_id
+           LEFT JOIN auth.personas p ON p.id_person = h.usuario_id
+          WHERE (a.plan_anual_vigencia = $1
+                 OR (a.plan_anual_vigencia IS NULL AND EXTRACT(YEAR FROM a.fecha_inicio) = $1))
+            AND (h.accion IN ('Auditoría creada', 'Aprobación de ampliación de plazo')
+                 OR (h.accion = 'Auditoría actualizada'
+                     AND h.descripcion ~* '(auditor|equipo|inicio de|fin de|nombre:|tipo:|responsable|programa anual)'))
+          ORDER BY h.fecha DESC, h.hora DESC
+          LIMIT 500`,
+        [vigencia],
+      ),
+    ]);
+
+    const log: EntradaLogPrograma[] = [
+      ...versiones.map((v) => ({
+        fecha: new Date(v.createdAt).toISOString(),
+        tipo: 'version' as const,
+        autor: v.generadaPor,
+        auditoria: null,
+        detalle:
+          `Versión v${v.version}.0 generada` +
+          (v.cambios?.length ? ` con ${v.cambios.length} cambio(s)` : ' (versión inicial)') +
+          (v.motivo ? `. Motivo: ${v.motivo}` : ''),
+      })),
+      ...ajustes.flatMap((j: any) => [
+        { fecha: new Date(j.iniciado_at).toISOString(), tipo: 'ajuste' as const, autor: j.iniciado_por, auditoria: null, detalle: 'Ajuste iniciado' },
+        ...(j.cerrado_at && !j.version_resultante
+          ? [{ fecha: new Date(j.cerrado_at).toISOString(), tipo: 'ajuste' as const, autor: j.iniciado_por, auditoria: null, detalle: 'Ajuste cerrado sin cambios' }]
+          : []),
+      ]),
+      ...historial.map((h: any) => ({
+        fecha: new Date(h.fecha).toISOString(),
+        tipo: (h.accion === 'Auditoría creada'
+          ? 'creacion'
+          : h.accion.startsWith('Aprobación de ampliación')
+            ? 'ampliacion'
+            : /auditor|equipo/i.test(h.descripcion || '') ? 'auditores' : 'programacion') as EntradaLogPrograma['tipo'],
+        autor: h.autor,
+        auditoria: h.codigo,
+        detalle: String(h.descripcion || h.accion).replace(/^Cambios realizados:\s*/, ''),
+      })),
+    ];
+
+    return log.sort((a, b) => b.fecha.localeCompare(a.fecha));
   }
 
   /** Histórico de la vigencia, de la más reciente a la más antigua, sin las filas. */
@@ -92,7 +230,7 @@ export class ProgramaAnualVersionesService {
     const versiones = await this.versionRepository.find({
       where: { vigencia },
       order: { version: 'DESC' },
-      select: ['id', 'vigencia', 'version', 'cambios', 'generadaPor', 'createdAt'],
+      select: ['id', 'vigencia', 'version', 'cambios', 'motivo', 'generadaPor', 'createdAt'],
     });
 
     return versiones.map((v) => ({
@@ -101,8 +239,27 @@ export class ProgramaAnualVersionesService {
       version: v.version,
       fecha: v.createdAt,
       generadaPor: v.generadaPor,
+      motivo: v.motivo ?? null,
       cambios: v.cambios || [],
     }));
+  }
+
+  private async ajusteAbierto(manager: EntityManager, vigencia: number) {
+    const filas = await manager.query(
+      `SELECT iniciado_por, iniciado_at FROM control_interno.programa_anual_ajuste
+        WHERE vigencia = $1 AND cerrado_at IS NULL LIMIT 1`,
+      [vigencia],
+    );
+    return filas[0] ?? null;
+  }
+
+  private async cerrarAjuste(manager: EntityManager, vigencia: number, version: number | null) {
+    await manager.query(
+      `UPDATE control_interno.programa_anual_ajuste
+          SET cerrado_at = CURRENT_TIMESTAMP, version_resultante = $2
+        WHERE vigencia = $1 AND cerrado_at IS NULL`,
+      [vigencia, version],
+    );
   }
 
   /** Una versión completa, con sus filas, para volver a descargar el documento. */
@@ -220,6 +377,7 @@ export class ProgramaAnualVersionesService {
       nueva,
       fecha: v.createdAt,
       generadaPor: v.generadaPor,
+      motivo: v.motivo ?? null,
       filas: v.filas || [],
       cambios: v.cambios || [],
     };

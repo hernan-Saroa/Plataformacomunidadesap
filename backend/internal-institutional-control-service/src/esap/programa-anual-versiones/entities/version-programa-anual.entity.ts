@@ -53,6 +53,9 @@ export class VersionProgramaAnual {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   cambios: CambioProgramaAnual[];
 
+  @Column({ type: 'text', nullable: true })
+  motivo?: string | null;
+
   @Column({ name: 'generada_por', type: 'varchar', length: 255 })
   generadaPor: string;
 

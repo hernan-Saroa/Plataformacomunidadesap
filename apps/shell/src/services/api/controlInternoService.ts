@@ -368,6 +368,7 @@ export interface VersionProgramaAnual {
   nueva: boolean;
   fecha: string;
   generadaPor: string;
+  motivo: string | null;
   filas: FilaProgramaAnual[];
   cambios: CambioProgramaAnual[];
 }
@@ -378,7 +379,24 @@ export interface ResumenVersionProgramaAnual {
   version: number;
   fecha: string;
   generadaPor: string;
+  motivo: string | null;
   cambios: CambioProgramaAnual[];
+}
+
+export interface EstadoProgramaAnual {
+  vigencia: number;
+  versionActual: { version: number; fecha: string; generadaPor: string; motivo: string | null } | null;
+  enAjuste: { iniciadoPor: string; iniciadoEn: string } | null;
+  soloConsulta: boolean;
+  cambiosPendientes: number;
+}
+
+export interface EntradaLogProgramaAnual {
+  fecha: string;
+  tipo: 'version' | 'ajuste' | 'auditores' | 'programacion' | 'ampliacion' | 'creacion';
+  autor: string;
+  auditoria: string | null;
+  detalle: string;
 }
 
 export interface UpdateTareaAuditoriaDto {
@@ -1390,8 +1408,26 @@ class ControlInternoService {
   // ==========================================================================
 
   /** Versión vigente del programa; el backend la crea si lo impreso cambió. */
-  async resolverVersionProgramaAnual(vigencia: number): Promise<VersionProgramaAnual> {
-    return client.post<VersionProgramaAnual>(`/programa-anual-versiones/${vigencia}/resolver`, {});
+  async resolverVersionProgramaAnual(
+    vigencia: number,
+    opciones: { motivo?: string; cerrarAjuste?: boolean } = {},
+  ): Promise<VersionProgramaAnual> {
+    return client.post<VersionProgramaAnual>(`/programa-anual-versiones/${vigencia}/resolver`, opciones);
+  }
+
+  /** Versión vigente, ajuste abierto y cambios sin versionar. */
+  async getEstadoProgramaAnual(vigencia: number): Promise<EstadoProgramaAnual> {
+    return client.get<EstadoProgramaAnual>(`/programa-anual-versiones/${vigencia}/estado`);
+  }
+
+  /** Habilita la edición del programa sobre la versión vigente. */
+  async iniciarAjusteProgramaAnual(vigencia: number): Promise<EstadoProgramaAnual> {
+    return client.post<EstadoProgramaAnual>(`/programa-anual-versiones/${vigencia}/ajuste`, {});
+  }
+
+  /** Log de cambios del programa: versiones, ajustes, auditores y programación. */
+  async getLogProgramaAnual(vigencia: number): Promise<EntradaLogProgramaAnual[]> {
+    return client.get<EntradaLogProgramaAnual[]>(`/programa-anual-versiones/${vigencia}/log`);
   }
 
   /** Histórico de versiones de la vigencia, sin las filas. */

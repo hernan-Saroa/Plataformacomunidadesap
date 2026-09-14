@@ -120,6 +120,59 @@ export class AuditoriasService {
     }
   }
 
+  /** Lo que el Programa Anual imprime de una auditoría (EFDS-1919). */
+  private datosImpresosPrograma(a: Partial<Auditoria>) {
+    const fecha = (valor?: Date | string | null) => (valor ? this.serializeDate(valor) : null);
+    const tipo = `${a.tipo || ''} ${a.tipoKanban || ''}`.toLowerCase();
+    return {
+      vigencia: a.planAnualVigencia ?? (a.fechaInicio ? Number(this.serializeDate(a.fechaInicio).slice(0, 4)) : null),
+      enPrograma: a.activa !== false && a.archivada !== true,
+      nombre: String(a.nombre || '').replace(/\([^)]*\)/g, '').trim(),
+      tipo: tipo.includes('especial') ? 'Especial' : tipo.includes('territorial') ? 'Territorial' : 'Regular',
+      responsable: [a.responsableAreaNombre, a.responsable, a.responsableAreaEmail].map((v) => v || '').join('|'),
+      fechaInicio: fecha(a.fechaInicio),
+      fechaFinPlaneacion: fecha(a.fechaFinPlaneacion),
+      fechaInicioEjecucion: fecha(a.fechaInicioEjecucion),
+      fechaFinEjecucion: fecha(a.fechaFinEjecucion),
+      fechaInicioComunicacion: fecha(a.fechaInicioComunicacion),
+      fechaFin: fecha(a.fechaFin),
+    };
+  }
+
+  /**
+   * Con una versión generada el Programa Anual queda en solo consulta hasta que
+   * se inicie un ajuste (EFDS-1919). La ampliación de plazo aprobada no pasa por
+   * aquí: es una reprogramación autorizada.
+   */
+  private async asegurarProgramaEditable(vigencias: Array<number | null | undefined>): Promise<void> {
+    const lista = [...new Set(vigencias.filter((v): v is number => Number.isInteger(v)))];
+    if (lista.length === 0) return;
+
+    let bloqueadas: Array<{ vigencia: number }> = [];
+    try {
+      bloqueadas = await this.auditoriaRepository.query(
+        `SELECT DISTINCT v.vigencia
+           FROM control_interno.version_programa_anual v
+          WHERE v.vigencia = ANY($1::int[])
+            AND NOT EXISTS (
+              SELECT 1 FROM control_interno.programa_anual_ajuste j
+               WHERE j.vigencia = v.vigencia AND j.cerrado_at IS NULL)`,
+        [lista],
+      );
+    } catch (error: any) {
+      // Sin las migraciones de versionamiento no hay versiones que proteger.
+      if (error?.code === '42P01') return;
+      throw error;
+    }
+
+    if (bloqueadas.length > 0) {
+      throw new BadRequestException(
+        `El Programa Anual ${bloqueadas[0].vigencia} tiene una versión vigente y está en solo consulta. ` +
+          'Para modificarlo, inicie un ajuste desde Programa de Auditoría.',
+      );
+    }
+  }
+
   /**
    * Mapea id_tercero (bigint) a id_person (UUID) de auth.personas
    * Si ya viene id_person (UUID), se valida y se devuelve tal cual.
@@ -1363,6 +1416,9 @@ export class AuditoriasService {
       throw new BadRequestException('La fecha de fin de la auditoría (fin de Comunicación) debe ser posterior al fin de Ejecución');
     }
 
+    // Agregar una auditoría modifica el Programa Anual de su vigencia (EFDS-1919).
+    await this.asegurarProgramaEditable([createDto.planAnualVigencia ?? Number(this.serializeDate(fechaInicio).slice(0, 4))]);
+
     // Generar código automático
     const equipoAuditorPersonaIds = await this.resolverEquipoAuditorIds(createDto.equipoAuditores);
     await this.asegurarDisponibilidadEquipoAuditorOrThrow(
@@ -1610,7 +1666,8 @@ export class AuditoriasService {
       historialCreacion.tipoEvento = TipoEvento.CREACION;
       historialCreacion.fecha = fecha;
       historialCreacion.hora = hora;
-      historialCreacion.usuarioId = usuarioId || null;
+      // El token trae auth.user.id_user y la columna apunta a auth.personas.
+      historialCreacion.usuarioId = await this.resolverPersonaDeUsuario(usuarioId);
       historialCreacion.accion = 'Auditoría creada';
       historialCreacion.descripcion = `Se creó la auditoría ${auditoriaGuardada.codigo} - ${auditoriaGuardada.nombre}`;
       historialCreacion.estadoNuevo = auditoriaGuardada.estadoKanban || auditoriaGuardada.fase || 'Planeación';
@@ -1648,6 +1705,7 @@ export class AuditoriasService {
         .filter((e) => e.activo && e.personaId)
         .map((e) => String(e.personaId)),
     };
+    const impresoAntes = this.datosImpresosPrograma(auditoria);
 
     // Validar fechas si se actualizan
     if (updateDto.fechaInicio || updateDto.fechaFin || updateDto.fechaFinPlaneacion || updateDto.fechaFinEjecucion) {
@@ -1892,6 +1950,14 @@ export class AuditoriasService {
       auditoria.activa = updateDto.activa;
     }
 
+    // Lo que cambia en el documento del Programa Anual exige un ajuste abierto (EFDS-1919).
+    const impresoDespues = this.datosImpresosPrograma(auditoria);
+    const camposImpresosCambiados = (Object.keys(impresoAntes) as Array<keyof typeof impresoAntes>)
+      .filter((campo) => impresoAntes[campo] !== impresoDespues[campo]);
+    if (camposImpresosCambiados.length > 0 && (impresoAntes.enPrograma || impresoDespues.enPrograma)) {
+      await this.asegurarProgramaEditable([impresoAntes.vigencia, impresoDespues.vigencia]);
+    }
+
     // Detectar cambios importantes antes de guardar
     const estadoAnterior = auditoria.estadoKanban || auditoria.fase;
     const cambios: string[] = [];
@@ -1927,8 +1993,27 @@ export class AuditoriasService {
     if (updateDto.fase && updateDto.fase !== auditoria.fase) {
       cambios.push(`Fase: ${auditoria.fase} -> ${updateDto.fase}`);
     }
-    if (updateDto.nombre) cambios.push('Nombre actualizado');
-    if (updateDto.fechaInicio || updateDto.fechaFin) cambios.push('Fechas actualizadas');
+    // Detalle de lo que cambió en la programación: lo muestra el log del programa.
+    const etiquetasPrograma: Partial<Record<keyof typeof impresoAntes, string>> = {
+      vigencia: 'Vigencia del Programa Anual',
+      nombre: 'Nombre',
+      tipo: 'Tipo',
+      fechaInicio: 'Inicio de planeación',
+      fechaFinPlaneacion: 'Fin de planeación',
+      fechaInicioEjecucion: 'Inicio de ejecución',
+      fechaFinEjecucion: 'Fin de ejecución',
+      fechaInicioComunicacion: 'Inicio de comunicación',
+      fechaFin: 'Fin de comunicación',
+    };
+    for (const campo of camposImpresosCambiados) {
+      if (campo === 'enPrograma') {
+        cambios.push(impresoDespues.enPrograma ? 'Reincorporada al Programa Anual' : 'Retirada del Programa Anual');
+      } else if (campo === 'responsable') {
+        cambios.push('Responsable del área actualizado');
+      } else {
+        cambios.push(`${etiquetasPrograma[campo]}: ${impresoAntes[campo] ?? 'sin dato'} -> ${impresoDespues[campo] ?? 'sin dato'}`);
+      }
+    }
     cambios.push(
       ...(await this.describirCambioAuditores(auditoresAntes, {
         lider: updateDto.auditorLiderId !== undefined
@@ -2077,6 +2162,8 @@ export class AuditoriasService {
    */
   async delete(id: string): Promise<void> {
     const auditoria = await this.findOne(id);
+    const impreso = this.datosImpresosPrograma(auditoria);
+    if (impreso.enPrograma) await this.asegurarProgramaEditable([impreso.vigencia]);
     await this.auditoriaRepository.remove(auditoria);
   }
 
@@ -3593,13 +3680,14 @@ export class AuditoriasService {
     usuarioIdOrUUID?: number | string,
     userRoles?: string[],
   ): Promise<Auditoria> {
-    // Convertir UUID a id_tercero si es necesario
+    // El token trae auth.user.id_user: el líder y el historial se guardan por
+    // persona, y auth.user no tiene id_tercero, así que se traduce a la persona.
     let usuarioIdTercero: number | null = null;
-    
+    let personaSolicitante: string | null = null;
+
     if (typeof usuarioIdOrUUID === 'string') {
-      // Es un UUID, convertir a id_tercero
-      usuarioIdTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
-      if (!usuarioIdTercero) {
+      personaSolicitante = await this.resolverPersonaDeUsuario(usuarioIdOrUUID);
+      if (!personaSolicitante) {
         throw new NotFoundException(`Usuario con UUID ${usuarioIdOrUUID} no encontrado en auth.personas`);
       }
     } else if (typeof usuarioIdOrUUID === 'number') {
@@ -3637,7 +3725,7 @@ export class AuditoriasService {
       
       // Verificar que el auditor líder esté asignado a esta auditoría
       // Comparar convirtiendo id_tercero a id_person (UUID)
-      const usuarioIdPerson = await this.mapIdTerceroToIdPerson(usuarioIdTercero);
+      const usuarioIdPerson = personaSolicitante ?? await this.mapIdTerceroToIdPerson(usuarioIdTercero as number);
       if (auditoria.auditorLiderId !== usuarioIdPerson) {
         throw new ForbiddenException('Solo el Auditor Líder asignado a esta auditoría puede solicitar ampliación de plazo');
       }
@@ -3695,7 +3783,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historial.fecha = fecha;
     historial.hora = hora;
-    const uuidPersona = typeof usuarioIdOrUUID === 'string' ? usuarioIdOrUUID : (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
+    const uuidPersona = personaSolicitante ?? (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
     historial.usuarioId = uuidPersona;
     historial.accion = 'Solicitud de ampliación de plazo';
     historial.descripcion = `Solicitud de ampliación de plazo para auditoría ${auditoria.codigo}`;
@@ -3727,7 +3815,7 @@ export class AuditoriasService {
         auditoriaId,
         auditoria.codigo,
         auditoria.nombre,
-        `Usuario ${usuarioIdTercero}`,
+        `Usuario ${personaSolicitante ?? usuarioIdTercero}`,
         solicitarDto.justificacion,
       );
     } catch (error) {
@@ -3751,18 +3839,11 @@ export class AuditoriasService {
     usuarioIdOrUUID?: number | string,
     userRoles?: string[],
   ): Promise<Auditoria> {
-    // Convertir UUID a id_tercero numérico si es necesario
+    // Con UUID (auth.user.id_user del token) el historial se guarda por persona;
+    // auth.user no tiene id_tercero.
     let usuarioIdTercero: number;
     if (typeof usuarioIdOrUUID === 'string') {
-      // Es un UUID, buscar el id_tercero usando el método existente
-      const idTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
-      
-      if (idTercero) {
-        usuarioIdTercero = idTercero;
-      } else {
-        console.warn(`Usuario con UUID ${usuarioIdOrUUID} no encontrado, usando fallback`);
-        usuarioIdTercero = 1; // Fallback
-      }
+      usuarioIdTercero = 1;
     } else if (typeof usuarioIdOrUUID === 'number') {
       // Ya es un id_tercero
       usuarioIdTercero = usuarioIdOrUUID;
@@ -3773,7 +3854,7 @@ export class AuditoriasService {
     /** UUID de persona (auth.personas) para historial_auditoria.usuario_id */
     const historialUsuarioUuid: string | null =
       typeof usuarioIdOrUUID === 'string'
-        ? usuarioIdOrUUID
+        ? await this.resolverPersonaDeUsuario(usuarioIdOrUUID)
         : await this.mapIdTerceroToIdPerson(usuarioIdTercero);
     
     // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
@@ -3894,18 +3975,11 @@ export class AuditoriasService {
     usuarioIdOrUUID?: number | string,
     userRoles?: string[],
   ): Promise<Auditoria> {
-    // Convertir UUID a id_tercero numérico si es necesario
+    // Con UUID (auth.user.id_user del token) el historial se guarda por persona;
+    // auth.user no tiene id_tercero.
     let usuarioIdTercero: number;
     if (typeof usuarioIdOrUUID === 'string') {
-      // Es un UUID, buscar el id_tercero usando el método existente
-      const idTercero = await this.getUserIdTerceroFromUUID(usuarioIdOrUUID);
-      
-      if (idTercero) {
-        usuarioIdTercero = idTercero;
-      } else {
-        console.warn(`Usuario con UUID ${usuarioIdOrUUID} no encontrado, usando fallback`);
-        usuarioIdTercero = 1; // Fallback
-      }
+      usuarioIdTercero = 1;
     } else if (typeof usuarioIdOrUUID === 'number') {
       // Ya es un id_tercero
       usuarioIdTercero = usuarioIdOrUUID;
@@ -3915,7 +3989,7 @@ export class AuditoriasService {
 
     const historialUsuarioUuidRechazo: string | null =
       typeof usuarioIdOrUUID === 'string'
-        ? usuarioIdOrUUID
+        ? await this.resolverPersonaDeUsuario(usuarioIdOrUUID)
         : await this.mapIdTerceroToIdPerson(usuarioIdTercero);
     
     // RN-031.3: Validar que el usuario tenga rol SUPER_ADMIN o JEFE_CONTROL_INTERNO
