@@ -20,9 +20,13 @@ import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { UmbralesModule } from '../umbrales/umbrales.module';
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
+import { CdpModule } from '../cdp/cdp.module';
 
 @Module({
   imports: [
+    // Aprobar la 3.4 cierra la revisión, y con ella puede cerrarse la etapa 3:
+    // la solicitud de CDP se radica sola en ese momento.
+    CdpModule,
     // La creación del proceso valida la modalidad contra los umbrales vigentes.
     UmbralesModule,
     // El envio consulta si alguien revisa la 3.1 antes de dejarla en revision.

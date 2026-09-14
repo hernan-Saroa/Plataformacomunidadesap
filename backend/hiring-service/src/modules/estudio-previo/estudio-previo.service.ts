@@ -37,6 +37,7 @@ import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 import { ParticipacionService, esSuya } from '../participacion/participacion.service';
+import { CdpService } from '../cdp/cdp.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -162,6 +163,8 @@ export class EstudioPrevioService {
     private readonly participacion: ParticipacionService,
     private readonly permisos: PermisosService,
     private readonly aprobacion: AprobacionService,
+    /** Aprobar la 3.4 puede cerrar la etapa 3 y radicar el CDP. */
+    private readonly cdp: CdpService,
   ) {}
 
   /**
@@ -817,6 +820,19 @@ export class EstudioPrevioService {
       // proceso muerto.
       await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
       await this.cerrarLaRevision(em, procesoId, decision, acceso);
+
+      /*
+       * Y si con esto se acabó la etapa 3, la solicitud de CDP nace aquí.
+       *
+       * Solo al aprobar: devolver reabre la revisión y negar termina el
+       * proceso, y ni en un caso ni en otro hay etapa cerrada que celebrar. El
+       * propio método lo vuelve a comprobar —no se fía de quien lo llama—, pero
+       * preguntarlo aquí ahorra la consulta en los dos caminos que nunca van a
+       * disparar nada.
+       */
+      if (decision === 'APROBADO') {
+        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      }
 
       // El proceso termina con la actividad cuando la decisión lo cierra.
       const desenlace = desenlaceTrasDecision(decision);

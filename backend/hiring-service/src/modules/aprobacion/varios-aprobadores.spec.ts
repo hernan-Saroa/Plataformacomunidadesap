@@ -10,7 +10,8 @@ import { AprobacionService } from './aprobacion.service';
  */
 describe('AprobacionService · puedeAprobar con varios designados', () => {
   /** Sin base: lo que se comprueba es una decisión sobre datos en memoria. */
-  const servicio = () => new AprobacionService({} as never);
+  const servicio = () =>
+    new AprobacionService({} as never, { crearSolicitudSiCerroLaEtapa3: async () => null } as never);
 
   const conRoles = (...roles: string[]) => ({ roles, personas: [] });
   const conPersonas = (...personas: string[]) => ({ roles: [], personas });

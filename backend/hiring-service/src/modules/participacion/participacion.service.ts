@@ -23,6 +23,7 @@ import {
   tienePermiso,
 } from '../../auth/permisos';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { CdpService } from '../cdp/cdp.service';
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
 export interface CuentaCandidata {
@@ -101,7 +102,17 @@ export function motivoParaNoDecidir(
  */
 @Injectable()
 export class ParticipacionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /**
+     * Cerrar la 3.3 puede cerrar la etapa 3, y entonces nace el CDP.
+     *
+     * Se llama explícitamente en vez de por evento para que quien lea `tomar`
+     * vea el efecto completo del acto: tomar el proceso puede, en una modalidad
+     * corta, dejar la solicitud de CDP radicada.
+     */
+    private readonly cdp: CdpService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -236,6 +247,11 @@ export class ParticipacionService {
         papel: 'CONTRATACION',
         quien: cuenta.nombre,
       });
+
+      // Dentro de la transacción: si la creación del CDP falla, tomar el
+      // proceso tampoco queda hecho, y no hay un estado intermedio en el que la
+      // etapa 3 esté cerrada sin su solicitud.
+      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, acceso);

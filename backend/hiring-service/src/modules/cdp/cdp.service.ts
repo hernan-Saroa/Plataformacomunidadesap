@@ -11,7 +11,7 @@ import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/activida
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
 import { ETAPA_LIQUIDACION } from '../../entities/informe-final.entity';
 import { Proceso } from '../../entities/proceso.entity';
-import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import { EstadoActividad, ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
@@ -26,6 +26,23 @@ import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
 
 /** Actividad 4.4: el CDP cargado al expediente. */
 export const NUMERAL_ADJUNTO_CDP = '4.4';
+
+/**
+ * La etapa que termina justo antes del CDP: los estudios previos.
+ *
+ * Se escribe en función de `ETAPA_CDP` y no como un 3 suelto porque lo que la
+ * regla dice es «cuando termina la etapa anterior», no «cuando termina la tres».
+ */
+const ETAPA_PREVIA_AL_CDP = ETAPA_CDP - 1;
+
+/**
+ * Quién figura como autor de lo que hace el sistema solo.
+ *
+ * El mismo rótulo que usa el aviso diario de vencimientos, para que la
+ * trazabilidad distinga de un vistazo una actuación automática de una que pidió
+ * una persona.
+ */
+const AUTOR_AUTOMATICO = 'Sistema';
 
 /**
  * Actividad 5.7 de la matriz: la apertura del proceso.
@@ -139,6 +156,29 @@ export function cdpCubreElProceso(
     advertencia:
       'El valor del CDP es inferior al valor estimado del proceso; confirma que el respaldo presupuestal alcanza',
   };
+}
+
+/**
+ * Si una etapa no tiene nada pendiente, dados los estados de lo que le aplica.
+ *
+ * Función pura y exportada, como `puedeTransicionar`: de esto depende que el
+ * CDP se radique solo, y es la clase de regla que hay que poder fijar sin base
+ * de datos —qué cuenta como «cerrada» es una decisión, no una consulta—.
+ *
+ * Cierran la etapa dos estados: `APROBADO`, que es el trabajo hecho, y
+ * `NO_APLICA`, que es el trabajo que nunca hubo porque la modalidad lo excluye.
+ * Los demás la dejan abierta, incluida `NEGADO`: una actividad negada no es una
+ * etapa terminada, es un proceso que murió, y ese ni siquiera llega aquí.
+ *
+ * `undefined` es la actividad que la matriz declara pero que el proceso todavía
+ * no tiene instanciada, y deja la etapa abierta: falta por hacerse.
+ *
+ * Una lista vacía no es «todo cerrado». Es una matriz a medio parametrizar, y
+ * darla por terminada radicaría un CDP en un proceso que no ha recorrido nada.
+ */
+export function laEtapaCerro(estados: (EstadoActividad | undefined)[]): boolean {
+  if (estados.length === 0) return false;
+  return estados.every((estado) => estado === 'APROBADO' || estado === 'NO_APLICA');
 }
 
 @Injectable()
@@ -689,6 +729,132 @@ export class CdpService {
    * Si no existe no se crea al vuelo: significaría que la modalidad no la
    * incluye, y darla por cumplida falsearía el expediente.
    */
+  /**
+   * Crea la solicitud de CDP cuando la etapa 3 termina (actividad 4.1).
+   *
+   * El estudio previo aprobado **es** la solicitud formal: el área ya dijo qué
+   * contrata, por cuánto y con qué respaldo documental, y volver a pedírselo en
+   * un formulario era transcribir lo que el proceso ya tiene. Lo que faltaba no
+   * era un dato, era que alguien lo radicara, y eso puede hacerlo el sistema.
+   *
+   * Se dispara al cerrarse la **última actividad de la etapa 3 que aplique a la
+   * modalidad**, y no en un numeral fijo: el comité no está en todas las
+   * modalidades, así que atarlo a la 3.7 dejaría a mínima cuantía sin disparo y
+   * atarlo a la 3.4 pediría el CDP antes de que la modalidad esté ratificada.
+   * Preguntando por lo que queda pendiente, la regla sobrevive a que la entidad
+   * reparametrice la matriz.
+   *
+   * Sin rubro: el estudio previo no lo captura desde que la 006 lo dejó fuera
+   * de sus metadatos, y quien sabe contra qué rubro va es la Financiera al
+   * expedir.
+   *
+   * Idempotente y silencioso: si el proceso no lleva CDP, si ya tiene uno en
+   * curso o si aún queda algo abierto en la etapa 3, no hace nada y devuelve
+   * `null`. Por eso puede llamarse desde cualquier punto que cierre una
+   * actividad sin que quien llama tenga que comprobar nada.
+   */
+  async crearSolicitudSiCerroLaEtapa3(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+  ): Promise<Cdp | null> {
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+
+    // Un proceso negado o cerrado no pide CDP: lo que terminó fue la
+    // contratación, no la etapa.
+    if (!proceso || proceso.estado !== 'EN_CURSO') return null;
+
+    if (!(await this.aplicaCdp(proceso.modalidad, em))) return null;
+
+    // Ya hay solicitud —automática o radicada a mano antes de esto—: volver a
+    // crearla chocaría contra el cupo de «CDP en curso» del proceso.
+    if (await this.delProceso(procesoId, em)) return null;
+
+    if (!(await this.etapa3Cerrada(em, proceso))) return null;
+
+    await this.instanciarEtapa4(em, proceso);
+
+    const cdp = await em.save(
+      em.create(Cdp, {
+        procesoId,
+        rubro: null,
+        // El valor estimado del proceso, que es contra lo que la Financiera
+        // verifica la disponibilidad. Si al expedir certifica menos, el propio
+        // panel avisa de que no cubre.
+        valor: proceso.valorEstimado ?? null,
+        vigenciaFiscal: new Date().getFullYear(),
+        observaciones: null,
+        estado: 'SOLICITADO' as const,
+        solicitadoPor: AUTOR_AUTOMATICO,
+        solicitadoAt: new Date(),
+      }),
+    );
+
+    if (proceso.etapa < ETAPA_CDP) {
+      proceso.etapa = ETAPA_CDP;
+      await em.save(proceso);
+    }
+
+    // La 4.1 queda cumplida por la propia solicitud, y sellada como del
+    // sistema: nadie la radicó, así que atribuírsela a quien cerró la etapa 3
+    // pondría en el expediente una actuación que esa persona no hizo.
+    await this.cerrarActividad(em, procesoId, '4.1', {
+      ...acceso,
+      userName: AUTOR_AUTOMATICO,
+    });
+
+    await this.traza(em, procesoId, cdp.id, 'SOLICITAR', acceso, {
+      automatica: true,
+      valor: cdp.valor,
+      modalidad: proceso.modalidad,
+    });
+
+    return cdp;
+  }
+
+  /**
+   * Si no queda nada por cerrar en la etapa 3.
+   *
+   * Cuentan como cerradas las aprobadas y las que la modalidad excluye: un
+   * `NO_APLICA` no es trabajo pendiente, es trabajo que nunca hubo. Cualquier
+   * otro estado —borrador, en revisión, devuelta, negada— deja la etapa abierta.
+   *
+   * Las excluidas se descartan además por la matriz y no solo por su estado
+   * instanciado, porque un proceso creado antes de que la modalidad se
+   * parametrizara puede tener la fila en BORRADOR aunque hoy no le aplique.
+   */
+  private async etapa3Cerrada(em: EntityManager, proceso: Proceso): Promise<boolean> {
+    const actividades = await em.getRepository(Actividad).find({
+      where: { etapa: ETAPA_PREVIA_AL_CDP, activa: true },
+    });
+    if (actividades.length === 0) return false;
+
+    const excluidas = proceso.modalidad
+      ? new Set(
+          (
+            await em
+              .getRepository(ActividadExcluida)
+              .find({ where: { modalidad: proceso.modalidad } })
+          ).map((e) => e.numeral),
+        )
+      : new Set<string>();
+
+    const aplicables = actividades
+      .map((a) => a.numeral)
+      .filter((numeral) => !excluidas.has(numeral));
+
+    // Ninguna actividad aplicable no es «etapa terminada»: es una matriz a
+    // medio parametrizar, y crear el CDP ahí sería adelantarse a la entidad.
+    if (aplicables.length === 0) return false;
+
+    const propias = await em.getRepository(ProcesoActividad).find({
+      where: { procesoId: proceso.id, numeral: In(aplicables) },
+    });
+    const estadoDe = new Map(propias.map((a) => [a.numeral, a.estado]));
+
+    return laEtapaCerro(aplicables.map((numeral) => estadoDe.get(numeral)));
+  }
+
   private async cerrarActividad(
     em: EntityManager,
     procesoId: string,

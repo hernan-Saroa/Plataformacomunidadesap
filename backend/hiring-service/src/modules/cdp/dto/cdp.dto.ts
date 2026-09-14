@@ -11,11 +11,23 @@ import {
 } from 'class-validator';
 
 export class SolicitarCdpDto {
-  @ApiProperty({ description: 'Rubro presupuestal contra el que se solicita', example: 'A-02-02-02-008' })
+  /**
+   * Opcional desde que la solicitud nace sola al cerrarse la etapa 3.
+   *
+   * El estudio previo no captura el rubro —la migración 006 lo dejó fuera de
+   * sus metadatos— y quien sabe de qué rubro sale la plata es la Dirección
+   * Financiera, que lo registra al expedir. Se sigue aceptando porque un área
+   * que lo conozca puede adelantarlo, y porque las solicitudes radicadas a mano
+   * antes de esto lo traían.
+   */
+  @ApiPropertyOptional({
+    description: 'Rubro presupuestal contra el que se solicita, si el área lo conoce',
+    example: 'A-02-02-02-008',
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'El rubro presupuestal es obligatorio' })
   @MaxLength(160)
-  rubro: string;
+  rubro?: string;
 
   /**
    * Se pide aunque el valor definitivo lo fije la Financiera al expedir: sin
