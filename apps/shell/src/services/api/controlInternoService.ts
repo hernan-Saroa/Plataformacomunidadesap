@@ -387,7 +387,6 @@ export interface EstadoProgramaAnual {
   vigencia: number;
   versionActual: { version: number; fecha: string; generadaPor: string; motivo: string | null } | null;
   enAjuste: { iniciadoPor: string; iniciadoEn: string } | null;
-  soloConsulta: boolean;
   cambiosPendientes: number;
 }
 

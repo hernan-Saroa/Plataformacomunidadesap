@@ -1,9 +1,9 @@
 -- Migration 657: Ajustes del Programa Anual de Auditoría (EFDS-1919)
 -- Schema: control_interno
 --
--- Una versión generada deja el programa en solo consulta. Para modificarlo se
--- inicia un ajuste, y la siguiente versión lo cierra. Cada versión puede llevar
--- el motivo del cambio.
+-- Cada versión generada es de solo consulta. Un ajuste es el borrador de la
+-- siguiente versión: se abre al iniciarlo o al modificar el programa, y la
+-- siguiente versión lo cierra. Cada versión puede llevar el motivo del cambio.
 
 ALTER TABLE control_interno.version_programa_anual
 ADD COLUMN IF NOT EXISTS motivo TEXT;
@@ -25,4 +25,4 @@ ON control_interno.programa_anual_ajuste(vigencia)
 WHERE cerrado_at IS NULL;
 
 COMMENT ON TABLE control_interno.programa_anual_ajuste IS
-'Ajustes del Programa Anual (EFDS-1919): mientras hay uno abierto el programa se puede modificar; la siguiente versión lo cierra.';
+'Ajustes del Programa Anual (EFDS-1919): borrador de la siguiente versión; la versión que se genera lo cierra.';
