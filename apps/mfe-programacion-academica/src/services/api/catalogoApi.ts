@@ -378,9 +378,23 @@ export interface CrearAulaDto {
   codigo: string;
   nombre: string;
   capacidad: number | null;
+  /** Territorial (DT-xxx) y CETAP (CET-xxxx), elegidos de selectores (§3.3). */
   sedeCodigo: string | null;
+  codigoCetap: string | null;
   tipo: TipoAula | null;
   piso: number | null;
+}
+
+export interface Territorial { id: number; codigo: string; nombre: string; }
+export interface Cetap { codigo: string; nombre: string; }
+
+/** Territoriales para el selector del formulario de aulas. */
+export function getTerritoriales(): Promise<Territorial[]> {
+  return pedirJson<Territorial[]>(`${BASE_AULAS}/territoriales`, { method: 'GET' });
+}
+/** CETAPs de una territorial (selector encadenado). */
+export function getCetaps(idTerritorial: number): Promise<Cetap[]> {
+  return pedirJson<Cetap[]>(`${BASE_AULAS}/cetaps?territorial=${encodeURIComponent(idTerritorial)}`, { method: 'GET' });
 }
 
 /**

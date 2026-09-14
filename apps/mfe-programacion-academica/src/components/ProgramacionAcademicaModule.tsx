@@ -625,13 +625,15 @@ export function ProgramacionAcademicaModule() {
           horario y se retiran sesiones. */}
       {detalle && detalle.idGrupo && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 sm:p-8"
           role="dialog"
           aria-modal="true"
           aria-label={`Detalle del grupo de ${detalle.asignatura}`}
           onClick={() => setDetalle(null)}
         >
-          <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          {/* §3.1 — Centrado (items-center) y con alto máximo: el contenido alto
+              del calendario hace scroll DENTRO de la tarjeta, no empuja el modal. */}
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setDetalle(null)}

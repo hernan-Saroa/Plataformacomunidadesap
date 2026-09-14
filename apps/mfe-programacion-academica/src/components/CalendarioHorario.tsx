@@ -31,7 +31,10 @@ const DIAS = [
 /** Ventana visible del día. Las sesiones se ubican por minutos dentro de ella. */
 const HORA_DESDE = 6;
 const HORA_HASTA = 22;
-const ALTO_HORA = 44; // px
+// §3.2 — Alto de hora algo menor: 16h × 40px = 640px, más manejable dentro del
+// modal (que ahora hace scroll vertical). El arrastre usa esta constante, así que
+// el gesto sigue calzando con la rejilla al cambiarla.
+const ALTO_HORA = 40; // px
 
 const aMinutos = (hhmm: string) => {
   const [h, m] = String(hhmm).split(':').map(Number);
@@ -260,7 +263,7 @@ export function CalendarioHorario({
         </div>
       ) : (
         <div className="p-4 overflow-x-auto">
-          <div className="min-w-[720px]">
+          <div className="min-w-[600px]">
             <div className="grid" style={{ gridTemplateColumns: '56px repeat(7, 1fr)' }}>
               <div />
               {DIAS.map((d) => (

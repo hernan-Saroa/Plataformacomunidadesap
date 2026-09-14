@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Req,
+  Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
 
@@ -53,6 +53,18 @@ export class AulasController {
   @Get()
   async listar() {
     return { success: true, data: await this.aulas.listar() };
+  }
+
+  /** GET /aulas/territoriales — para el selector del formulario (§3.3). */
+  @Get('territoriales')
+  async territoriales() {
+    return { success: true, data: await this.aulas.territoriales() };
+  }
+
+  /** GET /aulas/cetaps?territorial=<id> — CETAPs de la territorial (§3.3). */
+  @Get('cetaps')
+  async cetaps(@Query('territorial') territorial?: string) {
+    return { success: true, data: await this.aulas.cetaps(Number(territorial) || 0) };
   }
 
   /** GET /aulas/:codigo/disponibilidad — franjas ocupadas: solo día y hora. */

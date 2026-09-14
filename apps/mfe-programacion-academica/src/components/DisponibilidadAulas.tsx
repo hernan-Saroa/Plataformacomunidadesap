@@ -3,6 +3,7 @@ import { Building, Loader2, Lock, Pencil, Trash2, Check, X } from 'lucide-react'
 
 import {
   getAulas, getDisponibilidadAula, crearAula, actualizarAula, eliminarAula,
+  getTerritoriales, getCetaps, type Territorial, type Cetap,
   TIPOS_AULA, type Aula, type FranjaOcupadaAula,
 } from '../services/api/catalogoApi';
 
@@ -21,7 +22,9 @@ import {
  * Estética ESAP: azul institucional #003DA5.
  */
 const ETIQUETA_TIPO: Record<string, string> = { aula: 'Aula', auditorio: 'Auditorio' };
-const FORM_VACIO = { codigo: '', nombre: '', tipo: 'aula', capacidad: '', sedeCodigo: '', piso: '' };
+// §3.3 — sede y piso ya no son texto libre: la ubicación es territorial + CETAP,
+// ambos de selectores. Se conserva capacidad (se completa aquí).
+const FORM_VACIO = { codigo: '', nombre: '', tipo: 'aula', capacidad: '', territorialId: '', codigoCetap: '' };
 
 export function DisponibilidadAulas() {
   const [aulas, setAulas] = useState<Aula[]>([]);
@@ -37,6 +40,10 @@ export function DisponibilidadAulas() {
   const [editCodigo, setEditCodigo] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ nombre: string; capacidad: string }>({ nombre: '', capacidad: '' });
 
+  // §3.3 — territoriales (fijas) y CETAPs (encadenados a la territorial elegida).
+  const [territoriales, setTerritoriales] = useState<Territorial[]>([]);
+  const [cetaps, setCetaps] = useState<Cetap[]>([]);
+
   const recargar = () => getAulas().then(setAulas).catch(() => {});
 
   useEffect(() => {
@@ -44,7 +51,14 @@ export function DisponibilidadAulas() {
       .then((a) => { setAulas(a); if (a[0]) setSel(a[0].codigo); })
       .catch((e) => setError(e?.message || 'No se pudieron cargar las aulas.'))
       .finally(() => setCargando(false));
+    getTerritoriales().then(setTerritoriales).catch(() => setTerritoriales([]));
   }, []);
+
+  // Al cambiar la territorial, se recargan sus CETAPs y se limpia el CETAP elegido.
+  useEffect(() => {
+    if (!nuevo.territorialId) { setCetaps([]); return; }
+    getCetaps(Number(nuevo.territorialId)).then(setCetaps).catch(() => setCetaps([]));
+  }, [nuevo.territorialId]);
 
   useEffect(() => {
     if (!sel) return;
@@ -61,13 +75,16 @@ export function DisponibilidadAulas() {
     setGuardando(true);
     setAvisoAdmin('');
     try {
+      const terr = territoriales.find((t) => String(t.id) === nuevo.territorialId);
       await crearAula({
         codigo: nuevo.codigo.trim(),
         nombre: nuevo.nombre.trim(),
         tipo: (nuevo.tipo || null) as any,
         capacidad: capNum(nuevo.capacidad),
-        sedeCodigo: nuevo.sedeCodigo.trim() || null,
-        piso: nuevo.piso.trim() === '' ? null : Number(nuevo.piso),
+        // La territorial se guarda por su código (DT-xxx); el CETAP por el suyo.
+        sedeCodigo: terr ? terr.codigo : null,
+        codigoCetap: nuevo.codigoCetap || null,
+        piso: null,
       });
       setNuevo({ ...FORM_VACIO });
       await recargar();
@@ -225,16 +242,25 @@ export function DisponibilidadAulas() {
                   onChange={(e) => setNuevo({ ...nuevo, capacidad: e.target.value })}
                   className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
               </label>
+              {/* §3.3 — Territorial y CETAP como selectores del catálogo, nada de
+                  texto libre. El CETAP se filtra por la territorial elegida. */}
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-bold text-slate-500 uppercase">Sede / Piso</span>
-                <div className="flex gap-1">
-                  <input value={nuevo.sedeCodigo} placeholder="Sede"
-                    onChange={(e) => setNuevo({ ...nuevo, sedeCodigo: e.target.value })}
-                    className="w-1/2 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
-                  <input type="number" value={nuevo.piso} placeholder="Piso"
-                    onChange={(e) => setNuevo({ ...nuevo, piso: e.target.value })}
-                    className="w-1/2 border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
-                </div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase">Territorial</span>
+                <select value={nuevo.territorialId}
+                  onChange={(e) => setNuevo({ ...nuevo, territorialId: e.target.value, codigoCetap: '' })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                  <option value="">— Territorial —</option>
+                  {territoriales.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-slate-500 uppercase">CETAP</span>
+                <select value={nuevo.codigoCetap} disabled={!nuevo.territorialId}
+                  onChange={(e) => setNuevo({ ...nuevo, codigoCetap: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-400">
+                  <option value="">{nuevo.territorialId ? '— CETAP —' : 'Elige territorial primero'}</option>
+                  {cetaps.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                </select>
               </label>
             </div>
             {avisoAdmin && (

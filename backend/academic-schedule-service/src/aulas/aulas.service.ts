@@ -37,16 +37,23 @@ export interface CrearAulaDto {
   codigo: string;
   nombre: string;
   capacidad?: number | null;
+  /** Código de la territorial (DT-xxx). Se elige de un selector, no se escribe. */
   sedeCodigo?: string | null;
+  /** Código del CETAP (CET-xxxx), filtrado por la territorial. Selector, no texto. */
+  codigoCetap?: string | null;
   tipo?: TipoAula | null;
   piso?: number | null;
 }
+
+export interface TerritorialDto { id: number; codigo: string; nombre: string; }
+export interface CetapDto { codigo: string; nombre: string; }
 
 /** Actualización parcial: el código es la PK y no se renombra (las franjas lo referencian). */
 export interface ActualizarAulaDto {
   nombre?: string;
   capacidad?: number | null;
   sedeCodigo?: string | null;
+  codigoCetap?: string | null;
   tipo?: TipoAula | null;
   piso?: number | null;
 }
@@ -54,6 +61,29 @@ export interface ActualizarAulaDto {
 @Injectable()
 export class AulasService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  /** Territoriales activas para el selector del formulario de aulas (§3.3). */
+  async territoriales(): Promise<TerritorialDto[]> {
+    return this.dataSource.query(
+      `SELECT id, codigo, nombre FROM academic_work_plan.direccion_territorial
+        WHERE activo = true ORDER BY orden_visualizacion, nombre`,
+    );
+  }
+
+  /**
+   * CETAPs de una territorial, para el selector encadenado (§3.3). Sin
+   * territorial devuelve vacío: el CETAP siempre se elige dentro de su
+   * territorial, nunca se escribe a mano.
+   */
+  async cetaps(idDireccionTerritorial: number): Promise<CetapDto[]> {
+    if (!idDireccionTerritorial) return [];
+    return this.dataSource.query(
+      `SELECT codigo, nombre FROM academic_work_plan.cetap
+        WHERE id_direccion_territorial = $1 AND activo = true
+        ORDER BY nombre`,
+      [idDireccionTerritorial],
+    );
+  }
 
   async listar(): Promise<AulaDto[]> {
     const filas = await this.dataSource.query(
@@ -171,10 +201,11 @@ export class AulasService {
 
     const filas = await this.dataSource.query(
       `INSERT INTO "academic-schedule".aula
-              (codigo, nombre, sede_codigo, capacidad, tipo, piso, provisional, origen)
-       VALUES ($1, $2, $3, $4, $5, $6, false, 'gestion-manual')
+              (codigo, nombre, sede_codigo, codigo_cetap, capacidad, tipo, piso, provisional, origen)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, 'gestion-manual')
        RETURNING codigo, nombre, sede_codigo, capacidad, provisional`,
-      [codigo, nombre, dto.sedeCodigo ?? null, dto.capacidad ?? null, dto.tipo ?? null, dto.piso ?? null],
+      [codigo, nombre, dto.sedeCodigo ?? null, dto.codigoCetap ?? null,
+       dto.capacidad ?? null, dto.tipo ?? null, dto.piso ?? null],
     );
     return this.aDto(filas[0]);
   }
@@ -193,6 +224,7 @@ export class AulasService {
     if (dto.nombre !== undefined) push('nombre', dto.nombre.trim());
     if (dto.capacidad !== undefined) push('capacidad', dto.capacidad);
     if (dto.sedeCodigo !== undefined) push('sede_codigo', dto.sedeCodigo);
+    if (dto.codigoCetap !== undefined) push('codigo_cetap', dto.codigoCetap);
     if (dto.tipo !== undefined) push('tipo', dto.tipo);
     if (dto.piso !== undefined) push('piso', dto.piso);
     if (sets.length === 0) throw new BadRequestException('No hay campos para actualizar.');
