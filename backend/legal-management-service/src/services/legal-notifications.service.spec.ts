@@ -103,6 +103,31 @@ describe('LegalNotificationsService — notifyResponsableAsignadoTermino()', () 
 
         await expect(service.notifyResponsableAsignadoTermino(baseParams)).resolves.toBeUndefined();
     });
+
+    // Bug reportado por QA: "la campana sí notifica, el correo nunca llega". Causa raíz: getUserDetailsById
+    // resuelve "email" como COALESCE(dir_email, username) — si dir_email está vacío en auth.personas,
+    // el valor devuelto es en realidad el username (texto libre, no necesariamente un correo real).
+    it('si el "email" resuelto no tiene formato de correo (probable fallback a username): NO debe intentar enviarlo, y debe loguear una advertencia explícita', async () => {
+        mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'resp-1', email: 'jperez' });
+        const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+        await service.notifyResponsableAsignadoTermino(baseParams);
+
+        expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no tiene formato de email válido'));
+    });
+
+    it('con un correo válido normal: sí debe enviarlo (no debe romperse por la nueva validación)', async () => {
+        mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'resp-1', email: 'juan.perez@esap.edu.co' });
+
+        await service.notifyResponsableAsignadoTermino(baseParams);
+
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'juan.perez@esap.edu.co',
+            expect.any(String),
+            expect.any(String),
+        );
+    });
 });
 
 describe('LegalNotificationsService — notifyTerminoProximoAVencer()', () => {
@@ -204,6 +229,17 @@ describe('LegalNotificationsService — notifyTerminoProximoAVencer()', () => {
         const enviado = await service.notifyTerminoProximoAVencer(baseParams);
 
         expect(mockNotificationClient.notifyUserById).toHaveBeenCalledTimes(1);
+        expect(enviado).toBe(true);
+    });
+
+    it('si el "email" resuelto no tiene formato de correo (fallback a username por dir_email vacío): NO debe enviarlo, debe loguear advertencia explícita, y debe seguir retornando true (el in-app sí se entregó)', async () => {
+        mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'resp-1', email: 'jperez' });
+        const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+        const enviado = await service.notifyTerminoProximoAVencer(baseParams);
+
+        expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no tiene formato de email válido'));
         expect(enviado).toBe(true);
     });
 

@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, FileSpreadsheet
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -143,6 +143,7 @@ export function ModuloTerminosInformesV3() {
   const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
   const [terminoAEliminar, setTerminoAEliminar] = useState<{ id: string, permanente: boolean } | null>(null);
   const [modalExportarOpen, setModalExportarOpen] = useState(false);
+  const [formatoExportar, setFormatoExportar] = useState<'pdf' | 'excel'>('pdf');
 
   const [loading, setLoading] = useState(true);
 
@@ -830,45 +831,82 @@ export function ModuloTerminosInformesV3() {
 
       {/* Modal Seleccionar Formato de Exportación */}
       {modalExportarOpen && (
-        <Dialog open={modalExportarOpen} onOpenChange={setModalExportarOpen}>
-          <DialogContent hideCloseButton className="max-w-sm">
-            <DialogTitle>Exportar términos e informes</DialogTitle>
-            <DialogDescription>
-              Seleccione el formato en el que desea descargar {solicitudesFiltradas.length} término{solicitudesFiltradas.length === 1 ? '' : 's'}.
-            </DialogDescription>
-
-            <div className="flex justify-center gap-4 py-3">
-              <Button
-                variant="outline"
-                onClick={handleExportarPDF}
-                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-red-300 hover:bg-red-50/60"
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
-                  <FileText className="w-5 h-5" />
-                </span>
-                <span className="flex flex-col items-center leading-tight">
-                  <span className="text-sm font-semibold text-gray-900">PDF</span>
-                  <span className="text-xs text-gray-500">Documento</span>
-                </span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleExportarExcel}
-                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-green-300 hover:bg-green-50/60"
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-green-600">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </span>
-                <span className="flex flex-col items-center leading-tight">
-                  <span className="text-sm font-semibold text-gray-900">Excel</span>
-                  <span className="text-xs text-gray-500">.xlsx</span>
-                </span>
-              </Button>
+        <Dialog
+          open={modalExportarOpen}
+          onOpenChange={(open) => {
+            setModalExportarOpen(open);
+            if (open) setFormatoExportar('pdf');
+          }}
+        >
+          <DialogContent hideCloseButton size="md">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <FileText className="w-5 h-5" />
+              </span>
+              <div>
+                <DialogTitle>Exportar vencimiento de informes</DialogTitle>
+                <DialogDescription>
+                  Se descargarán{' '}
+                  <span className="font-semibold text-gray-900">
+                    {solicitudesFiltradas.length} informe{solicitudesFiltradas.length === 1 ? '' : 's'}
+                  </span>{' '}
+                  con su estado de vencimiento actual.
+                </DialogDescription>
+              </div>
             </div>
 
-            <div className="flex justify-center border-t border-gray-100 pt-3">
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setFormatoExportar('pdf')}
+                aria-pressed={formatoExportar === 'pdf'}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${formatoExportar === 'pdf' ? 'border-amber-400 bg-amber-50/60' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-bold text-gray-600">
+                  PDF
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Documento PDF</span>
+                  <span className="block text-xs text-gray-500">Listo para imprimir, firmar o compartir por correo</span>
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${formatoExportar === 'pdf' ? 'border-amber-500' : 'border-gray-300'
+                  }`}>
+                  {formatoExportar === 'pdf' && <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormatoExportar('excel')}
+                aria-pressed={formatoExportar === 'excel'}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${formatoExportar === 'excel' ? 'border-amber-400 bg-amber-50/60' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-bold text-gray-600">
+                  XLS
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Hoja de cálculo Excel</span>
+                  <span className="block text-xs text-gray-500">Datos abiertos para filtrar, ordenar o cruzar cifras</span>
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${formatoExportar === 'excel' ? 'border-amber-500' : 'border-gray-300'
+                  }`}>
+                  {formatoExportar === 'excel' && <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />}
+                </span>
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400">
+              Los términos vencidos se marcarán en el documento tal como aparecen en el tablero.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
               <Button variant="ghost" onClick={() => setModalExportarOpen(false)} className="text-gray-500 hover:text-gray-700">
                 Cancelar
+              </Button>
+              <Button onClick={formatoExportar === 'pdf' ? handleExportarPDF : handleExportarExcel}>
+                Exportar {formatoExportar === 'pdf' ? 'PDF' : 'Excel'}
               </Button>
             </div>
           </DialogContent>
