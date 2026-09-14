@@ -706,7 +706,13 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
                 responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
                 responsableAreaEmail: data.responsableArea.email,
               }),
-              fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio || new Date().toISOString().split('T')[0],
+              // Una Especial puede iniciar en Ejecución o Comunicación: su inicio es el de la primera etapa programada (EFDS-1923).
+              fechaInicio:
+                data.fechaInicioPlaneacion ||
+                data.fechaInicioEjecucion ||
+                data.fechaInicioComunicacion ||
+                data.fechaInicio ||
+                new Date().toISOString().split('T')[0],
               fechaFinPlaneacion: data.fechaFinPlaneacion,
               fechaInicioEjecucion: data.fechaInicioEjecucion,
               fechaFinEjecucion: data.fechaFinEjecucion,
