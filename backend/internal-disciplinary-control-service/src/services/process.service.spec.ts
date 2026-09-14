@@ -275,6 +275,84 @@ describe('ProcessService', () => {
       expect(result.etapaActual).toBe('JUZGAMIENTO');
     });
 
+    it('should allow Secretario/Radicador with accented string role "Secretaría / Radicador"', async () => {
+      const mockProcess = {
+        id: 'proc-1',
+        radicadoProceso: 'P-001-2026',
+        etapaActual: 'CARGOS',
+        estado: 'ACTIVO',
+      };
+      const currentStageConfig = { id: 'stage-cargos', etapa: 'CARGOS', orden: 5, activo: true };
+      const targetStageConfig = { id: 'stage-juzgamiento', etapa: 'JUZGAMIENTO', orden: 6, activo: true };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockProcess as any);
+      jest.spyOn(stageConfigurationRepository, 'findOne')
+        .mockResolvedValueOnce(targetStageConfig as any)
+        .mockResolvedValueOnce(currentStageConfig as any);
+      jest.spyOn(processRepository, 'save').mockImplementation(async (p: any) => p);
+
+      const result = await service.changeStage(
+        'proc-1',
+        'stage-juzgamiento',
+        'Traslado manual con acento',
+        ['Secretaría / Radicador'],
+      );
+
+      expect(result.etapaActual).toBe('JUZGAMIENTO');
+    });
+
+    it('should allow role passed as object with name: "Secretaría / Radicador"', async () => {
+      const mockProcess = {
+        id: 'proc-1',
+        radicadoProceso: 'P-001-2026',
+        etapaActual: 'CARGOS',
+        estado: 'ACTIVO',
+      };
+      const currentStageConfig = { id: 'stage-cargos', etapa: 'CARGOS', orden: 5, activo: true };
+      const targetStageConfig = { id: 'stage-juzgamiento', etapa: 'JUZGAMIENTO', orden: 6, activo: true };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockProcess as any);
+      jest.spyOn(stageConfigurationRepository, 'findOne')
+        .mockResolvedValueOnce(targetStageConfig as any)
+        .mockResolvedValueOnce(currentStageConfig as any);
+      jest.spyOn(processRepository, 'save').mockImplementation(async (p: any) => p);
+
+      const result = await service.changeStage(
+        'proc-1',
+        'stage-juzgamiento',
+        'Traslado manual con objeto',
+        [{ name: 'Secretaría / Radicador' }],
+      );
+
+      expect(result.etapaActual).toBe('JUZGAMIENTO');
+    });
+
+    it('should allow generic "RADICADOR" role', async () => {
+      const mockProcess = {
+        id: 'proc-1',
+        radicadoProceso: 'P-001-2026',
+        etapaActual: 'CARGOS',
+        estado: 'ACTIVO',
+      };
+      const currentStageConfig = { id: 'stage-cargos', etapa: 'CARGOS', orden: 5, activo: true };
+      const targetStageConfig = { id: 'stage-juzgamiento', etapa: 'JUZGAMIENTO', orden: 6, activo: true };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockProcess as any);
+      jest.spyOn(stageConfigurationRepository, 'findOne')
+        .mockResolvedValueOnce(targetStageConfig as any)
+        .mockResolvedValueOnce(currentStageConfig as any);
+      jest.spyOn(processRepository, 'save').mockImplementation(async (p: any) => p);
+
+      const result = await service.changeStage(
+        'proc-1',
+        'stage-juzgamiento',
+        'Traslado manual con rol RADICADOR',
+        ['RADICADOR'],
+      );
+
+      expect(result.etapaActual).toBe('JUZGAMIENTO');
+    });
+
     it('should reject Secretario/Radicador attempting to move from Juzgamiento to Cargos', async () => {
       const mockProcess = {
         id: 'proc-1',

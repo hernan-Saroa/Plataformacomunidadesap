@@ -111,23 +111,59 @@ function normalizeText(text: string): string {
 
 // ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
 export const isSecretarioRadicadorUser = (): boolean => {
-  const user = authService.getCurrentUser?.();
-  const roles = user?.roles || [];
-  return (
-    roles.some((r: any) => {
-      const code = (typeof r === 'string' ? r : (r?.code || r?.name || '')).toUpperCase();
-      return (
-        code === 'SECRETARIA_RADICADOR' ||
-        code === 'RADICADOR_DISCIPLINARIO' ||
-        code === 'SECRETARIO_RADICADOR' ||
-        code.includes('SECRETARI') ||
-        code.includes('RADICADOR')
-      );
-    }) ||
-    authService.hasRole('SECRETARIA_RADICADOR') ||
-    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-    authService.hasRole('SECRETARIO_RADICADOR')
-  );
+  try {
+    const user = authService.getCurrentUser?.();
+    const rawRoles = [
+      ...(Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : []),
+      ...(Array.isArray((user as any)?.person?.roles) ? (user as any).person.roles : []),
+      ...((user as any)?.role ? [(user as any).role] : []),
+      ...((user as any)?.rol ? [(user as any).rol] : []),
+    ];
+
+    const hasRadicadorRole = rawRoles.some((r: any) => {
+      const candidates = [
+        typeof r === 'string' ? r : '',
+        r?.code,
+        r?.name,
+        r?.nombre,
+        r?.slug,
+      ].filter(Boolean);
+
+      return candidates.some((cand: string) => {
+        const clean = cand
+          .toString()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+          .toUpperCase();
+        return (
+          clean === 'SECRETARIA_RADICADOR' ||
+          clean === 'SECRETARIO_RADICADOR' ||
+          clean === 'RADICADOR_DISCIPLINARIO' ||
+          clean === 'RADICADOR' ||
+          clean.includes('SECRETARI') ||
+          clean.includes('RADICADOR')
+        );
+      });
+    });
+
+    if (hasRadicadorRole) return true;
+
+    return (
+      authService.hasRole('SECRETARIA_RADICADOR') ||
+      authService.hasRole('RADICADOR_DISCIPLINARIO') ||
+      authService.hasRole('SECRETARIO_RADICADOR') ||
+      authService.hasRole('RADICADOR') ||
+      authService.hasRole('Secretaría / Radicador') ||
+      authService.hasRole('Secretaria / Radicador') ||
+      authService.hasRole('Secretaría/Radicador') ||
+      authService.hasRole('Secretario / Radicador') ||
+      authService.hasRole('Radicador Disciplinario')
+    );
+  } catch (err) {
+    console.error('Error verificando rol Secretario/Radicador:', err);
+    return false;
+  }
 };
 
 export const isEtapaCargos = (etapaNombre?: string): boolean => {
@@ -417,12 +453,12 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
-  const [hoverReenviar, setHoverReenviar] = useState(false);
-  
+  const isRadicadorNoticia = isSecretarioRadicadorUser();
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
-    item: { ...noticia, tipoItem: 'noticia' },
+    item: { ...noticia, tipo: 'noticia', tipoItem: 'noticia' },
+    canDrag: () => !isSecretarioRadicadorUser(),
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     })
@@ -436,7 +472,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   return (
     <div
       ref={dragRef}
-      className="cursor-grab active:cursor-grabbing touch-none w-full select-none"
+      className={`${isRadicadorNoticia ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} touch-none w-full select-none`}
       style={noticia.estado === 'devuelta' && esJefe ? { filter: 'grayscale(60%) brightness(0.87) opacity(0.75)', transition: 'filter 0.3s' } : undefined}
     >
       <motion.div
@@ -824,11 +860,11 @@ function TarjetaProceso({
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
-    item: { ...proceso, tipoItem: 'proceso' },
+    item: { ...proceso, tipo: 'proceso', tipoItem: 'proceso' },
     canDrag: () => {
       // Para Secretario/Radicador, SOLO se permite arrastrar procesos que se encuentren en la etapa Cargos
-      if (isRadicador) {
-        return esProcesoEnCargos;
+      if (isSecretarioRadicadorUser()) {
+        return isEtapaCargos(proceso.etapaActual);
       }
       return true;
     },
@@ -836,8 +872,12 @@ function TarjetaProceso({
       isDragging: monitor.isDragging()
     })
   });
-  const dragRef = useRef<HTMLDivElement>(null);
-  drag(dragRef);
+
+  const attachDrag = (node: HTMLDivElement | null) => {
+    if (node) {
+      drag(node);
+    }
+  };
 
   // ✅ NUEVO: Estado para expandir/colapsar sección de noticias asociadas
   const [noticiasExpanded, setNoticiasExpanded] = useState(false);
@@ -869,7 +909,7 @@ function TarjetaProceso({
 
   return (
     <div
-      ref={dragRef}
+      ref={attachDrag}
       className={`${puedeArrastrar ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} touch-none w-full select-none`}
     >
       <motion.div
@@ -2108,11 +2148,14 @@ function ColumnaKanban({
     },
     canDrop: (item: any) => {
       const isRadicador = isSecretarioRadicadorUser();
-      const esProceso = item?.tipoItem === 'proceso' || item?.tipo === 'proceso';
+      const esProceso = item?.tipoItem === 'proceso' || item?.tipo === 'proceso' || (item?.tipo !== 'noticia' && !!item?.etapaActual);
 
       // Para Secretario/Radicador: SOLO puede soltar en Juzgamiento si el proceso proviene de Cargos
-      if (esProceso && isRadicador) {
-        return isEtapaCargos(item.etapaActual) && isEtapaJuzgamiento(etapa);
+      if (isRadicador) {
+        if (esProceso) {
+          return isEtapaCargos(item.etapaActual) && isEtapaJuzgamiento(etapa);
+        }
+        return false;
       }
 
       // ✅ NUEVO: Validar orden de etapas desde backend config
@@ -4506,7 +4549,7 @@ export function DashboardKanbanOperativo({
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
     const isRadicador = isSecretarioRadicadorUser();
-    const esProceso = item.tipo === 'proceso' || (item as any).tipoItem === 'proceso';
+    const esProceso = item.tipo === 'proceso' || (item as any).tipoItem === 'proceso' || (item.tipo !== 'noticia' && !!(item as any).etapaActual);
     const etapaActualProceso = (item as any).etapaActual;
     const esTransicionCargosAJuzgamiento =
       esProceso &&
@@ -4592,7 +4635,7 @@ export function DashboardKanbanOperativo({
         });
         return;
       }
-    } else if (item.tipo === 'proceso') {
+    } else if (item.tipo === 'proceso' || (item as any).tipoItem === 'proceso' || esProceso) {
       if (item.etapaActual !== nuevaEtapa) {
         const etapaAnterior = item.etapaActual;
 
@@ -4620,7 +4663,7 @@ export function DashboardKanbanOperativo({
         const toastId = toast.loading('Trasladando proceso a Juzgamiento...');
         try {
           const etapaJuzgamientoConfig = etapasConfig.find(e => isEtapaJuzgamiento(e.etapa || e.nombre));
-          const stageIdentifier = etapaJuzgamientoConfig?.id || backendStageForLabel(nuevaEtapa);
+          const stageIdentifier = etapaJuzgamientoConfig?.id || backendStageForLabel(nuevaEtapa) || 'JUZGAMIENTO';
 
           // Llamar al backend para cambiar la etapa
           await disciplinaryService.cambiarEtapa(
@@ -4630,7 +4673,7 @@ export function DashboardKanbanOperativo({
           );
           toast.success('Proceso trasladado a Juzgamiento', {
             id: toastId,
-            description: `${item.numeroProceso}: Cargos → Juzgamiento exitoso.`
+            description: `${(item as any).numeroProceso || (item as any).radicado || 'Proceso'}: Cargos → Juzgamiento exitoso.`
           });
         } catch (error: any) {
           console.error('Error al cambiar etapa en BD:', error);
@@ -4643,7 +4686,7 @@ export function DashboardKanbanOperativo({
 
         // Actualizar estado local
         setItems(prev => prev.map(i =>
-          i.id === item.id && i.tipo === 'proceso'
+          i.id === item.id && (i.tipo === 'proceso' || (i as any).tipoItem === 'proceso' || (!i.tipo && !!(i as any).etapaActual))
             ? {
               ...i,
               etapaActual: nuevaEtapa as any,

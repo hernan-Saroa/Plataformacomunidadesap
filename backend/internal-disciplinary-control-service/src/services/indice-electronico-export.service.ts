@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import * as path from 'path';
 import * as fs from 'fs';
+import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 
 // Campos de clasificación archivística (TRD) del proceso "Control Disciplinario" —
 // según Gestión Documental son fijos para todo expediente de este módulo, no dependen del caso.
@@ -173,7 +174,7 @@ export class IndiceElectronicoExportService {
         process.env.PUBLIC_API_URL ||
         (process.env.API_GATEWAY_URL && !process.env.API_GATEWAY_URL.includes('api-gateway:')
           ? process.env.API_GATEWAY_URL
-          : 'http://localhost:4000');
+          : resolveFrontendBaseUrl());
 
       if (doc.urlAcceso && /^https?:\/\//i.test(doc.urlAcceso)) {
         linkUrl = doc.urlAcceso;

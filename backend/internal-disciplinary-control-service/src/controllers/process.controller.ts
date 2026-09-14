@@ -74,7 +74,9 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
   'SECRETARIA_RADICADOR',
+  'SECRETARIO_RADICADOR',
   'RADICADOR_DISCIPLINARIO',
+  'RADICADOR',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -121,20 +123,33 @@ export class ProcessController {
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
-    if (typeof role === 'string') {
-      const normalized = role.trim().toUpperCase();
-      return normalized || null;
+    const raw =
+      typeof role === 'string'
+        ? role
+        : role && typeof role === 'object'
+          ? (role as any).code || (role as any).name || (role as any).nombre || ''
+          : '';
+
+    if (!raw || typeof raw !== 'string') return null;
+
+    const normalized = raw
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+
+    if (
+      normalized === 'SECRETARIA_RADICADOR' ||
+      normalized === 'SECRETARIO_RADICADOR' ||
+      normalized === 'RADICADOR_DISCIPLINARIO' ||
+      normalized === 'RADICADOR' ||
+      normalized.includes('SECRETARI') ||
+      normalized.includes('RADICADOR')
+    ) {
+      return 'SECRETARIA_RADICADOR';
     }
 
-    if (role && typeof role === 'object' && 'code' in role) {
-      const code = (role as { code?: unknown }).code;
-      if (typeof code === 'string') {
-        const normalized = code.trim().toUpperCase();
-        return normalized || null;
-      }
-    }
-
-    return null;
+    return normalized || null;
   }
 
   private extractNormalizedRoles(req: AuthenticatedRequest): Set<string> {
@@ -152,7 +167,11 @@ export class ProcessController {
     const normalizedRoles = this.extractNormalizedRoles(req);
 
     for (const role of normalizedRoles) {
-      if (DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role)) {
+      if (
+        DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role) ||
+        role.includes('RADICADOR') ||
+        role.includes('SECRETARI')
+      ) {
         return true;
       }
     }
