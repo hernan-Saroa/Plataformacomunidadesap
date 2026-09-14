@@ -1226,11 +1226,7 @@ export function FormularioAuditoriaUnificado({
       // ✅ Verificar si onSubmit retornó false (error en backend)
       if (resultado === false) {
         console.error('❌ FormularioAuditoriaUnificado - onSubmit retornó false, auditoría NO creada');
-        toast.error(
-          mode === 'create'
-            ? 'No se pudo crear la auditoría. Revisa los datos e intenta de nuevo.'
-            : 'No se guardaron los cambios de la auditoría.',
-        );
+        toast.error('No se pudo crear la auditoría. Revisa los datos e intenta de nuevo.');
         return;
       }
       

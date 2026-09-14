@@ -3332,8 +3332,7 @@ export function GestionAuditoriasKanbanSimple() {
                 setModalEdicionOpen(false);
                 setAuditoriaParaEditar(null);
               } else {
-                // El motivo ya lo muestra actualizarAuditoriaBackend; el formulario queda abierto.
-                return false;
+                toast.error('Error al actualizar la auditoría');
               }
             }}
             mode="edit"
