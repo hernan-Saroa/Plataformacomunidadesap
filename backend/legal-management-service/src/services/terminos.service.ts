@@ -394,7 +394,7 @@ export class TerminosService {
         }));
     }
 
-    async getSemaforoList(filtros: { responsableId?: string; responsableKeys?: string[] } | string = {}): Promise<any[]> {
+    async getSemaforoList(filtros: { responsableId?: string; responsableKeys?: string[]; estado?: string } | string = {}): Promise<any[]> {
         const resolvedFiltros = typeof filtros === 'string' ? { responsableId: filtros } : filtros;
         // Auto-sincronizar al consultar el listado para tener datos actualizados
         // try {
@@ -465,8 +465,12 @@ export class TerminosService {
         return guardado;
     }
 
-    async remove(id: string): Promise<void> {
+    async remove(id: string, permanente = false): Promise<void> {
         const termino = await this.findOne(id);
+        if (permanente) {
+            await this.terminoRepository.remove(termino);
+            return;
+        }
         // Soft delete para evitar que la función sincronizar() lo vuelva a crear
         termino.estado = 'ELIMINADO';
         await this.terminoRepository.save(termino);

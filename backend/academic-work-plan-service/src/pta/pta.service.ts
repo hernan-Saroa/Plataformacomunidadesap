@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import type { PtaTerritorialDecisionGrant } from './auth/pta-territorial-role-scope';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './entities/pta-evidencia.entity';
@@ -23,6 +24,7 @@ import { PtaTerritorialReviewEntity } from './entities/pta-territorial-review.en
 import type { PtaAuthenticatedUser } from './auth/pta-auth.guard';
 import {
   COMPONENT_PERMISSION,
+  TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT,
   DOCENCIA_COMPONENT_KEYS,
   COMPLEMENTARIAS_COMPONENT_KEYS,
   TERRITORIAL_COMPONENT_KEYS,
@@ -3580,6 +3582,29 @@ export class PtaService {
     return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
+  private async enrichHistorialActors(historial: HistorialEstadoPtaEntity[], pta: any) {
+    const nombres = new Map<string, string>();
+    const docenteNombre = coalesceString(pta.docente_nombre);
+    if (pta.docente_id && docenteNombre) nombres.set(String(pta.docente_id), docenteNombre);
+    const actorIds = [...new Set(historial.map(h => coalesceString(h.actorId) || '').filter(Boolean))];
+    await Promise.all(actorIds.map(async actorId => {
+      if (nombres.has(actorId) || ['sistema', 'system'].includes(actorId.toLowerCase())) return;
+      try {
+        // Consulta de identidad existente: acepta id de usuario/persona y no
+        // exige rol docente, pues el historial también contiene aprobadores.
+        const actor = await this.fetchAuthDocenteInfo(actorId, { adminEdit: true });
+        if (actor.fullName && actor.fullName !== 'Docente ESAP') nombres.set(actorId, actor.fullName);
+      } catch {
+        // La falta de una identidad histórica no impide consultar el PTA.
+      }
+    }));
+    return historial.map(h => ({
+      ...h,
+      actorNombre: nombres.get(coalesceString(h.actorId) || '')
+        || (['sistema', 'system'].includes((coalesceString(h.actorId) || '').toLowerCase()) ? 'Sistema' : null),
+    }));
+  }
+
   async getPTAById(id: string) {
     const pta = await this.ptaRepo.findOne({ where: { id } });
     if (!pta) throw new NotFoundException('PTA no encontrado');
@@ -3686,7 +3711,7 @@ export class PtaService {
     return {
       ...dto,
       evidencias: evidencias.map((e) => this.toEvidenciaDto(e)),
-      historialEstados: historial,
+      historialEstados: await this.enrichHistorialActors(historial, dto),
     };
   }
 
@@ -4665,13 +4690,18 @@ export class PtaService {
       datosEstructurados: existing.datosEstructurados,
     });
 
+    // El portal puede enviar solo la acción. Conservamos la identidad autenticada
+    // para que ese movimiento no quede sin autor ni rol en la auditoría.
+    const historyActorId = coalesceString(auth?.userId, body?.actorId, body?.aprobador_id, body?.resueltoPor, body?.actor_id);
+    const historyActorRole = coalesceString(body?.actorRol, body?.aprobador_rol, body?.actor_rol)
+      || (solicitudEdicionActiva && auth?.userId ? 'Docente' : coalesceString(auth?.roles?.join(', ')));
     await this.historialRepo.save(
       this.historialRepo.create({
         ptaId,
         estadoAnterior,
         estadoNuevo: estadoFinal,
-        actorId: coalesceString(body?.actorId, body?.aprobador_id, body?.resueltoPor, body?.actor_id),
-        actorRol: coalesceString(body?.actorRol, body?.aprobador_rol, body?.actor_rol),
+        actorId: historyActorId,
+        actorRol: historyActorRole,
         tipoAccion: accion,
         comentarios: coalesceString(body?.observaciones, body?.comentarios),
         detallesTransicion: coalesceString(body?.detallesTransicion, body?.detalles_transicion),
@@ -4710,8 +4740,8 @@ export class PtaService {
       docenteNombre: coalesceString(ds?.docente_nombre),
       estadoAnterior,
       estadoNuevo: estadoFinal,
-      actor: coalesceString(body?.actorId, body?.actor_id),
-      actorRol: coalesceString(body?.actorRol, body?.actor_rol),
+      actor: historyActorId,
+      actorRol: historyActorRole,
       sistemaOrigen: body?.sistemaOrigen ?? 'backoffice',
       mensaje: `${estadoAnterior} → ${estadoFinal}`,
       metadata: { accion, observaciones: coalesceString(body?.observaciones, body?.comentarios) },
@@ -6132,24 +6162,56 @@ export class PtaService {
   }
 
   async deletePTA(ptaId: string) {
-    const solicitudEdicionActiva = await this.solicitudRepo.findOne({
-      where: {
-        ptaId,
-        tipoSolicitud: SOLICITUD_EDICION_TIPO,
-        estado: In(ESTADOS_SOLICITUD_EDICION_ACTIVA),
-      } as any,
-    });
-    if (solicitudEdicionActiva) {
-      throw new BadRequestException(
-        'No se puede eliminar un PTA mientras tenga una solicitud de edición activa.',
-      );
+    // La depuración automática conserva la protección de solicitudes activas.
+    return this.eliminarPTATransaccional(ptaId, false);
+  }
+
+  async deletePTAAdministrativo(ptaId: string, auth?: PtaAuthenticatedUser) {
+    if (!auth?.isSuperUser) {
+      throw new ForbiddenException('Solo un superadministrador puede eliminar definitivamente un PTA.');
     }
-    await Promise.all([
-      this.evidenciaRepo.delete({ ptaId }),
-      this.historialRepo.delete({ ptaId }),
-    ]);
-    await this.ptaRepo.delete({ id: ptaId });
-    return { deleted: true };
+    return this.eliminarPTATransaccional(ptaId, true);
+  }
+
+  private async eliminarPTATransaccional(ptaId: string, permitirSolicitudActiva: boolean) {
+    return this.ptaRepo.manager.transaction(async (manager) => {
+      const pta = await manager.findOne(PlanTrabajoAcademicoEntity, {
+        where: { id: ptaId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      // Una segunda eliminación concurrente también deja el resultado solicitado.
+      if (!pta) return { deleted: true };
+
+      if (!permitirSolicitudActiva) {
+        const solicitudActiva = await manager.findOne(SolicitudPtaEntity, {
+          where: {
+            ptaId,
+            tipoSolicitud: SOLICITUD_EDICION_TIPO,
+            estado: In(ESTADOS_SOLICITUD_EDICION_ACTIVA),
+          },
+        });
+        if (solicitudActiva) {
+          throw new BadRequestException(
+            'No se puede eliminar un PTA mientras tenga una solicitud de edición activa.',
+          );
+        }
+      }
+
+      // SolicitudPTA usa SET NULL: eliminar sus solicitudes vinculadas evita
+      // dejar solicitudes de edición que ya no pueden resolverse.
+      await manager.delete(SolicitudPtaEntity, { ptaId });
+      await manager.delete(PtaTerritorialReviewEntity, { ptaId });
+      await manager.delete(PtaTerritorialApprovalEntity, { ptaId });
+      await manager.delete(PtaComponentReviewEntity, { ptaId });
+      await manager.delete(PtaComponentApprovalEntity, { ptaId });
+      await manager.delete(AprobacionJefaturaEntity, { ptaId });
+      await manager.delete(PtaEventoEntity, { ptaId });
+      await manager.delete(PtaEvidenciaEntity, { ptaId });
+      await manager.delete(HistorialEstadoPtaEntity, { ptaId });
+      // Las FK en cascada limpian también Concertacion y DetallesPta.
+      await manager.delete(PlanTrabajoAcademicoEntity, { id: ptaId });
+      return { deleted: true };
+    });
   }
 
   // ── Cierre reversible de PTAs por cambio de período académico ───────────────
@@ -8341,13 +8403,9 @@ export class PtaService {
    * (pregrado/posgrado, migración 397) — cada combinación (territorial, nivel) es
    * una unidad de decisión independiente.
    *
-   * El permiso `pta.*.academica.territorial.{pregrado|posgrado}` habilita el
-   * componente para ese nivel, pero NO dice cuál territorial; esa se toma de la
-   * seccional de la persona (auth.personas.id_seccional), siguiendo la convención
-   * ya documentada en `auth.role.alcance` para JEFATURA_TERRITORIAL. Sin esta
-   * verificación, un rol de Antioquia podía revisar/aprobar las asignaturas de
-   * Chocó o Huila; sin la verificación de nivel, un revisor de solo pregrado
-   * podía dar por resuelto el posgrado de su misma territorial.
+   * El permiso habilita un nivel; el alcance administrativo del mismo rol
+   * determina las territoriales. Solo los roles sin alcance explícito o con
+   * territorial_por_persona recurren a auth.personas.id_seccional.
    *
    * Decisión PARCIAL por (territorial, nivel): si el PTA tiene 2+ pares distintos
    * (ej. pregrado de Antioquia y posgrado de Bolívar), un actor con alcance sobre
@@ -8379,10 +8437,14 @@ export class PtaService {
     if (auth.isSuperUser) return { pares, propios: pares };
 
     const idsPropios = (auth.territorialIds || []).map((v) => String(v)).filter(Boolean);
-    if (idsPropios.length === 0) {
+    const nivelesPropios = accion === 'aprobar' ? (auth.allowedNivelesTerritorialAprobar || []) : (auth.allowedNivelesTerritorialRevisar || []);
+    const grants: PtaTerritorialDecisionGrant[] = auth.territorialDecisionGrants
+      ? auth.territorialDecisionGrants[accion]
+      : nivelesPropios.map(nivel => ({ nivel, territorial: 'persona' as const }));
+    if (idsPropios.length === 0 && grants.length > 0 && grants.every(g => g.territorial === 'persona')) {
       throw new ForbiddenException(
         `No tiene una territorial asignada, por lo que no puede ${accion} el componente de Docencia territorial. `
-        + 'La territorial se toma de la seccional registrada para la persona.',
+        + 'Configure el Alcance administrativo del rol (Global o Filtrado), o asigne la seccional a la persona si su rol usa territorial por persona.',
       );
     }
 
@@ -8394,7 +8456,7 @@ export class PtaService {
     // modo que la aprobación territorial no se podía completar. Se comparan tokens
     // normalizados de id Y de nombre de seccional, por ambos lados.
     const nombresPorId = await this.resolveNombrePorSeccionalId(
-      Array.from(new Set([...idsPropios, ...pares.map((p) => p.territorialId)])),
+      Array.from(new Set([...idsPropios, ...grants.map(g => g.territorialId).filter((id): id is string => !!id), ...pares.map((p) => p.territorialId)])),
     );
     const tokensDe = (territorialId: string): string[] => [
       this.normalizeSeccionalNombre(territorialId),
@@ -8404,25 +8466,67 @@ export class PtaService {
     const esTerritorialPropia = (territorialId: string): boolean =>
       tokensDe(territorialId).some((t) => territorialesPropias.has(t));
 
-    const nivelesPropios = new Set(
-      accion === 'aprobar' ? (auth.allowedNivelesTerritorialAprobar || []) : (auth.allowedNivelesTerritorialRevisar || []),
-    );
-    if (nivelesPropios.size === 0) {
+    if (grants.length === 0) {
       throw new ForbiddenException(
-        `No tiene el permiso de nivel (pregrado/posgrado) requerido para ${accion} el componente de Docencia territorial.`,
+        `No tiene un permiso de nivel (pregrado/posgrado) con alcance válido para ${accion} Docencia territorial. Revise los permisos y el Alcance administrativo del rol.`,
       );
     }
 
-    const propios = pares.filter((p) => esTerritorialPropia(p.territorialId) && nivelesPropios.has(p.nivel));
+    const subjects = grants.some(g => g.cetap || g.programa)
+      ? await this.getTerritorialScopeSubjects(existingPta, grants.some(g => !!g.cetap)) : [];
+    const sameTerritorial = (left: string, right: string) => tokensDe(left).some(t => tokensDe(right).includes(t));
+    const propios = pares.filter(p => {
+      const elegibles = grants.filter(g => g.nivel === p.nivel && (
+        g.territorial === 'todas'
+        || (g.territorial === 'persona' && esTerritorialPropia(p.territorialId))
+        || (g.territorial === 'seleccionada' && g.territorialId && sameTerritorial(g.territorialId, p.territorialId))
+      ));
+      if (elegibles.some(g => !g.cetap && !g.programa)) return true;
+      const delPar = subjects.filter(s => s.nivel === p.nivel && sameTerritorial(s.territorialId, p.territorialId));
+      // Una decisión de territorial/nivel abarca todas sus asignaturas. No puede
+      // aprobar las de otro CETAP o programa por compartir el mismo par.
+      return delPar.length > 0 && delPar.every(s => elegibles.some(g =>
+        (!g.programa || s.programas.includes(this.normalizeSeccionalNombre(g.programa)))
+        && (!g.cetap || s.cetaps.includes(this.normalizeSeccionalNombre(g.cetap))),
+      ));
+    });
     if (propios.length === 0) {
       const nombres = await this.resolveNombresSeccionales(Array.from(new Set(pares.map((p) => p.territorialId))));
       throw new ForbiddenException(
-        `Solo puede ${accion} las asignaturas de Docencia de su propia territorial y nivel autorizado. `
+        `Solo puede ${accion} las asignaturas de Docencia de ${auth.territorialDecisionGrants ? 'las territoriales, niveles, CETAPs y programas autorizados en el alcance de sus roles' : 'su propia territorial y nivel autorizado'}. `
         + `Este PTA incluye asignaturas de: ${nombres.join(', ')}.`,
       );
     }
 
     return { pares, propios };
+  }
+
+  /** Datos necesarios cuando el alcance del rol restringe además CETAP o programa. */
+  private async getTerritorialScopeSubjects(pta: PlanTrabajoAcademicoEntity, includeCetaps: boolean) {
+    const part = await this.clasificarAsignaturasDocencia((pta.datosEstructurados as any)?.asignaturas || []);
+    const asignaturas = part.academica_territorial;
+    const ids = [...new Set(asignaturas.map((a: any) => coalesceLookupKey(a.programa_id)).filter(Boolean))];
+    const programas = ids.length ? await this.programaRepo.find({ where: { id: In(ids) } as any }) : [];
+    const programaById = new Map(programas.map(p => [String(p.id), p]));
+    const sedeIds = [...new Set(asignaturas.map((a: any) => coalesceLookupKey(a.cetap_id, a.cetapId, a.sede_id, a.sedeId)).filter(Boolean))];
+    const sedes: Array<{ id: string; codigo: string; nombre: string }> = includeCetaps && sedeIds.length
+      ? await this.ptaRepo.manager.query(
+        `SELECT id_sede::text AS id, cod_sede::text AS codigo, nom_sede AS nombre FROM auth.sedes
+         WHERE id_sede::text = ANY($1::text[]) OR cod_sede::text = ANY($1::text[])`, [sedeIds]) : [];
+    const tokens = (...values: any[]) => values.map(v => this.normalizeSeccionalNombre(v)).filter(Boolean);
+    return asignaturas.map((a: any) => {
+      const programaId = coalesceLookupKey(a.programa_id);
+      const programa = programaId ? programaById.get(programaId) : undefined;
+      const sedeId = coalesceLookupKey(a.cetap_id, a.cetapId, a.sede_id, a.sedeId);
+      const sede = sedes.find(s => s.id === sedeId || s.codigo === sedeId);
+      return {
+        territorialId: coalesceLookupKey(a.territorial_id) || '',
+        nivel: programa?.tipo && POSGRADO_PROGRAMA_TIPOS.has(programa.tipo) ? 'posgrado' : 'pregrado',
+        programas: tokens(programaId, programa?.codigo, programa?.nombre, programa?.nombreCorto,
+          a.programa_nombre_completo, a.programa_nombre, a.programa?.nombre),
+        cetaps: tokens(sedeId, sede?.id, sede?.codigo, sede?.nombre, a.cetap_nombre, a.sede_nombre, a.cetap?.nombre),
+      };
+    });
   }
 
   /** Crea en 'pendiente' las filas de PtaTerritorialApproval que falten para los pares (territorial, nivel) dados. */
@@ -9162,15 +9266,9 @@ export class PtaService {
       // componente actual para no volver a exigir pta.approve.* (el revisor puede
       // no tenerlo).
       //
-      // isSuperUser se sintetiza solo cuando el revisor YA tenía alcance global
-      // (isSuperUser real, o `pta.review.all`): ese caso sí debe poder devolver
-      // sin restricción territorial, igual que antes. Un revisor con permiso
-      // territorial puntual (ej. Coordinador de Bolívar) conserva su
-      // `isSuperUser` real (false), para que assertAlcanceTerritorial /
-      // aprobarComponenteTerritorialParcial lo acoten a SU territorial — de lo
-      // contrario, sintetizar isSuperUser:true a ciegas también se filtraba al
-      // alcance territorial y le permitía devolver (y pisar el estado de) la
-      // territorial de OTRO revisor.
+      // La devolución conserva el alcance y los niveles de REVISIÓN ya validados.
+      // Reutilizar la transición no convierte al revisor en superusuario ni le
+      // concede el alcance territorial de un rol de aprobación distinto.
       const resultado = await this.aprobarComponente(
         ptaId,
         {
@@ -9186,7 +9284,11 @@ export class PtaService {
         },
         {
           ...auth,
-          isSuperUser: auth.isSuperUser || !!auth.reviewsAll,
+          isSuperUser: auth.isSuperUser,
+          allowedNivelesTerritorialAprobar: auth.allowedNivelesTerritorialRevisar,
+          territorialDecisionGrants: auth.territorialDecisionGrants ? {
+            ...auth.territorialDecisionGrants, aprobar: auth.territorialDecisionGrants.revisar,
+          } : undefined,
           allowedComponents: [...(auth.allowedComponents || []), componente as any],
         } as PtaAuthenticatedUser,
       );
@@ -9225,6 +9327,47 @@ export class PtaService {
     return { review, estadoGeneral };
   }
 
+  /** La interfaz consulta la misma autorización y alcance que usan las decisiones. */
+  async getDecisionListScope(auth: PtaAuthenticatedUser) {
+    const grants = [...(auth.territorialDecisionGrants?.aprobar || []), ...(auth.territorialDecisionGrants?.revisar || [])];
+    const configured = auth.isSuperUser || grants.some(g => g.territorial !== 'persona');
+    if (!configured || auth.isSuperUser) return { configured, territoriales: null, programas: null, cetaps: null };
+    const ids = [...new Set(grants.flatMap(g => g.territorial === 'persona' ? auth.territorialIds || [] : g.territorialId ? [g.territorialId] : []))];
+    const nombres = await this.resolveNombrePorSeccionalId(ids);
+    return {
+      configured,
+      territoriales: grants.some(g => g.territorial === 'todas') ? null : [...new Set([...ids, ...ids.map(id => nombres.get(id)).filter(Boolean)])],
+      programas: grants.some(g => !g.programa) ? null : [...new Set(grants.map(g => g.programa!))],
+      cetaps: grants.some(g => !g.cetap) ? null : [...new Set(grants.map(g => g.cetap!))],
+    };
+  }
+
+  async getDecisionPermissions(ptaId: string, auth: PtaAuthenticatedUser) {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!pta) throw new NotFoundException('PTA no encontrado');
+    let allowedComponents = [...auth.allowedComponents];
+    let allowedReviewSubsecciones = [...auth.allowedReviewSubsecciones];
+    const territorial: Record<string, { pairs: Array<{ territorialId: string; nivel: PTANivelDocencia }>; reason: string | null }> = {
+      aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null },
+    };
+    await Promise.all((['aprobar', 'revisar'] as const).map(async etapa => {
+      const autorizado = etapa === 'aprobar'
+        ? allowedComponents.includes('academica_territorial')
+        : allowedReviewSubsecciones.includes('academica_territorial:general');
+      if (!autorizado) return;
+      try {
+        const alcance = await this.assertAlcanceTerritorial('academica_territorial', pta, auth, etapa);
+        territorial[etapa].pairs = alcance?.propios || [];
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+        territorial[etapa].reason = error.message;
+        if (etapa === 'aprobar') allowedComponents = allowedComponents.filter(key => key !== 'academica_territorial');
+        else allowedReviewSubsecciones = allowedReviewSubsecciones.filter(key => !key.startsWith('academica_territorial:'));
+      }
+    }));
+    return { allowedComponents, allowedReviewSubsecciones, territorial };
+  }
+
   async aprobarComponente(ptaId: string, body: any, auth?: PtaAuthenticatedUser) {
     const componente = coalesceString(body?.componente);
     const estado = coalesceString(body?.estado); // 'aprobado' o 'devuelto'
@@ -9248,7 +9391,10 @@ export class PtaService {
       throw new ForbiddenException('No autenticado para aprobar componentes del PTA.');
     }
     if (!auth.isSuperUser && !auth.allowedComponents.includes(componente as any)) {
-      const permisoRequerido = COMPONENT_PERMISSION[componente as keyof typeof COMPONENT_PERMISSION];
+      const porNivel = TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[componente];
+      const permisoRequerido = porNivel
+        ? Object.values(porNivel.approve).join(' o ')
+        : COMPONENT_PERMISSION[componente as keyof typeof COMPONENT_PERMISSION];
       throw new ForbiddenException(
         `No tiene permisos para aprobar el componente "${componente}" del PTA.` +
           (permisoRequerido ? ` Se requiere el permiso: ${permisoRequerido}.` : ''),

@@ -35,6 +35,7 @@ import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-m
 import { TabUniversoAuditableResponsive } from './TabUniversoAuditableResponsive';
 import { calcularAuditableDesdeCiclo, resolverAuditableEfectivo } from '../utils/auditableEvaluacion';
 import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
+import { BannerVersionProgramaAnual } from './BannerVersionProgramaAnual';
 
 import { TooltipGuia } from './TooltipGuia';
 // ✅ HOOKS DE INTEGRACIÓN CON BACKEND (reemplazan datos mock)
@@ -250,6 +251,10 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
           ponderacionFinalDafp: ev.ponderacionFinalDafp,
           nivelCriticidadDafp: ev.nivelCriticidadDafp,
           cicloRotacionDafp: ev.cicloRotacionDafp,
+          tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria,
+          temasAltaDireccion: ev.temasAltaDireccion,
+          objetivosEstrategicos: ev.objetivosEstrategicos,
+          hallazgosAnteriores: ev.hallazgosAnteriores,
           riesgosExtremos: ev.riesgosExtremos,
           riesgosAltos: ev.riesgosAltos,
           riesgosModerados: ev.riesgosModerados,
@@ -588,6 +593,10 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
             </button>
           </div>
         </div>
+        <BannerVersionProgramaAnual
+          vigencia={vigencia}
+          puedeGestionar={!modoSeguimiento && puedeRealizar('auditorias', 'edit')}
+        />
         {/* Estado de carga */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
