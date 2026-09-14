@@ -179,12 +179,12 @@ export function GestionOfertas() {
     <div className="space-y-4">
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-[#003DA5]" /> Ofertas Académicas
+          <CalendarDays className="w-4 h-4 text-[#003DA5]" /> Periodos
         </h3>
         <p className="text-xs text-slate-500">
-          Las cinco ofertas del año. El consumo de un docente se acumula por semestre entre todas ellas.
-          Las fechas de las cinco ofertas sembradas son de referencia hasta que llegue el
-          calendario oficial (C-5).
+          Aquí se crean, activan, publican y cierran los periodos de programación. El consumo de un
+          docente se acumula por semestre entre todos ellos. Las fechas de los periodos sembrados son
+          de referencia hasta que llegue el calendario oficial (C-5).
         </p>
       </div>
 
