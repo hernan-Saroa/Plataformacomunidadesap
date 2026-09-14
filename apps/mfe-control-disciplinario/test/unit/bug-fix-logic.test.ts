@@ -147,3 +147,207 @@ describe('Pliego auto detection - esPliegoAuto', () => {
     expect(esPliegoAuto({ tipo: 'AUTO_ARCHIVO', titulo: 'Auto de Archivo Definitivo' })).toBe(false);
   });
 });
+
+// Helper implementing the new robust isSecretarioRadicadorUser logic
+function checkIsSecretarioRadicador(user: any): boolean {
+  if (!user) return false;
+  const rawRoles = [
+    ...(Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : []),
+    ...(Array.isArray(user?.person?.roles) ? user.person.roles : []),
+    ...(user?.role ? [user.role] : []),
+    ...(user?.rol ? [user.rol] : []),
+  ];
+
+  return rawRoles.some((r: any) => {
+    const candidates = [
+      typeof r === 'string' ? r : '',
+      r?.code,
+      r?.name,
+      r?.nombre,
+      r?.slug,
+    ].filter(Boolean);
+
+    return candidates.some((cand: string) => {
+      const clean = cand
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
+      return (
+        clean === 'SECRETARIA_RADICADOR' ||
+        clean === 'SECRETARIO_RADICADOR' ||
+        clean === 'RADICADOR_DISCIPLINARIO' ||
+        clean === 'RADICADOR' ||
+        clean.includes('SECRETARI') ||
+        clean.includes('RADICADOR')
+      );
+    });
+  });
+}
+
+function isEtapaCargos(etapaNombre?: string | null): boolean {
+  if (!etapaNombre) return false;
+  const n = etapaNombre
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  return (
+    n === 'CARGOS' ||
+    n.includes('CARGO') ||
+    n.includes('PLIEGO') ||
+    n === 'EVALUACION' ||
+    n.includes('EVALUAC')
+  );
+}
+
+// Helper simulating Kanban canDrop logic
+function canDropInKanban(
+  isRadicador: boolean,
+  item: { tipo?: string; tipoItem?: string; etapaActual?: string },
+  targetEtapa: string
+): boolean {
+  const esProceso = item?.tipoItem === 'proceso' || item?.tipo === 'proceso' || (item?.tipo !== 'noticia' && !!item?.etapaActual);
+
+  if (isRadicador) {
+    if (esProceso) {
+      return isEtapaCargos(item.etapaActual) && isEtapaJuzgamiento(targetEtapa);
+    }
+    return false;
+  }
+  return true;
+}
+
+// Helper simulating canDrag logic
+function canDragInKanban(
+  isRadicador: boolean,
+  item: { tipo?: string; tipoItem?: string; etapaActual?: string }
+): boolean {
+  const esProceso = item?.tipoItem === 'proceso' || item?.tipo === 'proceso' || (item?.tipo !== 'noticia' && !!item?.etapaActual);
+
+  if (isRadicador) {
+    if (esProceso) {
+      return isEtapaCargos(item.etapaActual);
+    }
+    return false; // Noticias cannot be dragged by Radicador
+  }
+  return true;
+}
+
+describe('Secretario/Radicador Role Detection - checkIsSecretarioRadicador', () => {
+  it('detects string role "SECRETARIA_RADICADOR"', () => {
+    expect(checkIsSecretarioRadicador({ roles: ['SECRETARIA_RADICADOR'] })).toBe(true);
+  });
+
+  it('detects accented string role "Secretaría / Radicador"', () => {
+    expect(checkIsSecretarioRadicador({ roles: ['Secretaría / Radicador'] })).toBe(true);
+  });
+
+  it('detects string role "RADICADOR_DISCIPLINARIO"', () => {
+    expect(checkIsSecretarioRadicador({ roles: ['RADICADOR_DISCIPLINARIO'] })).toBe(true);
+  });
+
+  it('detects generic string role "RADICADOR"', () => {
+    expect(checkIsSecretarioRadicador({ roles: ['RADICADOR'] })).toBe(true);
+  });
+
+  it('detects role as object with code: "SECRETARIA_RADICADOR"', () => {
+    expect(checkIsSecretarioRadicador({ roles: [{ code: 'SECRETARIA_RADICADOR' }] })).toBe(true);
+  });
+
+  it('detects role as object with name: "Secretaría / Radicador" (accented, no code)', () => {
+    expect(checkIsSecretarioRadicador({ roles: [{ name: 'Secretaría / Radicador' }] })).toBe(true);
+  });
+
+  it('detects role inside user.person.roles', () => {
+    expect(checkIsSecretarioRadicador({ person: { roles: ['Secretaría / Radicador'] } })).toBe(true);
+  });
+
+  it('detects single role in user.role', () => {
+    expect(checkIsSecretarioRadicador({ role: 'RADICADOR_DISCIPLINARIO' })).toBe(true);
+  });
+
+  it('detects single role in user.rol', () => {
+    expect(checkIsSecretarioRadicador({ rol: 'Secretaría / Radicador' })).toBe(true);
+  });
+
+  it('returns false for unrelated roles like INVESTIGADOR or ABOGADO', () => {
+    expect(checkIsSecretarioRadicador({ roles: ['INVESTIGADOR', 'PROFESIONAL'] })).toBe(false);
+    expect(checkIsSecretarioRadicador({ roles: [] })).toBe(false);
+    expect(checkIsSecretarioRadicador(null)).toBe(false);
+  });
+});
+
+describe('Stage Detection - isEtapaCargos', () => {
+  it('identifies "Cargos" and "CARGOS"', () => {
+    expect(isEtapaCargos('Cargos')).toBe(true);
+    expect(isEtapaCargos('CARGOS')).toBe(true);
+  });
+
+  it('identifies "Formulación de Cargos"', () => {
+    expect(isEtapaCargos('Formulación de Cargos')).toBe(true);
+    expect(isEtapaCargos('FORMULACION DE CARGOS')).toBe(true);
+  });
+
+  it('identifies "Pliego de Cargos"', () => {
+    expect(isEtapaCargos('Pliego de Cargos')).toBe(true);
+  });
+
+  it('identifies "Evaluación"', () => {
+    expect(isEtapaCargos('Evaluación')).toBe(true);
+    expect(isEtapaCargos('EVALUACION')).toBe(true);
+  });
+
+  it('returns false for other stages', () => {
+    expect(isEtapaCargos('Juzgamiento')).toBe(false);
+    expect(isEtapaCargos('Recepción')).toBe(false);
+    expect(isEtapaCargos('Indagación Previa')).toBe(false);
+    expect(isEtapaCargos('Investigación')).toBe(false);
+    expect(isEtapaCargos('Fallo')).toBe(false);
+  });
+});
+
+describe('Radicador Kanban Drag & Drop Restrictions', () => {
+  const isRadicador = true;
+
+  it('ALLOWS dragging process from Cargos to Juzgamiento', () => {
+    const procesoCargos = { tipo: 'proceso', etapaActual: 'Cargos' };
+    expect(canDragInKanban(isRadicador, procesoCargos)).toBe(true);
+    expect(canDropInKanban(isRadicador, procesoCargos, 'Juzgamiento')).toBe(true);
+  });
+
+  it('ALLOWS dragging process with Formulación de Cargos to Juzgamiento', () => {
+    const procesoCargos = { tipoItem: 'proceso', etapaActual: 'Formulación de Cargos' };
+    expect(canDragInKanban(isRadicador, procesoCargos)).toBe(true);
+    expect(canDropInKanban(isRadicador, procesoCargos, 'Juzgamiento')).toBe(true);
+  });
+
+  it('BLOCKS dropping process from Juzgamiento to Cargos (reverse transition)', () => {
+    const procesoJuzgamiento = { tipo: 'proceso', etapaActual: 'Juzgamiento' };
+    expect(canDropInKanban(isRadicador, procesoJuzgamiento, 'Cargos')).toBe(false);
+  });
+
+  it('BLOCKS dropping process between other stages (e.g. Recepción to Valoración)', () => {
+    const procesoRecepcion = { tipo: 'proceso', etapaActual: 'Recepción' };
+    expect(canDropInKanban(isRadicador, procesoRecepcion, 'Valoración')).toBe(false);
+  });
+
+  it('BLOCKS dropping process from Investigación to Fallo', () => {
+    const procesoInvestigacion = { tipo: 'proceso', etapaActual: 'Investigación' };
+    expect(canDropInKanban(isRadicador, procesoInvestigacion, 'Fallo')).toBe(false);
+  });
+
+  it('BLOCKS dragging processes in other stages for Radicador', () => {
+    expect(canDragInKanban(isRadicador, { tipo: 'proceso', etapaActual: 'Recepción' })).toBe(false);
+    expect(canDragInKanban(isRadicador, { tipo: 'proceso', etapaActual: 'Investigación' })).toBe(false);
+    expect(canDragInKanban(isRadicador, { tipo: 'proceso', etapaActual: 'Juzgamiento' })).toBe(false);
+  });
+
+  it('BLOCKS dragging and dropping noticias for Radicador', () => {
+    const noticia = { tipo: 'noticia', etapaActual: 'Recepción' };
+    expect(canDragInKanban(isRadicador, noticia)).toBe(false);
+    expect(canDropInKanban(isRadicador, noticia, 'Valoración')).toBe(false);
+  });
+});

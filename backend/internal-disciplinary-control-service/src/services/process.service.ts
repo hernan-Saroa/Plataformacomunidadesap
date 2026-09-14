@@ -1089,27 +1089,55 @@ export class ProcessService {
       }
 
       // Get current stage configuration to get its orden
-      const currentStageConfig = await this.stageConfigurationRepository.findOne({
+      let currentStageConfig = await this.stageConfigurationRepository.findOne({
         where: { etapa: proceso.etapaActual, activo: true },
       });
       if (!currentStageConfig) {
-        throw new HttpException(
-          `Current stage configuration for ${proceso.etapaActual} not found`,
-          HttpStatus.BAD_REQUEST,
-        );
+        currentStageConfig = await this.stageConfigurationRepository
+          .createQueryBuilder('stage')
+          .where('LOWER(stage.etapa) = LOWER(:etapa)', { etapa: proceso.etapaActual })
+          .andWhere('stage.activo = true')
+          .getOne();
+      }
+      if (!currentStageConfig && this.isCargosStage(proceso.etapaActual)) {
+        currentStageConfig = await this.stageConfigurationRepository
+          .createQueryBuilder('stage')
+          .where('UPPER(stage.etapa) LIKE :cargos', { cargos: '%CARGO%' })
+          .orWhere('UPPER(stage.etapa) LIKE :eval', { eval: '%EVALUAC%' })
+          .andWhere('stage.activo = true')
+          .getOne();
+      }
+      if (!currentStageConfig) {
+        if (this.isCargosStage(proceso.etapaActual)) {
+          currentStageConfig = { orden: 5, etapa: proceso.etapaActual } as StageConfiguration;
+        } else {
+          throw new HttpException(
+            `Current stage configuration for ${proceso.etapaActual} not found`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
       }
 
       // Validación de rol Secretario/Radicador: solo puede trasladar Cargos → Juzgamiento
       if (userRoles) {
         const rolesArray: string[] = Array.isArray(userRoles)
-          ? userRoles.map((r: any) => typeof r === 'string' ? r : (r?.code || r?.name || '')).filter(Boolean)
-          : [];
+          ? userRoles.map((r: any) => (typeof r === 'string' ? r : (r?.code || r?.name || r?.nombre || ''))).filter(Boolean)
+          : typeof userRoles === 'string'
+            ? [userRoles]
+            : [];
         const isRadicador = rolesArray.some((r: string) => {
-          const u = r.toUpperCase();
-          return u === 'SECRETARIA_RADICADOR' || u === 'RADICADOR_DISCIPLINARIO' || u.includes('RADICADOR');
+          const u = r.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+          return (
+            u === 'SECRETARIA_RADICADOR' ||
+            u === 'SECRETARIO_RADICADOR' ||
+            u === 'RADICADOR_DISCIPLINARIO' ||
+            u === 'RADICADOR' ||
+            u.includes('RADICADOR') ||
+            u.includes('SECRETARI')
+          );
         });
         const isAdminOrJefe = rolesArray.some((r: string) => {
-          const u = r.toUpperCase();
+          const u = r.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
           return u === 'SUPER_ADMIN' || u === 'ADMIN' || u.includes('JEFE');
         });
 
