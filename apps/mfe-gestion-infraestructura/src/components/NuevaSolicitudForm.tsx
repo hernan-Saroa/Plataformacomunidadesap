@@ -240,9 +240,12 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
           `No se pudo subir el archivo ${conErrores.file.name}: ${conErrores.error}. Intente nuevamente o remuévalo.`,
         );
       }
-      const uploadedEvidenciaIds = archivos
-        .map((a) => a.evidencia?.idEvidencia)
-        .filter((x): x is string => !!x);
+      const uploadedEvidenciaIds = Array.from(
+        new Set([
+          ...evidenciasSubidas.map((e) => e.idEvidencia),
+          ...archivos.flatMap((a) => (a.evidencia?.idEvidencia ? [a.evidencia.idEvidencia] : [])),
+        ]),
+      ).filter((x): x is string => !!x);
       const payload: CreateMantenimientoPayload = {
         idSede,
         nombreAreaSolicitante: nombreAreaSolicitante.trim(),
