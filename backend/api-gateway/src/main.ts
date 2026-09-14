@@ -18,9 +18,18 @@ async function bootstrap() {
   // Configurar CORS dinámicamente por ambiente
   const allowedOrigins = [
     // Desarrollo local (siempre permitidos)
+    // 'http://localhost' a secas: el frontend en docker-compose.dev.yml se
+    // sirve por nginx en el puerto 80, y ahí el navegador manda el Origin sin
+    // puerto. NODE_ENV=production está fijo en docker-compose.dev.yml para
+    // los 14 servicios (no es cosa nuestra tocarlo), así que el fallback de
+    // isDev/localhostPattern de abajo no aplica aquí: hay que listarlo.
+    'http://localhost',
+    'http://localhost:80',
     'http://localhost:5173',
     'http://localhost:3000',
     'http://localhost:8080',
+    'http://127.0.0.1',
+    'http://127.0.0.1:80',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
