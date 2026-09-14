@@ -161,15 +161,12 @@ export class ProgramaAnualVersionesService {
   }
 
   /**
-   * Log de cambios del programa: versiones, ajustes y lo que se modificó en sus
-   * auditorías, incluido el cambio de auditores que no genera versión.
+   * Log de cambios del programa: ajustes y lo que se modificó en sus auditorías,
+   * incluido el cambio de auditores que no genera versión. Las versiones no se
+   * repiten aquí: ya tienen su propio listado.
    */
   async obtenerLog(vigencia: number): Promise<EntradaLogPrograma[]> {
-    const [versiones, ajustes, historial] = await Promise.all([
-      this.versionRepository.find({
-        where: { vigencia },
-        select: ['version', 'motivo', 'cambios', 'generadaPor', 'createdAt'],
-      }),
+    const [ajustes, historial] = await Promise.all([
       this.dataSource.query(
         `SELECT iniciado_por, iniciado_at, cerrado_at, version_resultante
            FROM control_interno.programa_anual_ajuste WHERE vigencia = $1`,
@@ -177,7 +174,7 @@ export class ProgramaAnualVersionesService {
       ),
       this.dataSource.query(
         `SELECT to_char(h.fecha, 'YYYY-MM-DD') || 'T' || to_char(h.hora, 'HH24:MI:SS') || '-05:00' AS fecha,
-                h.accion, h.descripcion, a.codigo,
+                h.accion, h.descripcion, a.codigo, a.nombre,
                 COALESCE(p.nom_largo, h.nombre_usuario, 'Sistema') AS autor
            FROM control_interno.historial_auditoria h
            JOIN control_interno.auditoria a ON a.id = h.auditoria_id
@@ -194,16 +191,6 @@ export class ProgramaAnualVersionesService {
     ]);
 
     const log: EntradaLogPrograma[] = [
-      ...versiones.map((v) => ({
-        fecha: new Date(v.createdAt).toISOString(),
-        tipo: 'version' as const,
-        autor: v.generadaPor,
-        auditoria: null,
-        detalle:
-          `Versión v${v.version}.0 generada` +
-          (v.cambios?.length ? ` con ${v.cambios.length} cambio(s)` : ' (versión inicial)') +
-          (v.motivo ? `. Motivo: ${v.motivo}` : ''),
-      })),
       ...ajustes.flatMap((j: any) => [
         { fecha: new Date(j.iniciado_at).toISOString(), tipo: 'ajuste' as const, autor: j.iniciado_por, auditoria: null, detalle: 'Ajuste iniciado' },
         ...(j.cerrado_at && !j.version_resultante
@@ -219,7 +206,9 @@ export class ProgramaAnualVersionesService {
             : /auditor|equipo/i.test(h.descripcion || '') ? 'auditores' : 'programacion') as EntradaLogPrograma['tipo'],
         autor: h.autor,
         auditoria: h.codigo,
-        detalle: String(h.descripcion || h.accion).replace(/^Cambios realizados:\s*/, ''),
+        detalle: h.accion === 'Auditoría creada'
+          ? String(h.nombre || '')
+          : String(h.descripcion || h.accion).replace(/^Cambios realizados:\s*/, ''),
       })),
     ];
 
