@@ -42,7 +42,6 @@ import {
   Search, // 🆕 Agregado
   MapPin, // 🆕 Agregado
   CalendarOff,
-  History,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -60,12 +59,8 @@ import {
 import { esFestivo } from '../gestion-legal/utils/diasHabiles';
 import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
 import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
-import {
-  exportarProgramaAnualVersionado,
-  descargarVersionProgramaAnual,
-} from './services/versionesProgramaAnual';
-import { controlInternoService } from '../services/api/controlInternoService';
-import type { ResumenVersionProgramaAnual } from '../services/api/controlInternoService';
+import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
+import { EVENTO_VERSION_PROGRAMA } from './BannerVersionProgramaAnual';
 
 
 /** Colores por columna del tablero (misma semántica que `resolverColumnaKanban`) */
@@ -444,21 +439,6 @@ const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
-/** Nombres legibles de los campos que se versionan en el Programa Anual. */
-const ETIQUETAS_CAMPO_PROGRAMA: Record<string, string> = {
-  nombre: 'Unidad auditada',
-  areaObjetivo: 'Área objetivo',
-  tipo: 'Tipo',
-  responsableArea: 'Responsable del área',
-  observaciones: 'Observaciones',
-  fechaInicio: 'Inicio de planeación',
-  fechaFinPlaneacion: 'Fin de planeación',
-  fechaInicioEjecucion: 'Inicio de ejecución',
-  fechaFinEjecucion: 'Fin de ejecución',
-  fechaInicioComunicacion: 'Inicio de comunicación',
-  fechaFin: 'Fin de comunicación',
-};
-
 export function CronogramaAuditoriasPremium({
   auditorias,
   vigencia = new Date().getFullYear()
@@ -588,44 +568,6 @@ export function CronogramaAuditoriasPremium({
     setFechaActual(new Date());
   };
 
-  // ── Histórico de versiones del Programa Anual (EFDS-1919) ──
-  const [modalVersionesAbierto, setModalVersionesAbierto] = useState(false);
-  const [versiones, setVersiones] = useState<ResumenVersionProgramaAnual[]>([]);
-  const [cargandoVersiones, setCargandoVersiones] = useState(false);
-  const [descargandoVersion, setDescargandoVersion] = useState<number | null>(null);
-
-  const cargarVersiones = async () => {
-    setCargandoVersiones(true);
-    try {
-      const data = await controlInternoService.getVersionesProgramaAnual(vigencia);
-      setVersiones(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('[Cronograma] Error al cargar versiones del Programa Anual:', error);
-      toast.error('No se pudo cargar el histórico de versiones');
-    } finally {
-      setCargandoVersiones(false);
-    }
-  };
-
-  const abrirVersiones = () => {
-    setModalVersionesAbierto(true);
-    cargarVersiones();
-  };
-
-  const handleDescargarVersion = async (numero: number) => {
-    setDescargandoVersion(numero);
-    try {
-      const resultado = await descargarVersionProgramaAnual(vigencia, numero);
-      if (resultado.exito) toast.success(`Versión ${numero} descargada`);
-      else toast.error('Error al descargar: ' + resultado.error);
-    } catch (error) {
-      console.error('[Cronograma] Error al descargar versión:', error);
-      toast.error(`No se pudo descargar la versión ${numero}`);
-    } finally {
-      setDescargandoVersion(null);
-    }
-  };
-
   const handleExportExcel = async () => {
     toast.info('Generando archivo Excel...');
 
@@ -639,7 +581,9 @@ export function CronogramaAuditoriasPremium({
             ? `Programa Anual exportado. Se generó la versión ${resultado.version}.`
             : `Programa Anual exportado (versión ${resultado.version}, sin cambios).`,
         );
-        if (modalVersionesAbierto) cargarVersiones();
+        if (resultado.nueva) {
+          window.dispatchEvent(new CustomEvent(EVENTO_VERSION_PROGRAMA, { detail: { vigencia } }));
+        }
       } else {
         toast.error('Error al exportar: ' + resultado.error);
       }
@@ -882,15 +826,6 @@ export function CronogramaAuditoriasPremium({
               <Download className="w-4 h-4" />
               Exportar
             </button>
-
-            {/* Histórico de versiones del Programa Anual */}
-            <button
-              onClick={abrirVersiones}
-              className="px-3 py-2 bg-white border-2 border-gray-300 hover:border-[#2962FF] rounded-lg text-xs font-bold flex items-center gap-2 transition-all"
-            >
-              <History className="w-4 h-4" />
-              Versiones
-            </button>
           </div>
         </div>
       </div>
@@ -966,80 +901,6 @@ export function CronogramaAuditoriasPremium({
           auditoria={auditoriaSeleccionada}
           onCerrar={() => setAuditoriaSeleccionada(null)}
         />
-      )}
-
-      {/* Histórico de versiones del Programa Anual (EFDS-1919) */}
-      {modalVersionesAbierto && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div className="px-6 py-4 rounded-t-2xl bg-[#003DA5] flex items-start justify-between">
-              <div>
-                <h3 className="text-xl font-black text-white mb-1">Versiones del Programa Anual {vigencia}</h3>
-                <p className="text-sm text-white/90 font-medium">
-                  Se genera una versión al exportar, solo si cambió lo que imprime el documento.
-                </p>
-              </div>
-              <button
-                onClick={() => setModalVersionesAbierto(false)}
-                className="p-2 hover:bg-white/20 rounded-lg transition-all"
-                aria-label="Cerrar"
-              >
-                <XIcon className="w-5 h-5 text-white" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-3">
-              {cargandoVersiones && <p className="text-sm text-gray-500">Cargando versiones...</p>}
-
-              {!cargandoVersiones && versiones.length === 0 && (
-                <p className="text-sm text-gray-600">
-                  Aún no hay versiones. La primera se genera al exportar el Programa Anual.
-                </p>
-              )}
-
-              {!cargandoVersiones && versiones.map((v) => (
-                <div key={v.id} className="border-2 border-gray-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-base font-black text-gray-900">Versión {v.version}</p>
-                      <p className="text-xs text-gray-600">
-                        {new Date(v.fecha).toLocaleString('es-CO')} · {v.generadaPor}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDescargarVersion(v.version)}
-                      disabled={descargandoVersion === v.version}
-                      className="px-3 py-2 bg-white border-2 border-gray-300 hover:border-[#2962FF] rounded-lg text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-50"
-                    >
-                      <Download className="w-4 h-4" />
-                      {descargandoVersion === v.version ? 'Descargando...' : 'Descargar'}
-                    </button>
-                  </div>
-
-                  {v.cambios.length === 0 ? (
-                    <p className="mt-2 text-xs text-gray-500">Versión inicial del programa.</p>
-                  ) : (
-                    <ul className="mt-2 space-y-1">
-                      {v.cambios.map((c, i) => (
-                        <li key={`${v.id}-${i}`} className="text-xs text-gray-700">
-                          <span className="font-bold">
-                            {c.tipo === 'agregada' ? 'Agregada' : c.tipo === 'eliminada' ? 'Retirada' : 'Modificada'}:
-                          </span>{' '}
-                          {c.nombre} ({c.codigo})
-                          {c.campos?.map((campo) => (
-                            <span key={campo.campo} className="block pl-3 text-gray-600">
-                              {ETIQUETAS_CAMPO_PROGRAMA[campo.campo] || campo.campo}: {campo.antes || 'vacío'} → {campo.despues || 'vacío'}
-                            </span>
-                          ))}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
