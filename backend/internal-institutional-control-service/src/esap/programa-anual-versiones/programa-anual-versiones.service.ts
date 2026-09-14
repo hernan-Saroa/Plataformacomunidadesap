@@ -12,12 +12,12 @@ import {
 
 /**
  * Campos que imprime el documento del Programa Anual. Solo un cambio en ellos
- * genera versión nueva (EFDS-1919): los auditores, el estado, el avance y todo
- * lo interno de cada etapa no aparecen en el documento y por eso no cuentan.
+ * genera versión nueva (EFDS-1919): los auditores, el estado, el avance, el área
+ * objetivo y todo lo interno de cada etapa no aparecen en el documento y por eso
+ * no cuentan.
  */
 const CAMPOS_VERSIONADOS: Array<keyof FilaProgramaAnual> = [
   'nombre',
-  'areaObjetivo',
   'tipo',
   'responsableArea',
   'observaciones',
@@ -67,8 +67,9 @@ export class ProgramaAnualVersionesService {
 
       const repo = manager.getRepository(VersionProgramaAnual);
       const ultima = await repo.findOne({ where: { vigencia }, order: { version: 'DESC' } });
+      const cambios = ultima ? this.compararFilas(ultima.filas, filas) : [];
 
-      if (ultima && ultima.huella === huella) {
+      if (ultima && (ultima.huella === huella || cambios.length === 0)) {
         return this.aResuelta(ultima, false);
       }
 
@@ -77,7 +78,7 @@ export class ProgramaAnualVersionesService {
         version: (ultima?.version ?? 0) + 1,
         huella,
         filas,
-        cambios: ultima ? this.compararFilas(ultima.filas, filas) : [],
+        cambios,
         generadaPor: usuario?.nombre || 'Sistema',
         generadaPorId: usuario?.id ?? null,
       });
@@ -148,8 +149,14 @@ export class ProgramaAnualVersionesService {
     // Se ordena solo para la huella: el orden de la lista no es un cambio del programa.
     const impreso = [...filas]
       .sort((x, y) => x.id.localeCompare(y.id))
-      .map((f) => [f.id, ...CAMPOS_VERSIONADOS.map((c) => f[c] ?? null)]);
+      .map((f) => [f.id, ...CAMPOS_VERSIONADOS.map((c) => this.valorImpreso(f, c))]);
     return createHash('sha256').update(JSON.stringify(impreso)).digest('hex');
+  }
+
+  /** Valor tal como sale en el documento: la plantilla quita del nombre lo que va entre paréntesis. */
+  private valorImpreso(fila: FilaProgramaAnual, campo: keyof FilaProgramaAnual): string | null {
+    const valor = (fila[campo] as string) ?? null;
+    return campo === 'nombre' && valor ? valor.replace(/\([^)]*\)/g, '').trim() : valor;
   }
 
   private compararFilas(anteriores: FilaProgramaAnual[], actuales: FilaProgramaAnual[]): CambioProgramaAnual[] {
@@ -164,8 +171,8 @@ export class ProgramaAnualVersionesService {
         continue;
       }
       const campos: CambioCampo[] = CAMPOS_VERSIONADOS
-        .filter((c) => (previa[c] ?? null) !== (fila[c] ?? null))
-        .map((c) => ({ campo: c, antes: (previa[c] as string) ?? null, despues: (fila[c] as string) ?? null }));
+        .filter((c) => this.valorImpreso(previa, c) !== this.valorImpreso(fila, c))
+        .map((c) => ({ campo: c, antes: this.valorImpreso(previa, c), despues: this.valorImpreso(fila, c) }));
       if (campos.length > 0) {
         cambios.push({ tipo: 'modificada', codigo: fila.codigo, nombre: fila.nombre, campos });
       }
