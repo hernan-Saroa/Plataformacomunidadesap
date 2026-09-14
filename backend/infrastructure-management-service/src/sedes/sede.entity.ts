@@ -40,6 +40,9 @@ export class Sede {
   @Column({ type: 'boolean', default: true, name: 'is_activo' })
   isActivo: boolean;
 
+  @Column({ type: 'boolean', default: false, name: 'alcance_umi' })
+  alcanceUmi: boolean;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

@@ -9,6 +9,7 @@ export interface Sede {
   telefono?: string;
   emailContacto?: string;
   isActivo: boolean;
+  alcanceUmi?: boolean;
   bloques?: BloqueEdificio[];
 }
 
@@ -41,6 +42,36 @@ export interface EspacioFisico {
   bloque?: BloqueEdificio;
 }
 
+export interface CatalogoItem {
+  idCatalogo: number;
+  catalogo: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  orden: number;
+  isActivo: boolean;
+  metadata: Record<string, any>;
+}
+
+export interface SolicitudEvidencia {
+  idEvidencia: string;
+  idSolicitud?: string;
+  nombreOriginal: string;
+  nombreAlmacenado: string;
+  rutaObjeto: string;
+  bucket: string;
+  urlPublica?: string;
+  urlPresigned?: string;
+  vencimientoPresigned?: string;
+  mimeType?: string;
+  tamanoBytes: number;
+  usuarioQueSubioId?: string;
+  usuarioQueSubioEmail?: string;
+  orden?: number;
+  notas?: string;
+  fechaSubida: string;
+}
+
 export interface SolicitudMantenimiento {
   idSolicitud: string;
   consecutivo: string;
@@ -57,9 +88,36 @@ export interface SolicitudMantenimiento {
   estado: string;
   observaciones?: string;
   costoEstimado?: number;
+  idAreaSolicitante?: string;
+  nombreAreaSolicitante?: string;
+  piso?: string;
+  salon?: string;
+  ubicacionDetalle?: string;
+  tipoAtencion: string;
+  idCategoria?: string;
+  fechaRadicacion?: string;
+  usuarioSolicitanteId?: string;
+  usuarioSolicitanteEmail?: string;
+  evidenciaInicialUrl?: string;
   createdAt: string;
   sede?: Sede;
   espacio?: EspacioFisico;
+  evidencias?: SolicitudEvidencia[];
+}
+
+export interface CreateMantenimientoPayload {
+  idSede: string;
+  idEspacio?: string;
+  nombreAreaSolicitante: string;
+  idAreaSolicitante?: string;
+  piso: string;
+  salon: string;
+  ubicacionDetalle?: string;
+  tipoMantenimiento: string;
+  descripcion: string;
+  evidenciaInicialUrl?: string;
+  uploadedEvidenciaIds?: string[];
+  prioridad?: string;
 }
 
 export interface EstadisticasInfraestructura {
@@ -70,126 +128,61 @@ export interface EstadisticasInfraestructura {
   porcentajeOcupacion: number;
 }
 
-const API_BASE_URL = typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL
-  ? `${(window as any).__ESAP_CONFIG__.API_URL}/infraestructura`
-  : '/services/infraestructura';
+const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
+  ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '')
+  : 'http://localhost:4000';
+
+const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
+
+export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD';
 
 export const infraestructuraService = {
+  async getCatalogo(nombre: NombreCatalogo): Promise<CatalogoItem[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/catalogos/${nombre}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Error al obtener catálogo ${nombre} (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getCatalogo(${nombre}) falló:`, err);
+      return [];
+    }
+  },
+
   async getSedes(): Promise<Sede[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/sedes`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Error al obtener sedes');
+      if (!res.ok) throw new Error(`Error al obtener sedes (${res.status})`);
       return await res.json();
-    } catch {
-      return [
-        {
-          idSede: '1',
-          codigo: 'SEDE-CENTRAL',
-          nombre: 'Sede Central - Bogotá D.C.',
-          tipo: 'SEDE_CENTRAL',
-          departamento: 'Bogotá D.C.',
-          municipio: 'Bogotá',
-          direccion: 'Calle 44 # 53 - 37 CAN',
-          telefono: '(601) 7956110',
-          emailContacto: 'infraestructura@esap.edu.co',
-          isActivo: true,
-        },
-        {
-          idSede: '2',
-          codigo: 'TERR-ANTIOQUIA',
-          nombre: 'Territorial Antioquia - Chocó',
-          tipo: 'TERRITORIAL',
-          departamento: 'Antioquia',
-          municipio: 'Medellín',
-          direccion: 'Calle 56 # 41 - 147',
-          telefono: '(604) 5143300',
-          emailContacto: 'antioquia@esap.edu.co',
-          isActivo: true,
-        },
-        {
-          idSede: '3',
-          codigo: 'TERR-VALLE',
-          nombre: 'Territorial Valle del Cauca',
-          tipo: 'TERRITORIAL',
-          departamento: 'Valle del Cauca',
-          municipio: 'Cali',
-          direccion: 'Avenida 2N # 24N - 32',
-          telefono: '(602) 6612000',
-          emailContacto: 'valle@esap.edu.co',
-          isActivo: true,
-        },
-      ];
+    } catch (err) {
+      console.warn('[infraestructuraService] getSedes fallback a lista vacía:', err);
+      return [];
     }
   },
 
   async getEspacios(): Promise<EspacioFisico[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/espacios`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Error al obtener espacios');
+      if (!res.ok) throw new Error(`Error al obtener espacios (${res.status})`);
       return await res.json();
-    } catch {
-      return [
-        {
-          idEspacio: 'e1',
-          idBloque: 'b1',
-          codigo: 'AULA-101',
-          nombre: 'Aula Magistral Camilo Torres',
-          tipo: 'AULA',
-          capacidad: 45,
-          piso: 1,
-          areaM2: 70,
-          tieneAireAcondicionado: true,
-          tieneVideobeam: true,
-          tieneComputadores: false,
-          estado: 'DISPONIBLE',
-          isActivo: true,
-        },
-        {
-          idEspacio: 'e2',
-          idBloque: 'b1',
-          codigo: 'AUD-PRINCIPAL',
-          nombre: 'Auditorio Mayor ESAP',
-          tipo: 'AUDITORIO',
-          capacidad: 250,
-          piso: 1,
-          areaM2: 320,
-          tieneAireAcondicionado: true,
-          tieneVideobeam: true,
-          tieneComputadores: true,
-          estado: 'DISPONIBLE',
-          isActivo: true,
-        },
-        {
-          idEspacio: 'e3',
-          idBloque: 'b2',
-          codigo: 'LAB-INFO-01',
-          nombre: 'Laboratorio de Informática y Estadística',
-          tipo: 'LABORATORIO',
-          capacidad: 35,
-          piso: 2,
-          areaM2: 85,
-          tieneAireAcondicionado: true,
-          tieneVideobeam: true,
-          tieneComputadores: true,
-          estado: 'MANTENIMIENTO',
-          isActivo: true,
-        },
-      ];
+    } catch (err) {
+      console.warn('[infraestructuraService] getEspacios fallback a lista vacía:', err);
+      return [];
     }
   },
 
   async getEstadisticas(): Promise<EstadisticasInfraestructura> {
     try {
       const res = await fetch(`${API_BASE_URL}/espacios/estadisticas`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Error al obtener estadísticas');
+      if (!res.ok) throw new Error(`Error al obtener estadísticas (${res.status})`);
       return await res.json();
-    } catch {
+    } catch (err) {
+      console.warn('[infraestructuraService] getEstadisticas fallback a default:', err);
       return {
-        total: 128,
-        disponibles: 104,
-        enMantenimiento: 8,
-        reservadas: 16,
-        porcentajeOcupacion: 19,
+        total: 0,
+        disponibles: 0,
+        enMantenimiento: 0,
+        reservadas: 0,
+        porcentajeOcupacion: 0,
       };
     }
   },
@@ -199,39 +192,130 @@ export const infraestructuraService = {
       const res = await fetch(`${API_BASE_URL}/mantenimiento`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
       return await res.json();
-    } catch {
-      return [
-        {
-          idSolicitud: 'm1',
-          consecutivo: 'MNT-2026-0001',
-          idSede: '1',
-          tipoMantenimiento: 'CORRECTIVO',
-          prioridad: 'ALTA',
-          descripcion: 'Mantenimiento del sistema de proyección y cableado HDMI en Auditorio Principal',
-          solicitanteEmail: 'direccion.academica@esap.edu.co',
-          solicitanteNombre: 'Dirección Académica',
-          responsableAsignado: 'Ing. Javier Moreno',
-          fechaProgramada: '2026-09-12',
-          estado: 'EN_PROCESO',
-          costoEstimado: 680000,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          idSolicitud: 'm2',
-          consecutivo: 'MNT-2026-0002',
-          idSede: '2',
-          tipoMantenimiento: 'PREVENTIVO',
-          prioridad: 'MEDIA',
-          descripcion: 'Revisión periódica de unidades de aire acondicionado y filtros',
-          solicitanteEmail: 'antioquia@esap.edu.co',
-          solicitanteNombre: 'Coordinación Territorial',
-          responsableAsignado: 'Técnico Climatización S.A.S.',
-          fechaProgramada: '2026-09-18',
-          estado: 'PENDIENTE',
-          costoEstimado: 1200000,
-          createdAt: new Date().toISOString(),
-        },
-      ];
+    } catch (err) {
+      console.warn('[infraestructuraService] getMantenimientos falló, retornando []:', err);
+      return [];
     }
+  },
+
+  async getMantenimientoById(idSolicitud: string): Promise<SolicitudMantenimiento | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}`, {
+        credentials: 'include',
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`Error al obtener detalle (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getMantenimientoById(${idSolicitud}):`, err);
+      return null;
+    }
+  },
+
+  async getMisSolicitudes(): Promise<SolicitudMantenimiento[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/mis-solicitudes`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error('Error al obtener mis solicitudes');
+      return await res.json();
+    } catch (err) {
+      console.warn('No se pudieron cargar mis solicitudes (sin sesion o endpoint indisponible). Retornando placeholder.', err);
+      return [];
+    }
+  },
+
+  async createMantenimiento(payload: CreateMantenimientoPayload): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let mensaje = 'Error al radicar la solicitud';
+      try {
+        const errorBody = await res.json();
+        if (errorBody?.message) {
+          mensaje = Array.isArray(errorBody.message) ? errorBody.message.join(', ') : String(errorBody.message);
+        }
+      } catch {
+        // Ignorar error de parseo del body
+      }
+      throw new Error(mensaje);
+    }
+    return await res.json();
+  },
+
+  async uploadEvidencia(
+    file: File,
+    opts?: { onProgress?: (porcentaje: number) => void; idSolicitud?: string; orden?: number; notas?: string },
+  ): Promise<SolicitudEvidencia> {
+    return new Promise<SolicitudEvidencia>((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (opts?.idSolicitud) form.append('idSolicitud', opts.idSolicitud);
+      if (opts?.orden != null) form.append('orden', String(opts.orden));
+      if (opts?.notas) form.append('notas', opts.notas);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}/mantenimiento/evidencias/upload`, true);
+      xhr.withCredentials = true;
+      if (opts?.onProgress && xhr.upload) {
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            const p = Math.round((ev.loaded / ev.total) * 100);
+            opts.onProgress?.(p);
+          }
+        };
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as SolicitudEvidencia);
+          } catch (err) {
+            reject(new Error('Respuesta inválida al subir evidencia'));
+          }
+        } else {
+          let mensaje = `Error al subir evidencia (${xhr.status})`;
+          try {
+            const errorBody = JSON.parse(xhr.responseText);
+            if (errorBody?.message) {
+              mensaje = Array.isArray(errorBody.message) ? errorBody.message.join(', ') : String(errorBody.message);
+            }
+          } catch {
+            // ignore
+          }
+          reject(new Error(mensaje));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Error de red al subir evidencia'));
+      xhr.send(form);
+    });
+  },
+
+  async getEvidenciasBySolicitud(idSolicitud: string): Promise<SolicitudEvidencia[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${idSolicitud}/evidencias`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Error al obtener evidencias (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getEvidenciasBySolicitud(${idSolicitud}):`, err);
+      return [];
+    }
+  },
+
+  async getSedesAlcanceUMI(): Promise<Sede[]> {
+    const todas = await this.getSedes();
+    // Preferencia 1: columna nueva sede.alcanceUmi (migración 004)
+    const conBandera = todas.filter((s) => s.isActivo && s.alcanceUmi === true);
+    if (conBandera.length > 0) {
+      return conBandera;
+    }
+    // Fallback: strings quemados (backward compat si la migración aún no se aplicó)
+    return todas.filter(
+      (s) => s.isActivo && (s.tipo === 'SEDE_CENTRAL' || s.tipo === 'SEDE_ALTERNA'),
+    );
   },
 };
