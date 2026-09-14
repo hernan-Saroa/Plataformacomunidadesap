@@ -113,7 +113,11 @@ export class ProgramaAnualVersionesService {
     return this.aResuelta(encontrada, false);
   }
 
-  /** Mismas auditorías que muestra el Programa: activas y de la vigencia. */
+  /**
+   * Mismas auditorías que muestra el Programa: activas y de la vigencia, en el
+   * mismo orden en que las lista la pantalla (más recientes primero), para que
+   * el documento salga igual que antes.
+   */
   private async construirFilas(vigencia: number): Promise<FilaProgramaAnual[]> {
     const auditorias = (await this.auditoriasService.findAll({
       planAnualVigencia: vigencia,
@@ -137,12 +141,14 @@ export class ProgramaAnualVersionesService {
         fechaFinEjecucion: this.aFecha(a.fechaFinEjecucion),
         fechaInicioComunicacion: this.aFecha(a.fechaInicioComunicacion),
         fechaFin: this.aFecha(a.fechaFin),
-      }))
-      .sort((x, y) => x.codigo.localeCompare(y.codigo) || x.id.localeCompare(y.id));
+      }));
   }
 
   private calcularHuella(filas: FilaProgramaAnual[]): string {
-    const impreso = filas.map((f) => [f.id, ...CAMPOS_VERSIONADOS.map((c) => f[c] ?? null)]);
+    // Se ordena solo para la huella: el orden de la lista no es un cambio del programa.
+    const impreso = [...filas]
+      .sort((x, y) => x.id.localeCompare(y.id))
+      .map((f) => [f.id, ...CAMPOS_VERSIONADOS.map((c) => f[c] ?? null)]);
     return createHash('sha256').update(JSON.stringify(impreso)).digest('hex');
   }
 
