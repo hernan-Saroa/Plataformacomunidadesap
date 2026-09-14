@@ -43,6 +43,8 @@ import {
   AutorizacionExtemporaneaDto,
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
+import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
 import { SecondLevelSodGuard, SecondLevelSodProtected } from '../../common/second-level-sod.guard';
@@ -1131,4 +1133,65 @@ export class TravelExpensesController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad (Etapa 6).
+   *
+   * Permite registrar la cancelación con motivo obligatorio y responsable.
+   * Transiciona la comisión a CANCELADA y señala si requiere reintegro en Etapa 8.
+   */
+  @Post('requests/:id/cancel')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:cancel_request',
+    'travel_expenses:create_request',
+    'travel_expenses:read_inbox',
+    'travel_expenses:authorize_expense',
+  )
+  @ApiOperation({
+    summary: 'Cancelar comisión con trazabilidad (Etapa 6 — RF-AUT-003)',
+    description:
+      'Registra la cancelación de una comisión no legalizada con motivo obligatorio y responsable. Pasa el estado a CANCELADA, conserva trazabilidad y marca si queda pendiente de reintegro (Etapa 8).',
+  })
+  @ApiBody({
+    description: 'Motivo obligatorio, responsable y opción de recursos comprometidos.',
+    type: CancelarComisionDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisión cancelada exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Motivo insuficiente, comisión ya cancelada o ya legalizada.',
+  })
+  @ApiBearerAuth()
+  async cancelarComision(
+    @Param('id') id: string,
+    @Body() dto: CancelarComisionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.cancelarComision(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
+

@@ -25,6 +25,8 @@ import {
   ShieldCheck,
   Award,
   UserPlus,
+  XCircle,
+  RotateCcw,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -32,6 +34,7 @@ import AnalystInbox from './AnalystInbox';
 import ControlViaticosModal from './ControlViaticosModal';
 import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
+import CancelarComisionModal from './CancelarComisionModal';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -120,6 +123,7 @@ export default function ViaticosModulePremium() {
   const [modalControlViaticosAbierta, setModalControlViaticosAbierta] = useState(false);
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
+  const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
 
   const grupos: MenuGroup[] = [
     {
@@ -798,6 +802,15 @@ export default function ViaticosModulePremium() {
                               <div className="flex flex-col gap-1 items-start">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {getBadgeEstado(sol.estado)}
+                                  {sol.pendienteReintegro && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                                      title="Recursos comprometidos - Requiere trámite de reintegro o liberación en Etapa 8"
+                                    >
+                                      <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
+                                      Pendiente Reintegro (Etapa 8)
+                                    </span>
+                                  )}
                                   {Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA') && sol.estado !== 'EXTEMPORANEA' && (
                                     <span
                                       className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
@@ -961,6 +974,17 @@ export default function ViaticosModulePremium() {
                                     ) : (
                                       <ShieldCheck className="w-3.5 h-3.5" />
                                     )}
+                                  </button>
+                                )}
+                                {sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSolicitudParaCancelar(sol)}
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors"
+                                    title="Cancelar Comisión (RF-AUT-003)"
+                                    aria-label="Cancelar Comisión"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
                                   </button>
                                 )}
                               </div>
@@ -1296,6 +1320,52 @@ export default function ViaticosModulePremium() {
                        </div>
                      </div>
                    )}
+
+                    {solicitudSeleccionada.estado !== 'LEGALIZADO' && solicitudSeleccionada.estado !== 'CANCELADA' && (
+                      <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
+                            Novedades de Comisión (Etapa 6)
+                          </span>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Cancelar comisión con trazabilidad completa y registro de responsable.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSolicitudParaCancelar(solicitudSeleccionada)}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Cancelar Comisión
+                        </button>
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'CANCELADA' && (
+                      <div className="mt-4 p-3.5 bg-rose-50/50 rounded-xl border border-rose-200">
+                        <div className="flex items-center gap-1.5 text-rose-800 font-bold text-xs mb-1">
+                          <XCircle className="w-4 h-4 text-rose-600" />
+                          Comisión Cancelada (RF-AUT-003)
+                        </div>
+                        {solicitudSeleccionada.motivoCancelacion && (
+                          <p className="text-xs text-slate-800 mt-1">
+                            <span className="font-semibold text-slate-700">Motivo:</span> {solicitudSeleccionada.motivoCancelacion}
+                          </p>
+                        )}
+                        {solicitudSeleccionada.responsableCancelacion && (
+                          <p className="text-[11px] text-slate-600 mt-1">
+                            <span className="font-semibold text-slate-700">Responsable:</span> {solicitudSeleccionada.responsableCancelacion}
+                          </p>
+                        )}
+                        {solicitudSeleccionada.pendienteReintegro && (
+                          <div className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-md text-xs font-bold">
+                            <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                            Recursos comprometidos: Pendiente de reintegro o liberación presupuestal (Etapa 8)
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button
@@ -1336,6 +1406,21 @@ export default function ViaticosModulePremium() {
           cargarDatos();
         }}
       />
+
+      <CancelarComisionModal
+        solicitud={solicitudParaCancelar}
+        isOpen={Boolean(solicitudParaCancelar)}
+        onClose={() => setSolicitudParaCancelar(null)}
+        onSuccess={() => {
+          setMensajeExito('Comisión cancelada exitosamente con trazabilidad registrada.');
+          setSolicitudParaCancelar(null);
+          if (solicitudSeleccionada) {
+            setSolicitudSeleccionada(null);
+          }
+          cargarDatos();
+        }}
+      />
     </ModuleLayout>
   );
 }
+

@@ -218,6 +218,25 @@ export class SolicitudComisionEntity {
   @Column({ name: 'es_delegado_direccion', type: 'boolean', default: false })
   esDelegadoDireccion: boolean;
 
+  @Column({ name: 'motivo_cancelacion', type: 'text', nullable: true })
+  motivoCancelacion: string | null;
+
+  @Column({ name: 'fecha_cancelacion', type: 'timestamp', nullable: true })
+  fechaCancelacion: Date | null;
+
+  @Column({ name: 'cancelado_por_usuario_id', type: 'uuid', nullable: true })
+  canceladoPorUsuarioId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'cancelado_por_usuario_id' })
+  canceladoPorUsuario: UsuarioEntity;
+
+  @Column({ name: 'responsable_cancelacion', type: 'varchar', length: 255, nullable: true })
+  responsableCancelacion: string | null;
+
+  @Column({ name: 'pendiente_reintegro', type: 'boolean', default: false })
+  pendienteReintegro: boolean;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 
@@ -227,3 +246,4 @@ export class SolicitudComisionEntity {
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
   documentosSoporte: DocumentoSoporteEntity[];
 }
+

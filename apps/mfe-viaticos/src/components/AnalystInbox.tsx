@@ -11,6 +11,7 @@ import {
   Search,
   UserCheck,
   Zap,
+  XCircle,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../types/viaticos';
 import { formatearNombreComisionado } from '../utils/viaticosUtils';
 import VerificacionSIIFModal from './VerificacionSIIFModal';
+import CancelarComisionModal from './CancelarComisionModal';
 
 const PRIORIDAD_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
   ALTA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta' },
@@ -44,6 +46,7 @@ const ESTADO_CONFIG: Record<string, { bg: string; text: string; label: string }>
   DEVUELTA: { bg: 'bg-rose-100', text: 'text-rose-700', label: 'Devuelta' },
   SOLICITADA_SIIF: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', label: 'Solicitada SIIF' },
   VERIFICADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Verificada' },
+  CANCELADA: { bg: 'bg-rose-100', text: 'text-rose-700', label: 'Cancelada' },
 };
 
 const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
@@ -53,6 +56,7 @@ const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
   'EN_COMISION',
   'PENDIENTE_LEGALIZACION',
   'LEGALIZADO',
+  'CANCELADA',
 ]);
 
 export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
@@ -68,6 +72,7 @@ export default function AnalystInbox() {
   const [solicitudModal, setSolicitudModal] = useState<SolicitudComisionResponse | null>(null);
   const [cargandoModal, setCargandoModal] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const [solicitudCancelar, setSolicitudCancelar] = useState<SolicitudListaResponse | null>(null);
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -531,27 +536,38 @@ export default function AnalystInbox() {
                       {fechaDev ? new Date(fechaDev).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
-                      {s.estadoSolicitud === 'DEVUELTA' ? (
+                      <div className="flex items-center justify-center gap-1.5">
+                        {s.estadoSolicitud === 'DEVUELTA' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleIniciarAuditoria(s)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
+                            title="Comisión devuelta al enlace de dependencia. En espera de subsanación y reenvío por el enlace."
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Consultar Devolución</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleIniciarAuditoria(s)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-[11px] font-semibold shadow-xs"
+                            title="Devuelta por Control Viáticos al analista para subsanar observaciones"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Subsanar / Auditar</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleIniciarAuditoria(s)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
-                          title="Comisión devuelta al enlace de dependencia. En espera de subsanación y reenvío por el enlace."
+                          onClick={() => setSolicitudCancelar(s)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition-colors"
+                          title="Cancelar Comisión a solicitud de la dependencia (RF-AUT-003)"
+                          aria-label="Cancelar Comisión"
                         >
-                          <Eye className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Consultar Devolución</span>
+                          <XCircle className="w-3.5 h-3.5" />
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleIniciarAuditoria(s)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-[11px] font-semibold shadow-xs"
-                          title="Devuelta por Control Viáticos al analista para subsanar observaciones"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span>Subsanar / Auditar</span>
-                        </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -663,38 +679,49 @@ export default function AnalystInbox() {
                       </div>
                     </td>
                     <td className="py-2 px-2 text-center">
-                      {s.estadoSolicitud === 'DEVUELTA' ? (
+                      <div className="flex items-center justify-center gap-1">
+                        {s.estadoSolicitud === 'DEVUELTA' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleIniciarAuditoria(s)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors text-[11px] font-semibold"
+                            title="Comisión devuelta al enlace de dependencia. Bloqueada para validación hasta que el enlace subsane y reenvíe."
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                            <span className="hidden sm:inline">Ver Devolución</span>
+                          </button>
+                        ) : esVerificada ? (
+                          <button
+                            type="button"
+                            onClick={() => handleIniciarAuditoria(s)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors text-[11px] font-semibold"
+                            title="Comisión ya verificada por analista. Clic para consultar expediente y soportes."
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="hidden sm:inline">Verificada · Consultar</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleIniciarAuditoria(s)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a7d] transition-colors text-[11px] font-semibold shadow-xs"
+                            title="Iniciar auditoría de soportes"
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Auditoría</span>
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleIniciarAuditoria(s)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors text-[11px] font-semibold"
-                          title="Comisión devuelta al enlace de dependencia. Bloqueada para validación hasta que el enlace subsane y reenvíe."
+                          onClick={() => setSolicitudCancelar(s)}
+                          className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
+                          title="Cancelar Comisión a solicitud de la dependencia (RF-AUT-003)"
+                          aria-label="Cancelar Comisión"
                         >
-                          <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                          <span className="hidden sm:inline">Ver Devolución</span>
+                          <XCircle className="w-3.5 h-3.5" />
                         </button>
-                      ) : esVerificada ? (
-                        <button
-                          type="button"
-                          onClick={() => handleIniciarAuditoria(s)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors text-[11px] font-semibold"
-                          title="Comisión ya verificada por analista. Clic para consultar expediente y soportes."
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="hidden sm:inline">Verificada · Consultar</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleIniciarAuditoria(s)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a7d] transition-colors text-[11px] font-semibold shadow-xs"
-                          title="Iniciar auditoría de soportes"
-                        >
-                          <Search className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Auditoría</span>
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -711,6 +738,18 @@ export default function AnalystInbox() {
         cargando={cargandoModal}
         onCerrar={handleCerrarModal}
         onRefrescar={handleRefrescar}
+      />
+
+      {/* Modal de Cancelación con Trazabilidad (RF-AUT-003) */}
+      <CancelarComisionModal
+        solicitud={solicitudCancelar}
+        isOpen={Boolean(solicitudCancelar)}
+        onClose={() => setSolicitudCancelar(null)}
+        onSuccess={() => {
+          setMensajeExito('Comisión cancelada exitosamente con registro histórico.');
+          setSolicitudCancelar(null);
+          cargarSolicitudes();
+        }}
       />
     </div>
   );

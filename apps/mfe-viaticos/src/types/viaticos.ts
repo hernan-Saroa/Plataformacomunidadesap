@@ -18,7 +18,8 @@ export type EstadoSolicitudViatico =
   | 'EN_VERIFICACION'
   | 'AUTORIZACION_DIRECCION'
   | 'EN_AUTORIZACION'
-  | 'AUTORIZADA';
+  | 'AUTORIZADA'
+  | 'CANCELADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -171,6 +172,10 @@ export interface SolicitudComisionResponse {
   observacionesSegundaRevision?: string | null;
   fechaSegundaRevision?: string | null;
   revisorControlNombre?: string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
   resumenPresupuestal?: {
     totalGastado: number;
     cantidadSolicitudes: number;
@@ -268,6 +273,10 @@ export interface SolicitudListaResponse {
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
 }
 
 export interface BandejaSecretarioResponse {
@@ -325,6 +334,10 @@ export interface SolicitudViatico {
   observacionesSegundaRevision?: string | null;
   fechaSegundaRevision?: string | null;
   revisorControlId?: string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
 }
 
 export interface TiqueteAereo {
@@ -844,5 +857,22 @@ export interface AutorizarExtemporaneaPayload {
 export interface RechazarExtemporaneaPayload {
   justificacion: string;
   esDelegado?: boolean;
+}
+
+// ============================================================================
+// Tipos e interfaces de Cancelación de Comisión (RF-AUT-003, Etapa 6)
+// ============================================================================
+
+export interface CancelarComisionPayload {
+  motivoCancelacion: string;
+  responsableCancelacion?: string;
+  recursosComprometidos?: boolean;
+}
+
+export interface CancelarComisionResponse {
+  success: boolean;
+  data: any;
+  message: string;
+  timestamp: string;
 }
 

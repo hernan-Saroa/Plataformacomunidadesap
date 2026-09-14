@@ -45,7 +45,10 @@ import {
   BandejaAutorizacionResponse,
   AutorizarExtemporaneaPayload,
   RechazarExtemporaneaPayload,
+  CancelarComisionPayload,
+  CancelarComisionResponse,
 } from '../../types/viaticos';
+
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -1475,7 +1478,27 @@ export class ViaticosService {
       throw error;
     }
   }
+
+  /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad completa (Etapa 6).
+   * Registra motivo obligatorio, responsable e indicación de recursos comprometidos/reintegro (Etapa 8).
+   */
+  async cancelarComision(
+    solicitudId: string,
+    payload: CancelarComisionPayload,
+  ): Promise<CancelarComisionResponse> {
+    try {
+      return await apiClient.post<CancelarComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/cancel`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error cancelando comisión:', error);
+      throw error;
+    }
+  }
 }
+
 
 export const viaticosService = new ViaticosService();
 export default viaticosService;

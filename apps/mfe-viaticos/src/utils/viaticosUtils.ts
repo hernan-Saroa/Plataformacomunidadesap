@@ -310,7 +310,13 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-emerald-100',
     text: 'text-emerald-800',
   },
+  CANCELADA: {
+    label: 'Cancelada',
+    bg: 'bg-rose-100',
+    text: 'text-rose-800',
+  },
 };
+
 
 export function getConfigEstado(estado: string): ConfigEstado {
   return CONFIG_ESTADOS[estado as EstadoSolicitudViatico] || {

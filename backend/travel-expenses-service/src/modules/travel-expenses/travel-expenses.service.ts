@@ -29,6 +29,8 @@ import {
   AutorizacionExtemporaneaDto,
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
+import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+
 import {
   sanitizeObjetoComision,
   sanitizeTextoPlano,
@@ -4027,9 +4029,228 @@ export class TravelExpensesService {
   }
 
   /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad completa (Etapa 6).
+   *
+   * Criterios de aceptación (Gherkin):
+   * 1. Dada una comisión en curso, cuando la dependencia solicita cancelarla,
+   *    entonces el sistema permite registrar la cancelación con motivo y responsable.
+   * 2. Dada una cancelación, cuando se confirma, entonces la comisión pasa a
+   *    estado CANCELADA y se conserva toda su trazabilidad en el historial inmutable.
+   * 3. Dada una comisión con recursos ya comprometidos, cuando se cancela,
+   *    entonces el sistema señala la necesidad de reintegro/liberación (se conecta con Etapa 8).
+   *
+   * Aplicabilidad: Todas las comisiones no legalizadas.
+   */
+  async cancelarComision(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: CancelarComisionDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const motivo = (dto?.motivoCancelacion || '').trim();
+    if (motivo.length < 5) {
+      throw new BadRequestException(
+        'El motivo de cancelación es obligatorio (mínimo 5 caracteres).',
+      );
+    }
+
+    const responsable =
+      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.CANCELADA) {
+        throw new BadRequestException('La comisión ya se encuentra cancelada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.LEGALIZADO) {
+        throw new BadRequestException(
+          'No es posible cancelar una comisión que ya ha sido legalizada.',
+        );
+      }
+
+      // Estados con recursos presupuestales o pasajes ya comprometidos (Criterio 3)
+      const estadosRecursosComprometidos: EstadoSolicitud[] = [
+        EstadoSolicitud.SOLICITADA_SIIF,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+      ];
+
+      const tieneRecursosComprometidos =
+        dto.recursosComprometidos === true ||
+        solicitud.siifExportado === true ||
+        estadosRecursosComprometidos.includes(solicitud.estadoSolicitud);
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      const fechaCancelacion = new Date();
+
+      solicitud.estadoSolicitud = EstadoSolicitud.CANCELADA;
+      solicitud.motivoCancelacion = motivo.slice(0, 2000);
+      solicitud.fechaCancelacion = fechaCancelacion;
+      solicitud.canceladoPorUsuarioId = usuarioId;
+      solicitud.responsableCancelacion = responsable.slice(0, 255);
+      solicitud.pendienteReintegro = tieneRecursosComprometidos;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      const notaReintegro = tieneRecursosComprometidos
+        ? ' [RECURSOS COMPROMETIDOS: Requiere reintegro / liberación presupuestal en SIIF Nación - Etapa 8 / RF-PAG-004]'
+        : '';
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.CANCELADA,
+        usuarioId,
+        comentarios: `Cancelada por ${responsable}: ${motivo.slice(0, 140)}${notaReintegro}`.slice(0, 255),
+      });
+
+      // 1. Sin recursos comprometidos (Etapas 1 a 5 - Antes de RP/Desembolso):
+      // Libera cualquier cupo de tiquetes retenido en el tablero de saldo presupuestal.
+      if (
+        !tieneRecursosComprometidos &&
+        solicitud.requiereTiquetes &&
+        Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+        this.ticketsService?.liberarSaldo
+      ) {
+        try {
+          const depId =
+            solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+          await this.ticketsService.liberarSaldo({
+            dependenciaId: String(depId),
+            solicitudId: solicitud.id,
+            montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+          });
+          this.logger.log(
+            `[RF-AUT-003] Cupo de tiquetes liberado exitosamente en saldo presupuestal para solicitud ${solicitud.consecutivoUnico || solicitud.id} en dependencia ${depId}`,
+          );
+        } catch (err: any) {
+          this.logger.warn(
+            `[RF-AUT-003] No se pudo liberar saldo de tiquetes para solicitud ${solicitud.id}: ${err?.message}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `[RF-AUT-003] Solicitud ${solicitud.consecutivoUnico} CANCELADA por ${responsable} (usuario ${usuarioId}). Pendiente de reintegro: ${tieneRecursosComprometidos}`,
+      );
+
+      return saved;
+    });
+
+    await this.despacharNotificacionesCancelacion(
+      result,
+      motivo,
+      responsable,
+      result.pendienteReintegro,
+    );
+
+    return result;
+  }
+
+  /**
+   * Notificaciones cuando una comisión es cancelada (RF-AUT-003).
+   * - Alerta al enlace creador sobre la cancelación.
+   * - Si hay recursos comprometidos o desembolsados (Etapas 6 a 8), activa novedad
+   *   y notifica a Tesorería y Presupuesto para reintegro de viáticos y liberación de RP en SIIF Nación (RF-PAG-004).
+   */
+  private async despacharNotificacionesCancelacion(
+    solicitud: SolicitudComisionEntity,
+    motivo: string,
+    responsable: string,
+    pendienteReintegro: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+      // 1. Notificación al usuario que radicó la solicitud
+      if (solicitud.creadoPorUsuarioId) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+          tipo_notificacion: 'VIATICOS_COMISION_CANCELADA',
+          titulo: `Comisión cancelada: ${consecutivo}`,
+          mensaje: `La comisión ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}`,
+          descripcion_corta: `Cancelada · ${consecutivo}`,
+          icono: 'XCircle',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver expediente',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            motivo,
+            responsable,
+            pendienteReintegro,
+          },
+        });
+      }
+
+      // 2. Con recursos comprometidos o desembolsados (Etapas 6 a 8 - Con RP, Obligación o Pago realizado):
+      // Activa de forma automática una novedad de reintegro y liberación de recursos (RF-NOV / RF-PAG-004).
+      // Notifica a Tesorería y Presupuesto para que el comisionado reintegre los viáticos anticipados
+      // y se anule/libere el Registro Presupuestal (RP) en SIIF Nación.
+      if (pendienteReintegro) {
+        const notifNovedad = {
+          tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
+          titulo: `Novedad de reintegro y anulación RP SIIF: ${consecutivo}`,
+          mensaje: `La comisión ${consecutivo} fue cancelada con recursos comprometidos o desembolsados. Se activa novedad de reintegro de viáticos y anulación/liberación de Registro Presupuestal (RP) en SIIF Nación (RF-NOV / RF-PAG-004).`,
+          descripcion_corta: `Reintegro y RP SIIF · ${consecutivo}`,
+          icono: 'RotateCcw',
+          color: '#D97706',
+          prioridad: 'Alta' as const,
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Gestionar reintegro',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            motivo,
+            responsable,
+            pendienteReintegro: true,
+            novedad: 'RF-PAG-004',
+          },
+        };
+
+        // Notificaciones directas a Tesorería, Presupuesto y Control de Viáticos
+        await this.notificationClient.notifyByRole('TESORERIA', notifNovedad);
+        await this.notificationClient.notifyByRole('PRESUPUESTO', notifNovedad);
+        await this.notificationClient.notifyByRole('CONTROL_VIATICOS', notifNovedad);
+        await this.notificationClient.notifyByRole('SUBDIRECCION_GESTION_CORPORATIVA', notifNovedad);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en despacharNotificacionesCancelacion: ${err?.message}`);
+    }
+  }
+
+  /**
    * RF-AUT-001 — Genera el PDF oficial de Autorización Corporativa de Gasto e Itinerario.
    */
   async exportarPdfTiqueteItinerario(
+
     solicitudId: string,
     req?: any,
   ): Promise<Buffer> {
