@@ -1948,6 +1948,8 @@ export class TravelExpensesService {
 
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      solicitud.motivoDevolucion = null;
+      solicitud.observacionesSegundaRevision = null;
 
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,

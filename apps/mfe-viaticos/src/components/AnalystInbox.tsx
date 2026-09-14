@@ -55,7 +55,7 @@ const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
   'LEGALIZADO',
 ]);
 
-export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
+export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
 
 export default function AnalystInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudListaResponse[]>([]);
@@ -111,10 +111,11 @@ export default function AnalystInbox() {
     return map;
   }, [dependencias]);
 
-  // Clasificación por categorías / tabs
-  const { devueltas, pendientes, extemporaneas } = useMemo(() => {
+  // Clasificación por categorías / tabs sin mezclar verificadas con pendientes
+  const { devueltas, pendientes, verificadas, extemporaneas } = useMemo(() => {
     const devList: SolicitudListaResponse[] = [];
     const pendList: SolicitudListaResponse[] = [];
+    const verifList: SolicitudListaResponse[] = [];
     const extList: SolicitudListaResponse[] = [];
 
     solicitudes.forEach((s) => {
@@ -126,30 +127,33 @@ export default function AnalystInbox() {
         extList.push(s);
       }
 
+      // Solo está en bandeja de devolución si su estado actual es DEVUELTA o EN_VERIFICACION con observaciones por subsanar
       const esDevuelta =
         s.estadoSolicitud === 'DEVUELTA' ||
-        Boolean(s.motivoDevolucion && s.motivoDevolucion.trim().length > 0) ||
-        Boolean(
-          (s as any).observacionesSegundaRevision &&
-            String((s as any).observacionesSegundaRevision).trim().length > 0,
-        );
+        (s.estadoSolicitud === 'EN_VERIFICACION' &&
+          Boolean(
+            (s.motivoDevolucion && s.motivoDevolucion.trim().length > 0) ||
+            ((s as any).observacionesSegundaRevision &&
+              String((s as any).observacionesSegundaRevision).trim().length > 0),
+          ));
 
       if (esDevuelta) {
         devList.push(s);
-      } else if (
-        [
-          'SOLICITADO',
-          'EN_VERIFICACION',
-          'EXTEMPORANEA',
-          'VERIFICADA',
-          'SOLICITADA_SIIF',
-        ].includes(s.estadoSolicitud)
-      ) {
+      } else if (s.estadoSolicitud === 'VERIFICADA' || s.estadoSolicitud === 'SOLICITADA_SIIF') {
+        // Ya completaron la revisión del analista
+        verifList.push(s);
+      } else if (['SOLICITADO', 'EXTEMPORANEA', 'EN_VERIFICACION'].includes(s.estadoSolicitud)) {
+        // Realmente pendientes de verificar por el analista
         pendList.push(s);
       }
     });
 
-    return { devueltas: devList, pendientes: pendList, extemporaneas: extList };
+    return {
+      devueltas: devList,
+      pendientes: pendList,
+      verificadas: verifList,
+      extemporaneas: extList,
+    };
   }, [solicitudes]);
 
   const solicitudesPorTab = useMemo(() => {
@@ -158,9 +162,10 @@ export default function AnalystInbox() {
     );
     if (tabActual === 'DEVOLUCIONES') return devueltas;
     if (tabActual === 'EXTEMPORANEAS') return extemporaneas;
+    if (tabActual === 'VERIFICADAS') return verificadas;
     if (tabActual === 'PENDIENTES') return pendientes;
     return base;
-  }, [tabActual, solicitudes, devueltas, pendientes, extemporaneas]);
+  }, [tabActual, solicitudes, devueltas, pendientes, verificadas, extemporaneas]);
 
   const solicitudesFiltradas = useMemo(() => {
     const termino = busqueda.toLowerCase().trim();
@@ -336,6 +341,28 @@ export default function AnalystInbox() {
 
         <button
           type="button"
+          onClick={() => setTabActual('VERIFICADAS')}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            tabActual === 'VERIFICADAS'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Verificadas</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              tabActual === 'VERIFICADAS'
+                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {verificadas.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setTabActual('EXTEMPORANEAS')}
           className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
             tabActual === 'EXTEMPORANEAS'
@@ -400,9 +427,11 @@ export default function AnalystInbox() {
         <div className="py-10 text-center">
           <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
             {tabActual === 'DEVOLUCIONES' ? (
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-5 h-5 text-rose-600" />
             ) : tabActual === 'EXTEMPORANEAS' ? (
               <Clock className="w-5 h-5 text-amber-500" />
+            ) : tabActual === 'VERIFICADAS' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             ) : (
               <Inbox className="w-5 h-5" />
             )}
@@ -412,6 +441,8 @@ export default function AnalystInbox() {
               ? 'No hay comisiones devueltas ni observaciones pendientes de subsanar.'
               : tabActual === 'EXTEMPORANEAS'
               ? 'No tienes comisiones extemporáneas asignadas en este momento.'
+              : tabActual === 'VERIFICADAS'
+              ? 'Aún no tienes solicitudes verificadas en tu bandeja.'
               : tabActual === 'PENDIENTES'
               ? 'No hay solicitudes pendientes de verificación inicial.'
               : 'No tienes solicitudes asignadas en este momento.'}
@@ -551,9 +582,16 @@ export default function AnalystInbox() {
                 const dep = dependenciaOrigen(s);
                 const esFacturador = esContratistaFacturador(s);
                 const esExt = Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA');
+                const esVerificada = s.estadoSolicitud === 'VERIFICADA' || s.estadoSolicitud === 'SOLICITADA_SIIF';
                 const tieneDevolucion =
-                  s.estadoSolicitud === 'DEVUELTA' ||
-                  Boolean(s.motivoDevolucion || (s as any).observacionesSegundaRevision);
+                  !esVerificada &&
+                  (s.estadoSolicitud === 'DEVUELTA' ||
+                    (s.estadoSolicitud === 'EN_VERIFICACION' &&
+                      Boolean(
+                        (s.motivoDevolucion && s.motivoDevolucion.trim().length > 0) ||
+                        ((s as any).observacionesSegundaRevision &&
+                          String((s as any).observacionesSegundaRevision).trim().length > 0),
+                      )));
 
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -635,15 +673,15 @@ export default function AnalystInbox() {
                           <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
                           <span className="hidden sm:inline">Ver Devolución</span>
                         </button>
-                      ) : s.estadoSolicitud === 'SOLICITADA_SIIF' || s.estadoSolicitud === 'VERIFICADA' ? (
+                      ) : esVerificada ? (
                         <button
                           type="button"
                           onClick={() => handleIniciarAuditoria(s)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
-                          title="Consultar expediente y datos SIIF"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors text-[11px] font-semibold"
+                          title="Comisión ya verificada por analista. Clic para consultar expediente y soportes."
                         >
-                          <Eye className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="hidden sm:inline">Consultar</span>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="hidden sm:inline">Verificada · Consultar</span>
                         </button>
                       ) : (
                         <button

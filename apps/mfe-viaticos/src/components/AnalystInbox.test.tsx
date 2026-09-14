@@ -252,4 +252,49 @@ describe('AnalystInbox', () => {
       expect(screen.queryByText('COM-2026-AUT1')).toBeNull();
     });
   });
+
+  it('separa solicitudes Verificadas de Pendientes y muestra botón "Verificada · Consultar"', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-pend-1',
+        consecutivoUnico: 'COM-2026-PEND1',
+        estadoSolicitud: 'SOLICITADO',
+      }),
+      solMock({
+        id: 'sol-verif-1',
+        consecutivoUnico: 'COM-2026-VERIF1',
+        estadoSolicitud: 'VERIFICADA',
+        motivoDevolucion: 'Observación antigua ya corregida',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-PEND1')).toBeDefined();
+      expect(screen.getByText('COM-2026-VERIF1')).toBeDefined();
+    });
+
+    // Validar que en la pestaña "Pendientes de Verificación", solo aparece COM-2026-PEND1
+    const tabPendientes = screen.getByRole('button', { name: /Pendientes de Verificación/i });
+    fireEvent.click(tabPendientes);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-PEND1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-VERIF1')).toBeNull();
+    });
+
+    // Validar que en la pestaña "Verificadas", solo aparece COM-2026-VERIF1
+    const tabVerificadas = screen.getByRole('button', { name: /Verificadas/i });
+    fireEvent.click(tabVerificadas);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-VERIF1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-PEND1')).toBeNull();
+      // Debe mostrar el botón verde "Verificada · Consultar"
+      expect(screen.getByText('Verificada · Consultar')).toBeDefined();
+      // No debe mostrar la observación de devolución previa porque ya está verificada
+      expect(screen.queryByText(/Observación antigua ya corregida/i)).toBeNull();
+    });
+  });
 });

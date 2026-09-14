@@ -257,6 +257,7 @@ export class ConsolidacionService {
         expediente.estadoSolicitud = EstadoSolicitud.SOLICITADO;
         expediente.extemporanea = false;
       }
+      expediente.motivoDevolucion = null;
       await manager.save(SolicitudComisionEntity, expediente);
 
       // 5) Registrar la transición en el historial de auditoría (append-only).
