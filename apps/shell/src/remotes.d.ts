@@ -111,3 +111,10 @@ declare module 'viaticos/Module' {
   export { Module as ViaticosModulePremium };
   export default Module;
 }
+
+declare module 'chatbot/Module' {
+  const Module: React.ComponentType;
+  export { Module as ChatbotModule };
+  export default Module;
+}
+
