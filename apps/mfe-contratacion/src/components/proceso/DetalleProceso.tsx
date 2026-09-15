@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText, FolderOpen, ClipboardList, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, FileText, FolderOpen, ClipboardList, ListChecks, ShieldCheck } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
@@ -52,6 +52,7 @@ import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
 import { PanelCausal } from '../causal/PanelCausal';
 import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
+import { PERMISOS, tieneAlguno, tienePermiso } from '../../auth/permisos';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -85,6 +86,21 @@ const NUMERAL_COMITE_CONTRATACION = '3.7';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
+
+/**
+ * Las etapas en las que interviene la Dirección Financiera.
+ *
+ * Son las cuatro donde se mueve el presupuesto de la entidad, que es lo que
+ * `contratacion.presupuesto.gestionar` habilita: el CDP (4), el registro
+ * presupuestal (8.3), el trámite del pago avalado (9.4) y el cierre financiero
+ * (10.3). La 8 entra aunque casi todo lo suyo sea del gestor —la 8.3 es de la
+ * Financiera y esconderla le quitaría el RP—.
+ *
+ * Se listan por etapa y no por numeral porque el recorte es del recorrido, no
+ * del riel: dentro de la etapa se ven todas sus actividades, que es como se
+ * entiende en qué punto va el proceso.
+ */
+const ETAPAS_DE_LA_FINANCIERA = [4, 8, 9, 10];
 
 /**
  * Actividades cuyo panel ya reparte sus formatos documento por documento.
@@ -482,6 +498,27 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    */
   const [etapaElegida, setEtapaElegida] = useState<number | null>(null);
   const [auditoriaAbierta, setAuditoriaAbierta] = useState(false);
+  /**
+   * Quien solo mueve presupuesto ve el recorrido recortado a lo suyo.
+   *
+   * Se decide por lo que *no* tiene, igual que la sección de entrada: alguien
+   * que además diligencie procesos ve las diez, porque entonces las diez son su
+   * trabajo. Y `tienePermiso` responde que sí ante una sesión incompleta, así
+   * que la duda cae del lado de enseñarlo todo.
+   */
+  const soloPresupuesto =
+    tienePermiso(PERMISOS.presupuestoGestionar) &&
+    !tieneAlguno(PERMISOS.actividadEditar, PERMISOS.procesoCrear, PERMISOS.actividadAprobar);
+  /**
+   * Y puede pedir el proceso entero.
+   *
+   * No es un adorno: para certificar la disponibilidad hay que poder leer el
+   * estudio previo que justifica el gasto, y eso vive en la etapa 3. El recorte
+   * ahorra el ruido de nueve etapas ajenas; esconderlas del todo le quitaría el
+   * expediente que necesita para decidir.
+   */
+  const [verTodasLasEtapas, setVerTodasLasEtapas] = useState(false);
+  const recortado = soloPresupuesto && !verTodasLasEtapas;
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
@@ -722,7 +759,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           'Esta actividad todavía no está habilitada')
       : null;
 
-  const etapaVista = etapaElegida ?? datos.proceso.etapa;
+  /**
+   * Qué etapa se mira.
+   *
+   * Con el recorrido recortado, la etapa del proceso puede no estar en él —un
+   * proceso en la 3 para quien solo ve 4, 8, 9 y 10—, y entonces el riel
+   * quedaría vacío sin que nada lo explicara. Se cae en la primera de las
+   * suyas, que es donde esa persona tiene algo que hacer.
+   */
+  const etapaDelProceso = etapaElegida ?? datos.proceso.etapa;
+  const etapaVista =
+    recortado && !ETAPAS_DE_LA_FINANCIERA.includes(etapaDelProceso)
+      ? ETAPAS_DE_LA_FINANCIERA[0]
+      : etapaDelProceso;
 
   /**
    * Cuántas actividades aplican y cuántas están hechas, por etapa.
@@ -821,7 +870,32 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               etapaSeleccionada={etapaVista}
               onSeleccionar={elegirEtapa}
               avance={avance}
+              soloEstas={recortado ? ETAPAS_DE_LA_FINANCIERA : undefined}
             />
+
+            {/* Solo a quien se le recortó: para los demás sería un interruptor
+                que no apaga nada. */}
+            {soloPresupuesto && (
+              <button
+                type="button"
+                onClick={() => setVerTodasLasEtapas((v) => !v)}
+                aria-pressed={verTodasLasEtapas}
+                title={
+                  verTodasLasEtapas
+                    ? 'Volver a las etapas en las que interviene la Dirección Financiera'
+                    : 'Ver las diez etapas del proceso, incluido el estudio previo que justifica el gasto'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                  border transition-colors ${
+                    verTodasLasEtapas
+                      ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                  }`}
+              >
+                <ListChecks className="w-3.5 h-3.5" />
+                {verTodasLasEtapas ? 'Solo lo mío' : 'Todo el proceso'}
+              </button>
+            )}
 
             <button
               type="button"
