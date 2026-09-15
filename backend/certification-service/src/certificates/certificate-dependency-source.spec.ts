@@ -210,3 +210,115 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     expect(html).toContain('Dependencia corregida');
   });
 });
+
+describe('[DEPENDENCIA] en certificados corregidos', () => {
+  const service = Object.create(CertificatesService.prototype) as CertificatesService;
+  const pdf = Object.create(LaborCertificatePdfService.prototype) as LaborCertificatePdfService;
+
+  // Caso real del certificado 12_620_700_20_CD 104: la solicitud trae el grupo
+  // interno y la correccion cambio la dependencia del certificado.
+  const solicitud = (overrides = {}) =>
+    ({
+      id: 'solicitud',
+      id_number: '53062883',
+      status: 'A',
+      observations: 'E',
+      position_category: 'Cra. Administrativa',
+      career_category: 'Profesional Especializado Grado 16',
+      cod_cargo: '2028',
+      cod_grade: '16',
+      hiring_date: '2024-05-14',
+      department: 'Dirección de Talento Humano',
+      organization_department: 'Dirección de Talento Humano',
+      internal_group: 'Grupo de Administración de Personal y de Carrera Administrativa',
+      cost_center: null,
+      position_location: 'Grupo de Administración de Personal y de Carrera Administrativa',
+      monthly_salary: 1000000,
+      ...overrides,
+    }) as unknown as CertificateRequest;
+
+  const certificado = (overrides: Record<string, unknown> = {}) => {
+    const request = solicitud();
+    return {
+      ...request,
+      certificate_number: '12_620_700_20_CD 104',
+      full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+      request,
+      ...overrides,
+    } as unknown as Certificate;
+  };
+
+  const render = (certificate: Certificate) =>
+    pdf['buildCertificateContent']({
+      certificate,
+      templateType: 'administrador',
+      includeSalary: true,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>DEP:[DEPENDENCIA]</p><p>DATO7:[DATO7]</p>',
+    });
+
+  it('imprime la dependencia que guardó el coordinador y no el centro de costo', () => {
+    const html = render(
+      certificado({
+        is_corrected: true,
+        department: 'Dirección de Talento Humano CORREGIDA',
+      }),
+    );
+
+    expect(html).toContain('DEP:Dirección de Talento Humano CORREGIDA');
+    expect(html).toContain('DATO7:Dirección de Talento Humano CORREGIDA');
+    expect(html).not.toContain('DEP:Grupo de Administración de Personal');
+  });
+
+  it('cae al centro de costo si la corrección dejó la dependencia vacía', () => {
+    const html = render(certificado({ is_corrected: true, department: '' }));
+
+    expect(html).toContain(
+      'DEP:Grupo de Administración de Personal y de Carrera Administrativa',
+    );
+  });
+
+  it('no altera el certificado sin corregir: sigue mandando el centro de costo', () => {
+    const html = render(certificado({ is_corrected: false }));
+
+    expect(html).toContain(
+      'DEP:Grupo de Administración de Personal y de Carrera Administrativa',
+    );
+  });
+
+  it('precarga la corrección con la dependencia efectiva, no con la columna cruda', () => {
+    // Sin corregir: el formulario debe arrancar con lo que imprime el PDF.
+    expect(
+      service['resolveEffectiveCertificateDependency'](certificado()),
+    ).toBe('Grupo de Administración de Personal y de Carrera Administrativa');
+
+    // Ya corregido: manda lo que quedó guardado en la corrección.
+    expect(
+      service['resolveEffectiveCertificateDependency'](
+        certificado({ is_corrected: true, department: 'Dependencia corregida' }),
+      ),
+    ).toBe('Dependencia corregida');
+  });
+
+  it('una corrección que no toca la dependencia imprime exactamente lo mismo', () => {
+    const original = certificado();
+    const antes = render(original);
+
+    // El formulario precarga la dependencia efectiva y el coordinador la deja
+    // igual; al aprobar, ese valor queda en certificate.department.
+    const corregido = certificado({
+      is_corrected: true,
+      department: service['resolveEffectiveCertificateDependency'](original),
+    });
+
+    expect(render(corregido)).toBe(antes.replace(/$^/, ''));
+  });
+
+  it('el snapshot de la corrección expone la dependencia efectiva', () => {
+    const snapshot = service['certificateCorrectionSnapshot'](certificado());
+
+    expect(snapshot.department).toBe(
+      'Grupo de Administración de Personal y de Carrera Administrativa',
+    );
+  });
+});

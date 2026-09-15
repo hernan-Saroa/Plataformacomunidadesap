@@ -894,12 +894,20 @@ export class LaborCertificatePdfService {
       requestInternalGroup,
       requestCostCenter,
     );
-    const dato7 =
-      centroCosto ||
-      requestDepartment ||
-      certificate.department ||
-      requestOrganizationDepartment ||
-      '';
+    // En un certificado corregido la dependencia que guardo el coordinador es
+    // la fuente de verdad y va primero: el formulario de correccion muestra ese
+    // campo, asi que lo que edita tiene que ser lo que se imprime. Antes el
+    // centro de costo ganaba siempre y la edicion quedaba sin efecto.
+    // Al radicar la correccion el campo se precarga con la dependencia efectiva
+    // (ver resolveEffectiveCertificateDependency), de modo que una correccion
+    // que no toca la dependencia sigue imprimiendo exactamente lo mismo.
+    const dato7 = preferCorrectedCertificate
+      ? requestDepartment || centroCosto || ''
+      : centroCosto ||
+        requestDepartment ||
+        certificate.department ||
+        requestOrganizationDepartment ||
+        '';
     const grupoVariable =
       requestPositionLocation ||
       certificate.position_location ||
