@@ -206,6 +206,7 @@ cmd_health() {
   check_tcp_port "localhost" "3012" "Hiring Service" || failed=1
   check_tcp_port "localhost" "3013" "Academic Schedule Service" || failed=1
   check_tcp_port "localhost" "3014" "Infrastructure Management Service" || failed=1
+  check_tcp_port "localhost" "3015" "Chatbot Service" || failed=1
   echo ""
 
   echo -e "${YELLOW}Validando respuestas HTTP básicas:${NC}"
@@ -215,6 +216,7 @@ cmd_health() {
   check_http_url "http://localhost:3011/health" "Audit Health" || failed=1
   check_http_url "http://localhost:3012/health" "Hiring Health" || failed=1
   check_http_url "http://localhost:3014/health" "Infrastructure Management Health" || failed=1
+  check_http_url "http://localhost:3015/health" "Chatbot Health" || failed=1
   check_http_url "http://localhost:9000/" "OnlyOffice" || failed=1
 
   if [ "$failed" -ne 0 ]; then

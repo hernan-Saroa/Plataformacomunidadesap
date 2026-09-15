@@ -139,7 +139,7 @@ export interface EstadisticasInfraestructura {
 
 const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
   ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '')
-  : 'http://localhost:4000';
+  : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:4000' : '/services');
 
 const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
 

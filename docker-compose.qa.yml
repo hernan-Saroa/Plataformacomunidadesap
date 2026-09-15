@@ -75,7 +75,7 @@ services:
       HIRING_SERVICE_URL: http://hiring-service-qa:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service-qa:3013
       INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service-qa:3014
-      CHATBOT_SERVICE_URL: http://chatbot-service-qa:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service-qa:3015
     ports:
       - "3000:3000"
     depends_on:
@@ -630,7 +630,7 @@ services:
     container_name: chatbot-service-qa
     environment:
       NODE_ENV: production
-      PORT: 3014
+      PORT: 3015
 
       DB_HOST: db
       DB_PORT: 5432
@@ -643,7 +643,7 @@ services:
       API_GATEWAY_URL: http://api-gateway:3000
       CORS_ORIGIN: "*"
     ports:
-      - "3014:3014"
+      - "3015:3015"
     depends_on:
       db:
         condition: service_healthy

@@ -44,7 +44,7 @@ services:
       HIRING_SERVICE_URL: http://hiring-service:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
       INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
-      CHATBOT_SERVICE_URL: http://chatbot-service:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service:3015
     ports:
       - "3000:3000"
     depends_on:
@@ -514,7 +514,7 @@ services:
       - ./backend/chatbot-service/.env
     environment:
       NODE_ENV: development
-      PORT: 3014
+      PORT: 3015
 
       DB_HOST: db
       DB_PORT: 5432
@@ -526,7 +526,7 @@ services:
       JWT_SECRET: esap_jwt_secret_dev_2024
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
-      - "3014:3014"
+      - "3015:3015"
     depends_on:
       - db
     networks:

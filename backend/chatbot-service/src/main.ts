@@ -30,7 +30,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 3014;
+  const port = process.env.PORT || 3015;
   await app.listen(port);
   console.log(`[ChatbotService] Microservicio corriendo en el puerto ${port}`);
   console.log(`[ChatbotService] Documentación Swagger disponible en http://localhost:${port}/api/docs`);

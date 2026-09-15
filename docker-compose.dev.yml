@@ -75,7 +75,7 @@ services:
       HIRING_SERVICE_URL: http://hiring-service:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
       INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
-      CHATBOT_SERVICE_URL: http://chatbot-service:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service:3015
     ports:
       - "${API_GATEWAY_PORT:-3000}:3000"
     depends_on:
@@ -648,7 +648,7 @@ services:
     container_name: chatbot-service
     environment:
       NODE_ENV: production
-      PORT: 3014
+      PORT: 3015
 
       DB_HOST: db
       DB_PORT: 5432
@@ -660,7 +660,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
       CORS_ORIGIN: "*"
     ports:
-      - "3014:3014"
+      - "3015:3015"
     depends_on:
       db:
         condition: service_healthy

@@ -416,7 +416,7 @@ describe('[EFDS-1731] AC-02 Bandeja findAll filtro areaResponsableActual por rol
 
 describe('[EFDS-1731] AC-03 Endpoint remitirATI y trazabilidad JSONB', () => {
   const baseGuardias = () => {
-    const save = jest.fn().mockImplementation((d) => ({ ...d, updatedAt: new Date()));
+    const save = jest.fn().mockImplementation((d) => ({ ...d, updatedAt: new Date() }));
     const findOne = jest.fn();
     const s = servicio({
       mantenimientoRepo: { save, findOne },

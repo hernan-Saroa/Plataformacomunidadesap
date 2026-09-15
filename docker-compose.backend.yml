@@ -104,6 +104,7 @@ services:
       HIRING_SERVICE_URL: http://hiring-service:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
       INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service:3015
       REDIS_URL: redis://redis:6379
     ports:
       # 4000 en el host: es lo que el front espera en desarrollo
@@ -371,6 +372,22 @@ services:
       MINIO_INFRAESTRUCTURA_BUCKET: infraestructura-evidencias
     ports:
       - "3014:3014"
+
+  chatbot-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/chatbot-service
+      dockerfile: Dockerfile
+    container_name: chatbot-service
+    environment:
+      <<: *db-env
+      NODE_ENV: production
+      PORT: 3015
+      DB_SCHEMA: chatbot
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3015:3015"
 
 networks:
   esap-backend:
