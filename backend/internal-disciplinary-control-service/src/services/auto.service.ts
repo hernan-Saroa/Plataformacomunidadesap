@@ -25,6 +25,8 @@ import {
   ProcessStage,
   ProcessStatus,
 } from '../entities/disciplinary-process.entity';
+import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
+import { buildEmailButton } from '../common/email-button.util';
 
 const AUTO_CONSECUTIVE_MARKERS = [
   '[Consecutivo_Auto]',
@@ -1494,13 +1496,7 @@ export class AutoService {
   }
 
   private getFrontendBaseUrl(): string {
-    return (
-      process.env.PUBLIC_APP_URL ||
-      process.env.PUBLIC_FRONTEND_URL ||
-      process.env.FRONTEND_URL ||
-      process.env.FRONTEND_BASE_URL ||
-      'http://localhost:3000'
-    ).replace(/\/$/, '');
+    return resolveFrontendBaseUrl();
   }
 
   /**
@@ -1576,25 +1572,7 @@ export class AutoService {
     textoBoton: string = 'Ingresar a la Plataforma',
   ): string {
     const seccionBoton = urlAcceso
-      ? `
-        <div style="text-align: center; margin-top: 28px;">
-          <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
-            <tr>
-              <td align="center" style="border-radius: 6px; background-color: #003DA5;">
-                <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 42px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 28px;">
-                  <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
-                    ${textoBoton} &rarr;
-                  </span>
-                </a>
-              </td>
-            </tr>
-          </table>
-          <p style="margin: 12px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.4;">
-            Si el botón no abre directamente, copie y pegue este enlace en su navegador:<br>
-            <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAcceso}</a>
-          </p>
-        </div>
-      `
+      ? buildEmailButton(urlAcceso, textoBoton)
       : '';
 
     return `
@@ -1915,23 +1893,7 @@ export class AutoService {
             </div>
 
             <!-- Botón de acción con estilo inline garantizado y enlace directo a la plataforma -->
-            <div style="text-align: center; margin: 30px 0 16px 0;">
-              <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 0 auto; border-collapse: separate;">
-                <tr>
-                  <td align="center" style="border-radius: 6px; background-color: #003DA5;">
-                    <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="background-color: #003DA5; border: 1px solid #002D7A; border-radius: 6px; color: #ffffff !important; display: inline-block; font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; font-weight: 700; line-height: 44px; text-align: center; text-decoration: none !important; -webkit-text-size-adjust: none; padding: 0 32px; box-shadow: 0 4px 6px -1px rgba(0, 61, 165, 0.25);">
-                      <span style="color: #ffffff !important; font-size: 14px; font-weight: 700; text-decoration: none !important; display: inline-block;">
-                        Ingresar a la Plataforma &rarr;
-                      </span>
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin: 14px 0 0 0; font-size: 11px; color: #64748B; text-align: center; line-height: 1.5;">
-                Si el botón no abre directamente, copie y pegue el siguiente enlace en su navegador:<br>
-                <a href="${urlAcceso}" target="_blank" rel="noopener noreferrer" style="color: #003DA5; font-size: 11px; text-decoration: underline; word-break: break-all;">${urlAcceso}</a>
-              </p>
-            </div>
+            ${buildEmailButton(urlAcceso, 'Ingresar a la Plataforma')}
           </div>
           <div class="footer">
             <div class="footer-brand">ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</div>

@@ -198,6 +198,7 @@ export class GatewayService {
       ...authHeaderFromCookie,
       ...authHeaderFromToken,
       host: undefined, // Eliminar host para evitar conflictos
+      'x-forwarded-host': (req.headers['x-forwarded-host'] as string) || (req.headers.host as string),
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
     };

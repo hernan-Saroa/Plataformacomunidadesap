@@ -105,6 +105,34 @@ function buildTerminoVencimientoEmailHtml(nombreActuacion: string, radicado: str
   `;
 }
 
+/**
+ * Valida que un string tenga forma de correo electrónico. `getUserDetailsById`/`getUsersDetailsByRole`
+ * resuelven "email" como `COALESCE(dir_email, username)` — si `dir_email` está vacío (registros
+ * legacy/migrados en lote), el valor que llega aquí puede ser en realidad el `username` (un texto
+ * libre sin garantía de ser un correo real, p. ej. "jperez"). Sin esta validación, ese valor se
+ * enviaba igual a `sendEmail`, fallaba en el SMTP, y el error quedaba atrapado en un try/catch sin
+ * ninguna señal clara de qué pasó — indistinguible de un simple problema de configuración de correo.
+ */
+function esCorreoValido(valor: string | null | undefined): valor is string {
+  return !!valor && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+}
+
+/**
+ * Expresa una cantidad de horas en texto exacto: "5 horas", "1 día", "2 días y 5 horas".
+ * Antes se redondeaba a días con Math.round, así que un término vencido hacía 13 horas
+ * se anunciaba como "venció hace 1 día" y uno que vencía en 60 horas como "3 días".
+ */
+function formatearDuracion(horas: number): string {
+  if (horas < 1) return 'menos de 1 hora';
+  const totalHoras = Math.floor(horas);
+  const dias = Math.floor(totalHoras / 24);
+  const restoHoras = totalHoras % 24;
+  const textoHoras = (n: number) => `${n} ${n === 1 ? 'hora' : 'horas'}`;
+  if (dias === 0) return textoHoras(totalHoras);
+  const textoDias = `${dias} ${dias === 1 ? 'día' : 'días'}`;
+  return restoHoras === 0 ? textoDias : `${textoDias} y ${textoHoras(restoHoras)}`;
+}
+
 /** Escapa caracteres HTML especiales en texto de usuario (nombreActuacion, radicado, periodicidad) antes de interpolarlo en el correo. */
 function escapeHtml(texto: string): string {
   return texto
@@ -948,7 +976,7 @@ export class LegalNotificationsService {
     const dto = {
       tipo_notificacion: params.esReasignacion ? 'TERMINO_REASIGNADO' : 'TERMINO_ASIGNADO',
       titulo: `Término ${accion} en ${meta.label}`,
-      mensaje: `Se te ${accion} el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}.`,
+      mensaje: `Se te ha ${accion} el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}.`,
       descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${accion}`,
       icono: meta.icon,
       color: meta.color,
@@ -971,7 +999,7 @@ export class LegalNotificationsService {
     try {
       await this.notificationClient.notifyUserById(params.responsableId, dto);
       const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
-      if (detail?.email) {
+      if (esCorreoValido(detail?.email)) {
         const emailSubject = `Término ${accion} — ${params.numeroRadicado || params.nombreActuacion}`;
         const emailHtml = buildTerminoAsignacionEmailHtml({
           nombreActuacion: params.nombreActuacion,
@@ -983,6 +1011,14 @@ export class LegalNotificationsService {
           url,
         });
         await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      } else if (detail?.email) {
+        // Hay un valor en "email" pero no tiene forma de correo — casi seguro es el fallback a
+        // `username` porque `dir_email` está vacío en auth.personas para este usuario.
+        this.logger.warn(
+          `Responsable ${params.responsableId} del término ${params.terminoId}: el valor resuelto como correo ("${detail.email}") no tiene formato de email válido (probable dir_email vacío en auth.personas, usando username como fallback) — no se envía el correo de asignación.`,
+        );
+      } else {
+        this.logger.warn(`Responsable ${params.responsableId} del término ${params.terminoId} no tiene ningún correo registrado — no se envía el correo de asignación.`);
       }
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar asignación de responsable del término ${params.terminoId}: ${err?.message}`);
@@ -1010,13 +1046,9 @@ export class LegalNotificationsService {
   }): Promise<boolean> {
     const meta = MODULE_META.TERMINOS_INFORMES;
     const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
-    const diasRestantes = Math.round(params.horasRestantes / 24);
-    const textoTiempo = params.horasRestantes < 48
-      ? `${Math.max(0, Math.round(params.horasRestantes))} hora(s)`
-      : `${diasRestantes} día(s)`;
     const textoAnticipacion = params.horasRestantes >= 0
-      ? `vence en aproximadamente ${textoTiempo}`
-      : `venció hace ${Math.abs(diasRestantes)} día(s)`;
+      ? `vence en ${formatearDuracion(params.horasRestantes)}`
+      : `venció hace ${formatearDuracion(Math.abs(params.horasRestantes))}`;
 
     const titulos: Record<typeof params.origen, string> = {
       automatica: 'Alerta de vencimiento de término',
@@ -1059,10 +1091,16 @@ export class LegalNotificationsService {
         await this.notificationClient.notifyUserById(params.responsableId, dto);
         try {
           const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
-          if (detail?.email) {
+          if (esCorreoValido(detail?.email)) {
             const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
             const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
             await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+          } else if (detail?.email) {
+            this.logger.warn(
+              `Responsable ${params.responsableId} del término ${params.terminoId}: el valor resuelto como correo ("${detail.email}") no tiene formato de email válido (probable dir_email vacío en auth.personas) — no se envía el correo de vencimiento.`,
+            );
+          } else {
+            this.logger.warn(`Responsable ${params.responsableId} del término ${params.terminoId} no tiene ningún correo registrado — no se envía el correo de vencimiento.`);
           }
         } catch (emailErr: any) {
           this.logger.warn(`In-app entregado, pero falló el correo de vencimiento del término ${params.terminoId}: ${emailErr?.message}`);

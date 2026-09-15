@@ -3,7 +3,10 @@ import logoBase64 from '../../assets/esap-logo-institucional.b64?raw';
 
 export async function exportarAuditoriasTemplate(
   auditorias: any[],
-  vigenciaActiva: string = new Date().getFullYear().toString()
+  vigenciaActiva: string = new Date().getFullYear().toString(),
+  // Versión del Programa Anual (EFDS-1919). No confundir con la VERSIÓN del
+  // encabezado, que es la del formato EM-FO-001.
+  opciones: { version?: number; fechaVersion?: string } = {}
 ): Promise<{ exito: boolean; nombreArchivo: string; mensaje?: string; error?: string }> {
   try {
     const workbook = new ExcelJS.Workbook();
@@ -392,7 +395,13 @@ export async function exportarAuditoriasTemplate(
     // Fila Actualizado
     worksheet.mergeCells(`A${currentRow}:BE${currentRow}`);
     const fAct = worksheet.getCell(`A${currentRow}`);
-    fAct.value = `Actualizado el ${new Date().toISOString().split('T')[0]}`;
+    // Fecha en hora de Colombia: tomarla del ISO en UTC corría al día siguiente
+    // las versiones generadas después de las 7 p. m.
+    const fechaActualizado = new Date(opciones.fechaVersion || Date.now())
+      .toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    fAct.value = opciones.version
+      ? `Versión ${opciones.version} del Programa Anual - Actualizado el ${fechaActualizado}`
+      : `Actualizado el ${fechaActualizado}`;
     fAct.font = { name: 'Arial', size: 9, bold: false };
     fAct.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
     for (let c = 1; c <= 57; c++) {
@@ -434,7 +443,9 @@ export async function exportarAuditoriasTemplate(
     const url = window.URL.createObjectURL(blob);
     
     const link = document.createElement('a');
-    const nombreArchivo = `PAI_${vigenciaActiva}_Exportado.xlsx`;
+    const nombreArchivo = opciones.version
+      ? `PAI_${vigenciaActiva}_V${opciones.version}.xlsx`
+      : `PAI_${vigenciaActiva}_Exportado.xlsx`;
     link.href = url;
     link.download = nombreArchivo;
     document.body.appendChild(link);
@@ -445,7 +456,9 @@ export async function exportarAuditoriasTemplate(
     return {
       exito: true,
       nombreArchivo,
-      mensaje: `Plan Anual exportado con éxito.`
+      mensaje: opciones.version
+        ? `Programa Anual exportado (versión ${opciones.version}).`
+        : `Plan Anual exportado con éxito.`
     };
   } catch (error) {
     console.error('Error al exportar Excel:', error);

@@ -72,48 +72,77 @@ export class AlertasVencimientoTerminosService {
         const ahora = new Date();
 
         for (const termino of terminosPendientes) {
-            if (!termino.fechaVencimiento) continue;
-            const horasRestantes = (new Date(termino.fechaVencimiento).getTime() - ahora.getTime()) / (1000 * 60 * 60);
+            const parcial = await this.evaluarTermino(termino, reglasActivas, ahora);
+            alertasEnviadas += parcial.alertasEnviadas;
+            recordatoriosEnviados += parcial.recordatoriosEnviados;
+        }
 
-            if (termino.horasAnticipacionAlertaPersonalizada != null) {
-                const enviada = await this.intentarEnviarAlerta(
-                    termino,
-                    termino.horasAnticipacionAlertaPersonalizada,
-                    horasRestantes,
-                    null,
-                    'personalizada',
-                );
+        return { alertasEnviadas, recordatoriosEnviados };
+    }
+
+    /**
+     * Evalúa un único término contra las reglas vigentes y notifica si ya cruzó algún umbral.
+     * Se invoca al crear o editar un término para no obligar a esperar hasta la próxima corrida
+     * del cron: un término creado con vencimiento dentro del umbral avisa de inmediato.
+     */
+    async verificarTerminoInmediato(terminoId: string): Promise<{ alertasEnviadas: number; recordatoriosEnviados: number }> {
+        const termino = await this.terminoRepository.findOne({ where: { id: terminoId } });
+        if (!termino || ESTADOS_EXCLUIDOS.includes(termino.estado)) {
+            return { alertasEnviadas: 0, recordatoriosEnviados: 0 };
+        }
+        const reglasActivas = await this.reglaRepository.find({ where: { activa: true } });
+        return this.evaluarTermino(termino, reglasActivas, new Date());
+    }
+
+    private async evaluarTermino(
+        termino: TerminoProcesal,
+        reglasActivas: ReglaAlertaTermino[],
+        ahora: Date,
+    ): Promise<{ alertasEnviadas: number; recordatoriosEnviados: number }> {
+        let alertasEnviadas = 0;
+        let recordatoriosEnviados = 0;
+
+        if (!termino.fechaVencimiento) return { alertasEnviadas, recordatoriosEnviados };
+        const horasRestantes = (new Date(termino.fechaVencimiento).getTime() - ahora.getTime()) / (1000 * 60 * 60);
+
+        if (termino.horasAnticipacionAlertaPersonalizada != null) {
+            const enviada = await this.intentarEnviarAlerta(
+                termino,
+                termino.horasAnticipacionAlertaPersonalizada,
+                horasRestantes,
+                null,
+                'personalizada',
+            );
+            if (enviada) alertasEnviadas++;
+        } else {
+            for (const regla of reglasActivas) {
+                const enviada = await this.intentarEnviarAlerta(termino, regla.horasAnticipacion, horasRestantes, regla.id, 'automatica');
                 if (enviada) alertasEnviadas++;
-            } else {
-                for (const regla of reglasActivas) {
-                    const enviada = await this.intentarEnviarAlerta(termino, regla.horasAnticipacion, horasRestantes, regla.id, 'automatica');
-                    if (enviada) alertasEnviadas++;
-                }
             }
+        }
 
-            if (
-                termino.recordatorioManualHorasAnticipacion != null &&
-                horasRestantes <= termino.recordatorioManualHorasAnticipacion
-            ) {
-                const enviado = await this.legalNotifications.notifyTerminoProximoAVencer({
-                    terminoId: termino.id,
-                    responsableId: termino.responsableId,
-                    nombreActuacion: termino.nombreActuacion,
-                    numeroRadicado: termino.numeroRadicado,
-                    horasRestantes,
-                    origen: 'manual',
-                });
-                // Solo se limpia el recordatorio (envío único) si realmente se pudo notificar;
-                // si falló, se reintenta en la próxima corrida del cron en vez de perderse.
-                if (enviado) {
-                    await this.terminosService.addNota(
-                        termino.id,
-                        `Recordatorio manual enviado (${termino.recordatorioManualHorasAnticipacion}h de anticipación)`,
-                        'Sistema',
-                    );
-                    await this.terminoRepository.update(termino.id, { recordatorioManualHorasAnticipacion: null });
-                    recordatoriosEnviados++;
-                }
+        if (
+            termino.recordatorioManualHorasAnticipacion != null &&
+            horasRestantes <= termino.recordatorioManualHorasAnticipacion
+        ) {
+            const enviado = await this.legalNotifications.notifyTerminoProximoAVencer({
+                terminoId: termino.id,
+                responsableId: termino.responsableId,
+                nombreActuacion: termino.nombreActuacion,
+                numeroRadicado: termino.numeroRadicado,
+                horasRestantes,
+                origen: 'manual',
+            });
+            // Solo se limpia el recordatorio (envío único) si realmente se pudo notificar;
+            // si falló, se reintenta en la próxima corrida del cron en vez de perderse.
+            if (enviado) {
+                await this.terminosService.addNota(
+                    termino.id,
+                    `Recordatorio manual enviado (${termino.recordatorioManualHorasAnticipacion}h de anticipación)`,
+                    'Sistema',
+                );
+                await this.terminoRepository.update(termino.id, { recordatorioManualHorasAnticipacion: null });
+                recordatoriosEnviados++;
             }
         }
 
