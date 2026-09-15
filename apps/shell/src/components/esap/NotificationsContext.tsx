@@ -109,7 +109,8 @@ export function NotificationsProvider({ children, currentModule }: Notifications
   const visibleNotifications = useMemo(() => {
     const allowedCategorias = currentModule ? MODULE_NOTIFICATION_CATEGORIAS[currentModule] : undefined;
     if (!allowedCategorias) return notifications;
-    return notifications.filter(n => allowedCategorias.includes(n.categoria));
+    // El resultado de un trabajo en segundo plano debe poder verse desde cualquier módulo.
+    return notifications.filter(n => n.tipo_notificacion==='rund_extraccion_finalizada' || allowedCategorias.includes(n.categoria));
   }, [notifications, currentModule]);
 
   // Agregar una notificación
@@ -171,26 +172,31 @@ export function NotificationsProvider({ children, currentModule }: Notifications
   }, []);
 
   const consecutiveFailures = useRef<number>(0);
+  const nextRetryAt = useRef(0);
+  const loadingRemote = useRef(false);
 
   // Cargar notificaciones desde el backend
   const loadNotifications = useCallback(async () => {
     if (!REMOTE_NOTIFICATIONS_ENABLED) return;
 
-    // Si ha fallado, pausar el polling para evitar spam en la consola
-    if (consecutiveFailures.current >= 1) return;
+    // Reintento acotado: una caída temporal no desactiva la campana toda la sesión.
+    if (loadingRemote.current || Date.now()<nextRetryAt.current) return;
 
     const user = authService.getCurrentUser();
     if (!user?.id) return;
+    loadingRemote.current=true;
     try {
       const result = await notificationsService.getUserNotifications(user.id, { limit: 50 });
       const list = Array.isArray(result) ? result : (result.data || []);
       const mapped = list.map(mapApiNotification);
       setNotifications(mapped);
       consecutiveFailures.current = 0; // Reiniciar contador de fallos si tiene éxito
+      nextRetryAt.current=0;
     } catch {
       consecutiveFailures.current += 1;
+      nextRetryAt.current=Date.now()+Math.min(300000,30000*2**Math.min(consecutiveFailures.current-1,4));
       // Silencioso cuando el servicio no está disponible
-    }
+    } finally {loadingRemote.current=false;}
   }, []);
 
   // Carga inicial: espera a que el usuario esté en localStorage (máx 5 intentos)
@@ -214,12 +220,10 @@ export function NotificationsProvider({ children, currentModule }: Notifications
   useEffect(() => {
     if (!REMOTE_NOTIFICATIONS_ENABLED) return;
 
-    const interval = setInterval(() => {
-      if (consecutiveFailures.current < 1) {
-        loadNotifications();
-      }
-    }, 30_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {void loadNotifications();}, 30_000);
+    const resume=()=>{if(!document.hidden){nextRetryAt.current=0;void loadNotifications();}};
+    window.addEventListener('online',resume);document.addEventListener('visibilitychange',resume);
+    return () => {clearInterval(interval);window.removeEventListener('online',resume);document.removeEventListener('visibilitychange',resume);};
   }, [loadNotifications]);
 
   // Marcar como leída

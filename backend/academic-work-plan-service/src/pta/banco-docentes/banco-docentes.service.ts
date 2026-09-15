@@ -1,4 +1,5 @@
 import { assertRundEvidenceData } from './rund-evidence-data';
+import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
@@ -2292,6 +2293,10 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async updateDocente(id: string, body: any) {
+    const suggestionIds = extractionIds(body.rundSuggestionIds);
+    if (suggestionIds.length && !body.rundSensitiveAccess?.fullAccess) {
+      throw new ForbiddenException('La validación de sugerencias requiere acceso GGP al documento original.');
+    }
     const docenteId = await this.resolveDocenteId(id, body?.periodoCarga || body?.periodo_carga);
     const d = await this.docenteRepo.findOne({ where: { id: docenteId } });
     if (!d) throw new NotFoundException(`Docente ${id} no encontrado`);
@@ -2350,34 +2355,42 @@ export class BancoDocentesService implements OnModuleInit {
       );
     }
 
-    const ignoredAuditKeys = new Set(['soporteEdicionId', 'justificacionEdicion', 'actorId', 'cargadoPor', 'canal_origen', 'rundSensitiveAccess']);
+    const ignoredAuditKeys = new Set(['soporteEdicionId', 'justificacionEdicion', 'actorId', 'cargadoPor', 'canal_origen', 'rundSensitiveAccess', 'rundSuggestionIds']);
     const changedFields = Object.keys(body).filter((key) => !ignoredAuditKeys.has(key));
-    const result = await this.upsertDocente({
-      ...safeBody,
-      canal_origen: 'MODAL',
-      periodoCarga: d.periodoCarga,
-      // La cedula siempre se obtiene de auth.personas; nunca se acepta del body al editar.
-      documentNumber: currentDocument,
-    }, {
-      // Editar otro dato no reconcilia de forma implícita la territorial operativa.
-      preserveTerritorial: Boolean(d.territorialReportada && String(safeBody.territorialNombre || '').trim() === d.territorialReportada.trim()),
-      audit: {
-        actorId: body.actorId || body.cargadoPor || 'SISTEMA',
-        canalOrigen: 'MODAL',
-        accion: 'EDITAR',
-        observacion: String(body.justificacionEdicion).trim(),
-        soporteId: String(body.soporteEdicionId),
-        ip: body?.ip,
-        metadata: { camposEnviados: changedFields },
-        sensitiveAccess: body.rundSensitiveAccess,
-        requiredSupport: {
-          id: String(body.soporteEdicionId),
-          type: 'soporte_edicion_perfil',
-          docenteId,
+    const execute = async (outerManager?: any) => {
+      const suggestions = suggestionIds.length
+        ? await lockExtractionSuggestions(outerManager, docenteId, suggestionIds, safeBody) : [];
+      const result = await this.upsertDocente({
+        ...safeBody,
+        canal_origen: 'MODAL',
+        periodoCarga: d.periodoCarga,
+        // La cedula siempre se obtiene de auth.personas; nunca se acepta del body al editar.
+        documentNumber: currentDocument,
+      }, {
+        outerManager,
+        // Editar otro dato no reconcilia de forma implícita la territorial operativa.
+        preserveTerritorial: Boolean(d.territorialReportada && String(safeBody.territorialNombre || '').trim() === d.territorialReportada.trim()),
+        audit: {
+          actorId: body.actorId || body.cargadoPor || 'SISTEMA',
+          canalOrigen: 'MODAL',
+          accion: 'EDITAR',
+          observacion: String(body.justificacionEdicion).trim(),
+          soporteId: String(body.soporteEdicionId),
+          ip: body?.ip,
+          metadata: { camposEnviados: changedFields, ...(suggestionIds.length ? { sugerenciasLLM: suggestionIds, validacionHumana: true } : {}) },
+          sensitiveAccess: body.rundSensitiveAccess,
+          requiredSupport: {
+            id: String(body.soporteEdicionId),
+            type: 'soporte_edicion_perfil',
+            docenteId,
+          },
         },
-      },
-    });
-    return result;
+      });
+      if (suggestions.length) await confirmExtractionSuggestions(outerManager, suggestions, safeBody,
+        body.actorId || body.cargadoPor, String(body.justificacionEdicion).trim());
+      return result;
+    };
+    return suggestionIds.length ? this.dataSource.transaction(execute) : execute();
   }
 
   async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }) {

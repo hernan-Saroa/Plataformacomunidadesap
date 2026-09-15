@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../shell/src/utils/connectivity';
-import { aprobarComponente, revisarComponente, getPTADecisionPermissions } from './ptaApi';
+import { aprobarComponente, revisarComponente, getPTADecisionPermissions, getAllPTAs } from './ptaApi';
 
 vi.mock('../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../../../../shell/src/utils/connectivity', () => ({ getAppOnlineStatus: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getAppOnlineStatus).mockReturnValue(true); });
 
 describe('decisiones PTA confirmadas por el servidor', () => {
+  it('gestión consulta el listado autorizado sin reutilizar la caché del listado general', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+    await getAllPTAs({ periodo: '2026-2' }, true);
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/gestion', { periodo: '2026-2' }, { cache: 'no-store', skipErrorToast: true, retries: 0 });
+  });
   it('no lee permisos de la caché ni encola decisiones sin conexión', async () => {
     vi.mocked(getAppOnlineStatus).mockReturnValue(false);
     for (const result of await Promise.all([

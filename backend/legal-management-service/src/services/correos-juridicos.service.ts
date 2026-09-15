@@ -65,8 +65,15 @@ export interface DocumentoTransferenciaDisciplinaria {
     nombre: string;
     tipo?: string;
     tamanio?: number;
+    /** Alias que envía Control Disciplinario (`tamano`, sin i). Se acepta para no
+     *  perder el tamaño por una diferencia de nombre entre servicios. */
+    tamano?: number;
     contentType?: string;
     contentBase64?: string;
+    /** Alias que envía Control Disciplinario (`contentBytes`). Es el mismo base64;
+     *  sin aceptarlo, el contenido del adjunto se descartaba y quedaba sin
+     *  descargar en el Centro de Comunicaciones. */
+    contentBytes?: string;
     archivoUrl?: string;
     downloadUrl?: string;
     url?: string;
@@ -1561,9 +1568,13 @@ export class CorreosJuridicosService {
                 let archivoLocalUrl: string | undefined;
                 let descargado = false;
 
-                if (doc.contentBase64) {
+                // Control Disciplinario envía el base64 como `contentBytes`; la
+                // interfaz de este servicio lo llama `contentBase64`. Se aceptan
+                // ambos para no descartar el contenido por el nombre del campo.
+                const contenidoBase64 = doc.contentBase64 || doc.contentBytes;
+                if (contenidoBase64) {
                     try {
-                        const buffer = Buffer.from(doc.contentBase64, 'base64');
+                        const buffer = Buffer.from(contenidoBase64, 'base64');
                         const safeName = (nombreDoc || 'adjunto').replace(/[^a-zA-Z0-9.-]/g, '_');
                         const uniqueFilename = `recv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
                         const filepath = path.join(uploadsDir, uniqueFilename);
@@ -1587,7 +1598,8 @@ export class CorreosJuridicosService {
                     graphAttachmentId: `DISC_${doc.tipo || 'DOC'}_${doc.id || randomUUID()}`,
                     nombre: nombreDoc,
                     contentType: doc.contentType || (nombreDoc.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
-                    tamanio: doc.tamanio || 0,
+                    // `tamano` es el alias que envía Disciplinario; se acepta también.
+                    tamanio: doc.tamanio ?? doc.tamano ?? 0,
                     descargado,
                     archivoLocalUrl,
                 });

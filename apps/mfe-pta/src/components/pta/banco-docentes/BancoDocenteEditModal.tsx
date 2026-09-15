@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles, Upload } from 'lucide-react';
 import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../../../services/api/ptaApi';
 import { useAuth } from '../../../contexts/AuthContext';
+import type { RundSuggestion } from './RundExtractionPanel';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';
 import {
   MANUAL_DEDICACIONES,
@@ -24,6 +25,7 @@ import {
 } from '../../../utils/bancoDocenteManual';
 
 interface Props {
+  suggestion?: RundSuggestion;
   docente: any | null;
   periodoSeleccionado?: string;
   onClose: () => void;
@@ -178,7 +180,7 @@ const fieldFocusStyle = `
    Main Component
    ═══════════════════════════════════════════════════════════════════ */
 
-export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, onSaved }: Props) {
+export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, onSaved, suggestion }: Props) {
   const [activeStep, setActiveStep] = useState<Step>(0);
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
   const [saving, setSaving] = useState(false);
@@ -271,13 +273,16 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         fechaNacimiento: docente.nacimiento ? docente.nacimiento.split('T')[0] : '',
         idRund: docente.id_rund || docente.idRund || '',
         justificacionEdicion: '',
+        ...(suggestion ? { [suggestion.campo]: suggestion.valor, justificacionEdicion: `Validación humana de ${suggestion.label} extraído del soporte documental.` } : {}),
       });
     } else {
       setForm((current) => ({ ...current, periodoCarga: periodoSeleccionado || current.periodoCarga }));
     }
     setFieldErrors({});
     setSupportFile(null);
-  }, [docente, periodoSeleccionado]);
+    if (suggestion) setActiveStep(suggestion.campo === 'fechaNacimiento' ? 3
+      : ['pregrado','especializacion','maestria','doctorado','posDoctorado','perfilAcademico','nucleoTematico','investigacion'].includes(suggestion.campo) ? 1 : 0);
+  }, [docente, periodoSeleccionado, suggestion]);
 
   const setValue = (key: string, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -464,6 +469,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         idRund: form.idRund || null,
         actorId: auth.userPersonId || auth.userEmail || 'SISTEMA',
         soporteEdicionId,
+        ...(suggestion ? { rundSuggestionIds: [suggestion.id] } : {}),
         justificacionEdicion: isEditing ? form.justificacionEdicion.trim() : null,
       };
       if (isEditing && sensitiveDataRestricted) {
@@ -579,6 +585,11 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
 
           {/* ─── Body ────────────────────────────────────────────── */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 20px' }}>
+            {suggestion && <div role="status" style={{ marginBottom:16,padding:14,border:'1px solid #c4b5fd',borderRadius:10,background:'#f5f3ff',color:'#5b21b6',fontSize:13 }}>
+              <strong>{suggestion.label}: sugerido, pendiente de validación humana</strong>
+              <p style={{margin:'6px 0'}}>Se precompletó «{suggestion.valor}». Revíselo o corríjalo. Solo se confirma al guardar esta edición con su justificación y soporte documental.</p>
+              {suggestion.baja_confianza && <strong>Baja confianza: contraste cuidadosamente el valor con el PDF.</strong>}
+            </div>}
 
             {error && (
               <div style={{ marginBottom: 18, padding: '12px 16px', borderRadius: 12, background: 'linear-gradient(135deg, #fef2f2, #fff1f2)', border: '1px solid #fecaca', fontSize: '0.8rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 1px 4px rgba(220,38,38,0.08)' }}>

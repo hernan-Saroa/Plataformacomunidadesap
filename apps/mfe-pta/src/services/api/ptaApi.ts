@@ -106,9 +106,11 @@ export async function getAllPTAs(filters?: {
   programa?: string;
   nivelAprobacion?: number;
   isSuperUser?: boolean;
-}) {
+}, gestion = false) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/todos`, filters);
+    const raw = gestion
+      ? await apiClient.get<any>(`${PTA_BASE}/gestion`, filters, { cache: 'no-store', skipErrorToast: true, retries: 0 })
+      : await apiClient.get<any>(`${PTA_BASE}/todos`, filters);
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {

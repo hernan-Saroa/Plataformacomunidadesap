@@ -21,6 +21,8 @@ export interface PtaAuthenticatedUser extends PtaAuthContext {
    * puede revisar o aprobar del componente Docencia - Territorial.
    */
   territorialIds: string[];
+  /** Identificadores, códigos y nombres equivalentes de la sede de Personas. */
+  cetapIds?: string[];
 }
 
 declare module 'express' {
@@ -67,16 +69,16 @@ export class PtaAuthGuard implements CanActivate {
 
     const userId = payload?.sub ? String(payload.sub) : null;
     if (!userId) throw new UnauthorizedException('La sesión no identifica una cuenta válida.');
-    const [ctx, territorialIds] = await Promise.all([
+    const [ctx, personalScope] = await Promise.all([
       this.ptaPermissions.resolveForUser(userId),
-      this.ptaPermissions.resolveTerritorialIdsForUser(userId),
+      this.ptaPermissions.resolvePersonalScopeForUser(userId),
     ]);
 
     req.ptaAuth = {
       userId,
       name: payload?.name ? String(payload.name) : null,
       email: payload?.email ? String(payload.email) : null,
-      territorialIds,
+      ...personalScope,
       ...ctx,
     };
 
