@@ -91,6 +91,18 @@ Contrato privado OCR: `POST /extract`, `Authorization: Bearer <RUND_OCR_TOKEN>`,
 
 ## Instalación local
 
+### Despliegue por cambios en los servidores
+
+`backend/rund-ocr-service` contiene el motor Python, cuyo servicio Compose se llama `rund-ocr` y está definido en `docker-compose.rund-ocr.yml`. No es un microservicio Node de los Compose de QA, preproducción, producción o desarrollo.
+
+El comando `rebuild-changed` antes convertía cualquier carpeta `backend/*` en un nombre de servicio; por eso los cambios OCR causaban `no such service: rund-ocr-service`. Los cuatro scripts ahora identifican esa carpeta como infraestructura independiente y emiten un aviso. Además, validan los demás nombres con `compose config --services` antes de limpiar o reconstruir. Esta corrección desbloquea el despliegue de la aplicación; **no instala ni habilita el OCR en el servidor**.
+
+Para recuperar un despliegue fallido, actualizar primero el script del ambiente y repetir `rebuild-changed` con un rango Git que incluya los cambios originales del intento fallido y la corrección. Usar solamente el último commit de la corrección puede omitir servicios pendientes del intento anterior. No es necesario borrar contenedores, documentos ni la base de datos.
+
+Regresión reproducible: `node --test scripts/verify-deploy-service-selection.test.cjs`. Ejecuta la selección real de los cuatro scripts en Bash con las operaciones de Docker, Git, limpieza, migraciones y reinicio simuladas; no ejecuta despliegues ni lee secretos.
+
+### Motores locales
+
 Requisitos: Docker con contenedores Linux, espacio para imágenes/modelos y memoria suficiente para el sistema y ambos motores. El instalador detecta NVIDIA con al menos 6 GB de VRAM y aplica `docker-compose.rund-ocr.gpu.yml`; se puede elegir `-CpuOnly` explícitamente. La RAM y el espacio de disco son recursos distintos; disponer de GPU reduce la carga de RAM del modelo pero no la elimina. Los límites son 4 GB para OCR, 12 GB para Ollama en CPU y 6 GB de RAM más la GPU con el complemento NVIDIA. Para uso compartido, dimensionar un servidor dedicado tras medir los tiempos con el corpus acordado.
 
 Desde la raíz del repositorio, PowerShell:

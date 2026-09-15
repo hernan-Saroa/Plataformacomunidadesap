@@ -295,6 +295,8 @@ cmd_rebuild_changed() {
     local changed_file service_dir service_name
     local rebuild_all_frontend=0
     local run_migrations=0
+    local separate_rund_ocr=0
+    local available_services
 
     if [ -z "$range" ]; then
         if ! range=$(get_git_change_range); then
@@ -320,6 +322,11 @@ cmd_rebuild_changed() {
                 run_migrations=1
                 ;;
             backend/*/.env.example)
+                ;;
+            backend/rund-ocr-service/*)
+                # Motor Python opcional definido en docker-compose.rund-ocr.yml.
+                # El nombre de su carpeta no es un servicio del Compose del ambiente.
+                separate_rund_ocr=1
                 ;;
             backend/*/*)
                 service_dir=$(echo "$changed_file" | cut -d/ -f2)
@@ -405,6 +412,24 @@ cmd_rebuild_changed() {
                 ;;
         esac
     done <<< "$changed_files"
+
+    if [ "$separate_rund_ocr" -eq 1 ]; then
+        echo -e "${YELLOW}OCR RUND: cambios detectados en el motor independiente. No se reconstruye con el Compose de este ambiente; requiere docker-compose.rund-ocr.yml y su configuración. La aplicación continúa su despliegue.${NC}"
+    fi
+
+    # Validar antes de limpiar o reconstruir: no asumir que toda carpeta es un servicio.
+    if [ ${#backend_services[@]} -gt 0 ]; then
+        if ! available_services=$(compose_env config --services); then
+            echo -e "${RED}No se pudo validar el Compose del ambiente. No se inició la reconstrucción.${NC}"
+            return 1
+        fi
+        for service_name in "${backend_services[@]}"; do
+            if ! printf '%s\n' "$available_services" | grep -Fxq -- "$service_name"; then
+                echo -e "${RED}El backend '$service_name' no está declarado en el Compose del ambiente. Revise su integración antes de desplegar. No se inició la reconstrucción.${NC}"
+                return 1
+            fi
+        done
+    fi
 
     if [ $rebuild_all_frontend -eq 1 ]; then
         frontend_services=("${FRONTEND_MFE_SERVICES[@]}")
