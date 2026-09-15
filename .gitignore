@@ -188,6 +188,9 @@ backend/hiring-service/uploads/
 .env.qa
 .env.pre
 .env.prod
+.env.rund-ocr.local
+.rund-ocr-testenv/
+backend/rund-ocr-service/__pycache__/
 
 # Package locks local
 package-lock.json

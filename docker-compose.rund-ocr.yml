@@ -1,0 +1,33 @@
+# Instalación experimental independiente. No modifica los servicios existentes.
+services:
+  rund-ocr:
+    build: ./backend/rund-ocr-service
+    restart: unless-stopped
+    environment:
+      RUND_OCR_TOKEN: ${RUND_OCR_TOKEN:?Configure un token local de al menos 32 caracteres}
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: 'True'
+    ports:
+      - '127.0.0.1:8091:8091'
+    volumes:
+      - rund-paddle-models:/root/.paddlex
+    mem_limit: 4g
+    cpus: 2
+    security_opt:
+      - no-new-privileges:true
+  rund-ollama:
+    image: ollama/ollama:0.34.0
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: '1'
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    ports:
+      - '127.0.0.1:11435:11434'
+    volumes:
+      - rund-ollama-models:/root/.ollama
+    mem_limit: 12g
+    cpus: 4
+volumes:
+  rund-paddle-models:
+  rund-ollama-models:

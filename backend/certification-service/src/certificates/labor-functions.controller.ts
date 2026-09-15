@@ -14,6 +14,7 @@ import {
   type LaborFunctionProfilePayload,
 } from './labor-functions.service';
 import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
+import { CertificatesService } from './certificates.service';
 
 const MANAGE_FUNCTIONS_PERMISSION =
   'certificados-laborales.functions.manage';
@@ -25,6 +26,7 @@ export class LaborFunctionsController {
   constructor(
     private readonly laborFunctionsService: LaborFunctionsService,
     private readonly permissionsService: LaborCertificatePermissionsService,
+    private readonly certificatesService: CertificatesService,
   ) {}
 
   private async assertCanManage(req: any) {
@@ -57,6 +59,52 @@ export class LaborFunctionsController {
       search,
       page: Number(page) || 1,
       limit: Number(limit) || 20,
+      // Misma vinculacion que usa el certificado: una por persona.
+      resolveUsedForCertificate: (requests) =>
+        this.certificatesService.resolveRequestUsedForCertificate(
+          requests as any,
+        ),
+    });
+  }
+
+  // Ruta estatica declarada antes de :id para que Nest no la tome como un id.
+  @Get('person-lookup')
+  async lookupPerson(
+    @Req() req: any,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ) {
+    await this.assertCanManage(req);
+    return await this.laborFunctionsService.lookupPerson(search || '', {
+      limit: Number(limit) || 25,
+      // Se reutiliza el pipeline real del certificado (seleccion + fuente
+      // salarial + merge de codigos) para mostrar una sola vinculacion por
+      // persona: exactamente la que sale impresa.
+      selectPreferred: (requests) =>
+        this.certificatesService.resolveRequestUsedForCertificate(
+          requests as any,
+        ),
+    });
+  }
+
+  @Get(':id/associations')
+  async listAssociations(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    await this.assertCanManage(req);
+    return await this.laborFunctionsService.listAssociations(id, {
+      search,
+      page: Number(page) || 1,
+      limit: Number(limit) || 25,
+      // Misma vinculacion que usa el certificado: una por persona.
+      resolveUsedForCertificate: (requests) =>
+        this.certificatesService.resolveRequestUsedForCertificate(
+          requests as any,
+        ),
     });
   }
 
