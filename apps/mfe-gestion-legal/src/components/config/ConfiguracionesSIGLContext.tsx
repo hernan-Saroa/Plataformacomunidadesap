@@ -740,6 +740,43 @@ interface ConfiguracionesSIGLContextType {
 
 const ConfiguracionesSIGLContext = createContext<ConfiguracionesSIGLContextType | undefined>(undefined);
 
+// ============ LISTAS GLOBALES DE TÉRMINOS E INFORMES ============
+// Estas listas alimentan los desplegables del módulo Términos e Informes
+// (ModalNuevoTermino). Se persisten en el backend (system_configurations) para
+// que apliquen a todos los usuarios; localStorage queda solo como caché local
+// de respaldo cuando el backend no responde.
+const CLAVES_LISTAS_TERMINOS_INFORMES = {
+  destinatariosInforme: 'sigl-destinatarios-informe',
+  entesSolicitantesInforme: 'sigl-entes-solicitantes-informe',
+  tiposFuenteNormativa: 'sigl-tipos-fuente-normativa',
+} as const;
+
+// Lee una lista de caché local. Devuelve null si no existe o está corrupta.
+function leerListaLocal<T>(clave: string): T[] | null {
+  const guardado = localStorage.getItem(clave);
+  if (!guardado) return null;
+  try {
+    const parsed = JSON.parse(guardado);
+    return Array.isArray(parsed) ? (parsed as T[]) : null;
+  } catch (error) {
+    console.error(`❌ Error al leer ${clave} de localStorage:`, error);
+    return null;
+  }
+}
+
+// Lee una lista del backend. Devuelve null si no existe o falla la petición,
+// para que el llamador pueda caer a la caché local o a los valores iniciales.
+async function leerListaBackend<T>(clave: string): Promise<T[] | null> {
+  try {
+    const res = await legalService.getConfiguration(clave);
+    const value = res?.value;
+    return Array.isArray(value) ? (value as T[]) : null;
+  } catch (error) {
+    console.warn(`⚠️ No se pudo leer ${clave} del backend, se usará la caché local.`, error);
+    return null;
+  }
+}
+
 // ============ PROVIDER ============
 
 export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode }) {
@@ -757,6 +794,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [tiposFuenteNormativa, setTiposFuenteNormativa] = useState<TipoFuenteNormativa[]>(tiposFuenteNormativaIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // true en cuanto el usuario toca cualquier configuración. La carga inicial del
+  // backend es asíncrona: sin esta bandera, una respuesta lenta pisaría lo que el
+  // usuario ya editó.
+  const usuarioEditoRef = useRef(false);
 
   // Cargar configuraciones desde API
   useEffect(() => {
@@ -900,38 +941,42 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       }
     }
 
-    const destinatariosGuardados = localStorage.getItem('sigl-destinatarios-informe');
-    if (destinatariosGuardados) {
-      try {
-        const parsed = JSON.parse(destinatariosGuardados);
-        setDestinatariosInforme(parsed);
-        console.log('✅ Destinatarios de Informes cargados desde localStorage');
-      } catch (error) {
-        console.error('❌ Error al cargar destinatarios de informes:', error);
-      }
-    }
+    // Listas de Términos e Informes: primero la caché local (pintado inmediato),
+    // luego el backend, que es la fuente de verdad compartida entre usuarios.
+    const destinatariosLocales = leerListaLocal<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme);
+    if (destinatariosLocales) setDestinatariosInforme(destinatariosLocales);
 
-    const entesSolicitantesGuardados = localStorage.getItem('sigl-entes-solicitantes-informe');
-    if (entesSolicitantesGuardados) {
-      try {
-        const parsed = JSON.parse(entesSolicitantesGuardados);
-        setEntesSolicitantesInforme(parsed);
-        console.log('✅ Entes Solicitantes de Informes cargados desde localStorage');
-      } catch (error) {
-        console.error('❌ Error al cargar entes solicitantes de informes:', error);
-      }
-    }
+    const entesSolicitantesLocales = leerListaLocal<EnteSolicitanteInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme);
+    if (entesSolicitantesLocales) setEntesSolicitantesInforme(entesSolicitantesLocales);
 
-    const tiposFuenteNormativaGuardados = localStorage.getItem('sigl-tipos-fuente-normativa');
-    if (tiposFuenteNormativaGuardados) {
-      try {
-        const parsed = JSON.parse(tiposFuenteNormativaGuardados);
-        setTiposFuenteNormativa(parsed);
-        console.log('✅ Tipos de Fuente Normativa cargados desde localStorage');
-      } catch (error) {
-        console.error('❌ Error al cargar tipos de fuente normativa:', error);
+    const fuentesLocales = leerListaLocal<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
+    if (fuentesLocales) setTiposFuenteNormativa(fuentesLocales);
+
+    const loadListasTerminosInformes = async () => {
+      const [destinatariosRemotos, entesRemotos, fuentesRemotas] = await Promise.all([
+        leerListaBackend<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme),
+        leerListaBackend<EnteSolicitanteInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme),
+        leerListaBackend<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa),
+      ]);
+
+      // Si el usuario ya empezó a editar, la respuesta del backend llegó tarde: descartarla.
+      if (usuarioEditoRef.current) return;
+
+      if (destinatariosRemotos) {
+        setDestinatariosInforme(destinatariosRemotos);
+        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(destinatariosRemotos));
       }
-    }
+      if (entesRemotos) {
+        setEntesSolicitantesInforme(entesRemotos);
+        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(entesRemotos));
+      }
+      if (fuentesRemotas) {
+        setTiposFuenteNormativa(fuentesRemotas);
+        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, JSON.stringify(fuentesRemotas));
+      }
+      console.log('✅ Listas de Términos e Informes sincronizadas desde backend');
+    };
+    loadListasTerminosInformes();
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -1031,18 +1076,21 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   // Actualizar ejes estratégicos
   const actualizarEjesEstrategicos = (nuevosEjes: EjeEstrategico[]) => {
     setEjesEstrategicos(nuevosEjes);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   // Actualizar tipos de indicadores
   const actualizarTiposIndicadores = (nuevosIndicadores: TipoIndicador[]) => {
     setTiposIndicadores(nuevosIndicadores);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
@@ -1050,42 +1098,67 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   // Actualizar tipos de requerimientos
   const actualizarTiposRequerimientos = (nuevosRequerimientos: TipoRequerimiento[]) => {
     setTiposRequerimientos(nuevosRequerimientos);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   // Actualizar organismos de control
   const actualizarOrganismosControl = (nuevosOrganismos: OrganismoControl[]) => {
     setOrganismosControl(nuevosOrganismos);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   const actualizarEntesControlPM = (nuevosEntes: EnteControlPM[]) => {
     setEntesControlPM(nuevosEntes);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   const actualizarCategoriasDocumentos = (nuevasCategorias: CategoriaDocumento[]) => {
     setCategoriasDocumentos(nuevasCategorias);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   const actualizarDestinatariosInforme = (nuevosDestinatarios: DestinatarioInforme[]) => {
     setDestinatariosInforme(nuevosDestinatarios);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   const actualizarEntesSolicitantesInforme = (nuevosEntes: EnteSolicitanteInforme[]) => {
     setEntesSolicitantesInforme(nuevosEntes);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   const actualizarTiposFuenteNormativa = (nuevosTipos: TipoFuenteNormativa[]) => {
     setTiposFuenteNormativa(nuevosTipos);
+    usuarioEditoRef.current = true;
     setCambiosPendientes(true);
   };
 
   // Guardar configuraciones
   const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
+    // Persistir en localStorage ANTES de cualquier await: si el backend falla, el
+    // usuario no pierde lo que acaba de editar (antes estas escrituras estaban al
+    // final y una sola petición fallida se llevaba por delante todos los cambios).
+    try {
+      localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
+      localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
+      localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
+      localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
+      localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
+      localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
+      localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(destinatariosInforme));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(entesSolicitantesInforme));
+      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, JSON.stringify(tiposFuenteNormativa));
+    } catch (error) {
+      console.warn('⚠️ No se pudo escribir la caché local de configuraciones:', error);
+    }
+
     try {
       console.log('💾 Guardando configuraciones en backend...');
 
@@ -1106,12 +1179,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         });
       });
 
-      // Guardar cada módulo individualmente en el backend
-      await Promise.all(
-        configuraciones.map(config =>
+      // Guardar cada módulo individualmente en el backend, junto con las listas
+      // globales de Términos e Informes (destinatarios, entes solicitantes y
+      // tipos de fuente normativa), que también deben aplicar a todos los usuarios.
+      await Promise.all([
+        ...configuraciones.map(config =>
           legalService.saveConfiguration(config.id, config)
-        )
-      );
+        ),
+        legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInforme),
+        legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInforme),
+        legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativa),
+      ]);
 
       // Renombrar tipoProceso en expedientes afectados
       if (nombreCambios.length > 0) {
@@ -1155,19 +1233,8 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.warn('⚠️ No se pudo sincronizar organismos al backend:', err);
       }
 
-      // Guardar en localStorage como backup
-      localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
-
-      localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
-      localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
-      localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
-      localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
-      localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
-      localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
-      localStorage.setItem('sigl-destinatarios-informe', JSON.stringify(destinatariosInforme));
-      localStorage.setItem('sigl-entes-solicitantes-informe', JSON.stringify(entesSolicitantesInforme));
-      localStorage.setItem('sigl-tipos-fuente-normativa', JSON.stringify(tiposFuenteNormativa));
-
+      // La caché local ya se escribió al inicio de esta función.
+      usuarioEditoRef.current = false;
       setCambiosPendientes(false);
       
       if (!silencioso) {
@@ -1205,7 +1272,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     }, 1500); // 1.5s debounce
 
     return () => clearTimeout(timer);
-  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, destinatariosInforme, entesSolicitantesInforme, tiposFuenteNormativa]);
+    // `cambiosPendientes` y `categoriasDocumentos` deben estar aquí: sin ellos el
+    // efecto no se re-ejecutaba al editar categorías de documentos (no se
+    // autoguardaban) ni al marcar cambios sin que mutara ninguna otra lista.
+  }, [cambiosPendientes, configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, categoriasDocumentos, destinatariosInforme, entesSolicitantesInforme, tiposFuenteNormativa]);
 
   // Limpiar estado 'saved' / 'error' de vuelta a 'idle' después de unos segundos
   useEffect(() => {
@@ -1237,10 +1307,23 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     localStorage.removeItem('sigl-organismos-control');
     localStorage.removeItem('sigl-entes-control-pm');
     localStorage.removeItem('sigl-categorias-documentos');
-    localStorage.removeItem('sigl-destinatarios-informe');
-    localStorage.removeItem('sigl-entes-solicitantes-informe');
-    localStorage.removeItem('sigl-tipos-fuente-normativa');
+    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme);
+    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme);
+    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
 
+    // Las listas de Términos e Informes viven en el backend: hay que devolverlas
+    // también allí, o la próxima recarga volvería a traer los valores anteriores.
+    Promise.allSettled([
+      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInformeIniciales),
+      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInformeIniciales),
+      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativaIniciales),
+    ]).then(resultados => {
+      if (resultados.some(r => r.status === 'rejected')) {
+        console.warn('⚠️ No se pudieron restablecer en el backend todas las listas de Términos e Informes');
+      }
+    });
+
+    usuarioEditoRef.current = false;
     setCambiosPendientes(false);
     toast.success('Configuraciones restablecidas', {
       description: 'Se han restaurado los valores por defecto',
