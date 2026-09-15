@@ -341,7 +341,13 @@ export function ModuloTerminosInformesV3() {
   const fetchEliminados = async () => {
     try {
       const data = await legalService.getTerminosListado(undefined, 'ELIMINADO');
-      setTerminosEliminados(data.map(mapTerminoASolicitud));
+      // Salvaguarda: no confiar ciegamente en que el backend haya aplicado el filtro
+      // `estado=ELIMINADO` (p. ej. una versión desplegada desactualizada que lo ignore y
+      // devuelva el listado activo completo) — de lo contrario, términos activos/recién
+      // creados aparecerían de inmediato en "Eliminados", y "Eliminar Permanentemente"
+      // desde ahí borraría términos que en realidad seguían vigentes.
+      const soloEliminados = data.filter((t: any) => t.estado === 'ELIMINADO');
+      setTerminosEliminados(soloEliminados.map(mapTerminoASolicitud));
     } catch (error) {
       console.error('Error fetching términos eliminados:', error);
     }
