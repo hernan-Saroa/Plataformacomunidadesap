@@ -918,6 +918,7 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-contratacion"
         "frontend-mfe-viaticos"
         "frontend-mfe-programacion-academica"
+        "frontend-mfe-gestion-infraestructura"
         "frontend-mfe-chatbot"
     )
 

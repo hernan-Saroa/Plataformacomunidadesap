@@ -49,6 +49,15 @@ export class TerminoProcesal {
     @Column({ name: 'recordatorio_manual_horas_anticipacion', type: 'int', nullable: true })
     recordatorioManualHorasAnticipacion: number | null;
 
+    // Último recordatorio periódico enviado. El scheduler lo usa para espaciar los
+    // recordatorios y no reenviar en cada corrida. Se limpia al mover el vencimiento.
+    @Column({ name: 'ultimo_recordatorio_recurrente_en', type: 'timestamp with time zone', nullable: true })
+    ultimoRecordatorioRecurrenteEn: Date | null;
+
+    // Aviso puntual de "ya venció" (envío único), distinto de los recordatorios periódicos.
+    @Column({ name: 'alerta_vencimiento_enviada_en', type: 'timestamp with time zone', nullable: true })
+    alertaVencimientoEnviadaEn: Date | null;
+
     @Column({ length: 20, default: 'PENDIENTE' })
     @Index()
     estado: string;

@@ -144,26 +144,50 @@ export class EmailsService {
     return this.graphClient;
   }
 
-  private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
-    const redirectTo = process.env.EMAIL_REDIRECT_TO;
+  private parseEmailRedirectConfig(): { redirectEmail: string; environmentName: string } | null {
+    const raw = (process.env.EMAIL_REDIRECT_TO || '').trim();
+    if (!raw) return null;
 
-    if (redirectTo && redirectTo.trim().length > 0) {
+    // Soporta formato compuesto: "PRE;desarrollo.ccd@esap.edu.co" o "PRE|correo@..."
+    if (raw.includes(';') || raw.includes('|')) {
+      const separator = raw.includes(';') ? ';' : '|';
+      const parts = raw.split(separator).map((p) => p.trim());
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return {
+          environmentName: parts[0].toUpperCase(),
+          redirectEmail: parts[1],
+        };
+      }
+    }
+
+    // Si solo viene el correo directo sin prefijo de ambiente
+    return {
+      redirectEmail: raw,
+      environmentName: 'NULL',
+    };
+  }
+
+  private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
+    const redirectConfig = this.parseEmailRedirectConfig();
+
+    if (redirectConfig && redirectConfig.redirectEmail.length > 0) {
+      const { redirectEmail, environmentName } = redirectConfig;
       const originalRecipient = payload.to;
-      this.logger.log(`[Redirección] Redirigiendo correo de <${originalRecipient}> a <${redirectTo}>`);
+      this.logger.log(`[Redirección][${environmentName}] Redirigiendo correo de <${originalRecipient}> a <${redirectEmail}>`);
       
-      payload.to = redirectTo.trim();
-      payload.subject = `[Redirigido de: ${originalRecipient}] ${payload.subject}`;
+      payload.to = redirectEmail;
+      payload.subject = `[Redirigido — Ambiente ${environmentName} de: ${originalRecipient}] ${payload.subject}`;
       
       if (payload.html) {
         payload.html = `
           <div style="background-color: #ffe4e6; border: 1px solid #fda4af; padding: 12px; margin-bottom: 20px; font-family: sans-serif; color: #9f1239; border-radius: 6px;">
-            <strong>[Correo Redirigido]</strong> Este mensaje fue enviado originalmente a: <code>${originalRecipient}</code> (Entorno de desarrollo/pruebas).
+            <strong>[Correo Redirigido — Ambiente ${environmentName}]</strong> Este mensaje fue enviado originalmente a: <code>${originalRecipient}</code> (Entorno de pruebas ${environmentName}).
           </div>
           ${payload.html}
         `;
       }
       if (payload.text) {
-        payload.text = `[Correo Redirigido a: ${redirectTo} - Destinatario original: ${originalRecipient}]\n\n${payload.text}`;
+        payload.text = `[Correo Redirigido — Ambiente ${environmentName} a: ${redirectEmail} - Destinatario original: ${originalRecipient}]\n\n${payload.text}`;
       }
     }
 
