@@ -63,6 +63,16 @@ export class LaborFunctionsController {
   }
 
   // Ruta estatica declarada antes de :id para que Nest no la tome como un id.
+  @Get('selection')
+  async listAllForSelection(
+    @Req() req: any,
+    @Query('search') search?: string,
+  ) {
+    await this.assertCanManage(req);
+    return await this.laborFunctionsService.listAllForSelection({ search });
+  }
+
+  // Ruta estatica declarada antes de :id para que Nest no la tome como un id.
   @Get('person-lookup')
   async lookupPerson(
     @Req() req: any,

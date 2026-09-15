@@ -15,6 +15,32 @@ import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 import { QRCodeCanvas } from 'qrcode.react';
 
+/**
+ * Centro de costo (grupo interno de trabajo) del primer valor utilizable.
+ * Descarta los marcadores de "no aplica" igual que `resolveLaborInternalGroup`
+ * del backend, para que ambas copias de la regla resuelvan lo mismo.
+ */
+export const resolverCentroCosto = (
+  ...valores: Array<string | null | undefined>
+): string => {
+  const NO_APLICA = ['n a', 'na', 'no aplica', 'no aplica ninguno', 'ninguno'];
+  for (const valor of valores) {
+    const texto = String(valor ?? '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!texto) continue;
+    const clave = texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    if (clave && !NO_APLICA.includes(clave)) return texto;
+  }
+  return '';
+};
+
 interface VisorPDFCertificadoProps {
   isOpen: boolean;
   onClose: () => void;
@@ -164,7 +190,7 @@ export function VisorPDFCertificado({
       .trim();
   };
 
-  const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) => {
+const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) => {
     const left = normalizarTexto(String(a || '').replace(/\u00a0/g, ' ').trim());
     const right = normalizarTexto(String(b || '').replace(/\u00a0/g, ' ').trim());
     if (!left || !right) return false;
@@ -392,7 +418,28 @@ export function VisorPDFCertificado({
         ? ubicacionCargo
         : observationsEncargo;
 
-    const dato7 = dependenciaHijo || certificado.position_location || '';
+    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
+    // solo usa la dependencia cuando no hay centro de costo. Misma regla y
+    // mismo orden que labor-certificate-pdf.service.ts en el backend: esta
+    // vista previa se renderiza aqui, asi que si las dos copias no coinciden el
+    // usuario ve una cosa en pantalla y otra en el PDF.
+    //
+    // No se usa `position_location`: es el unico campo cuyo significado se
+    // invierte segun la fuente (en las filas locales trae el grupo y en las de
+    // Oracle la dependencia o incluso la sucursal).
+    const centroCosto = resolverCentroCosto(
+      requestData?.internal_group,
+      requestData?.internalGroup,
+      requestData?.cost_center,
+      requestData?.costCenter,
+      (certificado as any)?.internal_group,
+      (certificado as any)?.cost_center,
+    );
+    const dato7 =
+      centroCosto ||
+      dependenciaHijo ||
+      normalizarDependencia(requestData?.organization_department) ||
+      '';
     const cargoDato6 = tipoVinculacion;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';

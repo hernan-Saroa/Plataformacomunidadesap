@@ -316,6 +316,19 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       position_location: grupoRaw,
       observations: cert.observations || cert.request?.observations,
       department: ubicacionRaw,
+      // Centro de costo (grupo interno): [DEPENDENCIA] lo prioriza sobre la
+      // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
+      // previa cae al department y contradice al PDF del backend.
+      internal_group:
+        cert.request?.internal_group ||
+        cert.request?.internalGroup ||
+        cert.internal_group ||
+        '',
+      cost_center:
+        cert.request?.cost_center ||
+        cert.request?.costCenter ||
+        cert.cost_center ||
+        '',
       cod_cargo: dependenciaPadreRaw || cert.cod_cargo || cert.codCargo,
       cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
       campus: cert.campus,

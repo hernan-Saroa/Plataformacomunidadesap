@@ -1067,7 +1067,7 @@ export class LegalNotificationsService {
       mensaje,
       descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${textoAnticipacion}`,
       icono: meta.icon,
-      color: params.horasRestantes < 0 ? '#DC2626' : meta.color,
+      color: '#DC2626',
       prioridad: (params.horasRestantes < 24 ? 'Alta' : 'Media') as 'Alta' | 'Media',
       categoria: meta.categoria,
       tiene_accion: true,

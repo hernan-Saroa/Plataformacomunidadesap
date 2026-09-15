@@ -5,6 +5,7 @@ import * as QRCode from 'qrcode';
 import puppeteer from 'puppeteer';
 import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
+import { resolveLaborInternalGroup } from './labor-functions.utils';
 
 type TemplateType = 'docente' | 'administrador';
 type TechnicalBonusCategory = string;
@@ -783,6 +784,21 @@ export class LaborCertificatePdfService {
       :
       (certificate as Certificate & { request?: { position_location?: string } }).request
         ?.position_location || '';
+    // El centro de costo se lee SIEMPRE de la solicitud, incluso en
+    // certificados corregidos: la correccion edita dependencia y ubicacion, no
+    // el grupo interno, y la entidad Certificate no tiene columnas donde
+    // guardarlo. Asi la regla "centro de costo primero" vale tambien ahi.
+    const requestInternalGroup =
+      (certificate as Certificate & { request?: { internal_group?: string } }).request
+        ?.internal_group || '';
+    const requestCostCenter =
+      (certificate as Certificate & { request?: { cost_center?: string } }).request
+        ?.cost_center || '';
+    const requestOrganizationDepartment = preferCorrectedCertificate
+      ? ''
+      :
+      (certificate as Certificate & { request?: { organization_department?: string } })
+        .request?.organization_department || '';
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
@@ -852,9 +868,37 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
+    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
+    // solo usa la dependencia cuando no hay centro de costo.
+    //
+    // OJO con el cruce de datos entre fuentes: la misma informacion llega en
+    // columnas distintas segun de donde venga la fila.
+    //
+    //   Campo                   | Filas locales        | Filas de Oracle FNC
+    //   ------------------------|----------------------|--------------------------
+    //   internal_group          | grupo                | GRUPO_INTERNO, si no CC
+    //   cost_center             | vacio                | CENTROCOSTO
+    //   department              | dependencia          | CENTROCOSTO, si no DEPEND.
+    //   organization_department | dependencia          | DEPENDENCIA
+    //   position_location       | grupo, si no depend. | DEPENDENCIA, si no SUCURSAL
+    //
+    // `internal_group` y `organization_department` significan lo mismo en las
+    // dos fuentes, asi que son los anclajes fiables. `position_location` NO se
+    // usa a proposito: es el unico campo cuyo significado se invierte entre
+    // fuentes y en Oracle puede traer la SUCURSAL (p. ej. "SEDE CENTRAL"), que
+    // no es una dependencia.
+    //
+    // Resultado: centro de costo si existe, dependencia si no, y el mismo
+    // comportamiento en local, dev, qa, pre y produccion.
+    const centroCosto = resolveLaborInternalGroup(
+      requestInternalGroup,
+      requestCostCenter,
+    );
     const dato7 =
+      centroCosto ||
       requestDepartment ||
       certificate.department ||
+      requestOrganizationDepartment ||
       '';
     const grupoVariable =
       requestPositionLocation ||

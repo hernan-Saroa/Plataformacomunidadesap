@@ -182,6 +182,21 @@ export class LaborFunctionsService {
     }
   }
 
+  /**
+   * Descarta las vinculaciones terminadas. Un contrato inactivo no genera
+   * certificado, asi que no aporta nada a la matriz de funciones.
+   *
+   * Se excluye solo lo EXPLICITAMENTE inactivo: si la fuente no informa estado
+   * (puede pasar con filas de Oracle sin ESTADO) la vinculacion se conserva, en
+   * vez de desaparecer en silencio.
+   */
+  private isVinculacionVigente(request: { status?: string | null }): boolean {
+    const status = String(request?.status ?? '')
+      .trim()
+      .toUpperCase();
+    return !['I', 'INACTIVO', 'INACTIVE', '0'].includes(status);
+  }
+
   /** Identidad de una persona dentro de un cargo, para no contarla dos veces
    *  cuando aparece en la tabla local y en Oracle a la vez. */
   private associationIdentity(request: LaborMatchableRequest): string {
@@ -644,6 +659,10 @@ export class LaborFunctionsService {
         select: {
           id: true,
           id_number: true,
+          // Necesario para descartar las vinculaciones terminadas: sin este
+          // campo el filtro veia undefined y el badge contaba tambien las
+          // inactivas, contradiciendo al modal de asociados.
+          status: true,
           cod_cargo: true,
           cod_grade: true,
           base_position_code: true,
@@ -667,11 +686,13 @@ export class LaborFunctionsService {
 
       const seenIdentities = new Set<string>();
       const countable: LaborMatchableRequest[] = [];
-      requests.forEach((request) => {
+      // Solo vinculaciones vigentes: el badge tiene que contar exactamente lo
+      // que el modal de asociados lista.
+      requests.filter((request) => this.isVinculacionVigente(request as any)).forEach((request) => {
         seenIdentities.add(this.associationIdentity(request));
         countable.push(request);
       });
-      oracle.rows.forEach((row) => {
+      oracle.rows.filter((row) => this.isVinculacionVigente(row as any)).forEach((row) => {
         const identity = this.associationIdentity(row);
         // La misma persona puede estar en las dos fuentes: la local manda.
         if (seenIdentities.has(identity)) return;
@@ -819,6 +840,7 @@ export class LaborFunctionsService {
     });
 
     const matches = (request: LaborMatchableRequest) => {
+      if (!this.isVinculacionVigente(request as any)) return false;
       const resolution = this.resolveFromProfiles(request, siblings);
       return resolution.available && resolution.profile?.id === profile.id;
     };
@@ -1142,6 +1164,51 @@ export class LaborFunctionsService {
         oracle: items.filter((item) => item.origen === 'oracle').length,
         oracleAvailable,
       },
+    };
+  }
+
+  /**
+   * Todos los perfiles que coinciden con el filtro actual, en forma compacta.
+   *
+   * Sirve para "seleccionar todo" sin paginar: el cliente necesita los ids de
+   * TODAS las paginas, pero no las funciones completas de cada perfil. Devuelve
+   * solo lo que la barra de seleccion y la confirmacion de borrado muestran.
+   *
+   * Reutiliza `list()` para no tener dos criterios de busqueda distintos: si el
+   * filtro cambia en un lado, cambia en los dos.
+   */
+  async listAllForSelection(
+    options: { search?: string } = {},
+  ) {
+    const primera = await this.list({
+      search: options.search,
+      page: 1,
+      limit: 100,
+    });
+
+    const items = [...primera.items];
+    for (let page = 2; page <= primera.totalPages; page += 1) {
+      const siguiente = await this.list({
+        search: options.search,
+        page,
+        limit: 100,
+      });
+      items.push(...siguiente.items);
+    }
+
+    return {
+      total: primera.total,
+      items: items.map((profile) => ({
+        id: profile.id,
+        combined_code: profile.combined_code,
+        position_code: profile.position_code,
+        grade_code: profile.grade_code,
+        position_name: profile.position_name,
+        department_name: profile.department_name,
+        internal_group: profile.internal_group,
+        function_count: profile.function_count,
+        association_count: profile.association_count,
+      })),
     };
   }
 

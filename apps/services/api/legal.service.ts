@@ -677,9 +677,10 @@ export class LegalService {
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---
 
-    async getTerminosListado(responsableId?: string): Promise<any[]> {
+    async getTerminosListado(responsableId?: string, estado?: string): Promise<any[]> {
         const params = new URLSearchParams();
         if (responsableId) params.append('responsableId', responsableId);
+        if (estado) params.append('estado', estado);
 
         // Endpoint: /legal-management/api/v1/legal/terminos/listado
         return apiClient.get(`${SERVICE_PREFIX}/terminos/listado?${params.toString()}`);
@@ -722,8 +723,9 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/upload-documento`, formData);
     }
 
-    async eliminarTermino(id: string): Promise<void> {
-        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}`);
+    async eliminarTermino(id: string, permanente?: boolean): Promise<void> {
+        const query = permanente ? '?permanente=true' : '';
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}${query}`);
     }
 
     async getNotasTermino(id: string): Promise<any[]> {

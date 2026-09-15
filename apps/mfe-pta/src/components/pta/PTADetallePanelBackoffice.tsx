@@ -69,6 +69,8 @@ import {
   PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
   PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   PTA_COMPONENT_PROGRESS_ORDER,
+  COMP_SECCION_AADM,
+  labelDeComponente,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
@@ -931,6 +933,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
     ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
     complementarias: 'Complementarias', complementarias_pregrado: 'Complementarias (Pregrado)', complementarias_posgrado: 'Complementarias (Posgrado)',
+    // EFDS-1353 agregó estos dos ámbitos; sin su rótulo el correo de firma OTP
+    // mostraba la clave técnica cruda.
+    complementarias_territorial: 'Complementarias (Territorial)',
+    complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
     academicas_admin: 'Acad. Admin.',
   };
 
@@ -1350,7 +1356,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Todo es "Actividades Complementarias": ambas secciones (a la docencia + académico-
   // administrativas) se muestran juntas como un solo componente.
   const complementarias = { actividades: [..._compSplit.docencia, ..._compSplit.aadm] };
-  const acadAdmin = { actividades: _compSplit.aadm };
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
   const territorialResumen = pta.territorial || pta.territorial_nombre;
@@ -1439,9 +1444,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     if (pta.horas_complementarias !== undefined) return pta.horas_complementarias;
     return _compSplit.horasDocencia + _compSplit.horasAadm;
   }, [pta, _compSplit.horasDocencia, _compSplit.horasAadm]);
-
-  // Solo para el total del sub-grupo AADM dentro del acordeón de Complementarias.
-  const horasAcadAdmin = _compSplit.horasAadm;
 
   const hProg = Number(pta.total_horas_programadas || 0);
   const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
@@ -1808,6 +1810,53 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     initialPta.extension_actividades,
     componentesAprobacion,
   ]);
+
+  // Complementarias NO es un único componente de aprobación: el backend enruta sus
+  // actividades a 5 componentes reales (catch-all 'complementarias', Pregrado,
+  // Posgrado, Territorial/Decanatura y Gestión Profesoral — ver
+  // clasificarComplementarias en pta.service.ts), cada uno con su propio permiso,
+  // sus filas de revisión y su propia decisión de aprobación.
+  //
+  // Esta vista renderizaba una sola tarjeta con la clave fija 'complementarias'.
+  // Como el tipo de aprobación por defecto de una actividad del catálogo es
+  // 'gestion_profesoral', lo normal es que las horas NO caigan en el catch-all:
+  // la tarjeta mostrada quedaba en 0h ("No aplica") mientras el componente que sí
+  // tenía las horas no aparecía en ninguna parte — sin forma de revisarlo ni
+  // aprobarlo (ni siquiera como superadmin), dejando el PTA trabado en
+  // "En revisión". Mismo patrón que docenciaCards/extensionCards: una tarjeta por
+  // cada ámbito con contenido.
+  const componenteDeComplementaria = useCallback((item: any): string => {
+    const key = String(item?.componente_complementaria || '');
+    return (PTA_COMPLEMENTARIAS_COMPONENT_KEYS as string[]).includes(key) ? key : 'complementarias';
+  }, []);
+
+  const complementariasCards = useMemo(() => {
+    const actividades: any[] = complementarias.actividades || [];
+    const porComponente = pta?.complementarias_por_componente;
+    const horasBackend = (key: string): number | null =>
+      porComponente && typeof porComponente === 'object' ? Number((porComponente as any)[key] || 0) : null;
+
+    const cards = PTA_COMPLEMENTARIAS_COMPONENT_KEYS.map(key => {
+      const propias = actividades.filter(a => componenteDeComplementaria(a) === key);
+      const backend = horasBackend(key);
+      const horas = backend != null && backend > 0
+        ? backend
+        : propias.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+      return { key: key as string, label: labelDeComponente(key), actividades: propias, horas };
+    }).filter(item => {
+      const approval = componentesAprobacion.find(c => c.componente === item.key);
+      const requiereReaprobacionManual =
+        approval?.scope === 'solicitud_edicion'
+        && ['pendiente', 'devuelto'].includes(String(approval.estado || '').toLowerCase());
+      return item.actividades.length > 0 || item.horas > 0 || requiereReaprobacionManual;
+    });
+
+    // Con un solo ámbito activo se listan TODAS las actividades en él: los datos
+    // legacy (array `academico_admin`) no traen `componente_complementaria`
+    // anotado y quedarían fuera del detalle aunque sus horas sí estén contadas.
+    if (cards.length === 1) return [{ ...cards[0], actividades }];
+    return cards;
+  }, [complementarias.actividades, pta, componentesAprobacion, componenteDeComplementaria]);
 
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
@@ -4167,15 +4216,41 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 )}
               </SectionCollapsible>
 
-              {/* Complementarias — aprobar/devolver (incluye AADM) */}
-              {renderComponentCard(
-                'complementarias',
-                'Actividades Complementarias',
-                Briefcase,
-                PTA_COLORS.COMPLEMENTARIAS,
-                `Contenido: ${(complementarias.actividades?.length || 0)} actividad(es) (${horasComplementarias}h)` +
-                  (acadAdmin.actividades?.length ? ` · incl. ${acadAdmin.actividades.length} académico-administrativa(s) (${horasAcadAdmin}h)` : '')
-              )}
+              {/* Complementarias — aprobar/devolver (incluye AADM). Una tarjeta por
+                  cada ámbito de aprobación con contenido (ver complementariasCards):
+                  con una sola tarjeta el rótulo se mantiene como antes. */}
+              {(complementariasCards.length > 0
+                ? complementariasCards
+                : [{
+                  key: 'complementarias',
+                  label: 'Complementarias',
+                  actividades: complementarias.actividades || [],
+                  horas: horasComplementarias,
+                }]
+              ).map(card => {
+                const aadmDeLaTarjeta = card.actividades.filter(
+                  (a: any) => a?.seccion === COMP_SECCION_AADM,
+                );
+                const horasAadmDeLaTarjeta = aadmDeLaTarjeta.reduce(
+                  (s: number, a: any) => s + (Number(a?.horas) || 0), 0,
+                );
+                return (
+                  <React.Fragment key={`comp-card-${card.key}`}>
+                    {renderComponentCard(
+                      card.key,
+                      card.key === 'complementarias'
+                        ? 'Actividades Complementarias'
+                        : `Actividades ${card.label}`,
+                      Briefcase,
+                      PTA_COLORS.COMPLEMENTARIAS,
+                      `Contenido: ${card.actividades.length} actividad(es) (${card.horas}h)` +
+                        (aadmDeLaTarjeta.length
+                          ? ` · incl. ${aadmDeLaTarjeta.length} académico-administrativa(s) (${horasAadmDeLaTarjeta}h)`
+                          : '')
+                    )}
+                  </React.Fragment>
+                );
+              })}
 
               {/* Summary bar */}
               <div style={{

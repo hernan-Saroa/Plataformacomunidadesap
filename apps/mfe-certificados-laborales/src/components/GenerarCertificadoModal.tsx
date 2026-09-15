@@ -389,6 +389,21 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificateHash: cert.verification_code,
           qrCode: cert.verification_code,
           observations: cert.observations || cert.request?.observations,
+          // Centro de costo (grupo interno): [DEPENDENCIA] lo prioriza sobre la
+          // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
+          // previa cae al department y contradice al PDF del backend.
+          internal_group: normalizarTexto(
+            cert.request?.internal_group ||
+            cert.request?.internalGroup ||
+            cert.internal_group ||
+            '',
+          ),
+          cost_center: normalizarTexto(
+            cert.request?.cost_center ||
+            cert.request?.costCenter ||
+            cert.cost_center ||
+            '',
+          ),
           position_location: normalizarTexto(grupoRaw),
           department: normalizarTexto(
             cert.department ||

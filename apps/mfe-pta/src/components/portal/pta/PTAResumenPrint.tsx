@@ -23,7 +23,10 @@ import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPens
 interface PTAResumenPrintProps {
   pta: any;
   onClose: () => void;
+  /** Id interno de la persona. NO es la identificación del docente. */
   userPersonId: string;
+  /** Documento de identidad del docente (cédula). Se prefiere sobre el id interno. */
+  userDocumento?: string;
   userName?: string;
   /** Registros reales de aprobación por componente (getComponentesAprobacion). Opcional. */
   componentesAprobacion?: any[];
@@ -184,7 +187,40 @@ const TDC: React.CSSProperties = { ...TD, textAlign: 'center', whiteSpace: 'nowr
 const SUB: React.CSSProperties = { fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 };
 const zebra = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? '#FAFAFA' : '#fff' });
 
-export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
+export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
+  /**
+   * Identificación del docente para el documento oficial.
+   *
+   * `userPersonId` es el id interno (un UUID) y se imprimía tal cual, que no
+   * identifica a nadie. El backend ya resuelve la cédula contra la ficha
+   * institucional y la publica en el DTO con varios alias históricos; se leen
+   * todos y el id interno queda solo como último recurso.
+   */
+  const identificacionDocente =
+    userDocumento
+    || pta?.documento_identidad
+    || pta?.docente_identificacion
+    || pta?.cedula
+    || pta?.numero_documento
+    || pta?.docente?.documento_identidad
+    || userPersonId
+    || '';
+  const tipoDocumento = pta?.tipo_documento || '';
+
+  /**
+   * Nombre institucional completo. `userName` es el nombre corto de la sesión
+   * ("ALIX HURTADO"); en un documento oficial debe ir el de la ficha
+   * ("ALIX ZULAY HURTADO SOTO").
+   */
+  const nombreDocente =
+    pta?.docente_nombre
+    || pta?.nombre_docente
+    || pta?.docenteNombre
+    || pta?.docente?.nombre_completo
+    || pta?.docente?.nombre
+    || userName
+    || '';
+
   const handlePrint = () => window.print();
 
   const today = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -454,8 +490,8 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
                 {/* Mismas variantes de nombre que ReportePTAInstitucional: según el
                     origen del DTO el campo llega como docente_nombre, nombre_docente
                     o anidado en `docente`, y con una sola alternativa quedaba vacío. */}
-                <Dato label="Nombre" value={userName || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre || pta?.docente?.nombre_completo || pta?.docente?.nombre} />
-                <Dato label="Identificación (ID)" value={userPersonId} />
+                <Dato label="Nombre" value={nombreDocente} />
+                <Dato label="Identificación" value={tipoDocumento ? `${tipoDocumento} ${identificacionDocente}` : identificacionDocente} />
                 <Dato label="Dedicación" value={pta?.dedicacion} />
                 <Dato label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />
                 <Dato label="Sede Territorial" value={pta?.territorial} />
@@ -712,7 +748,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ borderBottom: '1px solid #9CA3AF', width: 200, margin: '0 auto 8px' }} />
                   <p style={{ margin: 0, fontWeight: 700, fontSize: '0.78rem' }}>Firma del Docente</p>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>{userName || ''} · ID: {userPersonId?.substring(0, 12)}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>{nombreDocente}{identificacionDocente ? ` · C.C. ${identificacionDocente}` : ''}</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   {['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado) ? (
