@@ -11,7 +11,7 @@ export class HealthController {
     return {
       status: 'ok',
       service: 'chatbot-service',
-      port: 3014,
+      port: 3015,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     };

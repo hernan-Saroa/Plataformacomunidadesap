@@ -19,7 +19,11 @@ export interface ConversacionChat {
   mensajes?: MensajeChat[];
 }
 
-const BASE_URL = '/services/chatbot/api/v1/chat';
+const GATEWAY_BASE = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
+  ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '')
+  : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:4000' : '/services');
+
+const BASE_URL = `${GATEWAY_BASE}/chatbot/api/v1/chat`;
 
 export const ChatbotService = {
   async listarConversaciones(usuarioEmail?: string, todos: boolean = false): Promise<ConversacionChat[]> {

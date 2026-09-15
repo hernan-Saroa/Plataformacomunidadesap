@@ -74,7 +74,8 @@ services:
       AUDIT_SERVICE_URL: http://audit-service:3011
       HIRING_SERVICE_URL: http://hiring-service:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
-      CHATBOT_SERVICE_URL: http://chatbot-service:3014
+      INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service:3015
     ports:
       - "${API_GATEWAY_PORT:-3000}:3000"
     depends_on:
@@ -92,6 +93,7 @@ services:
       - chatbot-service
       - hiring-service
       - academic-schedule-service
+      - infrastructure-management-service
     networks:
       - superapp-net
     restart: unless-stopped
@@ -606,6 +608,38 @@ services:
       - superapp-net
     restart: unless-stopped
 
+  # ============ INFRASTRUCTURE MANAGEMENT SERVICE ============
+  infrastructure-management-service:
+    build:
+      context: ./backend/infrastructure-management-service
+      dockerfile: Dockerfile
+    container_name: infrastructure-management-service
+    environment:
+      NODE_ENV: production
+      PORT: 3014
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: infrastructure-management
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3014:3014"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - superapp-net
+    restart: unless-stopped
+
   # ============ CHATBOT SERVICE ============
   chatbot-service:
     build:
@@ -614,7 +648,7 @@ services:
     container_name: chatbot-service
     environment:
       NODE_ENV: production
-      PORT: 3014
+      PORT: 3015
 
       DB_HOST: db
       DB_PORT: 5432
@@ -626,7 +660,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
       CORS_ORIGIN: "*"
     ports:
-      - "3014:3014"
+      - "3015:3015"
     depends_on:
       db:
         condition: service_healthy

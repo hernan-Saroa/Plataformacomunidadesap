@@ -115,16 +115,28 @@ export const serviceMap = {
     'http://academic-schedule-service:3013',
   ),
 
-  // ChatBot Service - Puerto 3014
+  // Gestión de Infraestructura - Puerto 3014
+  infraestructura: serviceUrl(
+    'INFRASTRUCTURE_MANAGEMENT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://infrastructure-management-service:3014',
+  ),
+  'gestion-infraestructura': serviceUrl(
+    'INFRASTRUCTURE_MANAGEMENT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://infrastructure-management-service:3014',
+  ),
+  
+  // ChatBot Service - Puerto 3015
   chatbot: serviceUrl(
     'CHATBOT_SERVICE_URL',
-    'http://localhost:3014',
-    'http://chatbot-service:3014',
+    'http://localhost:3015',
+    'http://chatbot-service:3015',
   ),
   'chatbot-service': serviceUrl(
     'CHATBOT_SERVICE_URL',
-    'http://localhost:3014',
-    'http://chatbot-service:3014',
+    'http://localhost:3015',
+    'http://chatbot-service:3015',
   ),
 };
 

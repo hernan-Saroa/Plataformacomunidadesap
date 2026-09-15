@@ -68,6 +68,7 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-contratacion
     frontend-mfe-viaticos
     frontend-mfe-programacion-academica
+    frontend-mfe-gestion-infraestructura
     frontend-mfe-chatbot
 )
 FRONTEND_MFE_APP_SERVICES=(
@@ -88,6 +89,7 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-contratacion
     frontend-mfe-viaticos
     frontend-mfe-programacion-academica
+    frontend-mfe-gestion-infraestructura
     frontend-mfe-chatbot
 )
 BACKEND_DEV_SERVICES=(
@@ -105,6 +107,7 @@ BACKEND_DEV_SERVICES=(
     audit-service
     hiring-service
     academic-schedule-service
+    infrastructure-management-service
     chatbot-service
 )
 
@@ -398,6 +401,10 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-programacion-academica"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-gestion-infraestructura/*)
+                service_name="frontend-mfe-gestion-infraestructura"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/mfe-chatbot/*)
                 service_name="frontend-mfe-chatbot"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -537,6 +544,9 @@ resolve_mfe_service() {
             ;;
         programacion-academica|mfe-programacion-academica|frontend-mfe-programacion-academica)
             echo "frontend-mfe-programacion-academica"
+            ;;
+        gestion-infraestructura|mfe-gestion-infraestructura|frontend-mfe-gestion-infraestructura|infraestructura)
+            echo "frontend-mfe-gestion-infraestructura"
             ;;
         chatbot|mfe-chatbot|frontend-mfe-chatbot)
             echo "frontend-mfe-chatbot"
@@ -799,7 +809,7 @@ cmd_up_mfe() {
     fi
 
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
-    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-chatbot
+    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
@@ -817,14 +827,14 @@ cmd_up_mfe() {
 # Comando: down-mfe
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado...${NC}"
-    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-chatbot
+    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     echo -e "${GREEN}Frontend MFE detenido${NC}"
 }
 
 # Comando: restart-mfe
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado...${NC}"
-    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-chatbot
+    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE reiniciado${NC}"
 }
@@ -832,7 +842,7 @@ cmd_restart_mfe() {
 # Comando: status-mfe
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado:${NC}"
-    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-chatbot
+    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
 }
 
 # Comando: logs-mfe
@@ -850,7 +860,7 @@ cmd_logs_mfe() {
         return
     fi
 
-    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-chatbot
+    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
 }
 
 # Comando: rebuild-mfe

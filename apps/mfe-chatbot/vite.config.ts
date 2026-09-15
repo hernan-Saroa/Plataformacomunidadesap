@@ -31,7 +31,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3117,
+    port: 3118,
   },
   build: {
     modulePreload: false,
