@@ -84,3 +84,50 @@ describe('LegalService.registrarAvanceIndicador (Plan de Acción · Actualizar A
     expect((formData as FormData).get('valor')).toBe('0');
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Flujo de eliminación de términos (Timeline -> "Archivados > Eliminados" -> borrado definitivo).
+// Estos tests cubren la capa que los tests del componente no tocan: cómo se arma realmente la
+// URL que sale al backend. Un error aquí (parámetro mal puesto o perdido) se traduce en que los
+// términos eliminados nunca aparezcan en la pestaña "Eliminados".
+// ---------------------------------------------------------------------------------------------
+describe('LegalService · listado y eliminación de términos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('getTerminosListado() sin argumentos pide el listado activo (sin filtro de estado)', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+
+    await legalService.getTerminosListado();
+
+    const [url] = vi.mocked(apiClient.get).mock.calls[0];
+    expect(url).not.toContain('estado=');
+    expect(url).toContain('/terminos/listado');
+  });
+
+  it('getTerminosListado(undefined, "ELIMINADO") debe pedir explícitamente los eliminados', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+
+    await legalService.getTerminosListado(undefined, 'ELIMINADO');
+
+    const [url] = vi.mocked(apiClient.get).mock.calls[0];
+    expect(url).toBe('/legal/api/v1/terminos/listado?estado=ELIMINADO');
+  });
+
+  it('eliminarTermino(id) sin flag hace soft delete: NO debe mandar permanente=true', async () => {
+    vi.mocked(apiClient.delete).mockResolvedValue(undefined);
+
+    await legalService.eliminarTermino('uuid-1', false);
+
+    expect(apiClient.delete).toHaveBeenCalledWith('/legal/api/v1/terminos/uuid-1');
+  });
+
+  it('eliminarTermino(id, true) debe pedir el borrado definitivo con permanente=true', async () => {
+    vi.mocked(apiClient.delete).mockResolvedValue(undefined);
+
+    await legalService.eliminarTermino('uuid-1', true);
+
+    expect(apiClient.delete).toHaveBeenCalledWith('/legal/api/v1/terminos/uuid-1?permanente=true');
+  });
+});

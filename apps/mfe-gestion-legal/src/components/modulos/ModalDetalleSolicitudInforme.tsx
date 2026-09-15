@@ -482,8 +482,8 @@ export function ModalDetalleSolicitudInforme({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Tipo de Informe</p>
-                  <p className="text-sm font-bold text-gray-900">{solicitud.tipoInforme}</p>
+                  <p className="text-xs text-gray-500 mb-1">Nombre del Informe</p>
+                  <p className="text-sm font-bold text-gray-900">{solicitud.asunto}</p>
                 </div>
                 
                 <div className="p-3 bg-gray-50 rounded-lg">

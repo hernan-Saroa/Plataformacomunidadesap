@@ -12,6 +12,7 @@ vi.mock('sonner', () => ({
 vi.mock('../../../../services/api/legal.service', () => ({
   legalService: {
     getTerminosListado: vi.fn(),
+    getTerminosCalendario: vi.fn(),
     eliminarTermino: vi.fn(),
     updateTermino: vi.fn(),
   },
@@ -340,6 +341,10 @@ describe('ModuloTerminosInformesV3 · Eliminar término desde el Timeline de Ven
     vi.mocked(legalService.getTerminosListado).mockReset();
     vi.mocked(legalService.eliminarTermino).mockReset();
     vi.mocked(legalService.updateTermino).mockReset();
+    // Por defecto el backend aplica bien el filtro de eliminados, así que el respaldo vía
+    // calendario no entrega nada (cada test que lo necesite lo configura aparte).
+    vi.mocked(legalService.getTerminosCalendario).mockReset();
+    vi.mocked(legalService.getTerminosCalendario).mockResolvedValue([]);
   });
 
   it('al confirmar la eliminación, el registro desaparece del Timeline y "Mostrando X de Y" se recalcula', async () => {
@@ -515,6 +520,28 @@ describe('ModuloTerminosInformesV3 · Eliminar término desde el Timeline de Ven
 
     await waitFor(() => expect(legalService.eliminarTermino).toHaveBeenCalledWith('uuid-eliminado', true));
     await waitFor(() => expect(screen.queryByText('PD-2024-046')).not.toBeInTheDocument());
+  });
+
+  it('si el backend ignora el filtro estado=ELIMINADO, los eliminados se recuperan por el calendario (no se muestran activos como eliminados)', async () => {
+    const user = userEvent.setup();
+    const activo = crearTerminoBackend({ id: 'uuid-activo', numeroRadicado: 'PD-2024-900', estado: 'PENDIENTE' });
+
+    // Backend desactualizado: devuelve el listado activo aunque se pida estado=ELIMINADO.
+    vi.mocked(legalService.getTerminosListado).mockResolvedValue([activo]);
+    // El calendario nunca filtró por estado, así que sí trae el término eliminado.
+    vi.mocked(legalService.getTerminosCalendario).mockResolvedValue([
+      { id: 'uuid-borrado', title: 'PD-2024-046 - Auto de avocamiento', start: '2026-09-10T00:00:00.000Z', extendedProps: { estado: 'ELIMINADO', origen: 'MANUAL' } },
+      { id: 'uuid-activo', title: 'PD-2024-900 - Actuación de prueba', start: '2026-09-10T00:00:00.000Z', extendedProps: { estado: 'PENDIENTE', origen: 'MANUAL' } },
+    ] as any);
+
+    await montarYEsperarCarga();
+    await user.click(screen.getByText('Archivados'));
+
+    // El eliminado real aparece...
+    await waitFor(() => expect(screen.getByText('PD-2024-046')).toBeInTheDocument());
+    expect(screen.getByText('Eliminado')).toBeInTheDocument();
+    // ...y el activo NO se cuela como si estuviera eliminado.
+    expect(screen.queryByText('PD-2024-900')).not.toBeInTheDocument();
   });
 });
 
