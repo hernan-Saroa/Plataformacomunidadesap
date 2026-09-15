@@ -22,6 +22,10 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  Copy,
+  IdCard,
+  UserRound,
+  UserSearch,
   Users,
   X,
 } from 'lucide-react';
@@ -29,6 +33,10 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import {
   certificadosService,
+  type LaborFunctionAssociationApi,
+  type LaborFunctionAssociationsResponseApi,
+  type LaborPersonLookupItemApi,
+  type LaborPersonLookupResponseApi,
   type LaborFunctionProfileApi,
   type LaborFunctionProfilePayloadApi,
 } from '../../services/api/certificados.service';
@@ -219,50 +227,6 @@ const splitFunctions = (value: unknown): string[] => {
   });
 };
 
-type DuplicateFunctionDetail = {
-  duplicateOrdinal: number;
-  originalOrdinal: number;
-  description: string;
-};
-
-const findDuplicateFunctions = (value: unknown): DuplicateFunctionDetail[] => {
-  const seen = new Map<string, number>();
-  const duplicates: DuplicateFunctionDetail[] = [];
-
-  extractFunctionItems(value).forEach((description, index) => {
-    const key = normalizeMatchText(description);
-    if (!key) return;
-
-    const originalOrdinal = seen.get(key);
-    if (originalOrdinal !== undefined) {
-      duplicates.push({
-        duplicateOrdinal: index + 1,
-        originalOrdinal,
-        description,
-      });
-      return;
-    }
-
-    seen.set(key, index + 1);
-  });
-
-  return duplicates;
-};
-
-const duplicateFunctionsMessage = (duplicates: DuplicateFunctionDetail[]): string => {
-  const visibleDuplicates = duplicates.slice(0, 5);
-  const details = visibleDuplicates.map(({ duplicateOrdinal, originalOrdinal, description }) => {
-    const preview = description.length > 120 ? `${description.slice(0, 117).trimEnd()}...` : description;
-    return `la función ${duplicateOrdinal} repite la función ${originalOrdinal}: «${preview}»`;
-  });
-  const hiddenCount = duplicates.length - visibleDuplicates.length;
-  const hiddenDetail = hiddenCount > 0
-    ? ` Además, hay ${hiddenCount} repetición${hiddenCount === 1 ? '' : 'es'} más.`
-    : '';
-
-  return `Hay funciones duplicadas: ${details.join('; ')}.${hiddenDetail} Elimina las repetidas antes de guardar.`;
-};
-
 const functionPreviewCount = (value: unknown) => extractFunctionItems(value).length;
 
 const splitBulkRequestRows = (
@@ -330,7 +294,6 @@ const validateEditor = (value: EditorState): EditorErrors => {
   const positionName = value.positionName.trim();
   const department = value.departmentName.trim();
   const functions = splitFunctions(value.functions);
-  const duplicateFunctions = findDuplicateFunctions(value.functions);
 
   if (!level) errors.hierarchicalLevel = 'Selecciona o escribe el nivel jerárquico.';
   else if (level.length > 100) errors.hierarchicalLevel = 'Máximo 100 caracteres.';
@@ -340,7 +303,9 @@ const validateEditor = (value: EditorState): EditorErrors => {
   else if (department.length > 500) errors.departmentName = 'Máximo 500 caracteres.';
   if (value.internalGroup.trim().length > 500) errors.internalGroup = 'Máximo 500 caracteres.';
   if (!functions.length) errors.functions = 'Agrega al menos una función numerada o una función por línea.';
-  else if (duplicateFunctions.length) errors.functions = duplicateFunctionsMessage(duplicateFunctions);
+  // Las funciones repetidas dentro del mismo perfil ya no son un error: se
+  // guardan deduplicadas. Solo la duplicidad de fila contra fila (misma
+  // identidad institucional) sigue rechazando el registro.
   else if (functions.length > 500) errors.functions = 'Se permiten máximo 500 funciones por perfil.';
   else if (functions.some((item) => item.length < 8)) errors.functions = 'Cada función debe tener al menos 8 caracteres.';
   else if (functions.some((item) => item.length > 5000)) errors.functions = 'Cada función debe tener máximo 5.000 caracteres.';
@@ -395,6 +360,32 @@ const validateBulkRows = (rows: LaborFunctionProfilePayloadApi[]): BulkError[] =
   });
   return errors;
 };
+
+const ASSOCIATION_STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  PENDING: { label: 'Pendiente', className: 'border-amber-200 bg-amber-50 text-amber-800' },
+  IN_REVIEW: { label: 'En revisión', className: 'border-blue-200 bg-blue-50 text-blue-800' },
+  APPROVED: { label: 'Aprobada', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  ISSUED: { label: 'Emitida', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  COMPLETED: { label: 'Completada', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  REJECTED: { label: 'Rechazada', className: 'border-red-200 bg-red-50 text-red-700' },
+  CANCELLED: { label: 'Anulada', className: 'border-slate-200 bg-slate-100 text-slate-600' },
+};
+
+function associationStatusBadge(status: string) {
+  return (
+    ASSOCIATION_STATUS_STYLES[status] || {
+      label: status || 'Sin estado',
+      className: 'border-slate-200 bg-slate-100 text-slate-600',
+    }
+  );
+}
+
+function formatAssociationDate(value?: string | null) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
 type ModalShellProps = {
   open: boolean;
@@ -521,6 +512,18 @@ export function LaborFunctionsManager() {
   const [totalItems, setTotalItems] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [lookupOpen, setLookupOpen] = React.useState(false);
+  const [lookupSearch, setLookupSearch] = React.useState('');
+  const [lookupData, setLookupData] = React.useState<LaborPersonLookupResponseApi | null>(null);
+  const [lookupLoading, setLookupLoading] = React.useState(false);
+  const [lookupError, setLookupError] = React.useState('');
+  const [associationsProfile, setAssociationsProfile] = React.useState<LaborFunctionProfileApi | null>(null);
+  const [associationsData, setAssociationsData] = React.useState<LaborFunctionAssociationsResponseApi | null>(null);
+  const [associationsLoading, setAssociationsLoading] = React.useState(false);
+  const [associationsError, setAssociationsError] = React.useState('');
+  const [associationsSearch, setAssociationsSearch] = React.useState('');
+  const [associationsPage, setAssociationsPage] = React.useState(1);
+  const [associationsExporting, setAssociationsExporting] = React.useState(false);
   const [editor, setEditor] = React.useState<EditorState | null>(null);
   const [editorTouched, setEditorTouched] = React.useState<Set<EditorField>>(new Set());
   const [editorAttempted, setEditorAttempted] = React.useState(false);
@@ -683,24 +686,195 @@ export function LaborFunctionsManager() {
     return () => window.cancelAnimationFrame(frame);
   }, [operationSuccessNotice]);
 
-  const anyModalOpen = Boolean(editor || bulkOpen || bulkDeleteOpen || profileToDelete);
+  const anyModalOpen = Boolean(editor || bulkOpen || bulkDeleteOpen || profileToDelete || associationsProfile || lookupOpen);
   React.useEffect(() => {
     if (!anyModalOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || saving || bulkLoading || bulkReading || bulkValidating || deleting || deletingSelected) return;
+      if (event.key !== 'Escape' || saving || bulkLoading || bulkReading || bulkValidating || deleting || deletingSelected || associationsExporting) return;
       setEditor(null);
       setBulkOpen(false);
       setBulkDeleteOpen(false);
       setProfileToDelete(null);
+      setAssociationsProfile(null);
+      setLookupOpen(false);
     };
     window.addEventListener('keydown', handleEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [anyModalOpen, saving, bulkLoading, bulkReading, bulkValidating, deleting, deletingSelected]);
+  }, [anyModalOpen, saving, bulkLoading, bulkReading, bulkValidating, deleting, deletingSelected, associationsExporting]);
+
+  const runLookup = React.useCallback(async (term: string) => {
+    const clean = term.trim();
+    if (clean.length < 3) {
+      setLookupData(null);
+      setLookupError('');
+      return;
+    }
+    setLookupLoading(true);
+    setLookupError('');
+    try {
+      const response = await certificadosService.laborales.consultarEmpleadoFuncionesLaborales(clean);
+      setLookupData(response);
+    } catch (error: any) {
+      setLookupData(null);
+      setLookupError(error?.message || 'No se pudo consultar al empleado.');
+    } finally {
+      setLookupLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!lookupOpen) return undefined;
+    const timeout = window.setTimeout(() => void runLookup(lookupSearch), 400);
+    return () => window.clearTimeout(timeout);
+  }, [lookupOpen, lookupSearch, runLookup]);
+
+  const openLookup = () => {
+    setLookupOpen(true);
+    setLookupSearch('');
+    setLookupData(null);
+    setLookupError('');
+  };
+
+  const closeLookup = () => {
+    setLookupOpen(false);
+    setLookupSearch('');
+    setLookupData(null);
+    setLookupError('');
+  };
+
+  /** Copia al portapapeles el valor exacto de un campo de la matriz. */
+  const copyLookupValue = async (label: string, value?: string | null) => {
+    const text = String(value ?? '').trim();
+    if (!text) {
+      toast.info(`${label} viene vacío en la fuente laboral.`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copiado.`);
+    } catch {
+      toast.error('El navegador no permitió copiar al portapapeles.');
+    }
+  };
+
+  /** Precarga el formulario individual con los datos exactos del empleado. */
+  const createFromLookup = (item: LaborPersonLookupItemApi) => {
+    setOperationSuccessNotice(null);
+    setEditorSubmissionError('');
+    setEditor({
+      ...EMPTY_EDITOR,
+      positionCode: item.matrix.position_code || '',
+      gradeCode: item.matrix.grade_code || '',
+      combinedCode: item.matrix.combined_code || '',
+      hierarchicalLevel: item.matrix.hierarchical_level || '',
+      positionName: item.matrix.position_name || '',
+      departmentName: item.matrix.department_name || '',
+      internalGroup: item.matrix.internal_group || '',
+    });
+    setEditorTouched(new Set());
+    setEditorAttempted(false);
+    closeLookup();
+  };
+
+  const ASSOCIATIONS_PAGE_SIZE = 25;
+
+  const loadAssociations = React.useCallback(async () => {
+    if (!associationsProfile) return;
+    setAssociationsLoading(true);
+    setAssociationsError('');
+    try {
+      const response = await certificadosService.laborales.listarAsociadosFuncionesLaborales(
+        associationsProfile.id,
+        { search: associationsSearch.trim() || undefined, page: associationsPage, limit: ASSOCIATIONS_PAGE_SIZE },
+      );
+      setAssociationsData(response);
+      const resolvedPage = Math.min(Math.max(1, response.page || 1), Math.max(1, response.totalPages || 1));
+      if (resolvedPage !== associationsPage) setAssociationsPage(resolvedPage);
+    } catch (error: any) {
+      setAssociationsData(null);
+      setAssociationsError(error?.message || 'No se pudo consultar el listado de asociados.');
+    } finally {
+      setAssociationsLoading(false);
+    }
+  }, [associationsProfile, associationsSearch, associationsPage]);
+
+  React.useEffect(() => {
+    if (!associationsProfile) return undefined;
+    const timeout = window.setTimeout(() => void loadAssociations(), 220);
+    return () => window.clearTimeout(timeout);
+  }, [associationsProfile, loadAssociations]);
+
+  const openAssociations = (profile: LaborFunctionProfileApi) => {
+    setAssociationsProfile(profile);
+    setAssociationsData(null);
+    setAssociationsError('');
+    setAssociationsSearch('');
+    setAssociationsPage(1);
+  };
+
+  const closeAssociations = () => {
+    if (associationsExporting) return;
+    setAssociationsProfile(null);
+    setAssociationsData(null);
+    setAssociationsError('');
+    setAssociationsSearch('');
+    setAssociationsPage(1);
+  };
+
+  const exportAssociations = async () => {
+    if (!associationsProfile || associationsExporting) return;
+    setAssociationsExporting(true);
+    try {
+      const response = await certificadosService.laborales.listarAsociadosFuncionesLaborales(
+        associationsProfile.id,
+        { page: 1, limit: 200 },
+      );
+      const rows = response.items || [];
+      if (!rows.length) {
+        toast.info('Este perfil no tiene asociados para exportar.');
+        return;
+      }
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['Documento', 'Nombre completo', 'N.º solicitud', 'Estado', 'Denominación', 'Dependencia', 'Grupo interno', 'Sede', 'Correo', 'Fecha de vinculación', 'Fecha de solicitud'],
+        ...rows.map((item) => [
+          item.id_number || '',
+          item.full_name || '',
+          item.request_number || '',
+          associationStatusBadge(item.status).label,
+          item.position_name || '',
+          item.department_name || '',
+          item.internal_group || '',
+          item.campus || '',
+          item.email || '',
+          formatAssociationDate(item.hiring_date),
+          formatAssociationDate(item.request_date || item.created_at),
+        ]),
+      ]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, 'Asociados');
+      const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+      const downloadUrl = URL.createObjectURL(new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }));
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = `Asociados_${associationsProfile.combined_code}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1_000);
+      toast.success(`${rows.length} asociados exportados.`);
+    } catch (error: any) {
+      toast.error(error?.message || 'No se pudo exportar el listado de asociados.');
+    } finally {
+      setAssociationsExporting(false);
+    }
+  };
 
   const openCreate = () => {
     setOperationSuccessNotice(null);
@@ -1340,6 +1514,9 @@ export function LaborFunctionsManager() {
             <button onClick={openBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-[#003DA5] shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md active:translate-y-0">
               <Upload className="h-4 w-4" /> Carga masiva
             </button>
+            <button onClick={openLookup} title="Consultar los datos laborales exactos de una persona" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-purple-50 hover:shadow-md active:translate-y-0">
+              <UserSearch className="h-4 w-4" /> Consultar empleado
+            </button>
             <button onClick={openCreate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:-translate-y-0.5 hover:bg-[#002873] hover:shadow-xl active:translate-y-0">
               <Plus className="h-4 w-4" /> Agregar individual
             </button>
@@ -1468,7 +1645,7 @@ export function LaborFunctionsManager() {
                     <td className="px-5 py-4"><p className="font-semibold text-slate-900">{profile.position_name}</p><p className="mt-0.5 text-xs text-slate-500">{profile.hierarchical_level || 'Nivel no informado'}</p></td>
                     <td className="max-w-xl px-5 py-4"><p className="truncate font-medium text-slate-700">{profile.department_name || 'Sin dependencia específica'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{profile.internal_group || 'Sin grupo interno'}</p></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-emerald-50 px-3 py-1.5 font-bold text-emerald-700 ring-1 ring-emerald-100">{profile.function_count}</span></td>
-                    <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-blue-50 px-3 py-1.5 font-bold text-[#003DA5] ring-1 ring-blue-100">{profile.association_count}</span></td>
+                    <td className="px-5 py-4 text-center"><button type="button" onClick={() => openAssociations(profile)} title={profile.association_count ? `Ver los ${profile.association_count} asociados de ${profile.combined_code}` : 'Ver por qué este perfil no tiene asociados'} aria-label={`Ver asociados de ${profile.combined_code} ${profile.position_name}`} className={`inline-flex min-w-9 items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 font-bold transition hover:-translate-y-0.5 ${profile.association_count ? 'border-blue-200 bg-blue-50 text-[#003DA5] hover:border-blue-400 hover:bg-blue-100' : 'border-slate-200 bg-slate-100 text-slate-500 hover:border-slate-300 hover:bg-slate-200'}`}><Users className="h-3.5 w-3.5" />{profile.association_count}</button></td>
                     <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => openEdit(profile)} aria-label={`Editar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button><button onClick={() => openDelete(profile)} aria-label={`Eliminar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-red-600 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></td>
                   </motion.tr>
                   );
@@ -1724,6 +1901,319 @@ export function LaborFunctionsManager() {
 
       <ModalShell open={Boolean(profileToDelete)} titleId="labor-functions-delete-title" onClose={closeDelete} busy={deleting} widthClass="max-w-lg">
         {profileToDelete && <div className="p-6 sm:p-7"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100"><Trash2 className="h-6 w-6" /></span><h2 id="labor-functions-delete-title" className="mt-5 text-xl font-bold text-slate-950">¿Eliminar este perfil de funciones?</h2><p className="mt-2 text-sm leading-6 text-slate-600">Se eliminarán <strong>{profileToDelete.function_count} funciones</strong> asociadas a <strong>{profileToDelete.combined_code} · {profileToDelete.position_name}</strong>. Los certificados ya emitidos conservarán su snapshot histórico.</p><div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong>Importante:</strong> las nuevas solicitudes dejarán de encontrar estas funciones.</div>{deleteSubmissionError && <div role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800"><p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se pudo eliminar el registro</p><p className="mt-1 break-words text-xs leading-5">{deleteSubmissionError}</p><p className="mt-1 text-xs text-red-700">El registro permanece en la matriz y puedes volver a intentarlo.</p></div>}<div className="mt-6 flex justify-end gap-2"><button disabled={deleting} onClick={closeDelete} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={deleting} onClick={() => void removeProfile()} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-900/10 hover:bg-red-700 disabled:opacity-60">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button></div></div>}
+      </ModalShell>
+
+      <ModalShell open={Boolean(associationsProfile)} titleId="labor-functions-associations-title" onClose={closeAssociations} busy={associationsExporting} widthClass="max-w-6xl">
+        {associationsProfile && (
+          <>
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-blue-50 px-5 py-4">
+              <div className="flex min-w-0 items-start gap-3.5">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#003DA5] text-white shadow-md"><Users className="h-5 w-5" /></span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#003DA5]">Asociados al perfil</p>
+                  <h2 id="labor-functions-associations-title" className="mt-0.5 truncate text-xl font-bold text-slate-900">{associationsProfile.position_name}</h2>
+                  <p className="mt-1 truncate text-sm text-slate-500">
+                    <span className="font-mono font-bold text-[#003DA5]">{associationsProfile.combined_code}</span>
+                    {' · '}{associationsProfile.department_name || 'Sin dependencia específica'}
+                    {associationsProfile.internal_group ? ` · ${associationsProfile.internal_group}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button disabled={associationsExporting} onClick={closeAssociations} aria-label="Cerrar" className="rounded-xl p-2 text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-50"><X className="h-5 w-5" /></button>
+            </header>
+
+            <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-3">
+              <p className="flex items-start gap-2 text-xs text-blue-900" style={{ lineHeight: 1.5 }}>
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#003DA5]" />
+                <span>Estas son las vinculaciones cuyo código, denominación, dependencia, nivel y grupo interno coinciden <strong>exactamente</strong> con este perfil. Son las que recibirán estas <strong>{associationsProfile.function_count} funciones</strong> en su certificado laboral.</span>
+              </p>
+            </div>
+
+            <div className="shrink-0 border-b border-slate-200 px-5 py-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-center">
+                  <p className="text-xl font-bold tabular-nums text-[#003DA5]">{associationsData ? associationsData.summary.associations : associationsProfile.association_count}</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-800">Vinculaciones</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                  <p className="text-xl font-bold tabular-nums text-emerald-700">{associationsData ? associationsData.summary.uniquePeople : '—'}</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Personas únicas</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                  <p className="text-xl font-bold tabular-nums text-slate-900">{associationsProfile.function_count}</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Funciones</p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={associationsSearch}
+                    onChange={(event) => { setAssociationsSearch(event.target.value); setAssociationsPage(1); }}
+                    placeholder="Buscar por nombre, documento, solicitud, correo o dependencia…"
+                    aria-label="Buscar dentro de los asociados"
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm text-slate-800 outline-none transition focus:border-[#003DA5] focus:ring-2 focus:ring-blue-100"
+                  />
+                  {associationsSearch && (
+                    <button type="button" onClick={() => { setAssociationsSearch(''); setAssociationsPage(1); }} aria-label="Limpiar búsqueda" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"><X className="h-4 w-4" /></button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void exportAssociations()}
+                  disabled={associationsExporting || associationsLoading || !associationsData?.summary.associations}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {associationsExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {associationsExporting ? 'Exportando…' : 'Exportar'}
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {associationsError ? (
+                <div role="alert" className="mt-5 mb-5 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                  <p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se pudo cargar el listado</p>
+                  <p className="mt-1 break-words text-xs" style={{ lineHeight: 1.5 }}>{associationsError}</p>
+                  <button type="button" onClick={() => void loadAssociations()} className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50"><RefreshCw className="h-3.5 w-3.5" /> Reintentar</button>
+                </div>
+              ) : associationsLoading && !associationsData ? (
+                <div className="flex items-center justify-center p-12">
+                  <div className="text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-[#003DA5]" /><p className="mt-3 text-sm font-medium text-slate-500">Cruzando vinculaciones…</p></div>
+                </div>
+              ) : associationsData && associationsData.items.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm" style={{ minWidth: '940px' }}>
+                    <thead className="sticky top-0 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-5 py-3">Persona</th>
+                        <th className="px-5 py-3">Solicitud</th>
+                        <th className="px-5 py-3">Estado</th>
+                        <th className="px-5 py-3">Ubicación registrada</th>
+                        <th className="whitespace-nowrap px-5 py-3">Vinculación</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {associationsData.items.map((person, index) => {
+                        const badge = associationStatusBadge(person.status);
+                        return (
+                          <motion.tr key={person.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(index * 0.02, 0.18) }} className="transition hover:bg-blue-50">
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-start gap-2.5">
+                                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-[#003DA5]"><UserRound className="h-4 w-4" /></span>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-900">{person.full_name}</p>
+                                  <p className="mt-0.5 font-mono text-xs text-slate-500">{person.document_type ? `${person.document_type} ` : ''}{person.id_number}</p>
+                                  {person.email && <p className="mt-0.5 truncate text-xs text-slate-400">{person.email}</p>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5">{person.request_number ? (<><p className="font-mono text-xs font-bold text-[#003DA5]">{person.request_number}</p><p className="mt-0.5 text-xs text-slate-500">{formatAssociationDate(person.request_date || person.created_at)}</p></>) : (<><span className="inline-flex whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">Oracle FNC</span><p className="mt-0.5 text-xs text-slate-500">Sin solicitud registrada</p></>)}</td>
+                            <td className="px-5 py-3.5"><span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold ${badge.className}`}>{badge.label}</span></td>
+                            <td className="px-5 py-3.5"><p className="text-xs font-medium text-slate-700">{person.department_name || 'Sin dependencia'}</p><p className="mt-0.5 text-xs text-slate-500">{person.internal_group || 'Sin grupo interno'}{person.campus ? ` · ${person.campus}` : ''}</p></td>
+                            <td className="whitespace-nowrap px-5 py-3.5 text-xs tabular-nums text-slate-600">{formatAssociationDate(person.hiring_date)}</td>
+                          </motion.tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center px-6 py-12 text-center">
+                  <div className="max-w-md">
+                    <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 text-slate-400"><Users className="h-8 w-8" /></span>
+                    <h3 className="mt-4 text-lg font-bold text-slate-900">{associationsSearch ? 'Sin coincidencias en la búsqueda' : 'Este perfil aún no tiene asociados'}</h3>
+                    <p className="mt-2 text-sm text-slate-500" style={{ lineHeight: 1.6 }}>
+                      {associationsSearch
+                        ? 'Prueba con otro nombre, documento o número de solicitud.'
+                        : 'Ninguna vinculación coincide exactamente con este código, denominación, dependencia, nivel y grupo interno. Usa «Consultar empleado» para ver los datos reales de alguien que debería estar aquí.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <footer className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 text-sm sm:flex-row">
+              <span className="text-xs font-medium text-slate-500">
+                {associationsData
+                  ? `${associationsData.total} ${associationsData.total === 1 ? 'resultado' : 'resultados'}${associationsSearch ? ` de ${associationsData.summary.associations}` : ''}`
+                  : 'Consultando…'}
+                {associationsLoading && associationsData ? ' · actualizando…' : ''}
+              </span>
+              {associationsData && associationsData.totalPages > 1 && (
+                <PaginationNavigator page={associationsPage} totalPages={associationsData.totalPages} onPageChange={setAssociationsPage} />
+              )}
+              <button type="button" onClick={closeAssociations} disabled={associationsExporting} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Cerrar</button>
+            </footer>
+          </>
+        )}
+      </ModalShell>
+
+      <ModalShell open={lookupOpen} titleId="labor-functions-lookup-title" onClose={closeLookup} widthClass="max-w-5xl">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-violet-50 px-5 py-4">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-md"><UserSearch className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-widest text-violet-700">Consulta informativa</p>
+              <h2 id="labor-functions-lookup-title" className="mt-0.5 text-xl font-bold text-slate-900">Datos laborales de una persona</h2>
+              <p className="mt-1 text-sm text-slate-500">Busca por nombre o documento y obtén los valores exactos con los que debes crear su perfil de funciones.</p>
+            </div>
+          </div>
+          <button onClick={closeLookup} aria-label="Cerrar" className="rounded-xl p-2 text-slate-500 transition hover:bg-white hover:text-slate-900"><X className="h-5 w-5" /></button>
+        </header>
+
+        <div className="shrink-0 border-b border-slate-200 px-5 py-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              value={lookupSearch}
+              onChange={(event) => setLookupSearch(event.target.value)}
+              placeholder="Nombre completo o número de documento (mínimo 3 caracteres)…"
+              aria-label="Buscar empleado por nombre o documento"
+              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm text-slate-800 outline-none transition focus:border-purple-600 focus:ring-2 focus:ring-blue-100"
+            />
+            {lookupSearch && (
+              <button type="button" onClick={() => setLookupSearch('')} aria-label="Limpiar búsqueda" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"><X className="h-4 w-4" /></button>
+            )}
+          </div>
+          <p className="mt-2 flex items-start gap-2 text-xs text-slate-500" style={{ lineHeight: 1.5 }}>
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" />
+            <span>Solo lectura. Se muestra <strong>la vinculación que el certificado usa</strong> para cada persona, con los valores exactos que el sistema compara para decidir si recibe las funciones de un perfil.</span>
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {lookupError ? (
+            <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+              <p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se pudo consultar</p>
+              <p className="mt-1 break-words text-xs" style={{ lineHeight: 1.5 }}>{lookupError}</p>
+            </div>
+          ) : lookupLoading ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-violet-700" /><p className="mt-3 text-sm font-medium text-slate-500">Consultando fuente laboral…</p></div>
+            </div>
+          ) : !lookupData ? (
+            <div className="flex items-center justify-center px-6 py-12 text-center">
+              <div className="max-w-md">
+                <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 text-slate-400"><IdCard className="h-8 w-8" /></span>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">Escribe un nombre o un documento</h3>
+                <p className="mt-2 text-sm text-slate-500" style={{ lineHeight: 1.6 }}>Te mostraré el código, grado, nivel, denominación, dependencia y grupo interno exactos de esa persona, y te diré si ya existe un perfil que le aplique.</p>
+              </div>
+            </div>
+          ) : !lookupData.items.length ? (
+            <div className="flex items-center justify-center px-6 py-12 text-center">
+              <div className="max-w-md">
+                <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 text-slate-400"><UserSearch className="h-8 w-8" /></span>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">Sin resultados</h3>
+                <p className="mt-2 text-sm text-slate-500" style={{ lineHeight: 1.6 }}>No hay vinculaciones para «{lookupData.search}». Verifica el documento o prueba con parte del nombre.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {lookupData.total > lookupData.items.length && (
+                <p className="text-xs font-medium text-slate-500">Mostrando {lookupData.items.length} de {lookupData.total} vinculaciones. Afina la búsqueda si no ves la que necesitas.</p>
+              )}
+
+              {lookupData.items.map((item, index) => {
+                const campos = [
+                  { label: 'Código base', value: item.matrix.position_code, mono: true },
+                  { label: 'Grado', value: item.matrix.grade_code, mono: true },
+                  { label: 'cod_cargo', value: item.matrix.combined_code, mono: true },
+                  { label: 'Nivel jerárquico', value: item.matrix.hierarchical_level },
+                  { label: 'Denominación exacta del empleo', value: item.matrix.position_name },
+                  { label: 'Dependencia / Área', value: item.matrix.department_name },
+                  { label: 'Grupo interno', value: item.matrix.internal_group },
+                ];
+                return (
+                  <motion.div key={`${item.id_number}-${item.matrix.combined_code}-${index}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.04, 0.2) }} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700"><UserRound className="h-4 w-4" /></span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900">{item.full_name || 'Sin nombre registrado'}</p>
+                          <p className="mt-0.5 font-mono text-xs text-slate-500">{item.document_type ? `${item.document_type} ` : ''}{item.id_number}{item.email ? ` · ${item.email}` : ''}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">{item.position_category || 'Vinculación sin tipo'}{item.hiring_date ? ` · desde ${formatAssociationDate(item.hiring_date)}` : ''}</p>
+                          {item.total_vinculaciones > 1 && (
+                            <p className="mt-0.5 text-xs text-slate-400">Tiene {item.total_vinculaciones} vinculaciones; esta es la que usa el certificado.</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`inline-flex shrink-0 self-start whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold ${item.origen === 'oracle' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-blue-200 bg-blue-50 text-[#003DA5]'}`}>
+                        {item.origen === 'oracle' ? 'Oracle FNC' : 'Registro local'}
+                      </span>
+                    </div>
+
+                    <div className="px-4 py-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Datos para crear el perfil</p>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {campos.map((campo) => (
+                          <div key={campo.label} className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{campo.label}</p>
+                              <p className={`mt-0.5 break-words text-sm font-semibold text-slate-900 ${campo.mono ? 'font-mono' : ''}`}>{campo.value || <span className="font-normal text-slate-400">Sin dato</span>}</p>
+                            </div>
+                            {campo.value && (
+                              <button type="button" onClick={() => void copyLookupValue(campo.label, campo.value)} aria-label={`Copiar ${campo.label}`} title={`Copiar ${campo.label}`} className="shrink-0 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:border-blue-300 hover:bg-purple-50 hover:text-blue-700"><Copy className="h-3.5 w-3.5" /></button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {item.matched_profile ? (
+                        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                          <p className="flex items-center gap-2 text-sm font-bold text-emerald-800"><CheckCircle2 className="h-4 w-4 shrink-0" /> Ya existe un perfil que le aplica</p>
+                          <p className="mt-1 text-xs text-emerald-800" style={{ lineHeight: 1.5 }}>
+                            <span className="font-mono font-bold">{item.matched_profile.combined_code}</span> · {item.matched_profile.position_name} · {item.matched_profile.department_name || 'Sin dependencia'}{item.matched_profile.internal_group ? ` · ${item.matched_profile.internal_group}` : ''} — <strong>{item.matched_profile.function_count} funciones</strong>.
+                          </p>
+                          <p className="mt-1 text-xs text-emerald-700">No necesitas crear nada: esta persona ya recibe esas funciones en su certificado.</p>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <p className="flex items-center gap-2 text-sm font-bold text-amber-800"><AlertCircle className="h-4 w-4 shrink-0" /> No hay ningún perfil que le aplique</p>
+                          {item.near_matches.length ? (
+                            <>
+                              <p className="mt-1 text-xs text-amber-800" style={{ lineHeight: 1.5 }}>
+                                Hay {item.near_matches.length === 1 ? 'un perfil que queda' : `${item.near_matches.length} perfiles que quedan`} a un solo dato de coincidir:
+                              </p>
+                              <div className="mt-2 space-y-1.5">
+                                {item.near_matches.map((candidate) => (
+                                  <div key={candidate.id} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs text-slate-700">
+                                    <p className="font-semibold text-slate-900">{candidate.position_name} · {candidate.department_name || 'Sin dependencia'}</p>
+                                    <p className="mt-0.5 text-slate-500">Difiere en <strong className="text-amber-800">{candidate.differing_fields.join(', ')}</strong>: tiene «{candidate.internal_group || candidate.department_name || '—'}».</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="mt-1 text-xs text-amber-800" style={{ lineHeight: 1.5 }}>
+                              {item.profiles_same_code
+                                ? `Existen ${item.profiles_same_code} perfiles con este cod_cargo, pero ninguno se acerca: todos difieren en más de un dato.`
+                                : `No existe ningún perfil con el cod_cargo ${item.matrix.combined_code}. Hay que crearlo desde cero.`}
+                            </p>
+                          )}
+                          <button type="button" onClick={() => createFromLookup(item)} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#002873]">
+                            <Plus className="h-4 w-4" /> Crear perfil con estos datos
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <footer className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 text-sm sm:flex-row">
+          <span className="text-xs font-medium text-slate-500">
+            {lookupData
+              ? `${lookupData.total} ${lookupData.total === 1 ? 'persona encontrada' : 'personas encontradas'}${lookupData.sources.oracle ? ` · ${lookupData.sources.oracle} desde Oracle FNC` : ''}`
+              : 'Consulta de solo lectura'}
+          </span>
+          <button type="button" onClick={closeLookup} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Cerrar</button>
+        </footer>
       </ModalShell>
     </div>
   );

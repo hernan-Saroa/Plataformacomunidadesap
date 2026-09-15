@@ -11,6 +11,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { RundDocumentManager } from './RundDocumentManager';
+import { RundExtractionPanel, type RundSuggestion } from './RundExtractionPanel';
 import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
 import { canUploadRundField } from '../../../utils/rundEvidenceData';
 
@@ -354,6 +355,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     };
   }, [viewingDoc?.displayUrl]);
   const [isEditing, setIsEditing] = useState(false);
+  const [extractionSuggestion, setExtractionSuggestion] = useState<RundSuggestion | null>(null);
   const auth = useAuth();
 
   const requestSequence = useRef(0);
@@ -712,7 +714,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             Validación Integral RUND
             {canEditRund && (
               <button 
-                onClick={() => setIsEditing(true)}
+                onClick={() => { setExtractionSuggestion(null); setIsEditing(true); }}
                 style={{ marginLeft: 16, padding: '4px 12px', borderRadius: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = '#DBEAFE'}
                 onMouseLeave={(e) => e.currentTarget.style.background = '#EFF6FF'}
@@ -764,6 +766,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       />
 
       {/* Horizontal Tabs Layout */}
+      {canEditRund && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError && (
+        <RundExtractionPanel key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
+          onView={openDocViewer} onUse={suggestion => { setExtractionSuggestion(suggestion); setIsEditing(true); }} />
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 450 }}>
         
         {/* Top Tabs: Categories List */}
@@ -1171,6 +1177,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       )}
       {isEditing && (
         <BancoDocenteEditModal
+          suggestion={extractionSuggestion || undefined}
           docente={{
             id: tarjetaRund.docenteId,
             ...docente, // Usar datos del docente para prellenar si están disponibles

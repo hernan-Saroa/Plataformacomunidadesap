@@ -1,0 +1,7 @@
+# Contrato HTTP y renderización real, motor OCR simulado: no descarga modelos.
+fastapi==0.141.1
+python-multipart==0.0.32
+pypdfium2==5.13.0
+Pillow==12.3.0
+numpy==2.2.6
+httpx==0.28.1

@@ -2,11 +2,16 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, ILike, In, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
+import {
+  LaborOracleIntegrationService,
+  type LaborOracleSuggestedRequest,
+} from './labor-oracle-integration.service';
 import { LaborFunctionProfile } from './labor-function-profile.entity';
 import { LaborFunction } from './labor-function.entity';
 import {
@@ -48,6 +53,27 @@ export type LaborFunctionProfilePayload = {
   rowNumber?: number;
 };
 
+/**
+ * Campos minimos que necesita el cruce contra un perfil de funciones. Los
+ * cumplen tanto las filas locales (`certificate_request`) como las de Oracle
+ * (`LaborOracleSuggestedRequest`), de modo que ambas fuentes pasan por la MISMA
+ * funcion de resolucion y no pueden dar resultados distintos.
+ */
+export type LaborMatchableRequest = {
+  cod_cargo?: string | null;
+  cod_grade?: string | null;
+  base_position_code?: string | null;
+  hierarchical_level?: string | null;
+  position_name?: string | null;
+  organization_department?: string | null;
+  internal_group?: string | null;
+  cost_center?: string | null;
+  department?: string | null;
+  position_location?: string | null;
+  career_category?: string | null;
+  id_number?: string | null;
+};
+
 export type LaborFunctionResolution = {
   available: boolean;
   count: number;
@@ -84,7 +110,101 @@ export class LaborFunctionsService {
     @InjectRepository(CertificateRequest)
     private readonly requestRepo: Repository<CertificateRequest>,
     private readonly dataSource: DataSource,
+    private readonly laborOracleIntegrationService: LaborOracleIntegrationService,
   ) {}
+
+  private readonly logger = new Logger(LaborFunctionsService.name);
+
+  /**
+   * Cache corta de las vinculaciones traidas de Oracle. La matriz consulta los
+   * mismos cod_cargo en cada paginacion y al abrir cada modal de asociados; sin
+   * cache eso serian varias consultas por minuto contra la vista.
+   */
+  private oracleCache: {
+    key: string;
+    expiresAt: number;
+    rows: LaborOracleSuggestedRequest[];
+  } | null = null;
+
+  private static readonly ORACLE_CACHE_TTL_MS = 60_000;
+
+  /**
+   * Vinculaciones de Oracle para los cod_cargo indicados.
+   *
+   * Es best-effort a proposito: si la integracion esta apagada, mal configurada
+   * o la vista falla, se devuelve una lista vacia y la matriz sigue funcionando
+   * exactamente como antes con los datos locales. Nunca propaga el error.
+   */
+  private async loadOracleRequests(
+    combinedCodes: string[],
+  ): Promise<{ rows: LaborOracleSuggestedRequest[]; available: boolean }> {
+    if (!this.laborOracleIntegrationService?.isEnabled?.()) {
+      return { rows: [], available: false };
+    }
+
+    const codes = Array.from(
+      new Set(
+        (combinedCodes || [])
+          .map((code) => String(code ?? '').replace(/\D+/g, ''))
+          .filter(Boolean),
+      ),
+    ).sort();
+    if (!codes.length) return { rows: [], available: true };
+
+    const key = codes.join(',');
+    const now = Date.now();
+    if (
+      this.oracleCache &&
+      this.oracleCache.key === key &&
+      this.oracleCache.expiresAt > now
+    ) {
+      return { rows: this.oracleCache.rows, available: true };
+    }
+
+    try {
+      const rows =
+        await this.laborOracleIntegrationService.findSuggestedRequestsByPositionCodes(
+          codes,
+        );
+      this.oracleCache = {
+        key,
+        expiresAt: now + LaborFunctionsService.ORACLE_CACHE_TTL_MS,
+        rows,
+      };
+      return { rows, available: true };
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudieron consultar las vinculaciones en Oracle FNC para la matriz de funciones: ${
+          error?.message || error
+        }. Se continua solo con los datos locales.`,
+      );
+      return { rows: [], available: false };
+    }
+  }
+
+  /** Identidad de una persona dentro de un cargo, para no contarla dos veces
+   *  cuando aparece en la tabla local y en Oracle a la vez. */
+  private associationIdentity(request: LaborMatchableRequest): string {
+    const documento = normalizeLaborFunctionText(request.id_number).replace(
+      /\s+/g,
+      '',
+    );
+    const cargo = normalizeCombinedPositionCode(
+      request.cod_cargo,
+      request.cod_grade,
+    );
+    return `${documento}|${cargo}`;
+  }
+
+  /**
+   * Funciones repetidas descartadas dentro de una misma fila. No es un
+   * error: se informa en el reporte de la carga masiva para que quede
+   * explícito que el perfil se guardó con menos funciones de las que traía
+   * el archivo.
+   */
+  private duplicateFunctionCount(value: unknown): number {
+    return findDuplicateLaborFunctions(parseLaborFunctionsRaw(value)).length;
+  }
 
   private nullableText(value: unknown, maxLength = 500): string | null {
     const text = String(value ?? '')
@@ -201,34 +321,17 @@ export class LaborFunctionsService {
         'Grupo interno debe tener máximo 500 caracteres.',
       );
     }
-    const rawFunctions = parseLaborFunctionsRaw(payload.functions);
     const functions = parseLaborFunctions(payload.functions);
-    const duplicateFunctions = findDuplicateLaborFunctions(rawFunctions);
     if (!functions.length) {
       throw new BadRequestException(
         'No se encontraron funciones válidas. Usa numeración como 1. 2. 3. o una función por línea.',
       );
     }
-    if (duplicateFunctions.length) {
-      const visibleDuplicates = duplicateFunctions.slice(0, 5);
-      const details = visibleDuplicates.map(
-        ({ duplicateOrdinal, originalOrdinal, description }) => {
-          const preview =
-            description.length > 120
-              ? `${description.slice(0, 117).trimEnd()}...`
-              : description;
-          return `la función ${duplicateOrdinal} repite la función ${originalOrdinal}: «${preview}»`;
-        },
-      );
-      const hiddenCount = duplicateFunctions.length - visibleDuplicates.length;
-      const hiddenDetail =
-        hiddenCount > 0
-          ? ` Además, hay ${hiddenCount} repetición${hiddenCount === 1 ? '' : 'es'} más.`
-          : '';
-      throw new BadRequestException(
-        `El registro contiene funciones duplicadas: ${details.join('; ')}.${hiddenDetail} Elimina las repetidas antes de guardar.`,
-      );
-    }
+    // Las funciones repetidas DENTRO de una misma fila ya no rechazan el
+    // registro: `parseLaborFunctions` deduplica, así que el perfil se guarda con
+    // la lista única y no se pierde información. La única duplicidad que sigue
+    // siendo un error es la de fila contra fila (misma identidad institucional),
+    // que se evalúa por match_key en validateBulk/bulk.
     if (functions.length > 500) {
       throw new BadRequestException(
         'Cada perfil puede contener máximo 500 funciones.',
@@ -348,20 +451,7 @@ export class LaborFunctionsService {
 
   private profileMatchesRequest(
     profile: LaborFunctionProfile,
-    request: Pick<
-      CertificateRequest,
-      | 'cod_cargo'
-      | 'cod_grade'
-      | 'base_position_code'
-      | 'hierarchical_level'
-      | 'position_name'
-      | 'organization_department'
-      | 'internal_group'
-      | 'cost_center'
-      | 'department'
-      | 'position_location'
-      | 'career_category'
-    >,
+    request: LaborMatchableRequest,
   ) {
     const requestCombined = normalizeCombinedPositionCode(
       request.cod_cargo,
@@ -428,20 +518,7 @@ export class LaborFunctionsService {
   }
 
   private resolveFromProfiles(
-    request: Pick<
-      CertificateRequest,
-      | 'cod_cargo'
-      | 'cod_grade'
-      | 'base_position_code'
-      | 'hierarchical_level'
-      | 'position_name'
-      | 'organization_department'
-      | 'internal_group'
-      | 'cost_center'
-      | 'department'
-      | 'position_location'
-      | 'career_category'
-    >,
+    request: LaborMatchableRequest,
     profiles: LaborFunctionProfile[],
   ): LaborFunctionResolution {
     const combinedCode = normalizeCombinedPositionCode(
@@ -505,20 +582,7 @@ export class LaborFunctionsService {
   }
 
   async resolveForRequest(
-    request: Pick<
-      CertificateRequest,
-      | 'cod_cargo'
-      | 'cod_grade'
-      | 'base_position_code'
-      | 'hierarchical_level'
-      | 'position_name'
-      | 'organization_department'
-      | 'internal_group'
-      | 'cost_center'
-      | 'department'
-      | 'position_location'
-      | 'career_category'
-    >,
+    request: LaborMatchableRequest,
   ): Promise<LaborFunctionResolution> {
     const combinedCode = normalizeCombinedPositionCode(
       request.cod_cargo,
@@ -579,6 +643,7 @@ export class LaborFunctionsService {
       const requests = await this.requestRepo.find({
         select: {
           id: true,
+          id_number: true,
           cod_cargo: true,
           cod_grade: true,
           base_position_code: true,
@@ -592,7 +657,29 @@ export class LaborFunctionsService {
           career_category: true,
         },
       });
+
+      // En los ambientes donde los empleados llegan por Oracle, la tabla local
+      // solo tiene a quienes ya pasaron por el autoservicio. Se completa el
+      // universo con la vista para que el contador no quede en cero.
+      const oracle = await this.loadOracleRequests(
+        Array.from(profilesByCombinedCode.keys()),
+      );
+
+      const seenIdentities = new Set<string>();
+      const countable: LaborMatchableRequest[] = [];
       requests.forEach((request) => {
+        seenIdentities.add(this.associationIdentity(request));
+        countable.push(request);
+      });
+      oracle.rows.forEach((row) => {
+        const identity = this.associationIdentity(row);
+        // La misma persona puede estar en las dos fuentes: la local manda.
+        if (seenIdentities.has(identity)) return;
+        seenIdentities.add(identity);
+        countable.push(row);
+      });
+
+      countable.forEach((request) => {
         const combinedCode = normalizeCombinedPositionCode(
           request.cod_cargo,
           request.cod_grade,
@@ -634,6 +721,426 @@ export class LaborFunctionsService {
           (sum, count) => sum + count,
           0,
         ),
+      },
+    };
+  }
+
+  /**
+   * Listado detallado de las solicitudes (contratos) que resuelven exactamente
+   * contra un perfil de funciones. Reutiliza `resolveFromProfiles`, la misma
+   * lógica que alimenta el contador `association_count` de `list()`, para que el
+   * número del badge y el contenido del listado nunca se contradigan.
+   */
+  async listAssociations(
+    id: string,
+    options: { search?: string; page?: number; limit?: number } = {},
+  ) {
+    const profile = await this.profileRepo.findOne({
+      where: { id },
+      relations: ['functions'],
+    });
+    if (!profile) {
+      throw new NotFoundException('Registro de funciones no encontrado.');
+    }
+
+    const requestedPage = Math.max(1, Number(options.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(options.limit) || 25));
+    const search = normalizeLaborFunctionText(options.search);
+
+    // La resolución necesita los perfiles hermanos con el mismo cod_cargo para
+    // poder declarar ambigüedad igual que lo hace el contador.
+    const siblings = await this.profileRepo.find({
+      where: { combined_code: profile.combined_code },
+      relations: ['functions'],
+    });
+
+    const requests = await this.requestRepo.find({
+      select: {
+        id: true,
+        request_number: true,
+        full_name: true,
+        id_number: true,
+        document_type: true,
+        email: true,
+        campus: true,
+        status: true,
+        hiring_date: true,
+        request_date: true,
+        created_at: true,
+        cod_cargo: true,
+        cod_grade: true,
+        base_position_code: true,
+        hierarchical_level: true,
+        position_name: true,
+        position_category: true,
+        organization_department: true,
+        internal_group: true,
+        cost_center: true,
+        department: true,
+        position_location: true,
+        career_category: true,
+      },
+      order: { created_at: 'DESC' },
+    });
+
+    const oracle = await this.loadOracleRequests([profile.combined_code]);
+
+    const serialize = (
+      request: any,
+      origen: 'local' | 'oracle',
+    ) => ({
+      id: request.id || `oracle:${this.associationIdentity(request)}`,
+      origen,
+      request_number: request.request_number || null,
+      full_name: request.full_name,
+      id_number: request.id_number,
+      document_type: request.document_type || null,
+      email: request.email || null,
+      campus: request.campus || null,
+      status: request.status || null,
+      position_name: request.position_name || request.career_category || null,
+      position_category: request.position_category || null,
+      hierarchical_level: request.hierarchical_level || null,
+      combined_code: normalizeCombinedPositionCode(
+        request.cod_cargo,
+        request.cod_grade,
+      ),
+      department_name:
+        request.organization_department || request.department || null,
+      internal_group:
+        resolveLaborInternalGroup(
+          request.internal_group,
+          request.cost_center,
+          request.position_location,
+        ) || null,
+      hiring_date: request.hiring_date || null,
+      request_date: request.request_date || null,
+      created_at: request.created_at || null,
+    });
+
+    const matches = (request: LaborMatchableRequest) => {
+      const resolution = this.resolveFromProfiles(request, siblings);
+      return resolution.available && resolution.profile?.id === profile.id;
+    };
+
+    const serialized: Array<ReturnType<typeof serialize>> = [];
+    const seenIdentities = new Set<string>();
+
+    requests.filter(matches).forEach((request) => {
+      seenIdentities.add(this.associationIdentity(request));
+      serialized.push(serialize(request, 'local'));
+    });
+    oracle.rows.filter(matches).forEach((row) => {
+      const identity = this.associationIdentity(row);
+      // La misma persona puede venir de las dos fuentes: la local manda porque
+      // trae numero de solicitud y estado reales.
+      if (seenIdentities.has(identity)) return;
+      seenIdentities.add(identity);
+      serialized.push(serialize(row, 'oracle'));
+    });
+
+    const filtered = search
+      ? serialized.filter((item) =>
+          normalizeLaborFunctionText(
+            [
+              item.full_name,
+              item.id_number,
+              item.request_number,
+              item.email,
+              item.department_name,
+              item.internal_group,
+              item.campus,
+            ].join(' '),
+          ).includes(search),
+        )
+      : serialized;
+
+    const statusCounts: Record<string, number> = {};
+    serialized.forEach((item) => {
+      const key = item.status || 'SIN_ESTADO';
+      statusCounts[key] = (statusCounts[key] || 0) + 1;
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / limit));
+    const page = Math.min(requestedPage, totalPages);
+    const start = (page - 1) * limit;
+
+    return {
+      profile: {
+        id: profile.id,
+        combined_code: profile.combined_code,
+        position_code: profile.position_code,
+        grade_code: profile.grade_code,
+        position_name: profile.position_name,
+        hierarchical_level: profile.hierarchical_level,
+        department_name: profile.department_name,
+        internal_group: resolveLaborInternalGroup(
+          profile.internal_group,
+          profile.cost_center,
+        ),
+        function_count: profile.functions?.length || 0,
+      },
+      items: filtered.slice(start, start + limit),
+      total: filtered.length,
+      page,
+      limit,
+      totalPages,
+      summary: {
+        associations: serialized.length,
+        uniquePeople: new Set(
+          serialized.map(
+            (item) => normalizeLaborFunctionText(item.id_number) || item.id,
+          ),
+        ).size,
+        byStatus: statusCounts,
+        fromLocal: serialized.filter((item) => item.origen === 'local').length,
+        fromOracle: serialized.filter((item) => item.origen === 'oracle').length,
+        oracleAvailable: oracle.available,
+      },
+    };
+  }
+
+  /**
+   * Consulta informativa de un empleado: con qué datos EXACTOS hay que crearle
+   * el perfil de funciones.
+   *
+   * Devuelve UNA sola vinculación por persona: la que el certificado realmente
+   * usa. La elige `selectPreferred`, que el controlador enlaza con la misma
+   * selección de CertificatesService (activos → encargo vigente → carrera
+   * administrativa → más reciente), para que no existan dos criterios
+   * distintos de "cuál vinculación vale".
+   *
+   * No crea ni modifica nada.
+   */
+  async lookupPerson(
+    search: string,
+    options: {
+      limit?: number;
+      selectPreferred?: (requests: any[]) => any | null;
+    } = {},
+  ) {
+    const term = String(search ?? '').trim();
+    if (term.length < 3) {
+      throw new BadRequestException(
+        'Escribe al menos 3 caracteres del nombre o del número de documento.',
+      );
+    }
+    const limit = Math.min(50, Math.max(1, Number(options.limit) || 10));
+
+    const localRequests = await this.requestRepo.find({
+      where: [
+        { id_number: ILike(`%${term}%`) },
+        { full_name: ILike(`%${term}%`) },
+      ],
+      order: { created_at: 'DESC' },
+      take: 200,
+    });
+
+    let oracleRows: LaborOracleSuggestedRequest[] = [];
+    let oracleAvailable = false;
+    if (this.laborOracleIntegrationService?.isEnabled?.()) {
+      try {
+        oracleRows =
+          await this.laborOracleIntegrationService.findSuggestedRequestsBySearch(
+            term,
+            200,
+          );
+        oracleAvailable = true;
+      } catch (error: any) {
+        this.logger.warn(
+          `No se pudo consultar el empleado en Oracle FNC: ${
+            error?.message || error
+          }. Se responde solo con los datos locales.`,
+        );
+      }
+    }
+
+    // Agrupar por persona (documento). Una misma vinculación puede llegar por
+    // las dos fuentes: la local manda porque trae número de solicitud y estado.
+    const personas = new Map<
+      string,
+      { origen: 'local' | 'oracle'; rows: any[] }
+    >();
+    const documentoDe = (row: any) =>
+      normalizeLaborFunctionText(row?.id_number).replace(/\s+/g, '');
+
+    // La deduplicación aplica SOLO entre fuentes. Dentro de la tabla local dos
+    // filas pueden compartir documento y cod_cargo siendo vinculaciones
+    // distintas y legítimas (p. ej. un encargo terminado y su prórroga
+    // vigente). Descartarlas se llevaba por delante la vinculación ACTIVA, y la
+    // selección terminaba devolviendo el cargo base en vez del que sale en el
+    // certificado.
+    const identidadesLocales = new Set(
+      localRequests.map((row) => this.associationIdentity(row)),
+    );
+
+    const push = (row: any, origen: 'local' | 'oracle') => {
+      const documento = documentoDe(row);
+      if (!documento) return;
+      const actual = personas.get(documento);
+      if (!actual) {
+        personas.set(documento, { origen, rows: [row] });
+        return;
+      }
+      actual.rows.push(row);
+      if (origen === 'local') actual.origen = 'local';
+    };
+
+    localRequests.forEach((row) => push(row, 'local'));
+    oracleRows
+      .filter((row) => !identidadesLocales.has(this.associationIdentity(row)))
+      .forEach((row) => push(row, 'oracle'));
+
+    const seleccionadas = Array.from(personas.values()).map(
+      ({ origen, rows }) => {
+        const elegida =
+          (options.selectPreferred ? options.selectPreferred(rows) : null) ||
+          rows[0];
+        return {
+          origen: rows.length === 1 ? origen : ((elegida as any).id ? 'local' : 'oracle'),
+          row: elegida,
+          vinculaciones: rows.length,
+        };
+      },
+    );
+
+    const combinedCodes = Array.from(
+      new Set(
+        seleccionadas
+          .map(({ row }) =>
+            normalizeCombinedPositionCode(row.cod_cargo, row.cod_grade),
+          )
+          .filter(Boolean),
+      ),
+    );
+    const profiles = combinedCodes.length
+      ? await this.profileRepo.find({
+          where: { combined_code: In(combinedCodes) },
+          relations: ['functions'],
+        })
+      : [];
+
+    const describeProfile = (profile: LaborFunctionProfile) => ({
+      id: profile.id,
+      combined_code: profile.combined_code,
+      position_code: profile.position_code,
+      grade_code: profile.grade_code,
+      hierarchical_level: profile.hierarchical_level,
+      position_name: profile.position_name,
+      department_name: profile.department_name,
+      internal_group: resolveLaborInternalGroup(
+        profile.internal_group,
+        profile.cost_center,
+      ),
+      function_count: profile.functions?.length || 0,
+      is_active: profile.is_active,
+    });
+
+    const items = seleccionadas
+      .slice(0, limit)
+      .map(({ row, origen, vinculaciones }) => {
+        const combinedCode = normalizeCombinedPositionCode(
+          row.cod_cargo,
+          row.cod_grade,
+        );
+        const mismoCargo = profiles.filter(
+          (profile) => profile.combined_code === combinedCode,
+        );
+        const resolution = this.resolveFromProfiles(row, mismoCargo);
+        const matched = resolution.available ? resolution.profile : null;
+
+        const grade = normalizeGradeCode(row.cod_grade);
+        const basePositionCode = normalizePositionCode(
+          row.base_position_code ||
+            (grade && combinedCode.endsWith(grade)
+              ? combinedCode.slice(0, -grade.length)
+              : row.cod_cargo),
+        );
+
+        const matrix = {
+          position_code: basePositionCode || null,
+          grade_code: grade || null,
+          combined_code: combinedCode || null,
+          hierarchical_level:
+            row.hierarchical_level ||
+            this.inferHierarchicalLevel(
+              row.position_name || row.career_category,
+            ),
+          position_name: row.position_name || row.career_category || null,
+          department_name:
+            row.organization_department ||
+            row.department ||
+            row.position_location ||
+            null,
+          internal_group:
+            resolveLaborInternalGroup(
+              row.internal_group,
+              row.cost_center,
+              row.position_location,
+            ) || null,
+        };
+
+        // En vez de listar todos los perfiles del cod_cargo (pueden ser
+        // decenas y no dicen nada), se buscan los que fallan por UN solo dato:
+        // ahí está el diagnóstico util.
+        const camposComparables: Array<{
+          key: 'hierarchical_level' | 'position_name' | 'department_name' | 'internal_group';
+          label: string;
+        }> = [
+          { key: 'hierarchical_level', label: 'Nivel jerárquico' },
+          { key: 'position_name', label: 'Denominación' },
+          { key: 'department_name', label: 'Dependencia' },
+          { key: 'internal_group', label: 'Grupo interno' },
+        ];
+
+        const cercanos = matched
+          ? []
+          : mismoCargo
+              .map((profile) => {
+                const descrito = describeProfile(profile);
+                const diferencias = camposComparables.filter(({ key }) => {
+                  const esperado = normalizeLaborFunctionText(descrito[key]);
+                  const real = normalizeLaborFunctionText(matrix[key]);
+                  return esperado !== real;
+                });
+                return {
+                  ...descrito,
+                  differing_fields: diferencias.map((item) => item.label),
+                };
+              })
+              .filter((item) => item.differing_fields.length === 1)
+              .slice(0, 3);
+
+        return {
+          origen,
+          full_name: row.full_name || null,
+          id_number: row.id_number || null,
+          document_type: row.document_type || null,
+          email: row.email || null,
+          hiring_date: row.hiring_date || null,
+          position_category: row.position_category || null,
+          status: row.status || null,
+          request_number: row.request_number || null,
+          /** Cuántas vinculaciones tiene la persona; se muestra solo esta. */
+          total_vinculaciones: vinculaciones,
+          matrix,
+          matched_profile: matched
+            ? describeProfile(matched as LaborFunctionProfile)
+            : null,
+          profiles_same_code: mismoCargo.length,
+          near_matches: cercanos,
+        };
+      });
+
+    return {
+      search: term,
+      total: seleccionadas.length,
+      limit,
+      items,
+      sources: {
+        local: items.filter((item) => item.origen === 'local').length,
+        oracle: items.filter((item) => item.origen === 'oracle').length,
+        oracleAvailable,
       },
     };
   }
@@ -863,13 +1370,16 @@ export class LaborFunctionsService {
               'La combinación institucional ya existe en la matriz. No se permiten registros duplicados; edítala desde la vista principal si necesitas cambiar sus funciones.',
           };
         }
+        const omitidas = this.duplicateFunctionCount(row.functions);
         return {
           rowNumber,
           status: 'valid' as const,
           action: 'created' as const,
           combined_code: normalized.combined_code,
           function_count: normalized.functions.length,
-          message: 'Fila válida; se creará un perfil nuevo.',
+          message: omitidas
+            ? `Fila válida; se creará un perfil nuevo. Se omitieron ${omitidas} función${omitidas === 1 ? '' : 'es'} repetida${omitidas === 1 ? '' : 's'} dentro de la fila.`
+            : 'Fila válida; se creará un perfil nuevo.',
         };
       } catch (error: any) {
         return {
