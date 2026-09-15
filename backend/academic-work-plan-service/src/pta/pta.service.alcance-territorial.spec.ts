@@ -70,10 +70,10 @@ describe('PtaService - alcance territorial tolerante (EFDS-1535)', () => {
     await expect(llamar(service, auth(['900014']))).rejects.toThrow(/su propia territorial/i);
   });
 
-  it('sigue rechazando al usuario sin territorial asignada', async () => {
+  it('permite cualquier territorial si Personas no especifica una asignación', async () => {
     const service = montarServicio([{ territorialId: CHOCO, nivel: 'pregrado' }]);
 
-    await expect(llamar(service, auth([]))).rejects.toThrow(/no tiene una territorial asignada/i);
+    expect((await llamar(service, auth([]))).propios).toEqual([{ territorialId: CHOCO, nivel: 'pregrado' }]);
   });
 
   it('sigue rechazando el nivel no autorizado', async () => {

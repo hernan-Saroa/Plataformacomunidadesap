@@ -23,13 +23,15 @@ describe('acciones que puede ofrecer el formulario PTA', () => {
     expect(result.allowedComponents).toContain('ext_capacitacion');
   });
 
-  it('tener permiso sin territorial no habilita el formulario territorial y explica el motivo', async () => {
+  it('sin asignación personal habilita las territoriales del nivel autorizado', async () => {
     const { service, auth } = setup();
     auth.territorialIds = [];
     const result = await service.getDecisionPermissions('pta-1', auth);
-    expect(result.allowedComponents).toEqual(['ext_capacitacion']);
-    expect(result.allowedReviewSubsecciones).toEqual([]);
-    expect(result.territorial.aprobar.reason).toContain('No tiene una territorial asignada');
+    expect(result.allowedComponents).toEqual(['academica_territorial', 'ext_capacitacion']);
+    expect(result.allowedReviewSubsecciones).toEqual(['academica_territorial:general']);
+    expect(result.territorial.aprobar.pairs).toEqual([{ territorialId: 'A', nivel: 'pregrado' }, { territorialId: 'B', nivel: 'pregrado' }]);
+    expect(result.territorial.revisar.pairs).toEqual([{ territorialId: 'A', nivel: 'posgrado' }]);
+    expect(result.territorial.aprobar.reason).toBeNull();
     expect(auth.allowedComponents).toContain('academica_territorial');
   });
 

@@ -380,10 +380,38 @@ function associationStatusBadge(status: string) {
   );
 }
 
-function formatAssociationDate(value?: string | null) {
+/**
+ * Fecha laboral sin desfase de día.
+ *
+ * `hiring_date` llega como 'YYYY-MM-DD' y `request_date` como un timestamp a
+ * medianoche UTC. `new Date(...)` los interpreta en UTC y al formatearlos en
+ * horario de Bogotá (UTC-5) retrocedían un día: una vinculación del 14/05/2024
+ * se mostraba como 13/05/2024.
+ *
+ * La fecha se ancla al mediodía, igual que `toSafeDate` en
+ * labor-certificate-pdf.service.ts, para que ningún huso la mueva de día.
+ */
+export function formatAssociationDate(value?: string | null) {
   if (!value) return '—';
-  const parsed = new Date(value);
+
+  const soloFecha = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsed = soloFecha
+    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12)
+    : new Date(value);
+
   if (Number.isNaN(parsed.getTime())) return '—';
+
+  // Timestamps exactos a medianoche representan un día, no un instante.
+  if (
+    !soloFecha &&
+    parsed.getUTCHours() === 0 &&
+    parsed.getUTCMinutes() === 0 &&
+    parsed.getUTCSeconds() === 0 &&
+    parsed.getUTCMilliseconds() === 0
+  ) {
+    parsed.setUTCHours(12, 0, 0, 0);
+  }
+
   return parsed.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
@@ -548,6 +576,7 @@ export function LaborFunctionsManager() {
   const [bulkPreviewPage, setBulkPreviewPage] = React.useState(1);
   const [dragActive, setDragActive] = React.useState(false);
   const [selectedProfiles, setSelectedProfiles] = React.useState<Map<string, LaborFunctionProfileApi>>(new Map());
+  const [selectingAll, setSelectingAll] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
   const [bulkDeleteSubmissionError, setBulkDeleteSubmissionError] = React.useState('');
   const [deletingSelected, setDeletingSelected] = React.useState(false);
@@ -840,7 +869,7 @@ export function LaborFunctionsManager() {
         return;
       }
       const sheet = XLSX.utils.aoa_to_sheet([
-        ['Documento', 'Nombre completo', 'N.º solicitud', 'Estado', 'Denominación', 'Dependencia', 'Grupo interno', 'Sede', 'Correo', 'Fecha de vinculación', 'Fecha de solicitud'],
+        ['Documento', 'Nombre completo', 'N.º solicitud', 'Estado', 'Denominación', 'Dependencia', 'Grupo interno', 'Sede', 'Correo', 'Fecha de vinculación'],
         ...rows.map((item) => [
           item.id_number || '',
           item.full_name || '',
@@ -851,7 +880,6 @@ export function LaborFunctionsManager() {
           item.internal_group || '',
           item.campus || '',
           item.email || '',
-          formatAssociationDate(item.hiring_date),
           formatAssociationDate(item.request_date || item.created_at),
         ]),
       ]);
@@ -937,6 +965,39 @@ export function LaborFunctionsManager() {
   };
 
   const clearSelectedProfiles = () => setSelectedProfiles(new Map());
+
+  /**
+   * Marca TODOS los registros que coinciden con la búsqueda actual, no solo los
+   * de la página visible. Los ids llegan del endpoint `selection`, que aplica
+   * exactamente el mismo filtro que la tabla.
+   */
+  const selectAllProfiles = async () => {
+    if (selectingAll) return;
+    setSelectingAll(true);
+    try {
+      const response = await certificadosService.laborales.listarSeleccionFuncionesLaborales(
+        { search: search.trim() || undefined },
+      );
+      const next = new Map<string, LaborFunctionProfileApi>();
+      (response.items || []).forEach((profile) => {
+        // Se conserva el registro completo si ya estaba en pantalla; el compacto
+        // basta para los totales de la confirmación de borrado.
+        next.set(profile.id, (selectedProfiles.get(profile.id)
+          || items.find((item) => item.id === profile.id)
+          || profile) as LaborFunctionProfileApi);
+      });
+      setSelectedProfiles(next);
+      toast.success(
+        next.size === 1
+          ? '1 registro seleccionado.'
+          : `${next.size} registros seleccionados de todas las páginas.`,
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'No se pudieron seleccionar todos los registros.');
+    } finally {
+      setSelectingAll(false);
+    }
+  };
 
   const openBulkDelete = () => {
     if (!selectedCount) {
@@ -1581,6 +1642,18 @@ export function LaborFunctionsManager() {
           <div className="flex items-center justify-between gap-3 lg:justify-end">
             <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-[#003DA5] sm:inline-flex">Más recientes primero</span>
             <span className="text-xs font-medium text-slate-500">{totalItems} {totalItems === 1 ? 'perfil encontrado' : 'perfiles encontrados'}</span>
+            {totalItems > 0 && selectedCount < totalItems && (
+              <button
+                type="button"
+                onClick={() => void selectAllProfiles()}
+                disabled={selectingAll || loading}
+                title={search ? `Marcar los ${totalItems} registros que coinciden con la búsqueda` : `Marcar los ${totalItems} registros de todas las páginas`}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-[#003DA5] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {selectingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {selectingAll ? 'Seleccionando…' : `Seleccionar todos (${totalItems})`}
+              </button>
+            )}
             <button onClick={() => void load(true)} disabled={refreshing} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#003DA5] disabled:opacity-60">
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Actualizar
             </button>
@@ -1602,7 +1675,10 @@ export function LaborFunctionsManager() {
                   <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl bg-[#003DA5] px-2.5 text-sm font-bold text-white shadow-sm">{selectedCount}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-blue-950">{selectedCount === 1 ? '1 registro seleccionado' : `${selectedCount} registros seleccionados`}</p>
-                    <p className="text-xs text-blue-700">{currentPageSelectedCount} en esta página · La selección se conserva al navegar o buscar.</p>
+                    <p className="text-xs text-blue-700">
+                      {currentPageSelectedCount} en esta página · La selección se conserva al navegar o buscar.
+                      {selectedCount === totalItems && totalItems > 0 ? ' Están seleccionados todos los registros.' : ''}
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -1925,7 +2001,7 @@ export function LaborFunctionsManager() {
             <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-3">
               <p className="flex items-start gap-2 text-xs text-blue-900" style={{ lineHeight: 1.5 }}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#003DA5]" />
-                <span>Estas son las vinculaciones cuyo código, denominación, dependencia, nivel y grupo interno coinciden <strong>exactamente</strong> con este perfil. Son las que recibirán estas <strong>{associationsProfile.function_count} funciones</strong> en su certificado laboral.</span>
+                <span>Estas son las vinculaciones <strong>vigentes</strong> cuyo código, denominación, dependencia, nivel y grupo interno coinciden <strong>exactamente</strong> con este perfil. Son las que recibirán estas <strong>{associationsProfile.function_count} funciones</strong> en su certificado laboral. Las terminadas no se listan.</span>
               </p>
             </div>
 
@@ -2009,10 +2085,10 @@ export function LaborFunctionsManager() {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-5 py-3.5">{person.request_number ? (<><p className="font-mono text-xs font-bold text-[#003DA5]">{person.request_number}</p><p className="mt-0.5 text-xs text-slate-500">{formatAssociationDate(person.request_date || person.created_at)}</p></>) : (<><span className="inline-flex whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">Oracle FNC</span><p className="mt-0.5 text-xs text-slate-500">Sin solicitud registrada</p></>)}</td>
+                            <td className="px-5 py-3.5">{person.request_number ? (<p className="font-mono text-xs font-bold text-[#003DA5]">{person.request_number}</p>) : (<><span className="inline-flex whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">Oracle FNC</span><p className="mt-0.5 text-xs text-slate-500">Sin solicitud registrada</p></>)}</td>
                             <td className="px-5 py-3.5"><span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold ${badge.className}`}>{badge.label}</span></td>
                             <td className="px-5 py-3.5"><p className="text-xs font-medium text-slate-700">{person.department_name || 'Sin dependencia'}</p><p className="mt-0.5 text-xs text-slate-500">{person.internal_group || 'Sin grupo interno'}{person.campus ? ` · ${person.campus}` : ''}</p></td>
-                            <td className="whitespace-nowrap px-5 py-3.5 text-xs tabular-nums text-slate-600">{formatAssociationDate(person.hiring_date)}</td>
+                            <td className="whitespace-nowrap px-5 py-3.5 text-xs tabular-nums text-slate-600">{formatAssociationDate(person.request_date || person.created_at)}</td>
                           </motion.tr>
                         );
                       })}

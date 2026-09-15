@@ -480,6 +480,32 @@ export const certificadosService = {
       );
     },
 
+    /** Todos los perfiles del filtro actual, en forma compacta (seleccionar todo). */
+    async listarSeleccionFuncionesLaborales(
+      params?: { search?: string },
+    ): Promise<{
+      total: number;
+      items: Array<
+        Pick<
+          LaborFunctionProfileApi,
+          | 'id'
+          | 'combined_code'
+          | 'position_code'
+          | 'grade_code'
+          | 'position_name'
+          | 'department_name'
+          | 'internal_group'
+          | 'function_count'
+          | 'association_count'
+        >
+      >;
+    }> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/labor-functions/selection`,
+        params,
+      );
+    },
+
     async crearFuncionesLaborales(
       data: LaborFunctionProfilePayloadApi,
     ): Promise<LaborFunctionProfileApi & { action: 'created' }> {

@@ -990,6 +990,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         pta={selectedPta}
         onClose={() => setVista('v01_dashboard')}
         userPersonId={userPersonId}
+        userDocumento={docentePerfil?.documento_identidad || ''}
         userName={userName}
         componentesAprobacion={componentApprovalsByPta[selectedPtaId] || []}
         aprobacionTerritorial={aprobacionTerritorialReporte}
