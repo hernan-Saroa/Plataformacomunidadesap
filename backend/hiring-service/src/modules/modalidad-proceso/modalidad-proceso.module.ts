@@ -11,6 +11,7 @@ import { Revision } from '../../entities/revision.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { UmbralesModule } from '../umbrales/umbrales.module';
+import { CdpModule } from '../cdp/cdp.module';
 
 @Module({
   imports: [
@@ -19,6 +20,9 @@ import { UmbralesModule } from '../umbrales/umbrales.module';
     ParticipacionModule,
     // Corregir la modalidad se valida contra los umbrales, como al crear.
     UmbralesModule,
+    // Ratificarla cierra la 3.5, y en mínima cuantía eso cierra la etapa 3: la
+    // solicitud de CDP nace en ese momento.
+    CdpModule,
   ],
   controllers: [ModalidadProcesoController],
   providers: [ModalidadProcesoService],

@@ -18,6 +18,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
+import { CdpService } from '../cdp/cdp.service';
 import { admiteRegistro, faltaParaRegistrar } from './admite-registro';
 import { AnularRegistroDto, RegistrarActividadDto } from './dto/registro-actividad.dto';
 
@@ -41,6 +42,7 @@ export class RegistroActividadService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly aprobacion: AprobacionService,
+    private readonly cdp: CdpService,
   ) {}
 
   /**
@@ -294,7 +296,7 @@ export class RegistroActividadService {
         } as Partial<RegistroActividad>),
       );
 
-      await this.marcarActividad(
+      const cerro = await this.marcarActividad(
         em,
         procesoId,
         numeral,
@@ -310,6 +312,17 @@ export class RegistroActividadService {
         { numeral, fecha: dto.fecha, conSoporte: documento !== null },
         acceso,
       );
+
+      // Si con esto no quedaba nada abierto en la etapa 3, la solicitud de CDP
+      // se radica sola. Le toca a este camino y no solo a la aprobación: en
+      // contratación directa la última que aplica es la 3.7, el comité, que se
+      // cumple por registro —y donde nadie tiene configurado aprobador, el
+      // registro *es* el cierre—. Sin esta llamada esa modalidad cerraba la
+      // etapa sin que nadie pidiera el CDP.
+      //
+      // Solo cuando cierra: si la actividad tiene aprobadores, queda en
+      // revisión y quien decida pasará por `aprobacion`, que ya pregunta.
+      if (cerro) await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, numeral);
@@ -430,6 +443,11 @@ export class RegistroActividadService {
    * Antes se cerraba siempre en APROBADO, hubiera o no quien revisara, así que
    * una actividad con aprobador configurado se daba por buena sin que nadie la
    * mirara y el envío quedaba como un paso que ya no cambiaba nada.
+   *
+   * Devuelve si la dejó cerrada, que es lo que quien llama necesita para saber
+   * si preguntar por el cierre de la etapa. Se devuelve en vez de recalcularse
+   * fuera: la condición ya está resuelta aquí, y repetirla es la forma de que
+   * las dos acaben discrepando.
    */
   private async marcarActividad(
     em: EntityManager,
@@ -438,7 +456,7 @@ export class RegistroActividadService {
     cumplida: boolean,
     acceso: HiringAccess,
     modalidad: string | null = null,
-  ) {
+  ): Promise<boolean> {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
@@ -463,7 +481,7 @@ export class RegistroActividadService {
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
-      return;
+      return cierra;
     }
 
     actividad.estado = estado as any;
@@ -474,6 +492,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
+    return cierra;
   }
 
   private async traza(
