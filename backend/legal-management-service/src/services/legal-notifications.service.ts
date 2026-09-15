@@ -1042,7 +1042,7 @@ export class LegalNotificationsService {
     nombreActuacion: string;
     numeroRadicado?: string | null;
     horasRestantes: number;
-    origen: 'automatica' | 'personalizada' | 'manual';
+    origen: 'automatica' | 'personalizada' | 'manual' | 'vencido' | 'recordatorio';
   }): Promise<boolean> {
     const meta = MODULE_META.TERMINOS_INFORMES;
     const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
@@ -1054,6 +1054,8 @@ export class LegalNotificationsService {
       automatica: 'Alerta de vencimiento de término',
       personalizada: 'Alerta personalizada de vencimiento',
       manual: 'Recordatorio programado de vencimiento',
+      vencido: 'Término VENCIDO',
+      recordatorio: 'Recordatorio de término pendiente',
     };
 
     this.logger.log(
