@@ -7,6 +7,7 @@ import {
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
+  BandejaCdp,
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
@@ -720,6 +721,15 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({}),
     }),
+
+  /**
+   * La bandeja de la Dirección Financiera: lo que espera en la etapa 4.
+   *
+   * No cuelga de un proceso porque no es de uno: es la lista de los que
+   * esperan, y preguntarla exigiendo un proceso a mano sería preguntar por lo
+   * que aún no se sabe.
+   */
+  bandejaCdp: () => pedir<BandejaCdp>('/cdp/bandeja'),
 
   /** Quiénes pueden resolver un CDP: los que gestionan presupuesto. */
   financieros: (q = '') =>

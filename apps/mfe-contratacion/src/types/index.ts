@@ -119,6 +119,48 @@ export interface Cdp {
   cubreValorEstimado?: boolean;
 }
 
+/**
+ * Una solicitud de CDP en la bandeja de la Dirección Financiera (etapa 4).
+ *
+ * Lo que la pantalla necesita para decidir a cuál entrar sin abrir el proceso:
+ * de qué es, por cuánto, desde cuándo espera y si ya la lleva alguien.
+ */
+export interface SolicitudEnBandeja {
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  modalidad: string | null;
+  valor: number | null;
+  /**
+   * El valor todavía no es el del CDP sino el estimado del proceso.
+   *
+   * Se distingue porque no es lo mismo: el estimado es contra lo que se va a
+   * verificar la disponibilidad, no una cifra ya certificada.
+   */
+  valorEsEstimado: boolean;
+  rubro: string | null;
+  estado: EstadoCdp;
+  solicitadoPor: string | null;
+  solicitadoAt: string;
+  diasEsperando: number;
+  /** Lleva parada más de lo tolerable; es lo mismo que alarma el correo diario. */
+  demorada: boolean;
+  aCargoDe: string | null;
+}
+
+/**
+ * La bandeja de la Financiera, en tres montones.
+ *
+ * No se atienden igual: `sinTomar` es lo que hay que recoger, `mias` el trabajo
+ * que ya es mío, y `deOtros` lo que lleva un compañero —que se ve para no
+ * duplicar el trabajo, no para hacerlo—.
+ */
+export interface BandejaCdp {
+  sinTomar: SolicitudEnBandeja[];
+  mias: SolicitudEnBandeja[];
+  deOtros: SolicitudEnBandeja[];
+}
+
 export interface EstadoRespaldo {
   /** False en las modalidades que no comprometen gasto. */
   aplica: boolean;
