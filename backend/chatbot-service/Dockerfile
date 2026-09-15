@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for building)
-RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
+RUN --mount=type=cache,target=/root/.npm npm install --prefer-offline --no-audit
 
 # Copy source code
 COPY . .
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --prefer-offline
 COPY --from=builder /app/dist ./dist
 
 # Expose the port the app runs on
-EXPOSE 3014
+EXPOSE 3015
 
 # Start the application
 CMD ["node", "dist/main"]
