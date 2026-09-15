@@ -11,20 +11,27 @@
  * tampoco las recogió una historia, también se resuelven fuera de la
  * plataforma y también se quedaban en BORRADOR para siempre. Entran por la
  * misma puerta en vez de estrenar tres pantallas.
+ *
+ * La 3.6 volvió a salir. Era la excepción de aquellas tres: la matriz no la
+ * describe como un trámite que ocurre afuera sino como un «filtro según la
+ * modalidad», y RF-EST-04 pide *cuál* causal habilita contratar así. Eso no
+ * cabe en una fecha y una nota, y la nota además no se puede filtrar por
+ * modalidad ni sustentar después el acto de justificación de la directa.
  */
 export const NUMERALES_CON_REGISTRO = [
   // Etapa 3 · lo que acompaña al estudio previo
   '3.2',
-  // La 3.3, la 3.4 y la 3.5 salieron de la lista con EFDS-1183. Eran el caso
-  // más claro de lo que el comentario de arriba anticipaba: no es que nadie las
+  // La 3.3, la 3.4, la 3.5 y la 3.6 salieron de la lista. Eran el caso más
+  // claro de lo que el comentario de arriba anticipaba: no es que nadie las
   // recogiera, es que no caben en una fecha y un documento. Radicar es recibir
   // el proceso en la Dirección y ponerle responsable; la 3.4 es la decisión del
-  // abogado sobre el estudio previo; y la 3.5 es ratificar la modalidad que el
-  // área eligió —subir un papel la daba por definida sin que nadie la mirara—.
-  // La causal la elige el abogado leyendo el Decreto 1082/2015 contra el
-  // objeto, y el comité sesiona en la Dirección de Contratación: ninguna de las
-  // dos es un cálculo que la plataforma pueda hacer ni un trámite que reciba.
-  '3.6',
+  // abogado sobre el estudio previo; la 3.5 es ratificar la modalidad que el
+  // área eligió —subir un papel la daba por definida sin que nadie la mirara—;
+  // y la 3.6 es elegir la causal del catálogo de esa modalidad, que es lo que
+  // el expediente necesita poder nombrar.
+  //
+  // El comité se queda: sesiona en la Dirección de Contratación y lo que la
+  // plataforma recibe de él es el acta.
   '3.7',
   // Etapa 5 · participación previa a la apertura
   '5.9',

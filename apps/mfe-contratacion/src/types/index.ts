@@ -444,6 +444,46 @@ export interface EstadoModalidadProceso {
   revisiones: RevisionModalidad[];
 }
 
+// ------------------ causal de contratación · 3.6 (3.5.1 de la matriz) ------
+
+/**
+ * Por qué la 3.6 no está abierta, aparte de quién sea el que mira.
+ *
+ * - `NO_APLICA`: la matriz no marca la causal en la modalidad del proceso.
+ * - `MODALIDAD_SIN_RATIFICAR`: la 3.5 aún puede cambiar la modalidad de cuya
+ *   lista sale la causal.
+ * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya sustentó la
+ *   solicitud de CDP.
+ */
+export type MotivoNoElige = 'NO_APLICA' | 'MODALIDAD_SIN_RATIFICAR' | 'ETAPA_PASADA';
+
+/** Una causal del catálogo, ya filtrada por la modalidad del proceso. */
+export interface CausalDisponible {
+  codigo: string;
+  nombre: string;
+  referenciaNormativa: string;
+  /** Si la Dirección de Contratación ratificó la fila del catálogo. */
+  confirmada: boolean;
+}
+
+export interface EstadoCausalProceso {
+  /** Si la matriz pide causal en la modalidad del proceso. */
+  aplica: boolean;
+  estado: EstadoActividad;
+  modalidad: string | null;
+  /** El texto que la matriz escribe en la celda, cuando no dice SI. */
+  referenciaMatriz: string | null;
+  causal: { codigo: string; nombre: string; referenciaNormativa: string } | null;
+  sustento: string | null;
+  /** Lo que el área adelantó en el campo libre del estudio previo. */
+  propuestaDelArea: string | null;
+  causales: CausalDisponible[];
+  puedeElegir: boolean;
+  motivoNoElige: MotivoNoElige | null;
+  motivoNoDecide: MotivoNoDecide | null;
+  abogado: { nombre: string; usuarioNombre: string } | null;
+}
+
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */

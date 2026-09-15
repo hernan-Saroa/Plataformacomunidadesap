@@ -35,6 +35,22 @@ export class Proceso {
   modalidad: string | null;
 
   /**
+   * Causal que habilita contratar por esa modalidad; referencia a
+   * hiring.causales_contratacion (actividad 3.6).
+   *
+   * Nula en las nueve modalidades donde la matriz no marca la actividad, y
+   * también en las dos donde sí mientras el abogado no la haya elegido. Vive
+   * junto a la modalidad porque es del proceso: la lee la 5.1 para redactar el
+   * acto de justificación de la directa, no solo la pantalla de la 3.6.
+   */
+  @Column({ length: 60, nullable: true })
+  causal: string | null;
+
+  /** Por qué el objeto encaja en esa causal, en palabras del abogado. */
+  @Column({ name: 'causal_sustento', type: 'text', nullable: true })
+  causalSustento: string | null;
+
+  /**
    * Valor estimado del contrato, en pesos.
    *
    * Vive en el proceso y no en el estudio previo porque la modalidad se

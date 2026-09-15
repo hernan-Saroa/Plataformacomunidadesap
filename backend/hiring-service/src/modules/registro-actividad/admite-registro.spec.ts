@@ -15,14 +15,14 @@ const base = {
 };
 
 describe('admiteRegistro · qué actividades se cumplen dejando constancia', () => {
-  it('son las once que ninguna historia recogió y siguen sin pantalla propia', () => {
-    // Eran catorce. La 3.3, la 3.4 y la 3.5 salieron con EFDS-1183: ninguna
-    // cabe en una fecha y un documento. Radicar es recibir el proceso; la 3.4
-    // es la decisión del abogado sobre el estudio previo; y la 3.5 es ratificar
-    // la modalidad, que se aprueba o se devuelve para corregirla.
+  it('son las diez que ninguna historia recogió y siguen sin pantalla propia', () => {
+    // Eran catorce. La 3.3, la 3.4 y la 3.5 salieron con EFDS-1183 y la 3.6
+    // después: ninguna cabe en una fecha y un documento. Radicar es recibir el
+    // proceso; la 3.4 es la decisión del abogado sobre el estudio previo; la
+    // 3.5 es ratificar la modalidad; y la 3.6 es elegir la causal del catálogo
+    // de esa modalidad.
     expect([...NUMERALES_CON_REGISTRO]).toEqual([
       '3.2',
-      '3.6',
       '3.7',
       '5.9',
       '5.10',
@@ -36,19 +36,29 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
   });
 
   it('acepta una de cada etapa', () => {
-    expect(admiteRegistro('3.6')).toBe(true);
+    expect(admiteRegistro('3.7')).toBe(true);
     expect(admiteRegistro('5.10')).toBe(true);
     expect(admiteRegistro('6.10')).toBe(true);
     expect(admiteRegistro('8.6')).toBe(true);
   });
 
-  it('la 3.3, la 3.4 y la 3.5 ya no: se resuelven en otro sitio', () => {
+  it('la 3.3, la 3.4, la 3.5 y la 3.6 ya no: se resuelven en otro sitio', () => {
     // Y no por conveniencia: mientras estuvieron aquí, radicar era anotar una
-    // fecha —el proceso no cambiaba de manos por eso— y la revisión se daba por
-    // cumplida sin que nadie hubiera decidido nada.
+    // fecha —el proceso no cambiaba de manos por eso—, la revisión se daba por
+    // cumplida sin que nadie hubiera decidido nada, y la causal quedaba escrita
+    // en prosa, sin poder filtrarse por modalidad ni sustentar el acto de
+    // justificación de la directa.
     expect(admiteRegistro('3.3')).toBe(false);
     expect(admiteRegistro('3.4')).toBe(false);
     expect(admiteRegistro('3.5')).toBe(false);
+    expect(admiteRegistro('3.6')).toBe(false);
+  });
+
+  it('pero el comité sí: de la sesión lo que llega es el acta', () => {
+    // La vecina de la causal en la etapa 3, y el contraste que explica la
+    // regla: el comité ocurre afuera y la plataforma recibe el soporte; la
+    // causal se decide aquí y lo que queda es cuál se eligió.
+    expect(admiteRegistro('3.7')).toBe(true);
   });
 
   it('no se lleva por delante las vecinas de la etapa 8', () => {

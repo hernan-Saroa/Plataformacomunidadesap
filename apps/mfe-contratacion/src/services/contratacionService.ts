@@ -35,6 +35,7 @@ import {
   DatosSupervisor,
   CuentaCandidata,
   EstadoParticipacion,
+  EstadoCausalProceso,
   EstadoModalidadProceso,
   EstadoActaInicio,
   DatosActaInicio,
@@ -627,6 +628,26 @@ export const contratacionService = {
     pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad/decidir`, {
       method: 'POST',
       body: JSON.stringify({ decision, observaciones }),
+    }),
+
+  // ---------------- causal de contratación · 3.6 (3.5.1 de la matriz) -------
+
+  /**
+   * La causal del proceso y las que puede tener.
+   *
+   * El catálogo viene en la misma respuesta y ya filtrado por la modalidad
+   * —que es el «filtro según la modalidad» de la matriz—: pedirlo aparte
+   * obligaría a la pantalla a saber cuál es la modalidad ratificada y a
+   * filtrarlo ella, que es justo donde se cuela ofrecer una causal ajena.
+   */
+  causalDelProceso: (procesoId: string) =>
+    pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`),
+
+  /** El abogado del proceso la elige, o rectifica la que eligió. */
+  elegirCausal: (procesoId: string, causal: string, sustento?: string) =>
+    pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`, {
+      method: 'PUT',
+      body: JSON.stringify({ causal, sustento }),
     }),
 
   // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------

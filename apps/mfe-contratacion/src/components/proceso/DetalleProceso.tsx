@@ -50,6 +50,7 @@ import { AvisoSoloLectura, SoloLectura } from '../shared/SoloLectura';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
+import { PanelCausal } from '../causal/PanelCausal';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -70,6 +71,8 @@ const NUMERAL_REVISION = '3.4';
 
 /** Actividad 3.5: la modalidad que el área eligió, que el abogado ratifica. */
 const NUMERAL_MODALIDAD = '3.5';
+/** Causal de contratación: la 3.5.1 de la matriz, aplanada a 3.6 en la base. */
+const NUMERAL_CAUSAL = '3.6';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -268,7 +271,15 @@ const NUMERALES_ETAPA_10 = [
   NUMERAL_ARCHIVO_EXPEDIENTE,
 ];
 
-/** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
+/**
+ * Las 7 actividades de la etapa 3 (matriz de flujo, anexo A2).
+ *
+ * Solo se usa si la consulta del catálogo falla: el riel no puede quedarse
+ * vacío por eso. Se había quedado en seis y con la 3.6 nombrada «Comité de
+ * contratación», que es el nombre de la 3.7 desde que la matriz completa
+ * aplanó la 3.5.1 a 3.6. Un respaldo que miente sobre el numeral es peor que
+ * no tenerlo: abre el panel de la causal con el título del comité.
+ */
 const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.1',
@@ -303,6 +314,12 @@ const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.6',
     etapa: 3,
+    nombre: 'Causal de contratación',
+    descripcion: 'Filtro según la modalidad (Ley 1150 de 2007, art. 2)',
+  },
+  {
+    numeral: '3.7',
+    etapa: 3,
     nombre: 'Comité de contratación',
     descripcion: 'Revisa, observa o aprueba los documentos del proceso',
   },
@@ -327,7 +344,8 @@ const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
   // en la Dirección y ponerle responsable, y la 3.4 es la decisión del abogado,
   // que se toma leyendo el estudio previo y por eso vive en su panel.
-  '3.6': 'Causal de contratación',
+  // La 3.6 salió con la causal: la matriz la describe como un filtro por
+  // modalidad, y cuál causal habilita contratar así no cabe en una nota.
   '3.7': 'Comité de contratación',
   '5.9': 'Manifestación de interés',
   '5.10': 'Sorteo',
@@ -353,6 +371,7 @@ const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
   numeral === NUMERAL_RADICACION ||
   numeral === NUMERAL_MODALIDAD ||
+  numeral === NUMERAL_CAUSAL ||
   NUMERALES_CDP.includes(numeral) ||
   NUMERALES_ETAPA_5.includes(numeral) ||
   NUMERALES_ETAPA_6.includes(numeral) ||
@@ -925,6 +944,14 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 // La 3.5 deja de ser constancia: definir la modalidad es
                 // ratificar la que el área eligió, o devolverla para corregirla.
                 <PanelModalidad
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_CAUSAL ? (
+                // La 3.6 deja de ser constancia: la causal es una calificación
+                // jurídica que se elige del catálogo de la modalidad, no una
+                // fecha con una nota.
+                <PanelCausal
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
