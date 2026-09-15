@@ -741,6 +741,7 @@ export class LaborOracleIntegrationService {
   async findSuggestedRequestsByPositionCodes(
     codes: string[],
     limit = 10000,
+    includeRelatedRequests = false,
   ): Promise<LaborOracleSuggestedRequest[]> {
     const normalizedCodes = Array.from(
       new Set(
@@ -765,10 +766,19 @@ export class LaborOracleIntegrationService {
           return `:${key}`;
         });
 
+        // Incluye el nombramiento normal aunque tenga otro codigo de cargo.
+        // Una sola consulta por lote, sin consultas adicionales por empleado.
+        const positionFilter = `REGEXP_REPLACE(TO_CHAR(COD_CARGO), '[^0-9]', '') IN (${placeholders.join(', ')})`;
+        const filter = includeRelatedRequests
+          ? `REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '') IN (
+              SELECT REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '')
+              FROM ${config.qualifiedView} WHERE ${positionFilter}
+            )`
+          : positionFilter;
         const result = await connection.execute(
           `SELECT *
              FROM ${config.qualifiedView}
-            WHERE REGEXP_REPLACE(TO_CHAR(COD_CARGO), '[^0-9]', '') IN (${placeholders.join(', ')})
+            WHERE ${filter}
               AND ROWNUM <= :limite`,
           binds,
           { outFormat: driver.OUT_FORMAT_OBJECT },

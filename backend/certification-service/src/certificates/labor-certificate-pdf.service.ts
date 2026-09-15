@@ -904,6 +904,11 @@ export class LaborCertificatePdfService {
       requestPositionLocation ||
       certificate.position_location ||
       '';
+    // El servicio resuelve la vinculacion normal vigente sin reemplazar los
+    // datos del encargo. Las correcciones conservan su precedencia actual.
+    const dependenciaVariable = preferCorrectedCertificate
+      ? dato7
+      : certificate.request?.certificate_dependency ?? dato7;
     const cargoDato6 = tipoVinculacion;
 
     const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
@@ -942,7 +947,7 @@ export class LaborCertificatePdfService {
       '[SEDE]': certificate.campus || '',
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA]': dependenciaVariable,
       '[DEPENDENCIA_PADRE]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
