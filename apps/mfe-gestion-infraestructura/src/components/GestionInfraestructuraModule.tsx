@@ -23,7 +23,7 @@ import { NuevaSolicitudForm } from './NuevaSolicitudForm';
 import { DetalleSolicitudModal } from './DetalleSolicitudModal';
 
 type TabActiva = 'espacios' | 'sedes' | 'mantenimiento';
-type VistaMantenimiento = 'todas' | 'mias';
+type VistaMantenimiento = 'todas' | 'remitidasTI';
 
 interface Toast {
   tipo: 'exito' | 'error';
@@ -37,7 +37,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [espacios, setEspacios] = useState<EspacioFisico[]>([]);
   const [mantenimientos, setMantenimientos] = useState<SolicitudMantenimiento[]>([]);
-  const [misSolicitudes, setMisSolicitudes] = useState<SolicitudMantenimiento[]>([]);
+  const [remitidasTI, setRemitidasTI] = useState<SolicitudMantenimiento[]>([]);
   const [vistaMantenimiento, setVistaMantenimiento] = useState<VistaMantenimiento>('todas');
   const [mostrarFormulario, setMostrarFormulario] = useState<boolean>(false);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -56,18 +56,18 @@ export const GestionInfraestructuraModule: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sedesData, espaciosData, mantenimientosData, misSolicitudesData, statsData] =
+      const [sedesData, espaciosData, mantenimientosData, remitidasTIData, statsData] =
         await Promise.all([
           infraestructuraService.getSedes(),
           infraestructuraService.getEspacios(),
-          infraestructuraService.getMantenimientos(),
-          infraestructuraService.getMisSolicitudes(),
+          infraestructuraService.getMantenimientos({ incluirTI: false }),
+          infraestructuraService.getMantenimientos({ incluirTI: true }),
           infraestructuraService.getEstadisticas(),
         ]);
       setSedes(sedesData);
       setEspacios(espaciosData);
       setMantenimientos(mantenimientosData);
-      setMisSolicitudes(misSolicitudesData);
+      setRemitidasTI(remitidasTIData.filter((s) => s.areaResponsableActual === 'TI'));
       setStats(statsData);
     } catch (err) {
       console.error('Error al cargar datos de infraestructura:', err);
@@ -88,12 +88,15 @@ export const GestionInfraestructuraModule: React.FC = () => {
 
   const manejarExitoRadicacion = async (nueva: SolicitudMantenimiento) => {
     setMostrarFormulario(false);
+    const esTI = nueva.areaResponsableActual === 'TI' || nueva.tipoAtencion === 'TECNOLOGICA';
     setToast({
       tipo: 'exito',
       titulo: 'Solicitud radicada con éxito',
-      mensaje: `Su solicitud ${nueva.consecutivo} quedó en estado RECIBIDA y será analizada por el equipo UMI.`,
+      mensaje: esTI
+        ? `Su solicitud ${nueva.consecutivo} fue clasificada como TECNOLÓGICA y remitida automáticamente a la Oficina de Tecnologías de la Información.`
+        : `Su solicitud ${nueva.consecutivo} quedó en estado RECIBIDA y será analizada por el equipo UMI.`,
     });
-    setVistaMantenimiento('mias');
+    setVistaMantenimiento(esTI ? 'remitidasTI' : 'todas');
     setActiveTab('mantenimiento');
     await fetchData();
   };
@@ -251,7 +254,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
         {activeTab === 'mantenimiento' && (
           <SolicitudesMantenimientoView
             mantenimientos={mantenimientos}
-            misSolicitudes={misSolicitudes}
+            remitidasTI={remitidasTI}
             vista={vistaMantenimiento}
             onChangeVista={setVistaMantenimiento}
             onNuevaSolicitud={() => setMostrarFormulario(true)}

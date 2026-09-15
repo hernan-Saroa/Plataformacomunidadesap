@@ -4,7 +4,7 @@ import {
   Building2, MapPin, Wrench, Download, Image,
   Inbox, Search, FileSearch, ClipboardList, Loader2, Hammer,
   Package, CheckCircle, Archive, Ban, XCircle, ShieldCheck,
-  Eye,
+  Eye, Monitor, GitBranch, Send, AlertCircle,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -101,9 +101,16 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
 }) => {
   const [detalle, setDetalle] = useState<SolicitudMantenimiento | null>(null);
   const [evidenciasEndpoint, setEvidenciasEndpoint] = useState<SolicitudEvidencia[]>([]);
+  const [remisiones, setRemisiones] = useState<Array<Record<string, any>>>([]);
   const [cargando, setCargando] = useState(false);
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
+
+  const [mostrarRemitir, setMostrarRemitir] = useState<boolean>(false);
+  const [remitirMotivo, setRemitirMotivo] = useState<string>('');
+  const [remitirConsecutivo, setRemitirConsecutivo] = useState<string>('');
+  const [remitirEnviando, setRemitirEnviando] = useState<boolean>(false);
+  const [remitirError, setRemitirError] = useState<string>('');
 
   useEffect(() => {
     let cancelado = false;
@@ -117,16 +124,19 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setCargando(true);
       setDetalle(null);
       setEvidenciasEndpoint([]);
+      setRemisiones([]);
       try {
-        const [d, evs, est, pri] = await Promise.all([
+        const [d, evs, est, pri, rems] = await Promise.all([
           infraestructuraService.getMantenimientoById(idSolicitud),
           infraestructuraService.getEvidenciasBySolicitud(idSolicitud),
           infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
+          infraestructuraService.getRemisiones(idSolicitud || ''),
         ]);
         if (cancelado) return;
         setDetalle(d);
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
+        setRemisiones(Array.isArray(rems) ? rems : []);
         setCatalogoEstado(est);
         setCatalogoPrioridad(pri);
       } finally {
@@ -161,6 +171,45 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const clasePrioridad = (prioridad: string): string => {
     const it = mapPrioridad.get((prioridad || '').toUpperCase());
     return it?.metadata?.color || FALLBACK_CLASE_PRIORIDAD;
+  };
+
+  const badgeAreaResp = (area?: string): { label: string; clase: string } => {
+    const a = (area || '').toUpperCase();
+    if (a === 'TI') return { label: 'Resp: Oficina TI', clase: 'bg-sky-100 text-sky-800 border border-sky-200' };
+    if (a === 'PENDIENTE_CLASIFICACION') return { label: 'Pendiente Clasif.', clase: 'bg-amber-100 text-amber-800 border border-amber-200' };
+    return { label: 'Resp: Unidad UMI', clase: 'bg-amber-100 text-amber-800 border border-amber-200' };
+  };
+
+  const abrirRemitir = () => {
+    setRemitirMotivo('');
+    setRemitirConsecutivo(detalle?.consecutivo ? detalle.consecutivo + ' / ' : '');
+    setRemitirError('');
+    setMostrarRemitir(true);
+  };
+
+  const confirmarRemitir = async () => {
+    const motivo = remitirMotivo.trim();
+    if (motivo.length < 10) {
+      setRemitirError('El motivo debe tener al menos 10 caracteres');
+      return;
+    }
+    setRemitirError('');
+    setRemitirEnviando(true);
+    try {
+      const actualizada = await infraestructuraService.remitirATI(idSolicitud || '', {
+        motivo,
+        consecutivoCruzadoTi: remitirConsecutivo.trim() || undefined,
+        canalRemision: 'MANUAL',
+      });
+      setDetalle(actualizada);
+      const nuevas = await infraestructuraService.getRemisiones(idSolicitud || '');
+      setRemisiones(Array.isArray(nuevas) ? nuevas : []);
+      setMostrarRemitir(false);
+    } catch (err: any) {
+      setRemitirError(err?.message || 'No se pudo remitir la solicitud. Intente nuevamente.');
+    } finally {
+      setRemitirEnviando(false);
+    }
   };
 
   const renderIcono = (iconName?: string, size: number = 16, fallbackKey?: string) => {
@@ -303,9 +352,23 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 </span>
               )}
               {detalle?.tipoAtencion && (
-                <span className="inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${
+                  detalle.tipoAtencion === 'TECNOLOGICA'
+                    ? 'bg-sky-100 text-sky-800 border-sky-200'
+                    : 'bg-amber-100 text-amber-800 border-amber-200'
+                }`}>
                   Atención {detalle.tipoAtencion}
                 </span>
+              )}
+              {detalle?.areaResponsableActual && (
+                (() => {
+                  const b = badgeAreaResp(detalle.areaResponsableActual);
+                  return (
+                    <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${b.clase}`}>
+                      {b.label}
+                    </span>
+                  );
+                })()
               )}
             </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
@@ -479,20 +542,206 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 </div>
                 {renderEvidencias()}
               </div>
+
+              <div className="space-y-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                  <GitBranch className="w-3.5 h-3.5" />
+                  Trazabilidad de remisiones
+                  <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-slate-100 text-slate-600 border border-slate-200 tracking-normal">
+                    {remisiones.length}
+                  </span>
+                </div>
+                {remisiones.length === 0 ? (
+                  <div className="text-xs text-slate-500 py-6 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                    Esta solicitud no tiene remisiones registradas a la Oficina de Tecnologías.
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <table className="min-w-full divide-y divide-slate-200 text-left">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Fecha / Hora</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Origen → Destino</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Usuario</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Motivo</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Consec. TI</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {remisiones.map((r, idx) => (
+                          <tr key={r.idRemision || idx} className="hover:bg-slate-50/50">
+                            <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-mono text-[11px]">
+                              {r.fechaRemision ? formatearFecha(r.fechaRemision) : '—'}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase tracking-wide">
+                                  {r.origenArea || 'UMI'}
+                                </span>
+                                <span className="text-slate-400">→</span>
+                                <span className="inline-block px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase tracking-wide">
+                                  {r.destinoArea || 'TI'}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-700">
+                              <div className="font-semibold">{r.usuarioEmail || r.usuarioQueRemiteEmail || 'Sistema'}</div>
+                              {r.usuarioId && <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">{r.usuarioId}</div>}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-600 max-w-[260px]">
+                              <div className="leading-snug line-clamp-2">{r.motivo || '—'}</div>
+                              {r.canalRemision && (
+                                <div className="text-[10px] text-slate-400 mt-1">Canal: {r.canalRemision}</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-700 font-mono text-[11px] whitespace-nowrap">
+                              {r.consecutivoCruzadoTi || '—'}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${
+                                (r.estadoRemision || '').toUpperCase().includes('PENDIENTE')
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              }`}>
+                                {r.estadoRemision || 'PENDIENTE'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-100 bg-slate-50/60">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm shadow-amber-500/20 transition-all active:scale-[0.98]"
-          >
-            <X className="w-4 h-4" />
-            Cerrar
-          </button>
+        <div className="flex items-center justify-between gap-3 p-5 border-t border-slate-100 bg-slate-50/60">
+          {detalle && (
+            <button
+              type="button"
+              onClick={abrirRemitir}
+              disabled={detalle.areaResponsableActual?.toUpperCase() === 'TI'}
+              title={detalle.areaResponsableActual?.toUpperCase() === 'TI' ? 'La solicitud ya está asignada a la Oficina TI' : 'Remitir manualmente la solicitud a la Oficina de Tecnologías'}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm shadow-sky-500/20 transition-all active:scale-[0.98]"
+            >
+              <Send className="w-4 h-4" />
+              Reenviar a Tecnologías TI
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm shadow-amber-500/20 transition-all active:scale-[0.98]"
+            >
+              <X className="w-4 h-4" />
+              Cerrar
+            </button>
+          </div>
         </div>
+
+        {mostrarRemitir && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
+              <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-sky-50/60 rounded-t-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <Send className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                      Remitir solicitud a Oficina TI
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                      Esta acción genera una nueva remisión formal con trazabilidad de Gestión de Calidad, cambia el área responsable actual a Oficina de Tecnologías y marca el tipo de atención como TECNOLÓGICA si no lo estaba.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMostrarRemitir(false); setRemitirError(''); }}
+                  disabled={remitirEnviando}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                  aria-label="Cerrar remisión"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {remitirError && (
+                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs font-medium">{remitirError}</div>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                    Motivo de la remisión <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    value={remitirMotivo}
+                    onChange={(e) => setRemitirMotivo(e.target.value)}
+                    rows={4}
+                    placeholder="Explique por qué se remite esta solicitud a la Oficina de Tecnologías de la Información. Mínimo 10 caracteres."
+                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-sky-200 focus:border-sky-500 border-slate-200 resize-none"
+                  />
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Mínimo 10 caracteres</span>
+                    <span className={remitirMotivo.trim().length >= 10 ? 'text-emerald-600 font-semibold' : ''}>{remitirMotivo.trim().length} caracteres</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                    Consecutivo cruzado TI
+                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={remitirConsecutivo}
+                    onChange={(e) => setRemitirConsecutivo(e.target.value)}
+                    placeholder="Ej: INC-2024-9821 o número de ticket mesa de ayuda SI"
+                    maxLength={100}
+                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-sky-200 focus:border-sky-500 border-slate-200"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+                    Número de ticket, incidente o solicitud asignado por la Oficina de TI para dar continuidad cruzada entre sistemas.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => { setMostrarRemitir(false); setRemitirError(''); }}
+                  disabled={remitirEnviando}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmarRemitir}
+                  disabled={remitirEnviando}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold shadow-sm shadow-sky-500/20 transition-all disabled:opacity-60 active:scale-[0.98]"
+                >
+                  {remitirEnviando ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Remitiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Confirmar remisión
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

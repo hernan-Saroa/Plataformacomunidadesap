@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto } from './dto/create-mantenimiento.dto.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
@@ -13,6 +13,29 @@ interface AuthUser {
   username: string;
   email: string;
   roles: string[];
+}
+
+function nuevoItemRemision(args: {
+  usuarioId?: string;
+  usuarioEmail?: string;
+  origenArea: 'UMI' | 'FORMULARIO' | 'TI' | 'PENDIENTE_CLASIFICACION';
+  destinoArea: 'UMI' | 'TI';
+  motivo: string;
+  canalRemision?: string;
+  consecutivoCruzadoTi?: string;
+  estadoRemision?: string;
+}): Record<string, any> {
+  return {
+    fecha: new Date().toISOString(),
+    usuario_id: args.usuarioId ?? null,
+    usuario_email: args.usuarioEmail ?? null,
+    origen_area: args.origenArea,
+    destino_area: args.destinoArea,
+    motivo: args.motivo,
+    canal_remision: args.canalRemision ?? 'EMAIL_SIN_INTEGRAR',
+    consecutivo_cruzado_ti: args.consecutivoCruzadoTi ?? null,
+    estado_remision: args.estadoRemision ?? 'PENDIENTE_CONFIRMACION_TI',
+  };
 }
 
 @Injectable()
@@ -29,7 +52,18 @@ export class MantenimientoService {
     private readonly storage: StorageService,
   ) {}
 
-  async findAll(estado?: string, prioridad?: string): Promise<SolicitudMantenimiento[]> {
+  private usuarioTieneRolUMI(user?: AuthUser | null): boolean {
+    if (!user || !Array.isArray(user.roles)) return false;
+    const roles = user.roles.map((r) => String(r).toLowerCase());
+    return roles.some((r) => ['super_admin', 'admin', 'umi', 'infraestructura', 'coordinador_infraestructura'].includes(r));
+  }
+
+  async findAll(
+    estado?: string,
+    prioridad?: string,
+    incluirTI: boolean = false,
+    user?: AuthUser | null,
+  ): Promise<SolicitudMantenimiento[]> {
     const query = this.mantenimientoRepo.createQueryBuilder('solicitud')
       .leftJoinAndSelect('solicitud.sede', 'sede')
       .leftJoinAndSelect('solicitud.espacio', 'espacio')
@@ -41,6 +75,9 @@ export class MantenimientoService {
     }
     if (prioridad) {
       query.andWhere('solicitud.prioridad = :prioridad', { prioridad });
+    }
+    if (!incluirTI && this.usuarioTieneRolUMI(user)) {
+      query.andWhere("solicitud.areaResponsableActual IN ('UMI','PENDIENTE_CLASIFICACION')");
     }
 
     return query.orderBy('solicitud.fechaRadicacion', 'DESC').getMany();
@@ -86,6 +123,14 @@ export class MantenimientoService {
       throw new BadRequestException(`La sede ${sede.nombre} está inactiva y no permite radicación`);
     }
 
+    const areaResp: 'UMI' | 'TI' = dto.tipoAtencion === 'TECNOLOGICA' ? 'TI' : 'UMI';
+
+    if (dto.tipoAtencion === 'TECNOLOGICA' && areaResp !== 'TI') {
+      throw new BadRequestException(
+        'Clasificación TECNOLÓGICA NO puede quedar radicada como responsabilidad de UMI. Area debe ser TI.',
+      );
+    }
+
     const anioActual = new Date().getFullYear();
     const inicioAnio = new Date(anioActual, 0, 1);
     const finAnio = new Date(anioActual, 11, 31, 23, 59, 59, 999);
@@ -96,9 +141,24 @@ export class MantenimientoService {
       },
     });
 
-    const consecutivo = `MNT-${anioActual}-${String(countAnio + 1).padStart(4, '0')}`;
+    const consecutivo = 'MNT-' + anioActual + '-' + String(countAnio + 1).padStart(4, '0');
 
     const ahora = new Date();
+
+    const remisionesIniciales: Record<string, any>[] = [];
+    if (dto.tipoAtencion === 'TECNOLOGICA') {
+      remisionesIniciales.push(
+        nuevoItemRemision({
+          usuarioId: user.userId,
+          usuarioEmail: user.email,
+          origenArea: 'FORMULARIO',
+          destinoArea: 'TI',
+          motivo: 'Clasificación TECNOLÓGICA seleccionada por el solicitante en el formulario de radicación (EFDS-1731)',
+          canalRemision: 'EMAIL_SIN_INTEGRAR',
+          estadoRemision: 'PENDIENTE_CONFIRMACION_TI',
+        }),
+      );
+    }
 
     const solicitudData: Partial<SolicitudMantenimiento> = {
       idSede: dto.idSede,
@@ -109,7 +169,9 @@ export class MantenimientoService {
       salon: dto.salon,
       ubicacionDetalle: dto.ubicacionDetalle,
       tipoMantenimiento: dto.tipoMantenimiento,
-      tipoAtencion: 'FISICA',
+      tipoAtencion: dto.tipoAtencion,
+      areaResponsableActual: areaResp,
+      remisiones: remisionesIniciales,
       prioridad: dto.prioridad ?? 'MEDIA',
       descripcion: dto.descripcion,
       consecutivo: consecutivo,
@@ -118,7 +180,7 @@ export class MantenimientoService {
       usuarioSolicitanteId: user.userId,
       usuarioSolicitanteEmail: user.email,
       solicitanteNombre: user.username ?? dto.nombreAreaSolicitante,
-      solicitanteEmail: user.email ?? `${user.username || 'solicitante'}@esap.edu.co`,
+      solicitanteEmail: user.email || (user.username || 'solicitante') + '@esap.edu.co',
       evidenciaInicialUrl: dto.evidenciaInicialUrl,
     };
 
@@ -159,6 +221,54 @@ export class MantenimientoService {
   }
 
   // ---------------------------------------------------------------------------
+  // EFDS-1731: Remisión formal a TI + trazabilidad
+  // ---------------------------------------------------------------------------
+  async remitirATI(
+    id: string,
+    dto: RemitirATIDto,
+    user: AuthUser,
+  ): Promise<SolicitudMantenimiento> {
+    if (!user?.userId) {
+      throw new ForbiddenException('Usuario autenticado requerido para remitir a TI');
+    }
+    const solicitud = await this.findById(id);
+
+    if (!['RECIBIDA', 'EN_ANALISIS'].includes(solicitud.estado)) {
+      throw new BadRequestException(
+        'Solo se puede remitir a TI solicitudes en estado RECIBIDA o EN_ANALISIS. Estado actual: ' + String(solicitud.estado),
+      );
+    }
+    if (solicitud.areaResponsableActual === 'TI') {
+      throw new BadRequestException('La solicitud ya tiene área responsable TI. No es necesario reenviar.');
+    }
+
+    const item = nuevoItemRemision({
+      usuarioId: user.userId,
+      usuarioEmail: user.email,
+      origenArea: 'UMI',
+      destinoArea: 'TI',
+      motivo: dto.motivo,
+      canalRemision: dto.canalRemision,
+      consecutivoCruzadoTi: dto.consecutivoCruzadoTi,
+      estadoRemision: 'PENDIENTE_CONFIRMACION_TI',
+    });
+
+    solicitud.tipoAtencion = 'TECNOLOGICA';
+    solicitud.areaResponsableActual = 'TI';
+    solicitud.remisiones = [...(Array.isArray(solicitud.remisiones) ? solicitud.remisiones : []), item];
+
+    return this.mantenimientoRepo.save(solicitud);
+  }
+
+  async getRemisionesById(id: string): Promise<Array<Record<string, any>>> {
+    const solicitud = await this.findById(id);
+    const lista = Array.isArray(solicitud.remisiones) ? solicitud.remisiones : [];
+    return lista
+      .slice()
+      .sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime());
+  }
+
+  // ---------------------------------------------------------------------------
   // Catálogos
   // ---------------------------------------------------------------------------
   async getCatalogo(catalogo: string, soloActivos = true): Promise<CatalogoItem[]> {
@@ -182,9 +292,9 @@ export class MantenimientoService {
   }): Promise<SolicitudEvidencia> {
     const anio = new Date().getFullYear();
     const mes = String(new Date().getMonth() + 1).padStart(2, '0');
-    const radix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const ext = params.nombreOriginal.split('.').pop()?.toLowerCase() ?? 'bin';
-    const ruta = `mantenimiento/${anio}/${mes}/${radix}.${ext}`;
+    const radix = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    const ext = (params.nombreOriginal.split('.').pop() || 'bin').toLowerCase();
+    const ruta = 'mantenimiento/' + anio + '/' + mes + '/' + radix + '.' + ext;
     const nombreLimpio = params.nombreOriginal.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uploaded = await this.storage.subirArchivo({
       rutaObjeto: ruta,
@@ -195,7 +305,7 @@ export class MantenimientoService {
     const row = this.evidenciaRepo.create({
       idSolicitud: params.idSolicitud || undefined,
       nombreOriginal: params.nombreOriginal,
-      nombreAlmacenado: `${radix}.${ext}`,
+      nombreAlmacenado: radix + '.' + ext,
       rutaObjeto: uploaded.rutaObjeto,
       bucket: uploaded.bucket,
       urlPublica: uploaded.urlPublica,

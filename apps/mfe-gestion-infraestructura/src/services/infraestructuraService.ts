@@ -100,6 +100,8 @@ export interface SolicitudMantenimiento {
   usuarioSolicitanteEmail?: string;
   evidenciaInicialUrl?: string;
   createdAt: string;
+  areaResponsableActual?: 'UMI' | 'TI' | 'PENDIENTE_CLASIFICACION';
+  remisiones?: Array<Record<string, any>>;
   sede?: Sede;
   espacio?: EspacioFisico;
   evidencias?: SolicitudEvidencia[];
@@ -118,6 +120,13 @@ export interface CreateMantenimientoPayload {
   evidenciaInicialUrl?: string;
   uploadedEvidenciaIds?: string[];
   prioridad?: string;
+  tipoAtencion: 'FISICA' | 'TECNOLOGICA';
+}
+
+export interface RemitirATIPayload {
+  motivo: string;
+  consecutivoCruzadoTi?: string;
+  canalRemision?: 'EMAIL_SIN_INTEGRAR' | 'MANUAL';
 }
 
 export interface EstadisticasInfraestructura {
@@ -187,15 +196,53 @@ export const infraestructuraService = {
     }
   },
 
-  async getMantenimientos(): Promise<SolicitudMantenimiento[]> {
+  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string }): Promise<SolicitudMantenimiento[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/mantenimiento`, { credentials: 'include' });
+      const q = new URLSearchParams();
+      if (params?.incluirTI === true) q.append('incluirTI', 'true');
+      if (params?.estado) q.append('estado', params.estado);
+      if (params?.prioridad) q.append('prioridad', params.prioridad);
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
       return await res.json();
     } catch (err) {
       console.warn('[infraestructuraService] getMantenimientos falló, retornando []:', err);
       return [];
     }
+  },
+
+  async getRemisiones(idSolicitud: string): Promise<Array<Record<string, any>>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/remisiones`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`Error al obtener remisiones (${res.status})`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infraestructuraService] getRemisiones(${idSolicitud}):`, err);
+      return [];
+    }
+  },
+
+  async remitirATI(idSolicitud: string, payload: RemitirATIPayload): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/remitir-a-ti`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let mensaje = 'Error al remitir a TI';
+      try {
+        const errorBody = await res.json();
+        if (errorBody?.message) {
+          mensaje = Array.isArray(errorBody.message) ? errorBody.message.join(', ') : String(errorBody.message);
+        }
+      } catch {}
+      throw new Error(mensaje);
+    }
+    return await res.json();
   },
 
   async getMantenimientoById(idSolicitud: string): Promise<SolicitudMantenimiento | null> {

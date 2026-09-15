@@ -27,7 +27,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { MantenimientoService } from './mantenimiento.service.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto } from './dto/create-mantenimiento.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
@@ -60,11 +60,18 @@ export class MantenimientoController {
   // ---------------------------------------------------------------------------
   @Get()
   @Public()
-  @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general)' })
+  @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). UMI filtra por defecto area UMI/PENDIENTE; use ?incluirTI=true para ver también las remitidas a TI.' })
   @ApiQuery({ name: 'estado', required: false })
   @ApiQuery({ name: 'prioridad', required: false })
-  findAll(@Query('estado') estado?: string, @Query('prioridad') prioridad?: string) {
-    return this.mantenimientoService.findAll(estado, prioridad);
+  @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
+  findAll(
+    @Query('estado') estado?: string,
+    @Query('prioridad') prioridad?: string,
+    @Query('incluirTI') incluirTI?: string,
+    @Req() req?: any,
+  ) {
+    const incluir = String(incluirTI || '').toLowerCase() === 'true';
+    return this.mantenimientoService.findAll(estado, prioridad, incluir, req?.user || null);
   }
 
   @Get('mis-solicitudes')
@@ -97,6 +104,31 @@ export class MantenimientoController {
   @ApiOperation({ summary: 'Actualizar estado y responsable de una solicitud' })
   updateEstado(@Param('id') id: string, @Body() dto: UpdateMantenimientoEstadoDto) {
     return this.mantenimientoService.updateEstado(id, dto);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1731: Clasificación y remisión a TI
+  // ---------------------------------------------------------------------------
+  @Post(':id/remitir-a-ti')
+  @ApiOperation({
+    summary:
+      'EFDS-1731: Remitir formalmente una solicitud al área de TI con motivo obligatorio (cuando el usuario clasificó mal como FÍSICA). Inserta nueva remisión en JSONB de trazabilidad y cambia areaResponsableActual=TI + tipoAtencion=TECNOLOGICA.',
+  })
+  @ApiResponse({ status: 200, description: 'Remisión creada. Solicitud pasa a responsabilidad TI.' })
+  @ApiResponse({ status: 400, description: 'Estado distinto a RECIBIDA/EN_ANALISIS o ya está en TI o motivo vacío.' })
+  @ApiResponse({ status: 403, description: 'Usuario no autenticado' })
+  remitirATI(@Param('id') id: string, @Body() dto: RemitirATIDto, @Req() req: any) {
+    return this.mantenimientoService.remitirATI(id, dto, req?.user);
+  }
+
+  @Get(':id/remisiones')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1731 AC-03: Historial / trazabilidad de todas las remisiones de una solicitud (Gestión de Calidad / auditoría). Ordenado fecha DESC.',
+  })
+  getRemisiones(@Param('id') id: string) {
+    return this.mantenimientoService.getRemisionesById(id);
   }
 
   // ---------------------------------------------------------------------------
