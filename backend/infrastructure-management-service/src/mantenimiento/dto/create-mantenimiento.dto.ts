@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID, MinLength, MaxLength, IsIn, ArrayMinSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateMantenimientoDto {
@@ -50,6 +50,15 @@ export class CreateMantenimientoDto {
   @MaxLength(50)
   tipoMantenimiento: string;
 
+  @ApiProperty({
+    example: 'FISICA',
+    description: 'Clasificación OBLIGATORIA EFDS-1731. FISICA = UMI (plomería, cerrajería). TECNOLOGICA = TI (HDMI, cómputo, impresora).',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['FISICA', 'TECNOLOGICA'])
+  tipoAtencion: 'FISICA' | 'TECNOLOGICA';
+
   @ApiProperty({ example: 'Falla en el sistema de aire acondicionado del Aula 204', description: 'Descripción de la solicitud' })
   @IsString()
   @IsNotEmpty()
@@ -75,6 +84,35 @@ export class CreateMantenimientoDto {
   @IsString()
   @IsOptional()
   prioridad?: string;
+}
+
+export class RemitirATIDto {
+  @ApiProperty({
+    example: 'Equipo de cómputo: usuario se equivocó de clasificación física, pertenece a TI.',
+    description: 'Motivo OBLIGATORIO de la remisión (min 10 caracteres). Queda en la trazabilidad para Gestión de Calidad.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(10)
+  @MaxLength(500)
+  motivo: string;
+
+  @ApiPropertyOptional({
+    example: 'INC-2026-01425',
+    description: 'Consecutivo del ticket TI recibido por correo (opcional: se puede llenar después manualmente).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  consecutivoCruzadoTi?: string;
+
+  @ApiPropertyOptional({
+    example: 'EMAIL_SIN_INTEGRAR',
+    description: 'Canal usado para enviar la solicitud a TI. Futuro: GRAPH_TI / MESA_SERVICIOS / WEBHOOK',
+  })
+  @IsOptional()
+  @IsIn(['EMAIL_SIN_INTEGRAR', 'MANUAL'])
+  canalRemision?: string;
 }
 
 export class UpdateMantenimientoEstadoDto {

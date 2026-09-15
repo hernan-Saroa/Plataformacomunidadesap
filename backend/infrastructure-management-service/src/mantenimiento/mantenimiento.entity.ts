@@ -77,6 +77,12 @@ export class SolicitudMantenimiento {
   @Column({ type: 'varchar', length: 20, default: 'FISICA', name: 'tipo_atencion' })
   tipoAtencion: string;
 
+  @Column({ type: 'varchar', length: 30, default: 'UMI', name: 'area_responsable_actual' })
+  areaResponsableActual: 'UMI' | 'TI' | 'PENDIENTE_CLASIFICACION';
+
+  @Column({ type: 'simple-json', default: () => "'[]'", name: 'remisiones' })
+  remisiones: Array<Record<string, any>>;
+
   @Column({ type: 'uuid', nullable: true, name: 'id_categoria' })
   idCategoria: string;
 

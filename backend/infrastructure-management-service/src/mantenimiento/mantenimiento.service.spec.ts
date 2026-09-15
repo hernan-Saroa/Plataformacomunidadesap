@@ -149,9 +149,14 @@ describe('create inicializa reglas propias del backend', () => {
     expect(prioridad).toBe('MEDIA');
   });
 
-  it('tipo de atención es FÍSICA en esta primera HU, ignorando el dto', async () => {
-    const saved = await ejecutar({ ...dtoBase, tipoAtencion: 'REMOTA' });
+  it('[EFDS-1731 AC-01] tipoAtencion usa el valor del DTO FISICA sin mutarlo', async () => {
+    const saved = await ejecutar({ ...dtoBase, tipoAtencion: 'FISICA' });
     expect(saved.tipoAtencion).toBe('FISICA');
+  });
+
+  it('[EFDS-1731 AC-01] tipoAtencion usa el valor del DTO TECNOLOGICA sin mutarlo', async () => {
+    const saved = await ejecutar({ ...dtoBase, tipoAtencion: 'TECNOLOGICA' });
+    expect(saved.tipoAtencion).toBe('TECNOLOGICA');
   });
 
   it('fecha de radicación y usuario vienen del backend, no del dto', async () => {
@@ -329,5 +334,136 @@ describe('getEvidenciasBySolicitud regenera presigned cuando vence pronto o es n
     const r = await s.getEvidenciasBySolicitud('S1');
     expect(r).toHaveLength(1);
     expect(r[0].urlPublica).toBe('http://fallback');
+  });
+});
+
+// ============================================================================
+// EFDS-1731 Clasificación y enrutamiento a TI (8 tests unitarios)
+// ============================================================================
+describe('[EFDS-1731] AC-02 Enrutamiento automático por tipoAtencion', () => {
+  const montarCreate = () => {
+    const save = jest.fn().mockImplementation((d) => ({ idSolicitud: 's-1731', evidencias: [], ...d }));
+    const s = servicio({
+      sedeRepo: { findOne: jest.fn().mockResolvedValue(sedeValida) },
+      mantenimientoRepo: { count: jest.fn().mockResolvedValue(0), save },
+    });
+    return { s, save };
+  };
+
+  it('create tipoAtencion=FISICA → areaResponsableActual=UMI y remisiones=[]', async () => {
+    const { s, save } = montarCreate();
+    await s.create({ ...dtoBase, tipoAtencion: 'FISICA' } as any, userValido);
+    const data = save.mock.calls[0][0];
+    expect(data.areaResponsableActual).toBe('UMI');
+    expect(Array.isArray(data.remisiones)).toBe(true);
+    expect(data.remisiones).toHaveLength(0);
+  });
+
+  it('create tipoAtencion=TECNOLOGICA → areaResponsableActual=TI y remisiones.length=1 (AC-02+AC-03 automático)', async () => {
+    const { s, save } = montarCreate();
+    await s.create({ ...dtoBase, tipoAtencion: 'TECNOLOGICA' } as any, userValido);
+    const data = save.mock.calls[0][0];
+    expect(data.areaResponsableActual).toBe('TI');
+    expect(data.remisiones).toHaveLength(1);
+    expect(data.remisiones[0].destinoArea).toBe('TI');
+    expect(data.remisiones[0].origenArea).toBe('FORMULARIO');
+    expect(data.remisiones[0].estadoRemision).toBe('PENDIENTE_CONFIRMACION_TI');
+    expect(new Date(data.remisiones[0].fechaRemision).getTime()).toBeGreaterThan(0);
+    expect(data.remisiones[0].usuarioEmail).toBe(userValido.email);
+  });
+
+  it('create tipoAtencion=TECNOLOGICA por usuario con rol UMI → BadRequest 400 (AC-02 solo TI atiende FISICA)', async () => {
+    const userUMI = { ...userValido, roles: ['umi'] };
+    const { s } = montarCreate();
+    await expect(
+      s.create({ ...dtoBase, tipoAtencion: 'TECNOLOGICA' } as any, userUMI),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('[EFDS-1731] AC-02 Bandeja findAll filtro areaResponsableActual por roles', () => {
+  const qbFactory = (qb: any) => ({
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue([]),
+    ...qb,
+  });
+
+  it('findAll usuario UMI incluirTI=false → agrega filtro areaResp IN (UMI, PENDIENTE) por defecto', async () => {
+    const andWhere = jest.fn().mockReturnThis();
+    const qb = qbFactory({ andWhere });
+    const userUMI = { ...userValido, roles: ['umi'] };
+    const s = servicio({
+      mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
+    });
+    await s.findAll(undefined, undefined, false, userUMI);
+    expect(andWhere).toHaveBeenCalledWith(expect.stringMatching(/UMI|PENDIENTE/));
+  });
+
+  it('findAll usuario UMI incluirTI=true → NO agrega filtro areaResp (muestra todas incluidas TI)', async () => {
+    const andWhere = jest.fn().mockReturnThis();
+    const qb = qbFactory({ andWhere });
+    const userUMI = { ...userValido, roles: ['umi'] };
+    const s = servicio({
+      mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
+    });
+    await s.findAll(undefined, undefined, true, userUMI);
+    expect(andWhere).not.toHaveBeenCalledWith(expect.stringMatching(/UMI|PENDIENTE/));
+  });
+});
+
+describe('[EFDS-1731] AC-03 Endpoint remitirATI y trazabilidad JSONB', () => {
+  const baseGuardias = () => {
+    const save = jest.fn().mockImplementation((d) => ({ ...d, updatedAt: new Date()));
+    const findOne = jest.fn();
+    const s = servicio({
+      mantenimientoRepo: { save, findOne },
+    });
+    return { s, save, findOne };
+  };
+
+  it('remitirATI a solicitud CERRADA (estado no permitido) → BadRequest', async () => {
+    const { s, findOne } = baseGuardias();
+    findOne.mockResolvedValue({
+      idSolicitud: 'X', estado: 'CERRADA', remisiones: [] });
+    await expect(
+      s.remitirATI('X', { motivo: 'motivo de la remisión a TI ok 12 chars' } as any, userValido),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('remitirATI a solicitud ya en TI → BadRequest (no doble remisión)', async () => {
+    const { s, findOne } = baseGuardias();
+    findOne.mockResolvedValue({
+      idSolicitud: 'X', estado: 'RECIBIDA', areaResponsableActual: 'TI', remisiones: [],
+    });
+    await expect(
+      s.remitirATI('X', { motivo: 'motivo de la remisión oficial' } as any, userValido),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('remitirATI OK en RECIBIDA → push item JSONB + set areaResp=TI + getRemisionesById DESC', async () => {
+    const { s, findOne, save } = baseGuardias();
+    findOne.mockResolvedValue({
+      idSolicitud: 'REM1', estado: 'RECIBIDA', areaResponsableActual: 'UMI',
+      tipoAtencion: 'FISICA', remisiones: [{ fechaRemision: '2020-01-01' }],
+    });
+    const r = await s.remitirATI(
+      'REM1',
+      { motivo: 'Motivo remisión manual TI por reclasificación de la solicitud errónea', consecutivoCruzadoTi: 'INC-2026-0001', canalRemision: 'MANUAL' } as any,
+      userValido,
+    );
+    const saved = save.mock.calls[0][0];
+    expect(saved.areaResponsableActual).toBe('TI');
+    expect(saved.tipoAtencion).toBe('TECNOLOGICA');
+    expect(saved.remisiones).toHaveLength(2);
+    const ultima = saved.remisiones[saved.remisiones.length - 1];
+    expect(ultima.motivo).toMatch(/reclasificación/);
+    expect(ultima.consecutivoCruzadoTi).toBe('INC-2026-0001');
+    expect(ultima.canalRemision).toBe('MANUAL');
+    expect(ultima.destinoArea).toBe('TI');
+    const list = await s.getRemisionesById('REM1');
+    expect(Array.isArray(list)).toBe(true);
   });
 });

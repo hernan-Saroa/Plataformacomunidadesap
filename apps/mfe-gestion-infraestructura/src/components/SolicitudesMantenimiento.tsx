@@ -15,9 +15,9 @@ import {
 
 interface SolicitudesMantenimientoProps {
   mantenimientos: SolicitudMantenimiento[];
-  misSolicitudes: SolicitudMantenimiento[];
-  vista: 'todas' | 'mias';
-  onChangeVista: (vista: 'todas' | 'mias') => void;
+  remitidasTI: SolicitudMantenimiento[];
+  vista: 'todas' | 'remitidasTI';
+  onChangeVista: (vista: 'todas' | 'remitidasTI') => void;
   onNuevaSolicitud: () => void;
   onGestionar?: (idSolicitud: string) => void;
   loading?: boolean;
@@ -61,7 +61,7 @@ const FALLBACK_CLASE_PRIORIDAD = 'bg-slate-100 text-slate-700 border border-slat
 
 export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProps> = ({
   mantenimientos,
-  misSolicitudes,
+  remitidasTI,
   vista,
   onChangeVista,
   onNuevaSolicitud,
@@ -69,7 +69,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   loading,
   onRefresh,
 }) => {
-  const lista = vista === 'todas' ? mantenimientos : misSolicitudes;
+  const lista = vista === 'todas' ? mantenimientos : remitidasTI;
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
@@ -109,6 +109,13 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   const clasePrioridad = (prioridad: string): string => {
     const it = mapPrioridad.get((prioridad || '').toUpperCase());
     return it?.metadata?.color || FALLBACK_CLASE_PRIORIDAD;
+  };
+
+  const badgeAreaResp = (area?: string): { label: string; clase: string } => {
+    const a = (area || '').toUpperCase();
+    if (a === 'TI') return { label: 'Resp: TI', clase: 'bg-sky-100 text-sky-800 border border-sky-200' };
+    if (a === 'PENDIENTE_CLASIFICACION') return { label: 'Pendiente Clasif.', clase: 'bg-amber-100 text-amber-800 border border-amber-200' };
+    return { label: 'Resp: UMI', clase: 'bg-amber-100 text-amber-800 border border-amber-200' };
   };
 
   const renderIcono = (iconName?: string, size: number = 14, fallbackKey?: string) => {
@@ -226,7 +233,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                 : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
             }`}
           >
-            <FolderKanban className="w-4 h-4" />
+            <Inbox className="w-4 h-4" />
             Bandeja UMI
             <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
               {mantenimientos.length}
@@ -234,17 +241,17 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           </button>
           <button
             type="button"
-            onClick={() => onChangeVista('mias')}
+            onClick={() => onChangeVista('remitidasTI')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-              vista === 'mias'
-                ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
+              vista === 'remitidasTI'
+                ? 'border-sky-600 text-sky-700 bg-sky-50/40'
                 : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
             }`}
           >
-            <ListTodo className="w-4 h-4" />
-            Mis Solicitudes
+            <GitBranch className="w-4 h-4" />
+            Remitidas a TI
             <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
-              {misSolicitudes.length}
+              {remitidasTI.length}
             </span>
           </button>
         </div>
@@ -261,17 +268,17 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-700">
-                {vista === 'mias'
-                  ? 'Aún no has radicado solicitudes de mantenimiento'
-                  : 'No hay solicitudes de mantenimiento registradas'}
+                {vista === 'remitidasTI'
+                  ? 'Aún no hay solicitudes remitidas a Tecnologías de la Información'
+                  : 'No hay solicitudes de mantenimiento para la bandeja UMI'}
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                {vista === 'mias'
-                  ? 'Radique una nueva solicitud para dar seguimiento a novedades de infraestructura'
+                {vista === 'remitidasTI'
+                  ? 'Cuando radique una solicitud clasificada como TECNOLÓGICA, aparecerá aquí para seguimiento.'
                   : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
               </p>
             </div>
-            {vista === 'mias' && (
+            {vista === 'todas' && (
               <button
                 type="button"
                 onClick={onNuevaSolicitud}
@@ -308,10 +315,22 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       {m.tipoMantenimiento}
                     </span>
                     {m.tipoAtencion && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                        m.tipoAtencion === 'TECNOLOGICA'
+                          ? 'bg-sky-100 text-sky-700 border-sky-200'
+                          : 'bg-amber-100 text-amber-800 border-amber-200'
+                      }`}>
                         Atención {m.tipoAtencion}
                       </span>
                     )}
+                    {(() => {
+                      const b = badgeAreaResp(m.areaResponsableActual);
+                      return (
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${b.clase}`}>
+                          {b.label}
+                        </span>
+                      );
+                    })()}
                     {numEvidencias > 0 && (
                       <button
                         type="button"

@@ -15,6 +15,8 @@ import {
   File,
   Trash2,
   Link2,
+  Monitor,
+  Info,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -68,6 +70,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [catalogoPR, setCatalogoPR] = useState<CatalogoItem[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState<boolean>(true);
 
+  const [tipoAtencion, setTipoAtencion] = useState<'FISICA' | 'TECNOLOGICA' | ''>('');
   const [idSede, setIdSede] = useState<string>('');
   const [nombreAreaSolicitante, setNombreAreaSolicitante] = useState<string>('');
   const [piso, setPiso] = useState<string>('');
@@ -127,6 +130,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
 
   const validar = (): boolean => {
     const nuevosErrores: Record<string, string> = {};
+    if (!tipoAtencion) nuevosErrores.tipoAtencion = 'Seleccione el tipo de atención (Física o Tecnológica)';
     if (!idSede) nuevosErrores.idSede = 'Seleccione la sede';
     if (!nombreAreaSolicitante.trim() || nombreAreaSolicitante.trim().length < 3) {
       nuevosErrores.nombreAreaSolicitante = 'Ingrese el nombre del área solicitante (mínimo 3 caracteres)';
@@ -257,6 +261,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         descripcion: descripcion.trim(),
         evidenciaInicialUrl: evidenciaInicialUrl.trim() || undefined,
         uploadedEvidenciaIds: uploadedEvidenciaIds.length > 0 ? uploadedEvidenciaIds : undefined,
+        tipoAtencion: tipoAtencion as 'FISICA' | 'TECNOLOGICA',
       };
       const resultado = await infraestructuraService.createMantenimiento(payload);
       archivos.forEach((a) => a.preview && URL.revokeObjectURL(a.preview));
@@ -318,6 +323,85 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <div className="text-sm">
                   <p className="font-bold mb-0.5">No se pudo radicar la solicitud</p>
                   <p>{errorMensaje}</p>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className={labelClase}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-slate-400" />
+                  Clasificación de la Atención
+                </span>
+                <span className="text-rose-500 ml-1">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTipoAtencion('FISICA')}
+                  className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                    tipoAtencion === 'FISICA'
+                      ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-200'
+                      : 'border-slate-200 bg-white hover:border-amber-200 hover:bg-amber-50/30'
+                  } ${errores.tipoAtencion ? 'border-rose-300' : ''}`}
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    tipoAtencion === 'FISICA' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    <Wrench className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      Atención Física / Infraestructura
+                      {tipoAtencion === 'FISICA' && <CheckCircle2 className="w-4 h-4 text-amber-600" />}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 leading-snug">
+                      Locativo, pintura, plomería, carpintería, electricidad básica, vidrios, acústica, mobiliario, daños en salones o aulas.
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTipoAtencion('TECNOLOGICA')}
+                  className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                    tipoAtencion === 'TECNOLOGICA'
+                      ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-200'
+                      : 'border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/30'
+                  } ${errores.tipoAtencion ? 'border-rose-300' : ''}`}
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    tipoAtencion === 'TECNOLOGICA' ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    <Monitor className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      Atención Tecnológica / TIC
+                      {tipoAtencion === 'TECNOLOGICA' && <CheckCircle2 className="w-4 h-4 text-sky-600" />}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 leading-snug">
+                      Computadores, impresoras, red, WiFi, videobeam, pizarras digitales, software, correos, cuentas, plataformas, audio, CCTV.
+                    </div>
+                  </div>
+                </button>
+              </div>
+              {errores.tipoAtencion && (
+                <p className="mt-1.5 text-xs text-rose-600 font-medium inline-flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {errores.tipoAtencion}
+                </p>
+              )}
+            </div>
+
+            {tipoAtencion === 'TECNOLOGICA' && (
+              <div className="flex items-start gap-3 p-4 rounded-xl border border-sky-200 bg-sky-50 text-sky-900">
+                <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-sky-600" />
+                <div className="text-sm">
+                  <p className="font-bold mb-0.5">Su solicitud será remitida a la Oficina de Tecnologías de la Información</p>
+                  <p className="opacity-90">
+                    Clasificaste el incidente como <strong>Tecnológico / TIC</strong>. El sistema lo remitirá automáticamente a la oficina de TI; la
+                    Unidad de Mantenimiento UMI hará la trazabilidad de la remisión y el seguimiento final de cierre.
+                  </p>
                 </div>
               </div>
             )}
