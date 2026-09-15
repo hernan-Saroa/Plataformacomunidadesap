@@ -49,11 +49,16 @@ export class AlertasCron {
         AlertasCron.ACCESO_SISTEMA,
       );
 
-      // Se registran las tres cifras y no solo el total: «20 alertas y 0
-      // notificadas» es un problema —nadie tiene responsable asignado— y «0 y 0»
-      // es un día tranquilo. Con un solo número los dos casos se leen igual.
+      // Se desglosa y no se registra solo el total: «20 alertas y 0 notificadas»
+      // es un problema —nadie tiene responsable asignado— y «0 y 0» es un día
+      // tranquilo. Con un solo número los dos casos se leen igual. Las repetidas
+      // son las que el aprobador ya tiene sin leer, y no notificarlas es lo
+      // correcto: sin distinguirlas parecerían avisos perdidos.
       this.logger.log(
         `Vencimientos: ${resultado.alertas} alertas, ${resultado.notificadas ?? 0} notificadas` +
+          (resultado.repetidas
+            ? `, ${resultado.repetidas} ya avisadas y sin leer`
+            : '') +
           (resultado.sinDestinatario
             ? `, ${resultado.sinDestinatario} sin responsable a quién avisar`
             : '') +

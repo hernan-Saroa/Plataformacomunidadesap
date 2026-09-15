@@ -9,7 +9,11 @@
  * funcionando—.
  *
  * Los códigos siguen el formato `modulo.recurso.accion` del catálogo de
- * `auth.permission`, donde ya viven los quince primeros de contratación.
+ * `auth.permission`, donde los siembra la migración 060 junto con la matriz
+ * rol × permiso; la 061 le añade el rol de apoyo a la supervisión.
+ *
+ * Qué rol otorga cada uno lo declara `ROLES_QUE_OTORGAN`, y la matriz que se
+ * consulta y se enseña se arma sobre ese mapa en `matriz-roles.ts`.
  */
 
 import { normalizeRoles } from './hiring-access';
@@ -79,6 +83,15 @@ export const PERMISO_PROCESO_EDITAR = 'contratacion.proceso.edit';
 export const PERMISO_PROCESO_VER = 'contratacion.proceso.view';
 export const PERMISO_PROCESO_VER_TODOS = 'contratacion.proceso.view-all';
 export const PERMISO_PROCESO_ASIGNAR = 'contratacion.proceso.assign';
+/**
+ * Tomar de la bandeja un proceso que llegó sin radicar (EFDS-1183).
+ *
+ * Separado de `assign` a propósito: repartir es entregarle un proceso a otro
+ * —competencia del Director—, y tomar es quedarse con uno que nadie ha cogido.
+ * Si fueran el mismo permiso, dejar que el equipo tome de la bandeja les daría
+ * de paso la facultad de repartirse trabajo entre ellos.
+ */
+export const PERMISO_PROCESO_TOMAR = 'contratacion.proceso.take';
 export const PERMISO_PROCESO_ARCHIVAR = 'contratacion.proceso.archive';
 export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
 export const PERMISO_CONFIG_ADMINISTRAR = 'contratacion.config.manage';
@@ -171,7 +184,7 @@ export const PERMISO_EXPEDIENTE_ARCHIVAR = 'contratacion.expediente.archivar';
  * mapa se podrá borrar sin tocar un solo endpoint. Esa es toda la razón de que
  * exista: que el cambio sea de una función y no de noventa y cinco decoradores.
  */
-const ROLES_QUE_OTORGAN: Record<string, string[]> = {
+export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   [PERMISO_ACTA_INICIO_SUSCRIBIR]: [
     'SUPERVISOR_CONTRATO',
     'ORDENADOR_GASTO',
@@ -190,6 +203,7 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   // control interno y la propia Dirección, no solo quien lo carga.
   [PERMISO_SEGUIMIENTO_VER]: [
     'SUPERVISOR_CONTRATO',
+    'APOYO_SUPERVISION',
     'GESTOR_CONTRATACION',
     'REVISOR_CONTRATACION',
     'DIRECTOR_CONTRATACION',
@@ -198,10 +212,12 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   ],
   [PERMISO_EXPEDIENTE_VER]: [
     'GESTOR_CONTRATACION',
+    'ESTRUCTURADOR_TECNICO',
     'REVISOR_CONTRATACION',
     'DIRECTOR_CONTRATACION',
     'ORDENADOR_GASTO',
     'SUPERVISOR_CONTRATO',
+    'APOYO_SUPERVISION',
     'SUPER_ADMIN',
   ],
   /**
@@ -233,6 +249,7 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'DIRECTOR_CONTRATACION',
     'ORDENADOR_GASTO',
     'SUPERVISOR_CONTRATO',
+    'APOYO_SUPERVISION',
     'SUPER_ADMIN',
   ],
   // La lista más estrecha del bloque: RF-INC-01 encarga el reporte al
@@ -275,33 +292,66 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   // Espejan las listas ROLES_* de hiring-access, que son la lectura vigente
   // del catálogo A4: el guard por permiso no puede dar ni quitar acceso
   // respecto del que ya daban los roles.
-  [PERMISO_ACTIVIDAD_EDITAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_ACTIVIDAD_ENVIAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  //
+  // Con una excepción deliberada, que es lo que trae la matriz (EFDS-1183): el
+  // estructurador técnico entra donde el formato dice que trabaja —«elabora
+  // estudios previos y pasa a aprobación del jefe de área»—. No se le quita
+  // nada a nadie y el rol no lo tiene todavía ningún usuario, así que el acceso
+  // solo cambia cuando el administrador se lo asigne a alguien.
+  [PERMISO_ACTIVIDAD_EDITAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
+  [PERMISO_ACTIVIDAD_ENVIAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
   [PERMISO_ACTIVIDAD_APROBAR]: [
     'REVISOR_CONTRATACION',
     'DIRECTOR_CONTRATACION',
     'SUPER_ADMIN',
   ],
-  [PERMISO_DOCUMENTO_ADJUNTAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_DOCUMENTO_ADJUNTAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
   [PERMISO_DOCUMENTO_ELIMINAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_CREAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_EDITAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_CREAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_EDITAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
+  // Se suman los dos roles que el formato describe pero ningún HU había
+  // necesitado: el estructurador técnico, que elabora el estudio previo del
+  // área, y el apoyo a la supervisión, cuyo trabajo es enteramente de lectura.
   [PERMISO_PROCESO_VER]: [
     'GESTOR_CONTRATACION',
+    'ESTRUCTURADOR_TECNICO',
     'REVISOR_CONTRATACION',
     'DIRECTOR_CONTRATACION',
+    'APOYO_SUPERVISION',
     'SUPER_ADMIN',
   ],
-  [PERMISO_PROCESO_VER_TODOS]: [
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
+  // Una sola X en la Hoja1 del formato, la del Jefe de Oficina: ver toda la
+  // entidad es la excepción y no el modo de trabajo de la Dirección.
+  //
+  // El revisor lo tenía porque cuando se escribió esta tabla el reparto no
+  // existía y sin «ver todos» no habría alcanzado los expedientes que le tocaba
+  // revisar. Desde que la 3.3 reparte (EFDS-1183) llega a los suyos por su
+  // participación, así que esto solo le enseñaba de más: al abogado le salían
+  // los procesos de toda la entidad y no los que le asignaron.
+  [PERMISO_PROCESO_VER_TODOS]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  // Todo el equipo de la Dirección, porque la bandeja es compartida: quien
+  // llega primero se queda con el proceso. El estructurador técnico no entra
+  // —es de las áreas que radican, no de quien recibe—.
+  [PERMISO_PROCESO_TOMAR]: ['GESTOR_CONTRATACION', 'DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_ARCHIVAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
-  [PERMISO_CONFIG_ADMINISTRAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_REPORTE_VER]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  // Las dos únicas casillas que la Hoja1 del formato le marca al
+  // «Administrador», que no es el SUPER_ADMIN de la plataforma: administra la
+  // parametrización de Contratación y no toca un solo proceso.
+  [PERMISO_CONFIG_ADMINISTRAR]: [
+    'DIRECTOR_CONTRATACION',
+    'ADMINISTRADOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  // Y los reportes se suman al apoyo a la supervisión, que es de quien la
+  // Hoja2 dice «generamos informes, estadísticas, certificaciones».
+  [PERMISO_REPORTE_VER]: [
+    'DIRECTOR_CONTRATACION',
+    'ADMINISTRADOR_CONTRATACION',
+    'APOYO_SUPERVISION',
+    'SUPER_ADMIN',
+  ],
   // Ancha: el vencimiento de una póliza le importa a quien la vigila y a quien
   // responde por el contrato.
   [PERMISO_ALERTA_VER]: [

@@ -139,7 +139,31 @@ describe('RielActividades · qué se puede pulsar', () => {
     expect(onSeleccionar).toHaveBeenCalledWith('5.2');
   });
 
-  it('no deja pulsar la que todavía no está habilitada', () => {
+  /**
+   * Lo que la secuencia aún no alcanzó se abre igual (EFDS-1183): lo que se
+   * protege es el expediente, no la pantalla. Quien no puede escribir todavía
+   * sí puede ver qué le van a pedir, y el candado lo dice sin cerrar el paso.
+   */
+  it('deja abrir la que la secuencia todavía no alcanzó', async () => {
+    const onSeleccionar = vi.fn();
+    render(
+      <RielActividades
+        etapa={9}
+        etapaActual={5}
+        actividades={actividades}
+        seleccionada={null}
+        onSeleccionar={onSeleccionar}
+      />,
+    );
+
+    const renglon = screen.getByText('Reunión de inicio').closest('button')!;
+    expect(renglon).not.toBeDisabled();
+
+    await userEvent.click(renglon);
+    expect(onSeleccionar).toHaveBeenCalledWith('9.1');
+  });
+
+  it('avisa al señalarla de que solo se puede consultar', () => {
     render(
       <RielActividades
         etapa={9}
@@ -149,6 +173,8 @@ describe('RielActividades · qué se puede pulsar', () => {
         onSeleccionar={vi.fn()}
       />,
     );
-    expect(screen.getByText('Reunión de inicio').closest('button')).toBeDisabled();
+    expect(
+      screen.getByTitle('9.1 · Reunión de inicio — se puede consultar, todavía no trabajar'),
+    ).toBeInTheDocument();
   });
 });

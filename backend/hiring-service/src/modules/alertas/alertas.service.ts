@@ -7,6 +7,19 @@ import { HiringAccess } from '../../auth/hiring-access';
 export const ANTICIPACION_POR_DEFECTO = 30;
 
 /**
+ * Días que un proceso puede estar recibido y sin abogado antes de alertar.
+ *
+ * Dos, y no los treinta de los vencimientos: aquello anticipa una fecha que
+ * todavía no llegó —una póliza que vence el mes que viene—, y esto cuenta un
+ * proceso que ya está parado. Un expediente sin quien lo revise durante una
+ * semana no es una advertencia temprana, es trabajo detenido.
+ *
+ * Se dejan dos y no cero para no alarmar por el hueco normal entre recibir el
+ * proceso y sentarse a repartirlo.
+ */
+export const TOLERANCIA_SIN_ABOGADO = 2;
+
+/**
  * Plazo legal para liquidar de común acuerdo: cuatro meses desde que el
  * contrato terminó (Ley 1150 de 2007, art. 11).
  */
@@ -26,7 +39,25 @@ export type TipoAlerta =
    * las dos cosas que le reclaman atención al usuario, y separarlas lo
    * obligaría a mirar en dos sitios para saber qué le espera.
    */
-  | 'APROBACION_PENDIENTE';
+  | 'APROBACION_PENDIENTE'
+  /**
+   * Una actividad devuelta, hacia quien tiene que corregirla (EFDS-1183).
+   *
+   * Sin esto la devolución no le llegaba a nadie: se veía solo entrando al
+   * panel de la actividad, así que quien la trabajó podía tardar días en
+   * enterarse de que se la habían rechazado. El aprobador sí recibía su aviso;
+   * el camino de vuelta no existía.
+   */
+  | 'DEVUELTA_PARA_CORREGIR'
+  /**
+   * Un proceso recibido en la Dirección al que nadie revisa (EFDS-1183).
+   *
+   * No debería pasar, pero quitar un abogado sin poner otro es una situación
+   * real, y también lo es tomar el proceso y olvidarse de repartirlo. Mientras
+   * dure, la 3.4 no la puede resolver nadie: el proceso está parado y no lo
+   * dice ninguna pantalla salvo la suya.
+   */
+  | 'SIN_ABOGADO';
 
 /**
  * Días que faltan para la fecha. Negativo si ya pasó.
@@ -119,12 +150,15 @@ export class AlertasService {
   async listar(anticipacion: number, acceso: HiringAccess): Promise<Alerta[]> {
     const hoy = this.hoy();
 
-    const [amparos, presupuestales, liquidaciones, aprobaciones] = await Promise.all([
-      this.amparosPorVencer(),
-      this.respaldosPorVencer(),
-      this.liquidacionesPendientes(),
-      this.aprobacionesPendientes(acceso),
-    ]);
+    const [amparos, presupuestales, liquidaciones, aprobaciones, devueltas, sinAbogado] =
+      await Promise.all([
+        this.amparosPorVencer(),
+        this.respaldosPorVencer(),
+        this.liquidacionesPendientes(),
+        this.aprobacionesPendientes(acceso),
+        this.devueltasParaCorregir(acceso),
+        this.procesosSinAbogado(hoy),
+      ]);
 
     const vencimientos = [...amparos, ...presupuestales, ...liquidaciones]
       .map((fila) => {
@@ -138,7 +172,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinAbogado, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -154,10 +188,67 @@ export class AlertasService {
    * aprobadores. Ver las de los demás no le sirve de nada y le escondería las
    * propias.
    *
-   * Quien envió la actividad no la ve aquí aunque tenga el rol: no puede
-   * aprobar lo que él mismo trabajó, así que ofrecérsela sería ofrecerle un
-   * botón que va a rechazarle el servicio.
+   * Incluidas las que él mismo envió: si tiene el rol, las aprueba. Antes se
+   * excluían, y en las actividades que ejecuta la propia Dirección de
+   * Contratación eso las dejaba sin nadie a quien ofrecérselas.
    */
+  /**
+   * Actividades devueltas a quien las trabajó, para que las corrija.
+   *
+   * El destinatario es quien la envió y no quien la radicó: es a él a quien se
+   * le pidió el cambio. Mientras el reparto de la 3.4 no exista no hay un
+   * «responsable asignado» al que avisar, así que se usa el único dato cierto.
+   *
+   * Sin `enviado_por_id` no aparece: era el caso de casi todas las actividades
+   * hasta que se corrigió la entidad, que no declaraba la columna y hacía que
+   * TypeORM la descartara al guardar.
+   */
+  private async devueltasParaCorregir(
+    acceso: HiringAccess,
+  ): Promise<Omit<Alerta, never>[]> {
+    if (!acceso.userId) return [];
+
+    const filas = await this.dataSource.query(
+      `
+      SELECT p.id           AS proceso_id,
+             p.radicado     AS radicado,
+             pa.numeral     AS numeral,
+             a.nombre       AS actividad,
+             pa.revisado_por AS revisado_por,
+             pa.updated_at  AS desde
+        FROM hiring.proceso_actividades pa
+        JOIN hiring.procesos p ON p.id = pa.proceso_id
+        JOIN hiring.actividades a ON a.numeral = pa.numeral
+       WHERE pa.estado = 'DEVUELTO'
+         AND pa.enviado_por_id = $1
+       ORDER BY pa.updated_at ASC
+      `,
+      [acceso.userId],
+    );
+
+    return filas.map((f: any) => {
+      const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
+      const diasEsperando = Math.floor((Date.now() - desde.getTime()) / (24 * 60 * 60 * 1000));
+
+      return {
+        tipo: 'DEVUELTA_PARA_CORREGIR' as TipoAlerta,
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `${f.numeral} · ${f.actividad}`,
+        vence: desde.toISOString().slice(0, 10),
+        // En negativo, como las aprobaciones: los días que lleva sin corregirse
+        // la suben en la lista.
+        diasRestantes: -diasEsperando,
+        estado: 'POR_VENCER' as EstadoAlerta,
+        // Quien la devolvió, que es de quien vino la petición de corregir.
+        responsable: f.revisado_por ?? null,
+        responsableEmail: null,
+        responsableId: acceso.userId || null,
+      };
+    });
+  }
+
   private async aprobacionesPendientes(
     acceso: HiringAccess,
   ): Promise<Omit<Alerta, never>[]> {
@@ -181,8 +272,9 @@ export class AlertasService {
              AND r.vigente_hasta IS NULL
              AND (r.modalidad IS NULL OR r.modalidad = p.modalidad)
        WHERE pa.estado = 'EN_REVISION'
-         -- Quien la envió no la aprueba, así que no se le ofrece.
-         AND ($3 = true OR pa.enviado_por_id IS DISTINCT FROM $2)
+         -- Las propias también se ofrecen: quien las trabaja las aprueba si
+         -- tiene el rol, y esconderlas le dejaba pendientes que nadie más iba
+         -- a resolver.
          AND (
            $3 = true
            OR (r.config -> 'personas') ? $2
@@ -213,9 +305,94 @@ export class AlertasService {
         estado: 'POR_VENCER' as EstadoAlerta,
         responsable: f.enviado_por ?? null,
         responsableEmail: null,
-        responsableId: null,
+        /*
+         * A quien consulta, que es justamente quien tiene que resolverla: la
+         * consulta ya filtra por su rol aprobador y descarta lo que él mismo
+         * envió. Sin esto la alerta se veía en pantalla pero nunca se
+         * notificaba, porque `notificar` descarta lo que no tiene
+         * destinatario, y la aprobación llegaba solo si el usuario entraba a
+         * mirar.
+         *
+         * `id_user` y no `id_person`: la campana del portal consulta
+         * `/users/:id/notifications` con el id de la cuenta —es lo que el shell
+         * guarda en sesión—, así que una notificación escrita contra la persona
+         * queda en la base sin que nadie la vea. Es lo que mandan también el
+         * plan de trabajo académico y control disciplinario.
+         */
+        responsableId: acceso.userId || null,
       };
     });
+  }
+
+  /**
+   * Procesos recibidos en la Dirección y sin abogado que los revise
+   * (EFDS-1183).
+   *
+   * Dos formas de llegar aquí y la consulta no las distingue porque el efecto
+   * es el mismo: se tomó el proceso y no se repartió, o se quitó al abogado sin
+   * poner otro. Lo que cuenta es desde cuándo está parado, que es lo más
+   * reciente de las dos fechas —cuándo se recibió y cuándo salió el último
+   * abogado—.
+   *
+   * Los que siguen en la bandeja no entran: nadie los ha recibido, así que no
+   * hay a quién reclamarle el reparto, y el listado ya los marca como tales.
+   *
+   * `vence` es la fecha en que se agotó la tolerancia, no un plazo legal: así
+   * los días restantes y el estado se calculan como en el resto de la lista, en
+   * vez de inventar una segunda forma de ordenar lo urgente.
+   */
+  private async procesosSinAbogado(hoy: string): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT p.id       AS proceso_id,
+              p.radicado AS radicado,
+              c.nombre   AS responsable,
+              c.email    AS responsable_email,
+              GREATEST(
+                c.asignado_at,
+                COALESCE(
+                  (SELECT MAX(a.relevado_at)
+                     FROM hiring.participaciones_proceso a
+                    WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO'),
+                  c.asignado_at
+                )
+              ) AS desde
+         FROM hiring.procesos p
+         JOIN hiring.participaciones_proceso c
+           ON c.proceso_id = p.id AND c.papel = 'CONTRATACION' AND c.estado = 'VIGENTE'
+        WHERE p.estado = 'EN_CURSO'
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.participaciones_proceso a
+             WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO' AND a.estado = 'VIGENTE'
+          )
+        ORDER BY desde ASC`,
+    );
+
+    return filas
+      .map((f: any) => {
+        const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
+        const limite = new Date(desde);
+        limite.setDate(limite.getDate() + TOLERANCIA_SIN_ABOGADO);
+        const vence = limite.toISOString().slice(0, 10);
+        const diasRestantes = diasParaVencer(vence, hoy);
+
+        return {
+          tipo: 'SIN_ABOGADO' as TipoAlerta,
+          procesoId: f.proceso_id,
+          radicado: f.radicado,
+          contrato: null,
+          descripcion: '3.4 · el proceso no tiene abogado que lo revise',
+          vence,
+          diasRestantes,
+          estado: estadoAlerta(diasRestantes, TOLERANCIA_SIN_ABOGADO),
+          // A quien hay que reclamarle es a quien lo recibió: el reparto es suyo.
+          responsable: f.responsable ?? null,
+          responsableEmail: f.responsable_email ?? null,
+          responsableId: null,
+        };
+      })
+      // Dentro de la tolerancia no se avisa: es el hueco normal entre recibir
+      // el proceso y sentarse a repartirlo.
+      .filter((a) => a.estado !== 'VIGENTE');
   }
 
   /**
@@ -312,7 +489,10 @@ export class AlertasService {
   private async liquidacionesPendientes(): Promise<Omit<Alerta, 'diasRestantes' | 'estado'>[]> {
     const filas = await this.dataSource.query(`
       SELECT p.id AS proceso_id, p.radicado, c.numero AS contrato,
-             COALESCE(m.fecha_efecto, c.updated_at::date) AS termino,
+             -- terminacion_el y no fecha_efecto: esa columna nunca existió
+             -- —la 053 la creó con este nombre— y la consulta reventaba, así
+             -- que el endpoint entero respondía 500 desde EFDS-1185.
+             COALESCE(m.terminacion_el, c.updated_at::date) AS termino,
              s.persona_id AS responsable_id, s.nombre AS responsable, s.email AS responsable_email
         FROM hiring.contratos c
         JOIN hiring.procesos p ON p.id = c.proceso_id
@@ -341,6 +521,50 @@ export class AlertasService {
   }
 
   /**
+   * Descarta los avisos que el destinatario ya tiene sin leer.
+   *
+   * La alerta se repite mientras dure lo que la causó: una aprobación tarda
+   * días y el cron corre a diario, así que sin esto el aprobador acumulaba un
+   * mensaje idéntico por jornada hasta decidirse —y el mismo botón pulsado dos
+   * veces dejaba dos copias en la campana.
+   *
+   * Se compara contra lo no leído y no archivado: una vez leído, volver a
+   * avisar es correcto, porque significa que lo vio y sigue sin resolverlo.
+   *
+   * Se consulta la tabla directamente porque notifications-service no ofrece
+   * ninguna ruta para preguntar si un mensaje ya existe, y es de otro equipo.
+   * Si la consulta falla se manda igual: un duplicado molesta, perder el aviso
+   * no.
+   */
+  private async sinAvisarYa<T extends { id_usuario_destinatario: string; mensaje: string }>(
+    mensajes: T[],
+  ): Promise<T[]> {
+    if (!mensajes.length) return mensajes;
+
+    try {
+      const pendientes = await this.dataSource.query(
+        `SELECT id_usuario_destinatario, mensaje
+           FROM notifications.notificacion
+          WHERE leida = false
+            AND archivada = false
+            AND id_usuario_destinatario = ANY($1::uuid[])`,
+        [[...new Set(mensajes.map((m) => m.id_usuario_destinatario))]],
+      );
+
+      const yaEsta = new Set(
+        pendientes.map((f: any) => `${f.id_usuario_destinatario}|${f.mensaje}`),
+      );
+
+      return mensajes.filter(
+        (m) => !yaEsta.has(`${m.id_usuario_destinatario}|${m.mensaje}`),
+      );
+    } catch (error: any) {
+      this.logger.warn(`No se pudo comprobar si el aviso ya existía: ${error.message}`);
+      return mensajes;
+    }
+  }
+
+  /**
    * Avisa al responsable de cada alerta.
    *
    * Se delega en notifications-service, que es de otro equipo y ya lo consume
@@ -350,11 +574,58 @@ export class AlertasService {
    */
   async notificar(anticipacion: number, acceso: HiringAccess) {
     const alertas = await this.listar(anticipacion, acceso);
-    // Con id de persona: es lo que notifications-service usa como destinatario.
+    // Sin destinatario no hay a quién avisar: se cuentan aparte para que el log
+    // distinga «no había nada» de «había y nadie tenía responsable».
     const conDestinatario = alertas.filter((a) => a.responsableId);
 
     if (!conDestinatario.length) {
       return { alertas: alertas.length, notificadas: 0, sinDestinatario: alertas.length };
+    }
+
+    // Un mensaje por tipo y no uno solo: ni la aprobación ni la devolución son
+    // vencimientos, y con el texto compartido el aprobador leía «vence en -3
+    // días» sobre algo que no vence. Además cada una pide algo distinto —una
+    // decidir, otra corregir— y el aviso tiene que decir cuál de las dos.
+    const mensajes = conDestinatario.map((a) =>
+      a.tipo === 'DEVUELTA_PARA_CORREGIR'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_devolucion',
+            titulo: 'Te devolvieron una actividad para corregir',
+            mensaje: `${a.descripcion} del proceso ${a.radicado} fue devuelta${
+              a.responsable ? ` por ${a.responsable}` : ''
+            }. Corrígela y vuelve a enviarla.`,
+          }
+        : a.tipo === 'APROBACION_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_aprobacion',
+            titulo: 'Tienes una actividad por aprobar',
+            mensaje: `${a.descripcion} del proceso ${a.radicado} espera tu decisión${
+              a.responsable ? `, enviada por ${a.responsable}` : ''
+            }.`,
+          }
+        : {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_vencimiento',
+            titulo: a.estado === 'VENCIDO' ? 'Vencimiento cumplido' : 'Vencimiento próximo',
+            mensaje: `${a.descripcion} del contrato ${a.contrato ?? a.radicado}: ${
+              a.estado === 'VENCIDO'
+                ? `vencido hace ${Math.abs(a.diasRestantes)} días`
+                : `vence en ${a.diasRestantes} días`
+            } (${a.vence})`,
+          },
+    );
+
+    const nuevos = await this.sinAvisarYa(mensajes);
+
+    if (!nuevos.length) {
+      return {
+        alertas: alertas.length,
+        notificadas: 0,
+        sinDestinatario: alertas.length - conDestinatario.length,
+        repetidas: mensajes.length,
+      };
     }
 
     const url = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:3009';
@@ -363,18 +634,7 @@ export class AlertasService {
       const respuesta = await fetch(`${url}/notifications/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          notifications: conDestinatario.map((a) => ({
-            id_usuario_destinatario: a.responsableId,
-            tipo_notificacion: 'contratacion_vencimiento',
-            titulo: a.estado === 'VENCIDO' ? 'Vencimiento cumplido' : 'Vencimiento próximo',
-            mensaje: `${a.descripcion} del contrato ${a.contrato ?? a.radicado}: ${
-              a.estado === 'VENCIDO'
-                ? `vencido hace ${Math.abs(a.diasRestantes)} días`
-                : `vence en ${a.diasRestantes} días`
-            } (${a.vence})`,
-          })),
-        }),
+        body: JSON.stringify({ notifications: nuevos }),
       });
 
       if (!respuesta.ok) {
@@ -388,7 +648,8 @@ export class AlertasService {
 
     return {
       alertas: alertas.length,
-      notificadas: conDestinatario.length,
+      notificadas: nuevos.length,
+      repetidas: mensajes.length - nuevos.length,
       sinDestinatario: alertas.length - conDestinatario.length,
     };
   }

@@ -394,7 +394,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
 
     await actaInicio.suscribir(
       proceso.id,
-      { fechaReunion: haceDias(30), fechaInicio } as any,
+      { fechaInicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
       supervisor,

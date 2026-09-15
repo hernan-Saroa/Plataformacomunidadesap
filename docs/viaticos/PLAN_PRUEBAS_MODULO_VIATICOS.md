@@ -1,8 +1,8 @@
 # Plan de Pruebas — Módulo de Viáticos y Gastos de Viaje
 
-> **Estado:** Ejecutado — 45/45 pruebas en verde
-> **Frontend:** 29 pruebas (Vitest) · **Backend:** 16 pruebas (Jest)
-> **Última ejecución:** 2026-08-28
+> **Estado:** Parcial — 45/45 pruebas frontend en verde; backend ampliado con suite RF-REC-002
+> **Frontend:** 29 pruebas (Vitest) · **Backend:** 16 pruebas base (Jest) + 20 pruebas RF-REC-002 (Jest)
+> **Última ejecución:** 2026-09-07
 
 ---
 
@@ -62,14 +62,41 @@ Suite: [`ViaticosModulePremium.test.tsx`](../../apps/mfe-viaticos/src/components
 | F28 | Fecha anterior a hoy           | Error "La fecha de inicio no puede ser anterior a hoy"                                                                                                                                           |
 | F29 | Comisión extemporánea          | Aviso "Comisión Extemporánea" (< 14 días hábiles de anticipación)                                                                                                                                |
 
+### 2.1 Casos RF-REC-002
+
+Suites:
+
+- [`TableroCargaAnalistas.test.tsx`](../../apps/mfe-viaticos/src/components/TableroCargaAnalistas.test.tsx)
+- [`SolicitudesAsignadasAnalista.test.tsx`](../../apps/mfe-viaticos/src/components/SolicitudesAsignadasAnalista.test.tsx)
+- [`viaticosService.test.ts`](../../apps/mfe-viaticos/src/services/api/viaticosService.test.ts)
+
+| #   | Caso                                             | Resultado esperado                                                                                                                                                                                                 |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F30 | `TableroCargaAnalistas` muestra loading           | Estado de carga visible                                                                                                                                                                                            |
+| F31 | `TableroCargaAnalistas` renderiza lista           | Analistas con semáforo, nombre y tooltip visibles                                                                                                                                                                  |
+| F32 | `TableroCargaAnalistas` filtra por búsqueda       | Coincidencias por nombre, username o identificación                                                                                                                                                                |
+| F33 | `SolicitudesAsignadasAnalista` muestra loading    | Estado de carga visible                                                                                                                                                                                            |
+| F34 | `SolicitudesAsignadasAnalista` mensaje vacío      | Texto "No hay solicitudes asignadas."                                                                                                                                                                              |
+| F35 | `SolicitudesAsignadasAnalista` renderiza lista    | Tabla con estado, comisionado, destino y fechas visibles                                                                                                                                                           |
+| F36 | `SolicitudesAsignadasAnalista` filtra por búsqueda | Coincidencias por texto                                                                                                                                                                                            |
+| F37 | `viaticosService.obtenerCargaAnalistas` sin ID    | GET a `/viaticos/api/v1/assignments/workload`                                                                                                                                                                      |
+| F38 | `viaticosService.obtenerCargaAnalistas` con ID    | GET a `/viaticos/api/v1/assignments/workload?solicitudId=...`                                                                                                                                                      |
+| F39 | `viaticosService.obtenerCargaAnalistas` error     | Retorna `{ data: [], total: 0 }`                                                                                                                                                                                   |
+| F40 | `viaticosService.asignarAnalista` exitoso         | POST a `/viaticos/api/v1/assignments/assign` con body correcto                                                                                                                                                     |
+| F41 | `viaticosService.asignarAnalista` error           | Propaga el error                                                                                                                                                                                                   |
+| F42 | `viaticosService.obtenerSolicitudesAsignadas`     | GET a `/viaticos/api/v1/assignments/my-requests`                                                                                                                                                                   |
+| F43 | `viaticosService.obtenerSolicitudesAsignadas` error | Retorna `[]`                                                                                                                                                                                                       |
+
 ---
 
 ## 3. Casos de prueba — Backend
 
-Suites:
+Suites base:
 
 - [`travel-expenses.service.spec.ts`](../../backend/travel-expenses-service/src/modules/travel-expenses/__tests__/travel-expenses.service.spec.ts)
 - [`app.controller.spec.ts`](../../backend/travel-expenses-service/src/app.controller.spec.ts)
+
+### 3.1 Casos base
 
 | #   | Caso                                             | Resultado esperado                         |
 | --- | ------------------------------------------------ | ------------------------------------------ |
@@ -90,6 +117,39 @@ Suites:
 | B15 | Fecha de inicio anterior a hoy                   | `400 BadRequest`                           |
 | B16 | Anticipación < 14 días hábiles                   | Solicitud marcada `EXTEMPORANEA`           |
 
+### 3.2 Casos RF-REC-002
+
+Suites:
+
+- [`assignments.service.spec.ts`](../../backend/travel-expenses-service/src/modules/assignments/__tests__/assignments.service.spec.ts)
+- [`assignments.controller.spec.ts`](../../backend/travel-expenses-service/src/modules/assignments/__tests__/assignments.controller.spec.ts)
+- [`assignments.module.spec.ts`](../../backend/travel-expenses-service/src/modules/assignments/__tests__/assignments.module.spec.ts)
+- [`travel-expenses.assignments.spec.ts`](../../backend/travel-expenses-service/src/modules/travel-expenses/__tests__/travel-expenses.assignments.spec.ts)
+
+| #   | Caso                                             | Resultado esperado                                                                 |
+| --- | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| A01 | `obtenerCargaAnalistas` sin `solicitudId`         | Retorna todos los analistas con puntaje y color del semáforo                       |
+| A02 | `obtenerCargaAnalistas` con `solicitudId`         | Filtra analistas por la dependencia de la solicitud                                |
+| A03 | Semáforo VERDE sin asignaciones                   | `puntajeTotal = 0`, `colorSemaforo = VERDE`                                        |
+| A04 | Semáforo ROJO con puntaje > 12                    | `puntajeTotal = 15`, `colorSemaforo = ROJO`                                        |
+| A05 | `asignarAnalista` exitoso                         | Transición a `EN_VERIFICACION`, guarda historial                                   |
+| A06 | `asignarAnalista` 400 si solicitud no en `SOLICITADO` | `BadRequestException`                                                        |
+| A07 | `asignarAnalista` 404 si solicitud no existe      | `NotFoundException`                                                                |
+| A08 | `asignarAnalista` 400 si analista no existe       | `BadRequestException`                                                              |
+| A09 | `obtenerSolicitudesAsignadas` por analista         | Retorna solicitudes en estados activos                                             |
+| A10 | `obtenerSolicitudesAsignadas` 400 si `analistaId` vacío | `BadRequestException`                                                      |
+| A11 | Controller `GET /workload` sin `solicitudId`       | 200, estructura `{ data, total, timestamp }`                                       |
+| A12 | Controller `GET /workload` con `solicitudId`       | 200, llama al servicio con el filtro                                               |
+| A13 | Controller `GET /my-requests`                      | 200, usa `req.user.userId`                                                         |
+| A14 | Controller `GET /my-requests` sin usuario          | 400                                                                                |
+| A15 | Controller `POST /assign`                          | 200, delega en servicio y arma respuesta                                           |
+| A16 | Controller `POST /assign` body vacío               | 400                                                                                |
+| A17 | Controller `POST /assign` sin usuario              | 400                                                                                |
+| A18 | Módulo compila                                    | Sin errores                                                                        |
+| A19 | Módulo exporta `AssignmentsService`                | Servicio disponible                                                                |
+| A20 | Módulo registra `AssignmentsController`            | Controlador disponible                                                             |
+| A21 | Integración `TravelExpensesModule` + `AssignmentsModule` | Ambos servicios y controladores disponibles                                   |
+
 ---
 
 ## 4. Resultado de la última ejecución
@@ -102,6 +162,14 @@ Frontend (Vitest)
 Backend (Jest)
   Test Suites 2 passed (2)
   Tests       16 passed (16)
+
+Backend RF-REC-002 (Jest)
+  Test Suites 2 passed (2)
+  Tests       18 passed (18)
+
+Frontend RF-REC-002 (Vitest)
+  Test Files  1 passed (1)
+  Tests       7 passed (7)
 ```
 
 ---

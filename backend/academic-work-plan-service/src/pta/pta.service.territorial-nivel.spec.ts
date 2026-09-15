@@ -128,13 +128,16 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
       expect(result.propios).toHaveLength(3);
     });
 
-    it('rechaza sin territorial asignada', async () => {
+    it('sin territorial asignada permite todas las territoriales del nivel autorizado', async () => {
       const service = createService();
-      await expect(service.assertAlcanceTerritorial(
+      const result = await service.assertAlcanceTerritorial(
         'academica_territorial', makePtaConTresPares(),
         authCon({ allowedNivelesTerritorialAprobar: ['pregrado'] }),
         'aprobar',
-      )).rejects.toBeInstanceOf(ForbiddenException);
+      );
+      expect(result.propios).toEqual([
+        { territorialId: 'ter-A', nivel: 'pregrado' }, { territorialId: 'ter-B', nivel: 'pregrado' },
+      ]);
     });
 
     it('rechaza sin permiso de ningún nivel, aunque tenga la territorial', async () => {

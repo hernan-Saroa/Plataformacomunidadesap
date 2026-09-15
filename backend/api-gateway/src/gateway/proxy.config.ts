@@ -126,5 +126,17 @@ export const serviceMap = {
     'http://localhost:3014',
     'http://infrastructure-management-service:3014',
   ),
+  
+  // ChatBot Service - Puerto 3014
+  chatbot: serviceUrl(
+    'CHATBOT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://chatbot-service:3014',
+  ),
+  'chatbot-service': serviceUrl(
+    'CHATBOT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://chatbot-service:3014',
+  ),
 };
 

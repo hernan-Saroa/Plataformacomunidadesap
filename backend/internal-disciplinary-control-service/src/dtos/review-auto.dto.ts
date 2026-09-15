@@ -12,4 +12,8 @@ export class ReviewAutoDto {
     @IsOptional()
     @IsString()
     observaciones?: string;
+
+    @IsOptional()
+    @IsString()
+    radicadorAsignadoId?: string;
 }

@@ -69,8 +69,7 @@ export class AprobacionController {
   /*
    * Aprobar y devolver no llevan `@Permisos`: quién puede hacerlo lo dice la
    * regla configurada para esa actividad, no un permiso fijo del módulo. El
-   * servicio lo comprueba contra los roles y personas de la configuración, y
-   * ahí mismo impide que lo haga quien la trabajó.
+   * servicio lo comprueba contra los roles y personas de la configuración.
    */
   @Post('aprobar')
   @ApiOperation({ summary: 'Aprobar la actividad' })

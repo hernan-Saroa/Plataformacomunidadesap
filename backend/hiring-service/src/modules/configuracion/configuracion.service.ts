@@ -790,22 +790,20 @@ export class ConfiguracionService {
    * borrar el registro haría que la trazabilidad apuntara a algo que ya no
    * existe.
    */
+  /*
+   * El estudio previo se configura como las demás.
+   *
+   * Aquí se rechazaba la 3.1: su ciclo estaba escrito en el código —el envío
+   * la dejaba en revisión siempre— y una segunda aprobación habría creado dos
+   * trámites peleándose por la misma columna de estado.
+   *
+   * Ya no: el envío consulta esta configuración, igual que las otras treinta y
+   * siete actividades. Sin regla, el estudio previo se cierra al enviarlo; con
+   * regla, entra en revisión. El trámite es uno solo, así que el bloqueo
+   * protegía de un problema que ya no existe e impedía justo lo que la
+   * pantalla ofrece.
+   */
   async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto) {
-    /*
-     * El estudio previo ya se aprueba, y con su propio ciclo: se envía, se
-     * revisa y se devuelve con observaciones desde su panel, guardando el
-     * estado en la misma columna que usaría esta regla. Configurar aquí una
-     * segunda aprobación sobre la 3.1 crearía dos trámites peleándose por un
-     * único estado, y el que perdiera quedaría mostrando algo falso.
-     *
-     * Se rechaza al configurar y no al aprobar: descubrirlo cuando el gestor
-     * ya envió la actividad sería descubrirlo tarde.
-     */
-    if (numeral === NUMERAL_ESTUDIO_PREVIO && dto.requiereAprobacion) {
-      throw new BadRequestException(
-        'El estudio previo ya tiene su propia aprobación: se configura quién revisa desde los permisos del módulo, no desde aquí',
-      );
-    }
 
     return this.dataSource.transaction(async (em) => {
       const repo = em.getRepository(ReglaActividad);

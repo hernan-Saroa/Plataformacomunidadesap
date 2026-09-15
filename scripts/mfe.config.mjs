@@ -33,6 +33,7 @@ export const remoteApps = [
   { workspace: '@esap-mfe/viaticos', appDir: 'mfe-viaticos', federationName: 'viaticos', devPort: 3115, serviceName: 'frontend-mfe-viaticos' },
   { workspace: '@esap-mfe/programacion-academica', appDir: 'mfe-programacion-academica', federationName: 'programacion_academica', devPort: 3116, serviceName: 'frontend-mfe-programacion-academica' },
   { workspace: '@esap-mfe/gestion-infraestructura', appDir: 'mfe-gestion-infraestructura', federationName: 'gestion_infraestructura', devPort: 3117, serviceName: 'frontend-mfe-gestion-infraestructura' },
+  { workspace: '@esap-mfe/chatbot', appDir: 'mfe-chatbot', federationName: 'chatbot', devPort: 3118, serviceName: 'frontend-mfe-chatbot' },
 ];
 
 export const frontendApps = [shellApp, ...remoteApps];

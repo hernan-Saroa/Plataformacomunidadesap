@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TravelExpensesService } from '../travel-expenses.service';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -34,15 +31,17 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
     actualizadoEn: new Date(),
   } as ComisionadoEntity;
 
-  const createMockModule = (overrides: {
-    comisionadoRepo?: any;
-    solicitudRepo?: any;
-    documentoRepo?: any;
-    historialRepo?: any;
-    dataSource?: any;
-    configService?: any;
-    notificationClient?: any;
-  } = {}) => {
+  const createMockModule = (
+    overrides: {
+      comisionadoRepo?: any;
+      solicitudRepo?: any;
+      documentoRepo?: any;
+      historialRepo?: any;
+      dataSource?: any;
+      configService?: any;
+      notificationClient?: any;
+    } = {},
+  ) => {
     const {
       comisionadoRepo = { findOne: jest.fn(), save: jest.fn() },
       solicitudRepo = {
@@ -65,8 +64,12 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
           .mockResolvedValue(null),
       },
       notificationClient = {
-        archiveNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
-        deleteNotificacionesPorSolicitud: jest.fn().mockResolvedValue(undefined),
+        archiveNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
+        deleteNotificacionesPorSolicitud: jest
+          .fn()
+          .mockResolvedValue(undefined),
         send: jest.fn().mockResolvedValue(undefined),
       },
     } = overrides;
@@ -185,7 +188,11 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await svc.obtenerBandejaSecretario({ dependenciaId: '1', page: 1, limit: 10 });
+      await svc.obtenerBandejaSecretario({
+        dependenciaId: '1',
+        page: 1,
+        limit: 10,
+      });
 
       expect(solicitudRepo.createQueryBuilder).toHaveBeenCalledWith('s');
     });
@@ -208,7 +215,11 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await svc.obtenerBandejaSecretario({ prioridad: 'ALTA', page: 1, limit: 10 });
+      await svc.obtenerBandejaSecretario({
+        prioridad: 'ALTA',
+        page: 1,
+        limit: 10,
+      });
 
       expect(solicitudRepo.createQueryBuilder).toHaveBeenCalledWith('s');
     });
@@ -231,7 +242,11 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await svc.obtenerBandejaSecretario({ extemporanea: true, page: 1, limit: 10 });
+      await svc.obtenerBandejaSecretario({
+        extemporanea: true,
+        page: 1,
+        limit: 10,
+      });
 
       expect(solicitudRepo.createQueryBuilder).toHaveBeenCalledWith('s');
     });
@@ -284,7 +299,12 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.actualizarPrioridad('sol-001', 'ALTA', 'user-001', false);
+      const result = await svc.actualizarPrioridad(
+        'sol-001',
+        'ALTA',
+        'user-001',
+        false,
+      );
 
       expect(result.prioridad).toBe('ALTA');
       expect(result.fechaRevision).toBeDefined();
@@ -300,7 +320,34 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('debe lanzar 400 si la solicitud no está en SOLICITADO (rol no superadmin)', async () => {
+    it('debe permitir actualizar prioridad de solicitud en estado EXTEMPORANEA', async () => {
+      const solicitud = {
+        id: 'sol-ext-01',
+        consecutivoUnico: 'COM-2026-EXT1',
+        estadoSolicitud: 'EXTEMPORANEA',
+        prioridad: 'BAJA',
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.actualizarPrioridad(
+        'sol-ext-01',
+        'ALTA',
+        'secretario-01',
+        false,
+      );
+
+      expect(result.prioridad).toBe('ALTA');
+    });
+
+    it('debe lanzar 400 si la solicitud no está en SOLICITADO ni EXTEMPORANEA (rol no superadmin)', async () => {
       const solicitudRepo = {
         findOne: jest.fn().mockResolvedValue({
           id: 'sol-001',
@@ -332,7 +379,12 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.actualizarPrioridad('sol-001', 'ALTA', 'user-001', true);
+      const result = await svc.actualizarPrioridad(
+        'sol-001',
+        'ALTA',
+        'user-001',
+        true,
+      );
 
       expect(result.prioridad).toBe('ALTA');
     });
@@ -365,8 +417,16 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
           const manager = {
             getRepository: jest.fn().mockImplementation((entity: any) => {
               const nombre = entity?.name || entity?.constructor?.name || '';
-              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision') return solicitudRepo;
-              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados') return historialRepo;
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
               return {};
             }),
           };
@@ -375,10 +435,19 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         createQueryBuilder: jest.fn(),
       };
 
-      const module = await createMockModule({ solicitudRepo, historialRepo, dataSource });
+      const module = await createMockModule({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.devolverSolicitud('sol-001', 'Falta soporte digital', 'user-001', false);
+      const result = await svc.devolverSolicitud(
+        'sol-001',
+        'Falta soporte digital',
+        'user-001',
+        false,
+      );
 
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.DEVUELTA);
       expect(result.motivoDevolucion).toBe('Falta soporte digital');
@@ -419,8 +488,16 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
           const manager = {
             getRepository: jest.fn().mockImplementation((entity: any) => {
               const nombre = entity?.name || entity?.constructor?.name || '';
-              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision') return solicitudRepo;
-              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados') return historialRepo;
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
               return {};
             }),
           };
@@ -429,10 +506,19 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         createQueryBuilder: jest.fn(),
       };
 
-      const module = await createMockModule({ solicitudRepo, historialRepo, dataSource });
+      const module = await createMockModule({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.devolverSolicitud('sol-001', 'Falta soporte digital', 'user-001', false);
+      const result = await svc.devolverSolicitud(
+        'sol-001',
+        'Falta soporte digital',
+        'user-001',
+        false,
+      );
 
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.DEVUELTA);
       expect(result.motivoDevolucion).toBe('Falta soporte digital');
@@ -448,7 +534,9 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
     });
 
     it('debe lanzar 400 si el motivo viene vacío', async () => {
-      const solicitudRepo = { findOne: jest.fn().mockResolvedValue({ id: 'sol-001' }) };
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'sol-001' }),
+      };
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
@@ -507,8 +595,16 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
           const manager = {
             getRepository: jest.fn().mockImplementation((entity: any) => {
               const nombre = entity?.name || entity?.constructor?.name || '';
-              if (nombre === 'SolicitudComisionEntity' || nombre === 'solicitudes_comision') return solicitudRepo;
-              if (nombre === 'SolicitudHistorialEstadoEntity' || nombre === 'solicitudes_historial_estados') return historialRepo;
+              if (
+                nombre === 'SolicitudComisionEntity' ||
+                nombre === 'solicitudes_comision'
+              )
+                return solicitudRepo;
+              if (
+                nombre === 'SolicitudHistorialEstadoEntity' ||
+                nombre === 'solicitudes_historial_estados'
+              )
+                return historialRepo;
               return {};
             }),
           };
@@ -517,10 +613,19 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
         createQueryBuilder: jest.fn(),
       };
 
-      const module = await createMockModule({ solicitudRepo, historialRepo, dataSource });
+      const module = await createMockModule({
+        solicitudRepo,
+        historialRepo,
+        dataSource,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.devolverSolicitud('sol-001', 'Falta soporte', 'user-001', true);
+      const result = await svc.devolverSolicitud(
+        'sol-001',
+        'Falta soporte',
+        'user-001',
+        true,
+      );
 
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.DEVUELTA);
     });
@@ -600,7 +705,11 @@ describe('TravelExpensesService — Etapa 4 (RF-REC-001)', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      const result = await svc.actualizarSolicitud('sol-001', { prioridad: 'ALTA' }, true);
+      const result = await svc.actualizarSolicitud(
+        'sol-001',
+        { prioridad: 'ALTA' },
+        true,
+      );
 
       expect(result.prioridad).toBe('ALTA');
     });

@@ -16,7 +16,7 @@ import {
   CheckCircle, AlertCircle, ClipboardList, MessageSquare,
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
-  Loader2, XCircle, HardDrive, Shield,
+  Loader2, XCircle, HardDrive, Shield, UserCheck,
   Send, RotateCcw, RefreshCw, Trash2,
   Layers, BarChart3, Filter, FileDown, List,
 } from 'lucide-react';
@@ -36,6 +36,7 @@ import {
   type DisciplinaryProcessActuacion,
   type DisciplinaryProcessNote,
   type DisciplinaryProcessTask,
+  type DisciplinaryNews as ApiNoticia,
 } from '../../services/api/disciplinary.service';
 import { API_MODE, buildApiUrl } from '../../../config/environment';
 
@@ -193,7 +194,7 @@ interface Archivo {
   tipo: 'auto' | 'evidencia' | 'oficio' | 'acta';
   fecha: string;
   firmante: string;
-  estado: 'aprobado' | 'borrador' | 'pendiente' | 'en_revision' | 'devuelto';
+  estado: 'aprobado' | 'borrador' | 'pendiente' | 'en_revision' | 'devuelto' | 'notificado';
   tamaño: string;
   extension: Extension;
   version?: number;
@@ -206,6 +207,9 @@ interface Archivo {
   urlExterna?: string | null;
   archivoNombre?: string;
   fileType?: string | null;
+  tipoAuto?: string;
+  radicadorAsignadoId?: string;
+  radicadorAsignadoNombre?: string;
 }
 
 interface ModalDetallesProcesoProps {
@@ -223,6 +227,8 @@ interface ModalDetallesProcesoProps {
   onEnviarARevision?: (borrador: BorradorPendiente) => void;
   /** Callback para navegar al módulo de Revisión y Aprobación */
   onNavigateToRevision?: () => void;
+  /** Abre directamente el modal de confirmación de Envío a Jurídica */
+  abrirEnvioJuridicaDirecto?: boolean;
 }
 
 
@@ -1131,13 +1137,6 @@ function ModalConfirmarEnvioRevision({
 function formatFechaActuacion(fecha?: string | null, withTime = false): string {
   if (!fecha) return 'Sin fecha';
 
-  // Las fechas "solo día" (YYYY-MM-DD) son una fecha civil, no un instante:
-  // anclarlas a mediodía UTC evita que se corran de día al formatear en
-  // America/Bogota. Las fechas con hora (timestamps del backend) se formatean
-  // directamente, pero siempre fijando la zona horaria a America/Bogota (no la
-  // del navegador/servidor donde corre la app, que puede no coincidir con la
-  // hora real de los usuarios y era la causa de que la hora mostrada no
-  // coincidiera con la hora real del registro).
   const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const parsed = soloFecha
     ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
@@ -1145,10 +1144,12 @@ function formatFechaActuacion(fecha?: string | null, withTime = false): string {
 
   if (Number.isNaN(parsed.getTime())) return fecha;
 
+  const tieneHora = !soloFecha && (fecha.includes('T') || fecha.includes(':'));
+
   return parsed.toLocaleString(
     'es-CO',
     {
-      ...(withTime
+      ...(withTime && tieneHora
         ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
         : { year: 'numeric', month: 'short', day: '2-digit' }),
       timeZone: 'America/Bogota',
@@ -1452,12 +1453,15 @@ function ModalNuevaActuacion({
       return;
     }
 
+    const hoyStr = new Date().toISOString().split('T')[0];
+    const fechaEnvio = fechaActuacion === hoyStr ? new Date().toISOString() : fechaActuacion;
+
     await onSubmit({
       tipo,
       etapa: normalizarEtapaActuacion(etapa),
       descripcion,
       responsableNombre,
-      fechaActuacion,
+      fechaActuacion: fechaEnvio,
       observaciones,
     });
   };
@@ -2206,6 +2210,7 @@ export function ModalDetallesProceso({
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
   onHistorial, onExpediente, onActualizarProceso,
   onEnviarARevision, onNavigateToRevision,
+  abrirEnvioJuridicaDirecto,
 }: ModalDetallesProcesoProps) {
   const [tabActiva, setTabActiva] = useState<Tab>('general');
   const [busqueda,  setBusqueda]  = useState('');
@@ -2233,6 +2238,7 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [radicadoresNombres, setRadicadoresNombres] = useState<Record<string, string>>({});
   const [archivoDetalleDevolucion, setArchivoDetalleDevolucion] = useState<Archivo | null>(null);
   const [noticia, setNoticia] = useState<ApiNoticia | null>(null);
   const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
@@ -2255,6 +2261,7 @@ export function ModalDetallesProceso({
   const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
   const [mostrarModalEnvioJuridica, setMostrarModalEnvioJuridica] = useState(false);
   const [enviandoJuridica, setEnviandoJuridica] = useState(false);
+  const enviandoJuridicaRef = useRef(false);
   const [revirtiendoAprobacion, setRevirtiendoAprobacion] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
@@ -2276,6 +2283,41 @@ export function ModalDetallesProceso({
     || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim()
     || currentUser?.email
     || 'Sistema';
+  const isJefe = (currentUser?.roles || []).some((r: any) => {
+    const code = typeof r === 'string' ? r : r?.code || r?.name;
+    return code === 'JEFE_DE_LA_OCID';
+  });
+  const isRadicador = (currentUser?.roles || []).some((r: any) => {
+    const code = (typeof r === 'string' ? r : r?.code || r?.name || '').toUpperCase();
+    return code === 'SECRETARIA_RADICADOR' || code === 'RADICADOR_DISCIPLINARIO' || code === 'RADICADOR';
+  });
+  const canSendJuridica =
+    isRadicador ||
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    authService.isSuperAdmin() ||
+    (currentUser?.roles || []).some((r: any) => {
+      const code = (typeof r === 'string' ? r : r?.code || r?.name || '').toUpperCase();
+      return code === 'SUPER_ADMIN' || code === 'ADMIN';
+    });
+  const isEtapaJuzgamiento = (etapaNombre?: string): boolean => {
+    if (!etapaNombre) return false;
+    const n = etapaNombre
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase();
+    return n === 'JUZGAMIENTO' || n.includes('JUZG');
+  };
+  const esRadicadorAsignado = currentUser?.id
+    ? archivosBackend.some(a => a.tipo === 'auto' && a.radicadorAsignadoId === currentUser.id)
+    : false;
+
+  useEffect(() => {
+    if (abrirEnvioJuridicaDirecto) {
+      setMostrarModalEnvioJuridica(true);
+    }
+  }, [abrirEnvioJuridicaDirecto]);
 
   // ═══ Cargar noticia asociada ═══
   useEffect(() => {
@@ -2363,19 +2405,33 @@ export function ModalDetallesProceso({
     }
 
     try {
-      const res = await disciplinaryService.getDocumentosExpediente(proceso.id);
+      const [res, radicadores, autosList] = await Promise.all([
+        disciplinaryService.getDocumentosExpediente(proceso.id),
+        disciplinaryService.getRadicadoresDisponibles(),
+        disciplinaryService.getAutosPorProceso(proceso.id).catch(() => []),
+      ]);
+      const radicadoresNombres: Record<string, string> = {};
+      (radicadores || []).forEach((r: any) => {
+        if (r.id) radicadoresNombres[r.id] = r.nombre || r.nombreCompleto || 'Radicador';
+      });
+      setRadicadoresNombres(radicadoresNombres);
+
       const mapped: Archivo[] = (res.documentos || []).map((doc: any) => {
         const ext = (doc.archivoNombre || doc.nombre || '').split('.').pop()?.toLowerCase() || 'pdf';
-        const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(doc.tipo)
-          ? doc.tipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
-          : 'evidencia';
-        const estadoAuto = doc.metadatos?.estado;
-        const estado: Archivo['estado'] = estadoAuto === 'FIRMADO' || estadoAuto === 'NOTIFICADO' || estadoAuto === 'APROBADO'
+        const rawTipo = (doc.tipo || '').toLowerCase();
+        const tipoValido = (['auto', 'evidencia', 'oficio', 'acta'] as const).includes(rawTipo)
+          ? rawTipo as 'auto' | 'evidencia' | 'oficio' | 'acta'
+          : (doc.metadatos?.tipoAuto || rawTipo.includes('auto')) ? 'auto' : 'evidencia';
+        const estadoAuto = (doc.metadatos?.estado || doc.estado || '').toUpperCase();
+        const estado: Archivo['estado'] = estadoAuto === 'NOTIFICADO'
+          ? 'notificado'
+          : estadoAuto === 'FIRMADO' || estadoAuto === 'APROBADO'
           ? 'aprobado'
           : estadoAuto === 'EN_REVISION' || estadoAuto === 'REVISION_JEFE' ? 'en_revision'
           : estadoAuto === 'DEVUELTO' ? 'devuelto'
           : estadoAuto === 'BORRADOR' ? 'borrador'
           : 'aprobado';
+        const radicadorId = doc.metadatos?.radicadorAsignadoId;
         return {
           id: doc.id,
           nombre: doc.metadatos?.tipoAuto || doc.nombre,
@@ -2392,10 +2448,49 @@ export function ModalDetallesProceso({
           urlExterna: doc.urlExterna || null,
           archivoNombre: doc.archivoNombre || doc.nombre,
           fileType: doc.fileType || null,
+          tipoAuto: doc.metadatos?.tipoAuto || undefined,
           observacionesDevolucion: estado === 'devuelto' ? (doc.descripcion || undefined) : undefined,
           archivoDevolucionUrl: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentUrl || undefined) : undefined,
           archivoDevolucionNombre: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentName || undefined) : undefined,
+          radicadorAsignadoId: radicadorId || undefined,
+          radicadorAsignadoNombre: radicadorId ? (radicadoresNombres[radicadorId] || 'Radicador asignado') : undefined,
         };
+      });
+
+      // Asegurar que autos legales de autosList que no estén en mapped se agreguen
+      (autosList || []).forEach((autoItem: any) => {
+        const yaExiste = mapped.some(m => m.id === autoItem.id);
+        if (!yaExiste) {
+          const autoEstadoRaw = (autoItem.estado || '').toUpperCase();
+          const estado: Archivo['estado'] = autoEstadoRaw === 'NOTIFICADO'
+            ? 'notificado'
+            : autoEstadoRaw === 'FIRMADO' || autoEstadoRaw === 'APROBADO'
+            ? 'aprobado'
+            : autoEstadoRaw === 'EN_REVISION' || autoEstadoRaw === 'REVISION_JEFE' ? 'en_revision'
+            : autoEstadoRaw === 'DEVUELTO' ? 'devuelto'
+            : autoEstadoRaw === 'BORRADOR' ? 'borrador'
+            : 'aprobado';
+          mapped.push({
+            id: autoItem.id,
+            nombre: autoItem.titulo || autoItem.tipo || 'Auto',
+            numero: autoItem.numero || undefined,
+            tipo: 'auto',
+            fecha: autoItem.createdAt ? autoItem.createdAt.split('T')[0] : '',
+            firmante: autoItem.profesional?.nombreCompleto || 'Sistema',
+            estado,
+            tamaño: '0 B',
+            extension: 'pdf',
+            version: autoItem.versionActual || 1,
+            etapaProceso: autoItem.etapaActual || autoItem.etapa || '',
+            downloadUrl: autoItem.archivoUrl || null,
+            urlExterna: autoItem.archivoUrl || null,
+            archivoNombre: autoItem.titulo || `${autoItem.tipo}.pdf`,
+            fileType: 'application/pdf',
+            tipoAuto: autoItem.tipo || undefined,
+            radicadorAsignadoId: autoItem.radicadorAsignadoId || undefined,
+            radicadorAsignadoNombre: autoItem.radicadorAsignadoId ? (radicadoresNombres[autoItem.radicadorAsignadoId] || 'Radicador asignado') : undefined,
+          });
+        }
       });
 
       // ═══ Incluir archivos adjuntos de la noticia ═══ no se lo trporque duplica la evidencia
@@ -2576,7 +2671,7 @@ export function ModalDetallesProceso({
     if (mountedRef.current) setLoadingProfesionales(true);
 
     try {
-      const response = await disciplinaryService.getProfesionales();
+      const response = await disciplinaryService.getProfesionales() as any;
       let profs = response;
       if (!Array.isArray(response)) {
         if (response?.data && Array.isArray(response.data)) {
@@ -3663,6 +3758,7 @@ export function ModalDetallesProceso({
       numeroProceso: proceso.numeroProceso,
       titulo: archivo.nombre,
       plantilla: `Plantilla ${proceso.etapaActual}`,
+      tipo: archivo.tipoAuto,
       version: archivo.version || 1,
       fechaEnvio: archivo.fechaEnvioRevision || archivo.fecha,
       profesional: {
@@ -3688,18 +3784,21 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(borrador);
   }, [proceso]);
 
-  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string) => {
+  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string, radicadorAsignadoId?: string) => {
     const userId = authService.getCurrentUser()?.id;
     if (!userId) {
       toast.error('No se pudo obtener el usuario actual');
       return;
     }
     try {
-      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId);
+      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId, radicadorAsignadoId);
       const numeroAsignado = autoActualizado?.numero;
+      const radicadorNombre = radicadorAsignadoId
+        ? radicadoresNombres[radicadorAsignadoId] || 'Radicador asignado'
+        : undefined;
       const actualizarArchivo = (prev: Archivo[]) =>
         prev.map(a => a.id === archivoId
-          ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1, numero: numeroAsignado }
+          ? { ...a, estado: 'aprobado' as const, version: (a.version || 1) + 1, numero: numeroAsignado, radicadorAsignadoId: radicadorAsignadoId, radicadorAsignadoNombre: radicadorNombre }
           : a
         );
       setArchivosBackend(actualizarArchivo);
@@ -3717,22 +3816,35 @@ export function ModalDetallesProceso({
       });
     }
     setAutoEnRevisionModal(null);
-  }, []);
+  }, [radicadoresNombres]);
 
-  const handleAutoDevuelto = useCallback((archivoId: string, motivo: string, comentarios: string) => {
-    const enReal = archivosBackend.find(a => a.id === archivoId);
-    if (enReal) {
-      enReal.estado = 'devuelto';
-      enReal.observacionesDevolucion = `${motivo}: ${comentarios}`;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === archivoId ? { ...a, estado: 'devuelto' as const, observacionesDevolucion: `${motivo}: ${comentarios}` } : a
-      ));
+  const handleAutoDevuelto = useCallback(async (archivoId: string, motivo: string, comentarios: string) => {
+    const userId = authService.getCurrentUser()?.id;
+    if (!userId) {
+      toast.error('No se pudo obtener el usuario actual');
+      return;
     }
-    toast.warning('Auto devuelto para corrección', {
-      description: `El profesional debe corregir y reenviar el documento`,
-      duration: 5000,
-    });
+    const observaciones = `${motivo}${comentarios ? ` — ${comentarios}` : ''}`;
+    try {
+      await disciplinaryService.devolverAuto(archivoId, userId, observaciones);
+      const actualizarArchivo = (prev: Archivo[]) =>
+        prev.map(a =>
+          a.id === archivoId
+            ? { ...a, estado: 'devuelto' as const, observacionesDevolucion: observaciones }
+            : a
+        );
+      setArchivosBackend(actualizarArchivo);
+      setArchivosSubidos(actualizarArchivo);
+      toast.warning('Auto devuelto para corrección', {
+        description: `El profesional debe corregir y reenviar el documento`,
+        duration: 5000,
+      });
+    } catch (err: any) {
+      toast.error('Error al devolver el auto', {
+        description: err?.message || 'No se pudo conectar con el servidor. Intente nuevamente.',
+        duration: 5000,
+      });
+    }
     setAutoEnRevisionModal(null);
   }, []);
 
@@ -3753,7 +3865,10 @@ export function ModalDetallesProceso({
         requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
         requestedById: user?.id,
       });
-      await disciplinaryService.approveReassignmentRequest(solicitud.id, { approved: true });
+      await disciplinaryService.approveReassignmentRequest(solicitud.id, {
+        approved: true,
+        resolvedBy: user?.fullName || user?.email || 'Usuario del Sistema',
+      });
       toast.success('Profesional reasignado exitosamente', {
         description: `El proceso ha sido reasignado a ${nuevoProfesionalNombre}`,
         duration: 4000,
@@ -3927,6 +4042,12 @@ export function ModalDetallesProceso({
             ) : (
               <span className="flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: est.color }}>
                 {est.icon}{est.text}
+              </span>
+            )}
+            {archivo.estado === 'aprobado' && archivo.radicadorAsignadoNombre && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold border bg-purple-50 text-purple-700 border-purple-200">
+                <UserCheck style={{ width: 10, height: 10 }} />
+                {archivo.radicadorAsignadoNombre}
               </span>
             )}
           </div>
@@ -4542,32 +4663,34 @@ export function ModalDetallesProceso({
                     </div>
 
                     {/* Acciones del Proceso — botón dinámico según estado del auto de pliego */}
-                    {proceso.estadoActual === 'ACTIVO' && (() => {
+                    {!isArchivado && (() => {
                       // Preferir el auto real (tipo 'auto'); solo caer a cualquier
-                      // documento con "pliego" en el nombre si no hay auto.
-                      const esPliego = (a: Archivo) =>
-                        a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
-                        a.nombre?.includes('PLIEGO_CARGOS') ||
-                        a.nombre?.toLowerCase().includes('pliego');
+                      // documento con "pliego" o "cargo" en el nombre si no hay auto.
+                      const esPliego = (a: Archivo) => {
+                        const n = (a.nombre || '').toLowerCase();
+                        const t = (a.tipoAuto || '').toLowerCase();
+                        const f = (a.archivoNombre || '').toLowerCase();
+                        return (
+                          n.includes('pliego') ||
+                          n.includes('cargo') ||
+                          t.includes('pliego') ||
+                          t.includes('cargo') ||
+                          f.includes('pliego') ||
+                          f.includes('cargo') ||
+                          a.tipoAuto === 'AUTO_FORMULACION_PLIEGO' ||
+                          a.tipoAuto === 'PLIEGO_CARGOS'
+                        );
+                      };
+
+                      const esJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
+
                       const autoPliego =
                         archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
-                        archivosBackend.find(esPliego);
+                        archivosBackend.find(esPliego) ||
+                        (esJuzgamiento ? archivosBackend.find(a => a.tipo === 'auto' && a.estado === 'aprobado') : undefined);
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
-                            // <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                            //   <button
-                            //     onClick={() => setMostrarModalPliego(true)}
-                            //     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                            //     style={{ background: '#D97706', color: 'white' }}
-                            //   >
-                            //     <FileText className="w-4 h-4" />
-                            //     Auto Pliego de Cargos
-                            //   </button>
-                            //   <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                            //     Cierra el proceso y traslada a Oficina Jurídica
-                            //   </p>
-                            // </div>
                             null
                         ) : null;
                       }
@@ -4608,21 +4731,46 @@ export function ModalDetallesProceso({
                         );
                       }
 
+                      if (autoPliego.estado === 'notificado' || proceso.estadoActual === 'CERRADO') {
+                        return (
+                          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-center">
+                            <div className="flex items-center justify-center gap-2 text-blue-700 font-semibold text-sm">
+                              <CheckCircle className="w-4 h-4" />
+                              Enviado a Jurídica
+                            </div>
+                            <p className="text-[10px] text-blue-600 mt-1">
+                              El proceso disciplinario fue trasladado a la Oficina Jurídica y se encuentra cerrado.
+                            </p>
+                          </div>
+                        );
+                      }
+
                       if (autoPliego.estado === 'aprobado') {
                         return (
                           <div className="space-y-2">
-                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                            {canSendJuridica && esJuzgamiento && (
                               <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
                                 <button
                                   onClick={() => setMostrarModalEnvioJuridica(true)}
-                                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90 shadow-sm"
                                   style={{ background: '#2563EB', color: 'white' }}
                                 >
                                   <Send className="w-4 h-4" />
                                   Enviar a Jurídica
                                 </button>
-                                <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
-                                  Auto aprobado — listo para enviar a Oficina Jurídica
+                                <p className="text-[10px] text-center mt-1.5 font-medium" style={{ color: '#1E40AF' }}>
+                                  Auto aprobado en Juzgamiento — listo para enviar a Oficina Jurídica
+                                </p>
+                              </div>
+                            )}
+                            {!esJuzgamiento && (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
+                                <div className="flex items-center justify-center gap-2 text-amber-700 font-semibold text-sm">
+                                  <AlertCircle className="w-4 h-4" />
+                                  Esperando etapa de Juzgamiento
+                                </div>
+                                <p className="text-[10px] text-amber-600 mt-1">
+                                  El envío a Jurídica estará disponible cuando el proceso sea trasladado a la etapa de Juzgamiento.
                                 </p>
                               </div>
                             )}
@@ -5199,20 +5347,22 @@ export function ModalDetallesProceso({
                         <option value="evidencia">Evidencias</option>
                         <option value="oficio">Oficios</option>
                         <option value="acta">Actas</option>
-                      </select>
-                       {/* <button onClick={() => inputArchivoRef.current?.click()}
-                         className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white"
-                         style={{ background: '#003DA5' }}>
-                         <Upload className="w-3.5 h-3.5" />Cargar
-                       </button>
+                       </select>
+                       {(!isArchivado && (esRadicadorAsignado || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD))) && (
+                         <button onClick={() => inputArchivoRef.current?.click()}
+                           className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg text-white"
+                           style={{ background: '#003DA5' }}>
+                           <Upload className="w-3.5 h-3.5" />Cargar
+                         </button>
+                       )}
                        <input ref={inputArchivoRef} type="file" multiple className="hidden"
                          accept={EXTENSIONES_PERMITIDAS.map(e => `.${e}`).join(',')}
                          onChange={(e) => handleFilesSelected(e.target.files)} />
                        <button onClick={() => toast.info('Descargando todos...')}
                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
                          <Download className="w-3.5 h-3.5" />Todos
-                       </button> */}
-                    </div>
+                       </button>
+                     </div>
 
                     {/* ═══ Filtro por Etapa + Toggle vista agrupada ═══ */}
                     <div className="space-y-2">
@@ -5527,7 +5677,7 @@ export function ModalDetallesProceso({
                   const renderActFila = (act: ActuacionItem, idx: number, total: number, ocultarEtapa = false) => {
                     const at = TIPO_ACT[act.tipo] || { color: '#6B7280', label: act.tipo };
                     const expandida = actuacionExpandidaId === act.id;
-                    const fechaVisible = formatFechaActuacion(act.fecha);
+                    const fechaVisible = formatFechaActuacion(act.fecha, true);
                     const fechaRegistro = act.createdAt ? formatFechaActuacion(act.createdAt, true) : null;
                     const tieneObservaciones = !!act.observaciones?.trim();
 
@@ -6422,7 +6572,7 @@ export function ModalDetallesProceso({
           <ModalRevisionAuto
             borrador={autoEnRevisionModal}
             onClose={() => setAutoEnRevisionModal(null)}
-            onAprobar={(comentarios) => handleAutoAprobado(autoEnRevisionModal.id, comentarios)}
+            onAprobar={(comentarios, radicadorAsignadoId) => handleAutoAprobado(autoEnRevisionModal.id, comentarios, radicadorAsignadoId)}
             onDevolver={(motivo, comentarios, _archivos) => handleAutoDevuelto(autoEnRevisionModal.id, motivo, comentarios)}
             mostrarBotonDevolver={true}
             tituloModal="Revisión y Aprobación de Auto"
@@ -6496,13 +6646,26 @@ export function ModalDetallesProceso({
       <AnimatePresence>
         {/* Modal confirmación envío a jurídica */}
         {mostrarModalEnvioJuridica && (() => {
-          const esPliego = (a: Archivo) =>
-            a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
-            a.nombre?.includes('PLIEGO_CARGOS') ||
-            a.nombre?.toLowerCase().includes('pliego');
+          const esPliego = (a: Archivo) => {
+            const n = (a.nombre || '').toLowerCase();
+            const t = (a.tipoAuto || '').toLowerCase();
+            const f = (a.archivoNombre || '').toLowerCase();
+            return (
+              n.includes('pliego') ||
+              n.includes('cargo') ||
+              t.includes('pliego') ||
+              t.includes('cargo') ||
+              f.includes('pliego') ||
+              f.includes('cargo') ||
+              a.tipoAuto === 'AUTO_FORMULACION_PLIEGO' ||
+              a.tipoAuto === 'PLIEGO_CARGOS'
+            );
+          };
+          const esJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
           const autoPliego =
             archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
-            archivosBackend.find(esPliego);
+            archivosBackend.find(esPliego) ||
+            (esJuzgamiento ? archivosBackend.find(a => a.tipo === 'auto' && a.estado === 'aprobado') : undefined);
           return (
             <motion.div
               initial={{ opacity: 0 }}
@@ -6554,33 +6717,49 @@ export function ModalDetallesProceso({
                     <button
                       disabled={enviandoJuridica}
                       onClick={async () => {
+                        if (enviandoJuridicaRef.current) return;
                         if (!autoPliego?.id) {
                           toast.error('Error: No se pudo identificar el auto');
                           return;
                         }
                         try {
+                          enviandoJuridicaRef.current = true;
                           setEnviandoJuridica(true);
-                           const currentUser = authService.getCurrentUser();
-                           const userId = currentUser?.id || '';
-                           await disciplinaryService.sendJuridica(
-                               autoPliego.id, 
-                               userId, 
-                               currentUser?.email, 
-                               currentUser?.fullName || currentUser?.firstName
-                           );
+                          const currentUser = authService.getCurrentUser();
+                          const userId = currentUser?.id || '';
+                          await disciplinaryService.sendJuridica(
+                              autoPliego.id, 
+                              userId, 
+                              currentUser?.email, 
+                              currentUser?.fullName || currentUser?.firstName
+                          );
                           toast.success('Auto enviado a jurídica exitosamente', {
                             description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
                             duration: 5000,
                           });
                           // Reflejar el cierre para que salga de Juzgamiento y no se pueda reenviar
                           onActualizarProceso?.({ estadoActual: 'CERRADO' });
+                          window.dispatchEvent(new CustomEvent('esap:auto-enviado-juridica', {
+                            detail: { procesoId: proceso.id, autoId: autoPliego.id }
+                          }));
                           setMostrarModalEnvioJuridica(false);
                           onClose();
                         } catch (error: any) {
+                          if (error?.status === 409 || error?.message?.includes('ya fue enviado')) {
+                            toast.info('Este proceso ya se encuentra enviado a la Oficina Jurídica y archivado');
+                            onActualizarProceso?.({ estadoActual: 'CERRADO' });
+                            window.dispatchEvent(new CustomEvent('esap:auto-enviado-juridica', {
+                              detail: { procesoId: proceso.id, autoId: autoPliego.id }
+                            }));
+                            setMostrarModalEnvioJuridica(false);
+                            onClose();
+                            return;
+                          }
                           toast.error('Error al enviar a jurídica', {
                             description: error?.message || 'No se pudo conectar con el servidor.',
                           });
                         } finally {
+                          enviandoJuridicaRef.current = false;
                           setEnviandoJuridica(false);
                         }
                       }}

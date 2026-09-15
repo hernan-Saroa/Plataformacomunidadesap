@@ -48,6 +48,8 @@ import {
   DialogTitle,
 } from '@esap-mfe/shared-ui/dialog';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { useCorrectionAutoRefresh } from '../hooks/useCorrectionAutoRefresh';
+import { CorrectionDecisionResultDialog, type CorrectionDecisionResult } from './CorrectionDecisionResultDialog';
 import {
   certificadosService,
   type CorrectionCertificatePreview,
@@ -641,6 +643,8 @@ function MinimumDescriptionFeedback({
 
 export function CertificateCorrectionRequests({ canResend = false }: { canResend?: boolean }) {
   const previewSequenceRef = useRef(0);
+  const listSequenceRef = useRef(0);
+  const listRequestsRef = useRef(0);
   const [items, setItems] = useState<CertificateCorrectionRequest[]>([]);
   const [stats, setStats] = useState<CorrectionStats>(EMPTY_STATS);
   const [status, setStatus] = useState<CorrectionStatus | 'ALL'>('ALL');
@@ -650,10 +654,12 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [autoRefreshFailed, setAutoRefreshFailed] = useState(false);
   const [selected, setSelected] = useState<CertificateCorrectionRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editData, setEditData] = useState<EditableCertificate | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [decisionResult, setDecisionResult] = useState<CorrectionDecisionResult | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [rejectReason, setRejectReason] = useState('');
@@ -669,14 +675,20 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState<{ email: string } | null>(null);
 
-  const loadData = useCallback(async (showLoading = true) => {
+  const loadData = useCallback(async (showLoading = true, isCurrent = () => true) => {
+    // Background refreshes never overtake a manual load or a filter change.
+    if (!showLoading && listRequestsRef.current > 0) return;
+    const sequence = ++listSequenceRef.current;
+    listRequestsRef.current += 1;
+    const canApply = () => isCurrent() && sequence === listSequenceRef.current;
     if (showLoading) setLoading(true);
-    setLoadError('');
+    if (showLoading) setLoadError('');
     try {
       const [listResponse, statsResponse] = await Promise.all([
-        certificadosService.correcciones.listar({ page, limit: 10, status, search: search.trim() }),
-        certificadosService.correcciones.estadisticas(),
+        certificadosService.correcciones.listar({ page, limit: 10, status, search: search.trim() }, { silent: !showLoading }),
+        certificadosService.correcciones.estadisticas({ silent: !showLoading }),
       ]);
+      if (!canApply()) return;
       // ApiClient unwraps legacy responses that contain a top-level `data` key.
       // Accept that shape as well as the current paginated contract so a mixed
       // frontend/backend deployment never hides requests that were loaded.
@@ -694,19 +706,55 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
       setTotal(responseTotal);
       setTotalPages(responseTotalPages);
       setStats(statsResponse || EMPTY_STATS);
+      setLoadError('');
+      setAutoRefreshFailed(false);
+      // A concurrent decision can remove the last open item on this page.
+      if (page > responseTotalPages) setPage(responseTotalPages);
     } catch (error: any) {
-      setLoadError(error?.message || 'No fue posible consultar las solicitudes en este momento.');
+      if (!canApply()) return;
+      if (showLoading) setLoadError(error?.message || 'No fue posible consultar las solicitudes en este momento.');
+      setAutoRefreshFailed(true);
     } finally {
-      setLoading(false);
+      listRequestsRef.current -= 1;
+      if (canApply()) setLoading(false);
     }
   }, [page, search, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadData(), search ? 350 : 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      listSequenceRef.current += 1;
+    };
   }, [loadData, search]);
 
   useEffect(() => setPage(1), [status, search]);
+
+  const refreshList = useCallback(async (isCurrent: () => boolean) => {
+    await loadData(false, isCurrent);
+  }, [loadData]);
+  useCorrectionAutoRefresh(refreshList, true, false);
+
+  const refreshSelected = useCallback(async (isCurrent: () => boolean) => {
+    if (!selected) return;
+    const detail = await certificadosService.correcciones.obtener(selected.id, { silent: true });
+    if (!isCurrent() || isOpenStatus(detail.status)) return;
+    // Preserve drafts while the case is open; show the recorded decision only
+    // when another reviewer has actually finalized it.
+    setSelected(detail);
+    setEditData(toEditData(detail));
+    setApproveOpen(false);
+    setRejectOpen(false);
+    toast.info('Esta solicitud fue finalizada por otro usuario.', {
+      description: 'Se actualizó el detalle con la decisión registrada.',
+    });
+    void loadData(false);
+  }, [selected, loadData]);
+  useCorrectionAutoRefresh(
+    refreshSelected,
+    !!selected && isOpenStatus(selected.status) && !saving && !resending && !detailLoading,
+    false,
+  );
 
   const openRequest = async (request: CertificateCorrectionRequest) => {
     setDetailLoading(true);
@@ -959,7 +1007,12 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
       setEditData(toEditData(response));
       setApproveOpen(false);
       setApprovalFiles([]);
-      toast.success('Certificado corregido y enviado', { description: `El PDF fue remitido a ${response.email}.` });
+      setDecisionResult({
+        decision: 'approved',
+        requestNumber: response.request_number,
+        email: response.email || response.requester_email,
+        emailSent: response.email_sent === true,
+      });
       void loadData(false);
     } catch (error: any) {
       toast.error('No se pudo enviar el certificado corregido', { description: error?.message || 'Verifica el correo e intenta nuevamente.' });
@@ -1012,10 +1065,11 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
       setRejectOpen(false);
       setRejectReason('');
       setRejectFiles([]);
-      toast.success('Solicitud rechazada', {
-        description: response.email_sent
-          ? 'La decisión quedó registrada y el usuario fue notificado.'
-          : 'La decisión quedó registrada; no fue posible enviar el correo de aviso.',
+      setDecisionResult({
+        decision: 'rejected',
+        requestNumber: response.request_number,
+        email: response.requester_email,
+        emailSent: response.email_sent === true,
       });
       void loadData(false);
     } catch (error: any) {
@@ -1540,6 +1594,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <Dialog open={approveOpen} onOpenChange={(open: boolean) => !saving && setApproveOpen(open)}>
           <DialogContent
             overlayClassName="correction-decision-overlay"
+            onCloseAutoFocus={(event) => { if (decisionResult) event.preventDefault(); }}
             className="correction-decision-dialog w-[calc(100vw-1.5rem)] max-w-xl max-h-[92dvh] overflow-y-auto rounded-xl border border-slate-200 border-t-4 border-t-[#003DA5] bg-white p-0 shadow-2xl"
           >
             <div className="border-b border-slate-200 bg-white p-6">
@@ -1574,6 +1629,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <Dialog open={rejectOpen} onOpenChange={(open: boolean) => !saving && setRejectOpen(open)}>
           <DialogContent
             overlayClassName="correction-decision-overlay"
+            onCloseAutoFocus={(event) => { if (decisionResult) event.preventDefault(); }}
             className="correction-decision-dialog w-[calc(100vw-1.5rem)] max-w-xl max-h-[92dvh] overflow-y-auto rounded-xl border border-slate-200 border-t-4 border-t-red-600 bg-white shadow-2xl"
           >
             <DialogHeader><div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-red-50 ring-1 ring-red-100"><XCircle className="h-5 w-5 text-red-700" /></div><DialogTitle className="text-xl font-bold text-slate-900">Rechazar solicitud</DialogTitle><DialogDescription>Explica de forma clara por qué el certificado actual es correcto o por qué no procede el cambio.</DialogDescription></DialogHeader>
@@ -1600,6 +1656,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
             </div>
           </DialogContent>
         </Dialog>
+        <CorrectionDecisionResultDialog result={decisionResult} onClose={() => setDecisionResult(null)} />
         {resendDialog}
       </div>
     );
@@ -1638,7 +1695,11 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <div className="flex flex-col gap-2 border-b border-blue-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Resumen de atención</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Estado actual de las solicitudes recibidas.</p>
+            <p className="mt-0.5 text-xs text-slate-500" role="status" aria-live="polite">
+              {autoRefreshFailed
+                ? 'Actualización pendiente. Reintentando automáticamente; se conserva la última información disponible.'
+                : 'Actualización automática cada 5 segundos.'}
+            </p>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[#003DA5]">
             <CalendarDays className="h-4 w-4" /> Plazo máximo: 15 días hábiles

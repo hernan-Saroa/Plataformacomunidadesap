@@ -73,6 +73,7 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-viaticos
     frontend-mfe-programacion-academica
     frontend-mfe-gestion-infraestructura
+    frontend-mfe-chatbot
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -93,6 +94,7 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-viaticos
     frontend-mfe-programacion-academica
     frontend-mfe-gestion-infraestructura
+    frontend-mfe-chatbot
 )
 BACKEND_ENV_SERVICES=(
     api-gateway
@@ -110,6 +112,7 @@ BACKEND_ENV_SERVICES=(
     hiring-service
     academic-schedule-service
     infrastructure-management-service
+    chatbot-service
 )
 
 compose_env() {
@@ -291,6 +294,8 @@ cmd_rebuild_changed() {
     local changed_file service_dir service_name
     local rebuild_all_frontend=0
     local run_migrations=0
+    local separate_rund_ocr=0
+    local available_services
 
     if [ -z "$range" ]; then
         if ! range=$(get_git_change_range); then
@@ -316,6 +321,11 @@ cmd_rebuild_changed() {
                 run_migrations=1
                 ;;
             backend/*/.env.example)
+                ;;
+            backend/rund-ocr-service/*)
+                # Motor Python opcional definido en docker-compose.rund-ocr.yml.
+                # El nombre de su carpeta no es un servicio del Compose del ambiente.
+                separate_rund_ocr=1
                 ;;
             backend/*/*)
                 service_dir=$(echo "$changed_file" | cut -d/ -f2)
@@ -392,6 +402,10 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-gestion-infraestructura"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-chatbot/*)
+                service_name="frontend-mfe-chatbot"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -405,6 +419,24 @@ cmd_rebuild_changed() {
                 ;;
         esac
     done <<< "$changed_files"
+
+    if [ "$separate_rund_ocr" -eq 1 ]; then
+        echo -e "${YELLOW}OCR RUND: cambios detectados en el motor independiente. No se reconstruye con el Compose de este ambiente; requiere docker-compose.rund-ocr.yml y su configuración. La aplicación continúa su despliegue.${NC}"
+    fi
+
+    # Validar antes de limpiar o reconstruir: no asumir que toda carpeta es un servicio.
+    if [ ${#backend_services[@]} -gt 0 ]; then
+        if ! available_services=$(compose_env config --services); then
+            echo -e "${RED}No se pudo validar el Compose del ambiente. No se inició la reconstrucción.${NC}"
+            return 1
+        fi
+        for service_name in "${backend_services[@]}"; do
+            if ! printf '%s\n' "$available_services" | grep -Fxq -- "$service_name"; then
+                echo -e "${RED}El backend '$service_name' no está declarado en el Compose del ambiente. Revise su integración antes de desplegar. No se inició la reconstrucción.${NC}"
+                return 1
+            fi
+        done
+    fi
 
     if [ $rebuild_all_frontend -eq 1 ]; then
         frontend_services=("${FRONTEND_MFE_SERVICES[@]}")
@@ -473,6 +505,7 @@ resolve_mfe_service() {
         viaticos|mfe-viaticos|frontend-mfe-viaticos) echo "frontend-mfe-viaticos" ;;
         programacion-academica|mfe-programacion-academica|frontend-mfe-programacion-academica) echo "frontend-mfe-programacion-academica" ;;
         gestion-infraestructura|mfe-gestion-infraestructura|frontend-mfe-gestion-infraestructura) echo "frontend-mfe-gestion-infraestructura" ;;
+        chatbot|mfe-chatbot|frontend-mfe-chatbot) echo "frontend-mfe-chatbot" ;;
         *) return 1 ;;
     esac
 }
@@ -721,27 +754,27 @@ cmd_up_mfe() {
         exit 1
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado PROD...${NC}"
-    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura
+    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     restart_ssl_proxy
     echo -e "${GREEN}Frontend MFE PROD iniciado exitosamente${NC}"
 }
 
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado PROD...${NC}"
-    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura
+    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     echo -e "${GREEN}Frontend MFE PROD detenido${NC}"
 }
 
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado PROD...${NC}"
-    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura
+    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     restart_ssl_proxy
     echo -e "${GREEN}Frontend MFE PROD reiniciado${NC}"
 }
 
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado PROD:${NC}"
-    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura
+    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
 }
 
 cmd_logs_mfe() {
@@ -755,7 +788,7 @@ cmd_logs_mfe() {
         compose_env_mfe logs -f "$resolved_service"
         return
     fi
-    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura
+    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
 }
 
 cmd_rebuild_mfe() {
@@ -802,6 +835,7 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-viaticos"
         "frontend-mfe-programacion-academica"
         "frontend-mfe-gestion-infraestructura"
+        "frontend-mfe-chatbot"
     )
     echo -e "${GREEN}Selecciona un servicio frontend MFE PROD para rebuild:${NC}"
     PS3="Ingresa el número (o Ctrl+C para cancelar): "

@@ -63,18 +63,23 @@ function crearExpedienteBase(overrides: Record<string, any> = {}) {
 function configServiceMock(rol: string = 'FUNCIONARIO') {
   const obligatoriosPorRol: Record<string, string[]> = {
     FUNCIONARIO: ['CDP'],
-    CONTRATISTA: ['CDP', 'RUT', 'CERT_BANCARIA', 'SEGURIDAD_SOCIAL', 'CONTRATO_SECOP'],
+    CONTRATISTA: [
+      'CDP',
+      'RUT',
+      'CERT_BANCARIA',
+      'SEGURIDAD_SOCIAL',
+      'CONTRATO_SECOP',
+    ],
   };
   return {
-    obtenerConfiguracionPorTipo: jest.fn().mockImplementation(
-      (tipo: string) =>
-        Promise.resolve({
-          tipoComisionado: tipo,
-          documentos: (obligatoriosPorRol[tipo] || ['CDP']).map((codigo) => ({
-            tipoRequisito: 'OBLIGATORIO',
-            tipoDocumentoSoporte: { codigo, nombre: codigo, descripcion: null },
-          })),
-        }),
+    obtenerConfiguracionPorTipo: jest.fn().mockImplementation((tipo: string) =>
+      Promise.resolve({
+        tipoComisionado: tipo,
+        documentos: (obligatoriosPorRol[tipo] || ['CDP']).map((codigo) => ({
+          tipoRequisito: 'OBLIGATORIO',
+          tipoDocumentoSoporte: { codigo, nombre: codigo, descripcion: null },
+        })),
+      }),
     ),
   };
 }
@@ -93,13 +98,15 @@ function pdf(codigo: string): DocumentoSoporteEntity {
 }
 
 /** Manager simulado dentro de la transacción ACID. */
-function crearManager(mocks: {
-  expediente?: any;
-  rutas?: any[];
-  excepciones?: any[];
-  saldo?: any | null;
-  onSave?: jest.Mock;
-} = {}) {
+function crearManager(
+  mocks: {
+    expediente?: any;
+    rutas?: any[];
+    excepciones?: any[];
+    saldo?: any | null;
+    onSave?: jest.Mock;
+  } = {},
+) {
   const manager: any = {
     createQueryBuilder: jest.fn().mockReturnValue({
       setLock: jest.fn().mockReturnThis(),
@@ -107,11 +114,17 @@ function crearManager(mocks: {
       where: jest.fn().mockReturnThis(),
       getOne: jest.fn().mockResolvedValue(mocks.expediente ?? null),
     }),
-    save: mocks.onSave ?? jest.fn().mockImplementation(async (_e: any, ent: any) => ent),
-    create: jest.fn().mockImplementation((_entity: any, data: any) => data ?? {}),
+    save:
+      mocks.onSave ??
+      jest.fn().mockImplementation(async (_e: any, ent: any) => ent),
+    create: jest
+      .fn()
+      .mockImplementation((_entity: any, data: any) => data ?? {}),
     find: jest.fn().mockImplementation((entityClass: any) => {
-      if (entityClass === RutaRestringidaEntity) return Promise.resolve(mocks.rutas ?? []);
-      if (entityClass === ExcepcionTiqueteEntity) return Promise.resolve(mocks.excepciones ?? []);
+      if (entityClass === RutaRestringidaEntity)
+        return Promise.resolve(mocks.rutas ?? []);
+      if (entityClass === ExcepcionTiqueteEntity)
+        return Promise.resolve(mocks.excepciones ?? []);
       return Promise.resolve([]);
     }),
     findOne: jest.fn().mockImplementation((entityClass: any) => {
@@ -128,17 +141,19 @@ function crearManager(mocks: {
 describe('ConsolidacionService', () => {
   let service: ConsolidacionService;
 
-  const createModule = (overrides: {
-    solicitudRepo?: any;
-    documentoRepo?: any;
-    rutaRepo?: any;
-    excepcionRepo?: any;
-    saldoRepo?: any;
-    historialRepo?: any;
-    dataSource?: any;
-    configService?: any;
-    notificationClient?: any;
-  } = {}) => {
+  const createModule = (
+    overrides: {
+      solicitudRepo?: any;
+      documentoRepo?: any;
+      rutaRepo?: any;
+      excepcionRepo?: any;
+      saldoRepo?: any;
+      historialRepo?: any;
+      dataSource?: any;
+      configService?: any;
+      notificationClient?: any;
+    } = {},
+  ) => {
     const {
       solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) },
       documentoRepo = {},
@@ -156,11 +171,26 @@ describe('ConsolidacionService', () => {
     return Test.createTestingModule({
       providers: [
         ConsolidacionService,
-        { provide: getRepositoryToken(SolicitudComisionEntity), useValue: solicitudRepo },
-        { provide: getRepositoryToken(DocumentoSoporteEntity), useValue: documentoRepo },
-        { provide: getRepositoryToken(RutaRestringidaEntity), useValue: rutaRepo },
-        { provide: getRepositoryToken(ExcepcionTiqueteEntity), useValue: excepcionRepo },
-        { provide: getRepositoryToken(SaldoTiqueteEntity), useValue: saldoRepo },
+        {
+          provide: getRepositoryToken(SolicitudComisionEntity),
+          useValue: solicitudRepo,
+        },
+        {
+          provide: getRepositoryToken(DocumentoSoporteEntity),
+          useValue: documentoRepo,
+        },
+        {
+          provide: getRepositoryToken(RutaRestringidaEntity),
+          useValue: rutaRepo,
+        },
+        {
+          provide: getRepositoryToken(ExcepcionTiqueteEntity),
+          useValue: excepcionRepo,
+        },
+        {
+          provide: getRepositoryToken(SaldoTiqueteEntity),
+          useValue: saldoRepo,
+        },
         {
           provide: getRepositoryToken(SolicitudHistorialEstadoEntity),
           useValue: historialRepo,
@@ -187,16 +217,23 @@ describe('ConsolidacionService', () => {
         documentosSoporte: [pdf('CDP')],
       });
 
-      const onSave = jest.fn().mockImplementation(async (_e: any, ent: any) => ent);
+      const onSave = jest
+        .fn()
+        .mockImplementation(async (_e: any, ent: any) => ent);
       const manager = crearManager({ expediente, onSave });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
 
       const module = await createModule({ dataSource });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
 
-      const resultado = await svc.consolidarExpediente('sol-001', 'user-enlace-1');
+      const resultado = await svc.consolidarExpediente(
+        'sol-001',
+        'user-enlace-1',
+      );
 
       // Estado transicionado a SOLICITADO y respuesta de éxito.
       expect(resultado.success).toBe(true);
@@ -210,10 +247,14 @@ describe('ConsolidacionService', () => {
     });
 
     it('debe registrar la transición en solicitudes_historial_estados', async () => {
-      const expediente = crearExpedienteBase({ documentosSoporte: [pdf('CDP')] });
+      const expediente = crearExpedienteBase({
+        documentosSoporte: [pdf('CDP')],
+      });
       const manager = crearManager({ expediente });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
 
       const module = await createModule({ dataSource });
@@ -241,13 +282,22 @@ describe('ConsolidacionService', () => {
           tipoComisionado: 'CONTRATISTA',
         },
         // Falta el RUT obligatorio para contratista.
-        documentosSoporte: [pdf('CDP'), pdf('CERT_BANCARIA'), pdf('SEGURIDAD_SOCIAL'), pdf('CONTRATO_SECOP')],
+        documentosSoporte: [
+          pdf('CDP'),
+          pdf('CERT_BANCARIA'),
+          pdf('SEGURIDAD_SOCIAL'),
+          pdf('CONTRATO_SECOP'),
+        ],
       });
 
-      const onSave = jest.fn().mockImplementation(async (_e: any, ent: any) => ent);
+      const onSave = jest
+        .fn()
+        .mockImplementation(async (_e: any, ent: any) => ent);
       const manager = crearManager({ expediente, onSave });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
 
       const module = await createModule({
@@ -264,7 +314,10 @@ describe('ConsolidacionService', () => {
       } catch (error) {
         const err = error as HttpException;
         expect(err.getStatus()).toBe(422);
-        const body = err.getResponse() as { success: boolean; errors: string[] };
+        const body = err.getResponse() as {
+          success: boolean;
+          errors: string[];
+        };
         expect(body.success).toBe(false);
         expect(body.errors.some((e) => e.includes('RUT'))).toBe(true);
       }
@@ -300,7 +353,9 @@ describe('ConsolidacionService', () => {
         saldo: { id: 'saldo-1', activo: true },
       });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
 
       const module = await createModule({ dataSource });
@@ -316,7 +371,9 @@ describe('ConsolidacionService', () => {
         expect(err.getStatus()).toBe(422);
         const body = err.getResponse() as { errors: string[] };
         expect(
-          body.errors.some((e) => /excepci|excepcion|ruta corta|soporte/i.test(e)),
+          body.errors.some((e) =>
+            /excepci|excepcion|ruta corta|soporte/i.test(e),
+          ),
         ).toBe(true);
       }
       expect(expediente.estadoSolicitud).toBe('RADICADA');
@@ -353,13 +410,18 @@ describe('ConsolidacionService', () => {
         saldo: { id: 'saldo-1', activo: true },
       });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
 
       const module = await createModule({ dataSource });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
 
-      const resultado = await svc.consolidarExpediente('sol-001', 'user-enlace-1');
+      const resultado = await svc.consolidarExpediente(
+        'sol-001',
+        'user-enlace-1',
+      );
       expect(resultado.estadoSolicitud).toBe('SOLICITADO');
       expect(expediente.estadoSolicitud).toBe('SOLICITADO');
     });
@@ -372,16 +434,23 @@ describe('ConsolidacionService', () => {
         documentosSoporte: [pdf('CDP')],
       });
 
-      const onSave = jest.fn().mockImplementation(async (_e: any, ent: any) => ent);
+      const onSave = jest
+        .fn()
+        .mockImplementation(async (_e: any, ent: any) => ent);
       const manager = crearManager({ expediente, onSave });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
 
       const module = await createModule({ dataSource });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
 
-      const resultado = await svc.consolidarExpediente('sol-001', 'user-enlace-1');
+      const resultado = await svc.consolidarExpediente(
+        'sol-001',
+        'user-enlace-1',
+      );
 
       expect(resultado.success).toBe(true);
       expect(resultado.estadoSolicitud).toBe('EXTEMPORANEA');
@@ -395,7 +464,9 @@ describe('ConsolidacionService', () => {
       expect(historialGuardado).toBeDefined();
       expect(historialGuardado.estadoAnterior).toBe('RADICADA');
       expect(historialGuardado.estadoNuevo).toBe('EXTEMPORANEA');
-      expect(historialGuardado.comentarios).toContain('anticipación menor a 14 días hábiles');
+      expect(historialGuardado.comentarios).toContain(
+        'anticipación menor a 14 días hábiles',
+      );
     });
   });
 
@@ -403,7 +474,9 @@ describe('ConsolidacionService', () => {
     it('debe lanzar 404 cuando el expediente no existe', async () => {
       const manager = crearManager({ expediente: null });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
       const module = await createModule({ dataSource });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
@@ -417,7 +490,9 @@ describe('ConsolidacionService', () => {
       const expediente = crearExpedienteBase({ estadoSolicitud: 'SOLICITADO' });
       const manager = crearManager({ expediente });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
       const module = await createModule({ dataSource });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
@@ -431,7 +506,9 @@ describe('ConsolidacionService', () => {
       const expediente = crearExpedienteBase({ estadoSolicitud: 'PENDIENTE' });
       const manager = crearManager({ expediente });
       const dataSource = {
-        transaction: jest.fn().mockImplementation(async (cb: any) => cb(manager)),
+        transaction: jest
+          .fn()
+          .mockImplementation(async (cb: any) => cb(manager)),
       };
       const module = await createModule({ dataSource });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
@@ -466,7 +543,9 @@ describe('ConsolidacionService', () => {
 
       expect(resumen.esConsolidable).toBe(false);
       expect(resumen.errores.some((e) => e.includes('RUT'))).toBe(true);
-      expect(resumen.documentos.find((d) => d.codigo === 'RUT')?.cargado).toBe(false);
+      expect(resumen.documentos.find((d) => d.codigo === 'RUT')?.cargado).toBe(
+        false,
+      );
     });
 
     it('debe devolver esConsolidable=true cuando el expediente está completo', async () => {
@@ -514,13 +593,17 @@ describe('ConsolidacionService', () => {
           ],
         }),
       };
-      const solicitudRepo = { findOne: jest.fn().mockResolvedValue(expediente) };
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(expediente),
+      };
       const module = await createModule({ solicitudRepo, configService });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
 
       const resumen = await svc.obtenerResumenConsolidacion('sol-001');
       expect(resumen.esConsolidable).toBe(false);
-      expect(resumen.errores.some((e) => e.includes('Ciudad de destino'))).toBe(true);
+      expect(resumen.errores.some((e) => e.includes('Ciudad de destino'))).toBe(
+        true,
+      );
       expect(
         resumen.errores.some((e) => e.includes('Departamento de destino')),
       ).toBe(true);
@@ -548,7 +631,9 @@ describe('ConsolidacionService', () => {
           ],
         }),
       };
-      const solicitudRepo = { findOne: jest.fn().mockResolvedValue(expediente) };
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(expediente),
+      };
       const module = await createModule({ solicitudRepo, configService });
       const svc = module.get<ConsolidacionService>(ConsolidacionService);
 

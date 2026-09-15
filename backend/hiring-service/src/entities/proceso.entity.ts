@@ -6,8 +6,13 @@ import { Expediente } from './expediente.entity';
  *
  * La etapa 7 tiene dos desenlaces y ninguno es obligatorio: se adjudica
  * (EFDS-1159) o se declara desierto (EFDS-1160).
+ *
+ * `NEGADO` es un tercero y ocurre mucho antes (EFDS-1183): la Dirección revisa
+ * lo que el área radicó y dice que la contratación no procede. No es
+ * «desierto» —desierto es que el proceso salió al mercado y no hubo con quién
+ * contratar—; aquí no llegó a salir.
  */
-export type EstadoProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO';
+export type EstadoProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO';
 
 @Entity('procesos', { schema: 'hiring' })
 export class Proceso {

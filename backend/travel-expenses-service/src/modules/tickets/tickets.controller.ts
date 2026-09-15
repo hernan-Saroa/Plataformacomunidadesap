@@ -127,7 +127,9 @@ export class TicketsController {
   @ApiResponse({ status: 200, description: 'Parámetro actualizado.' })
   @ApiResponse({ status: 400, description: 'Valor fuera del rango 0-100.' })
   actualizarHolgura(@Body() dto: UpdateHolguraTiqueteDto) {
-    return this.ticketsService.actualizarParametroHolgura(dto.holguraPorcentaje);
+    return this.ticketsService.actualizarParametroHolgura(
+      dto.holguraPorcentaje,
+    );
   }
 
   // ---------- Saldos (CRUD) ----------

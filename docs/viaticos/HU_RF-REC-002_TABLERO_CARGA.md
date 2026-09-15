@@ -181,6 +181,10 @@ Base path: `/api/v1/assignments`
 - `404`: Solicitud no encontrada.
 - `401`: No autenticado.
 
+#### `GET /workload` con `?solicitudId=...`
+
+- `200`: Retorna analistas filtrados por la `dependencia_id` de la solicitud. Si la solicitud no existe o no tiene dependencia, retorna todos los analistas.
+
 #### `GET /my-requests`
 
 **Response 200:**
@@ -280,6 +284,36 @@ Base path: `/api/v1/assignments`
 | Error 404 si solicitud no existe | PASS |
 | Error 400 si analista no existe/no activo | PASS |
 
+**Archivo:** [`assignments.controller.spec.ts`](../../backend/travel-expenses-service/src/modules/assignments/__tests__/assignments.controller.spec.ts)
+
+| Test | Resultado |
+| ---- | --------- |
+| Controlador definido | PASS |
+| GET /assignments/workload sin solicitudId | PASS |
+| GET /assignments/workload con solicitudId | PASS |
+| GET /assignments/my-requests | PASS |
+| Error 400 si no hay usuario autenticado en my-requests | PASS |
+| POST /assignments/assign exitoso | PASS |
+| Error 400 si faltan campos en body | PASS |
+| Error 400 si no hay usuario autenticado en assign | PASS |
+
+**Archivo:** [`assignments.module.spec.ts`](../../backend/travel-expenses-service/src/modules/assignments/__tests__/assignments.module.spec.ts)
+
+| Test | Resultado |
+| ---- | --------- |
+| Módulo compila correctamente | PASS |
+| Exporta AssignmentsService | PASS |
+| Registra AssignmentsController | PASS |
+
+**Archivo:** [`travel-expenses.assignments.spec.ts`](../../backend/travel-expenses-service/src/modules/travel-expenses/__tests__/travel-expenses.assignments.spec.ts)
+
+| Test | Resultado |
+| ---- | --------- |
+| TravelExpensesModule incluye AssignmentsModule | PASS |
+| AssignmentsService disponible | PASS |
+| TravelExpensesService disponible | PASS |
+| TypeOrmModule con entidades de assignments | PASS |
+
 ### Frontend
 
 **Archivo:** [`TableroCargaAnalistas.test.tsx`](../../apps/mfe-viaticos/src/components/TableroCargaAnalistas.test.tsx)
@@ -290,6 +324,27 @@ Base path: `/api/v1/assignments`
 | Renderizar lista de analistas | PASS |
 | Filtrar analistas por búsqueda | PASS |
 
+**Archivo:** [`SolicitudesAsignadasAnalista.test.tsx`](../../apps/mfe-viaticos/src/components/SolicitudesAsignadasAnalista.test.tsx)
+
+| Test | Resultado |
+| ---- | --------- |
+| Mostrar estado de carga | PASS |
+| Mostrar mensaje vacío | PASS |
+| Renderizar lista de solicitudes | PASS |
+| Filtrar solicitudes por búsqueda | PASS |
+
+**Archivo:** [`viaticosService.test.ts`](../../apps/mfe-viaticos/src/services/api/viaticosService.test.ts)
+
+| Test | Resultado |
+| ---- | --------- |
+| obtenerCargaAnalistas sin solicitudId | PASS |
+| obtenerCargaAnalistas con solicitudId | PASS |
+| obtenerCargaAnalistas maneja error | PASS |
+| asignarAnalista exitoso | PASS |
+| asignarAnalista propaga error | PASS |
+| obtenerSolicitudesAsignadas exitoso | PASS |
+| obtenerSolicitudesAsignadas maneja error | PASS |
+
 ---
 
 ## 7. Despliegue
@@ -298,9 +353,14 @@ Base path: `/api/v1/assignments`
 2. Ejecutar migración `022_ajustes_modulo_viaticos.sql` en la base de datos `travel_expenses`.
 3. Ejecutar migración `023_analistas_viaticos.sql` en la base de datos `travel_expenses`.
 4. Ejecutar migración `024_rol_analista_permisos.sql` en la base de datos `travel_expenses` (requiere esquema `auth`).
-5. Verificar que el rol `SECRETARIO` exista en `auth.role` y que el permiso `travel_expenses:assign_analyst` esté vinculado.
-6. Verificar que el rol `ANALISTA` exista en `auth.role` y que el permiso `travel_expenses:view_assigned_requests` esté vinculado.
-7. Asegurar que el bypass de `SUPER_ADMIN` esté activo en [`permissions.guard.ts`](../../backend/travel-expenses-service/src/common/permissions.guard.ts).
-8. Reiniciar el servicio backend de `auth-service` para cargar la sincronización automática de analistas.
-9. Reiniciar el servicio backend de `travel-expenses-service` para cargar el nuevo módulo `AssignmentsModule`.
-10. El frontend consume los nuevos endpoints automáticamente a través de `viaticosService`.
+5. Ejecutar migración `025_analistas_viaticos_dependencia.sql` en la base de datos `travel_expenses`.
+6. Verificar que el rol `SECRETARIO` exista en `auth.role` y que el permiso `travel_expenses:assign_analyst` esté vinculado.
+7. Verificar que el rol `ANALISTA` exista en `auth.role` y que el permiso `travel_expenses:view_assigned_requests` esté vinculado.
+8. Asegurar que el bypass de `SUPER_ADMIN` esté activo en [`permissions.guard.ts`](../../backend/travel-expenses-service/src/common/permissions.guard.ts).
+9. Reiniciar el servicio backend de `auth-service` para cargar la sincronización automática de analistas.
+10. Reiniciar el servicio backend de `travel-expenses-service` para cargar el nuevo módulo `AssignmentsModule`.
+11. El frontend consume los nuevos endpoints automáticamente a través de `viaticosService`.
+
+## 8. Documentación relacionada
+
+- [`HU_RF-REC-002_PRUEBAS.md`](HU_RF-REC-002_PRUEBAS.md): estrategia, matriz de trazabilidad, fixtures, criterios de aceptación y ejecución de pruebas.

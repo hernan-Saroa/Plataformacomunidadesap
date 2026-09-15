@@ -45,6 +45,17 @@ interface Props {
    * el gestor crea que ya cerro la actividad.
    */
   onRequiereAprobacion?: (requiere: boolean) => void;
+  /**
+   * Si la devolvieron y está esperando corrección, hacia el contenedor.
+   *
+   * El panel de abajo no consulta la aprobación, así que a una actividad
+   * devuelta le seguía mostrando «Registrada» y como única salida «Anular».
+   * Este bloque decía «vuelve a registrar la actividad» y abajo no había dónde:
+   * quien la trabajó se quedaba sin camino para corregirla.
+   */
+  onDevuelta?: (devuelta: boolean) => void;
+  /** Sube de valor cuando el panel de abajo cambia el tramite, para releerlo. */
+  recargarToken?: number;
 }
 
 const boton =
@@ -79,8 +90,10 @@ export function AprobacionDeLaActividad({
   onEsconder,
   onHayDecision,
   onRequiereAprobacion,
+  onDevuelta,
+  recargarToken,
 }: Props) {
-  const a = usarAprobacion(procesoId, numeral, onCambio);
+  const a = usarAprobacion(procesoId, numeral, onCambio, recargarToken);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
 
@@ -103,6 +116,11 @@ export function AprobacionDeLaActividad({
     if (a.cargando) return;
     onRequiereAprobacion?.(a.requiereAprobacion);
   }, [a.cargando, a.requiereAprobacion, onRequiereAprobacion]);
+
+  React.useEffect(() => {
+    if (a.cargando) return;
+    onDevuelta?.(a.requiereAprobacion && a.estado === 'DEVUELTO');
+  }, [a.cargando, a.requiereAprobacion, a.estado, onDevuelta]);
 
   // Mientras carga tampoco: un bloque que aparece tarde desplaza el panel
   // justo cuando el gestor ya empezó a leerlo.
@@ -281,6 +299,8 @@ export function AprobacionDeLaActividad({
           a.puedoAprobar
             ? // Ya no se dice dónde está la decisión: la tarjeta la acompaña
               // a la vista, y si la esconde, la burbuja se la devuelve.
+              // Aquí cae también quien la trabajó, si tiene el rol: aprobar lo
+              // propio dejó de estar bloqueado.
               'Te toca resolverla.'
             : a.quienAprueba.length
               ? `Espera a ${a.quienAprueba.join(' o ')}.`

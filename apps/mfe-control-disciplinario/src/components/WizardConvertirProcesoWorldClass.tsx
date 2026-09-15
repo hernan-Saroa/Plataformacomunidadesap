@@ -44,7 +44,7 @@ export interface DatosConversion {
 
 interface Props {
   noticia: NoticiaParaConvertir;
-  onConfirmar: (datos: DatosConversion) => void;
+  onConfirmar: (datos: DatosConversion) => Promise<{ radicadoProceso: string }>;
   onCerrar: () => void;
 }
 
@@ -141,15 +141,7 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
     try {
       await new Promise(r => setTimeout(r, 600));
       const observaciones = comentario.trim();
-      // Enviar correo automáticamente al profesional asignado
-      if (seleccionado.email) {
-        await disciplinaryService.sendEmail({
-          to: seleccionado.email,
-          subject: `Nueva asignación: Proceso ${noticia.numero}`,
-          body: `Se le ha asignado el proceso ${noticia.numero}.\n\n${observaciones ? `Observaciones: ${observaciones}\n\n` : ''}Hechos: ${noticia.hechos}\n\nDenunciado: ${noticia.denunciado.nombre}`,
-        });
-      }
-      onConfirmar({
+      const resultado = await onConfirmar({
         tipoProceso: 'Disciplinario Ordinario',
         faltaPresunta: 'Por determinar',
         etapaInicial: 'Indagación Preliminar',
@@ -158,9 +150,16 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
         profesionalNombre: seleccionado.nombre,
         observaciones,
       });
+
+      if (resultado?.radicadoProceso && seleccionado.email) {
+        await disciplinaryService.sendEmail({
+          to: seleccionado.email,
+          subject: `Nueva asignación: Proceso ${resultado.radicadoProceso}`,
+          body: `Se le ha asignado el proceso ${resultado.radicadoProceso}.\n\n${observaciones ? `Observaciones: ${observaciones}\n\n` : ''}Hechos: ${noticia.hechos}\n\nDenunciado: ${noticia.denunciado.nombre}\n\nNoticia origen: ${noticia.numero}`,
+        });
+      }
     } catch (error) {
       console.error('Error al confirmar conversión:', error);
-      // Podría mostrar toast de error
     } finally {
       setEnviando(false);
     }

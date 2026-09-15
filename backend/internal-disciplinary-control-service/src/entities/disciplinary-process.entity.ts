@@ -24,6 +24,7 @@ export enum ProcessStage {
   INDAGACION = 'INDAGACION',
   FALLO = 'FALLO',
   SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
+  INHIBITORIO = 'INHIBITORIO',
 }
 
 export enum ProcessStatus {
@@ -77,13 +78,13 @@ export class DisciplinaryProcess {
    @Column({ type: 'varchar', length: 50, default: 'ACTIVO' })
    estado: string;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   fechaPrescripcion: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   fechaVencimientoEtapa: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   fechaInicioEtapa: Date | null;
 
   @Column({ type: 'text', nullable: true })
@@ -92,10 +93,10 @@ export class DisciplinaryProcess {
   @Column({ type: 'text', array: true, nullable: true })
   pruebas: string[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
   // Relación con autos
@@ -111,7 +112,7 @@ export class DisciplinaryProcess {
 
   // ✅ NUEVO: Campos para asociar proceso a otro proceso
   // Campos para cierre por Pliego de Cargos
-  @Column({ name: 'fecha_cierre', type: 'timestamp', nullable: true })
+  @Column({ name: 'fecha_cierre', type: 'timestamptz', nullable: true })
   fechaCierre: Date | null;
 
   @Column({ name: 'etapa_al_cierre', type: 'varchar', length: 100, nullable: true })
@@ -123,7 +124,7 @@ export class DisciplinaryProcess {
   @Column({ name: 'correo_juridica_enviado', type: 'boolean', default: false })
   correoJuridicaEnviado: boolean;
 
-  @Column({ name: 'correo_juridica_fecha_envio', type: 'timestamp', nullable: true })
+  @Column({ name: 'correo_juridica_fecha_envio', type: 'timestamptz', nullable: true })
   correoJuridicaFechaEnvio: Date | null;
 
   @Column({ name: 'proceso_asociado_id', type: 'uuid', nullable: true })
@@ -135,7 +136,7 @@ export class DisciplinaryProcess {
   @Column({ name: 'proceso_asociado_tipo', type: 'varchar', length: 20, nullable: true })
   procesoAsociadoTipo: 'conexo' | 'similar' | 'consolidado' | null;
 
-  @Column({ name: 'proceso_asociado_fecha', type: 'timestamp', nullable: true })
+  @Column({ name: 'proceso_asociado_fecha', type: 'timestamptz', nullable: true })
   procesoAsociadoFecha: Date | null;
 
   @Column({ name: 'proceso_asociado_justificacion', type: 'text', nullable: true })

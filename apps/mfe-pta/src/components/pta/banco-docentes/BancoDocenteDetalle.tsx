@@ -16,7 +16,7 @@ import {
   Edit2
 } from 'lucide-react';
 import { getRUNDDocente } from '../../../services/api/ptaApi';
-import { BancoDocenteAprobacion } from './BancoDocenteAprobacion';
+import { RundValidationPanel } from './RundValidationPanel';
 
 interface Props {
   docente: any;
@@ -317,10 +317,9 @@ export function BancoDocenteDetalle({ docente, onClose, onEdit }: Props) {
           )}
 
           {activeTab === 'validacion' && (
-            <BancoDocenteAprobacion
-              docenteId={docente.id || docente.docente_id}
-              docenteNombre={docente.nombre_completo || 'Docente'}
-              currentUserId={docente.usuario_id || undefined}
+            <RundValidationPanel
+              docenteId={docente.docente_id || docente.id}
+              docente={docente}
             />
           )}
         </div>

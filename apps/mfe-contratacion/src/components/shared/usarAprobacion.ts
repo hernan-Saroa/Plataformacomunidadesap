@@ -57,6 +57,17 @@ export function usarAprobacion(
   procesoId: string,
   numeral: string,
   onCambio?: () => void,
+  /**
+   * Sube de valor para releer el trámite desde fuera.
+   *
+   * El bloque del aviso y el panel que trabaja la actividad son dos montajes
+   * con su propio estado: cuando el gestor corregía una actividad devuelta y la
+   * reenviaba desde el panel, el aviso de arriba seguía creyéndola devuelta y
+   * volvía a ofrecerle corregir, sobre un registro que ya estaba vigente. El
+   * servicio lo rechazaba con «ya tiene un registro vigente», que es cierto
+   * pero no explica nada a quien acaba de guardar bien.
+   */
+  recargarToken?: number,
 ): Aprobacion {
   const [cargando, setCargando] = useState(true);
   const [requiereAprobacion, setRequiere] = useState(false);
@@ -100,7 +111,10 @@ export function usarAprobacion(
 
   useEffect(() => {
     leer();
-  }, [leer]);
+    // `recargarToken` entra a propósito: el panel de abajo cambia el estado del
+    // trámite —al registrar envía a aprobación, al corregir reenvía— y sin esto
+    // el aviso de arriba se quedaba con el estado anterior.
+  }, [leer, recargarToken]);
 
   /** Envuelve las cuatro acciones: todas avisan, refrescan y propagan igual. */
   const accion = useCallback(

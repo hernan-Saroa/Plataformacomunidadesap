@@ -1,3 +1,4 @@
+import { resolveLaborInternalGroup } from './labor-functions.utils';
 import {
   BadRequestException,
   Injectable,
@@ -493,7 +494,7 @@ export class LaborOracleIntegrationService {
       hierarchical_level: nivelJerarquico,
       position_name: cargo,
       organization_department: dependencia,
-      internal_group: grupoInterno,
+      internal_group: resolveLaborInternalGroup(grupoInterno, centroCosto),
       cost_center: centroCosto,
       email: emailInstitucional || emailPersonal,
       personal_email: emailPersonal,
@@ -678,5 +679,109 @@ export class LaborOracleIntegrationService {
     return result.rows
       .map((row) => row.suggested_certificate_request)
       .filter(Boolean);
+  }
+
+  /**
+   * Busca vinculaciones por cedula o por nombre. Alimenta la consulta de
+   * empleado de la matriz de funciones, donde el administrador necesita ver los
+   * datos EXACTOS de una persona para poder crearle el perfil que le cruce.
+   */
+  async findSuggestedRequestsBySearch(
+    term: string,
+    limit = 50,
+  ): Promise<LaborOracleSuggestedRequest[]> {
+    const cleaned = String(term ?? '').trim();
+    if (cleaned.length < 3) return [];
+
+    const digits = cleaned.replace(/\D+/g, '');
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
+
+    return await this.withConnection(async (connection, driver, config) => {
+      const conditions: string[] = [];
+      const binds: Record<string, unknown> = { limite: safeLimit };
+
+      if (digits) {
+        conditions.push(
+          "REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '') LIKE :documentoLike",
+        );
+        binds.documentoLike = `%${digits}%`;
+      }
+      conditions.push('UPPER(NOMBRE_COMPLETO) LIKE :nombreLike');
+      binds.nombreLike = `%${cleaned.toUpperCase()}%`;
+
+      const result = await connection.execute(
+        `SELECT *
+           FROM ${config.qualifiedView}
+          WHERE (${conditions.join(' OR ')})
+            AND ROWNUM <= :limite`,
+        binds,
+        { outFormat: driver.OUT_FORMAT_OBJECT },
+      );
+
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      return rows
+        .map((row) => this.buildSuggestedRequest(row))
+        .filter((item) => item?.id_number);
+    });
+  }
+
+  /**
+   * Vinculaciones vigentes en Oracle para un conjunto de cod_cargo.
+   *
+   * Alimenta el cruce de asociados de la matriz de funciones en los ambientes
+   * donde los empleados NO viven en la tabla local: `certificate_request` solo
+   * se llena bajo demanda y por documento (autoservicio y prima tecnica), asi
+   * que en PRE la matriz no tenia contra que cruzar.
+   *
+   * El filtro compara solo digitos con REGEXP_REPLACE para no depender de como
+   * venga escrito COD_CARGO en la vista (con guiones, espacios o ceros a la
+   * izquierda). La lista IN se parte en bloques porque Oracle admite maximo
+   * 1000 elementos por expresion.
+   */
+  async findSuggestedRequestsByPositionCodes(
+    codes: string[],
+    limit = 10000,
+  ): Promise<LaborOracleSuggestedRequest[]> {
+    const normalizedCodes = Array.from(
+      new Set(
+        (codes || [])
+          .map((code) => String(code ?? '').replace(/\D+/g, ''))
+          .filter(Boolean),
+      ),
+    );
+    if (!normalizedCodes.length) return [];
+
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 10000), 50000);
+
+    return await this.withConnection(async (connection, driver, config) => {
+      const collected: LaborOracleSuggestedRequest[] = [];
+
+      for (let start = 0; start < normalizedCodes.length; start += 900) {
+        const chunk = normalizedCodes.slice(start, start + 900);
+        const binds: Record<string, unknown> = { limite: safeLimit };
+        const placeholders = chunk.map((code, index) => {
+          const key = `cod${index}`;
+          binds[key] = code;
+          return `:${key}`;
+        });
+
+        const result = await connection.execute(
+          `SELECT *
+             FROM ${config.qualifiedView}
+            WHERE REGEXP_REPLACE(TO_CHAR(COD_CARGO), '[^0-9]', '') IN (${placeholders.join(', ')})
+              AND ROWNUM <= :limite`,
+          binds,
+          { outFormat: driver.OUT_FORMAT_OBJECT },
+        );
+
+        const rows = Array.isArray(result.rows) ? result.rows : [];
+        rows.forEach((row) => {
+          const suggested = this.buildSuggestedRequest(row);
+          if (suggested?.id_number) collected.push(suggested);
+        });
+      }
+
+      return collected;
+    });
   }
 }

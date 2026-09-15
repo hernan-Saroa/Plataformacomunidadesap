@@ -61,7 +61,11 @@ export type AccionTraza =
   | 'NOTIFICAR'
   // Acceso de lectura al módulo de incumplimiento: la reserva legal exige
   // bitácora de quién consultó, no solo de quién escribió (EFDS-1182).
-  | 'CONSULTAR';
+  | 'CONSULTAR'
+  // La Dirección toma un proceso de la bandeja (EFDS-1183, actividad 3.3).
+  // Acción propia y no reuso de DESIGNAR: designar es poner a otro, y aquí
+  // nadie entrega nada —quien llega primero se queda con el proceso—.
+  | 'RADICAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

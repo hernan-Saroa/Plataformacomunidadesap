@@ -20,6 +20,8 @@ const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; 
       { key: 'diploma_maestria', label: 'Diploma de maestría' },
       { key: 'diploma_doctorado', label: 'Diploma de doctorado' },
       { key: 'convalidacion_men', label: 'Convalidación MEN (títulos del exterior)' },
+      { key: 'hoja_vida_pro', label: 'Hoja de vida soportada', required: true },
+      { key: 'certificado_posdoctoral', label: 'Certificado posdoctoral' },
     ],
   },
   {
@@ -27,15 +29,23 @@ const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; 
     tipos: [
       { key: 'acto_administrativo_vinculacion', label: 'Acto administrativo de vinculación' },
       { key: 'contrato', label: 'Contrato' },
+      { key: 'resolucion_convocatoria', label: 'Resolución de convocatoria' },
+      { key: 'acto_administrativo_dedicacion', label: 'Acto administrativo de dedicación' },
+      { key: 'acto_administrativo_situacion', label: 'Acto administrativo de situación' },
+      { key: 'acto_adscripcion_territorial', label: 'Acto de adscripción territorial' },
+      { key: 'resolucion_escalafon', label: 'Resolución de escalafón' },
+      { key: 'resolucion_puntaje_salarial', label: 'Resolución de puntaje salarial' },
     ],
   },
   {
     bloque: 'ACADEMICO', label: 'Académico',
     tipos: [
+      { key: 'acto_asignacion_nucleo', label: 'Acto de asignación del núcleo temático' },
       { key: 'certificacion_investigacion', label: 'Certificación de investigación' },
       { key: 'acta_evaluacion_desempeno', label: 'Acta de evaluación de desempeño' },
     ],
   },
+  { bloque: 'TRANSVERSAL', label: 'Transversal', tipos: [{ key: 'autorizacion_habeas_data', label: 'Autorización de tratamiento de datos firmada', required: true }] },
 ];
 
 // IMPORTANTE: `Field` e `inputStyle` se definen a nivel de módulo (NO dentro del
@@ -69,6 +79,8 @@ export function AutogestionDocenteRUND() {
   // §Paso 2 — Soportes documentales retenidos en el cliente (key: `${bloque}__${tipoSoporte}`)
   const [soporteFiles, setSoporteFiles] = useState<Record<string, File>>({});
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [savedSupports, setSavedSupports] = useState<Record<string, { nombre: string; estado: string; observacion?: string }>>({});
+  const [submittedProfile, setSubmittedProfile] = useState<{ docenteId: string; personaId?: string } | null>(null);
 
   // Form State
   const [form, setForm] = useState<any>({
@@ -214,6 +226,12 @@ export function AutogestionDocenteRUND() {
       // servidor, no con el formulario: el borrador puede sobrescribir valores
       // y el puntaje ya viene enmascarado para la sesión de autogestión.
       setPerfilRund(match);
+      const saved: Record<string, { nombre: string; estado: string; observacion?: string }> = {};
+      for (const soporte of match.evidencias?.soportes || []) {
+        const tipo = ['cedula_extranjeria', 'pasaporte'].includes(soporte.tipo_soporte) ? 'documento_identidad' : soporte.tipo_soporte;
+        saved[`${soporte.bloque}__${tipo}`] = { nombre: soporte.nombre_archivo, estado: soporte.estado, observacion: soporte.correccion_requerida };
+      }
+      setSavedSupports(saved);
       // Pre-fill fields from existing record
       setForm((prev: any) => ({
           ...prev,
@@ -252,6 +270,8 @@ export function AutogestionDocenteRUND() {
         }));
     } catch (e: any) {
       console.warn('Error checking existing docente', e);
+      setSavedSupports({});
+      setPerfilRund((previous: any) => previous ? { ...previous, evidencias: undefined } : null);
       setError(e.response?.data?.message || e.message || 'Error al recuperar tus datos.');
     }
   };
@@ -282,6 +302,10 @@ export function AutogestionDocenteRUND() {
 
   // Manejo de archivos retenidos por bloque/tipo (no se suben hasta el envío final).
   const setSoporteFile = (bloque: string, tipo: string, file: File | null) => {
+    if (file && (!file.name.toLowerCase().endsWith('.pdf') || file.type !== 'application/pdf' || file.size > 10 * 1024 * 1024)) {
+      setError('Seleccione un PDF válido de máximo 10 MB.');
+      return;
+    }
     const key = `${bloque}__${tipo}`;
     setSoporteFiles(prev => {
       const next = { ...prev };
@@ -313,15 +337,22 @@ export function AutogestionDocenteRUND() {
         territorialNombre: form.territorialNombre || 'Sede Central',
         canal_origen: 'AUTOGESTION', // §5.7 — Auditoría del canal
       };
-      const res: any = await apiClient.post(`/pta/api/v1/banco-docentes/submit/${sessionToken}`, payload);
-      // El endpoint responde { success, data: { docenteId, personaId, ... } }
-      const docenteId = res?.data?.data?.docenteId || res?.data?.docenteId || res?.docenteId;
-      const personaId = res?.data?.data?.personaId || res?.data?.personaId || res?.personaId;
+      let profile = submittedProfile;
+      if (!profile) {
+        const res: any = await apiClient.post(`/pta/api/v1/banco-docentes/submit/${sessionToken}`, payload);
+        const docenteId = res?.data?.data?.docenteId || res?.data?.docenteId || res?.docenteId;
+        const personaId = res?.data?.data?.personaId || res?.data?.personaId || res?.personaId;
+        if (!docenteId) throw new Error('No se pudo confirmar el registro del perfil.');
+        profile = { docenteId, personaId };
+        setSubmittedProfile(profile);
+      }
+      const { docenteId, personaId } = profile;
 
       // Subir los soportes adjuntos al docente recién creado/actualizado.
       const entries = Object.entries(soporteFiles);
       if (docenteId && entries.length > 0) {
         let done = 0;
+        const failed: Record<string, File> = {};
         for (const [key, file] of entries) {
           const [bloque, tipoSoporte] = key.split('__');
           setUploadProgress(`Subiendo documentos (${done + 1}/${entries.length})…`);
@@ -331,11 +362,19 @@ export function AutogestionDocenteRUND() {
             autogestionToken: sessionToken || undefined,
           }, file);
           if (!(up as any)?.success) {
-            console.warn('[RUND] Falló la carga de un soporte', key, up);
+            failed[key] = file;
+          } else {
+            setSavedSupports(previous => ({ ...previous, [key]: { nombre: file.name, estado: 'Pendiente' } }));
           }
           done++;
         }
         setUploadProgress(null);
+        setSoporteFiles(failed);
+        if (Object.keys(failed).length) {
+          await checkExistingDocente(sessionToken!);
+          setError(`Sus datos quedaron guardados, pero ${Object.keys(failed).length} archivo(s) no se cargaron. Revise los PDF pendientes y vuelva a enviar para reintentar.`);
+          return;
+        }
       }
 
       // §4 — Asegurar la creación de la Carpeta Digital (es lazy; la disparamos explícitamente).
@@ -346,7 +385,7 @@ export function AutogestionDocenteRUND() {
       setStep('SUCCESS');
     } catch (err: any) {
       setUploadProgress(null);
-      setError(err.response?.data?.message || 'Error al enviar el formulario.');
+      setError(err.response?.data?.message || err.message || 'Error al enviar el formulario.');
     } finally {
       setLoading(false);
     }
@@ -730,7 +769,7 @@ export function AutogestionDocenteRUND() {
                       <input style={{ ...inputStyle, ...(isExistingDocente ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}) }} type="email" value={form.correoInstitucional} onChange={set('correoInstitucional')} placeholder="docente@esap.edu.co" readOnly={isExistingDocente} />
                     </Field>
                     <Field label="Correo Alternativo"><input style={inputStyle} type="email" value={form.correoAlternativo} onChange={set('correoAlternativo')} /></Field>
-                    <Field label="Teléfono"><input style={inputStyle} value={form.telefono} onChange={set('telefono')} /></Field>
+                    <Field label="Teléfono(s)"><input style={inputStyle} value={form.telefono} onChange={set('telefono')} inputMode="tel" maxLength={255} placeholder="3106791787 - 6723168" /></Field>
                   </div>
                 </div>
 
@@ -850,7 +889,7 @@ export function AutogestionDocenteRUND() {
                   <div>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a', fontWeight: 700 }}>Adjunta tus Documentos de Soporte</h2>
                     <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5 }}>
-                      Carga los documentos que respaldan tu información. Formatos: PDF, JPG o PNG. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
+                      Carga los documentos que respaldan tu información. Formato: PDF, máximo 10 MB por archivo. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
                     </p>
                   </div>
                 </div>
@@ -862,11 +901,18 @@ export function AutogestionDocenteRUND() {
 
                 {SOPORTES_CATALOGO.map(grupo => (
                   <div key={grupo.bloque} style={{ marginBottom: 24 }}>
-                    <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#0f172a', fontWeight: 700 }}>{grupo.label}</h3>
+                    <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#0f172a', fontWeight: 700 }}>
+                      {grupo.label}
+                      {perfilRund?.evidencias?.bloques?.find((b: any) => b.bloque === grupo.bloque)?.estado === 'Aprobado' &&
+                        <span style={{ marginLeft: 10, padding: '4px 9px', borderRadius: 20, background: '#ECFDF5', color: '#047857', fontSize: '0.72rem' }}>✓ Espacio aprobado</span>}
+                    </h3>
+                    {perfilRund?.evidencias?.bloques?.find((b: any) => b.bloque === grupo.bloque && b.estado === 'Devuelto')?.observacion &&
+                      <p style={{ color: '#B91C1C', fontSize: '0.8rem' }}>Corrección del espacio: {perfilRund.evidencias.bloques.find((b: any) => b.bloque === grupo.bloque).observacion}</p>}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {grupo.tipos.map(tipo => {
                         const key = `${grupo.bloque}__${tipo.key}`;
                         const file = soporteFiles[key];
+                        const saved = savedSupports[key];
                         return (
                           <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: file ? '#f0fdf4' : '#f8fafc', border: `1px solid ${file ? '#bbf7d0' : '#e2e8f0'}`, borderRadius: 10 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -875,6 +921,11 @@ export function AutogestionDocenteRUND() {
                                 <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
                                   {tipo.label}{tipo.required && <span style={{ color: '#ef4444' }}> *</span>}
                                 </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 3 }}>PDF · Máximo 10 MB por archivo</div>
+                                {saved && !file && <div style={{ fontSize: '0.72rem', color: saved.estado === 'Aprobado' ? '#047857' : saved.estado === 'Rechazado' ? '#B91C1C' : '#92400E' }}>
+                                  {saved.estado === 'Aprobado' ? '✓ Aprobado' : saved.estado === 'Rechazado' ? 'Devuelto' : 'Pendiente de revisión'}: {saved.nombre}
+                                  {saved.observacion && <div>Corrección requerida: {saved.observacion}</div>}
+                                </div>}
                                 {file && <div style={{ fontSize: '0.72rem', color: '#16a34a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>}
                               </div>
                             </div>
@@ -886,7 +937,7 @@ export function AutogestionDocenteRUND() {
                               ) : (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#fff', color: '#1e40af', border: '1px solid #93c5fd', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
                                   <Upload size={14} /> Adjuntar
-                                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={(e) => setSoporteFile(grupo.bloque, tipo.key, e.target.files?.[0] || null)} />
+                                  <input type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => setSoporteFile(grupo.bloque, tipo.key, e.target.files?.[0] || null)} />
                                 </label>
                               )}
                             </div>
@@ -905,8 +956,8 @@ export function AutogestionDocenteRUND() {
               {/* Footer */}
               <div style={{ padding: '16px 32px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button
+                  disabled={!!submittedProfile || loading}
                   onClick={() => { setError(null); setStep('FORM'); }}
-                  disabled={loading}
                   style={{ padding: '10px 20px', background: 'transparent', color: '#475569', border: '1.5px solid #cbd5e1', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
                   Volver a Datos
                 </button>

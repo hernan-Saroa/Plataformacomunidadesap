@@ -7,6 +7,7 @@ import {
   HttpCode,
   Logger,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -296,6 +297,12 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Get('gestion')
+  @UseGuards(PtaAuthGuard)
+  async getGestion(@Query() query: any, @Req() req: Request) {
+    return { success: true, data: await this.ptaService.getAllPTAs(query, req.ptaAuth!) };
+  }
+
   @Post(':ptaId/estado')
   @UseGuards(PtaAuthGuard)
   async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
@@ -311,8 +318,9 @@ export class PtaController {
   }
 
   @Delete(':ptaId')
-  async delete(@Param('ptaId') ptaId: string) {
-    const data = await this.ptaService.deletePTA(ptaId);
+  @UseGuards(PtaAuthGuard)
+  async delete(@Param('ptaId', new ParseUUIDPipe()) ptaId: string, @Req() req: Request) {
+    const data = await this.ptaService.deletePTAAdministrativo(ptaId, req.ptaAuth);
     return { success: true, data };
   }
 
@@ -890,6 +898,18 @@ export class PtaController {
   async getComponentesAprobacion(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesAprobacion(ptaId);
     return { success: true, data };
+  }
+
+  @Get(':ptaId/permisos-decision')
+  @UseGuards(PtaAuthGuard)
+  async getDecisionPermissions(@Param('ptaId') ptaId: string, @Req() req: Request) {
+    return { success: true, data: await this.ptaService.getDecisionPermissions(ptaId, req.ptaAuth!) };
+  }
+
+  @Get('permisos-alcance')
+  @UseGuards(PtaAuthGuard)
+  async getDecisionListScope(@Req() req: Request) {
+    return { success: true, data: await this.ptaService.getDecisionListScope(req.ptaAuth!) };
   }
 
   // Desagregado por territorial del componente "academica_territorial": cuando el

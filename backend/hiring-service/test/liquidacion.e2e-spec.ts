@@ -401,7 +401,7 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
 
     await actaInicio.suscribir(
       proceso.id,
-      { fechaReunion: haceDias(30), fechaInicio } as any,
+      { fechaInicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
       supervisor,
@@ -465,7 +465,7 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
 
     await actaInicio.suscribir(
       proceso.id,
-      { fechaReunion: inicio, fechaInicio: inicio } as any,
+      { fechaInicio: inicio, temasTratados: 'Alcance, cronograma y entregables socializados con el contratista' },
       archivo('acta-inicio.pdf'),
       'k'.repeat(64),
       supervisor,

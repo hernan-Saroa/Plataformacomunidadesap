@@ -1,9 +1,50 @@
 import { apiClient } from '../../../../shell/src/services/api';
+import { getAppOnlineStatus } from '../../../../shell/src/utils/connectivity';
 
 type ApiResult<T> = { success: boolean; data: T };
 
 const SERVICE_BASE = '/pta/api/v1';
 const PTA_BASE = SERVICE_BASE;
+
+export interface PTADecisionPermissions {
+  allowedComponents: string[];
+  allowedReviewSubsecciones: string[];
+  territorial: Record<'aprobar' | 'revisar', {
+    pairs: Array<{ territorialId: string; nivel: 'pregrado' | 'posgrado' }>;
+    reason: string | null;
+  }>;
+}
+
+export interface PTADecisionListScope {
+  configured: boolean;
+  territoriales: string[] | null;
+  programas: string[] | null;
+  cetaps: string[] | null;
+}
+
+export async function getPTADecisionListScope() {
+  try {
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/permisos-alcance`, undefined, { cache: 'no-store', skipErrorToast: true, retries: 0 });
+    return normalizeResult<PTADecisionListScope | null>(raw, null);
+  } catch {
+    return { success: false, data: null };
+  }
+}
+
+export async function getPTADecisionPermissions(ptaId: string) {
+  try {
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/permisos-decision`, undefined, { cache: 'no-store', skipErrorToast: true, retries: 0 });
+    return normalizeResult<PTADecisionPermissions | null>(raw, null);
+  } catch (error) {
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible verificar sus permisos.') };
+  }
+}
+
+function requireConnectionForDecision() {
+  if (!getAppOnlineStatus()) throw new Error('Se necesita conexión para verificar los permisos y guardar la decisión. Intente nuevamente cuando se restablezca.');
+}
 
 function normalizeResult<T>(raw: any, fallback: T): ApiResult<T> {
   if (raw !== undefined && raw !== null) {
@@ -65,9 +106,11 @@ export async function getAllPTAs(filters?: {
   programa?: string;
   nivelAprobacion?: number;
   isSuperUser?: boolean;
-}) {
+}, gestion = false) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/todos`, filters);
+    const raw = gestion
+      ? await apiClient.get<any>(`${PTA_BASE}/gestion`, filters, { cache: 'no-store', skipErrorToast: true, retries: 0 })
+      : await apiClient.get<any>(`${PTA_BASE}/todos`, filters);
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -583,7 +626,8 @@ export async function aprobarComponente(ptaId: string, data: {
   nivel?: 'pregrado' | 'posgrado';
 }) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/aprobar-componente`, data);
+    requireConnectionForDecision();
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/aprobar-componente`, data, { retries: 0 });
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -665,7 +709,8 @@ export async function revisarComponente(ptaId: string, data: {
   nivel?: 'pregrado' | 'posgrado';
 }) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/revisar-componente`, data);
+    requireConnectionForDecision();
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/revisar-componente`, data, { retries: 0 });
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -680,12 +725,18 @@ export async function revisarComponente(ptaId: string, data: {
 
 export async function deletePTA(ptaId: string) {
   try {
-    const raw = await apiClient.delete<any>(`${PTA_BASE}/${ptaId}`);
+    if (!getAppOnlineStatus()) throw new Error('Se necesita conexión para eliminar el PTA. Intente nuevamente cuando se restablezca.');
+    const raw = await apiClient.delete<any>(`${PTA_BASE}/${ptaId}`, { retries: 0, skipErrorToast: true });
     const normalized = normalizeResult<any>(raw, null);
-    return { ...asObject(raw), success: normalized.success, data: normalized.data };
+    const success = normalized.success && normalized.data?.deleted === true;
+    return {
+      success,
+      data: normalized.data,
+      message: success ? undefined : getApiErrorMessage(raw, 'No se pudo confirmar la eliminación del PTA. Intente nuevamente.'),
+    };
   } catch (error) {
     console.error('[mfe-pta][deletePTA] Error:', error);
-    return { success: false };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'Error al eliminar el PTA') };
   }
 }
 

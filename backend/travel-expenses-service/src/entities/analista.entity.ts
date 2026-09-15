@@ -1,4 +1,11 @@
-import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
 
 /**
  * Entidad que representa un analista del Grupo de Viáticos.
@@ -20,7 +27,13 @@ export class AnalistaEntity {
   @Column({ name: 'id_persona', type: 'uuid', nullable: true })
   idPersona: string | null;
 
-  @Column({ name: 'identificacion', type: 'varchar', length: 50, unique: true, nullable: true })
+  @Column({
+    name: 'identificacion',
+    type: 'varchar',
+    length: 50,
+    unique: true,
+    nullable: true,
+  })
   identificacion: string | null;
 
   @Column({ name: 'nombre_completo', type: 'varchar', length: 255 })

@@ -66,6 +66,10 @@ describe('BancoDocentesService - validacion del Canal 2 manual', () => {
       .toThrow(BadRequestException);
   });
 
+  it.each(['3106791787 - 6723168', '3106791787 - 3001234567', '+573106791787 / 6723168'])('acepta varios contactos: %s', telefono => {
+    expect(() => validate({ ...validManualPayload, telefono })).not.toThrow();
+  });
+
   it('rechaza letras en telefono o celular', () => {
     expect(() => validate({ ...validManualPayload, telefono: '300ABC4567' }))
       .toThrow(BadRequestException);

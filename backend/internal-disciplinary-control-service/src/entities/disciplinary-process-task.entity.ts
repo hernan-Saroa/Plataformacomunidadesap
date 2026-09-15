@@ -44,15 +44,15 @@ export class DisciplinaryProcessTask {
   @Column({ type: 'boolean', default: false })
   completada: boolean;
 
-  @Column({ name: 'fechaCompletada', type: 'timestamp', nullable: true })
+  @Column({ name: 'fechaCompletada', type: 'timestamptz', nullable: true })
   fechaCompletada: Date | null;
 
   @Column({ type: 'text', nullable: true })
   observaciones: string | null;
 
-  @CreateDateColumn({ name: 'createdAt' })
+  @CreateDateColumn({ name: 'createdAt', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt' })
+  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' })
   updatedAt: Date;
 }

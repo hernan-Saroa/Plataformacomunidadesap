@@ -51,6 +51,9 @@ export class RundSoporteCampoEntity {
   @Column({ name: 'estado', type: 'text', default: 'Pendiente' })
   estado: string;
 
+  @Column({ name: 'revisiones_campos', type: 'jsonb', default: () => "'{}'::jsonb" })
+  revisionesCampos: Record<string, { estado: string; observacion: string | null; documentoVersionId: string; revisadoPor: string; fechaRevision: string }>;
+
   /**
    * BR-055 — Fecha de vencimiento (solo para soportes con vigencia: certificaciones, evaluaciones).
    * null = sin caducidad (diplomas).

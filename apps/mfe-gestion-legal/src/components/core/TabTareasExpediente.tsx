@@ -87,10 +87,10 @@ export function TabTareasExpediente({
                     <button
                       onClick={() => onMarcarCompletada && onMarcarCompletada(tarea.id)}
                       disabled={tarea.estado === 'Completado' || !onMarcarCompletada}
-                      className={`w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center transition-colors ${
-                        tarea.estado === 'Completado' 
-                          ? 'bg-emerald-500 border-emerald-500 text-white cursor-default' 
-                          : 'border-gray-300 hover:border-emerald-500 hover:bg-emerald-50 text-transparent hover:text-emerald-500 cursor-pointer'
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        tarea.estado === 'Completado'
+                          ? 'bg-emerald-500 border-emerald-500 text-white cursor-default'
+                          : 'bg-white border-gray-400 hover:border-emerald-500 hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 cursor-pointer'
                       }`}
                       title={tarea.estado === 'Completado' ? 'Tarea completada' : 'Marcar como completada'}
                     >

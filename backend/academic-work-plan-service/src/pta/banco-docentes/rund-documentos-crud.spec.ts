@@ -24,7 +24,11 @@ function transaction(queryImplementation: (sql: string, params?: any[]) => any) 
   const runner = {
     connect: jest.fn().mockResolvedValue(undefined),
     startTransaction: jest.fn().mockResolvedValue(undefined),
-    query: jest.fn(queryImplementation),
+    query: jest.fn((sql: string, params?: any[]) => {
+      if (sql.includes('"Docente"') && sql.includes('FOR UPDATE')) return [docente];
+      if (sql.startsWith('SELECT id FROM') && sql.includes('WHERE id = $1')) return [{ id: params?.[0] }];
+      return queryImplementation(sql, params);
+    }),
     commitTransaction: jest.fn().mockResolvedValue(undefined),
     rollbackTransaction: jest.fn().mockResolvedValue(undefined),
     release: jest.fn().mockResolvedValue(undefined),
@@ -209,7 +213,7 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
 
     await expect(service.remove(docente.id, current.id, 'admin-3', '10.0.0.3'))
       .resolves.toEqual({ id: current.id, eliminado: true });
-    expect(storage.remove).toHaveBeenCalledWith('OPENKM', current.almacenamiento_ruta);
+    expect(storage.remove).not.toHaveBeenCalled(); // Retención de evidencia para trazabilidad.
     expect(runner.query).toHaveBeenCalledWith(
       expect.stringContaining("SET estado = 'ELIMINADO'"),
       ['admin-3', current.id],

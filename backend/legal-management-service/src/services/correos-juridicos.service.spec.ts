@@ -85,6 +85,7 @@ describe('CorreosJuridicosService', () => {
         };
         mockExpedienteRepo = {
             update: jest.fn().mockResolvedValue({ affected: 1 }),
+            query: jest.fn(),
         };
         mockConsultaRepo = {
             update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -141,7 +142,7 @@ describe('CorreosJuridicosService', () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-1', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            const result = await service.sendEmail({ to: 'destino@test.com', subject: 'Asunto', body: '<p>Hola</p>' });
+            const result = await service.sendEmail({ to: 'destino@test.com', subject: 'Asunto', body: '<p>Hola</p>', requestReadReceipt: true });
 
             expect(result.success).toBe(true);
             expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ asunto: 'Asunto', direccion: 'ENVIADO' }));
@@ -151,19 +152,30 @@ describe('CorreosJuridicosService', () => {
                 expect.stringContaining('/correos/track/open/'),
                 undefined,
                 [],
-                { requestReadReceipt: false, requestDeliveryReceipt: false },
+                { requestReadReceipt: true, requestDeliveryReceipt: false },
                 'juridica@esap.gov.co',
                 undefined,
             );
         });
 
-        it('debe inyectar pixel de tracking en el body HTML antes de enviar', async () => {
+        it('debe inyectar pixel de tracking en el body HTML cuando se solicita confirmación de entrega/lectura', async () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-2', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            await service.sendEmail({ to: 'destino@test.com', subject: 'Tracking', body: '<p>Contenido</p>' });
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Tracking', body: '<p>Contenido</p>', requestReadReceipt: true });
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('<img src="https://test.esap.gov.co/services/legal/api/v1/correos/track/open/');
+            expect(mockTrackingRepo.save).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'OPEN_PIXEL' }));
+        });
+
+        it('no debe inyectar pixel de tracking cuando no se solicita confirmación de entrega/lectura', async () => {
+            mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-2b', ...data }));
+            mockGraphService.sendEmail.mockResolvedValue(true);
+
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Sin tracking', body: '<p>Contenido</p>' });
+
+            expect(mockGraphService.sendEmail.mock.calls[0][2]).not.toContain('<img src=');
+            expect(mockTrackingRepo.save).not.toHaveBeenCalledWith(expect.objectContaining({ tipo: 'OPEN_PIXEL' }));
         });
 
         it('debe crear registros de AdjuntoCorreo por cada adjunto recibido', async () => {
@@ -239,7 +251,7 @@ describe('CorreosJuridicosService', () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-5', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            await service.sendEmail({ to: 'destino@test.com', subject: 'URL', body: '<p>Hola</p>' });
+            await service.sendEmail({ to: 'destino@test.com', subject: 'URL', body: '<p>Hola</p>', requestReadReceipt: true });
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://test.esap.gov.co/services/legal/api/v1/correos/track/open/');
         });
@@ -250,7 +262,7 @@ describe('CorreosJuridicosService', () => {
             mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-6', ...data }));
             mockGraphService.sendEmail.mockResolvedValue(true);
 
-            await service.sendEmail({ to: 'destino@test.com', subject: 'URL fallback', body: '<p>Hola</p>' });
+            await service.sendEmail({ to: 'destino@test.com', subject: 'URL fallback', body: '<p>Hola</p>', requestReadReceipt: true });
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://cors.test.esap.gov.co/services/legal/api/v1/correos/track/open/');
         });
@@ -263,7 +275,7 @@ describe('CorreosJuridicosService', () => {
             mockGraphService.sendEmail.mockResolvedValue(true);
 
             const req = { headers: { origin: 'http://172.16.202.222' } };
-            await service.sendEmail({ to: 'destino@test.com', subject: 'Dinamico', body: '<p>Hola</p>' }, req);
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Dinamico', body: '<p>Hola</p>', requestReadReceipt: true }, req);
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('http://172.16.202.222/services/legal/api/v1/correos/track/open/');
         });
@@ -277,9 +289,67 @@ describe('CorreosJuridicosService', () => {
             mockGraphService.sendEmail.mockResolvedValue(true);
 
             const req = { headers: { host: 'api-gateway-pre:3000' } };
-            await service.sendEmail({ to: 'destino@test.com', subject: 'Interno', body: '<p>Hola</p>' }, req);
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Interno', body: '<p>Hola</p>', requestReadReceipt: true }, req);
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://cors.test.esap.gov.co/services/legal/api/v1/correos/track/open/');
+        });
+    });
+
+    describe('processTrackingPixel() - acuse de recibido automático', () => {
+        it('debe notificar a JEFE_GESTION_LEGAL en la primera apertura del pixel', async () => {
+            mockTrackingRepo.findOne.mockResolvedValue({
+                id: 'track-1',
+                correoId: 'correo-1',
+                tipo: 'OPEN_PIXEL',
+                abierto: false,
+                destinatarioEmail: 'destino@test.com',
+            });
+            mockCorreoRepo.findOne.mockResolvedValue({
+                id: 'correo-1',
+                direccion: 'ENVIADO',
+                asunto: 'Asunto de prueba',
+                remitenteNombre: 'Oficina Jurídica',
+                destinatariosTo: 'destino@test.com',
+                fechaRecepcion: new Date(),
+            });
+
+            await service.processTrackingPixel('token-1', '127.0.0.1', 'jest-agent');
+            // notificarAcuseDeRecibido() se dispara sin esperarse (fire-and-forget) — dejar drenar microtasks.
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockTrackingRepo.save).toHaveBeenCalledWith(expect.objectContaining({ abierto: true }));
+            expect(mockHistorialRepo.save).toHaveBeenCalledWith(expect.objectContaining({ tipoEvento: 'CORREO_ABIERTO_EXTERNO' }));
+            expect(mockNotificationClient.notifyByRoles).toHaveBeenCalledWith(
+                ['JEFE_GESTION_LEGAL'],
+                expect.objectContaining({ tipo_notificacion: 'ACUSE_RECIBIDO_CORREO' }),
+                expect.objectContaining({ subject: expect.stringContaining('Acuse de recibido') }),
+            );
+        });
+
+        it('no debe notificar de nuevo en aperturas posteriores del mismo correo', async () => {
+            mockTrackingRepo.findOne.mockResolvedValue({
+                id: 'track-2',
+                correoId: 'correo-2',
+                tipo: 'OPEN_PIXEL',
+                abierto: true,
+                destinatarioEmail: 'destino@test.com',
+            });
+
+            await service.processTrackingPixel('token-2', '127.0.0.1', 'jest-agent');
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockHistorialRepo.save).not.toHaveBeenCalled();
+            expect(mockNotificationClient.notifyByRoles).not.toHaveBeenCalled();
+        });
+
+        it('no debe hacer nada si no existe un token de tracking (correo enviado sin solicitar confirmación)', async () => {
+            mockTrackingRepo.findOne.mockResolvedValue(null);
+
+            await service.processTrackingPixel('token-inexistente', '127.0.0.1', 'jest-agent');
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockTrackingRepo.save).not.toHaveBeenCalled();
+            expect(mockNotificationClient.notifyByRoles).not.toHaveBeenCalled();
         });
     });
 
@@ -575,6 +645,107 @@ describe('CorreosJuridicosService', () => {
             expect(mockSmartService.train).toHaveBeenCalledWith('Oficio recibido cuerpo', 'OFICIO');
             const saved = mockCorreoRepo.save.mock.calls[0][0];
             expect(saved.tipo).toBe('OFICIO');
+        });
+    });
+
+    describe('Integración con Control Interno Disciplinario (Expediente Electrónico)', () => {
+        it('registrarTransferenciaDisciplinaria: debe registrar correo y adjuntos desde transferencia directa', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue(null);
+            mockCorreoRepo.create.mockImplementation((d: any) => d);
+            mockCorreoRepo.save.mockImplementation(async (d: any) => ({ id: 'correo-transf-1', ...d }));
+            mockAdjuntoRepo.find
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([
+                    { id: 'adj-1', nombre: 'Prueba_Documental.pdf', contentType: 'application/pdf' },
+                ]);
+
+            const dto = {
+                processId: 'proc-123',
+                radicado: 'RAD-DISC-2026-001',
+                asunto: '[PLIEGO DE CARGOS] Proceso RAD-DISC-2026-001 - Traslado a Oficina Jurídica',
+                remitente: {
+                    nombre: 'Radicador Disciplinario',
+                    email: 'radicador@esap.edu.co',
+                },
+                documentos: [
+                    {
+                        id: 'ev-1',
+                        nombre: 'Prueba_Documental.pdf',
+                        tipo: 'EVIDENCIA',
+                        url: 'uploads/expedientes/2026/Prueba_Documental.pdf',
+                        contentType: 'application/pdf',
+                        tamano: 1024,
+                    },
+                ],
+            };
+
+            const result = await service.registrarTransferenciaDisciplinaria(dto);
+
+            expect(result.correo).toBeDefined();
+            expect(result.correo.asunto).toContain('RAD-DISC-2026-001');
+            expect(result.adjuntos.length).toBe(1);
+            expect(mockAdjuntoRepo.save).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    nombre: 'Prueba_Documental.pdf',
+                    contentType: 'application/pdf',
+                }),
+            );
+        });
+
+        it('sincronizarDocumentosExpedienteDisciplinario: debe hidratar adjuntos consultando schema disciplinario', async () => {
+            const correoMock = {
+                id: 'correo-disc-1',
+                asunto: '[PLIEGO DE CARGOS] Proceso RAD-2026-099 - Traslado a Oficina Jurídica',
+                cuerpoTexto: 'Contenido del correo',
+            };
+            mockCorreoRepo.findOne.mockResolvedValue(correoMock);
+            mockAdjuntoRepo.find
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([
+                    { id: 'adj-1', nombre: 'Queja.pdf' },
+                    { id: 'adj-2', nombre: 'Auto-001.pdf' },
+                ]);
+
+            mockExpedienteRepo.query
+                .mockResolvedValueOnce([{ id: 'proc-99', radicadoProceso: 'RAD-2026-099', newsId: 'news-99' }])
+                .mockResolvedValueOnce([
+                    { id: 'ev-99', nombreDocumento: 'Queja.pdf', archivoUrl: 'uploads/Queja.pdf', fileType: 'application/pdf' },
+                ])
+                .mockResolvedValueOnce([
+                    { id: 'auto-99', tipo: 'PLIEGO_CARGOS', numero: '001', firmaUrl: 'uploads/Auto.pdf', documentType: 'application/pdf' },
+                ])
+                .mockResolvedValueOnce([]);
+
+            const result = await service.sincronizarDocumentosExpedienteDisciplinario('correo-disc-1');
+
+            expect(result.length).toBe(2);
+            expect(mockAdjuntoRepo.save).toHaveBeenCalled();
+        });
+
+        it('getAttachments: debe invocar sincronizarDocumentosExpedienteDisciplinario si adjuntos está vacío y es correo disciplinario', async () => {
+            const correoMock = {
+                id: 'correo-disc-auto',
+                asunto: '[PLIEGO DE CARGOS] Proceso RAD-2026-888',
+                cuerpoTexto: '',
+            };
+            mockCorreoRepo.findOne.mockResolvedValue(correoMock);
+            mockAdjuntoRepo.find
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([
+                    { id: 'adj-auto-1', name: 'Auto_Pliego.pdf', isDisciplinarioDoc: true },
+                ]);
+
+            mockExpedienteRepo.query
+                .mockResolvedValueOnce([{ id: 'proc-888', radicado: 'RAD-2026-888' }])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([{ id: 'auto-888', tipo: 'PLIEGO_CARGOS', numero: '888', contenido: '<p>Auto</p>' }])
+                .mockResolvedValueOnce([]);
+
+            const attachments = await service.getAttachments('correo-disc-auto');
+
+            expect(mockExpedienteRepo.query).toHaveBeenCalled();
+            expect(attachments.length).toBe(1);
         });
     });
 });

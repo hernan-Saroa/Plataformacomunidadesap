@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Upload, ShieldCheck, Download } from 'lucide-react';
+import { FileText, Upload, ShieldCheck, Download, Eye } from 'lucide-react';
 import { contratacionService } from '../../services/contratacionService';
 import { Expediente } from '../../types';
+import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
 
 interface Props {
   procesoId: string;
@@ -29,6 +30,7 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
   const [expediente, setExpediente] = useState<Expediente | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
+  const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const cargar = async () => {
@@ -44,17 +46,32 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
     cargar();
   }, [procesoId, recargarToken]);
 
-  const subir = async (archivo: File) => {
+  /**
+   * Los archivos elegidos, uno tras otro.
+   *
+   * Al expediente rara vez entra un documento solo: entra el paquete que el
+   * área mandó. En serie porque cada registro es su propia transacción, y
+   * cortando en el primer fallo, que se dice con cuántos alcanzaron a entrar.
+   */
+  const subir = async (archivos: File[]) => {
     setSubiendo(true);
     setError(null);
+    let subidos = 0;
     try {
-      await contratacionService.adjuntarDocumento(procesoId, archivo);
-      await cargar();
+      for (const archivo of archivos) {
+        await contratacionService.adjuntarDocumento(procesoId, archivo);
+        subidos += 1;
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(
+        subidos > 0
+          ? `${err.message} · se adjuntaron ${subidos} de ${archivos.length}`
+          : err.message,
+      );
     } finally {
       setSubiendo(false);
       if (inputRef.current) inputRef.current.value = '';
+      if (subidos > 0) await cargar();
     }
   };
 
@@ -82,9 +99,13 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
             <input
               ref={inputRef}
               type="file"
+              multiple
               className="hidden"
               accept=".pdf,.doc,.docx,.xls,.xlsx"
-              onChange={(e) => e.target.files?.[0] && subir(e.target.files[0])}
+              onChange={(e) => {
+                const elegidos = Array.from(e.target.files ?? []);
+                if (elegidos.length) subir(elegidos);
+              }}
             />
             <button
               type="button"
@@ -146,13 +167,31 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                 </div>
 
                 {doc.descargaUrl && (
-                  <a
-                    href={contratacionService.urlDescarga(doc.descargaUrl)}
-                    className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
-                    title={`Descargar ${doc.nombre}`}
-                  >
-                    <Download className="w-4 h-4" />
-                  </a>
+                  <>
+                    {/* El expediente es donde se revisa: primero abrirlo, y
+                        bajarlo solo si hace falta tenerlo fuera. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setViendo({
+                          nombre: doc.nombre,
+                          descargaUrl: doc.descargaUrl!,
+                          detalle: `${new Date(doc.createdAt).toLocaleDateString('es-CO')} · ${doc.subidoPor ?? ''}`,
+                        })
+                      }
+                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+                      title={`Ver ${doc.nombre}`}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <a
+                      href={contratacionService.urlDescarga(doc.descargaUrl)}
+                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+                      title={`Descargar ${doc.nombre}`}
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </>
                 )}
                 {esSnapshot && (
                   <span className="shrink-0 text-[10px] font-bold text-[#003DA5] bg-[#E0EDFF] px-2 py-0.5 rounded-full">
@@ -164,6 +203,8 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
           })}
         </ul>
       )}
+
+      <VisorDocumento documento={viendo} onClose={() => setViendo(null)} />
     </div>
   );
 }

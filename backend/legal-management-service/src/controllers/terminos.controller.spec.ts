@@ -288,17 +288,25 @@ describe('TerminosController', () => {
         it('con esResuelveSolo=true debe ignorar responsableId y usar responsableKeys propios', async () => {
             const req = { headers: { 'x-user-roles': 'RESUELVE_GESTION_LEGAL', 'x-user-id': 'user-42' } };
 
-            await controller.getListado('otro-responsable', req);
+            await controller.getListado('otro-responsable', undefined, req);
 
-            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: undefined, responsableKeys: ['user-42'] });
+            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: undefined, responsableKeys: ['user-42'], estado: undefined });
         });
 
         it('sin rol de auto-restricción debe respetar el responsableId de la query', async () => {
             const req = { headers: {} };
 
-            await controller.getListado('resp-x', req);
+            await controller.getListado('resp-x', undefined, req);
 
-            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: 'resp-x', responsableKeys: undefined });
+            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: 'resp-x', responsableKeys: undefined, estado: undefined });
+        });
+
+        it('debe reenviar el filtro estado (ej. ELIMINADO) al servicio', async () => {
+            const req = { headers: {} };
+
+            await controller.getListado(undefined, 'ELIMINADO', req);
+
+            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: undefined, responsableKeys: undefined, estado: 'ELIMINADO' });
         });
     });
 
@@ -352,7 +360,13 @@ describe('TerminosController', () => {
         it('debe delegar el borrado (lógico) al servicio', async () => {
             await controller.remove('term-1');
 
-            expect(mockTerminosService.remove).toHaveBeenCalledWith('term-1');
+            expect(mockTerminosService.remove).toHaveBeenCalledWith('term-1', false);
+        });
+
+        it('con permanente=true debe indicarle al servicio un borrado real (no lógico)', async () => {
+            await controller.remove('term-1', 'true');
+
+            expect(mockTerminosService.remove).toHaveBeenCalledWith('term-1', true);
         });
     });
 

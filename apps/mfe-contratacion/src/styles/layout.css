@@ -438,6 +438,14 @@
 .min-h-\[72px\]   { min-height: 72px; }
 .min-h-\[110px\]  { min-height: 110px; }
 .max-h-\[85vh\]   { max-height: 85vh; }
+
+/* La rejilla de roles y permisos (EFDS-1183): catorce columnas de sigla y una
+   primera columna que tiene que caber el nombre del permiso con su columna del
+   formato debajo. Por debajo de 900px la tabla se desplaza dentro de su caja. */
+.max-h-\[560px\]  { max-height: 560px; }
+.min-w-\[900px\]  { min-width: 900px; }
+.min-w-\[260px\]  { min-width: 260px; }
+.w-\[46px\]       { width: 46px; }
 .max-w-\[220px\]  { max-width: 220px; }
 .pl-\[52px\]      { padding-left: 52px; }
 .left-\[27px\]    { left: 27px; }
@@ -490,3 +498,23 @@
 .focus\:ring-\[\#003DA5\]\/20:focus                 { --tw-ring-color: rgb(0 61 165 / .2); }
 .focus\:ring-\[\#003DA5\]\/30:focus                 { --tw-ring-color: rgb(0 61 165 / .3); }
 .focus-visible\:ring-\[\#003DA5\]\/40:focus-visible { --tw-ring-color: rgb(0 61 165 / .4); }
+
+/* ------------------------------------------- visor de documentos ------- */
+/* El marco ocupa todo lo que el modal le deja: alto en `vh` menos la
+   cabecera y el pie del diálogo. Va aquí y no como `h-[70vh]` por lo de
+   siempre —el valor arbitrario no se genera— y porque el visor sin alto
+   propia colapsa a cero y se ve como si el documento no hubiera cargado. */
+.visor-documento {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+.visor-marco {
+  width: 100%;
+  height: calc(100vh - 260px);
+  min-height: 320px;
+  border: 0;
+  background: rgb(248 250 252);
+}

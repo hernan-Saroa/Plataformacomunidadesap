@@ -15,6 +15,8 @@ import {
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
+import { Permitido } from '../shared/Permitido';
+import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
 interface Props {
@@ -207,15 +209,17 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
 
       {/* Qué destinos faltan lo dice el servidor: la pantalla no conoce la lista. */}
       {estado.legalizado && estado.pendientes.length > 0 && !registrando ? (
-        <Boton
-          icono={<Upload className="w-3.5 h-3.5" />}
-          onClick={() => {
-            setDatos((p) => ({ ...p, destino: estado.pendientes[0] }));
-            setRegistrando(true);
-          }}
-        >
-          Registrar publicación en {ETIQUETA_DESTINO[estado.pendientes[0]]}
-        </Boton>
+        <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+          <Boton
+            icono={<Upload className="w-3.5 h-3.5" />}
+            onClick={() => {
+              setDatos((p) => ({ ...p, destino: estado.pendientes[0] }));
+              setRegistrando(true);
+            }}
+          >
+            Registrar publicación en {ETIQUETA_DESTINO[estado.pendientes[0]]}
+          </Boton>
+        </Permitido>
       ) : null}
 
       {estado.legalizado && estado.pendientes.length === 0 ? (

@@ -1424,6 +1424,33 @@ export class CertificatesService {
       .map(({ request }) => request);
   }
 
+  /**
+   * Vinculacion FINAL que usa el certificado para una persona.
+   *
+   * No basta con `selectPreferredRequestForCertificate`: despues de elegir la
+   * vinculacion base, el certificado aplica la fuente salarial y el merge de
+   * codigos, y ese merge es el que puede reemplazar cod_cargo/cod_grade (por
+   * ejemplo, tomando el grado del encargo vigente). Quien quiera saber "con que
+   * cargo sale esta persona en su certificado" tiene que pasar por aqui: usar
+   * solo el selector devuelve el cargo base y contradice al documento impreso.
+   *
+   * Es de solo lectura y delega en las implementaciones privadas para que no
+   * existan dos criterios distintos de "cual vinculacion vale".
+   */
+  resolveRequestUsedForCertificate(
+    requests: CertificateRequest[],
+  ): CertificateRequest | null {
+    const selected = this.selectPreferredRequestForCertificate(requests);
+    if (!selected) {
+      return null;
+    }
+    const salarySource = this.selectSalarySourceForCertificate(
+      selected,
+      requests,
+    );
+    return this.mergeRequestWithSalarySource(selected, salarySource, requests);
+  }
+
   private selectPreferredRequestForCertificate(
     requests: CertificateRequest[],
   ): CertificateRequest | null {
@@ -4310,7 +4337,6 @@ export class CertificatesService {
           position_name: laborFunctions.profile?.position_name,
           department_name: laborFunctions.profile?.department_name,
           internal_group: laborFunctions.profile?.internal_group,
-          cost_center: laborFunctions.profile?.cost_center,
           functions: laborFunctions.functions,
         }
       : null;

@@ -138,3 +138,75 @@ describe('motivoDelBloqueo', () => {
     expect(motivoDelBloqueo('3.3', flujo)).toBe('Antes hay que terminar 3.1');
   });
 });
+
+/**
+ * El bloqueo circular de la etapa 3 (EFDS-1183).
+ *
+ * La secuencia exige que la anterior esté aprobada, y desde que la 3.4 la
+ * resuelve el abogado que se reparte en la 3.3, eso se muerde la cola: nadie
+ * puede aprobar porque nadie ha repartido, y nadie puede repartir porque la
+ * 3.1 sigue esperando aprobación. El proceso quedaba muerto en la bandeja.
+ *
+ * El traspaso del área a la Dirección ocurre al enviar, no al aprobar.
+ */
+describe('actividadesDisponibles · la revisión no bloquea a quien la atiende', () => {
+  const paso = (numeral: string, estado: string | null) => ({
+    numeral,
+    estado,
+    aplica: true,
+    construida: true,
+  });
+
+  const etapa3 = (estadoDeLa31: string | null) => [
+    paso('3.1', estadoDeLa31),
+    paso('3.2', null),
+    paso('3.3', null),
+    paso('3.4', null),
+    paso('3.5', null),
+  ];
+
+  it('con la 3.1 enviada, la Dirección ya puede recibir el proceso', () => {
+    const abiertas = actividadesDisponibles(etapa3('EN_REVISION'));
+
+    expect(abiertas.has('3.3')).toBe(true);
+  });
+
+  it('y la 3.4 espera a la 3.3, que es donde se reparte el abogado', () => {
+    // El orden entre las dos sí se respeta: no se decide sin haber repartido.
+    expect(actividadesDisponibles(etapa3('EN_REVISION')).has('3.4')).toBe(false);
+
+    const conLa33Hecha = [
+      paso('3.1', 'EN_REVISION'),
+      paso('3.2', null),
+      paso('3.3', 'APROBADO'),
+      paso('3.4', null),
+      paso('3.5', null),
+    ];
+    expect(actividadesDisponibles(conLa33Hecha).has('3.4')).toBe(true);
+  });
+
+  it('pero el resto del flujo sigue detenido', () => {
+    // Abrir la 3.3 no es abrirlo todo: la 3.2 es del área y la 3.5 viene
+    // después de que el estudio previo se apruebe.
+    const abiertas = actividadesDisponibles(etapa3('EN_REVISION'));
+
+    expect(abiertas.has('3.2')).toBe(false);
+    expect(abiertas.has('3.5')).toBe(false);
+  });
+
+  it('con la 3.1 a medias no se abre nada de la Dirección', () => {
+    // En borrador el proceso no ha salido del área: no hay nada que recibir.
+    const abiertas = actividadesDisponibles(etapa3('BORRADOR'));
+
+    expect(abiertas.has('3.1')).toBe(true);
+    expect(abiertas.has('3.3')).toBe(false);
+  });
+
+  it('aprobada la 3.1, el flujo sigue como siempre', () => {
+    const abiertas = actividadesDisponibles(etapa3('APROBADO'));
+
+    expect(abiertas.has('3.2')).toBe(true);
+    // Y se detiene en la primera sin terminar, que ahora es la 3.2.
+    expect(abiertas.has('3.3')).toBe(false);
+  });
+});

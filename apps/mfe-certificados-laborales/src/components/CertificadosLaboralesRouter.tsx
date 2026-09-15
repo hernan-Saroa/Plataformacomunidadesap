@@ -180,6 +180,7 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
   if (vistaActual !== 'dashboard') {
     return (
       <div className="min-h-screen bg-gray-50">
+        {vistaActual === 'solicitudes-correccion' && <Toaster position="bottom-right" richColors />}
         {/* Navegación de regreso - Mobile optimized */}
         <div className="certificate-subview-navigation sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-6 sm:py-4">
           <motion.button
