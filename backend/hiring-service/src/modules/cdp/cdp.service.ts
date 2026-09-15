@@ -23,6 +23,79 @@ import {
   tienePermiso,
 } from '../../auth/permisos';
 import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
+/**
+ * Días que una solicitud de CDP puede estar sin que nadie la atienda.
+ *
+ * Tres y no dos: la solicitud llega a una bandeja compartida de otra dirección,
+ * que no está mirando el expediente como sí lo está quien tomó el proceso. Y
+ * tres y no treinta: esto no anticipa una fecha futura, cuenta un trámite que
+ * ya está detenido. Sin CDP expedido el proceso no puede abrirse, así que lo
+ * que se acumula aquí frena la etapa 5.
+ *
+ * Un solo número para los dos sitios que lo dicen: la bandeja marca con él qué
+ * solicitudes van demoradas y el correo diario declara con él cuáles están «sin
+ * atender». Si fueran dos constantes, la pantalla y el aviso acabarían
+ * discrepando sobre la misma solicitud.
+ */
+export const TOLERANCIA_CDP_SIN_ATENDER = 3;
+
+/**
+ * Los tres montones de la bandeja, a partir de las solicitudes abiertas.
+ *
+ * Se separa del servicio porque es la decisión, no la consulta: qué es «mío» y
+ * qué está «sin tomar» es lo que hace que dos personas no trabajen la misma
+ * solicitud, y tiene que poder fijarse sin una base de datos delante.
+ *
+ * De quién es cada una se decide por `usuarioId` y no por el nombre: dos
+ * personas pueden llamarse igual, y el nombre que guarda la participación es
+ * una copia del día en que se tomó la solicitud.
+ */
+export function repartirLaBandeja(solicitudes: SolicitudEnBandeja[], usuarioId?: string) {
+  const esMia = (s: SolicitudEnBandeja) => !!usuarioId && s.financieraId === usuarioId;
+  const sinFinancieraId = ({ financieraId, ...resto }: SolicitudEnBandeja) => resto;
+
+  return {
+    sinTomar: solicitudes.filter((s) => !s.financieraId).map(sinFinancieraId),
+    mias: solicitudes.filter(esMia).map(sinFinancieraId),
+    /**
+     * Las que lleva otro compañero. No se ocultan: la bandeja es compartida y
+     * saber que algo ya está atendido —y por quién— es justo lo que evita que
+     * dos personas trabajen la misma solicitud.
+     */
+    deOtros: solicitudes.filter((s) => s.financieraId && !esMia(s)).map(sinFinancieraId),
+  };
+}
+
+/**
+ * Una solicitud de CDP tal como la ve la Dirección Financiera en su bandeja.
+ *
+ * `financieraId` es de uso interno —reparte las solicitudes en los tres
+ * montones— y no sale hacia la pantalla: allí basta con de qué montón vino y,
+ * si la lleva alguien, su nombre en `aCargoDe`.
+ */
+export interface SolicitudEnBandeja {
+  financieraId: string | null;
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  modalidad: string | null;
+  valor: number | null;
+  valorEsEstimado: boolean;
+  rubro: string | null;
+  estado: EstadoCdp;
+  solicitadoPor: string | null;
+  solicitadoAt: string;
+  diasEsperando: number;
+  demorada: boolean;
+  aCargoDe: string | null;
+}
+
+/** `numeric` llega del driver como string; la bandeja lo devuelve ya en número. */
+function aNumeroONulo(valor: string | number | null): number | null {
+  if (valor === null || valor === undefined) return null;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : null;
+}
 
 /** Actividad 4.4: el CDP cargado al expediente. */
 export const NUMERAL_ADJUNTO_CDP = '4.4';
@@ -869,6 +942,93 @@ export class CdpService {
     actividad.revisadoPor = acceso.userName;
     actividad.revisadoAt = new Date();
     await em.save(actividad);
+  }
+
+  /**
+   * La bandeja de la Dirección Financiera: su trabajo de la etapa 4, en una
+   * sola consulta y sin entrar proceso por proceso.
+   *
+   * Dos montones y no uno, porque no se atienden igual:
+   *
+   *   · `sinTomar` son las solicitudes que nadie ha recibido. Es la bandeja
+   *     compartida que decidió la 069: quien llega primero se queda con una, y
+   *     hasta que alguien lo haga el trámite está parado sin que nadie responda
+   *     por él. Es lo que hay que mirar primero.
+   *
+   *   · `mias` son las que ya tomé y todavía no cerré —`SOLICITADO` mientras no
+   *     verifico, `VERIFICADO` mientras no expido—. Un CDP expedido o rechazado
+   *     salió del trabajo pendiente y no vuelve a la bandeja.
+   *
+   * Se cuenta desde `solicitado_at`, igual que la alerta de `CDP_SIN_ATENDER`, y
+   * se marca contra la misma `TOLERANCIA_CDP_SIN_ATENDER`: lo que la pantalla
+   * llama «lleva esperando» y lo que el correo llama «sin atender» tienen que
+   * ser el mismo número, o la bandeja y el aviso discreparán sobre la misma
+   * solicitud.
+   *
+   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
+   * adición tiene su propio trámite y no entra aquí.
+   */
+  async bandeja(acceso: HiringAccess) {
+    const filas = await this.dataSource.query(
+      `SELECT p.id              AS proceso_id,
+              p.radicado        AS radicado,
+              p.objeto          AS objeto,
+              p.modalidad       AS modalidad,
+              p.valor_estimado  AS valor_estimado,
+              c.id              AS cdp_id,
+              c.estado          AS estado,
+              c.valor           AS valor,
+              c.rubro           AS rubro,
+              c.solicitado_por  AS solicitado_por,
+              c.solicitado_at   AS solicitado_at,
+              f.usuario_id      AS financiera_id,
+              f.nombre          AS financiera_nombre
+         FROM hiring.cdp c
+         JOIN hiring.procesos p ON p.id = c.proceso_id
+         LEFT JOIN hiring.participaciones_proceso f
+                ON f.proceso_id = p.id
+               AND f.papel = 'FINANCIERA'
+               AND f.estado = 'VIGENTE'
+        WHERE c.modificacion_id IS NULL
+          AND p.estado = 'EN_CURSO'
+          AND c.estado IN ('SOLICITADO', 'VERIFICADO')
+        ORDER BY c.solicitado_at ASC`,
+    );
+
+    const ahora = Date.now();
+    const solicitudes: SolicitudEnBandeja[] = filas.map((f: any) => {
+      const desde = f.solicitado_at instanceof Date ? f.solicitado_at : new Date(f.solicitado_at);
+      const diasEsperando = Math.floor((ahora - desde.getTime()) / (24 * 60 * 60 * 1000));
+
+      return {
+        /**
+         * Quién la lleva, para repartir en los tres montones de abajo. No sale
+         * hacia la pantalla: la pantalla ya sabe de qué montón vino, y `aCargoDe`
+         * le dice el nombre.
+         */
+        financieraId: f.financiera_id as string | null,
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        objeto: f.objeto,
+        modalidad: f.modalidad,
+        // El valor del CDP si ya lo tiene; si no, el estimado del proceso, que
+        // es contra lo que se va a verificar la disponibilidad.
+        valor: f.valor === null ? aNumeroONulo(f.valor_estimado) : aNumeroONulo(f.valor),
+        // Se dice cuál de los dos es para que la pantalla no presente un
+        // estimado como si ya fuera la cifra certificada.
+        valorEsEstimado: f.valor === null,
+        rubro: f.rubro,
+        estado: f.estado as EstadoCdp,
+        solicitadoPor: f.solicitado_por,
+        solicitadoAt: desde.toISOString(),
+        diasEsperando,
+        /** Si lleva más de lo tolerable parada, que es lo que alarma el correo. */
+        demorada: diasEsperando > TOLERANCIA_CDP_SIN_ATENDER,
+        aCargoDe: f.financiera_nombre ?? null,
+      };
+    });
+
+    return repartirLaBandeja(solicitudes, acceso.userId);
   }
 
   /** El CDP con el aviso de si alcanza a cubrir el valor estimado. */

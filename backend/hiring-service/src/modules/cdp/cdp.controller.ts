@@ -125,3 +125,34 @@ export class CdpController {
     return this.service.rechazar(procesoId, dto, getHiringAccess(req));
   }
 }
+
+/**
+ * La bandeja de la Dirección Financiera.
+ *
+ * Ruta propia y no colgada de `procesos/:id` porque la bandeja no es de un
+ * proceso: es la lista de los que esperan. Colgarla de uno obligaría a tener un
+ * proceso a mano para poder preguntar cuáles hay, que es justo lo que no se
+ * sabe todavía.
+ *
+ * Tampoco cuelga de `procesos` a secas: ese controlador tiene un `@Get(':id')`
+ * con `ParseUUIDPipe`, así que `/procesos/bandeja` se estrellaría contra el
+ * pipe antes de llegar aquí.
+ */
+@ApiTags('CDP')
+@Controller('cdp')
+export class BandejaCdpController {
+  constructor(private readonly service: CdpService) {}
+
+  @Get('bandeja')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
+  @ApiOperation({
+    summary: 'Etapa 4 · Las solicitudes de CDP que esperan a la Financiera',
+    description:
+      'Tres montones: las que nadie ha tomado, las que llevo yo y las que lleva otro. ' +
+      'Solo lo abierto —SOLICITADO y VERIFICADO—: un CDP expedido o rechazado salió del trabajo pendiente.',
+  })
+  bandeja(@Req() req: any) {
+    return this.service.bandeja(getHiringAccess(req));
+  }
+}

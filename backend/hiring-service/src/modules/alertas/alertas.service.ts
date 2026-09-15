@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 
 import { HiringAccess } from '../../auth/hiring-access';
 import { ParticipacionService } from '../participacion/participacion.service';
+import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
 
 /** Cuántos días antes se avisa, si nadie lo dice. */
 export const ANTICIPACION_POR_DEFECTO = 30;
@@ -23,13 +24,14 @@ export const TOLERANCIA_SIN_ABOGADO = 2;
 /**
  * Días que una solicitud de CDP puede estar sin que nadie la atienda.
  *
- * Tres y no dos: la solicitud llega a una bandeja compartida de otra dirección,
- * que no está mirando el expediente como sí lo está quien tomó el proceso. Y
- * tres y no treinta por lo mismo que en el caso anterior: esto no anticipa una
- * fecha futura, cuenta un trámite que ya está detenido. Sin CDP expedido el
- * proceso no puede abrirse, así que lo que se acumula aquí frena la etapa 5.
+ * Vive en `cdp.service` y se reexporta aquí para no romper a quien ya la
+ * importaba de este archivo. Se mudó cuando la bandeja de la Financiera pasó a
+ * marcar con ella qué solicitudes van demoradas: importarla desde el CDP habría
+ * cerrado el ciclo `cdp → alertas → participacion → cdp`, y el umbral es una
+ * regla del CDP —cuánto puede esperar una solicitud— que la alerta usa, no al
+ * revés.
  */
-export const TOLERANCIA_CDP_SIN_ATENDER = 3;
+export { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
 
 /**
  * Plazo legal para liquidar de común acuerdo: cuatro meses desde que el
