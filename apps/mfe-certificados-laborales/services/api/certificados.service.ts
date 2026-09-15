@@ -240,6 +240,7 @@ export type LaborFunctionProfileHintApi = {
 };
 
 export type LaborPersonLookupItemApi = {
+  certificate_dependency?: string;
   origen: 'local' | 'oracle';
   full_name: string | null;
   id_number: string | null;

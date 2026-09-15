@@ -38,6 +38,81 @@ export class LaborCertificatePermissionsService {
     }
   }
 
+  /**
+   * Devuelve los destinatarios activos que hoy tienen habilitado un permiso, a
+   * través de cualquiera de sus roles activos. Se usa para avisar por correo a
+   * quienes gestionan un tipo de trámite sin depender de un rol fijo: si un día
+   * el permiso se asigna a otro rol, el aviso lo sigue automáticamente.
+   *
+   * El correo sale de la persona asociada al usuario y, si no la tiene, se cae
+   * al username cuando este ya es una dirección válida. Los resultados vienen
+   * deduplicados por correo (un mismo usuario puede tener el permiso por varios
+   * roles a la vez).
+   *
+   * El nombre se arma con nombre + apellidos, que es lo que muestra Gestión de
+   * Personas, y solo se cae a `nom_largo` cuando esos campos vienen vacíos:
+   * algunas fichas de `auth.personas` tienen el `nom_largo` desactualizado
+   * respecto del usuario real al que están asociadas.
+   */
+  async findActiveRecipientsWithPermission(
+    permissionCode: string,
+  ): Promise<Array<{ email: string; name: string | null }>> {
+    const rows = await this.dataSource.query(
+      `SELECT
+          COALESCE(
+            NULLIF(TRIM(person.dir_email), ''),
+            NULLIF(TRIM(app_user.username), '')
+          ) AS email,
+          COALESCE(
+            NULLIF(
+              TRIM(
+                CONCAT_WS(
+                  ' ',
+                  NULLIF(TRIM(person.nom_tercero), ''),
+                  NULLIF(TRIM(person.pri_apellido), ''),
+                  NULLIF(TRIM(person.seg_apellido), '')
+                )
+              ),
+              ''
+            ),
+            NULLIF(TRIM(person.nom_largo), '')
+          ) AS name
+         FROM auth."user" app_user
+         INNER JOIN auth.user_roles user_role
+           ON user_role.id_user = app_user.id_user
+          AND COALESCE(user_role.is_active, TRUE) = TRUE
+         INNER JOIN auth.role role
+           ON role.id = user_role.id_rol
+          AND role.is_active = TRUE
+         INNER JOIN auth.role_permissions role_permission
+           ON role_permission.id_rol = role.id
+          AND COALESCE(role_permission.is_active, TRUE) = TRUE
+         INNER JOIN auth.permission permission
+           ON permission.id_permission = role_permission.id_permission
+          AND permission.is_active = TRUE
+         LEFT JOIN auth.personas person
+           ON person.id_person = app_user.id_person
+        WHERE COALESCE(app_user.is_active, FALSE) = TRUE
+          AND permission.code = $1`,
+      [permissionCode],
+    );
+
+    const byEmail = new Map<string, { email: string; name: string | null }>();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const email = String(row?.email || '').trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
+      const key = email.toLowerCase();
+      const existing = byEmail.get(key);
+      const name = String(row?.name || '').trim() || null;
+      if (!existing) {
+        byEmail.set(key, { email, name });
+      } else if (!existing.name && name) {
+        existing.name = name;
+      }
+    }
+    return Array.from(byEmail.values());
+  }
+
   private extractSignedRoleCodes(roles: unknown): string[] {
     const source = Array.isArray(roles) ? roles : [roles];
     return Array.from(

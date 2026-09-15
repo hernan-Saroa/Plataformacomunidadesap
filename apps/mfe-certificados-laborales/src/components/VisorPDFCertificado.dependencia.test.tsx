@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import React from 'react';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../services/api/certificados.service', () => ({
   certificadosService: {
@@ -7,7 +9,51 @@ vi.mock('../../services/api/certificados.service', () => ({
   },
 }));
 
-import { resolverCentroCosto } from './VisorPDFCertificado';
+vi.mock('qrcode.react', () => ({ QRCodeCanvas: () => null }));
+
+import { resolverCentroCosto, VisorPDFCertificado } from './VisorPDFCertificado';
+
+afterEach(cleanup);
+
+describe('vista previa de [DEPENDENCIA] con encargo', () => {
+  const certificado = (extra = {}) => ({
+    consecutivo: 'PRUEBA', observations: 'E', cod_cargo: '202812', cod_grade: '12',
+    internal_group: 'Grupo del encargo', department: 'Dependencia del encargo',
+    position_location: 'Ubicacion del encargo',
+    empleado: {
+      nombre: 'Persona de prueba', documento: '123', email: '',
+      cargo: 'Profesional Especializado', dependencia: 'Dependencia del encargo',
+      tipoVinculacion: 'Cra. Administrativa', fechaVinculacion: '2024-05-14',
+      grado: '12', salario: 5099764,
+    },
+    fechaSolicitud: '2026-09-15', estado: 'VALID', templateType: 'administrador' as const,
+    templateSnapshot: {
+      certificateContentHtml: '<p>DEP:[DEPENDENCIA]</p><p>CARGO:[CARGO]</p><p>GRUPO:[GRUPO]</p><p>DATO7:[DATO7]</p>',
+    },
+    ...extra,
+  });
+
+  it.each((['administrador', 'docente'] as const).flatMap(templateType => [
+    { templateType, certificate_dependency: 'Grupo del nombramiento' },
+    { templateType, request: { certificate_dependency: 'Grupo del nombramiento', internal_group: 'Grupo del encargo' } },
+  ]))('imprime la dependencia normal recibida del backend y conserva el encargo ($templateType)', async (extra) => {
+    render(<VisorPDFCertificado isOpen onClose={() => {}} certificado={certificado(extra)} />);
+    expect((await screen.findAllByText('DEP:Grupo del nombramiento')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/CARGO:Profesional Especializado.*2028.*\(E\)/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('GRUPO:Ubicacion del encargo').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('DATO7:Grupo del encargo').length).toBeGreaterThan(0);
+  });
+
+  it('conserva el respaldo cuando el backend no indica otra vinculacion', async () => {
+    render(<VisorPDFCertificado isOpen onClose={() => {}} certificado={certificado()} />);
+    expect((await screen.findAllByText('DEP:Grupo del encargo')).length).toBeGreaterThan(0);
+  });
+
+  it('no rellena una dependencia normal vacia con el grupo del encargo', async () => {
+    render(<VisorPDFCertificado isOpen onClose={() => {}} certificado={certificado({ certificate_dependency: '' })} />);
+    expect((await screen.findAllByText('DEP:')).length).toBeGreaterThan(0);
+  });
+});
 
 /**
  * La vista previa y las descargas del certificado se arman EN EL FRONTEND: este

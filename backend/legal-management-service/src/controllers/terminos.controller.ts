@@ -38,8 +38,11 @@ export class TerminosController {
      * corrida horaria del cron. Va sin await (igual que las demás notificaciones del flujo)
      * para no demorar la respuesta al usuario.
      */
-    private evaluarAlertasEnSegundoPlano(terminoId: string): void {
-        this.alertasVencimiento.verificarTerminoInmediato(terminoId).catch(() => undefined);
+    private evaluarAlertasEnSegundoPlano(
+        terminoId: string,
+        opciones?: { rearmar?: 'personalizada' | 'todas' },
+    ): void {
+        this.alertasVencimiento.verificarTerminoInmediato(terminoId, opciones).catch(() => undefined);
     }
 
 
@@ -146,6 +149,19 @@ export class TerminosController {
 
     @Patch(':id')
     async update(@Param('id') id: string, @Body() body: any) {
+        // Cualquier cambio que mueva el "cuándo avisar" debe contrastarse de una contra la
+        // fecha de vencimiento, en vez de esperar a la próxima corrida del cron:
+        //   - la fecha de vencimiento en sí ⇒ plazo nuevo, se reevalúan TODOS los umbrales;
+        //   - la anticipación personalizada ⇒ solo se reevalúa ese umbral propio.
+        // Estos campos solo llegan cuando el usuario los edita explícitamente, así que su
+        // sola presencia en el body basta como señal.
+        const cambioFechaVencimiento = 'fechaVencimiento' in body;
+        const configuroAlertaPersonalizada = 'horasAnticipacionAlertaPersonalizada' in body;
+        const rearmar = cambioFechaVencimiento
+            ? ('todas' as const)
+            : configuroAlertaPersonalizada
+                ? ('personalizada' as const)
+                : undefined;
         // Limpiar UUIDs vacíos y el centinela "sin-asignar" para evitar error de Postgres
         if (body.responsableId !== undefined && (!body.responsableId || body.responsableId.trim() === '' || body.responsableId === 'sin-asignar')) {
             body.responsableId = null;
@@ -160,7 +176,7 @@ export class TerminosController {
             body.fechaBase = parseFechaBogota(body.fechaBase, 'inicio');
         }
         const actualizado = await this.terminosService.update(id, body);
-        this.evaluarAlertasEnSegundoPlano(id);
+        this.evaluarAlertasEnSegundoPlano(id, { rearmar });
         return actualizado;
     }
 
