@@ -1387,9 +1387,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const isSuperUserEffective = auth.isSuperUser || perfil.rol === 'admin';
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
     if (isSuperUserEffective) return [...PTA_COMPONENT_KEYS];
-    return (permisos.componentesAprobables || [])
+    return [...new Set([...(permisos.componentesAprobables || []),
+      ...(permisos.componentesRevisables || []).map(key => key.split(':')[0])])]
       .filter((key): key is PTAComponentKey => PTA_COMPONENT_KEYS.includes(key as PTAComponentKey));
-  }, [isSuperUserEffective, permisos.componentesAprobables]);
+  }, [isSuperUserEffective, permisos.componentesAprobables, permisos.componentesRevisables]);
   const shouldRestrictByComponentPermission = !isSuperUserEffective && visibleComponentKeys.length > 0;
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
 
@@ -1401,8 +1402,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
    */
   const bulkApprovalGroups = useMemo(() => {
     if (isSuperUserEffective) return PTA_BULK_APPROVAL_GROUPS;
-    return PTA_BULK_APPROVAL_GROUPS.filter(g => g.componentKeys.some(k => visibleComponentKeySet.has(k)));
-  }, [isSuperUserEffective, visibleComponentKeySet]);
+    return PTA_BULK_APPROVAL_GROUPS.filter(g => g.componentKeys.some(k => permisos.componentesAprobables?.includes(k)));
+  }, [isSuperUserEffective, permisos.componentesAprobables]);
 
   // Unión de todos los componentes que le corresponden al usuario actual según su
   // rol/permisos (los mismos que alimentan los botones de "Aprobar componentes de
@@ -2099,7 +2100,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     const reportPtaId = showReporteR01 ? selectedPTA?.id : null;
     const [ptaRes, statsRes, reportRes, scopeRes] = await Promise.all([
-      getAllPTAs(ptaFilters).catch(() => ({ success: false, data: null })),
+      getAllPTAs(ptaFilters, true).catch(() => ({ success: false, data: null })),
       getPTAEstadisticas(periodoConsulta).catch(() => ({ success: false, data: null })),
       reportPtaId ? getPTAById(reportPtaId).catch(() => null) : Promise.resolve(null),
       getPTADecisionListScope().catch(() => ({ success: false, data: null })),
@@ -2255,6 +2256,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     // Apply territorial filter for Jefatura role — filtra por territoriales de las ASIGNATURAS del PTA
     if (filtroTerritorialEfectivo && filtroTerritorialEfectivo.length > 0) {
       result = result.filter((p: any) => {
+        if (Array.isArray(p.componentes_en_alcance)) return p.componentes_en_alcance.length > 0;
         const norm = (value: unknown) => String(value ?? '').normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
         const scope = new Set(filtroTerritorialEfectivo.map(norm));
@@ -2269,17 +2271,19 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     // Apply program filter for Decanatura role
     if (filtroProgramaEfectivo && filtroProgramaEfectivo.length > 0) {
       result = result.filter((p: any) =>
+        (Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 :
         filtroProgramaEfectivo.includes(p.programa_id) ||
         filtroProgramaEfectivo.some(pid =>
           [p.programa, ...(p.programasAsignaturas || [])].some(value => value?.toLowerCase().includes(pid.toLowerCase()))
-        )
+        ))
       );
     }
     if (shouldRestrictByComponentPermission) {
-      result = result.filter((p: any) => hasAnyComponentApprovalData(p, visibleComponentKeys));
+      result = result.filter((p: any) => Array.isArray(p.componentes_en_alcance)
+        ? p.componentes_en_alcance.length > 0 : hasAnyComponentApprovalData(p, visibleComponentKeys));
     }
     if (decisionListScope?.configured && decisionListScope.cetaps) {
-      result = result.filter(p => decisionListScope.cetaps!.some(cetap =>
+      result = result.filter(p => Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 : decisionListScope.cetaps!.some(cetap =>
         [p.cetap, ...(p.cetapsAsignaturas || [])].some(value => String(value || '').toLowerCase() === cetap.toLowerCase())));
     }
     return result;

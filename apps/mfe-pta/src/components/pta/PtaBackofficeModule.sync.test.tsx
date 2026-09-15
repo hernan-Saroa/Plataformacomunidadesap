@@ -5,7 +5,7 @@ import { deletePTA, getAllPTAs, getPTADecisionListScope } from '../../services/a
 import { toast } from 'sonner';
 
 const sync = vi.hoisted(() => ({ options: null as any, isSuperUser: false, rol: 'jefatura', permissions: {
-  nivelAprobacion: 1, puedeAprobar: true, componentesAprobables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
+  nivelAprobacion: 1, puedeAprobar: true, componentesAprobables: [] as string[], componentesRevisables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
 } }));
 vi.mock('../../hooks/usePTARealtimeSync', () => ({
   usePTARealtimeSync: (options: any) => { sync.options = options; return { lastSyncTime: 'sync', unreadEvents: [], unreadCount: 0 }; },
@@ -47,6 +47,8 @@ beforeEach(() => {
   sync.isSuperUser = false;
   sync.rol = 'jefatura';
   sync.permissions.filtroTerritorial = undefined;
+  sync.permissions.componentesAprobables = [];
+  sync.permissions.componentesRevisables = [];
   vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: false, territoriales: null, programas: null, cetaps: null } });
   vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: pendientes });
 });
@@ -171,7 +173,7 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Aprobación').textContent).toContain('1');
   });
 
-  it('el alcance global del rol prevalece sobre la seccional personal y los contadores cambian al restringirlo', async () => {
+  it('el alcance vigente del servidor prevalece sobre el filtro local y actualiza los contadores', async () => {
     sync.permissions.filtroTerritorial = ['900014'];
     vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: true, territoriales: null, programas: null, cetaps: null } });
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
@@ -189,5 +191,29 @@ describe('listado y contadores del backoffice', () => {
     expect(screen.queryByText('Docente uno')).toBeNull();
     expect(tab('Todos').textContent).toContain('1');
     expect(tab('Aprobación').textContent).toContain('1');
+  });
+
+  it('un revisor puro de docencia no ve PTA de otros componentes ni botones de aprobación masiva', async () => {
+    sync.permissions.componentesRevisables = ['academica_territorial:general'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
+      { ...pendientes[0], docencia_por_componente: { academica_territorial: 40 } },
+      { ...pendientes[1], docencia_por_componente: { academica_territorial: 0 }, horas_investigacion: 100 },
+    ] });
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(screen.queryByText('Docente dos')).toBeNull();
+    expect(tab('Todos').textContent).toContain('1');
+    expect(getAllPTAs).toHaveBeenCalledWith(expect.objectContaining({ periodo: '2026-1' }), true);
+  });
+
+  it('respeta un componente autorizado por el servidor sin aplicar encima el filtro de otro rol', async () => {
+    sync.permissions.componentesAprobables = ['academica_territorial', 'investigacion'];
+    sync.permissions.filtroTerritorial = ['Meta'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
+      { ...pendientes[0], componentes_en_alcance: ['investigacion'], territoriales_docencia_ids: ['Caldas'], horas_investigacion: 100 },
+    ] });
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(tab('Todos').textContent).toContain('1');
   });
 });

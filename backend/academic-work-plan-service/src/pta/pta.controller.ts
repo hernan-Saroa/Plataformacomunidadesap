@@ -297,6 +297,12 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Get('gestion')
+  @UseGuards(PtaAuthGuard)
+  async getGestion(@Query() query: any, @Req() req: Request) {
+    return { success: true, data: await this.ptaService.getAllPTAs(query, req.ptaAuth!) };
+  }
+
   @Post(':ptaId/estado')
   @UseGuards(PtaAuthGuard)
   async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
