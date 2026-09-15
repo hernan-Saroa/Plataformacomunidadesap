@@ -54,6 +54,7 @@ interface CertificadoLaboral {
   position_location?: string;
   observations?: string;
   department?: string;
+  certificate_dependency?: string;
   cod_cargo?: string;
   cod_grade?: string;
   campus?: string;
@@ -316,6 +317,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       position_location: grupoRaw,
       observations: cert.observations || cert.request?.observations,
       department: ubicacionRaw,
+      certificate_dependency: cert.is_corrected
+        ? undefined
+        : cert.request?.certificate_dependency ?? cert.certificate_dependency,
       // Centro de costo (grupo interno): [DEPENDENCIA] lo prioriza sobre la
       // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
       // previa cae al department y contradice al PDF del backend.
@@ -1325,7 +1329,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Dependencia */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.empleado.dependencia || cert.department || cert.position_location || ''}</p>
+                          <p className="text-sm text-gray-900">{cert.certificate_dependency ?? (cert.empleado.dependencia || cert.department || cert.position_location || '')}</p>
                         </td>
 
                         {/* Fecha Solicitud */}

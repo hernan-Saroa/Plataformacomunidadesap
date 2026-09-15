@@ -25,6 +25,12 @@ import {
   parseLaborFunctionsRaw,
   resolveLaborInternalGroup,
 } from './labor-functions.utils';
+import {
+  attachLaborOrganizationContexts,
+  buildLaborOrganizationContext,
+  withLaborOrganization,
+  type LaborContextRequest,
+} from './labor-organization-context.utils';
 
 export type LaborFunctionProfilePayload = {
   positionCode?: string | number;
@@ -59,7 +65,7 @@ export type LaborFunctionProfilePayload = {
  * (`LaborOracleSuggestedRequest`), de modo que ambas fuentes pasan por la MISMA
  * funcion de resolucion y no pueden dar resultados distintos.
  */
-export type LaborMatchableRequest = {
+export type LaborMatchableRequest = LaborContextRequest & {
   cod_cargo?: string | null;
   cod_grade?: string | null;
   base_position_code?: string | null;
@@ -165,6 +171,8 @@ export class LaborFunctionsService {
       const rows =
         await this.laborOracleIntegrationService.findSuggestedRequestsByPositionCodes(
           codes,
+          10000,
+          true,
         );
       this.oracleCache = {
         key,
@@ -536,6 +544,7 @@ export class LaborFunctionsService {
     request: LaborMatchableRequest,
     profiles: LaborFunctionProfile[],
   ): LaborFunctionResolution {
+    request = withLaborOrganization(request);
     const combinedCode = normalizeCombinedPositionCode(
       request.cod_cargo,
       request.cod_grade,
@@ -663,6 +672,11 @@ export class LaborFunctionsService {
           // campo el filtro veia undefined y el badge contaba tambien las
           // inactivas, contradiciendo al modal de asociados.
           status: true,
+          observations: true,
+          position_category: true,
+          hiring_date: true,
+          request_date: true,
+          created_at: true,
           cod_cargo: true,
           cod_grade: true,
           base_position_code: true,
@@ -700,7 +714,9 @@ export class LaborFunctionsService {
         countable.push(row);
       });
 
-      countable.forEach((request) => {
+      const localIdentities = new Set(requests.map(row => this.associationIdentity(row)));
+      const related = [...requests, ...oracle.rows.filter(row => !localIdentities.has(this.associationIdentity(row)))];
+      attachLaborOrganizationContexts(countable, related).forEach((request) => {
         const combinedCode = normalizeCombinedPositionCode(
           request.cod_cargo,
           request.cod_grade,
@@ -785,6 +801,7 @@ export class LaborFunctionsService {
         email: true,
         campus: true,
         status: true,
+        observations: true,
         hiring_date: true,
         request_date: true,
         created_at: true,
@@ -805,6 +822,11 @@ export class LaborFunctionsService {
     });
 
     const oracle = await this.loadOracleRequests([profile.combined_code]);
+
+    const localIdentities = new Set(requests.map(row => this.associationIdentity(row)));
+    const related = [...requests, ...oracle.rows.filter(row => !localIdentities.has(this.associationIdentity(row)))];
+    const localWithContext = attachLaborOrganizationContexts(requests, related).map(withLaborOrganization);
+    const oracleWithContext = attachLaborOrganizationContexts(oracle.rows, related).map(withLaborOrganization);
 
     const serialize = (
       request: any,
@@ -848,11 +870,11 @@ export class LaborFunctionsService {
     const serialized: Array<ReturnType<typeof serialize>> = [];
     const seenIdentities = new Set<string>();
 
-    requests.filter(matches).forEach((request) => {
+    localWithContext.filter(matches).forEach((request) => {
       seenIdentities.add(this.associationIdentity(request));
       serialized.push(serialize(request, 'local'));
     });
-    oracle.rows.filter(matches).forEach((row) => {
+    oracleWithContext.filter(matches).forEach((row) => {
       const identity = this.associationIdentity(row);
       // La misma persona puede venir de las dos fuentes: la local manda porque
       // trae numero de solicitud y estado reales.
@@ -1020,7 +1042,7 @@ export class LaborFunctionsService {
           rows[0];
         return {
           origen: rows.length === 1 ? origen : ((elegida as any).id ? 'local' : 'oracle'),
-          row: elegida,
+          row: { ...elegida, ...buildLaborOrganizationContext(elegida, rows) },
           vinculaciones: rows.length,
         };
       },
@@ -1060,7 +1082,8 @@ export class LaborFunctionsService {
 
     const items = seleccionadas
       .slice(0, limit)
-      .map(({ row, origen, vinculaciones }) => {
+      .map(({ row: selectedRow, origen, vinculaciones }) => {
+        const row = withLaborOrganization(selectedRow);
         const combinedCode = normalizeCombinedPositionCode(
           row.cod_cargo,
           row.cod_grade,
@@ -1143,6 +1166,10 @@ export class LaborFunctionsService {
           position_category: row.position_category || null,
           status: row.status || null,
           request_number: row.request_number || null,
+          // Valor impreso, separado de los datos exactos del perfil del cargo.
+          certificate_dependency: row.certificate_dependency ??
+            resolveLaborInternalGroup(row.internal_group, row.cost_center) ??
+            row.department ?? row.organization_department ?? '',
           /** Cuántas vinculaciones tiene la persona; se muestra solo esta. */
           total_vinculaciones: vinculaciones,
           matrix,

@@ -37,6 +37,11 @@ import {
   normalizeLaborFunctionText,
   parseLaborFunctionsRaw,
 } from './labor-functions.utils';
+import {
+  attachLaborOrganizationContexts,
+  buildLaborOrganizationContext,
+  selectNormalLaborRequest,
+} from './labor-organization-context.utils';
 
 type TemplateType = 'docente' | 'administrador';
 
@@ -1558,29 +1563,7 @@ export class CertificatesService {
     selectedRequest: CertificateRequest,
     requests: CertificateRequest[],
   ): CertificateRequest {
-    const activeWithoutEncargo = this.sortRequestsBySelectionDate(
-      requests,
-    ).filter((request) => {
-      const isActive =
-        this.resolveEmploymentStatus(
-          request.hiring_date,
-          request.request_date,
-          request.status,
-        ) === 'ACTIVO';
-      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
-      return isActive && !isEncargo;
-    });
-
-    const primaryAdministrativeActiveWithoutEncargo =
-      activeWithoutEncargo.filter((request) =>
-        this.isPrimaryAdministrativeAct(request.position_category),
-      );
-
-    return (
-      primaryAdministrativeActiveWithoutEncargo[0] ||
-      activeWithoutEncargo[0] ||
-      selectedRequest
-    );
+    return selectNormalLaborRequest(selectedRequest, requests);
   }
 
   private mergeRequestWithSalarySource(
@@ -1626,6 +1609,7 @@ export class CertificatesService {
       ...mergedBase,
       cod_cargo: preferredCodCargo ?? mergedBase.cod_cargo,
       cod_grade: preferredCodGrade ?? mergedBase.cod_grade,
+      ...buildLaborOrganizationContext(selectedRequest, relatedRequests),
     };
   }
 
@@ -1662,6 +1646,10 @@ export class CertificatesService {
     cert.request = cert.request
       ? ({ ...cert.request, ...requestContext } as CertificateRequest)
       : requestContext;
+    if (cert.is_corrected) {
+      cert.request.certificate_dependency = undefined;
+      cert.request.certificate_organization = undefined;
+    }
 
     if (requestContext.cod_cargo) {
       cert.cod_cargo = requestContext.cod_cargo;
@@ -1851,9 +1839,10 @@ export class CertificatesService {
   // ============================================
 
   async findAllSolicitudes() {
-    return await this.requestRepo.find({
+    const requests = await this.requestRepo.find({
       order: { request_date: 'DESC' },
     });
+    return attachLaborOrganizationContexts(requests);
   }
 
   /**
@@ -4397,7 +4386,10 @@ export class CertificatesService {
       where: { id: saved.id },
       relations: ['request'],
     });
-    return savedWithRequest || saved;
+    return this.applyRequestContextToCertificate(
+      savedWithRequest || saved,
+      relatedRequests,
+    );
   }
 
   // ============================================
@@ -4978,6 +4970,7 @@ export class CertificatesService {
           cod_grade: requestContext.cod_grade,
           department: requestContext.department,
           position_location: requestContext.position_location,
+          certificate_dependency: certificate.request?.certificate_dependency,
         }
       : undefined;
 
@@ -5195,6 +5188,7 @@ export class CertificatesService {
     });
 
     if (certificadoExistente) {
+      this.applyRequestContextToCertificate(certificadoExistente, solicitudes);
       await this.ensureTemplateSnapshotForCertificate(certificadoExistente);
       return {
         existe: true,
@@ -5326,6 +5320,7 @@ export class CertificatesService {
         position_location: verificacion.solicitud.position_location,
         monthly_salary: verificacion.solicitud.monthly_salary,
         department: verificacion.solicitud.department,
+        certificate_dependency: verificacion.solicitud.certificate_dependency,
         cod_cargo: verificacion.solicitud.cod_cargo,
         cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,

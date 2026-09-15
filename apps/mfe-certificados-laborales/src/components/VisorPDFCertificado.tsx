@@ -97,6 +97,7 @@ interface VisorPDFCertificadoProps {
     // Campos adicionales del backend
     position_location?: string; // Ubicación del cargo
     department?: string; // Departamento
+    certificate_dependency?: string;
     cod_cargo?: string; // Dependencia padre
     cod_grade?: string; // Grado del cargo
     campus?: string; // Sede
@@ -497,7 +498,9 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       '[GRUPO]': grupoVariableResolved,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA]': (certificado as any).is_corrected
+        ? dato7
+        : requestData?.certificate_dependency ?? certificado.certificate_dependency ?? dato7,
       '[DEPENDENCIA_PADRE]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
