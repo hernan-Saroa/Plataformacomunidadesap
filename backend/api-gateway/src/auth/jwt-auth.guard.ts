@@ -67,8 +67,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // destinatario externo, sin sesion en la plataforma => sin JWT)
     /^\/legal\/api\/v\d+\/correos\/track\/open\/.+/i,
     /^\/legal\/api\/v\d+\/correos\/track\/download\/.+/i,
+  ];
 
-
+  private readonly publicByMethodPatterns: Array<{ method: RegExp; path: RegExp }> = [
+    // Catálogos de EFDS-1730 Gestión de Infraestructura UMI. Son públicos igual
+    // que la geopolitica del auth service, porque los usan tanto el MFE sin
+    // sesion (preview) como fallos de SSR / primer render. Limitar a GET para
+    // no abrir accidentalmente POST /evidencias/upload o POST /mantenimiento.
+    {
+      method: /^GET$/i,
+      path: /^\/infraestructura\/api\/v\d+\/mantenimiento\/catalogos\/[^/]+\/?$/i,
+    },
   ];
 
   constructor(private readonly reflector: Reflector) {
@@ -82,7 +91,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    if (this.isPublic(context) || this.matchesPublicPath(request)) {
+    if (this.isPublic(context) || this.matchesPublicPath(request) || this.matchesPublicByMethod(request)) {
       return true;
     }
 
@@ -113,6 +122,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const patterns = [...this.defaultPublicPatterns, ...configured];
     return patterns.some((regex) => regex.test(requestPath));
+  }
+
+  private matchesPublicByMethod(req: Request): boolean {
+    const requestPath = this.normalizePath(req.originalUrl);
+    const method = req.method || 'GET';
+    return this.publicByMethodPatterns.some(
+      ({ method: mPattern, path: pPattern }) =>
+        mPattern.test(method) && pPattern.test(requestPath),
+    );
   }
 
   private normalizePath(path: string): string {

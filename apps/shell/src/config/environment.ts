@@ -179,6 +179,9 @@ export const MICROSERVICE_URLS = {
   viaticos: withLocalhost(3010),
   audit: withLocalhost(3011),
   hiring: withLocalhost(3012),
+  'programacion-academica': withLocalhost(3013),
+  'gestion-infraestructura': withLocalhost(3014),
+  chatbot: withLocalhost(3015),
 };
 
 // Helper para otras variables de entorno (solo para variables no críticas)
