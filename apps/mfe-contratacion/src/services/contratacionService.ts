@@ -35,7 +35,9 @@ import {
   DatosSupervisor,
   CuentaCandidata,
   EstadoParticipacion,
+  DecisionComite,
   EstadoCausalProceso,
+  EstadoComiteContratacion,
   EstadoModalidadProceso,
   EstadoActaInicio,
   DatosActaInicio,
@@ -648,6 +650,40 @@ export const contratacionService = {
     pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`, {
       method: 'PUT',
       body: JSON.stringify({ causal, sustento }),
+    }),
+
+  // --------------- comité de contratación · 3.7 (3.6 de la matriz) ----------
+
+  /**
+   * Si el proceso pasa por comité y qué decidió.
+   *
+   * El umbral de cuantía viaja entero —cifra, fundamento y salario aplicado—
+   * porque un «no pasa por comité» sin decir contra qué se comparó es una
+   * decisión que nadie puede revisar.
+   */
+  comiteContratacion: (procesoId: string) =>
+    pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion`),
+
+  /** Transcribe una sesión, con su acta: sin ella no se registra. */
+  registrarSesionComite: (
+    procesoId: string,
+    datos: {
+      fecha: string;
+      decision: DecisionComite;
+      condiciones?: string;
+      observaciones?: string;
+    },
+    acta: File,
+  ) =>
+    pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/sesiones`, {
+      method: 'POST',
+      body: conArchivo(datos, acta),
+    }),
+
+  /** Deja constancia de que el proceso no pasó por comité, por cuantía. */
+  comiteNoVa: (procesoId: string) =>
+    pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/no-va`, {
+      method: 'POST',
     }),
 
   // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------

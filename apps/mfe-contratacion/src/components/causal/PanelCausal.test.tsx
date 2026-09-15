@@ -47,7 +47,9 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
  * qué disposición habilitaba contratar por esa vía.
  */
 describe('PanelCausal · elegir la causal', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
 
   const pintar = (datos: Record<string, unknown>) => {
     vi.spyOn(contratacionService, 'causalDelProceso').mockResolvedValue(datos as never);

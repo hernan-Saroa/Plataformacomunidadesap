@@ -484,6 +484,55 @@ export interface EstadoCausalProceso {
   abogado: { nombre: string; usuarioNombre: string } | null;
 }
 
+// ----------------- comité de contratación · 3.7 (3.6 de la matriz) ---------
+
+/**
+ * Qué decidió el comité. Tres desenlaces, los de la matriz.
+ *
+ * No hay «no aprueba» a secas: un comité que no aprueba dice qué falta, y eso
+ * es observar. Si lo que procede es no contratar, se niega en la 3.4.
+ */
+export type DecisionComite = 'APROBADO' | 'APROBADO_CON_CONDICIONES' | 'OBSERVADO';
+
+/** Por qué el proceso no pasa por comité. */
+export type MotivoNoVa = 'MODALIDAD' | 'NO_SUPERA_EL_UMBRAL';
+
+/** Una sesión ya celebrada, tal como quedó transcrita. */
+export interface SesionComite {
+  id: string;
+  fecha: string;
+  decision: DecisionComite;
+  condiciones: string | null;
+  observaciones: string | null;
+  tieneActa: boolean;
+  registradoPor: string | null;
+  createdAt: string;
+}
+
+export interface EstadoComiteContratacion {
+  /** Si la matriz lleva esta modalidad al comité. */
+  aplica: boolean;
+  /** Si además este proceso en concreto tiene que ir. */
+  va: boolean;
+  motivoNoVa: MotivoNoVa | null;
+  estado: EstadoActividad;
+  valorEstimado: number | null;
+  /** La condición de cuantía de la modalidad, con su fundamento. */
+  umbral: {
+    valor: number;
+    unidad: 'SMMLV' | 'PESOS';
+    enPesos: number | null;
+    fundamento: string | null;
+    confirmado: boolean;
+    smmlvAplicado: { anio: number; valor: number; confirmado: boolean } | null;
+  } | null;
+  sesiones: SesionComite[];
+  puedeRegistrar: boolean;
+  puedeDejarConstancia: boolean;
+  motivoNoDecide: MotivoNoDecide | null;
+  abogado: { nombre: string; usuarioNombre: string } | null;
+}
+
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */

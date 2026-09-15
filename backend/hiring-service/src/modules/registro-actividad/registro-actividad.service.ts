@@ -314,11 +314,14 @@ export class RegistroActividadService {
       );
 
       // Si con esto no quedaba nada abierto en la etapa 3, la solicitud de CDP
-      // se radica sola. Le toca a este camino y no solo a la aprobación: en
-      // contratación directa la última que aplica es la 3.7, el comité, que se
-      // cumple por registro —y donde nadie tiene configurado aprobador, el
-      // registro *es* el cierre—. Sin esta llamada esa modalidad cerraba la
-      // etapa sin que nadie pidiera el CDP.
+      // se radica sola. Le toca a este camino y no solo a la aprobación: donde
+      // nadie tiene aprobador configurado, el registro *es* el cierre.
+      //
+      // De la etapa 3 solo queda aquí la 3.2, y el riel obliga a cerrarla antes
+      // que las siguientes, así que rara vez será la última. Rara vez no es
+      // nunca: anular su registro la devuelve a BORRADOR, y volver a
+      // registrarla con todo lo demás ya cerrado deja a este camino cerrando la
+      // etapa. Sin la llamada, ese proceso se quedaba sin CDP.
       //
       // Solo cuando cierra: si la actividad tiene aprobadores, queda en
       // revisión y quien decida pasará por `aprobacion`, que ya pregunta.

@@ -51,6 +51,7 @@ import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
 import { PanelCausal } from '../causal/PanelCausal';
+import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -73,6 +74,14 @@ const NUMERAL_REVISION = '3.4';
 const NUMERAL_MODALIDAD = '3.5';
 /** Causal de contratación: la 3.5.1 de la matriz, aplanada a 3.6 en la base. */
 const NUMERAL_CAUSAL = '3.6';
+/**
+ * Comité de contratación, la 3.6 de la matriz.
+ *
+ * Nombre largo a propósito: `NUMERAL_COMITE` ya es la 6.2, que es el comité
+ * **evaluador**. Son dos cuerpos distintos en dos etapas distintas, y confundir
+ * uno con otro es fácil justo aquí, donde solo se ven los numerales.
+ */
+const NUMERAL_COMITE_CONTRATACION = '3.7';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -344,9 +353,9 @@ const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
   // en la Dirección y ponerle responsable, y la 3.4 es la decisión del abogado,
   // que se toma leyendo el estudio previo y por eso vive en su panel.
-  // La 3.6 salió con la causal: la matriz la describe como un filtro por
-  // modalidad, y cuál causal habilita contratar así no cabe en una nota.
-  '3.7': 'Comité de contratación',
+  // La 3.6 y la 3.7 salieron: la causal es un filtro por modalidad y el comité
+  // son tres desenlaces —aprueba, condiciona u observa—. Ninguna de las dos
+  // cabe en una fecha y una nota.
   '5.9': 'Manifestación de interés',
   '5.10': 'Sorteo',
   '5.11': 'Publicación de la manifestación de interés',
@@ -372,6 +381,7 @@ const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === NUMERAL_RADICACION ||
   numeral === NUMERAL_MODALIDAD ||
   numeral === NUMERAL_CAUSAL ||
+  numeral === NUMERAL_COMITE_CONTRATACION ||
   NUMERALES_CDP.includes(numeral) ||
   NUMERALES_ETAPA_5.includes(numeral) ||
   NUMERALES_ETAPA_6.includes(numeral) ||
@@ -952,6 +962,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 // jurídica que se elige del catálogo de la modalidad, no una
                 // fecha con una nota.
                 <PanelCausal
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_COMITE_CONTRATACION ? (
+                // La 3.7 deja de ser constancia: lo que el comité decidió son
+                // tres desenlaces, y observar devuelve los documentos.
+                <PanelComiteContratacion
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />

@@ -107,11 +107,11 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
   /**
    * Lo que `guardar` necesita saber para preguntar por el cierre de la etapa 3.
    *
-   * La solicitud de CDP nace al cerrarse la etapa, y este camino también la
-   * cierra: en contratación directa la última actividad que aplica es la 3.7,
-   * el comité, que se cumple por registro. Donde nadie tiene aprobador
-   * configurado, el registro *es* el cierre, y sin esto esa modalidad cerraba
-   * su etapa 3 sin que nadie radicara el CDP.
+   * La solicitud de CDP nace al cerrarse la etapa, y donde nadie tiene aprobador
+   * configurado el registro *es* el cierre. De la etapa 3 aquí solo queda la
+   * 3.2, que el riel obliga a cerrar antes que las siguientes; pero anular su
+   * registro la devuelve a BORRADOR, y volver a registrarla con todo lo demás
+   * cerrado deja a este camino cerrando la etapa.
    */
   it('avisa de que cerró, para que se pregunte por la etapa', async () => {
     const { em } = conActividad(actividadEnBorrador());
@@ -119,7 +119,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
     const cerro = await servicio(null).marcarActividad(
       em,
       'p-1',
-      '3.7',
+      '3.2',
       true,
       acceso,
       'CONTRATACION_DIRECTA',
@@ -137,7 +137,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
     const cerro = await servicio({ roles: ['DIRECTOR_CONTRATACION'] }).marcarActividad(
       em,
       'p-1',
-      '3.7',
+      '3.2',
       true,
       acceso,
       'CONTRATACION_DIRECTA',
@@ -149,7 +149,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
   it('tampoco al anular, que reabre la actividad', async () => {
     const { em } = conActividad({ ...actividadEnBorrador(), estado: 'APROBADO' });
 
-    const cerro = await servicio(null).marcarActividad(em, 'p-1', '3.7', false, acceso, null);
+    const cerro = await servicio(null).marcarActividad(em, 'p-1', '3.2', false, acceso, null);
 
     expect(cerro).toBe(false);
   });
