@@ -59,11 +59,6 @@ export class LaborFunctionsController {
       search,
       page: Number(page) || 1,
       limit: Number(limit) || 20,
-      // Misma vinculacion que usa el certificado: una por persona.
-      resolveUsedForCertificate: (requests) =>
-        this.certificatesService.resolveRequestUsedForCertificate(
-          requests as any,
-        ),
     });
   }
 
@@ -100,11 +95,6 @@ export class LaborFunctionsController {
       search,
       page: Number(page) || 1,
       limit: Number(limit) || 25,
-      // Misma vinculacion que usa el certificado: una por persona.
-      resolveUsedForCertificate: (requests) =>
-        this.certificatesService.resolveRequestUsedForCertificate(
-          requests as any,
-        ),
     });
   }
 

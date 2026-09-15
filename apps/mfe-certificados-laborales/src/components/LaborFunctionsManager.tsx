@@ -1553,7 +1553,7 @@ export function LaborFunctionsManager() {
         {[
           { label: 'Perfiles de cargo', value: stats.profiles, detail: 'Combinaciones institucionales', icon: Layers3, tone: 'blue' },
           { label: 'Funciones normalizadas', value: stats.functions, detail: 'Funciones individuales y ordenadas', icon: CheckCircle2, tone: 'emerald' },
-          { label: 'Personas asociadas', value: stats.associatedRequests, detail: 'Con coincidencia exacta en la matriz', icon: Users, tone: 'violet' },
+          { label: 'Contratos asociados', value: stats.associatedRequests, detail: 'Coincidencias exactas disponibles', icon: Users, tone: 'violet' },
         ].map((stat, index) => {
           const tone = stat.tone === 'emerald'
             ? 'bg-emerald-50 text-emerald-700 ring-emerald-100'
@@ -1925,15 +1925,19 @@ export function LaborFunctionsManager() {
             <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-5 py-3">
               <p className="flex items-start gap-2 text-xs text-blue-900" style={{ lineHeight: 1.5 }}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#003DA5]" />
-                <span>Estas son las personas cuya vinculación vigente —la que usa su certificado— coincide <strong>exactamente</strong> con este perfil en código, denominación, dependencia, nivel y grupo interno. Son quienes recibirán estas <strong>{associationsProfile.function_count} funciones</strong> en su certificado laboral.</span>
+                <span>Estas son las vinculaciones cuyo código, denominación, dependencia, nivel y grupo interno coinciden <strong>exactamente</strong> con este perfil. Son las que recibirán estas <strong>{associationsProfile.function_count} funciones</strong> en su certificado laboral.</span>
               </p>
             </div>
 
             <div className="shrink-0 border-b border-slate-200 px-5 py-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-center">
                   <p className="text-xl font-bold tabular-nums text-[#003DA5]">{associationsData ? associationsData.summary.associations : associationsProfile.association_count}</p>
-                  <p className="text-xs font-bold uppercase tracking-wide text-blue-800">Personas</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-800">Vinculaciones</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                  <p className="text-xl font-bold tabular-nums text-emerald-700">{associationsData ? associationsData.summary.uniquePeople : '—'}</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Personas únicas</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
                   <p className="text-xl font-bold tabular-nums text-slate-900">{associationsProfile.function_count}</p>
@@ -2023,7 +2027,7 @@ export function LaborFunctionsManager() {
                     <p className="mt-2 text-sm text-slate-500" style={{ lineHeight: 1.6 }}>
                       {associationsSearch
                         ? 'Prueba con otro nombre, documento o número de solicitud.'
-                        : 'Ninguna persona tiene una vinculación vigente que coincida exactamente con este código, denominación, dependencia, nivel y grupo interno. Usa «Consultar empleado» para ver los datos reales de alguien que debería estar aquí.'}
+                        : 'Ninguna vinculación coincide exactamente con este código, denominación, dependencia, nivel y grupo interno. Usa «Consultar empleado» para ver los datos reales de alguien que debería estar aquí.'}
                     </p>
                   </div>
                 </div>

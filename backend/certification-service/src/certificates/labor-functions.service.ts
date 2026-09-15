@@ -182,61 +182,6 @@ export class LaborFunctionsService {
     }
   }
 
-  /**
-   * Reduce un conjunto de vinculaciones a UNA por persona: la que su
-   * certificado usa.
-   *
-   * Es la pieza que mantiene coherente toda la matriz. Una persona puede tener
-   * varias vinculaciones (su cargo base y un encargo vigente, por ejemplo) con
-   * cod_cargo distintos, pero su certificado solo usa una. Contando las filas
-   * crudas, la misma persona aparecía bajo dos perfiles distintos y el badge
-   * decía cosas que el documento impreso no respaldaba.
-   *
-   * `resolveUsedForCertificate` es el pipeline real de CertificatesService
-   * (selección + fuente salarial + merge de códigos); el controlador lo enlaza.
-   * Sin él se cae a la vinculación más reciente del grupo, que es el orden en
-   * que llegan de la consulta.
-   */
-  private resolveOneRequestPerPerson(
-    rows: LaborMatchableRequest[],
-    resolveUsedForCertificate?: (requests: any[]) => any | null,
-  ): LaborMatchableRequest[] {
-    const grupos = new Map<string, LaborMatchableRequest[]>();
-    const identidadesVistas = new Set<string>();
-
-    rows.forEach((row, index) => {
-      const identidad = this.associationIdentity(row);
-      // La misma vinculación puede llegar por la tabla local y por Oracle.
-      if (identidadesVistas.has(identidad)) return;
-      identidadesVistas.add(identidad);
-
-      const documento = normalizeLaborFunctionText(row.id_number).replace(
-        /\s+/g,
-        '',
-      );
-      // Sin documento no hay forma de agrupar: se respeta la fila tal cual.
-      const clave = documento || `sin-documento:${index}`;
-      const grupo = grupos.get(clave);
-      if (grupo) grupo.push(row);
-      else grupos.set(clave, [row]);
-    });
-
-    return Array.from(grupos.values()).map((grupo) => {
-      if (grupo.length === 1) return grupo[0];
-      if (!resolveUsedForCertificate) return grupo[0];
-      try {
-        return resolveUsedForCertificate(grupo) || grupo[0];
-      } catch (error: any) {
-        this.logger.warn(
-          `No se pudo resolver la vinculación del certificado para agrupar asociados: ${
-            error?.message || error
-          }. Se toma la más reciente.`,
-        );
-        return grupo[0];
-      }
-    });
-  }
-
   /** Identidad de una persona dentro de un cargo, para no contarla dos veces
    *  cuando aparece en la tabla local y en Oracle a la vez. */
   private associationIdentity(request: LaborMatchableRequest): string {
@@ -659,14 +604,7 @@ export class LaborFunctionsService {
     return this.resolveFromProfiles(request, profiles);
   }
 
-  async list(
-    options: {
-      search?: string;
-      page?: number;
-      limit?: number;
-      resolveUsedForCertificate?: (requests: any[]) => any | null;
-    } = {},
-  ) {
+  async list(options: { search?: string; page?: number; limit?: number } = {}) {
     const search = normalizeLaborFunctionText(options.search);
     const requestedPage = Math.max(1, Number(options.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
@@ -727,13 +665,19 @@ export class LaborFunctionsService {
         Array.from(profilesByCombinedCode.keys()),
       );
 
-      // Una vinculación por persona: la que su certificado usa. Así el badge
-      // cuenta gente que realmente recibiría estas funciones, y nadie aparece
-      // bajo dos perfiles a la vez.
-      const countable = this.resolveOneRequestPerPerson(
-        [...requests, ...oracle.rows],
-        options.resolveUsedForCertificate,
-      );
+      const seenIdentities = new Set<string>();
+      const countable: LaborMatchableRequest[] = [];
+      requests.forEach((request) => {
+        seenIdentities.add(this.associationIdentity(request));
+        countable.push(request);
+      });
+      oracle.rows.forEach((row) => {
+        const identity = this.associationIdentity(row);
+        // La misma persona puede estar en las dos fuentes: la local manda.
+        if (seenIdentities.has(identity)) return;
+        seenIdentities.add(identity);
+        countable.push(row);
+      });
 
       countable.forEach((request) => {
         const combinedCode = normalizeCombinedPositionCode(
@@ -789,12 +733,7 @@ export class LaborFunctionsService {
    */
   async listAssociations(
     id: string,
-    options: {
-      search?: string;
-      page?: number;
-      limit?: number;
-      resolveUsedForCertificate?: (requests: any[]) => any | null;
-    } = {},
+    options: { search?: string; page?: number; limit?: number } = {},
   ) {
     const profile = await this.profileRepo.findOne({
       where: { id },
@@ -884,24 +823,21 @@ export class LaborFunctionsService {
       return resolution.available && resolution.profile?.id === profile.id;
     };
 
-    // Igual que el badge: una vinculación por persona (la del certificado) y
-    // solo después se evalúa si le aplica este perfil.
-    const localIdentities = new Set(
-      requests.map((request) => this.associationIdentity(request)),
-    );
-    const serialized = this.resolveOneRequestPerPerson(
-      [...requests, ...oracle.rows],
-      options.resolveUsedForCertificate,
-    )
-      .filter(matches)
-      .map((request) =>
-        serialize(
-          request,
-          localIdentities.has(this.associationIdentity(request))
-            ? 'local'
-            : 'oracle',
-        ),
-      );
+    const serialized: Array<ReturnType<typeof serialize>> = [];
+    const seenIdentities = new Set<string>();
+
+    requests.filter(matches).forEach((request) => {
+      seenIdentities.add(this.associationIdentity(request));
+      serialized.push(serialize(request, 'local'));
+    });
+    oracle.rows.filter(matches).forEach((row) => {
+      const identity = this.associationIdentity(row);
+      // La misma persona puede venir de las dos fuentes: la local manda porque
+      // trae numero de solicitud y estado reales.
+      if (seenIdentities.has(identity)) return;
+      seenIdentities.add(identity);
+      serialized.push(serialize(row, 'oracle'));
+    });
 
     const filtered = search
       ? serialized.filter((item) =>
@@ -1028,6 +964,16 @@ export class LaborFunctionsService {
     const documentoDe = (row: any) =>
       normalizeLaborFunctionText(row?.id_number).replace(/\s+/g, '');
 
+    // La deduplicación aplica SOLO entre fuentes. Dentro de la tabla local dos
+    // filas pueden compartir documento y cod_cargo siendo vinculaciones
+    // distintas y legítimas (p. ej. un encargo terminado y su prórroga
+    // vigente). Descartarlas se llevaba por delante la vinculación ACTIVA, y la
+    // selección terminaba devolviendo el cargo base en vez del que sale en el
+    // certificado.
+    const identidadesLocales = new Set(
+      localRequests.map((row) => this.associationIdentity(row)),
+    );
+
     const push = (row: any, origen: 'local' | 'oracle') => {
       const documento = documentoDe(row);
       if (!documento) return;
@@ -1036,17 +982,14 @@ export class LaborFunctionsService {
         personas.set(documento, { origen, rows: [row] });
         return;
       }
-      const yaEsta = actual.rows.some(
-        (existing) =>
-          this.associationIdentity(existing) === this.associationIdentity(row),
-      );
-      if (yaEsta) return;
       actual.rows.push(row);
       if (origen === 'local') actual.origen = 'local';
     };
 
     localRequests.forEach((row) => push(row, 'local'));
-    oracleRows.forEach((row) => push(row, 'oracle'));
+    oracleRows
+      .filter((row) => !identidadesLocales.has(this.associationIdentity(row)))
+      .forEach((row) => push(row, 'oracle'));
 
     const seleccionadas = Array.from(personas.values()).map(
       ({ origen, rows }) => {

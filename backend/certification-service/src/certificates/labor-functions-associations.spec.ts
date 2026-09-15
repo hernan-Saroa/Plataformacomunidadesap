@@ -138,9 +138,7 @@ describe('LaborFunctionsService.listAssociations', () => {
     expect(listado.summary.associations).toBe(2);
   });
 
-  it('cuenta una sola vez a quien tiene varias vinculaciones', async () => {
-    // El certificado de una persona usa UNA vinculación, así que el badge
-    // cuenta personas, no filas: antes la misma persona sumaba tres veces.
+  it('cuenta personas únicas aunque tengan varias solicitudes', async () => {
     const service = buildService(
       [profile],
       [
@@ -152,9 +150,8 @@ describe('LaborFunctionsService.listAssociations', () => {
 
     const result = await service.listAssociations('profile-1');
 
-    expect(result.summary.associations).toBe(2);
+    expect(result.summary.associations).toBe(3);
     expect(result.summary.uniquePeople).toBe(2);
-    expect(result.items).toHaveLength(2);
   });
 
   it('filtra por nombre, documento y número de solicitud', async () => {

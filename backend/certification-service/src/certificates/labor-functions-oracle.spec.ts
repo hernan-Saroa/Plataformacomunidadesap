@@ -170,32 +170,6 @@ describe('LaborFunctionsService — asociados desde Oracle', () => {
     await expect(service.list()).resolves.toBeDefined();
   });
 
-  it('una persona con dos cargos cuenta solo bajo el perfil de su certificado', async () => {
-    // Caso Diana: cargo base 2028/14 y encargo vigente 2028/16. El certificado
-    // usa el encargo, así que solo debe aparecer bajo el perfil de 202816.
-    const base = persona({ id: 'req-base', cod_cargo: '202814', cod_grade: '14' });
-    const encargo = persona({ id: 'req-encargo', cod_cargo: '202816', cod_grade: '16' });
-    const { service } = buildService({ requests: [base, encargo], oracleRows: [] });
-
-    // El perfil bajo prueba es el de 202816 (constante `profile` de arriba).
-    const result = await service.listAssociations('profile-1', {
-      resolveUsedForCertificate: (requests: any[]) =>
-        requests.find((request) => request.cod_grade === '16') || requests[0],
-    });
-
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].combined_code).toBe('202816');
-    expect(result.summary.associations).toBe(1);
-  });
-
-  it('sin el resolver no revienta: cae a la vinculación más reciente', async () => {
-    const base = persona({ id: 'req-base', cod_cargo: '202816', cod_grade: '16' });
-    const otra = persona({ id: 'req-otra', cod_cargo: '202814', cod_grade: '14' });
-    const { service } = buildService({ requests: [base, otra], oracleRows: [] });
-
-    await expect(service.listAssociations('profile-1')).resolves.toBeDefined();
-  });
-
   it('no consulta Oracle cuando la integración está apagada', async () => {
     const { service, oracle } = buildService({
       requests: [localRequest()],

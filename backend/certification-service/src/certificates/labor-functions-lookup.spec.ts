@@ -264,6 +264,85 @@ describe('LaborFunctionsService.lookupPerson', () => {
     ]);
   });
 
+  it('con los datos reales de Diana devuelve el encargo ACTIVO, no el cargo base', async () => {
+    // Filas reales en certification.certificate_requests para el 53062883:
+    //   10551 · 202814 · grado 14 · observations N · status A  (cargo base)
+    //   10552 · 202816 · grado 16 · observations E · status I  (encargo vencido)
+    //   10553 · 202816 · grado 16 · observations E · status A  (encargo vigente)
+    // El certificado imprime "Codigo 2028 Grado 16 (E)", asi que la consulta
+    // debe decir 202816. El bug era descartar la 10553 por compartir documento
+    // y cod_cargo con la 10552: se perdia justo la vinculacion activa.
+    const filas = [
+      diana({
+        id: 'req-10551',
+        request_number: '12_620_700_20_CD 10551',
+        cod_cargo: '202814',
+        cod_grade: '14',
+        career_category: 'Profesional Especializado Grado 14',
+        observations: 'N',
+        status: 'A',
+        hiring_date: '2024-05-14',
+        request_date: null,
+      }),
+      diana({
+        id: 'req-10552',
+        request_number: '12_620_700_20_CD 10552',
+        cod_cargo: '202816',
+        cod_grade: '16',
+        career_category: 'Profesional Especializado Grado 16',
+        observations: 'E',
+        status: 'I',
+        hiring_date: '2025-04-01',
+        request_date: '2025-04-30T00:00:00.000Z',
+      }),
+      diana({
+        id: 'req-10553',
+        request_number: '12_620_700_20_CD 10553',
+        cod_cargo: '202816',
+        cod_grade: '16',
+        career_category: 'Profesional Especializado Grado 16',
+        observations: 'E',
+        status: 'A',
+        hiring_date: '2025-05-01',
+        request_date: '2025-05-01T00:00:00.000Z',
+      }),
+    ];
+    const { service } = buildService({ localRequests: filas });
+
+    const result = await service.lookupPerson('53062883', {
+      // Selección real: entre las activas gana el encargo.
+      selectPreferred: (requests: any[]) => {
+        const activas = requests.filter((request) => request.status === 'A');
+        return (
+          activas.find(
+            (request) => String(request.observations).toUpperCase() === 'E',
+          ) ||
+          activas[0] ||
+          requests[0]
+        );
+      },
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].total_vinculaciones).toBe(3);
+    expect(result.items[0].matrix.combined_code).toBe('202816');
+    expect(result.items[0].matrix.grade_code).toBe('16');
+  });
+
+  it('no descarta filas locales distintas que comparten documento y cod_cargo', async () => {
+    const { service } = buildService({
+      localRequests: [
+        diana({ id: 'req-a', cod_cargo: '202816', cod_grade: '16', status: 'I' }),
+        diana({ id: 'req-b', cod_cargo: '202816', cod_grade: '16', status: 'A' }),
+      ],
+    });
+
+    const result = await service.lookupPerson('53062883', { selectPreferred });
+
+    // Las dos llegan a la selección; antes solo sobrevivía la primera.
+    expect(result.items[0].total_vinculaciones).toBe(2);
+  });
+
   it('no expone el salario de la persona', async () => {
     const { service } = buildService({
       localRequests: [diana({ monthly_salary: 6326832, salary_text: 'SEIS MILLONES' })],
