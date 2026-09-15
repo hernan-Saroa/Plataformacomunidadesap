@@ -1,0 +1,5 @@
+# Complemento opcional para equipos con NVIDIA y Docker/WSL con acceso a GPU.
+services:
+  rund-ollama:
+    gpus: all
+    mem_limit: 6g
