@@ -27,12 +27,11 @@ import {
   type CorrectedCertificateData,
 } from './certificates.service';
 import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
+import { MANAGE_CORRECTIONS_PERMISSION } from './certificate-corrections.constants';
 
 const MAX_EVIDENCE_SIZE = 10 * 1024 * 1024;
 const REQUEST_EVIDENCE_DIR = './private-uploads/certificate-corrections/submitted';
 const RESOLUTION_EVIDENCE_DIR = './private-uploads/certificate-corrections/resolution';
-const MANAGE_CORRECTIONS_PERMISSION =
-  'certificados-laborales.correction.manage';
 const DELIVER_CERTIFICATE_PERMISSION =
   'certificados-laborales.certificate.deliver';
 const MANAGE_CORRECTIONS_DENIED_MESSAGE =

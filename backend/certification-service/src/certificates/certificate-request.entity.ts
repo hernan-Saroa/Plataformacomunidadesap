@@ -1,5 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Certificate } from './certificate.entity';
+import type { LaborOrganization } from './labor-organization-context.utils';
 
 @Entity('certificate_requests')
 export class CertificateRequest {
@@ -64,6 +65,11 @@ export class CertificateRequest {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   internal_group: string | null;
+
+  // Contexto de lectura para [DEPENDENCIA] y la matriz; no son columnas.
+  // Los campos originales del encargo alimentan las demas variables.
+  certificate_dependency?: string;
+  certificate_organization?: LaborOrganization;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   cost_center: string | null;

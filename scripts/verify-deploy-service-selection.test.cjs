@@ -17,7 +17,7 @@ for(const environment of ['qa','pre','prod','dev']) {
   function run(files,failConfig=false) {
     const script=`set -e
 RED= GREEN= YELLOW= NC=
-FRONTEND_MFE_SERVICES=(frontend frontend-shell frontend-mfe-pta)
+FRONTEND_MFE_SERVICES=(frontend frontend-shell frontend-mfe-pta frontend-mfe-chatbot)
 git() { printf '%s\\n' "$DEPLOY_TEST_FILES"; }
 ensure_docker_disk_space() { echo test:disk; }
 cleanup_build_artifacts() { echo test:cleanup; }
@@ -27,11 +27,11 @@ cmd_db_migrate() { printf 'test:migration:%s\\n' "$1"; }
 compose_env() {
   if [ "$1" = config ]; then
     if [ "$DEPLOY_TEST_CONFIG_FAIL" = true ]; then return 1; fi
-    printf '%s\\n' auth-service academic-work-plan-service notifications-service
+    printf '%s\\n' auth-service academic-work-plan-service notifications-service chatbot-service
   elif [ "$1" = build ]; then
     shift
     for service in "$@"; do
-      case "$service" in auth-service|academic-work-plan-service|notifications-service) ;; *) echo "no such service: $service"; return 1;; esac
+      case "$service" in auth-service|academic-work-plan-service|notifications-service|chatbot-service) ;; *) echo "no such service: $service"; return 1;; esac
       printf 'test:backend-build:%s\\n' "$service"
     done
   else printf 'test:backend:%s\\n' "$*"; fi
@@ -50,6 +50,15 @@ cmd_rebuild_changed rebuild-changed fixture-range
   test(`${environment}: sintaxis Bash`,()=>{
     const result=spawnSync(bash,['-n'],{input:source,encoding:'utf8',timeout:10000});
     assert.equal(result.status,0,result.stderr);
+  });
+  test(`${environment}: ChatBot backend, MFE y migraciones se detectan y reconstruyen`,()=>{
+    const result=run(['backend/chatbot-service/src/main.ts',
+      'apps/mfe-chatbot/src/components/ChatbotModule.tsx',
+      'backend/chatbot-service/db/migrations/001_create_chatbot_schema.sql']);
+    assert.equal(result.status,0,result.stderr+result.stdout);
+    assert.equal((result.stdout.match(/test:backend-build:chatbot-service/g)||[]).length,1);
+    assert(result.stdout.includes('test:migration:chatbot-service'));
+    assert(result.stdout.includes('test:frontend:build frontend-mfe-chatbot frontend-shell'));
   });
   test(`${environment}: OCR junto con PTA, interfaz y SQL conserva el despliegue`,()=>{
     const result=run(['backend/rund-ocr-service/app.py','backend/rund-ocr-service/requirements.txt',

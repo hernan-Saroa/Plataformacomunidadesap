@@ -74,6 +74,8 @@ for (const serviceName of selectedServices) {
     }
   }
 
+  serviceEnv.NODE_OPTIONS = `${serviceEnv.NODE_OPTIONS || ''} --max-http-header-size=80000`.trim();
+
   const child = spawn(npmCmd, ['run', 'start:dev'], {
     cwd,
     env: serviceEnv,
