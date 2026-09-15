@@ -120,6 +120,46 @@ function mapTerminoASolicitud(t: any): SolicitudInforme {
   } as SolicitudInforme;
 }
 
+/**
+ * Mapea un evento del endpoint de calendario a SolicitudInforme.
+ *
+ * Se usa solo como respaldo para la pestaña "Eliminados": a diferencia del listado, el calendario
+ * nunca ha filtrado por estado, así que devuelve también los términos con soft delete incluso en
+ * versiones del backend que no soportan `?estado=ELIMINADO`. Trae menos campos (el título viene
+ * como "RADICADO - Actuación"), pero sí el UUID real, que es lo que necesitan Restaurar y
+ * Eliminar Permanentemente.
+ */
+function mapEventoCalendarioASolicitud(evento: any): SolicitudInforme {
+  const titulo = String(evento.title || '');
+  const separador = titulo.indexOf(' - ');
+  const radicado = separador > 0 ? titulo.slice(0, separador).trim() : '';
+  const actuacion = separador > 0 ? titulo.slice(separador + 3).trim() : titulo.trim();
+  const origen = evento.extendedProps?.origen;
+
+  return {
+    id: radicado || String(evento.id).substring(0, 8),
+    etapa: evento.extendedProps?.estado as any,
+    tipoInforme: origen,
+    moduloOrigen: origen,
+    enteSolicitante: origen === 'MANUAL' ? 'Usuario' : 'Sistema',
+    destinatario: '',
+    fundamentoNormativo: [],
+    radicadoExterno: radicado || 'N/A',
+    asunto: actuacion || 'Sin título',
+    descripcion: '',
+    responsable: 'Sin asignar',
+    responsableId: null,
+    fechaSolicitud: new Date(evento.start),
+    fechaVencimiento: new Date(evento.start),
+    diasTotales: 0,
+    diasRestantes: 0,
+    datosRequeridos: [],
+    horasAnticipacionAlertaPersonalizada: null,
+    recordatorioManualHorasAnticipacion: null,
+    metadata: { uuid: evento.id },
+  } as SolicitudInforme;
+}
+
 /** Agrupa solicitudes por período (mes-año de vencimiento) para "VistaLista". */
 function agruparPorPeriodo(solicitudes: SolicitudInforme[]): Array<{ clave: string; etiqueta: string; items: SolicitudInforme[] }> {
   const grupos: Record<string, SolicitudInforme[]> = {};
@@ -347,10 +387,36 @@ export function ModuloTerminosInformesV3() {
       // creados aparecerían de inmediato en "Eliminados", y "Eliminar Permanentemente"
       // desde ahí borraría términos que en realidad seguían vigentes.
       const soloEliminados = data.filter((t: any) => t.estado === 'ELIMINADO');
+
+      // Si el listado trajo términos pero ninguno eliminado, el backend ignoró el filtro (versión
+      // sin soporte para `?estado=`). En ese caso no se puede confiar en esa respuesta —serían
+      // términos activos— y se recuperan los eliminados por el calendario, que nunca ha filtrado
+      // por estado y por tanto sí los devuelve en cualquier versión del servicio.
+      if (soloEliminados.length === 0 && data.length > 0) {
+        console.warn(
+          `[Términos] El servicio ignoró el filtro estado=ELIMINADO (devolvió ${data.length} términos, ninguno eliminado). ` +
+          'Recuperando los eliminados desde el calendario.',
+        );
+        setTerminosEliminados(await fetchEliminadosDesdeCalendario());
+        return;
+      }
+
       setTerminosEliminados(soloEliminados.map(mapTerminoASolicitud));
     } catch (error) {
       console.error('Error fetching términos eliminados:', error);
+      toast.error('Error al cargar los términos eliminados', {
+        description: (error as any)?.message || 'Intente nuevamente.',
+      });
     }
+  };
+
+  /** Respaldo de `fetchEliminados` vía calendario (ver mapEventoCalendarioASolicitud). */
+  const fetchEliminadosDesdeCalendario = async (): Promise<SolicitudInforme[]> => {
+    // Rango amplio a propósito: interesa todo el histórico, no una ventana de fechas.
+    const eventos = await legalService.getTerminosCalendario('1900-01-01', '2999-12-31');
+    return eventos
+      .filter((e: any) => e.extendedProps?.estado === 'ELIMINADO')
+      .map(mapEventoCalendarioASolicitud);
   };
 
 

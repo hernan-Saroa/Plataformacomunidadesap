@@ -505,8 +505,10 @@ export class JuridicaEmailService {
         tipo: string;
         url?: string;
         contentType?: string;
-        tamano?: number;
-        contentBytes?: string;
+        // Nombres alineados con DocumentoTransferenciaDisciplinaria del servicio
+        // legal: `tamanio` y `contentBase64`.
+        tamanio?: number;
+        contentBase64?: string;
         fechaCarga?: any;
       }> = [];
 
@@ -523,8 +525,11 @@ export class JuridicaEmailService {
           tipo: 'EVIDENCIA',
           url: ref,
           contentType: ev.fileType || base64Match?.contentType || 'application/pdf',
-          tamano: ev.fileSize || (base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined),
-          contentBytes: base64Match?.contentBase64,
+          // El servicio legal espera `tamanio` y `contentBase64` (no `tamano` /
+          // `contentBytes`): con los nombres viejos el adjunto llegaba sin
+          // contenido y no se podía descargar en el Centro de Comunicaciones.
+          tamanio: ev.fileSize || (base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined),
+          contentBase64: base64Match?.contentBase64,
           fechaCarga: ev.fechaCarga || ev.createdAt,
         });
       }
@@ -546,8 +551,8 @@ export class JuridicaEmailService {
           tipo: 'AUTO',
           url: ref,
           contentType: base64Match?.contentType || auto.documentType || (ext === 'pdf' ? 'application/pdf' : undefined),
-          tamano: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
-          contentBytes: base64Match?.contentBase64,
+          tamanio: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
+          contentBase64: base64Match?.contentBase64,
           fechaCarga: auto.fechaExpedicion || auto.createdAt,
         });
       }
@@ -566,8 +571,8 @@ export class JuridicaEmailService {
           tipo: 'NOTICIA',
           url: ref,
           contentType: typeof adj === 'object' ? adj?.tipo || adj?.contentType : base64Match?.contentType,
-          tamano: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
-          contentBytes: base64Match?.contentBase64,
+          tamanio: base64Match ? Math.ceil((base64Match.contentBase64.length * 3) / 4) : undefined,
+          contentBase64: base64Match?.contentBase64,
         });
       }
 

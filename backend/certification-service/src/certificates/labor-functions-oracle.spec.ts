@@ -170,6 +170,105 @@ describe('LaborFunctionsService — asociados desde Oracle', () => {
     await expect(service.list()).resolves.toBeDefined();
   });
 
+  // ── Solo vinculaciones vigentes ──────────────────────────────────────
+  // Un contrato terminado no genera certificado, asi que no aporta nada a la
+  // matriz de funciones y solo estorba en el listado.
+
+  it('no lista las vinculaciones inactivas', async () => {
+    const { service } = buildService({
+      requests: [
+        localRequest({ id: 'req-activo', request_number: 'CL-A', status: 'A' }),
+        localRequest({
+          id: 'req-inactivo',
+          request_number: 'CL-I',
+          id_number: '79999999',
+          full_name: 'CARLOS RUIZ',
+          status: 'I',
+        }),
+      ],
+      oracleRows: [],
+    });
+
+    const result = await service.listAssociations('profile-1');
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].request_number).toBe('CL-A');
+    expect(result.summary.associations).toBe(1);
+  });
+
+  it('el badge cuenta lo mismo que lista el modal', async () => {
+    const { service } = buildService({
+      requests: [
+        localRequest({ id: 'req-activo', request_number: 'CL-A', status: 'A' }),
+        localRequest({
+          id: 'req-inactivo',
+          request_number: 'CL-I',
+          id_number: '79999999',
+          status: 'I',
+        }),
+      ],
+      oracleRows: [],
+    });
+
+    const listado = await service.listAssociations('profile-1');
+    const matriz = await service.list();
+    const fila = matriz.items.find((item: any) => item.id === 'profile-1');
+
+    expect(fila?.association_count).toBe(listado.summary.associations);
+    expect(fila?.association_count).toBe(1);
+  });
+
+  it('tambien descarta las filas inactivas que llegan de Oracle', async () => {
+    const { service } = buildService({
+      requests: [],
+      oracleRows: [
+        persona({ id_number: '11111111', status: 'I' }),
+        persona({ id_number: '22222222', status: 'A' }),
+      ],
+    });
+
+    const result = await service.listAssociations('profile-1');
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].id_number).toBe('22222222');
+  });
+
+  it('conserva la vinculacion cuando la fuente no informa estado', async () => {
+    // Oracle puede no traer ESTADO: preferible mostrarla a que desaparezca.
+    const { service } = buildService({
+      requests: [],
+      oracleRows: [persona({ id_number: '33333333', status: null })],
+    });
+
+    const result = await service.listAssociations('profile-1');
+
+    expect(result.items).toHaveLength(1);
+  });
+
+  it('pide status en la consulta: sin ese campo el badge contaba las inactivas', async () => {
+    // Los mocks devuelven el objeto completo sin importar el `select`, asi que
+    // un campo faltante no se nota en los demas tests. Aqui se verifica la
+    // consulta misma: `status` tiene que viajar o el filtro de vigencia ve
+    // undefined y deja pasar todo.
+    const requestRepo = { find: jest.fn().mockResolvedValue([]) };
+    const service = new LaborFunctionsService(
+      { find: jest.fn().mockResolvedValue([profile]) } as any,
+      {} as any,
+      requestRepo as any,
+      {} as any,
+      { isEnabled: () => false } as any,
+    );
+
+    await service.list();
+
+    const opciones = requestRepo.find.mock.calls[0]?.[0];
+    expect(opciones?.select?.status).toBe(true);
+    // Y los campos que necesita el cruce exacto.
+    expect(opciones?.select?.id_number).toBe(true);
+    expect(opciones?.select?.internal_group).toBe(true);
+    expect(opciones?.select?.cost_center).toBe(true);
+  });
+
   it('no consulta Oracle cuando la integración está apagada', async () => {
     const { service, oracle } = buildService({
       requests: [localRequest()],

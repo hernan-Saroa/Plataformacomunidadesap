@@ -57,7 +57,7 @@ describe('alcance administrativo del rol en decisiones territoriales PTA', () =>
     'mantiene la seccional personal para roles históricos sin alcance explícito: %j', async scope => {
       const { service, context } = setup([row('pta.approve.academica.territorial.pregrado', scope)]);
       expect((await service.getDecisionPermissions('pta-1', await context(['B']))).territorial.aprobar.pairs).toEqual([pairs[2]]);
-      expect((await service.getDecisionPermissions('pta-1', await context())).territorial.aprobar.reason).toContain('No tiene una territorial asignada');
+      expect((await service.getDecisionPermissions('pta-1', await context())).territorial.aprobar.pairs).toEqual([pairs[0], pairs[2]]);
     },
   );
 
@@ -68,13 +68,13 @@ describe('alcance administrativo del rol en decisiones territoriales PTA', () =>
     expect((await service.getDecisionPermissions('pta-1', await context())).territorial.aprobar.pairs).toEqual([pairs[2]]);
   });
 
-  it('el listado recibe el alcance del rol sin conservar el filtro personal', async () => {
+  it('el listado usa Personas cuando el rol no restringe y respeta un filtro específico del rol', async () => {
     const { service, context, query } = setup([row('pta.approve.academica.territorial.pregrado')]);
-    expect(await service.getDecisionListScope(await context(['A']))).toEqual({ configured: true, territoriales: null, programas: null, cetaps: null });
+    expect(await service.getDecisionListScope(await context(['A']))).toEqual({ configured: true, territoriales: ['A', 'Nariño'], programas: null, cetaps: null });
     query.mockResolvedValue([row('pta.approve.academica.territorial.pregrado', { tipo: 'Filtrado', territorial: 'B' })]);
     expect(await service.getDecisionListScope(await context(['A']))).toEqual({ configured: true, territoriales: ['B', 'Meta'], programas: null, cetaps: null });
     query.mockResolvedValue([row('pta.approve.academica.territorial.pregrado', null)]);
-    expect((await service.getDecisionListScope(await context(['A']))).configured).toBe(false);
+    expect(await service.getDecisionListScope(await context(['A']))).toEqual({ configured: true, territoriales: ['A', 'Nariño'], programas: null, cetaps: null });
   });
 
   it('un rol global sin el permiso de docencia territorial no habilita decisiones', async () => {
