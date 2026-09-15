@@ -74,6 +74,7 @@ services:
       AUDIT_SERVICE_URL: http://audit-service:3011
       HIRING_SERVICE_URL: http://hiring-service:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
+      CHATBOT_SERVICE_URL: http://chatbot-service:3014
     ports:
       - "${API_GATEWAY_PORT:-3000}:3000"
     depends_on:
@@ -88,6 +89,7 @@ services:
       - notifications-service
       - travel-expenses-service
       - audit-service
+      - chatbot-service
       - hiring-service
       - academic-schedule-service
     networks:
@@ -600,6 +602,34 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    networks:
+      - superapp-net
+    restart: unless-stopped
+
+  # ============ CHATBOT SERVICE ============
+  chatbot-service:
+    build:
+      context: ./backend/chatbot-service
+      dockerfile: Dockerfile
+    container_name: chatbot-service
+    environment:
+      NODE_ENV: production
+      PORT: 3014
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_DATABASE: esap_db
+      DB_SCHEMA: chatbot
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+      CORS_ORIGIN: "*"
+    ports:
+      - "3014:3014"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - superapp-net
     restart: unless-stopped

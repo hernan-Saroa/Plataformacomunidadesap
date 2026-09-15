@@ -43,6 +43,7 @@ services:
       AUDIT_SERVICE_URL: http://audit-service:3011
       HIRING_SERVICE_URL: http://hiring-service:3012
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
+      CHATBOT_SERVICE_URL: http://chatbot-service:3014
     ports:
       - "3000:3000"
     depends_on:
@@ -59,6 +60,7 @@ services:
       - audit-service
       - hiring-service
       - academic-schedule-service
+      - chatbot-service
     networks:
       - superapp-net
 
@@ -468,6 +470,34 @@ services:
     depends_on:
       - db
       - redis
+    networks:
+      - superapp-net
+
+  # ============ CHATBOT SERVICE ============
+  chatbot-service:
+    build:
+      context: ./backend/chatbot-service
+      dockerfile: Dockerfile
+    container_name: chatbot-service
+    env_file:
+      - ./backend/chatbot-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3014
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: password
+      DB_NAME: esap_db
+      DB_SCHEMA: chatbot
+
+      JWT_SECRET: esap_jwt_secret_dev_2024
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3014:3014"
+    depends_on:
+      - db
     networks:
       - superapp-net
 
