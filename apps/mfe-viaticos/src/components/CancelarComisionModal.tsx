@@ -139,14 +139,14 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-1000 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="titulo-cancelar-comision"
     >
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden my-6">
+      <div className="bg-white rounded-2xl z-[200] shadow-2xl border border-slate-200 w-full max-w-2xl my-6">
         {/* Header con gradiente de alerta/novedad */}
-        <div className="px-6 py-4 bg-gradient-to-r from-red-700 via-rose-700 to-amber-700 text-white flex items-center justify-between">
+        <div className="px-6 py-4 bg-red-700 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/10 rounded-xl">
               <XCircle className="w-6 h-6 text-white" />
@@ -154,7 +154,7 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-md">
-                  Etapa 6 · Novedad
+                  Novedad
                 </span>
                 <span className="text-xs font-mono opacity-90">{codigo}</span>
               </div>
