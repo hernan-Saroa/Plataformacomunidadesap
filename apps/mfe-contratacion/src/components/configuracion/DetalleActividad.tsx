@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Check, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -85,7 +85,7 @@ export function DetalleActividad({
 
       <Seccion
         titulo="En qué modalidades se hace"
-        ayuda={`Con check: el gestor tiene que hacerla. Con equis: esa modalidad se la salta. Pulsa una para cambiarla.${
+        ayuda={`Pulsa una para quitarla o volver a ponerla. Las tachadas se saltan esta actividad.${
           resaltada ? ' En ámbar, la columna desde la que abriste la ficha.' : ''
         }`}
       >
@@ -121,7 +121,7 @@ export function DetalleActividad({
               onQuitar={onQuitarCampo}
             />
           ) : (
-            <p className="text-[12px] text-slate-700 m-0 leading-relaxed">
+            <p className="text-xs text-slate-700 m-0 leading-relaxed">
               {registro
                 ? 'Registra la fecha en que ocurrió, una nota de lo que se hizo y el soporte.'
                 : tienePanel
@@ -158,8 +158,8 @@ function Seccion({
   return (
     <section className={`space-y-2.5 ${primera ? '' : 'border-t border-gray-100 pt-4'}`}>
       <div>
-        <p className="text-[10.5px] font-black uppercase tracking-wide text-slate-500 m-0">{titulo}</p>
-        {ayuda && <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">{ayuda}</p>}
+        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 m-0">{titulo}</p>
+        {ayuda && <p className="text-xs text-slate-600 m-0 mt-0.5 leading-relaxed">{ayuda}</p>}
       </div>
       {children}
     </section>
@@ -218,7 +218,7 @@ function TextoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
         }}
         maxLength={200}
         aria-label="Nombre de la actividad"
-        className={`${clase} text-[13px] font-bold text-slate-800`}
+        className={`${clase} text-sm font-bold text-slate-800`}
       />
       <textarea
         value={descripcion}
@@ -227,7 +227,7 @@ function TextoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
         rows={2}
         placeholder="Qué debe saber el gestor de esta actividad"
         aria-label="Descripción de la actividad"
-        className={`${clase} text-[12px] leading-relaxed text-slate-600 resize-none`}
+        className={`${clase} text-xs leading-relaxed text-slate-600 resize-none`}
       />
     </div>
   );
@@ -296,9 +296,11 @@ function Modalidades({
               type="button"
               disabled={guardando === m.codigo}
               aria-pressed={si}
-              title={si ? `Se exige en ${m.nombre}` : `${m.nombre} se la salta`}
+              title={si ? `Se exige en ${m.nombre}: pulsa para quitarla` : `${m.nombre} se la salta: pulsa para volver a ponerla`}
               onClick={() => (si ? setExcluyendo(m) : cambiar(m, true))}
               className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                si ? '' : 'line-through'
+              } ${
                 resaltada === m.codigo
                   ? `border-amber-300 bg-amber-50 ${si ? 'text-[#003DA5]' : 'text-slate-400'}`
                   : si
@@ -306,7 +308,6 @@ function Modalidades({
                     : 'border-gray-200 bg-white text-slate-400 hover:border-gray-300'
               }`}
             >
-              {si ? <Check className="w-3 h-3" strokeWidth={3} /> : <X className="w-3 h-3" />}
               {m.nombre}
               {conSalvedad && <AlertTriangle className="w-3 h-3 text-amber-600" aria-label="con salvedad" />}
             </button>
@@ -334,14 +335,14 @@ function Modalidades({
               autoFocus
               maxLength={300}
               placeholder="Queda escrito en el expediente de los procesos de esa modalidad"
-              className="w-full px-2.5 py-1.5 text-[12.5px] rounded-md border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+              className="w-full px-2.5 py-1.5 text-sm rounded-md border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
             />
           </label>
           <div className="flex items-center gap-2">
             <button
               type="submit"
               disabled={guardando !== null}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002D7A] shadow-sm disabled:opacity-50"
             >
               Ya no se exige
             </button>
@@ -351,7 +352,7 @@ function Modalidades({
                 setExcluyendo(null);
                 setMotivo('');
               }}
-              className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 px-2"
+              className="text-xs font-bold text-slate-500 hover:text-gray-700 px-2"
             >
               Cancelar
             </button>
@@ -362,14 +363,14 @@ function Modalidades({
       {/* Lo que la matriz del área dejó anotado. Se ve pero no se edita aquí: lo
           aclara Contratación, no esta pantalla. */}
       {conNota.length > 0 && (
-        <ul className="m-0 p-0 list-none space-y-1">
+        <div className="space-y-1">
           {conNota.map(({ m, celda }) => (
-            <li key={m.codigo} className="text-[11px] text-slate-500 leading-relaxed">
+            <p key={m.codigo} className="text-[11px] text-slate-500 leading-relaxed m-0">
               <strong className="font-bold text-slate-600">{m.nombre}:</strong>{' '}
               {[celda?.variante, celda?.motivo].filter(Boolean).join(' · ')}
-            </li>
+            </p>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

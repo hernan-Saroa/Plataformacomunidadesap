@@ -161,7 +161,7 @@ export function VistaConfiguracion() {
               type="button"
               onClick={() => setPestana(clave)}
               aria-pressed={activa}
-              className={`px-4 py-2.5 rounded-lg text-[12.5px] font-bold flex items-center gap-2
+              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2
                 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
                   activa ? 'text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                 }`}

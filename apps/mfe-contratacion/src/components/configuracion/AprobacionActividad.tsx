@@ -142,7 +142,7 @@ export function AprobacionActividad({ numeral }: Props) {
   };
 
   if (cargando) {
-    return <p className="text-[11.5px] text-slate-400 m-0">Cargando la configuración…</p>;
+    return <p className="text-xs text-slate-400 m-0">Cargando la configuración…</p>;
   }
 
   if (error) {
@@ -152,7 +152,7 @@ export function AprobacionActividad({ numeral }: Props) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+        <p className="text-xs text-slate-600 m-0 leading-relaxed">
           Si esta actividad necesita el visto bueno de alguien antes de darse por terminada.
           Los procesos ya aprobados no cambian: lo que se configure aquí rige de ahora en
           adelante.
@@ -186,7 +186,7 @@ export function AprobacionActividad({ numeral }: Props) {
               className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" aria-hidden="true" />
-              <span className="text-[12px] text-slate-800 flex-1 min-w-0 truncate">{a.nombre}</span>
+              <span className="text-xs text-slate-800 flex-1 min-w-0 truncate">{a.nombre}</span>
               <span className="text-[10px] text-slate-400">
                 {a.clase === 'rol' ? 'Rol' : 'Persona'}
               </span>
@@ -205,7 +205,7 @@ export function AprobacionActividad({ numeral }: Props) {
           {/* Sin aprobadores la regla no exige nada: decirlo evita que alguien
               marque la casilla y crea que ya quedó protegida. */}
           {aprobadores.length === 0 && (
-            <p className="text-[11.5px] text-amber-700 m-0">
+            <p className="text-xs text-amber-700 m-0">
               Falta indicar quién aprueba: mientras no haya nadie, la actividad se cierra sin
               revisión.
             </p>
@@ -228,10 +228,10 @@ export function AprobacionActividad({ numeral }: Props) {
                     type="button"
                     onClick={() => setDonde(id)}
                     aria-pressed={donde === id}
-                    className={`flex-1 px-3 py-1.5 rounded-md text-[11.5px] font-bold transition-colors ${
+                    className={`flex-1 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
                       donde === id
                         ? 'bg-white text-slate-800 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
+                        : 'text-slate-500 hover:text-gray-700'
                     }`}
                   >
                     {etiqueta}
@@ -271,13 +271,13 @@ export function AprobacionActividad({ numeral }: Props) {
                         setBuscando(false);
                         setTexto('');
                       }}
-                      className="w-full text-left px-2 py-1.5 rounded text-[12px] text-slate-700 hover:bg-slate-50"
+                      className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 hover:bg-slate-50"
                     >
                       {r.name}
                     </button>
                   ))
                 ) : (
-                  <p className="text-[11.5px] text-slate-400 m-0 px-1 py-2">
+                  <p className="text-xs text-slate-400 m-0 px-1 py-2">
                     Ningún rol coincide con «{texto}».
                   </p>
                 )
@@ -296,14 +296,14 @@ export function AprobacionActividad({ numeral }: Props) {
                     }}
                     className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-50"
                   >
-                    <span className="block text-[12px] text-slate-700">{p.nombre}</span>
+                    <span className="block text-xs text-slate-700">{p.nombre}</span>
                     {p.cargo && (
-                      <span className="block text-[10.5px] text-slate-400">{p.cargo}</span>
+                      <span className="block text-[10px] text-slate-400">{p.cargo}</span>
                     )}
                   </button>
                 ))
               ) : (
-                <p className="text-[11.5px] text-slate-400 m-0 px-1 py-2">
+                <p className="text-xs text-slate-400 m-0 px-1 py-2">
                   {texto.trim().length < 2
                     ? 'Escribe al menos dos letras del nombre.'
                     : `Ninguna persona coincide con «${texto}».`}
@@ -316,7 +316,7 @@ export function AprobacionActividad({ numeral }: Props) {
                   setBuscando(false);
                   setTexto('');
                 }}
-                className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 px-2 pt-1"
+                className="text-xs font-bold text-slate-500 hover:text-gray-700 px-2 pt-1"
               >
                 Cancelar
               </button>
@@ -326,7 +326,7 @@ export function AprobacionActividad({ numeral }: Props) {
               type="button"
               disabled={guardando}
               onClick={abrirBuscador}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md
                 border border-gray-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -361,7 +361,7 @@ const Opcion = ({
     className={`w-full text-left flex items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors
       disabled:opacity-50 ${
         marcada
-          ? 'border-[#003DA5]/30 bg-[#003DA5]/[0.04]'
+          ? 'border-blue-200 bg-blue-50'
           : 'border-gray-200 bg-white hover:border-gray-300'
       }`}
   >
@@ -373,7 +373,7 @@ const Opcion = ({
       {marcada && <Check className="w-2.5 h-2.5 text-white" strokeWidth={4} />}
     </span>
     <span className="min-w-0">
-      <span className="block text-[12.5px] font-bold text-slate-800">{titulo}</span>
+      <span className="block text-sm font-bold text-slate-800">{titulo}</span>
       {ayuda && <span className="block text-[11px] text-slate-500 mt-0.5">{ayuda}</span>}
     </span>
   </button>
