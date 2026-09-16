@@ -6,12 +6,14 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeor
  * - `CONTRATACION`: quien lo tomó de la bandeja en la 3.3 y responde por él
  *   dentro de la Dirección. Sube los documentos de ahí en adelante.
  * - `ABOGADO`: quien revisa en la 3.4 y aprueba, devuelve o niega.
+ * - `FINANCIERA`: quien toma la solicitud de CDP en la 4.1 y responde por ella:
+ *   verifica la disponibilidad, expide o rechaza (migración 069).
  *
- * Dos papeles y no dos tablas: lo que se guarda de cada uno es idéntico —una
+ * Tres papeles y no tres tablas: lo que se guarda de cada uno es idéntico —una
  * cuenta, desde cuándo, quién la puso y por qué salió—, y separarlos obligaría
- * a escribir dos veces el relevo, que es la parte con reglas.
+ * a escribir tres veces el relevo, que es la parte con reglas.
  */
-export type PapelEnProceso = 'CONTRATACION' | 'ABOGADO';
+export type PapelEnProceso = 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
 
 /**
  * Vigente y relevado, no un borrado.

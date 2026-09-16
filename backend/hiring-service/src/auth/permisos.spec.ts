@@ -204,3 +204,37 @@ describe('catálogo por perfil (EFDS-1183)', () => {
     expect(tienePermiso(usuario, 'contratacion.actividad.edit')).toBe(false);
   });
 });
+
+/**
+ * Migración 072: la Financiera podía escribir las cuatro actividades del CDP y
+ * no podía leer el proceso al que se las escribía.
+ */
+describe('la Financiera lee el proceso que certifica (072)', () => {
+  const financiera = { roles: ['ESTRUCTURADOR_FINANCIERO'] };
+
+  it('puede consultar el proceso, que es lo que el panel de la 4.1 necesita', () => {
+    // El panel pide a la vez el estado del CDP y quién lleva la solicitud; el
+    // segundo exige `proceso.view` y sin él se caía el panel entero.
+    expect(tienePermiso(financiera, 'contratacion.proceso.view')).toBe(true);
+    expect(tienePermiso(financiera, 'contratacion.presupuesto.gestionar')).toBe(true);
+  });
+
+  it('sigue sin poder diligenciar el trámite que le pide el gasto', () => {
+    for (const permiso of [
+      'contratacion.actividad.edit',
+      'contratacion.actividad.send',
+      'contratacion.actividad.approve',
+      'contratacion.documento.upload',
+      'contratacion.proceso.edit',
+    ]) {
+      expect(tienePermiso(financiera, permiso)).toBe(false);
+    }
+  });
+
+  it('leer los suyos no es ver los de toda la entidad', () => {
+    // `view-all` es la única X del Jefe de Oficina (068): la Financiera llega a
+    // sus procesos por la bandeja de solicitudes sin atender, no por el permiso.
+    expect(tienePermiso(financiera, 'contratacion.proceso.view-all')).toBe(false);
+    expect(tienePermiso(financiera, 'contratacion.proceso.take')).toBe(false);
+  });
+});

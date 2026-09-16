@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { basename } from 'path';
+
 import { DataSource, EntityManager } from 'typeorm';
 
 import {
@@ -18,6 +20,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
+import { CdpService } from '../cdp/cdp.service';
 import { admiteRegistro, faltaParaRegistrar } from './admite-registro';
 import { AnularRegistroDto, RegistrarActividadDto } from './dto/registro-actividad.dto';
 
@@ -41,6 +44,7 @@ export class RegistroActividadService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly aprobacion: AprobacionService,
+    private readonly cdp: CdpService,
   ) {}
 
   /**
@@ -182,8 +186,22 @@ export class RegistroActividadService {
             datos: vigente.datos,
             registradoPor: vigente.registradoPor,
             registradoAt: vigente.registradoAt,
-            soporte: soporte
-              ? { nombre: soporte.nombre, url: `/hiring/documentos/${soporte.id}/descargar` }
+            /*
+             * La ruta que el controlador de archivos sabe servir.
+             *
+             * Aqui se anunciaba `/hiring/documentos/<id>/descargar`, una ruta
+             * que ningun controlador expone: el cliente se queda con el ultimo
+             * segmento del enlace, asi que «Ver el soporte» pedia un archivo
+             * llamado `descargar` y abria una pestana con el 404 en crudo. El
+             * documento siempre estuvo en disco; lo que faltaba era nombrarlo
+             * como el resto del modulo, por el nombre del archivo.
+             *
+             * La columna admite nulo —hay documentos que solo guardan el
+             * contenido—, y sin comprobarlo el `basename` reventaria la
+             * consulta entera del estado por un adjunto sin archivo.
+             */
+            soporte: soporte?.archivoUrl
+              ? { nombre: soporte.nombre, url: `/files/${basename(soporte.archivoUrl)}` }
               : null,
           }
         : null,
@@ -294,7 +312,7 @@ export class RegistroActividadService {
         } as Partial<RegistroActividad>),
       );
 
-      const estadoResultante = await this.marcarActividad(
+      const { estado: estadoResultante, cierra: cerro } = await this.marcarActividad(
         em,
         procesoId,
         numeral,
@@ -315,6 +333,20 @@ export class RegistroActividadService {
         { numeral, fecha: dto.fecha, conSoporte: documento !== null, estado: estadoResultante },
         acceso,
       );
+
+      // Si con esto no quedaba nada abierto en la etapa 3, la solicitud de CDP
+      // se radica sola. Le toca a este camino y no solo a la aprobación: donde
+      // nadie tiene aprobador configurado, el registro *es* el cierre.
+      //
+      // De la etapa 3 solo queda aquí la 3.2, y el riel obliga a cerrarla antes
+      // que las siguientes, así que rara vez será la última. Rara vez no es
+      // nunca: anular su registro la devuelve a BORRADOR, y volver a
+      // registrarla con todo lo demás ya cerrado deja a este camino cerrando la
+      // etapa. Sin la llamada, ese proceso se quedaba sin CDP.
+      //
+      // Solo cuando cierra: si la actividad tiene aprobadores, queda en
+      // revisión y quien decida pasará por `aprobacion`, que ya pregunta.
+      if (cerro) await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, numeral);
@@ -435,6 +467,12 @@ export class RegistroActividadService {
    * Antes se cerraba siempre en APROBADO, hubiera o no quien revisara, así que
    * una actividad con aprobador configurado se daba por buena sin que nadie la
    * mirara y el envío quedaba como un paso que ya no cambiaba nada.
+   *
+   * Devuelve el estado en que la dejó y si la cerró. El estado va a la traza,
+   * de donde se entera el aviso de «se envía a aprobación»; el cierre es lo que
+   * quien llama necesita para saber si preguntar por el cierre de la etapa. Se
+   * devuelven en vez de recalcularse fuera: la condición ya está resuelta aquí,
+   * y repetirla es la forma de que las dos acaben discrepando.
    */
   private async marcarActividad(
     em: EntityManager,
@@ -443,7 +481,7 @@ export class RegistroActividadService {
     cumplida: boolean,
     acceso: HiringAccess,
     modalidad: string | null = null,
-  ): Promise<'BORRADOR' | 'EN_REVISION' | 'APROBADO'> {
+  ): Promise<{ estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO'; cierra: boolean }> {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
@@ -470,7 +508,7 @@ export class RegistroActividadService {
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
-      return estado;
+      return { estado, cierra };
     }
 
     actividad.estado = estado as any;
@@ -481,7 +519,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
-    return estado;
+    return { estado, cierra };
   }
 
   private async traza(

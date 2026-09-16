@@ -7,10 +7,12 @@ import {
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
+  BandejaCdp,
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
   EstadoDocumentos,
+  EstadoListaChequeo,
   EstadoDocumentosActividad,
   EstadoMipyme,
   EstadoComite,
@@ -35,6 +37,9 @@ import {
   DatosSupervisor,
   CuentaCandidata,
   EstadoParticipacion,
+  DecisionComite,
+  EstadoCausalProceso,
+  EstadoComiteContratacion,
   EstadoModalidadProceso,
   EstadoActaInicio,
   DatosActaInicio,
@@ -151,6 +156,7 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
       cuerpo.camposFaltantes,
       cuerpo.documentoFaltante === true,
       cuerpo.message,
+      Array.isArray(cuerpo.documentosDeLaLista) ? cuerpo.documentosDeLaLista : [],
     );
   }
   if (res.status === 409) {
@@ -251,12 +257,28 @@ export const contratacionService = {
     datos: { rubro: string; valor: number; vigenciaFiscal?: number; observaciones?: string },
   ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
 
-  verificarCdp: (procesoId: string) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, { method: 'POST' }),
+  /**
+   * Verificar es decir contra qué rubro hay saldo, no pulsar un botón.
+   *
+   * El rubro va vacío si la solicitud ya lo traía; el backend solo lo exige
+   * cuando el CDP no tiene ninguno, que es el caso de la solicitud automática.
+   */
+  verificarCdp: (procesoId: string, rubro?: string) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, {
+      method: 'POST',
+      body: JSON.stringify({ rubro }),
+    }),
 
   expedirCdp: (
     procesoId: string,
-    datos: { numero: string; valor: number; fechaExpedicion: string; vigenciaFiscal?: number },
+    datos: {
+      numero: string;
+      valor: number;
+      fechaExpedicion: string;
+      vigenciaFiscal?: number;
+      /** Solo si difiere del verificado; omitirlo conserva aquel. */
+      rubro?: string;
+    },
   ) =>
     pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
       method: 'POST',
@@ -633,6 +655,60 @@ export const contratacionService = {
       body: JSON.stringify({ decision, observaciones }),
     }),
 
+  // ---------------- causal de contratación · 3.6 (3.5.1 de la matriz) -------
+
+  /**
+   * La causal del proceso y las que puede tener.
+   *
+   * El catálogo viene en la misma respuesta y ya filtrado por la modalidad
+   * —que es el «filtro según la modalidad» de la matriz—: pedirlo aparte
+   * obligaría a la pantalla a saber cuál es la modalidad ratificada y a
+   * filtrarlo ella, que es justo donde se cuela ofrecer una causal ajena.
+   */
+  causalDelProceso: (procesoId: string) =>
+    pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`),
+
+  /** El abogado del proceso la elige, o rectifica la que eligió. */
+  elegirCausal: (procesoId: string, causal: string, sustento?: string) =>
+    pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`, {
+      method: 'PUT',
+      body: JSON.stringify({ causal, sustento }),
+    }),
+
+  // --------------- comité de contratación · 3.7 (3.6 de la matriz) ----------
+
+  /**
+   * Si el proceso pasa por comité y qué decidió.
+   *
+   * El umbral de cuantía viaja entero —cifra, fundamento y salario aplicado—
+   * porque un «no pasa por comité» sin decir contra qué se comparó es una
+   * decisión que nadie puede revisar.
+   */
+  comiteContratacion: (procesoId: string) =>
+    pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion`),
+
+  /** Transcribe una sesión, con su acta: sin ella no se registra. */
+  registrarSesionComite: (
+    procesoId: string,
+    datos: {
+      fecha: string;
+      decision: DecisionComite;
+      condiciones?: string;
+      observaciones?: string;
+    },
+    acta: File,
+  ) =>
+    pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/sesiones`, {
+      method: 'POST',
+      body: conArchivo(datos, acta),
+    }),
+
+  /** Deja constancia de que el proceso no pasó por comité, por cuantía. */
+  comiteNoVa: (procesoId: string) =>
+    pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/no-va`, {
+      method: 'POST',
+    }),
+
   // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------
 
   /** Quién lo tomó, qué abogado lo revisa y quiénes estuvieron antes. */
@@ -654,6 +730,32 @@ export const contratacionService = {
   /** A quién se le puede dar el papel de abogado. */
   abogados: (q = '') =>
     pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
+
+  /**
+   * Actividad 4.1: toma la solicitud de CDP de la bandeja de la Financiera.
+   *
+   * Igual que `tomarProceso` y por lo mismo: nadie la entrega, la toma quien va
+   * a resolverla. Desde ese momento los avisos de esa solicitud son suyos y
+   * dejan de sonarle al resto de la Dirección Financiera.
+   */
+  tomarSolicitudCdp: (procesoId: string) =>
+    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/financiera/tomar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  /**
+   * La bandeja de la Dirección Financiera: lo que espera en la etapa 4.
+   *
+   * No cuelga de un proceso porque no es de uno: es la lista de los que
+   * esperan, y preguntarla exigiendo un proceso a mano sería preguntar por lo
+   * que aún no se sabe.
+   */
+  bandejaCdp: () => pedir<BandejaCdp>('/cdp/bandeja'),
+
+  /** Quiénes pueden resolver un CDP: los que gestionan presupuesto. */
+  financieros: (q = '') =>
+    pedir<CuentaCandidata[]>(`/participacion/financieros?q=${encodeURIComponent(q)}`),
 
   /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
   asignarAbogado: (procesoId: string, usuarioId: string) =>
@@ -1370,6 +1472,49 @@ export const contratacionService = {
     pedir<{ retirado: boolean }>(
       `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${documentoId}`,
       { method: 'DELETE' },
+    ),
+
+  // ------------------------------------ lista de chequeo de la radicación --
+
+  /**
+   * El paquete con el que el área radica en la Dirección de Contratación.
+   *
+   * Se consulta aunque el estudio previo esté a medias: saber qué va a pedirse
+   * es lo que permite ir armándolo.
+   */
+  listaChequeo: (procesoId: string) =>
+    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`),
+
+  /** Carga uno de los documentos de la lista; el código dice cuál cubre. */
+  cargarDocumentoDeLaLista: (procesoId: string, codigo: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('codigo', codigo);
+
+    return pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Anota el radicado de Active Document con el que se remitió el paquete.
+   *
+   * Cadena vacía lo borra: el procedimiento admite remitir por vías que no
+   * generan consecutivo, y un número anotado por error tiene que poder
+   * quitarse, no solo cambiarse.
+   */
+  anotarRadicadoDeLaLista: (procesoId: string, radicado: string) =>
+    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo/radicado`, {
+      method: 'POST',
+      body: JSON.stringify({ radicado }),
+    }),
+
+  /** Deja uno sin efecto para poder cargar otro en su lugar. */
+  anularDocumentoDeLaLista: (procesoId: string, documentoId: string) =>
+    pedir<EstadoListaChequeo>(
+      `/procesos/${procesoId}/estudio-previo/lista-chequeo/${documentoId}/anular`,
+      { method: 'POST' },
     ),
 
   /**

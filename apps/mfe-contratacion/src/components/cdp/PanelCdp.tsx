@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, Info, Landmark, Paperclip, Send, Undo2 } from 'lucide-react';
+import { AlertTriangle, Check, Info, Landmark, Paperclip, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoRespaldo } from '../../types';
+import { EstadoParticipacion, EstadoRespaldo } from '../../types';
+import { momento } from '../shared/fechas';
 import {
   Aviso,
   Boton,
@@ -47,20 +48,46 @@ function aNumero(texto: string): number | null {
  */
 export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props) {
   const [respaldo, setRespaldo] = useState<EstadoRespaldo | null>(null);
+  /**
+   * Quién lleva la solicitud, que no vive en el estado del respaldo.
+   *
+   * Se pide aparte y no se añade al payload del CDP a propósito: para
+   * resolverlo allí, el servicio del CDP tendría que preguntarle al de
+   * participación, y ese ya le pregunta a él desde que tomar el proceso puede
+   * radicar la solicitud. Serían dos servicios dependiendo el uno del otro.
+   */
+  const [participacion, setParticipacion] = useState<EstadoParticipacion | null>(null);
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
 
-  const [rubro, setRubro] = useState('');
   const [valorTexto, setValorTexto] = useState('');
   const [numero, setNumero] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [motivo, setMotivo] = useState('');
+  /**
+   * El rubro contra el que la Financiera verifica, y con el que expide.
+   *
+   * Uno solo para las dos actividades: es el mismo dato, y llevar dos estados
+   * dejaría que la 4.3 mostrara algo distinto de lo que la 4.2 certificó.
+   */
+  const [rubro, setRubro] = useState('');
   const inputArchivo = useRef<HTMLInputElement>(null);
 
   const cargar = async () => {
     setCargando(true);
     try {
-      setRespaldo(await contratacionService.respaldoCdp(procesoId));
+      // Las dos a la vez: quién la lleva se lee junto al estado del CDP, y en
+      // serie el panel parpadearía dos veces al abrirse.
+      const [estado, quienes] = await Promise.all([
+        contratacionService.respaldoCdp(procesoId),
+        contratacionService.participacion(procesoId),
+      ]);
+      setRespaldo(estado);
+      setParticipacion(quienes);
+      // Sin pisar lo que se esté escribiendo: `cargar` se vuelve a llamar
+      // después de cada acción, y un setState plano borraría el rubro a medio
+      // teclear si la recarga llega antes de enviarlo.
+      setRubro((actual) => actual || estado.cdp?.rubro || '');
     } catch (err: any) {
       toast.error('No se pudo cargar el CDP', { id: 'cdp-carga', description: err.message });
     } finally {
@@ -106,66 +133,80 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
 
   const cdp = respaldo.cdp;
   const estado = cdp?.estado ?? null;
+  const financiera = participacion?.financiera ?? null;
+  const puedeTomarla = participacion?.puedeTomarFinanciera === true;
 
   // ------------------------------------------------------------ 4.1 ------
+  /*
+   * Dejó de ser un formulario.
+   *
+   * El estudio previo aprobado ya es la solicitud formal, así que al cerrarse
+   * la etapa 3 la solicitud se radica sola y aquí no hay nada que diligenciar:
+   * lo que queda es ver qué se pidió y quién de la Financiera se hace cargo.
+   */
   if (numeral === '4.1') {
-    if (cdp) {
+    if (!cdp) {
       return (
         <Marco>
-          <Aviso tono="ok" titulo="Solicitud radicada">
-            {cdp.solicitadoPor ? `Radicada por ${cdp.solicitadoPor}. ` : ''}
-            Rubro {cdp.rubro ?? '—'} por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'}.
-          </Aviso>
-          <Siguiente texto="Continúa en 4.2, donde la Dirección Financiera verifica la disponibilidad." />
+          <Pendiente
+            falta="la etapa 3"
+            texto="La solicitud de CDP se radica sola en cuanto se cierre la última actividad de la etapa 3 que aplique a esta modalidad."
+          />
         </Marco>
       );
     }
-    if (!respaldo.puedeSolicitar) {
-      return (
-        <Marco>
-          <SinPermiso quien="el área solicitante o la Dirección de Contratación" />
-        </Marco>
-      );
-    }
+
     return (
       <Marco>
-        <Titulo>Radicar la solicitud de CDP</Titulo>
-        <Ayuda>
-          El área solicitante pide el respaldo presupuestal indicando contra qué rubro y por cuánto.
-        </Ayuda>
-        <div className="grid grid-cols-2 gap-2.5">
-          <input
-            value={rubro}
-            onChange={(e) => setRubro(e.target.value)}
-            placeholder="Rubro presupuestal"
-            aria-label="Rubro presupuestal"
-            className={campo}
-          />
-          <input
-            value={valorTexto}
-            onChange={(e) => setValorTexto(e.target.value)}
-            inputMode="numeric"
-            placeholder="Valor a respaldar"
-            aria-label="Valor a respaldar"
-            className={`${campo} tabular-nums`}
-          />
-        </div>
-        <Boton
-          disabled={trabajando || !rubro.trim() || aNumero(valorTexto) === null}
-          onClick={() =>
-            ejecutar(
-              () =>
-                contratacionService.solicitarCdp(procesoId, {
-                  rubro: rubro.trim(),
-                  valor: aNumero(valorTexto)!,
-                }),
-              'Solicitud de CDP radicada',
-            )
-          }
-          icono={<Send className="w-3.5 h-3.5" />}
-        >
-          Radicar solicitud
-        </Boton>
+        <Aviso tono="ok" titulo="Solicitud radicada">
+          {/* El rubro solo se nombra si lo hay: el automático nace sin él
+              —lo pone la Financiera al expedir— y un «Rubro —» se lee como un
+              dato que falta por diligenciar, que es justo lo que ya no es. */}
+          {cdp.solicitadoPor ? `Radicada por ${cdp.solicitadoPor}. ` : ''}
+          Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'}
+          {cdp.rubro ? ` contra el rubro ${cdp.rubro}` : ''}.
+        </Aviso>
+
+        {/* ------------------------------------- quién la lleva en Financiera */}
+        {financiera ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3">
+            <div className="flex items-start gap-2.5">
+              <Landmark className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-900" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] font-bold text-emerald-900 m-0 break-words">
+                  {financiera.nombre}
+                  {financiera.esMio ? ' · estás a cargo' : ''}
+                </p>
+                <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
+                  Dirección Financiera · se hizo cargo el {momento(financiera.asignadoAt)}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <Aviso tono="aviso" titulo="Todavía no la lleva nadie">
+            {puedeTomarla
+              ? 'Hazte cargo para verificar la disponibilidad y expedir el CDP.'
+              : 'Está esperando a que alguien de la Dirección Financiera se haga cargo.'}
+          </Aviso>
+        )}
+
+        {puedeTomarla && (
+          <Boton
+            disabled={trabajando}
+            onClick={() =>
+              ejecutar(
+                () => contratacionService.tomarSolicitudCdp(procesoId),
+                'Ya estás a cargo de esta solicitud.',
+              )
+            }
+            icono={<Landmark className="w-3.5 h-3.5" />}
+          >
+            Hacerme cargo
+          </Boton>
+        )}
+
+        <Siguiente texto="Continúa en 4.2, donde la Dirección Financiera verifica la disponibilidad." />
       </Marco>
     );
   }
@@ -186,7 +227,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
       return (
         <Marco>
           <Aviso tono="ok" titulo="Disponibilidad verificada">
-            La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro ?? '—'}.
+            La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro}.
           </Aviso>
           <Siguiente texto="Continúa en 4.3, la expedición del certificado." />
         </Marco>
@@ -199,15 +240,29 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
       <Marco>
         <Titulo>Verificar la disponibilidad presupuestal</Titulo>
         <Ayuda>
-          Confirma que el rubro {cdp.rubro ?? '—'} tiene saldo para cubrir{' '}
+          Indica el rubro que respalda el gasto y confirma que tiene saldo para cubrir{' '}
           {cdp.valor !== null ? formatoPesos.format(cdp.valor) : 'el valor solicitado'}. Si no lo
           hay, rechaza indicando el motivo.
         </Ayuda>
+        {/* El rubro se escribe aquí porque la solicitud llega sin él: el
+            estudio previo no lo captura y la radicación automática no tiene de
+            dónde sacarlo. Un área que lo conociera pudo adelantarlo, y entonces
+            llega escrito y solo hay que confirmarlo o corregirlo. */}
+        <input
+          value={rubro}
+          onChange={(e) => setRubro(e.target.value)}
+          placeholder="Rubro presupuestal (p. ej. A-02-02-02-008)"
+          aria-label="Rubro presupuestal"
+          className={campo}
+        />
         <div className="flex items-center gap-2 flex-wrap">
           <Boton
-            disabled={trabajando}
+            disabled={trabajando || !rubro.trim()}
             onClick={() =>
-              ejecutar(() => contratacionService.verificarCdp(procesoId), 'Disponibilidad verificada')
+              ejecutar(
+                () => contratacionService.verificarCdp(procesoId, rubro.trim()),
+                'Disponibilidad verificada',
+              )
             }
             icono={<Landmark className="w-3.5 h-3.5" />}
           >
@@ -257,7 +312,9 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
         <Marco>
           <Aviso tono="ok" titulo={`CDP ${cdp.numero} expedido`}>
             Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'} el{' '}
-            {cdp.fechaExpedicion}. La partida quedó apartada y el proceso ya puede abrirse.
+            {cdp.fechaExpedicion}
+            {cdp.rubro ? `, contra el rubro ${cdp.rubro}` : ''}. La partida quedó apartada y el
+            proceso ya puede abrirse.
           </Aviso>
           {cdp.valor !== null &&
             valorEstimado !== null &&
@@ -309,8 +366,18 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
             className={campo}
           />
         </div>
+        {/* El rubro llega verificado de la 4.2 y se puede corregir aquí: al
+            buscar el saldo la Financiera pudo acabar imputando a otro. No se
+            pide de cero —eso ya pasó— pero el certificado no sale sin él. */}
+        <input
+          value={rubro}
+          onChange={(e) => setRubro(e.target.value)}
+          placeholder="Rubro presupuestal"
+          aria-label="Rubro presupuestal que afecta el certificado"
+          className={campo}
+        />
         <Boton
-          disabled={trabajando || !numero.trim() || aNumero(valorTexto) === null}
+          disabled={trabajando || !numero.trim() || !rubro.trim() || aNumero(valorTexto) === null}
           onClick={() =>
             ejecutar(
               () =>
@@ -318,6 +385,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
                   numero: numero.trim(),
                   valor: aNumero(valorTexto)!,
                   fechaExpedicion: fecha,
+                  rubro: rubro.trim(),
                 }),
               'CDP expedido',
             )

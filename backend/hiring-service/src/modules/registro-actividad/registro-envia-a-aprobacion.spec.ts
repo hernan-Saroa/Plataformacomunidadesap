@@ -34,11 +34,19 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
     return { em, guardado };
   };
 
-  /** El servicio con un servicio de aprobación que responde lo que se le diga. */
+  /**
+   * El servicio con un servicio de aprobación que responde lo que se le diga.
+   *
+   * El del CDP entra sin hacer nada: `marcarActividad` no lo llama —quien
+   * pregunta por el cierre de la etapa es `guardar`, con lo que esta devuelve—
+   * y lo que aquí se prueba es en qué estado queda la actividad.
+   */
   const servicio = (aprobadores: unknown) =>
-    new RegistroActividadService({} as never, {
-      aprobadoresDe: async () => aprobadores,
-    } as never) as never as {
+    new RegistroActividadService(
+      {} as never,
+      { aprobadoresDe: async () => aprobadores } as never,
+      { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
+    ) as never as {
       marcarActividad(
         em: unknown,
         procesoId: string,
@@ -46,7 +54,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
         cumplida: boolean,
         acceso: unknown,
         modalidad?: string | null,
-      ): Promise<void>;
+      ): Promise<{ estado: string; cierra: boolean }>;
     };
 
   const acceso = { userName: 'Adrián Castro', userId: 'u-1' } as never;
@@ -94,6 +102,56 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
 
     expect(actividad.estado).toBe('APROBADO');
     expect(actividad.revisadoPor).toBe('Adrián Castro');
+  });
+
+  /**
+   * Lo que `guardar` necesita saber para preguntar por el cierre de la etapa 3.
+   *
+   * La solicitud de CDP nace al cerrarse la etapa, y donde nadie tiene aprobador
+   * configurado el registro *es* el cierre. De la etapa 3 aquí solo queda la
+   * 3.2, que el riel obliga a cerrar antes que las siguientes; pero anular su
+   * registro la devuelve a BORRADOR, y volver a registrarla con todo lo demás
+   * cerrado deja a este camino cerrando la etapa.
+   */
+  it('avisa de que cerró, para que se pregunte por la etapa', async () => {
+    const { em } = conActividad(actividadEnBorrador());
+
+    const { cierra: cerro } = await servicio(null).marcarActividad(
+      em,
+      'p-1',
+      '3.2',
+      true,
+      acceso,
+      'CONTRATACION_DIRECTA',
+    );
+
+    expect(cerro).toBe(true);
+  });
+
+  it('no avisa cuando la deja esperando a quien revisa', async () => {
+    // Todavía no cerró nada: quien decida pasará por la aprobación, que ya
+    // pregunta por su cuenta. Preguntar aquí radicaría el CDP antes de que
+    // nadie hubiera aprobado el registro.
+    const { em } = conActividad(actividadEnBorrador());
+
+    const { cierra: cerro } = await servicio({ roles: ['DIRECTOR_CONTRATACION'] }).marcarActividad(
+      em,
+      'p-1',
+      '3.2',
+      true,
+      acceso,
+      'CONTRATACION_DIRECTA',
+    );
+
+    expect(cerro).toBe(false);
+  });
+
+  it('tampoco al anular, que reabre la actividad', async () => {
+    const { em } = conActividad({ ...actividadEnBorrador(), estado: 'APROBADO' });
+
+    const { cierra: cerro } = await servicio(null).marcarActividad(em, 'p-1', '3.2', false, acceso, null);
+
+    expect(cerro).toBe(false);
   });
 
   it('al anular el registro la devuelve a borrador', async () => {

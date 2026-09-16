@@ -58,7 +58,9 @@ export class AlertasCron {
     ) % 24;
     if (horaActual !== hora_aviso) return;
 
-    this.logger.log('Revisando vencimientos de amparos, CDP, RP y liquidación…');
+    this.logger.log(
+      'Revisando vencimientos de amparos, CDP, RP y liquidación, y solicitudes de CDP sin atender…',
+    );
 
     try {
       const resultado = await this.alertas.notificar(

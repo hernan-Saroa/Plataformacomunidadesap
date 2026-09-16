@@ -246,7 +246,7 @@ describe('HU EFDS-1174 · publicación del acta y archivo del expediente (10.4)'
     );
 
     await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: VALOR_CONTRATO }, gestor);
-    await cdp.verificar(proceso.id, financiero);
+    await cdp.verificar(proceso.id, {}, financiero);
     await cdp.expedir(
       proceso.id,
       { numero: `CDP-2026-174-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },

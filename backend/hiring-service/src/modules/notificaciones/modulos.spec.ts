@@ -3,6 +3,8 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
 import { PermisosService } from '../../auth/permisos.service';
+import { ParticipacionModule } from '../participacion/participacion.module';
+import { ParticipacionService } from '../participacion/participacion.service';
 
 import { AlertasCron } from '../alertas/alertas.cron';
 import { AlertasModule } from '../alertas/alertas.module';
@@ -34,10 +36,24 @@ describe('Módulos de alertas y notificaciones · arranque', () => {
   })
   class BaseFalsaModule {}
 
+  /**
+   * Participación trae sus repositorios, que piden una base de verdad. Aquí solo
+   * importa que las alertas la reciban, no lo que consulta.
+   */
+  @Module({
+    providers: [{ provide: ParticipacionService, useValue: { financieros: jest.fn().mockResolvedValue([]) } }],
+    exports: [ParticipacionService],
+  })
+  class ParticipacionFalsaModule {}
+
+  const conAlertas = (imports: any[]) =>
+    Test.createTestingModule({ imports })
+      .overrideModule(ParticipacionModule)
+      .useModule(ParticipacionFalsaModule)
+      .compile();
+
   it('resuelve todos los proveedores sin que falte ninguno', async () => {
-    const modulo = await Test.createTestingModule({
-      imports: [BaseFalsaModule, AlertasModule, NotificacionesModule],
-    }).compile();
+    const modulo = await conAlertas([BaseFalsaModule, AlertasModule, NotificacionesModule]);
 
     expect(modulo.get(AlertasService)).toBeDefined();
     expect(modulo.get(AlertasCron)).toBeDefined();
@@ -57,9 +73,7 @@ describe('Módulos de alertas y notificaciones · arranque', () => {
   });
 
   it('las alertas usan los parámetros configurados, no los de siempre', async () => {
-    const modulo = await Test.createTestingModule({
-      imports: [BaseFalsaModule, AlertasModule],
-    }).compile();
+    const modulo = await conAlertas([BaseFalsaModule, AlertasModule]);
 
     // Con @Optional un proveedor mal registrado no rompe el arranque: caería en
     // silencio a los valores por defecto. Aquí se comprueba que sí llega.

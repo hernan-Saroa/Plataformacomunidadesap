@@ -16,6 +16,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { UmbralesService } from '../umbrales/umbrales.service';
+import { CdpService } from '../cdp/cdp.service';
 import { CambiarModalidadDto, DecidirModalidadDto } from './dto/modalidad-proceso.dto';
 
 /** Actividad 3.5 de la matriz: definir la modalidad de contratación. */
@@ -54,6 +55,7 @@ export class ModalidadProcesoService {
     private readonly dataSource: DataSource,
     private readonly participacion: ParticipacionService,
     private readonly umbrales: UmbralesService,
+    private readonly cdp: CdpService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -225,6 +227,17 @@ export class ModalidadProcesoService {
         acceso,
         { actividad: NUMERAL_MODALIDAD, observaciones: dto.observaciones },
       );
+
+      // Si esta era la última que quedaba abierta en la etapa 3, la solicitud
+      // de CDP se radica sola. No es un caso raro: en mínima cuantía la matriz
+      // excluye la causal *y* el comité, así que ratificar la modalidad es
+      // justo lo que cierra la etapa, y sin esta llamada esa modalidad —una de
+      // las más frecuentes— nunca pedía su CDP.
+      //
+      // Devolver no cierra nada, así que no se pregunta.
+      if (dto.decision === 'APROBADO') {
+        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      }
     });
 
     return this.estado(procesoId, acceso);

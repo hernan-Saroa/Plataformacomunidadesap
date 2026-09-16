@@ -9,7 +9,7 @@ import { RegistroActividadService } from './registro-actividad.service';
  */
 describe('RegistroActividadService · a qué formato queda atado el soporte', () => {
   /** Sin base ni aprobación: lo que se comprueba es a qué formato se ata. */
-  const servicio = () => new RegistroActividadService({} as never, {} as never);
+  const servicio = () => new RegistroActividadService({} as never, {} as never, {} as never);
 
   const formato = (id: string, codigo: string, nombre: string, modalidades: string[] = []) => ({
     id,
@@ -110,7 +110,7 @@ describe('RegistroActividadService · a qué formato queda atado el soporte', ()
  * atascada en DEVUELTO.
  */
 describe('RegistroActividadService · cuándo se sigue exigiendo el soporte', () => {
-  const servicio = () => new RegistroActividadService({} as never, {} as never);
+  const servicio = () => new RegistroActividadService({} as never, {} as never, {} as never);
 
   const pendiente = (
     formatos: unknown[],

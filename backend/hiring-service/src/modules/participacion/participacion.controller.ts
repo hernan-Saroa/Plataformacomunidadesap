@@ -6,6 +6,7 @@ import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/partici
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
 import {
+  PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_PROCESO_TOMAR,
   PERMISO_PROCESO_VER,
 } from '../../auth/permisos';
@@ -46,6 +47,26 @@ export class ParticipacionController {
   })
   tomar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.tomar(procesoId, getHiringAccess(req));
+  }
+
+  /**
+   * El mismo permiso que verificar y expedir, y no uno propio de «tomar».
+   *
+   * En la etapa 3 tomar y aprobar son de personas distintas, y por eso existe
+   * `contratacion.proceso.take`. Aquí no: quien recibe la solicitud es quien la
+   * resuelve, y un permiso aparte solo permitiría apropiarse de solicitudes que
+   * luego no se pueden atender.
+   */
+  @Post('financiera/tomar')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_PRESUPUESTO_GESTIONAR)
+  @ApiOperation({
+    summary: 'Actividad 4.1 · Tomar la solicitud de CDP',
+    description:
+      'Quien la toma responde por ella y pasa a ser el destinatario de sus avisos. La bandeja es compartida: si otro la tomó antes, responde 409.',
+  })
+  tomarFinanciera(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.tomarFinanciera(procesoId, getHiringAccess(req));
   }
 
   /**
@@ -118,5 +139,17 @@ export class CandidatosController {
   })
   abogados(@Query('q') q?: string) {
     return this.service.abogados(q ?? '');
+  }
+
+  @Get('financieros')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_PRESUPUESTO_GESTIONAR, PERMISO_PROCESO_VER)
+  @ApiOperation({
+    summary: 'Cuentas que pueden resolver un CDP',
+    description:
+      'Las que tienen permiso para gestionar el presupuesto, que es lo que hace la Dirección Financiera en la etapa 4. Se resuelve por permiso y no por código de rol.',
+  })
+  financieros(@Query('q') q?: string) {
+    return this.service.financieros(q ?? '');
   }
 }
