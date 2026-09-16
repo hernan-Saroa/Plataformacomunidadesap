@@ -35,11 +35,21 @@ import controlInternoService from '../../../services/api/controlInternoService';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 import { exportarPDFInformeCierre } from './services/exportarPDFInformeCierreEjecutivo';
 import { configuracionesProfesionalesOCIApi } from './services/api';
+import { API_MODE, getServiceUrl } from '../../../config/environment';
 
 
 // ====================================
 // TIPOS Y DATOS
 // ====================================
+
+/** URL de previsualización del soporte del hallazgo (endpoint público /documentos/:id/preview). */
+function urlPreviewDocumento(idOrUrl: string): string {
+  if (/^https?:\/\//i.test(idOrUrl)) return idOrUrl;
+  const base = API_MODE === 'gateway'
+    ? `${getServiceUrl('control-institucional')}/control-institucional/api/v1/documentos`
+    : `${getServiceUrl('control-institucional')}/documentos`;
+  return `${base}/${encodeURIComponent(idOrUrl)}/preview`;
+}
 
 interface Auditoria {
   id: string;
@@ -988,7 +998,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       toast.success('Documento descargado con éxito', { id: 'descarga-doc' });
     } catch (error) {
       console.error('Error descargando documento:', error);
-      toast.error('No se pudo descargar el documento', { id: 'descarga-doc' });
+      const detalle = error instanceof Error ? error.message : '';
+      toast.error('No se pudo descargar el documento', { id: 'descarga-doc', description: detalle || undefined });
     }
   };
 
@@ -1841,7 +1852,8 @@ const SeccionGestionHallazgos: React.FC<{
       toast.success('Documento descargado con éxito', { id: 'descarga-doc' });
     } catch (error) {
       console.error('Error descargando documento:', error);
-      toast.error('No se pudo descargar el documento', { id: 'descarga-doc' });
+      const detalle = error instanceof Error ? error.message : '';
+      toast.error('No se pudo descargar el documento', { id: 'descarga-doc', description: detalle || undefined });
     }
   };
 
@@ -1953,11 +1965,26 @@ const SeccionGestionHallazgos: React.FC<{
                         </div>
                       )}
                       {hallazgo.documentoControversiaNombre && (
-                        <div className="pt-2">
+                        <div className="pt-2 flex flex-wrap items-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-green-600 shadow-sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-[#003DA5] hover:border-[#003DA5] shadow-sm"
+                            onClick={() => {
+                              if (hallazgo.documentoControversiaUrl) {
+                                window.open(urlPreviewDocumento(hallazgo.documentoControversiaUrl), '_blank', 'noopener');
+                              } else {
+                                toast.error('El enlace del documento no está disponible.');
+                              }
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            <span className="truncate max-w-[200px] sm:max-w-xs">{fixEncoding(hallazgo.documentoControversiaNombre)}</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-[#003DA5] hover:border-[#003DA5] shadow-sm"
                             onClick={() => {
                               if (hallazgo.documentoControversiaUrl) {
                                 handleDescargarDocumentoControversia(hallazgo.documentoControversiaUrl, fixEncoding(hallazgo.documentoControversiaNombre) || 'documento');
@@ -1966,8 +1993,8 @@ const SeccionGestionHallazgos: React.FC<{
                               }
                             }}
                           >
-                            <Download className="w-4 h-4 mr-2 text-gray-500" />
-                            <span className="truncate max-w-[200px] sm:max-w-xs">{fixEncoding(hallazgo.documentoControversiaNombre)}</span>
+                            <Download className="w-4 h-4 mr-2" />
+                            Descargar
                           </Button>
                         </div>
                       )}
