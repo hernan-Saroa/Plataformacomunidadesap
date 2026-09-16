@@ -328,6 +328,33 @@ export class AuthService {
     );
   }
 
+  /**
+   * Determina si el usuario autenticado tiene permiso para cancelar una
+   * comisión (RF-AUT-003, Etapa 6).
+   *
+   * El backend (`travel-expenses-service`) requiere cualquiera de:
+   *   - travel_expenses:cancel_request
+   *   - travel_expenses:create_request
+   *   - travel_expenses:read_inbox
+   *   - travel_expenses:authorize_expense
+   *
+   * además de los roles SUPER_ADMIN (bypass) o cualquier rol con
+   * `travel_expenses:*` / `*`.
+   */
+  canCancelarComision(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return user.permissions.some((p) =>
+      ['travel_expenses:cancel_request',
+        'travel_expenses:create_request',
+        'travel_expenses:read_inbox',
+        'travel_expenses:authorize_expense',
+        'travel_expenses:*',
+        '*'].includes(p),
+    );
+  }
+
   private getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =

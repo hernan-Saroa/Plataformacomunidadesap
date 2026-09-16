@@ -14,6 +14,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
 import {
   Comisionado,
   Dependencia,
@@ -101,6 +102,8 @@ export default function AnalystInbox() {
       setDependencias([]);
     }
   };
+
+  const puedeCancelarComision = useMemo(() => authService.canCancelarComision(), []);
 
   useEffect(() => {
     void cargarSolicitudes();
@@ -558,15 +561,17 @@ export default function AnalystInbox() {
                             <span>Subsanar / Auditar</span>
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setSolicitudCancelar(s)}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition-colors"
-                          title="Cancelar Comisión a solicitud de la dependencia (RF-AUT-003)"
-                          aria-label="Cancelar Comisión"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                        </button>
+                        {puedeCancelarComision && (
+                          <button
+                            type="button"
+                            onClick={() => setSolicitudCancelar(s)}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition-colors"
+                            title="Cancelar Comisión a solicitud de la dependencia (RF-AUT-003)"
+                            aria-label="Cancelar Comisión"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -712,15 +717,17 @@ export default function AnalystInbox() {
                             <FileText className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setSolicitudCancelar(s)}
-                          className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
-                          title="Cancelar Comisión a solicitud de la dependencia (RF-AUT-003)"
-                          aria-label="Cancelar Comisión"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                        </button>
+                        {puedeCancelarComision && (
+                          <button
+                            type="button"
+                            onClick={() => setSolicitudCancelar(s)}
+                            className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
+                            title="Cancelar Comisión a solicitud de la dependencia (RF-AUT-003)"
+                            aria-label="Cancelar Comisión"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

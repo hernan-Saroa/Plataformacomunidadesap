@@ -59,6 +59,7 @@ const Permissions = {
   VIATICOS_SOLICITUDES_RETURN: 'travel_expenses:return_request',
   VIATICOS_SOLICITUDES_ASSIGN_ANALYST: 'travel_expenses:assign_analyst',
   VIATICOS_SOLICITUDES_VIEW_ASSIGNED: 'travel_expenses:view_assigned_requests',
+  VIATICOS_SOLICITUDES_CANCEL: 'travel_expenses:cancel_request',
   VIATICOS_TIQUETES_VIEW: 'travel_expenses:tickets.view',
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
@@ -512,7 +513,9 @@ export default function ViaticosModulePremium() {
     esDireccionNacional ||
     authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
     authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
-    authService.hasPermission('travel_expenses:reject_extemporaneous');
+     authService.hasPermission('travel_expenses:reject_extemporaneous');
+
+  const puedeCancelarComision = authService.canCancelarComision();
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -976,7 +979,7 @@ export default function ViaticosModulePremium() {
                                     )}
                                   </button>
                                 )}
-                                {sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && (
+                                {puedeCancelarComision && sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && (
                                   <button
                                     type="button"
                                     onClick={() => setSolicitudParaCancelar(sol)}
@@ -1321,7 +1324,7 @@ export default function ViaticosModulePremium() {
                      </div>
                    )}
 
-                    {solicitudSeleccionada.estado !== 'LEGALIZADO' && solicitudSeleccionada.estado !== 'CANCELADA' && (
+                    {puedeCancelarComision && solicitudSeleccionada.estado !== 'LEGALIZADO' && solicitudSeleccionada.estado !== 'CANCELADA' && (
                       <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
                         <div>
                           <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
