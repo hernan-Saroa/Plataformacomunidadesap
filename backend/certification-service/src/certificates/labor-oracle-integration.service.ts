@@ -14,6 +14,7 @@ type OracleExecuteResult<T extends OracleRow = OracleRow> = {
 };
 
 type OracleConnection = {
+  callTimeout?: number;
   execute<T extends OracleRow = OracleRow>(
     sql: string,
     bindParams?: Record<string, unknown>,
@@ -98,6 +99,18 @@ type LaborOracleMappedRow = {
 @Injectable()
 export class LaborOracleIntegrationService {
   private readonly logger = new Logger(LaborOracleIntegrationService.name);
+
+  /**
+   * La consulta global de la matriz puede recorrer buena parte de la vista
+   * Oracle. Nunca debe dejar bloqueado el listado administrativo completo.
+   * `callTimeout` cancela el round-trip en Oracle; a diferencia de un
+   * `Promise.race`, no deja la consulta pesada ejecutandose en segundo plano.
+   */
+  private getMatrixCallTimeoutMs(): number {
+    const configured = Number(process.env.ORACLE_FNC_MATRIX_TIMEOUT_MS);
+    if (!Number.isFinite(configured)) return 8_000;
+    return Math.min(25_000, Math.max(1_000, Math.trunc(configured)));
+  }
   private oracleClientInitialized = false;
 
   private normalizeBoolean(value: unknown): boolean {
@@ -755,6 +768,10 @@ export class LaborOracleIntegrationService {
     const safeLimit = Math.min(Math.max(1, Number(limit) || 10000), 50000);
 
     return await this.withConnection(async (connection, driver, config) => {
+      // El valor predeterminado del driver es 0 (sin limite). Esta consulta es
+      // best-effort: si excede el limite, LaborFunctionsService captura el
+      // error y responde con los contratos ya sincronizados en PostgreSQL.
+      connection.callTimeout = this.getMatrixCallTimeoutMs();
       const collected: LaborOracleSuggestedRequest[] = [];
 
       for (let start = 0; start < normalizedCodes.length; start += 900) {
