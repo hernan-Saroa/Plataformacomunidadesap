@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { basename } from 'path';
+
 import { DataSource, EntityManager } from 'typeorm';
 
 import {
@@ -184,8 +186,22 @@ export class RegistroActividadService {
             datos: vigente.datos,
             registradoPor: vigente.registradoPor,
             registradoAt: vigente.registradoAt,
-            soporte: soporte
-              ? { nombre: soporte.nombre, url: `/hiring/documentos/${soporte.id}/descargar` }
+            /*
+             * La ruta que el controlador de archivos sabe servir.
+             *
+             * Aqui se anunciaba `/hiring/documentos/<id>/descargar`, una ruta
+             * que ningun controlador expone: el cliente se queda con el ultimo
+             * segmento del enlace, asi que «Ver el soporte» pedia un archivo
+             * llamado `descargar` y abria una pestana con el 404 en crudo. El
+             * documento siempre estuvo en disco; lo que faltaba era nombrarlo
+             * como el resto del modulo, por el nombre del archivo.
+             *
+             * La columna admite nulo —hay documentos que solo guardan el
+             * contenido—, y sin comprobarlo el `basename` reventaria la
+             * consulta entera del estado por un adjunto sin archivo.
+             */
+            soporte: soporte?.archivoUrl
+              ? { nombre: soporte.nombre, url: `/files/${basename(soporte.archivoUrl)}` }
               : null,
           }
         : null,
