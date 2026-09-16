@@ -10021,7 +10021,8 @@ function SeccionGestionYSeguimiento({
                               <div className="space-y-1.5">
                                 {tareasVisibles.map((tarea) => {
                                   const fechaTarea = tarea.fechaEntrega || (tarea as any).fechaLimite || null;
-                                  const fechaLimite = fechaTarea ? new Date(fechaTarea) : null;
+                                  // Fecha local: leída en UTC mostraba el día anterior como límite.
+                                  const fechaLimite = fechaTarea ? new Date(String(fechaTarea).split('T')[0] + 'T00:00:00') : null;
                                   const hoy = new Date();
                                   const diasRestantes = fechaLimite ? Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
                                   const estaVencida = diasRestantes !== null && diasRestantes < 0 && !tarea.completada;
