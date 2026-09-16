@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Not } from 'typeorm';
 import { createHash } from 'crypto';
 
 import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
@@ -19,6 +19,7 @@ import {
 } from '../../entities/proceso-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
+import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
@@ -38,6 +39,7 @@ import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 import { ParticipacionService, esSuya } from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
+import { ListaChequeoService } from '../lista-chequeo/lista-chequeo.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -54,6 +56,38 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
   if (decision === 'APROBADO') return 'APROBADO';
   if (decision === 'NEGADO') return 'NEGADO';
   return 'BORRADOR';
+}
+
+/**
+ * Por qué el envío no puede salir todavía, en una frase.
+ *
+ * Tres cosas pueden faltar y antes solo se nombraban dos, con un ternario que
+ * elegía entre ellas: quien no había adjuntado el estudio previo **y** tenía
+ * campos sin llenar solo se enteraba de lo segundo, corregía, reenviaba y se
+ * chocaba con lo primero. Con la lista de chequeo encima serían tres viajes.
+ *
+ * Los documentos que faltan se nombran uno a uno y no se cuentan: «faltan dos
+ * documentos» obliga a abrir la lista para saber cuáles, y el mensaje es justo
+ * lo que se lee sin abrirla.
+ */
+export function porQueNoSePuedeRadicar(
+  camposFaltantes: number,
+  faltaElEstudioPrevio: boolean,
+  documentosDeLaLista: string[],
+): string {
+  const motivos: string[] = [];
+
+  if (camposFaltantes > 0) motivos.push('faltan datos obligatorios');
+  if (faltaElEstudioPrevio) motivos.push('falta el estudio previo diligenciado y firmado');
+  if (documentosDeLaLista.length > 0) {
+    motivos.push(`falta por remitir ${documentosDeLaLista.join(', ')}`);
+  }
+
+  // No se llama sin motivos, pero una función que solo sabe explicar fallos no
+  // puede quedarse muda si un día la llaman con todo en orden.
+  if (motivos.length === 0) return 'El estudio previo está listo para radicar';
+
+  return `No se puede radicar todavía: ${motivos.join('; ')}.`;
 }
 
 /**
@@ -165,6 +199,14 @@ export class EstudioPrevioService {
     private readonly aprobacion: AprobacionService,
     /** Aprobar la 3.4 puede cerrar la etapa 3 y radicar el CDP. */
     private readonly cdp: CdpService,
+    /**
+     * El paquete con el que se radica en la Dirección de Contratación.
+     *
+     * Lo consulta el envío, que es el acto de radicar, y lo arma el área desde
+     * las tres rutas que este servicio expone: quién puede hacerlo es la misma
+     * regla que protege el borrador, y por eso pasa por aquí.
+     */
+    private readonly listaChequeo: ListaChequeoService,
   ) {}
 
   /**
@@ -617,25 +659,57 @@ export class EstudioPrevioService {
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
-      // El entregable de esta actividad es el estudio previo firmado, no los
-      // metadatos: sin el documento la actividad estaría incompleta aunque
-      // todos los campos estén diligenciados.
+      /*
+       * El estudio previo es el adjunto **propio** de la actividad.
+       *
+       * Los documentos de la lista de chequeo se guardan con este mismo
+       * numeral —pertenecen a la 3.1— así que sin descontarlos, cargar el
+       * memorando daría por adjunto el estudio previo y el envío pasaría sin
+       * él. Se distinguen por su fila en `documentos_proceso`, que es la que
+       * dice qué requisito cubre cada archivo; los anulados se descuentan
+       * igual, porque tampoco eran el estudio previo.
+       */
+      const deLaLista = await em.getRepository(DocumentoProceso).find({
+        where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
+      });
+      const idsDeLaLista = deLaLista.map((d) => d.documentoId);
+
       const adjuntos = await em.count(Documento, {
         where: {
           expedienteId: expediente.id,
           numeral: NUMERAL_ESTUDIO_PREVIO,
           tipo: 'ADJUNTO',
+          ...(idsDeLaLista.length > 0 ? { id: Not(In(idsDeLaLista)) } : {}),
         },
       });
 
-      if (faltantes.length > 0 || adjuntos === 0) {
+      /*
+       * Enviar es radicar: el proceso aparece en la bandeja de la Dirección en
+       * cuanto la 3.1 entra en revisión, y el procedimiento manda remitir «los
+       * documentos previstos en la lista de chequeo que resulten aplicables,
+       * según la modalidad de contratación». Hasta ahora llegaba el estudio
+       * previo solo y el resto del paquete viajaba por correo.
+       */
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      const sinRadicar = await this.listaChequeo.pendientes(
+        procesoId,
+        proceso?.modalidad ?? null,
+        em,
+      );
+
+      if (faltantes.length > 0 || adjuntos === 0 || sinRadicar.length > 0) {
         throw new UnprocessableEntityException({
-          message:
-            adjuntos === 0 && faltantes.length === 0
-              ? 'Debe adjuntar el estudio previo diligenciado y firmado'
-              : 'Faltan datos obligatorios para enviar a revisión',
+          message: porQueNoSePuedeRadicar(
+            faltantes.length,
+            adjuntos === 0,
+            sinRadicar.map((r) => r.nombre),
+          ),
           camposFaltantes: faltantes,
           documentoFaltante: adjuntos === 0,
+          documentosDeLaLista: sinRadicar.map((r) => ({
+            codigo: r.codigo,
+            nombre: r.nombre,
+          })),
         });
       }
 
@@ -667,7 +741,7 @@ export class EstudioPrevioService {
        * igual que en las otras treinta y siete actividades.
        */
       // La modalidad importa: una regla puede exigir revisión solo en algunas.
-      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      // Es el mismo `proceso` que se leyó para la lista de chequeo.
       const revisan = await this.aprobacion.aprobadoresDe(
         NUMERAL_ESTUDIO_PREVIO,
         proceso?.modalidad ?? null,
@@ -690,6 +764,71 @@ export class EstudioPrevioService {
         enviadoAt: actividad.enviadoAt,
       };
     });
+  }
+
+  // -------------------------------------------------- lista de chequeo (3.1) ---
+
+  /**
+   * El paquete con el que se radica, con lo que ya está y lo que falta.
+   *
+   * Leer sigue abierto a quien vea el proceso —la Dirección tiene que poder
+   * comprobar qué recibió—; lo que se protege es armarlo.
+   */
+  paqueteDeRadicacion(procesoId: string) {
+    return this.listaChequeo.estado(procesoId);
+  }
+
+  /**
+   * Carga uno de los documentos de la lista.
+   *
+   * Pasa por aquí y no por una ruta propia del módulo de la lista para
+   * comprobar antes las dos cosas que ya protegen el borrador: que sea el área
+   * que radicó el proceso, y que el estudio previo no esté en revisión ni
+   * aprobado. Cambiar el paquete mientras el abogado lo revisa le movería el
+   * suelo bajo los pies.
+   */
+  async cargarDelPaquete(
+    procesoId: string,
+    codigo: string,
+    archivo: { filename: string; originalname: string; mimetype: string; size: number },
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    await this.exigirPaqueteEditable(procesoId, acceso);
+    return this.listaChequeo.cargar(procesoId, codigo, archivo, hash, acceso);
+  }
+
+  /** Sustituye uno de los documentos de la lista. Mismas condiciones. */
+  async anularDelPaquete(procesoId: string, documentoProcesoId: string, acceso: HiringAccess) {
+    await this.exigirPaqueteEditable(procesoId, acceso);
+    return this.listaChequeo.anular(procesoId, documentoProcesoId, acceso);
+  }
+
+  /**
+   * Quién y cuándo puede tocar el paquete de la radicación.
+   *
+   * DEVUELTO y BORRADOR sí: devolver existe justamente para que el área
+   * corrija, y lo que le devuelven puede ser un documento mal remitido.
+   */
+  private async exigirPaqueteEditable(procesoId: string, acceso: HiringAccess) {
+    await this.exigirQueSeaSuyo(procesoId, acceso);
+
+    const actividad = await this.dataSource.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
+    });
+    if (!actividad) throw new NotFoundException('El proceso no tiene estudio previo iniciado');
+
+    if (actividad.estado === 'EN_REVISION') {
+      throw new ConflictException(
+        'El estudio previo está en revisión: el paquete no se puede cambiar mientras lo miran',
+      );
+    }
+    if (actividad.estado === 'APROBADO') {
+      throw new ConflictException('El estudio previo ya fue aprobado y no admite cambios');
+    }
+    if (actividad.estado === 'NEGADO') {
+      throw new ConflictException('El proceso fue negado: no hay radicación que completar');
+    }
   }
 
   // ------------------------------------------------------------ plantillas ---
@@ -937,6 +1076,24 @@ export class EstudioPrevioService {
       order: { createdAt: 'DESC' },
     });
 
+    /*
+     * Qué requisito cubre cada archivo, cuando cubre alguno.
+     *
+     * Sin esto no se pueden distinguir los documentos de la lista de chequeo
+     * de los adjuntos propios de la actividad: comparten numeral —son de la
+     * misma— y el expediente los listaba mezclados, así que el memorando de
+     * solicitud aparecía junto al estudio previo como si fuera otro estudio
+     * previo. Es la distinción que la 063 vino a hacer posible.
+     *
+     * Los anulados entran: un requisito sustituido dejó de cubrirlo, pero el
+     * archivo siguió sin ser el entregable de la actividad.
+     */
+    const requisitos = new Map(
+      (
+        await this.dataSource.getRepository(DocumentoProceso).find({ where: { procesoId } })
+      ).map((d) => [d.documentoId, d.codigo]),
+    );
+
     return {
       numeroExpediente: expediente.numeroExpediente,
       estado: expediente.estado,
@@ -946,6 +1103,8 @@ export class EstudioPrevioService {
         tipo: d.tipo,
         nombre: d.nombre,
         numeral: d.numeral,
+        /** Código del requisito que cubre; null si es un adjunto de la actividad. */
+        requisito: requisitos.get(d.id) ?? null,
         mimeType: d.archivoMimeType,
         tamano: d.archivoTamano ? Number(d.archivoTamano) : null,
         hashSha256: d.hashSha256,

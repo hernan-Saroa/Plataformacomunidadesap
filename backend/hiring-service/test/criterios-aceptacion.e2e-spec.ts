@@ -66,6 +66,35 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     return valores;
   };
 
+  /**
+   * Remite el paquete de la lista de chequeo, que es lo que exige radicar.
+   *
+   * Se lee del propio servicio en vez de listar los códigos a mano: cuáles
+   * pide cada modalidad es parámetro en base desde la 074, y fijarlos aquí
+   * haría que añadir un documento a la lista rompiera estas pruebas por el
+   * motivo equivocado.
+   */
+  const remitirElPaquete = async (procesoId: string) => {
+    const paquete = await service.paqueteDeRadicacion(procesoId);
+
+    for (const doc of paquete.documentos) {
+      if (!doc.obligatorio || doc.cargado) continue;
+
+      await service.cargarDelPaquete(
+        procesoId,
+        doc.codigo,
+        {
+          filename: `${doc.codigo.toLowerCase()}.pdf`,
+          originalname: `${doc.nombre}.pdf`,
+          mimetype: 'application/pdf',
+          size: 1024,
+        },
+        'b'.repeat(64),
+        gestor,
+      );
+    }
+  };
+
   const crearProceso = async () =>
     service.crearProceso(
       // El valor estimado se pide al crear desde EFDS-1147, y debe caber en la
@@ -246,9 +275,71 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
         subidoPor: gestor.userName,
       } as Partial<Documento>);
 
+      // Radicar es remitir el paquete, no solo el estudio previo: el
+      // procedimiento manda adjuntar los documentos de la lista de chequeo que
+      // apliquen a la modalidad.
+      await remitirElPaquete(proceso.id);
+
       const resultado = await service.enviar(proceso.id, gestor);
 
       expect(resultado.estado).toBe('EN_REVISION');
+    });
+
+    it('bloquea el envío si falta algo de la lista de chequeo, y dice qué', async () => {
+      // El agujero que esto cierra: hasta la 074 bastaba con el estudio previo
+      // y el resto del paquete viajaba por correo, fuera del expediente. La
+      // Dirección recibía el proceso en su bandeja sin lo que tenía que
+      // verificar.
+      const proceso = await crearProceso();
+      const datos = await datosCompletos();
+      await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
+
+      const expediente = await dataSource.getRepository(Expediente).findOneOrFail({
+        where: { procesoId: proceso.id },
+      });
+      await dataSource.getRepository(Documento).save({
+        expedienteId: expediente.id,
+        numeral: '3.1',
+        tipo: 'ADJUNTO',
+        nombre: 'estudio-previo-firmado.pdf',
+        archivoUrl: '/uploads/pruebas/estudio-previo-firmado.pdf',
+        hashSha256: 'a'.repeat(64),
+        subidoPor: gestor.userName,
+      } as Partial<Documento>);
+
+      let error: any;
+      try {
+        await service.enviar(proceso.id, gestor);
+      } catch (e) {
+        error = e;
+      }
+
+      const cuerpo = error.getResponse();
+      // El estudio previo sí está: lo que falta es el resto del paquete, y se
+      // nombra uno a uno para que el área sepa qué buscar sin abrir la lista.
+      expect(cuerpo.documentoFaltante).toBe(false);
+      expect(cuerpo.documentosDeLaLista.length).toBeGreaterThan(0);
+      expect(cuerpo.message).toContain('No se puede radicar todavía');
+    });
+
+    it('el documento de la lista no se cuenta como el estudio previo', async () => {
+      // Los dos se guardan con el numeral 3.1, así que sin descontar los de la
+      // lista, cargar el memorando daría por adjunto el estudio previo y el
+      // envío pasaría sin él.
+      const proceso = await crearProceso();
+      const datos = await datosCompletos();
+      await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
+
+      await remitirElPaquete(proceso.id);
+
+      let error: any;
+      try {
+        await service.enviar(proceso.id, gestor);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error.getResponse().documentoFaltante).toBe(true);
     });
 
     it('el proceso no avanza mientras el envío esté bloqueado', async () => {

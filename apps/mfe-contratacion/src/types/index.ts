@@ -682,6 +682,15 @@ export interface DocumentoExpediente {
   tipo: 'ADJUNTO' | 'SNAPSHOT_FORMULARIO';
   nombre: string;
   numeral?: string;
+  /**
+   * Código del requisito que este archivo cubre, o null si es un adjunto
+   * propio de la actividad.
+   *
+   * Los documentos de la lista de chequeo se guardan con el numeral de la
+   * actividad a la que acompañan, así que sin esto el memorando de solicitud
+   * aparecería en el expediente como si fuera otro estudio previo.
+   */
+  requisito?: string | null;
   mimeType?: string;
   tamano?: number | null;
   hashSha256: string;
@@ -713,6 +722,26 @@ export interface DocumentoRequerido {
     cargadoPor: string | null;
     cargadoAt: string;
   } | null;
+}
+
+/**
+ * Un documento de la lista de chequeo con la que el área radica (3.1).
+ *
+ * Misma forma que `DocumentoRequerido` de la 5.1 —son las mismas dos tablas—
+ * más `confirmado`, que dice si el requisito sale del formato oficial o de la
+ * lectura que el equipo hizo del procedimiento.
+ */
+export interface DocumentoDeLaLista extends DocumentoRequerido {
+  confirmado: boolean;
+}
+
+/** El paquete de la radicación: qué exige la modalidad y qué ya está. */
+export interface EstadoListaChequeo {
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  documentos: DocumentoDeLaLista[];
+  /** Los obligatorios que todavía no están; si hay alguno, no se puede enviar. */
+  faltantes: { codigo: string; nombre: string }[];
 }
 
 /** Una adenda del proceso (actividad 5.6, EFDS-1154). */
@@ -945,6 +974,14 @@ export class CamposFaltantesError extends Error {
     /** El estudio previo firmado no se ha adjuntado. */
     public readonly documentoFaltante = false,
     mensaje = 'Faltan datos obligatorios',
+    /**
+     * Lo que falta del paquete con el que se radica en la Dirección.
+     *
+     * Tercera cosa que puede faltar, junto a los campos y al estudio previo, y
+     * la única que no se ve en el formulario: sin nombrarla, el envío se
+     * rechazaría sin que el área supiera dónde mirar.
+     */
+    public readonly documentosDeLaLista: { codigo: string; nombre: string }[] = [],
   ) {
     super(mensaje);
     this.name = 'CamposFaltantesError';

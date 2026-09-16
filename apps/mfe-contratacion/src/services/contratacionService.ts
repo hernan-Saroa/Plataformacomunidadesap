@@ -12,6 +12,7 @@ import {
   CondicionesMipymeConfig,
   ConflictoError,
   EstadoDocumentos,
+  EstadoListaChequeo,
   EstadoDocumentosActividad,
   EstadoMipyme,
   EstadoComite,
@@ -151,6 +152,7 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
       cuerpo.camposFaltantes,
       cuerpo.documentoFaltante === true,
       cuerpo.message,
+      Array.isArray(cuerpo.documentosDeLaLista) ? cuerpo.documentosDeLaLista : [],
     );
   }
   if (res.status === 409) {
@@ -1466,6 +1468,36 @@ export const contratacionService = {
     pedir<{ retirado: boolean }>(
       `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${documentoId}`,
       { method: 'DELETE' },
+    ),
+
+  // ------------------------------------ lista de chequeo de la radicación --
+
+  /**
+   * El paquete con el que el área radica en la Dirección de Contratación.
+   *
+   * Se consulta aunque el estudio previo esté a medias: saber qué va a pedirse
+   * es lo que permite ir armándolo.
+   */
+  listaChequeo: (procesoId: string) =>
+    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`),
+
+  /** Carga uno de los documentos de la lista; el código dice cuál cubre. */
+  cargarDocumentoDeLaLista: (procesoId: string, codigo: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('codigo', codigo);
+
+    return pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja uno sin efecto para poder cargar otro en su lugar. */
+  anularDocumentoDeLaLista: (procesoId: string, documentoId: string) =>
+    pedir<EstadoListaChequeo>(
+      `/procesos/${procesoId}/estudio-previo/lista-chequeo/${documentoId}/anular`,
+      { method: 'POST' },
     ),
 
   /**

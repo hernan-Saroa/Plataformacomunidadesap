@@ -21,6 +21,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { UmbralesModule } from '../umbrales/umbrales.module';
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
 import { CdpModule } from '../cdp/cdp.module';
+import { ListaChequeoModule } from '../lista-chequeo/lista-chequeo.module';
 
 @Module({
   imports: [
@@ -41,6 +42,10 @@ import { CdpModule } from '../cdp/cdp.module';
     // La 3.4 la resuelve el abogado asignado en la 3.3, así que hay que saber
     // quién es antes de aceptar una decisión.
     ParticipacionModule,
+    // Enviar el estudio previo es radicar en la Dirección de Contratación, y
+    // el procedimiento manda remitir con él los documentos de la lista de
+    // chequeo que la modalidad exija.
+    ListaChequeoModule,
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],
