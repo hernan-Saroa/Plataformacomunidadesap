@@ -347,12 +347,8 @@ export function ControlDisciplinarioFull() {
     cargarSolicitudesReasignacion();
   }, []);
 
-  const currentUserData = authService.getCurrentUser() as any;
-  const currentRoles: string[] = Array.isArray(currentUserData?.roles)
-    ? currentUserData.roles.map((r: any) => typeof r === 'string' ? r : r?.code || r?.name || '')
-    : [];
-  const isJefeUser = currentRoles.includes('JEFE_DE_LA_OCID');
-  const isRadicadorUser = currentRoles.includes('RADICADOR_DISCIPLINARIO') || currentRoles.includes('SECRETARIA_RADICADOR');
+  const isJefeUser = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
+  const isRadicadorUser = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
   const canSendJuridicaUser = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA);
   const isModoEnvioJuridica = !isJefeUser && (isRadicadorUser || canSendJuridicaUser);
 

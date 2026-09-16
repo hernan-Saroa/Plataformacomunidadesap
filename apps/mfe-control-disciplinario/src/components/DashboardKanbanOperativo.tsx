@@ -112,56 +112,9 @@ function normalizeText(text: string): string {
 // ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
 export const isSecretarioRadicadorUser = (): boolean => {
   try {
-    const user = authService.getCurrentUser?.();
-    const rawRoles = [
-      ...(Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : []),
-      ...(Array.isArray((user as any)?.person?.roles) ? (user as any).person.roles : []),
-      ...((user as any)?.role ? [(user as any).role] : []),
-      ...((user as any)?.rol ? [(user as any).rol] : []),
-    ];
-
-    const hasRadicadorRole = rawRoles.some((r: any) => {
-      const candidates = [
-        typeof r === 'string' ? r : '',
-        r?.code,
-        r?.name,
-        r?.nombre,
-        r?.slug,
-      ].filter(Boolean);
-
-      return candidates.some((cand: string) => {
-        const clean = cand
-          .toString()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .trim()
-          .toUpperCase();
-        return (
-          clean === 'SECRETARIA_RADICADOR' ||
-          clean === 'SECRETARIO_RADICADOR' ||
-          clean === 'RADICADOR_DISCIPLINARIO' ||
-          clean === 'RADICADOR' ||
-          clean.includes('SECRETARI') ||
-          clean.includes('RADICADOR')
-        );
-      });
-    });
-
-    if (hasRadicadorRole) return true;
-
-    return (
-      authService.hasRole('SECRETARIA_RADICADOR') ||
-      authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-      authService.hasRole('SECRETARIO_RADICADOR') ||
-      authService.hasRole('RADICADOR') ||
-      authService.hasRole('Secretaría / Radicador') ||
-      authService.hasRole('Secretaria / Radicador') ||
-      authService.hasRole('Secretaría/Radicador') ||
-      authService.hasRole('Secretario / Radicador') ||
-      authService.hasRole('Radicador Disciplinario')
-    );
+    return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
   } catch (err) {
-    console.error('Error verificando rol Secretario/Radicador:', err);
+    console.error('Error verificando permiso Secretario/Radicador:', err);
     return false;
   }
 };
@@ -443,7 +396,7 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, onEliminarNoticia, onReenviar, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
-  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDelete = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -842,11 +795,8 @@ function TarjetaProceso({
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
-    authService.isSuperAdmin() ||
-    authService.hasRole('ADMIN') ||
-    authService.hasRole('SECRETARIA_RADICADOR') ||
-    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-    authService.hasRole('RADICADOR');
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+    authService.isSuperAdmin();
   const esProcesoEnJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
   const isArchivado =
     proceso.etapaActual === 'ARCHIVO' ||
@@ -1308,7 +1258,7 @@ function VistaLista({
   isMobile
 }: VistaListaProps) {
   // Permission and role checks for list view (same as kanban)
-  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEditNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDeleteNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -1325,11 +1275,8 @@ function VistaLista({
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
-    authService.isSuperAdmin() ||
-    authService.hasRole('ADMIN') ||
-    authService.hasRole('SECRETARIA_RADICADOR') ||
-    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-    authService.hasRole('RADICADOR');
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+    authService.isSuperAdmin();
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
 

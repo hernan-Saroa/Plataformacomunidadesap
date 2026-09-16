@@ -222,6 +222,11 @@ export enum Permissions {
   //Control Disciplinario - Reportes
   CONTROL_DISCIPLINARIO_REPORTES_MANAGE = 'control-disciplinario.reportes.manage',
 
+  // Control Disciplinario - Permisos Identificadores de Rol
+  CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID = 'control-disciplinario.es_jefe_ocid',
+  CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR = 'control-disciplinario.es_radicador',
+  CONTROL_DISCIPLINARIO_ROL_ES_PROFESIONAL = 'control-disciplinario.es_profesional',
+
   // Control Disciplinario - Nuevos Permisos (Granulares)
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL = 'control-disciplinario.procesos.view_all',
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE = 'control-disciplinario.procesos.view_mine',
