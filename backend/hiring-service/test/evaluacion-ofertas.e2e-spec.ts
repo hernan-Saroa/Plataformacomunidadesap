@@ -85,7 +85,7 @@ describe('HU EFDS-1157 · resultado de la evaluación (actividad 6.3)', () => {
     const proceso = await crear();
 
     await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(proceso.id, financiero);
+    await cdp.verificar(proceso.id, {}, financiero);
     await cdp.expedir(
       proceso.id,
       { numero: 'CDP-2026-157', valor: 1_000_000, fechaExpedicion: hoy() },

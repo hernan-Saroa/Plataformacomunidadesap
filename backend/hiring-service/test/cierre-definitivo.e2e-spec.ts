@@ -253,7 +253,7 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
     );
 
     await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: VALOR_CONTRATO }, gestor);
-    await cdp.verificar(proceso.id, financiero);
+    await cdp.verificar(proceso.id, {}, financiero);
     await cdp.expedir(
       proceso.id,
       { numero: `CDP-2026-175-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },

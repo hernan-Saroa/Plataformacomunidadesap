@@ -41,6 +41,21 @@ export class DocumentoRequerido {
   @Column({ default: true })
   activo: boolean;
 
+  /**
+   * Si el requisito es cita del formato oficial o lectura del equipo.
+   *
+   * Misma marca que `actividades_con_soporte` lleva desde la 051: la lista de
+   * chequeo de la etapa 3 se armó con el texto del procedimiento, no con el
+   * formato del SIG, y quien vaya a validarla con la Dirección necesita saber
+   * qué filas revisar.
+   */
+  @Column({ default: false })
+  confirmado: boolean;
+
+  /** De dónde sale el requisito, para poder contrastarlo. */
+  @Column({ name: 'nota_fuente', type: 'text', nullable: true })
+  notaFuente: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
