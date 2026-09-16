@@ -16,6 +16,7 @@ import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { CdpService } from '../cdp/cdp.service';
 
 /** Quién puede aprobar una actividad, tal como se configuró. */
 export interface Aprobadores {
@@ -36,7 +37,17 @@ export interface Aprobadores {
  */
 @Injectable()
 export class AprobacionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /**
+     * Aprobar una actividad puede cerrar la etapa 3, y entonces nace el CDP.
+     *
+     * Es el tercero de los tres caminos por los que una actividad de esa etapa
+     * queda cerrada —los otros dos son la revisión del estudio previo y tomar
+     * el proceso de la bandeja—, y los tres tienen que preguntarlo.
+     */
+    private readonly cdp: CdpService,
+  ) {}
 
   // ------------------------------------------------------ la configuración --
 
@@ -464,6 +475,12 @@ export class AprobacionService {
         acceso,
         { numeral, observaciones: observaciones?.trim() || null },
       );
+
+      // Si esta era la última que quedaba abierta en la etapa 3, la solicitud
+      // de CDP se radica sola. Devolver no cierra nada, así que no se pregunta.
+      if (decision === 'APROBADO') {
+        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      }
 
       return { estado: actividad.estado, decision, observaciones: observaciones ?? null };
     });

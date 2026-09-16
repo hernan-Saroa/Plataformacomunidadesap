@@ -1,0 +1,65 @@
+-- ============================================================================
+-- 070 · La 5.8 no es otro CDP
+--
+-- La matriz oficial trae en la etapa 5 una actividad llamada «CDP», descrita
+-- como «Obligatorio / no obligatorio» (030). Desde la 036 los numerales del
+-- 5.8 en adelante son los de la matriz, así que esa celda llegó al riel con
+-- numeral propio y sin nada detrás: ningún panel la trabaja y el backend no
+-- la nombra ni una vez.
+--
+-- No es que falte por construir: ya está construida, en otros dos sitios.
+--
+--   · Lo de «obligatorio / no obligatorio» es CdpService.aplicaCdp(), que lo
+--     resuelve contra las exclusiones de la etapa 4 —hoy enajenación por
+--     subasta es la única modalidad exenta—.
+--   · La exigencia del certificado antes de abrir es exigirCdpParaApertura(),
+--     que corre dentro de la 5.7, cuya propia descripción ya dice «Requiere
+--     CDP expedido».
+--
+-- El certificado es uno solo y se solicita, se expide y se adjunta en la etapa
+-- 4 (4.1 a 4.4). La 5.8 no le pide al gestor nada que no haya hecho ya allí.
+--
+-- Y mientras esté activa hace daño, que es lo que obliga a esta migración y no
+-- a una nota: el riel pinta como «pendiente» —no como «no aplica»— lo que no
+-- tiene panel, y solo lo que no aplica sale del contador de avance. La etapa 5
+-- de una Licitación Pública tiene diez actividades aplicables y siete con
+-- panel, así que la línea de tiempo se queda en 7/10 para siempre, con el
+-- proceso ya abierto y sin nada pendiente de verdad. Hoy los dieciocho
+-- procesos tienen su fila de la 5.8 en BORRADOR, esperando un trámite que no
+-- existe.
+--
+-- Se desactiva, no se borra. `activa = false` es el mecanismo que ya usa la
+-- configuración para justo esto: el catálogo del riel y la instanciación de
+-- actividades filtran por él, así que la 5.8 desaparece de la pantalla y del
+-- contador sin tocar una línea de código, y vuelve con un UPDATE si la
+-- Dirección de Contratación dice que la celda significa algo distinto del CDP
+-- de la etapa 4.
+--
+-- Ese UPDATE hay que escribirlo a mano, y conviene saberlo antes: la pantalla
+-- de configuración lista el catálogo con el mismo filtro, así que una vez
+-- desactivada la 5.8 tampoco se ve ahí para volver a encenderla. Es como se
+-- comporta `activa` desde siempre —no es algo que esta migración estrene—,
+-- pero quien la busque en la matriz para revertir esto no la va a encontrar.
+--
+-- Dos cosas se quedan como están, a propósito:
+--
+--   · Las dieciocho filas en `proceso_actividades`. Desactivar una actividad
+--     nunca ha borrado lo instanciado —el expediente tiene que poder decir qué
+--     recorrió cada proceso—, y ponerlas en NO_APLICA sería mentir: NO_APLICA
+--     es «la modalidad no la adelanta», y aquí lo que pasa es que la actividad
+--     no tiene contenido propio en ninguna modalidad.
+--   · La exclusión 5.8 / ENAJENACION_SUBASTA. Es un dato de la matriz y es
+--     coherente con la etapa 4 —misma modalidad exenta—, aunque nadie lo lea:
+--     aplicaCdp() solo mira los numerales de la etapa 4.
+--
+-- Queda fuera, y no por olvido: la 5.12 (audiencia de riesgos y aclaración de
+-- pliegos) y la 5.13 (adendas) están exactamente igual —son la 5.5 y la 5.6
+-- del equipo con el numeral de la matriz— y descuadran el mismo contador. Pero
+-- ahí la pregunta es cuál de los dos numerales es el bueno, y esa la responde
+-- la Dirección de Contratación. En la 5.8 la respondió el código: el CDP se
+-- tramita en la etapa 4 y la 5.7 lo exige.
+-- ============================================================================
+
+UPDATE hiring.actividades
+   SET activa = false
+ WHERE numeral = '5.8';
