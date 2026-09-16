@@ -9466,9 +9466,10 @@ function SeccionGestionYSeguimiento({
                               </div>
                               <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
                               <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-                                <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
+                                {/* Fecha local (T00:00:00), igual que el corte: leída en UTC mostraba un día menos. */}
+                                <span>📅 Inicio: {new Date(String(actividad.fechaInicio).split('T')[0] + 'T00:00:00').toLocaleDateString('es-CO')}</span>
                                 {actividad.fechaFin && (
-                                  <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
+                                  <span>📅 Fin: {new Date(String(actividad.fechaFin).split('T')[0] + 'T00:00:00').toLocaleDateString('es-CO')}</span>
                                 )}
                                 {actividad.fecha_corte && (
                                   <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
