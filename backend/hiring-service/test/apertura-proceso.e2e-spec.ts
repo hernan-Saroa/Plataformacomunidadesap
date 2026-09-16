@@ -72,7 +72,7 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
   /** Lleva el CDP hasta expedido, que es lo que la apertura exige. */
   const expedirCdp = async (procesoId: string) => {
     await cdp.solicitar(procesoId, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(procesoId, financiero);
+    await cdp.verificar(procesoId, {}, financiero);
     await cdp.expedir(
       procesoId,
       { numero: 'CDP-2026-001', valor: 1_000_000, fechaExpedicion: datos.resolucionFecha },

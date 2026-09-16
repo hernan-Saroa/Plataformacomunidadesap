@@ -16,7 +16,12 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 
 import { CdpService } from './cdp.service';
-import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
+import {
+  ExpedirCdpDto,
+  RechazarCdpDto,
+  SolicitarCdpDto,
+  VerificarCdpDto,
+} from './dto/cdp.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -68,9 +73,17 @@ export class CdpController {
   @Post('verificar')
   @UseGuards(PermisosGuard)
   @Permisos('contratacion.presupuesto.gestionar')
-  @ApiOperation({ summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal' })
-  verificar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.verificar(procesoId, getHiringAccess(req));
+  @ApiOperation({
+    summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal',
+    description:
+      'Se confirma contra un rubro, que queda en el CDP: una disponibilidad sin rubro no se puede conciliar después con la ejecución presupuestal. Solo se pide si la solicitud no lo traía.',
+  })
+  verificar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: VerificarCdpDto,
+    @Req() req: any,
+  ) {
+    return this.service.verificar(procesoId, dto, getHiringAccess(req));
   }
 
   @Post('expedir')

@@ -22,7 +22,12 @@ import {
   PERMISO_PRESUPUESTO_GESTIONAR,
   tienePermiso,
 } from '../../auth/permisos';
-import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
+import {
+  ExpedirCdpDto,
+  RechazarCdpDto,
+  SolicitarCdpDto,
+  VerificarCdpDto,
+} from './dto/cdp.dto';
 /**
  * Días que una solicitud de CDP puede estar sin que nadie la atienda.
  *
@@ -95,6 +100,28 @@ function aNumeroONulo(valor: string | number | null): number | null {
   if (valor === null || valor === undefined) return null;
   const n = Number(valor);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Con qué rubro se queda el CDP, entre el que llega y el que ya tenía.
+ *
+ * Lo usan la verificación y la expedición, y de que sea el mismo criterio
+ * depende que la 4.3 no contradiga lo que la 4.2 certificó:
+ *
+ *   · lo que llega manda, porque es una corrección deliberada;
+ *   · lo que no llega no borra: omitir el campo al expedir conserva el rubro
+ *     verificado, en vez de dejar el certificado sin imputación;
+ *   · en blanco es no haber escrito nada, no haber escrito «ningún rubro».
+ *
+ * Devuelve `null` cuando no hay ninguno de los dos, que es lo que el servicio
+ * traduce en pedirlo: sin rubro el certificado no se concilia con la ejecución
+ * presupuestal.
+ */
+export function rubroResultante(
+  recibido: string | undefined | null,
+  actual: string | null,
+): string | null {
+  return recibido?.trim() || actual || null;
 }
 
 /** Actividad 4.4: el CDP cargado al expediente. */
@@ -519,17 +546,36 @@ export class CdpService {
     });
   }
 
-  /** Actividad 4.2: la Dirección Financiera verifica la disponibilidad. */
-  async verificar(procesoId: string, acceso: HiringAccess) {
+  /**
+   * Actividad 4.2: la Dirección Financiera verifica la disponibilidad.
+   *
+   * Verificar es decir contra qué rubro hay saldo, no pulsar un botón. Hasta la
+   * 073 no se guardaba ninguno y el expediente quedaba afirmando una
+   * disponibilidad que no se podía conciliar con la ejecución presupuestal.
+   *
+   * El rubro solo se exige si el CDP no lo trae: el área pudo adelantarlo al
+   * radicar a mano, y pedirlo otra vez sería pedir dos veces el mismo dato. La
+   * solicitud automática nunca lo trae —el estudio previo no lo captura— así
+   * que en la práctica es aquí donde entra.
+   */
+  async verificar(procesoId: string, dto: VerificarCdpDto, acceso: HiringAccess) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
       const cdp = await this.exigirCdp(em, procesoId);
 
+      const rubro = rubroResultante(dto.rubro, cdp.rubro);
+      if (!rubro) {
+        throw new BadRequestException(
+          'Indica el rubro presupuestal contra el que verificas la disponibilidad',
+        );
+      }
+
       await this.transicionar(cdp, 'VERIFICADO');
+      cdp.rubro = rubro;
       await em.save(cdp);
 
       await this.cerrarActividad(em, procesoId, '4.2', acceso);
-      await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso);
+      await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso, { rubro });
 
       return this.conAdvertencia(cdp, proceso);
     });
@@ -546,9 +592,21 @@ export class CdpService {
       const proceso = await this.exigirProceso(em, procesoId);
       const cdp = await this.exigirCdp(em, procesoId);
 
+      // Se acepta para corregirlo —al buscar el saldo la Financiera pudo acabar
+      // imputando a otro rubro—, no para volver a pedirlo: omitirlo conserva el
+      // que se verificó. Si tampoco lo hubo allí, el certificado no puede
+      // salir: sin rubro no se concilia con la ejecución (restricción de la 073).
+      const rubro = rubroResultante(dto.rubro, cdp.rubro);
+      if (!rubro) {
+        throw new BadRequestException(
+          'Indica el rubro presupuestal que afecta el certificado',
+        );
+      }
+
       await this.transicionar(cdp, 'EXPEDIDO');
       cdp.numero = dto.numero;
       cdp.valor = dto.valor;
+      cdp.rubro = rubro;
       cdp.fechaExpedicion = dto.fechaExpedicion;
       cdp.vigenciaFiscal = dto.vigenciaFiscal ?? cdp.vigenciaFiscal;
       cdp.expedidoPor = acceso.userName;
@@ -558,6 +616,7 @@ export class CdpService {
       await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
         numero: dto.numero,
         valor: dto.valor,
+        rubro,
       });
 
       return this.conAdvertencia(cdp, proceso);

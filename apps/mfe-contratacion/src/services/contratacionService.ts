@@ -251,12 +251,28 @@ export const contratacionService = {
     datos: { rubro: string; valor: number; vigenciaFiscal?: number; observaciones?: string },
   ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
 
-  verificarCdp: (procesoId: string) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, { method: 'POST' }),
+  /**
+   * Verificar es decir contra qué rubro hay saldo, no pulsar un botón.
+   *
+   * El rubro va vacío si la solicitud ya lo traía; el backend solo lo exige
+   * cuando el CDP no tiene ninguno, que es el caso de la solicitud automática.
+   */
+  verificarCdp: (procesoId: string, rubro?: string) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, {
+      method: 'POST',
+      body: JSON.stringify({ rubro }),
+    }),
 
   expedirCdp: (
     procesoId: string,
-    datos: { numero: string; valor: number; fechaExpedicion: string; vigenciaFiscal?: number },
+    datos: {
+      numero: string;
+      valor: number;
+      fechaExpedicion: string;
+      vigenciaFiscal?: number;
+      /** Solo si difiere del verificado; omitirlo conserva aquel. */
+      rubro?: string;
+    },
   ) =>
     pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
       method: 'POST',

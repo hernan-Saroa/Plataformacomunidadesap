@@ -64,6 +64,13 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
   const [numero, setNumero] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [motivo, setMotivo] = useState('');
+  /**
+   * El rubro contra el que la Financiera verifica, y con el que expide.
+   *
+   * Uno solo para las dos actividades: es el mismo dato, y llevar dos estados
+   * dejaría que la 4.3 mostrara algo distinto de lo que la 4.2 certificó.
+   */
+  const [rubro, setRubro] = useState('');
   const inputArchivo = useRef<HTMLInputElement>(null);
 
   const cargar = async () => {
@@ -77,6 +84,10 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
       ]);
       setRespaldo(estado);
       setParticipacion(quienes);
+      // Sin pisar lo que se esté escribiendo: `cargar` se vuelve a llamar
+      // después de cada acción, y un setState plano borraría el rubro a medio
+      // teclear si la recarga llega antes de enviarlo.
+      setRubro((actual) => actual || estado.cdp?.rubro || '');
     } catch (err: any) {
       toast.error('No se pudo cargar el CDP', { id: 'cdp-carga', description: err.message });
     } finally {
@@ -216,7 +227,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
       return (
         <Marco>
           <Aviso tono="ok" titulo="Disponibilidad verificada">
-            La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro ?? '—'}.
+            La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro}.
           </Aviso>
           <Siguiente texto="Continúa en 4.3, la expedición del certificado." />
         </Marco>
@@ -229,15 +240,29 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
       <Marco>
         <Titulo>Verificar la disponibilidad presupuestal</Titulo>
         <Ayuda>
-          Confirma que el rubro {cdp.rubro ?? '—'} tiene saldo para cubrir{' '}
+          Indica el rubro que respalda el gasto y confirma que tiene saldo para cubrir{' '}
           {cdp.valor !== null ? formatoPesos.format(cdp.valor) : 'el valor solicitado'}. Si no lo
           hay, rechaza indicando el motivo.
         </Ayuda>
+        {/* El rubro se escribe aquí porque la solicitud llega sin él: el
+            estudio previo no lo captura y la radicación automática no tiene de
+            dónde sacarlo. Un área que lo conociera pudo adelantarlo, y entonces
+            llega escrito y solo hay que confirmarlo o corregirlo. */}
+        <input
+          value={rubro}
+          onChange={(e) => setRubro(e.target.value)}
+          placeholder="Rubro presupuestal (p. ej. A-02-02-02-008)"
+          aria-label="Rubro presupuestal"
+          className={campo}
+        />
         <div className="flex items-center gap-2 flex-wrap">
           <Boton
-            disabled={trabajando}
+            disabled={trabajando || !rubro.trim()}
             onClick={() =>
-              ejecutar(() => contratacionService.verificarCdp(procesoId), 'Disponibilidad verificada')
+              ejecutar(
+                () => contratacionService.verificarCdp(procesoId, rubro.trim()),
+                'Disponibilidad verificada',
+              )
             }
             icono={<Landmark className="w-3.5 h-3.5" />}
           >
@@ -287,7 +312,9 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
         <Marco>
           <Aviso tono="ok" titulo={`CDP ${cdp.numero} expedido`}>
             Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'} el{' '}
-            {cdp.fechaExpedicion}. La partida quedó apartada y el proceso ya puede abrirse.
+            {cdp.fechaExpedicion}
+            {cdp.rubro ? `, contra el rubro ${cdp.rubro}` : ''}. La partida quedó apartada y el
+            proceso ya puede abrirse.
           </Aviso>
           {cdp.valor !== null &&
             valorEstimado !== null &&
@@ -339,8 +366,18 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
             className={campo}
           />
         </div>
+        {/* El rubro llega verificado de la 4.2 y se puede corregir aquí: al
+            buscar el saldo la Financiera pudo acabar imputando a otro. No se
+            pide de cero —eso ya pasó— pero el certificado no sale sin él. */}
+        <input
+          value={rubro}
+          onChange={(e) => setRubro(e.target.value)}
+          placeholder="Rubro presupuestal"
+          aria-label="Rubro presupuestal que afecta el certificado"
+          className={campo}
+        />
         <Boton
-          disabled={trabajando || !numero.trim() || aNumero(valorTexto) === null}
+          disabled={trabajando || !numero.trim() || !rubro.trim() || aNumero(valorTexto) === null}
           onClick={() =>
             ejecutar(
               () =>
@@ -348,6 +385,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
                   numero: numero.trim(),
                   valor: aNumero(valorTexto)!,
                   fechaExpedicion: fecha,
+                  rubro: rubro.trim(),
                 }),
               'CDP expedido',
             )
