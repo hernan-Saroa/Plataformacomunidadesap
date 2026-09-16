@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AlertasController } from './alertas.controller';
 import { AlertasCron } from './alertas.cron';
 import { AlertasService } from './alertas.service';
+import { ParametrosAlertaService } from './parametros-alerta.service';
 
 /**
  * Alertas de vencimiento (EFDS-1185).
@@ -17,7 +18,7 @@ import { AlertasService } from './alertas.service';
  */
 @Module({
   controllers: [AlertasController],
-  providers: [AlertasService, AlertasCron],
-  exports: [AlertasService],
+  providers: [AlertasService, AlertasCron, ParametrosAlertaService],
+  exports: [AlertasService, ParametrosAlertaService],
 })
 export class AlertasModule {}

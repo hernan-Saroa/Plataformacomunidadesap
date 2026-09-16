@@ -1952,7 +1952,6 @@ export interface DatosSeguimiento {
   periodoHasta?: string;
 }
 
-
 // ----------------------- etapa 9 · tramite de pagos (9.4) ------------------
 
 export type EstadoPago = 'RADICADO' | 'AVALADO' | 'DEVUELTO' | 'TRAMITADO' | 'ANULADO';
@@ -3004,3 +3003,15 @@ export interface MisPermisos {
   rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
   permisos: string[];
 }
+
+// ------------------------------------------ los plazos de las alertas (EFDS-1183)
+
+/** Un plazo de las alertas, con los límites que admite. */
+export interface ParametroAlerta {
+  clave: string;
+  valor: number;
+  minimo: number;
+  maximo: number;
+  descripcion: string;
+}
+

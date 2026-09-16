@@ -69,6 +69,7 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  ParametroAlerta,
   EstadisticasGestion,
   ExpedienteAuditoria,
   EstadoIncumplimiento,
@@ -701,7 +702,6 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
-
 
   /**
    * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
@@ -1873,7 +1873,6 @@ export const contratacionService = {
     });
   },
 
-
   // --------------------- traslado del informe y subsanaciones (6.4 a 6.6) ---
 
   /**
@@ -1970,7 +1969,6 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify(nota.trim() ? { nota: nota.trim() } : {}),
     }),
-
 
   // ---------------------------------------- adjudicación, etapa 7 (7.1-7.4) ---
 
@@ -2328,7 +2326,21 @@ export const contratacionService = {
     pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
 
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
-  alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
+  /**
+   * Sin `dias` rige la anticipación configurada de cada tipo de vencimiento;
+   * con un número, la misma para todos, que es lo que fija el selector.
+   */
+  alertas: (dias: number | null = null) =>
+    pedir<AlertaVencimiento[]>(dias === null ? '/alertas' : `/alertas?dias=${dias}`),
+
+  /** Anticipación, tolerancia y hora del aviso diario (EFDS-1183). */
+  parametrosAlerta: () => pedir<ParametroAlerta[]>('/alertas/parametros'),
+
+  guardarParametrosAlerta: (cambios: Record<string, number>) =>
+    pedir<ParametroAlerta[]>('/alertas/parametros', {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
 
   /** Indicadores de gestión de la contratación (EFDS-1189). */
   estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>

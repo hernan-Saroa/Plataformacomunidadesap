@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 
 import { HiringAccess } from '../../auth/hiring-access';
-import { AlertasService, ANTICIPACION_POR_DEFECTO } from './alertas.service';
+import { AlertasService } from './alertas.service';
+import { ParametrosAlertaService } from './parametros-alerta.service';
 
 /**
  * El aviso diario de los vencimientos (EFDS-1185, RF-SIS-03).
@@ -22,7 +23,10 @@ import { AlertasService, ANTICIPACION_POR_DEFECTO } from './alertas.service';
 export class AlertasCron {
   private readonly logger = new Logger(AlertasCron.name);
 
-  constructor(private readonly alertas: AlertasService) {}
+  constructor(
+    private readonly alertas: AlertasService,
+    private readonly parametros: ParametrosAlertaService,
+  ) {}
 
   /**
    * El proceso corre sin usuario: no hay token que mirar porque no lo dispara
@@ -36,16 +40,30 @@ export class AlertasCron {
     puedeEditar: false,
   };
 
-  @Cron('0 7 * * *', {
+  /**
+   * Corre cada hora y avisa solo a la configurada.
+   *
+   * La hora del aviso la edita la Dirección: fijarla en el decorador obligaría a
+   * reiniciar el servicio para cambiarla. Revisar cada hora cuesta una consulta
+   * y deja que el cambio rija desde la hora siguiente.
+   */
+  @Cron('0 * * * *', {
     name: 'contratacion-alertas-vencimiento',
     timeZone: 'America/Bogota',
   })
   async avisarVencimientos(): Promise<void> {
+    const { hora_aviso } = await this.parametros.valores();
+    const horaActual = Number(
+      new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }),
+    ) % 24;
+    if (horaActual !== hora_aviso) return;
+
     this.logger.log('Revisando vencimientos de amparos, CDP, RP y liquidación…');
 
     try {
       const resultado = await this.alertas.notificar(
-        ANTICIPACION_POR_DEFECTO,
+        // Sin número: cada vencimiento con la anticipación configurada para su tipo.
+        null,
         AlertasCron.ACCESO_SISTEMA,
       );
 

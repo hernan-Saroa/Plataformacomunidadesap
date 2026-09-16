@@ -14,9 +14,8 @@ import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
 import { AlertaVencimiento } from '../../types';
 import { fechaLarga } from '../shared/fechas';
-
-/** Cuántos días antes se avisa. Los cortes que un gestor usa de verdad. */
-const ANTICIPACIONES = [15, 30, 60, 90];
+import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { ParametrosAlertas } from './ParametrosAlertas';
 
 const RASGOS: Record<
   AlertaVencimiento['tipo'],
@@ -56,21 +55,29 @@ interface Props {
 
 export function VistaAlertas({ onAbrir }: Props = {}) {
   const [alertas, setAlertas] = useState<AlertaVencimiento[]>([]);
-  const [dias, setDias] = useState(30);
+  /**
+   * Pendientes para todos; la configuración, solo para quien la administra.
+   *
+   * La anticipación ya no se elige aquí con botones de 15, 30, 60 o 90 días:
+   * la fija la Dirección para cada tipo de vencimiento, y dos formas de decir
+   * lo mismo hacían dudar de cuál mandaba.
+   */
+  const [pestana, setPestana] = useState<'pendientes' | 'configuracion'>('pendientes');
+  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setCargando(true);
     contratacionService
-      .alertas(dias)
+      .alertas()
       .then((a) => {
         setAlertas(a);
         setError(null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setCargando(false));
-  }, [dias]);
+  }, []);
 
   const vencidas = alertas.filter((a) => a.estado === 'VENCIDO');
   const porVencer = alertas.filter((a) => a.estado === 'POR_VENCER');
@@ -97,26 +104,37 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
           </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold text-slate-500">Avisar con</span>
-          {ANTICIPACIONES.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDias(d)}
-              aria-pressed={dias === d}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]/40 ${
-                  dias === d
-                    ? 'bg-[#DC2626]/10 border-[#DC2626]/30 text-[#DC2626]'
-                    : 'bg-white border-gray-200 text-slate-600 hover:border-slate-300'
-                }`}
-            >
-              {d} días
-            </button>
-          ))}
-        </div>
+        {puedeConfigurar && (
+          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            {(
+              [
+                ['pendientes', 'Pendientes'],
+                ['configuracion', 'Configuración'],
+              ] as const
+            ).map(([id, etiqueta]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPestana(id)}
+                aria-pressed={pestana === id}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]/40 ${
+                    pestana === id
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-slate-300'
+                  }`}
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {pestana === 'configuracion' && puedeConfigurar ? (
+        <ParametrosAlertas puedeEditar />
+      ) : (
+      <>
 
       {/* Lo vencido primero y aparte: no es lo mismo «se acerca» que «se pasó». */}
       {!cargando && !error && (
@@ -128,7 +146,7 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
             icono={ShieldAlert}
           />
           <Resumen
-            etiqueta={`Vencen en ${dias} días o menos`}
+            etiqueta="Por vencer"
             cuantas={porVencer.length}
             color="#D97706"
             icono={Timer}
@@ -146,7 +164,7 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
             <FileCheck2 className="w-8 h-8 mx-auto text-emerald-300 mb-2" aria-hidden="true" />
             <p className="text-[12.5px] font-bold text-slate-700 m-0">Nada pendiente</p>
             <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">
-              No tienes actividades por aprobar, y nada vence en los próximos {dias} días.
+              No tienes actividades por aprobar, y nada está por vencer.
             </p>
           </div>
         ) : (
@@ -157,6 +175,8 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
           </ul>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
