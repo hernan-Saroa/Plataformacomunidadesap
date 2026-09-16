@@ -1351,7 +1351,7 @@ export class NewsService {
       console.warn('Error consultando usuarios con rol Radicador en NewsService:', err);
     }
 
-    // 3. Usuarios con permiso de radicación
+    // 3. Usuarios con permiso de radicación (es_radicador)
     try {
       const permUsers: any[] = await this.connection.query(
         `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
@@ -1362,7 +1362,7 @@ export class NewsService {
          LEFT JOIN auth.personas per ON per.id_person = u.id_person
          WHERE u.is_active = true
            AND p.code = $1`,
-        ['control-disciplinario.noticia-disciplinaria.view_mine'],
+        ['control-disciplinario.es_radicador'],
       );
       for (const r of permUsers) {
         if (r.id_user) {
