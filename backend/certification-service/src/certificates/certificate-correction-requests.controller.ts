@@ -188,6 +188,8 @@ export class CertificateCorrectionRequestsController {
     @Query('limit') limit?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: string,
   ) {
     await this.assertCanManage(req);
     return this.certificatesService.listCertificateCorrectionRequests({
@@ -195,6 +197,8 @@ export class CertificateCorrectionRequestsController {
       limit: Number(limit) || 10,
       status,
       search,
+      sort,
+      order,
     });
   }
 
