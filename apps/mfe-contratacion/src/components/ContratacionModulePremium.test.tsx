@@ -18,6 +18,9 @@ vi.mock('./procesos/VistaProcesos', () => ({
 vi.mock('./expedientes/VistaExpedientes', () => ({
   VistaExpedientes: () => <div>vista de expedientes</div>,
 }));
+vi.mock('./cdp/VistaBandejaCdp', () => ({
+  VistaBandejaCdp: () => <div>bandeja de solicitudes de CDP</div>,
+}));
 
 describe('ContratacionModulePremium · menú según el permiso', () => {
   const sesionCon = (...permisos: string[]) => {
@@ -96,5 +99,70 @@ describe('ContratacionModulePremium · menú según el permiso', () => {
     render(<ContratacionModulePremium />);
 
     expect(screen.queryByText('Alertas')).toBeNull();
+  });
+});
+
+/**
+ * La Dirección Financiera entra por su cola, no por la lista de procesos.
+ *
+ * Su trabajo en el módulo no es un expediente sino las solicitudes de CDP que
+ * esperan, y hasta que existió la bandeja abría el módulo, veía la misma lista
+ * que todos y no tenía forma de saber qué le tocaba.
+ */
+describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
+  const sesionCon = (...permisos: string[]) => {
+    (window as unknown as { __esap_auth_cache?: unknown }).__esap_auth_cache = {
+      roles: [],
+      permissions: permisos,
+    };
+  };
+
+  afterEach(() => {
+    delete (window as unknown as { __esap_auth_cache?: unknown }).__esap_auth_cache;
+  });
+
+  it('quien gestiona presupuesto entra directo a la bandeja', () => {
+    sesionCon('contratacion.proceso.view', 'contratacion.presupuesto.gestionar');
+    render(<ContratacionModulePremium />);
+
+    expect(screen.getByText('bandeja de solicitudes de CDP')).toBeInTheDocument();
+    expect(screen.queryByText('listado de procesos')).toBeNull();
+  });
+
+  it('y la tiene en el menú', () => {
+    sesionCon('contratacion.proceso.view', 'contratacion.presupuesto.gestionar');
+    render(<ContratacionModulePremium />);
+
+    expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
+  });
+
+  it('quien además diligencia procesos sigue entrando por la lista', () => {
+    // Un mismo usuario puede tener los dos papeles. Entonces la lista sí es su
+    // trabajo, y mandarlo a la bandeja le escondería la mitad de lo que hace.
+    sesionCon(
+      'contratacion.proceso.view',
+      'contratacion.actividad.edit',
+      'contratacion.presupuesto.gestionar',
+    );
+    render(<ContratacionModulePremium />);
+
+    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+    expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
+  });
+
+  it('a quien no mueve presupuesto no se le ofrece', () => {
+    sesionCon('contratacion.proceso.view', 'contratacion.actividad.edit');
+    render(<ContratacionModulePremium />);
+
+    expect(screen.queryByText('Solicitudes de CDP')).toBeNull();
+    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+  });
+
+  it('sin sesión se entra por la lista, como siempre', () => {
+    // `tienePermiso` responde que sí ante una sesión incompleta, así que sin
+    // este cuidado cualquiera sin sesión aterrizaría en la bandeja.
+    render(<ContratacionModulePremium />);
+
+    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
   });
 });

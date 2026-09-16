@@ -45,7 +45,7 @@ describe('RegistroActividadService · quién recibe el soporte de la actividad',
     };
 
     return (
-      new RegistroActividadService({ manager: em } as never, {} as never) as unknown as {
+      new RegistroActividadService({ manager: em } as never, {} as never, {} as never) as unknown as {
         estado(procesoId: string, numeral: string): Promise<Record<string, unknown>>;
       }
     ).estado('proc-1', '3.2');

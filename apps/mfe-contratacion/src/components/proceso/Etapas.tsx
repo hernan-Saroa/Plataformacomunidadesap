@@ -35,6 +35,18 @@ interface Props {
   etapaSeleccionada: number;
   onSeleccionar: (etapa: number) => void;
   avance: Record<number, AvanceEtapa>;
+  /**
+   * Recorta el recorrido a estas etapas.
+   *
+   * Para quien solo interviene en algunas —la Dirección Financiera entra en la
+   * 4, la 8, la 9 y la 10— las diez etapas son sobre todo ruido: nueve de cada
+   * diez clics posibles llevan a trabajo de otro. Sin la prop se pintan las
+   * diez, que es lo normal.
+   *
+   * Recortar la vista no recorta el acceso: quien las tiene todas las sigue
+   * teniendo, y por eso quien recorta ofrece además cómo volver a verlas.
+   */
+  soloEstas?: number[];
 }
 
 const AZUL = '#003DA5';
@@ -61,16 +73,21 @@ export function LineaDeTiempoEtapas({
   etapaSeleccionada,
   onSeleccionar,
   avance,
+  soloEstas,
 }: Props) {
+  const recorrido = soloEstas ? ETAPAS.filter((e) => soloEstas.includes(e.numero)) : ETAPAS;
+
   return (
     <div className="overflow-x-auto -mx-1 px-1">
-      <ol className="flex m-0 p-0 list-none" style={{ minWidth: 620 }}>
-        {ETAPAS.map((etapa, idx) => {
+      {/* Con menos etapas el ancho mínimo sobra: dejarlo fijo las separaría
+          media pantalla y el recorrido dejaría de leerse como un recorrido. */}
+      <ol className="flex m-0 p-0 list-none" style={{ minWidth: soloEstas ? undefined : 620 }}>
+        {recorrido.map((etapa, idx) => {
           const suyo = avance[etapa.numero];
           const completa = !!suyo && suyo.aplicables > 0 && suyo.completas === suyo.aplicables;
           const seleccionada = etapa.numero === etapaSeleccionada;
           const esActual = etapa.numero === etapaActual;
-          const esUltima = idx === ETAPAS.length - 1;
+          const esUltima = idx === recorrido.length - 1;
 
           // Las etapas 1 y 2 no se navegan: no están en la Fase 1 y no tienen
           // actividades que mostrar. Se dibujan para que el recorrido sea el
