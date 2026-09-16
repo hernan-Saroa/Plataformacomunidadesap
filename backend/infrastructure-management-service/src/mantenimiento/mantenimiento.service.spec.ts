@@ -398,7 +398,7 @@ describe('[EFDS-1731] AC-02 Bandeja findAll filtro areaResponsableActual por rol
     const s = servicio({
       mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
     });
-    await s.findAll(undefined, undefined, false, userUMI);
+    await s.findAll(undefined, undefined, false, undefined, userUMI);
     expect(andWhere).toHaveBeenCalledWith(expect.stringMatching(/UMI|PENDIENTE/));
   });
 
@@ -409,7 +409,7 @@ describe('[EFDS-1731] AC-02 Bandeja findAll filtro areaResponsableActual por rol
     const s = servicio({
       mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
     });
-    await s.findAll(undefined, undefined, true, userUMI);
+    await s.findAll(undefined, undefined, true, undefined, userUMI);
     expect(andWhere).not.toHaveBeenCalledWith(expect.stringMatching(/UMI|PENDIENTE/));
   });
 });
@@ -465,5 +465,114 @@ describe('[EFDS-1731] AC-03 Endpoint remitirATI y trazabilidad JSONB', () => {
     expect(ultima.destinoArea).toBe('TI');
     const list = await s.getRemisionesById('REM1');
     expect(Array.isArray(list)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1732 Catálogo 8 categorías servicio oficiales Fase 2 (5 tests)
+// ---------------------------------------------------------------------------
+const SEED_8_CATEGORIAS_OFICIALES_EFDS1732 = [
+  { idCatalogo: 47, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-rose-100 text-rose-800 border border-rose-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 48, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-amber-100 text-amber-800 border border-amber-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 49, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-violet-100 text-violet-800 border border-violet-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 50, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-sky-100 text-sky-800 border border-sky-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 51, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_005', nombre: 'Mantenimiento de Infraestructura Física y Obras Menores', orden: 5, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-orange-100 text-orange-800 border border-orange-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 52, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_006', nombre: 'Mantenimiento de Zonas Exteriores y Jardinería', orden: 6, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-emerald-100 text-emerald-800 border border-emerald-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 53, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-indigo-100 text-indigo-800 border border-indigo-200', fase2: true, lineaBase745: true } },
+  { idCatalogo: 54, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo de Equipos Críticos', orden: 8, metadata: { tipo: 'CATEGORIA_PRINCIPAL', color: 'bg-teal-100 text-teal-800 border border-teal-200', fase2: true, lineaBase745: true } },
+];
+
+describe('[EFDS-1732] AC-01 Seed 8 categorías oficiales CATEGORIA_SERVICIO idCatalogo 47..54', () => {
+  it('8 filas oficiales tipo=CATEGORIA_PRINCIPAL (línea base 745 casos)', () => {
+    const oficiales = SEED_8_CATEGORIAS_OFICIALES_EFDS1732;
+    expect(oficiales).toHaveLength(8);
+    expect(oficiales.filter((c) => c.metadata?.tipo === 'CATEGORIA_PRINCIPAL')).toHaveLength(8);
+    expect(oficiales.every((c) => c.metadata?.fase2 === true && c.metadata?.lineaBase745 === true)).toBe(true);
+    expect(oficiales.map((c) => c.idCatalogo).sort((a, b) => a - b)).toEqual([47, 48, 49, 50, 51, 52, 53, 54]);
+    expect(oficiales.map((c) => c.codigo)).toEqual(['CS_001', 'CS_002', 'CS_003', 'CS_004', 'CS_005', 'CS_006', 'CS_007', 'CS_008']);
+  });
+
+  it('getCatalogo retorna items ordenados ASC por columna orden (1..8)', async () => {
+    const mockCatalogo = [
+      SEED_8_CATEGORIAS_OFICIALES_EFDS1732[6],
+      SEED_8_CATEGORIAS_OFICIALES_EFDS1732[3],
+      ...SEED_8_CATEGORIAS_OFICIALES_EFDS1732,
+    ];
+    const s = servicio({
+      catalogoRepo: { find: jest.fn().mockResolvedValue(mockCatalogo) },
+    });
+    const result = await s.getCatalogo('CATEGORIA_SERVICIO');
+    expect(result).toHaveLength(mockCatalogo.length);
+    for (let i = 1; i < result.length; i++) {
+      expect((result[i].orden || 0) >= (result[i - 1].orden || 0)).toBe(true);
+    }
+  });
+});
+
+describe('[EFDS-1732] AC-03 create guarda idCategoria + idSubcategoria en solicitud', () => {
+  it('create dto idCategoria=50 (CS_004 Plomería) + idSubcategoria=1001 → save incluye ambos integers', async () => {
+    const save = jest.fn().mockImplementation((d) => ({ idSolicitud: 's-1732', evidencias: [], ...d }));
+    const s = servicio({
+      sedeRepo: { findOne: jest.fn().mockResolvedValue(sedeValida) },
+      mantenimientoRepo: {
+        count: jest.fn().mockResolvedValue(3),
+        save,
+      },
+    });
+    const dtoCat = {
+      ...dtoBase,
+      tipoAtencion: 'FISICA',
+      idCategoria: 50,
+      idSubcategoria: 1001,
+    };
+    await s.create(dtoCat as any, userValido);
+    const saved = save.mock.calls[0][0];
+    expect(saved.idCategoria).toBe(50);
+    expect(saved.idSubcategoria).toBe(1001);
+    expect(Number.isInteger(saved.idCategoria)).toBe(true);
+    expect(Number.isInteger(saved.idSubcategoria)).toBe(true);
+  });
+});
+
+describe('[EFDS-1732] AC-03 findAll filtro opcional idCategoria integer', () => {
+  it('findAll idCategoria=50 → andWhere solicitud.idCategoria = :idCat bind 50', async () => {
+    const where = jest.fn().mockReturnThis();
+    const leftJoinAndSelect = jest.fn().mockReturnThis();
+    const andWhere = jest.fn().mockReturnThis();
+    const setParameter = jest.fn().mockReturnThis();
+    const orderBy = jest.fn().mockReturnThis();
+    const addOrderBy = jest.fn().mockReturnThis();
+    const skip = jest.fn().mockReturnThis();
+    const take = jest.fn().mockReturnThis();
+    const getMany = jest.fn().mockResolvedValue([]);
+    const qb: any = { where, leftJoinAndSelect, andWhere, setParameter, orderBy, addOrderBy, skip, take, getMany };
+    const s = servicio({
+      mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
+    });
+    await s.findAll(undefined, undefined, false, 50, undefined);
+    expect(andWhere).toHaveBeenCalled();
+    const andWhereCalls = andWhere.mock.calls.map((c) => String(c[0]));
+    expect(andWhereCalls.some((sql) => sql.includes('idCategoria') || sql.includes('id_categoria'))).toBe(true);
+    const idCatParam = setParameter.mock.calls.find((c) => c[0] === 'idCategoria');
+    if (idCatParam) expect(idCatParam[1]).toBe(50);
+  });
+});
+
+describe('[EFDS-1732] AC-02 Subcategorías discriminador metadata.parentCodigo (sin tabla nueva)', () => {
+  it('filtrar subcategorias parentCodigo=CS_004 retorna solo subs de Plomería (orden 1001+)', () => {
+    const catPadre = SEED_8_CATEGORIAS_OFICIALES_EFDS1732.find((c) => c.codigo === 'CS_004')!;
+    const subcategoriasIn = [
+      { idCatalogo: 1001, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_004_S01', nombre: 'Reparación de grifos', orden: 1001, metadata: { parentCodigo: 'CS_004', tipo: 'SUBCATEGORIA' } },
+      { idCatalogo: 1002, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_004_S02', nombre: 'Desatasco cañerías', orden: 1002, metadata: { parentCodigo: 'CS_004', tipo: 'SUBCATEGORIA' } },
+      { idCatalogo: 1010, catalogo: 'CATEGORIA_SERVICIO', codigo: 'CS_001_S01', nombre: 'Cambio de chapas', orden: 1010, metadata: { parentCodigo: 'CS_001', tipo: 'SUBCATEGORIA' } },
+    ];
+    const todos = [...SEED_8_CATEGORIAS_OFICIALES_EFDS1732, ...subcategoriasIn];
+    const subcategoriasFiltradas = todos
+      .filter((it) => (it as any).metadata?.parentCodigo === catPadre.codigo)
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    expect(subcategoriasFiltradas).toHaveLength(2);
+    expect(subcategoriasFiltradas.map((s) => s.idCatalogo)).toEqual([1001, 1002]);
+    expect(subcategoriasFiltradas.every((s) => (s as any).metadata?.tipo === 'SUBCATEGORIA')).toBe(true);
+    expect(subcategoriasFiltradas.every((s) => (s as any).metadata?.parentCodigo === 'CS_004')).toBe(true);
   });
 });

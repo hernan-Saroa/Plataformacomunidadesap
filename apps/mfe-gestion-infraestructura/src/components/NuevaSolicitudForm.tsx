@@ -25,6 +25,8 @@ import {
   CreateMantenimientoPayload,
   CatalogoItem,
   SolicitudEvidencia,
+  BloqueEdificio,
+  EspacioFisico,
 } from '../services/infraestructuraService';
 
 interface NuevaSolicitudFormProps {
@@ -42,10 +44,10 @@ interface ArchivoPendiente {
 }
 
 const TIPOS_MANTENIMIENTO_FALLBACK: CatalogoItem[] = [
-  { idCatalogo: 1, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'PREVENTIVO', nombre: 'Preventivo', orden: 1, isActivo: true, metadata: {} },
-  { idCatalogo: 2, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'CORRECTIVO', nombre: 'Correctivo', orden: 2, isActivo: true, metadata: {} },
-  { idCatalogo: 3, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'LOCATIVO',   nombre: 'Locativo',   orden: 3, isActivo: true, metadata: {} },
-  { idCatalogo: 4, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'URGENTE',    nombre: 'Urgente',    orden: 4, isActivo: true, metadata: {} },
+  { idCatalogo: 1, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'PREVENTIVO',   nombre: 'Preventivo',   orden: 1, isActivo: true, metadata: {} },
+  { idCatalogo: 2, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'CORRECTIVO',   nombre: 'Correctivo',   orden: 2, isActivo: true, metadata: {} },
+  { idCatalogo: 3, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'LOCATIVO',     nombre: 'Locativo',     orden: 3, isActivo: true, metadata: {} },
+  { idCatalogo: 4, catalogo: 'TIPO_MANTENIMIENTO', codigo: 'TECNOLOGICO',  nombre: 'Tecnológico / TIC', orden: 4, isActivo: true, metadata: {} },
 ];
 
 const PRIORIDADES_FALLBACK: CatalogoItem[] = [
@@ -68,15 +70,24 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
 
   const [catalogoTM, setCatalogoTM] = useState<CatalogoItem[]>([]);
   const [catalogoPR, setCatalogoPR] = useState<CatalogoItem[]>([]);
+  const [catalogoCS, setCatalogoCS] = useState<CatalogoItem[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState<boolean>(true);
 
   const [tipoAtencion, setTipoAtencion] = useState<'FISICA' | 'TECNOLOGICA' | ''>('');
   const [idSede, setIdSede] = useState<string>('');
+  const [idBloque, setIdBloque] = useState<string>('');
+  const [idEspacio, setIdEspacio] = useState<string>('');
+  const [ubicacionManual, setUbicacionManual] = useState<boolean>(false);
+  const [espaciosDelBloque, setEspaciosDelBloque] = useState<EspacioFisico[]>([]);
+  const [cargandoEspacios, setCargandoEspacios] = useState<boolean>(false);
+
   const [nombreAreaSolicitante, setNombreAreaSolicitante] = useState<string>('');
   const [piso, setPiso] = useState<string>('');
   const [salon, setSalon] = useState<string>('');
   const [ubicacionDetalle, setUbicacionDetalle] = useState<string>('');
   const [tipoMantenimiento, setTipoMantenimiento] = useState<string>('CORRECTIVO');
+  const [idCategoria, setIdCategoria] = useState<number | undefined>(undefined);
+  const [idSubcategoria, setIdSubcategoria] = useState<number | undefined>(undefined);
   const [prioridad, setPrioridad] = useState<string>('MEDIA');
   const [descripcion, setDescripcion] = useState<string>('');
   const [evidenciaInicialUrl, setEvidenciaInicialUrl] = useState<string>('');
@@ -96,27 +107,49 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       try {
         setCargandoSedes(true);
         setCargandoCatalogos(true);
-        const [listadoSedes, tm, pr] = await Promise.all([
+        const [listadoSedes, tm, pr, cs] = await Promise.all([
           infraestructuraService.getSedesAlcanceUMI(),
           infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
+          infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
         ]);
         setSedesAlcance(listadoSedes);
-        setCatalogoTM(tm.length > 0 ? tm : TIPOS_MANTENIMIENTO_FALLBACK);
-        setCatalogoPR(pr.length > 0 ? pr : PRIORIDADES_FALLBACK);
+        setCatalogoCS(cs.length > 0 ? cs : []);
         if (listadoSedes.length === 1) {
           setIdSede(listadoSedes[0].idSede);
         }
-        if (catalogoTM.length === 0 && tm.length === 0) {
-          setTipoMantenimiento('CORRECTIVO');
+        // TIPO_MANTENIMIENTO: priorizar TM real. Si el endpoint devolvió vacío
+        // (error o catalogo paramétrico no poblado) caemos al fallback LOCAL
+        // (PREVENTIVO/CORRECTIVO/LOCATIVO/TECNOLOGICO) y elegimos CORRECTIVO
+        // por defecto. NUNCA usar PR aquí (ni BAJA/MEDIA/ALTA/URGENTE) porque
+        // TIPO y PRIORIDAD son dimensiones distintas (mix bug reproducible
+        // cuando algún script de seed/populate dejó TIPO_MANTENIMIENTO sin filas).
+        if (tm.length > 0) {
+          const defaultTM = tm.find((x) => x.codigo === 'CORRECTIVO') ?? tm[0];
+          setCatalogoTM(tm);
+          setTipoMantenimiento(defaultTM.codigo);
         } else {
-          setTipoMantenimiento(tm[0]?.codigo ?? 'CORRECTIVO');
+          setCatalogoTM(TIPOS_MANTENIMIENTO_FALLBACK);
+          setTipoMantenimiento('CORRECTIVO');
         }
-        setPrioridad(pr[0]?.codigo ?? 'MEDIA');
-      } catch (err) {
+        // PRIORIDAD: independiente al TM. Fallback si el catálogo real vino vacío.
+        if (pr.length > 0) {
+          const defaultPR = pr.find((x) => x.codigo === 'MEDIA') ?? pr[0];
+          setCatalogoPR(pr);
+          setPrioridad(defaultPR.codigo);
+        } else {
+          setCatalogoPR(PRIORIDADES_FALLBACK);
+          setPrioridad('MEDIA');
+        }
+      } catch (err: any) {
         console.error('No se pudieron cargar sedes/catalogos UMI', err);
         setCatalogoTM(TIPOS_MANTENIMIENTO_FALLBACK);
         setCatalogoPR(PRIORIDADES_FALLBACK);
+        setCatalogoCS([]);
+        // (EFDS-1732) En modo catch/fallback: valores default semánticamente
+        // correctos, TIPO != PRIORIDAD (fix bug "Urgente" aparecía en Tipo Mto.)
+        setTipoMantenimiento('CORRECTIVO');
+        setPrioridad('MEDIA');
       } finally {
         setCargandoSedes(false);
         setCargandoCatalogos(false);
@@ -125,8 +158,106 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const sedeSeleccionada = useMemo(
+    () => sedesAlcance.find((s) => s.idSede === idSede) ?? null,
+    [sedesAlcance, idSede],
+  );
+  const bloquesSedeSeleccionada: BloqueEdificio[] = useMemo(
+    () => (sedeSeleccionada?.bloques ?? []).filter((b) => b.isActivo !== false),
+    [sedeSeleccionada],
+  );
+  const bloqueSeleccionado: BloqueEdificio | null | undefined = useMemo(
+    () => bloquesSedeSeleccionada.find((b) => b.idBloque === idBloque),
+    [bloquesSedeSeleccionada, idBloque],
+  );
+  const espacioSeleccionado: EspacioFisico | null | undefined = useMemo(
+    () => espaciosDelBloque.find((e) => e.idEspacio === idEspacio),
+    [espaciosDelBloque, idEspacio],
+  );
+
+  // (EFDS-1732) Reset selectores dependientes al cambiar la sede
+  useEffect(() => {
+    setIdBloque('');
+    setIdEspacio('');
+    setEspaciosDelBloque([]);
+    if (!ubicacionManual) {
+      setPiso('');
+      setSalon('');
+    }
+  }, [idSede]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // (EFDS-1732) Cargar espacios cuando el usuario elige bloque (modo guiado)
+  useEffect(() => {
+    if (ubicacionManual) {
+      setEspaciosDelBloque([]);
+      setIdEspacio('');
+      return;
+    }
+    if (!idBloque) {
+      setEspaciosDelBloque([]);
+      setIdEspacio('');
+      setPiso('');
+      setSalon('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setCargandoEspacios(true);
+      try {
+        const listado = await infraestructuraService.getEspacios({ idBloque });
+        if (!cancelled) {
+          setEspaciosDelBloque(listado.filter((e) => e.isActivo !== false));
+        }
+      } finally {
+        if (!cancelled) setCargandoEspacios(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [idBloque, ubicacionManual]);
+
+  // (EFDS-1732) Autollenar piso / salon desde espacio elegido (modo guiado)
+  useEffect(() => {
+    if (ubicacionManual) return;
+    if (!espacioSeleccionado) {
+      if (idEspacio === '') {
+        // no limpiar si el usuario borro manualmente por UX
+      }
+      return;
+    }
+    const p = espacioSeleccionado.piso;
+    setPiso(p === 0 ? 'PB' : String(p));
+    setSalon(espacioSeleccionado.nombre || espacioSeleccionado.codigo || '');
+  }, [espacioSeleccionado, ubicacionManual, idEspacio]);
+
+  // (EFDS-1732) Toggle modo manual → limpia selectores guiados o viceversa
+  useEffect(() => {
+    if (ubicacionManual) {
+      setIdEspacio('');
+      setEspaciosDelBloque([]);
+    } else {
+      if (espacioSeleccionado) {
+        const p = espacioSeleccionado.piso;
+        setPiso(p === 0 ? 'PB' : String(p));
+        setSalon(espacioSeleccionado.nombre || espacioSeleccionado.codigo || '');
+      }
+    }
+  }, [ubicacionManual]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const listaTM = catalogoTM.length > 0 ? catalogoTM : TIPOS_MANTENIMIENTO_FALLBACK;
   const listaPR = catalogoPR.length > 0 ? catalogoPR : PRIORIDADES_FALLBACK;
+  const categoriasPrincipales = useMemo(
+    () => catalogoCS.filter((c) => c.metadata?.tipo === 'CATEGORIA_PRINCIPAL').sort((a, b) => a.orden - b.orden),
+    [catalogoCS],
+  );
+  const subcategorias = useMemo(() => {
+    if (!Number.isInteger(idCategoria) || !(idCategoria as number)) return [];
+    const catPadre = catalogoCS.find((c) => c.idCatalogo === idCategoria);
+    const parentCodigo = catPadre?.codigo;
+    if (!parentCodigo) return [];
+    return catalogoCS
+      .filter((c) => c.metadata?.parentCodigo === parentCodigo && c.metadata?.tipo === 'SUBCATEGORIA')
+      .sort((a, b) => a.orden - b.orden);
+  }, [idCategoria, catalogoCS]);
 
   const validar = (): boolean => {
     const nuevosErrores: Record<string, string> = {};
@@ -135,8 +266,13 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
     if (!nombreAreaSolicitante.trim() || nombreAreaSolicitante.trim().length < 3) {
       nuevosErrores.nombreAreaSolicitante = 'Ingrese el nombre del área solicitante (mínimo 3 caracteres)';
     }
-    if (!piso.trim()) nuevosErrores.piso = 'Ingrese el piso';
-    if (!salon.trim()) nuevosErrores.salon = 'Ingrese el salón, oficina o ubicación';
+    if (ubicacionManual) {
+      if (!piso.trim()) nuevosErrores.piso = 'Ingrese el piso';
+      if (!salon.trim()) nuevosErrores.salon = 'Ingrese el salón, oficina o ubicación';
+    } else {
+      if (!idBloque) nuevosErrores.idBloque = 'Seleccione el bloque o edificio';
+      if (!idEspacio) nuevosErrores.idEspacio = 'Seleccione el espacio físico (aula, oficina, laboratorio...)';
+    }
     if (!tipoMantenimiento) nuevosErrores.tipoMantenimiento = 'Seleccione un tipo de mantenimiento';
     if (!descripcion.trim() || descripcion.trim().length < 10) {
       nuevosErrores.descripcion = 'Describa la solicitud con al menos 10 caracteres';
@@ -252,12 +388,15 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       ).filter((x): x is string => !!x);
       const payload: CreateMantenimientoPayload = {
         idSede,
+        idEspacio: !ubicacionManual && idEspacio ? idEspacio : undefined,
         nombreAreaSolicitante: nombreAreaSolicitante.trim(),
         piso: piso.trim(),
         salon: salon.trim(),
         ubicacionDetalle: ubicacionDetalle.trim() || undefined,
         tipoMantenimiento,
         prioridad,
+        idCategoria: Number.isInteger(idCategoria) ? idCategoria : undefined,
+        idSubcategoria: Number.isInteger(idSubcategoria) ? idSubcategoria : undefined,
         descripcion: descripcion.trim(),
         evidenciaInicialUrl: evidenciaInicialUrl.trim() || undefined,
         uploadedEvidenciaIds: uploadedEvidenciaIds.length > 0 ? uploadedEvidenciaIds : undefined,
@@ -455,42 +594,165 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 <label className={labelClase}>
                   <span className="inline-flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5 text-slate-400" />
-                    Piso / Nivel
+                    Bloque / Edificio
                   </span>
                   <span className="text-rose-500 ml-1">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={piso}
-                  onChange={(e) => setPiso(e.target.value)}
-                  placeholder="Ej: 1, 2, 3, 5, PB, Mezzanine"
-                  className={inputClase('piso')}
-                />
-                {errores.piso && <p className="mt-1 text-xs text-rose-600 font-medium">{errores.piso}</p>}
+                <select
+                  value={idBloque}
+                  onChange={(e) => setIdBloque(e.target.value)}
+                  disabled={ubicacionManual || cargandoSedes || !idSede}
+                  className={inputClase('idBloque')}
+                >
+                  <option value="">
+                    {ubicacionManual
+                      ? 'Ubicación manual activada'
+                      : !idSede
+                      ? 'Primero seleccione la sede'
+                      : bloquesSedeSeleccionada.length === 0
+                      ? 'No hay bloques registrados para esta sede'
+                      : 'Seleccione el bloque o edificio'}
+                  </option>
+                  {bloquesSedeSeleccionada.map((b) => (
+                    <option key={b.idBloque} value={b.idBloque}>
+                      [{b.codigo}] {b.nombre} {b.pisos > 1 ? `· ${b.pisos} pisos` : ''}
+                    </option>
+                  ))}
+                </select>
+                {errores.idBloque && <p className="mt-1 text-xs text-rose-600 font-medium">{errores.idBloque}</p>}
               </div>
 
               <div>
                 <label className={labelClase}>
                   <span className="inline-flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    Salón / Oficina
+                    Espacio físico (aula / oficina / lab)
                   </span>
                   <span className="text-rose-500 ml-1">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={salon}
-                  onChange={(e) => setSalon(e.target.value)}
-                  placeholder="Ej: Aula 204, Oficina 301, Auditorio Principal"
-                  className={inputClase('salon')}
-                />
-                {errores.salon && <p className="mt-1 text-xs text-rose-600 font-medium">{errores.salon}</p>}
+                <select
+                  value={idEspacio}
+                  onChange={(e) => setIdEspacio(e.target.value)}
+                  disabled={ubicacionManual || !idBloque || cargandoEspacios}
+                  className={inputClase('idEspacio')}
+                >
+                  <option value="">
+                    {ubicacionManual
+                      ? 'Ubicación manual activada'
+                      : !idBloque
+                      ? 'Primero seleccione el bloque'
+                      : cargandoEspacios
+                      ? 'Cargando espacios del bloque...'
+                      : espaciosDelBloque.length === 0
+                      ? 'No hay espacios registrados en este bloque'
+                      : 'Seleccione el espacio'}
+                  </option>
+                  {espaciosDelBloque.map((e) => (
+                    <option key={e.idEspacio} value={e.idEspacio}>
+                      [{e.codigo}] {e.nombre} · {e.tipo} · P{e.piso === 0 ? 'B' : e.piso} {e.capacidad ? `· Cap ${e.capacidad}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {errores.idEspacio && <p className="mt-1 text-xs text-rose-600 font-medium">{errores.idEspacio}</p>}
               </div>
+
+              <div className="md:col-span-2">
+                <label className="inline-flex items-start gap-2 select-none cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ubicacionManual}
+                    onChange={(e) => setUbicacionManual(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-amber-600"
+                  />
+                  <span className="text-xs">
+                    <span className="font-bold text-slate-800">No encuentro mi espacio</span>
+                    <span className="text-slate-500">
+                      {' '}· Actívalo solo si tu bloque, aula u oficina NO aparecen en los desplegables. En ese caso ingresa manualmente el piso y salón.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {ubicacionManual && (
+                <>
+                  <div>
+                    <label className={labelClase}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-slate-400" />
+                        Piso / Nivel
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={piso}
+                      onChange={(e) => setPiso(e.target.value)}
+                      placeholder="Ej: 1, 2, 3, 5, PB, Mezzanine"
+                      className={inputClase('piso')}
+                    />
+                    {errores.piso && <p className="mt-1 text-xs text-rose-600 font-medium">{errores.piso}</p>}
+                  </div>
+
+                  <div>
+                    <label className={labelClase}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        Salón / Oficina
+                      </span>
+                      <span className="text-rose-500 ml-1">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={salon}
+                      onChange={(e) => setSalon(e.target.value)}
+                      placeholder="Ej: Aula 204, Oficina 301, Auditorio Principal"
+                      className={inputClase('salon')}
+                    />
+                    {errores.salon && <p className="mt-1 text-xs text-rose-600 font-medium">{errores.salon}</p>}
+                  </div>
+                </>
+              )}
+
+              {!ubicacionManual && idEspacio && (
+                <>
+                  <div>
+                    <label className={labelClase}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-slate-400" />
+                        Piso / Nivel
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={piso}
+                      readOnly
+                      placeholder="Automático según el espacio elegido"
+                      className={`${inputClase('piso')} bg-slate-50/40`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClase}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        Salón / Oficina
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={salon}
+                      readOnly
+                      placeholder="Automático según el espacio elegido"
+                      className={`${inputClase('salon')} bg-slate-50/40`}
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className={labelClase}>
                   <span className="inline-flex items-center gap-1.5">
-                    <Wrench className="w-3.5 h-3.5 text-slate-400" />
+                    <Layers className="w-3.5 h-3.5 text-slate-400" />
                     Tipo de mantenimiento
                   </span>
                   <span className="text-rose-500 ml-1">*</span>
@@ -511,6 +773,92 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                   <p className="mt-1 text-xs text-rose-600 font-medium">{errores.tipoMantenimiento}</p>
                 )}
               </div>
+
+              <div>
+                <label className={labelClase}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-slate-400" />
+                    Categoría de servicio
+                  </span>
+                  <span className="text-slate-400 font-normal ml-2">(opcional fase 2)</span>
+                </label>
+                <select
+                  value={idCategoria ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      setIdCategoria(undefined);
+                      setIdSubcategoria(undefined);
+                    } else {
+                      const parsed = Number(val);
+                      setIdCategoria(Number.isInteger(parsed) ? parsed : undefined);
+                      setIdSubcategoria(undefined);
+                    }
+                  }}
+                  disabled={cargandoCatalogos}
+                  className={inputClase('idCategoria')}
+                >
+                  <option value="">-- Seleccione una categoría (opcional) --</option>
+                  {categoriasPrincipales.map((c) => {
+                    const requiereCoord = !!(c as any).metadata?.requiereCoordinador;
+                    return (
+                      <option
+                        key={c.idCatalogo}
+                        value={c.idCatalogo}
+                        title={requiereCoord ? 'ATENCIÓN: Esta categoría requiere confirmación ESCRITA del Coordinador UMI antes de radicar.' : c.descripcion || ''}
+                      >
+                        [{c.codigo}] {c.nombre}{requiereCoord ? '  ⚠' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {(() => {
+                if (!Number.isInteger(idCategoria)) return null;
+                const sel = categoriasPrincipales.find((c) => c.idCatalogo === idCategoria);
+                const requiereCoord = !!(sel as any)?.metadata?.requiereCoordinador;
+                if (!requiereCoord) return null;
+                return (
+                  <div className="md:col-span-2 flex items-start gap-2 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-[11px] text-fuchsia-900 font-semibold">
+                    <AlertCircle className="w-4 h-4 text-fuchsia-700 flex-shrink-0 mt-0.5" />
+                    <div>
+                      Esta categoría ({sel?.codigo}) requiere <strong>confirmación ESCRITA del Coordinador del Módulo</strong> antes de ser clasificada aquí. Incluye: UPS, plantas eléctricas, CCTV, control de acceso, detección de incendios y equipos industriales críticos. Si no tienes el aval, deja categoría sin seleccionar y UMI la asignará en bandeja.
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {subcategorias.length > 0 && (
+                <div>
+                  <label className={labelClase}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-slate-400" />
+                      Subcategoría
+                    </span>
+                    <span className="text-slate-400 font-normal ml-2">(opcional)</span>
+                  </label>
+                  <select
+                    value={idSubcategoria ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') setIdSubcategoria(undefined);
+                      else {
+                        const parsed = Number(val);
+                        setIdSubcategoria(Number.isInteger(parsed) ? parsed : undefined);
+                      }
+                    }}
+                    disabled={cargandoCatalogos || !Number.isInteger(idCategoria)}
+                    className={inputClase('idSubcategoria')}
+                  >
+                    <option value="">-- Ninguna / Clasificación genérica --</option>
+                    {subcategorias.map((s) => (
+                      <option key={s.idCatalogo} value={s.idCatalogo}>
+                        {s.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className={labelClase}>

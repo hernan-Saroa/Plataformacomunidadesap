@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  FolderKanban,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -14,6 +15,7 @@ import {
   EspacioFisico,
   SolicitudMantenimiento,
   EstadisticasInfraestructura,
+  CatalogoItem,
 } from '../services/infraestructuraService';
 import { MetricasInfraestructura } from './MetricasInfraestructura';
 import { GestionSedes } from './GestionSedes';
@@ -21,8 +23,9 @@ import { GestionEspacios } from './GestionEspacios';
 import { SolicitudesMantenimientoView } from './SolicitudesMantenimiento';
 import { NuevaSolicitudForm } from './NuevaSolicitudForm';
 import { DetalleSolicitudModal } from './DetalleSolicitudModal';
+import { AdminCategoriasServicioMini } from './AdminCategoriasServicioMini';
 
-type TabActiva = 'espacios' | 'sedes' | 'mantenimiento';
+type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias';
 type VistaMantenimiento = 'todas' | 'remitidasTI';
 
 interface Toast {
@@ -38,6 +41,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
   const [espacios, setEspacios] = useState<EspacioFisico[]>([]);
   const [mantenimientos, setMantenimientos] = useState<SolicitudMantenimiento[]>([]);
   const [remitidasTI, setRemitidasTI] = useState<SolicitudMantenimiento[]>([]);
+  const [catalogoCS, setCatalogoCS] = useState<CatalogoItem[]>([]);
   const [vistaMantenimiento, setVistaMantenimiento] = useState<VistaMantenimiento>('todas');
   const [mostrarFormulario, setMostrarFormulario] = useState<boolean>(false);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -56,19 +60,21 @@ export const GestionInfraestructuraModule: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sedesData, espaciosData, mantenimientosData, remitidasTIData, statsData] =
+      const [sedesData, espaciosData, mantenimientosData, remitidasTIData, statsData, csData] =
         await Promise.all([
           infraestructuraService.getSedes(),
           infraestructuraService.getEspacios(),
           infraestructuraService.getMantenimientos({ incluirTI: false }),
           infraestructuraService.getMantenimientos({ incluirTI: true }),
           infraestructuraService.getEstadisticas(),
+          infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
         ]);
       setSedes(sedesData);
       setEspacios(espaciosData);
       setMantenimientos(mantenimientosData);
       setRemitidasTI(remitidasTIData.filter((s) => s.areaResponsableActual === 'TI'));
       setStats(statsData);
+      setCatalogoCS(Array.isArray(csData) ? csData : []);
     } catch (err) {
       console.error('Error al cargar datos de infraestructura:', err);
     } finally {
@@ -154,6 +160,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
       <DetalleSolicitudModal
         open={abrirDetalle}
         idSolicitud={idSolicitudSeleccionada}
+        catalogoCS={catalogoCS}
         onClose={() => {
           setAbrirDetalle(false);
           setIdSolicitudSeleccionada(null);
@@ -161,9 +168,9 @@ export const GestionInfraestructuraModule: React.FC = () => {
       />
 
       {/* Encabezado Principal */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-300 shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/25">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/30 ring-2 ring-blue-100">
             <Building2 className="w-7 h-7" />
           </div>
           <div>
@@ -171,11 +178,11 @@ export const GestionInfraestructuraModule: React.FC = () => {
               <h1 className="text-2xl font-black text-slate-900 tracking-tight">
                 Gestión de Infraestructura
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
                 ESAP Institucional
               </span>
             </div>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-slate-600 font-medium mt-0.5">
               Administración centralizada de sedes, bloques, aulas, laboratorios y órdenes de mantenimiento
             </p>
           </div>
@@ -186,7 +193,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
             type="button"
             onClick={fetchData}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-all duration-200 active:scale-95 disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-sm font-bold transition-all duration-200 active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Sincronizar
@@ -194,7 +201,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
           <button
             type="button"
             onClick={() => setMostrarFormulario(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm shadow-amber-500/20 transition-all active:scale-95"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-md shadow-amber-500/25 ring-1 ring-amber-500/30 transition-all active:scale-95"
           >
             <Wrench className="w-4 h-4" />
             Radicar Solicitud
@@ -245,6 +252,19 @@ export const GestionInfraestructuraModule: React.FC = () => {
           <Wrench className="w-4 h-4" />
           Mantenimiento ({mantenimientos.length})
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('categorias')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+            activeTab === 'categorias'
+              ? 'border-violet-600 text-violet-600 bg-white shadow-sm'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+          }`}
+        >
+          <FolderKanban className="w-4 h-4" />
+          Categorías Servicio ({catalogoCS.length})
+        </button>
       </div>
 
       {/* Vista de Contenido Activo */}
@@ -261,8 +281,10 @@ export const GestionInfraestructuraModule: React.FC = () => {
             onGestionar={manejarGestionar}
             loading={loading}
             onRefresh={fetchData}
+            catalogoCS={catalogoCS}
           />
         )}
+        {activeTab === 'categorias' && <AdminCategoriasServicioMini />}
       </div>
     </div>
   );

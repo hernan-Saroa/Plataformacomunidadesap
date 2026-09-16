@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -14,6 +15,9 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   BadRequestException,
+  NotFoundException,
+  ConflictException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -46,9 +50,9 @@ export class MantenimientoController {
   // ---------------------------------------------------------------------------
   @Get('catalogos/:nombre')
   @Public()
-  @ApiOperation({ summary: 'Obtener un catálogo parametrizable (TIPO_MANTENIMIENTO, PRIORIDAD, ESTADO_SOLICITUD, TIPO_ATENCION)' })
+  @ApiOperation({ summary: 'Obtener un catálogo parametrizable (TIPO_MANTENIMIENTO, PRIORIDAD, TIPO_ATENCION, ESTADO_SOLICITUD, CATEGORIA_SERVICIO)' })
   getCatalogo(@Param('nombre') nombre: string) {
-    const permitidos = ['TIPO_MANTENIMIENTO', 'PRIORIDAD', 'TIPO_ATENCION', 'ESTADO_SOLICITUD'];
+    const permitidos = ['TIPO_MANTENIMIENTO', 'PRIORIDAD', 'TIPO_ATENCION', 'ESTADO_SOLICITUD', 'CATEGORIA_SERVICIO'];
     if (!permitidos.includes(nombre)) {
       throw new BadRequestException(`Catálogo ${nombre} no permitido. Usa uno de: ${permitidos.join(', ')}`);
     }
@@ -63,15 +67,18 @@ export class MantenimientoController {
   @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). UMI filtra por defecto area UMI/PENDIENTE; use ?incluirTI=true para ver también las remitidas a TI.' })
   @ApiQuery({ name: 'estado', required: false })
   @ApiQuery({ name: 'prioridad', required: false })
+  @ApiQuery({ name: 'idCategoria', required: false, description: 'Filtrar por categoria servicio EFDS-1732 (idCatalogo CATEGORIA_SERVICIO, 47..54 = CS_001..CS_008)' })
   @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
   findAll(
     @Query('estado') estado?: string,
     @Query('prioridad') prioridad?: string,
     @Query('incluirTI') incluirTI?: string,
+    @Query('idCategoria') idCategoria?: string,
     @Req() req?: any,
   ) {
     const incluir = String(incluirTI || '').toLowerCase() === 'true';
-    return this.mantenimientoService.findAll(estado, prioridad, incluir, req?.user || null);
+    const idCatParsed = (idCategoria && idCategoria.trim() !== '' && Number.isInteger(+idCategoria)) ? Number(idCategoria) : undefined;
+    return this.mantenimientoService.findAll(estado, prioridad, incluir, idCatParsed, req?.user || null);
   }
 
   @Get('mis-solicitudes')
@@ -80,6 +87,84 @@ export class MantenimientoController {
   findMisSolicitudes(@Req() req: any) {
     const usuarioId = req?.user?.userId;
     return this.mantenimientoService.findByUsuario(usuarioId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // CRUD MINI categorías de servicio (EFDS-1732 mini).
+  // Declarado ANTES de @Get(':id') para que el path estatico 'categorias-servicio'
+  // no sea capturado por el comodín :id que espera un UUID de solicitud.
+  // ---------------------------------------------------------------------------
+
+  @Get('categorias-servicio')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Listar todas las categorías de servicio (8 oficiales precargadas CS_001..CS_008 + nuevas que se creen). Use ?soloActivos=true para filtrar solo las activas.',
+  })
+  listarCategoriasServicio(@Query('soloActivos') soloActivos?: string) {
+    const activos = String(soloActivos || '').toLowerCase() === 'true';
+    return this.mantenimientoService.listarCategoriasServicio(
+      soloActivos === undefined ? undefined : activos,
+    );
+  }
+
+  @Post('categorias-servicio')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). El orden se autoasigna si no se envía. Si el código se repite devuelve 409 Conflict.',
+  })
+  crearCategoriaServicio(
+    @Body()
+    body: {
+      codigo: string;
+      nombre: string;
+      descripcion?: string;
+      orden?: number;
+      isActivo?: boolean;
+      color?: string;
+    },
+  ) {
+    return this.mantenimientoService.crearCategoriaServicio(body);
+  }
+
+  @Patch('categorias-servicio/:id')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Actualizar una categoría de servicio por id. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
+  })
+  actualizarCategoriaServicio(
+    @Param('id', ParseIntPipe) idCatalogo: number,
+    @Body()
+    body: {
+      nombre?: string;
+      descripcion?: string;
+      orden?: number;
+      codigo?: string;
+      isActivo?: boolean;
+      color?: string;
+    },
+  ) {
+    return this.mantenimientoService.actualizarCategoriaServicio(idCatalogo, body);
+  }
+
+  @Patch('categorias-servicio/:id/toggle')
+  @Public()
+  @ApiOperation({
+    summary: 'Toggle rápido activar/desactivar una categoría de servicio. Devuelve el item actualizado.',
+  })
+  toggleCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+    return this.mantenimientoService.toggleCategoriaServicio(idCatalogo);
+  }
+
+  @Delete('categorias-servicio/:id')
+  @Public()
+  @ApiOperation({
+    summary: 'Eliminar una categoría de servicio por id. Devuelve eliminado:true si se borró correctamente.',
+  })
+  eliminarCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+    return this.mantenimientoService.eliminarCategoriaServicio(idCatalogo);
   }
 
   @Post()
@@ -135,6 +220,7 @@ export class MantenimientoController {
   // Evidencias / Upload
   // ---------------------------------------------------------------------------
   @Post('evidencias/upload')
+  @Public()
   @ApiOperation({
     summary:
       'Subir un archivo evidencia al storage (MinIO). Se pueden subir antes de radicar y luego ligar por uploadedEvidenciaIds, o después con idSolicitud opcional.',
