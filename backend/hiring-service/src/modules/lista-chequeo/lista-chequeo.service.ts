@@ -164,6 +164,14 @@ export class ListaChequeoService {
     return {
       modalidad: proceso.modalidad,
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
+      /**
+       * Con qué radicado de Active Document se remitió el paquete.
+       *
+       * Viaja con la lista y no con el proceso porque es parte del mismo acto:
+       * lo que se remite y el número con que se remitió se miran juntos, y
+       * quien lo reclama es quien está comprobando el paquete.
+       */
+      radicadoGestionDocumental: proceso.radicadoGestionDocumental,
       documentos,
       faltantes: loQueFaltaParaRadicar(
         requeridos,
@@ -286,6 +294,41 @@ export class ListaChequeoService {
     return this.estado(procesoId);
   }
 
+  /**
+   * Anota el consecutivo con el que el área remitió el paquete.
+   *
+   * Se puede corregir mientras el paquete sea editable: el número se transcribe
+   * a mano —no hay integración con Active Document— y un dígito mal copiado
+   * sería un expediente que no cruza con nada.
+   *
+   * Vacío lo borra, y es deliberado: el procedimiento admite remitir por correo
+   * o por carpeta compartida, vías que no generan consecutivo. Quien anotó uno
+   * por equivocación tiene que poder dejarlo sin nada, no solo cambiarlo.
+   */
+  async anotarRadicado(procesoId: string, radicado: string | null, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+
+      proceso.radicadoGestionDocumental = radicado?.trim() || null;
+      await em.save(proceso);
+
+      await this.traza(
+        em,
+        procesoId,
+        proceso.id,
+        'RADICAR',
+        acceso,
+        {
+          actividad: NUMERAL_RADICACION,
+          radicadoGestionDocumental: proceso.radicadoGestionDocumental,
+        },
+        'procesos',
+      );
+    });
+
+    return this.estado(procesoId);
+  }
+
   // ------------------------------------------------------------ auxiliares --
 
   /** Los archivos de hiring.documentos, indexados para no consultarlos en bucle. */
@@ -304,6 +347,12 @@ export class ListaChequeoService {
     return proceso;
   }
 
+  /**
+   * `entidad` por parámetro porque no todo lo de aquí es un documento: el
+   * radicado de Active Document es del proceso, y guardarlo como si fuera una
+   * fila de `documentos_proceso` dejaría la trazabilidad apuntando a un
+   * documento que no existe.
+   */
   private traza(
     em: EntityManager,
     procesoId: string,
@@ -311,12 +360,13 @@ export class ListaChequeoService {
     accion: AccionTraza,
     acceso: HiringAccess,
     detalle: Record<string, unknown>,
+    entidad = 'documentos_proceso',
   ) {
     return em.save(
       em.create(Trazabilidad, {
         procesoId,
         entidadId,
-        entidad: 'documentos_proceso',
+        entidad,
         accion,
         detalle,
         usuarioNombre: acceso.userName,

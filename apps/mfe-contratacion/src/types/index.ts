@@ -739,6 +739,13 @@ export interface DocumentoDeLaLista extends DocumentoRequerido {
 export interface EstadoListaChequeo {
   modalidad: string | null;
   modalidadNombre: string | null;
+  /**
+   * Consecutivo de Active Document con el que se remitió el paquete.
+   *
+   * Null cuando se remitió por correo o carpeta compartida, que el
+   * procedimiento admite y no generan radicado.
+   */
+  radicadoGestionDocumental: string | null;
   documentos: DocumentoDeLaLista[];
   /** Los obligatorios que todavía no están; si hay alguno, no se puede enviar. */
   faltantes: { codigo: string; nombre: string }[];

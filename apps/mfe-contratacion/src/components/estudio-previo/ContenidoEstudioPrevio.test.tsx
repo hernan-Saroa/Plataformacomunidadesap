@@ -52,6 +52,7 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     vi.spyOn(contratacionService, 'listaChequeo').mockResolvedValue({
       modalidad: 'MINIMA_CUANTIA',
       modalidadNombre: 'Mínima Cuantía',
+      radicadoGestionDocumental: null,
       documentos: [],
       faltantes: [],
     } as never);

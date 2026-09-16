@@ -322,6 +322,24 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
       expect(cuerpo.message).toContain('No se puede radicar todavía');
     });
 
+    it('anota el radicado de Active Document, y lo deja quitar', async () => {
+      // La 3.3 dejó de pedirlo cuando pasó a cumplirse tomando el proceso de
+      // la bandeja, y sin él el expediente no cruza con Active Document. Se
+      // puede quitar porque el procedimiento admite remitir por correo o por
+      // carpeta compartida, vías que no generan consecutivo.
+      const proceso = await crearProceso();
+
+      const conRadicado = await service.anotarRadicadoDeLaRadicacion(
+        proceso.id,
+        '2026-EE-004512',
+        gestor,
+      );
+      expect(conRadicado.radicadoGestionDocumental).toBe('2026-EE-004512');
+
+      const sinRadicado = await service.anotarRadicadoDeLaRadicacion(proceso.id, '  ', gestor);
+      expect(sinRadicado.radicadoGestionDocumental).toBeNull();
+    });
+
     it('el documento de la lista no se cuenta como el estudio previo', async () => {
       // Los dos se guardan con el numeral 3.1, así que sin descontar los de la
       // lista, cargar el memorando daría por adjunto el estudio previo y el

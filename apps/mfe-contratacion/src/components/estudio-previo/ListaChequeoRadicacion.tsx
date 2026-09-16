@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, FileText, Paperclip, Undo2 } from 'lucide-react';
+import { AlertTriangle, Check, FileText, Hash, Paperclip, Save, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -36,11 +36,16 @@ export function ListaChequeoRadicacion({ procesoId, bloqueado, onResumen, onCamb
   const [error, setError] = useState<string | null>(null);
   /** Qué fila está ocupada, para no bloquear la lista entera. */
   const [ocupado, setOcupado] = useState<string | null>(null);
+  /** El consecutivo de Active Document, mientras se escribe. */
+  const [radicado, setRadicado] = useState('');
 
   const aplicar = (datos: EstadoListaChequeo) => {
     setEstado(datos);
     setError(null);
     onResumen?.(datos.faltantes.length);
+    // Sin pisar lo que se esté escribiendo: la lista se relee tras cada carga,
+    // y un setState plano borraría un radicado a medio teclear.
+    setRadicado((actual) => actual || datos.radicadoGestionDocumental || '');
   };
 
   const leer = () =>
@@ -60,6 +65,19 @@ export function ListaChequeoRadicacion({ procesoId, bloqueado, onResumen, onCamb
     try {
       aplicar(await contratacionService.cargarDocumentoDeLaLista(procesoId, codigo, archivo));
       toast.success('Documento remitido con la radicación');
+      onCambio?.();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setOcupado(null);
+    }
+  };
+
+  const anotarRadicado = async () => {
+    setOcupado('radicado');
+    try {
+      aplicar(await contratacionService.anotarRadicadoDeLaLista(procesoId, radicado.trim()));
+      toast.success('Radicado anotado');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -131,6 +149,53 @@ export function ListaChequeoRadicacion({ procesoId, bloqueado, onResumen, onCamb
             onSustituir={() => doc.cargado && sustituir(doc.cargado.id)}
           />
         ))}
+      </div>
+
+      {/* El consecutivo con el que el paquete salió hacia la Dirección.
+          Debajo de la lista y no encima: primero se arma lo que se remite,
+          después se anota con qué número se remitió. */}
+      <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
+        <div className="flex items-start gap-2.5">
+          <Hash className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[12.5px] font-bold text-slate-800 m-0">
+              Radicado de Active Document
+            </p>
+            <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
+              El consecutivo que genera el aplicativo de gestión documental al remitir el paquete.
+              Déjalo vacío si lo enviaste por correo o por carpeta compartida.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-2.5">
+          {bloqueado ? (
+            <p className="text-[11.5px] text-slate-700 m-0 tabular-nums">
+              {estado.radicadoGestionDocumental ?? 'Se remitió sin radicado.'}
+            </p>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                value={radicado}
+                onChange={(e) => setRadicado(e.target.value)}
+                placeholder="2026-EE-004512"
+                aria-label="Radicado de Active Document"
+                className="flex-1 min-w-[10rem] rounded-md border border-gray-300 px-2.5 py-1.5
+                  text-[12px] tabular-nums focus:outline-none focus:border-[#003DA5]"
+              />
+              <button
+                type="button"
+                disabled={ocupado === 'radicado' || radicado.trim() === (estado.radicadoGestionDocumental ?? '')}
+                onClick={anotarRadicado}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md
+                  bg-[#003DA5] text-white hover:opacity-90 disabled:opacity-50 transition-all"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Anotar
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Se dice, no se esconde: a quien se le exige un documento le

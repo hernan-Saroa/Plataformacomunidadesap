@@ -798,6 +798,21 @@ export class EstudioPrevioService {
     return this.listaChequeo.cargar(procesoId, codigo, archivo, hash, acceso);
   }
 
+  /**
+   * Anota con qué radicado de Active Document se remitió el paquete.
+   *
+   * Mismas condiciones que cargar un documento: es parte del mismo acto, y
+   * quien remite es quien sabe el número.
+   */
+  async anotarRadicadoDeLaRadicacion(
+    procesoId: string,
+    radicado: string | null,
+    acceso: HiringAccess,
+  ) {
+    await this.exigirPaqueteEditable(procesoId, acceso);
+    return this.listaChequeo.anotarRadicado(procesoId, radicado, acceso);
+  }
+
   /** Sustituye uno de los documentos de la lista. Mismas condiciones. */
   async anularDelPaquete(procesoId: string, documentoProcesoId: string, acceso: HiringAccess) {
     await this.exigirPaqueteEditable(procesoId, acceso);

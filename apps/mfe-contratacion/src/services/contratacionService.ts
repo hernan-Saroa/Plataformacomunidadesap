@@ -1493,6 +1493,19 @@ export const contratacionService = {
     });
   },
 
+  /**
+   * Anota el radicado de Active Document con el que se remitió el paquete.
+   *
+   * Cadena vacía lo borra: el procedimiento admite remitir por vías que no
+   * generan consecutivo, y un número anotado por error tiene que poder
+   * quitarse, no solo cambiarse.
+   */
+  anotarRadicadoDeLaLista: (procesoId: string, radicado: string) =>
+    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo/radicado`, {
+      method: 'POST',
+      body: JSON.stringify({ radicado }),
+    }),
+
   /** Deja uno sin efecto para poder cargar otro en su lugar. */
   anularDocumentoDeLaLista: (procesoId: string, documentoId: string) =>
     pedir<EstadoListaChequeo>(

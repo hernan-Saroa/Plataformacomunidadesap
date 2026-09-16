@@ -22,6 +22,20 @@ export class Proceso {
   @Column({ length: 60, unique: true })
   radicado: string;
 
+  /**
+   * Consecutivo de Active Document con el que el área remitió el paquete a la
+   * Dirección de Contratación (actividad 3.3).
+   *
+   * No es `radicado`: aquel es el consecutivo del módulo (PC-AAAA-NNNN) y este
+   * el del aplicativo de gestión documental de la escuela. Sin él, el
+   * expediente y Active Document no se pueden cruzar.
+   *
+   * Nulo cuando el paquete se remitió por una vía que no genera radicado: el
+   * procedimiento admite el correo y la carpeta compartida.
+   */
+  @Column({ name: 'radicado_gestion_documental', length: 120, nullable: true })
+  radicadoGestionDocumental: string | null;
+
   @Column({ type: 'text' })
   objeto: string;
 

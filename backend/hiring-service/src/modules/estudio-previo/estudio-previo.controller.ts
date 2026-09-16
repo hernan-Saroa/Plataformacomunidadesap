@@ -21,7 +21,12 @@ import { createHash, randomBytes } from 'crypto';
 import { createReadStream } from 'fs';
 
 import { EstudioPrevioService } from './estudio-previo.service';
-import { CrearProcesoDto, GuardarBorradorDto, RevisarDto } from './dto/estudio-previo.dto';
+import {
+  AnotarRadicadoDto,
+  CrearProcesoDto,
+  GuardarBorradorDto,
+  RevisarDto,
+} from './dto/estudio-previo.dto';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
 import {
@@ -248,6 +253,26 @@ export class EstudioPrevioController {
     if (!codigo) throw new BadRequestException('Indica a qué documento de la lista corresponde');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.cargarDelPaquete(id, codigo, file, hash, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/lista-chequeo/radicado')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @ApiOperation({
+    summary: 'Anotar el radicado de Active Document con el que se remitió el paquete',
+    description:
+      'Sin integración con el aplicativo: lo transcribe quien radicó. Opcional, porque el procedimiento admite remitir por correo o por carpeta compartida, vías que no generan consecutivo; mandarlo vacío lo borra.',
+  })
+  anotarRadicado(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AnotarRadicadoDto,
+    @Req() req: any,
+  ) {
+    return this.service.anotarRadicadoDeLaRadicacion(
+      id,
+      dto.radicado ?? null,
+      getHiringAccess(req),
+    );
   }
 
   @Post(':id/estudio-previo/lista-chequeo/:documentoId/anular')
