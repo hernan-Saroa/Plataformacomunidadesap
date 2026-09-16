@@ -18,20 +18,24 @@ export const GestionEspacios: React.FC<GestionEspaciosProps> = ({ espacios }) =>
   });
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-      <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <LayoutGrid className="w-5 h-5 text-indigo-600" />
-            Inventario de Espacios Físicos y Aulas
-          </h3>
-          <p className="text-sm text-slate-500 mt-1">
-            Gestión de capacidad, equipamiento y disponibilidad de ambientes de aprendizaje
-          </p>
+    <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/30 ring-2 ring-indigo-100 shrink-0">
+            <LayoutGrid className="w-5 h-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-black text-slate-900 tracking-tight">
+              Inventario de Espacios Físicos y Aulas
+            </h3>
+            <p className="text-sm text-slate-600 font-medium mt-1">
+              Gestión de capacidad, equipamiento y disponibilidad de ambientes de aprendizaje
+            </p>
+          </div>
         </div>
         <button
           type="button"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition-all duration-200 active:scale-95"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white text-sm font-bold shadow-md shadow-indigo-500/25 ring-1 ring-indigo-500/40 transition-all duration-200 active:scale-95 whitespace-nowrap"
         >
           <Plus className="w-4 h-4" />
           Nuevo Espacio
@@ -41,21 +45,21 @@ export const GestionEspacios: React.FC<GestionEspaciosProps> = ({ espacios }) =>
       {/* Barra de Filtros */}
       <div className="p-6 bg-slate-50/60 border-b border-slate-100 flex flex-col sm:flex-row items-center gap-4">
         <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             placeholder="Buscar por nombre o código de aula..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder:text-slate-500 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600 transition-all shadow-sm"
           />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+          <Filter className="w-4 h-4 text-slate-600 shrink-0" />
           <select
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
-            className="w-full sm:w-auto px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600 shadow-sm"
           >
             <option value="TODOS">Todos los tipos</option>
             <option value="AULA">Aulas</option>
@@ -68,8 +72,8 @@ export const GestionEspacios: React.FC<GestionEspaciosProps> = ({ espacios }) =>
 
       {/* Tabla de Espacios */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-slate-50/80 text-xs uppercase font-semibold text-slate-500 border-b border-slate-100">
+        <table className="w-full text-left text-sm text-slate-700">
+          <thead className="bg-slate-50/80 text-xs uppercase font-bold text-slate-600 border-b border-slate-200">
             <tr>
               <th className="px-6 py-4">Código & Espacio</th>
               <th className="px-6 py-4">Tipo</th>
@@ -84,19 +88,19 @@ export const GestionEspacios: React.FC<GestionEspaciosProps> = ({ espacios }) =>
               <tr key={espacio.idEspacio} className="hover:bg-slate-50/60 transition-colors">
                 <td className="px-6 py-4">
                   <div className="font-bold text-slate-900">{espacio.nombre}</div>
-                  <div className="text-xs font-mono text-slate-400 mt-0.5">Piso {espacio.piso} • {espacio.codigo}</div>
+                  <div className="text-xs font-mono text-slate-500 mt-0.5">Piso {espacio.piso} • {espacio.codigo}</div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">
                     {espacio.tipo}
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                    <Users className="w-4 h-4 text-slate-400" />
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <Users className="w-4 h-4 text-slate-500" />
                     {espacio.capacidad} puestos
                   </div>
-                  {espacio.areaM2 && <div className="text-xs text-slate-400">{espacio.areaM2} m²</div>}
+                  {espacio.areaM2 && <div className="text-xs text-slate-500">{espacio.areaM2} m²</div>}
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">

@@ -22,6 +22,7 @@ interface SolicitudesMantenimientoProps {
   onGestionar?: (idSolicitud: string) => void;
   loading?: boolean;
   onRefresh?: () => void;
+  catalogoCS?: CatalogoItem[];
 }
 
 const LUCIDE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -68,6 +69,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   onGestionar,
   loading,
   onRefresh,
+  catalogoCS = [],
 }) => {
   const lista = vista === 'todas' ? mantenimientos : remitidasTI;
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
@@ -100,6 +102,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     for (const it of catalogoPrioridad) m.set((it.codigo || '').toUpperCase(), it);
     return m;
   }, [catalogoPrioridad]);
+
+  const mapIdCategoria = useMemo(() => {
+    const m = new Map<number, CatalogoItem>();
+    for (const it of catalogoCS) {
+      if (Number.isInteger(it.idCatalogo)) m.set(it.idCatalogo as number, it);
+    }
+    return m;
+  }, [catalogoCS]);
 
   const claseEstado = (estado: string): string => {
     const it = mapEstado.get((estado || '').toUpperCase());
@@ -328,6 +338,16 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       return (
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${b.clase}`}>
                           {b.label}
+                        </span>
+                      );
+                    })()}
+                    {Number.isInteger(m.idCategoria) && (() => {
+                      const cat = mapIdCategoria.get(m.idCategoria as number);
+                      if (!cat) return null;
+                      const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+                      return (
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
+                          {cat.nombre}
                         </span>
                       );
                     })()}

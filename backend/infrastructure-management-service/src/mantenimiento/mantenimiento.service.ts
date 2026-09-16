@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
@@ -13,6 +13,17 @@ interface AuthUser {
   username: string;
   email: string;
   roles: string[];
+}
+
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+/** Retorna userId si es UUID válido; de lo contrario null. Usado para no romper
+ *  columnas tipo uuid en el entity cuando auth service usa BIGINT (ej: userId = 746).
+ *  Los campos VARCHAR (solicitanteNombre / Email) siguen poblandose igual. */
+function userIdUuidOrNull(userId: unknown): string | null {
+  return isUuid(userId) ? userId : null;
 }
 
 function nuevoItemRemision(args: {
@@ -62,6 +73,7 @@ export class MantenimientoService {
     estado?: string,
     prioridad?: string,
     incluirTI: boolean = false,
+    idCategoria?: number,
     user?: AuthUser | null,
   ): Promise<SolicitudMantenimiento[]> {
     const query = this.mantenimientoRepo.createQueryBuilder('solicitud')
@@ -75,6 +87,9 @@ export class MantenimientoService {
     }
     if (prioridad) {
       query.andWhere('solicitud.prioridad = :prioridad', { prioridad });
+    }
+    if (Number.isInteger(idCategoria) && (idCategoria as number) > 0) {
+      query.andWhere('solicitud.idCategoria = :idCategoria', { idCategoria });
     }
     if (!incluirTI && this.usuarioTieneRolUMI(user)) {
       query.andWhere("solicitud.areaResponsableActual IN ('UMI','PENDIENTE_CLASIFICACION')");
@@ -149,7 +164,7 @@ export class MantenimientoService {
     if (dto.tipoAtencion === 'TECNOLOGICA') {
       remisionesIniciales.push(
         nuevoItemRemision({
-          usuarioId: user.userId,
+          usuarioId: userIdUuidOrNull(user.userId) ?? undefined,
           usuarioEmail: user.email,
           origenArea: 'FORMULARIO',
           destinoArea: 'TI',
@@ -173,11 +188,13 @@ export class MantenimientoService {
       areaResponsableActual: areaResp,
       remisiones: remisionesIniciales,
       prioridad: dto.prioridad ?? 'MEDIA',
+      idCategoria: dto.idCategoria,
+      idSubcategoria: dto.idSubcategoria,
       descripcion: dto.descripcion,
       consecutivo: consecutivo,
       estado: 'RECIBIDA',
       fechaRadicacion: ahora,
-      usuarioSolicitanteId: user.userId,
+      usuarioSolicitanteId: userIdUuidOrNull(user.userId) ?? undefined,
       usuarioSolicitanteEmail: user.email,
       solicitanteNombre: user.username ?? dto.nombreAreaSolicitante,
       solicitanteEmail: user.email || (user.username || 'solicitante') + '@esap.edu.co',
@@ -196,7 +213,7 @@ export class MantenimientoService {
           ...e,
           idSolicitud: saved.idSolicitud,
           orden: e.orden || i + 1,
-          usuarioQueSubioId: e.usuarioQueSubioId || user.userId,
+          usuarioQueSubioId: e.usuarioQueSubioId || userIdUuidOrNull(user.userId) || undefined,
           usuarioQueSubioEmail: e.usuarioQueSubioEmail || user.email,
         }));
       if (actualizados.length > 0) {
@@ -278,6 +295,130 @@ export class MantenimientoService {
   }
 
   // ---------------------------------------------------------------------------
+  // CRUD MINI categorías de servicio (EFDS-1732 mini)
+  // Operaciones simples sin blindaje: listar/crear/editar/eliminar/toggle.
+  // Usa la misma tabla catalogo_item schema infrastructure-management.
+  // ---------------------------------------------------------------------------
+
+  async listarCategoriasServicio(soloActivos?: boolean): Promise<CatalogoItem[]> {
+    const where: any = { catalogo: 'CATEGORIA_SERVICIO' };
+    if (soloActivos === true) where.isActivo = true;
+    return this.catalogoRepo.find({ where, order: { orden: 'ASC', idCatalogo: 'ASC' } });
+  }
+
+  async crearCategoriaServicio(data: {
+    codigo: string;
+    nombre: string;
+    descripcion?: string;
+    orden?: number;
+    isActivo?: boolean;
+    color?: string;
+  }): Promise<CatalogoItem> {
+    const cod = (data.codigo || '').trim();
+    const nom = (data.nombre || '').trim();
+    if (cod.length < 2) throw new BadRequestException('Código debe tener mínimo 2 caracteres.');
+    if (nom.length < 3) throw new BadRequestException('Nombre debe tener mínimo 3 caracteres.');
+
+    const existe = await this.catalogoRepo.findOne({
+      where: { catalogo: 'CATEGORIA_SERVICIO', codigo: cod },
+    });
+    if (existe) {
+      throw new ConflictException(
+        `Código ${cod} ya existe en categoría #${existe.idCatalogo} "${existe.nombre}"`,
+      );
+    }
+
+    const maxOrden = await this.catalogoRepo
+      .createQueryBuilder('c')
+      .where("c.catalogo = 'CATEGORIA_SERVICIO'")
+      .select('COALESCE(MAX(c.orden), 0)', 'max')
+      .getRawOne<{ max: string }>();
+    const orden =
+      data.orden && Number.isInteger(data.orden) && data.orden > 0
+        ? data.orden
+        : (Number(maxOrden?.max || 0) + 1);
+
+    const desc = data.descripcion?.trim();
+    const nuevo = this.catalogoRepo.create({
+      catalogo: 'CATEGORIA_SERVICIO',
+      codigo: cod,
+      nombre: nom,
+      descripcion: desc ? desc : undefined,
+      orden,
+      isActivo: data.isActivo ?? true,
+      metadata: {
+        tipo: 'CATEGORIA_PRINCIPAL',
+        fase2: true,
+        color: data.color || 'bg-slate-100 text-slate-800 border border-slate-200',
+      },
+    });
+    const [guardado] = await this.catalogoRepo.save([nuevo as any]);
+    return guardado as CatalogoItem;
+  }
+
+  async actualizarCategoriaServicio(
+    idCatalogo: number,
+    data: {
+      nombre?: string;
+      descripcion?: string;
+      orden?: number;
+      codigo?: string;
+      isActivo?: boolean;
+      color?: string;
+    },
+  ): Promise<CatalogoItem> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
+    if (!it) throw new NotFoundException(`Categoría #${idCatalogo} no existe.`);
+
+    if (data.codigo !== undefined) {
+      const cod = data.codigo.trim();
+      if (cod.length < 2) throw new BadRequestException('Código mínimo 2 caracteres.');
+      const dup = await this.catalogoRepo.findOne({
+        where: { catalogo: 'CATEGORIA_SERVICIO', codigo: cod },
+      });
+      if (dup && dup.idCatalogo !== idCatalogo) {
+        throw new ConflictException(`Código ${cod} ya existe en #${dup.idCatalogo}.`);
+      }
+      it.codigo = cod;
+    }
+
+    if (data.nombre !== undefined) {
+      const nom = data.nombre.trim();
+      if (nom.length < 3) throw new BadRequestException('Nombre mínimo 3 caracteres.');
+      it.nombre = nom;
+    }
+
+    if (data.descripcion !== undefined) {
+      const d = data.descripcion.trim();
+      it.descripcion = d.length > 0 ? d : undefined;
+    }
+
+    if (data.orden !== undefined) it.orden = data.orden;
+    if (data.isActivo !== undefined) it.isActivo = !!data.isActivo;
+    if (data.color !== undefined && it.metadata && typeof it.metadata === 'object') {
+      (it.metadata as any).color = data.color;
+    } else if (data.color !== undefined && (!it.metadata || typeof it.metadata !== 'object')) {
+      it.metadata = { color: data.color } as any;
+    }
+
+    return this.catalogoRepo.save(it);
+  }
+
+  async toggleCategoriaServicio(idCatalogo: number): Promise<CatalogoItem> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
+    if (!it) throw new NotFoundException(`Categoría #${idCatalogo} no existe.`);
+    it.isActivo = !it.isActivo;
+    return this.catalogoRepo.save(it);
+  }
+
+  async eliminarCategoriaServicio(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: 'CATEGORIA_SERVICIO' } });
+    if (!it) throw new NotFoundException(`Categoría #${idCatalogo} no existe.`);
+    await this.catalogoRepo.delete({ idCatalogo });
+    return { idCatalogo, eliminado: true };
+  }
+
+  // ---------------------------------------------------------------------------
   // Evidencias / Upload
   // ---------------------------------------------------------------------------
   async subirEvidencia(params: {
@@ -313,7 +454,7 @@ export class MantenimientoService {
       vencimientoPresigned: uploaded.vencimientoPresigned,
       mimeType: params.mimeType,
       tamanoBytes: params.tamanoBytes,
-      usuarioQueSubioId: params.user?.userId,
+      usuarioQueSubioId: userIdUuidOrNull(params.user?.userId) ?? undefined,
       usuarioQueSubioEmail: params.user?.email,
       orden: params.orden ?? 1,
       notas: params.notas,

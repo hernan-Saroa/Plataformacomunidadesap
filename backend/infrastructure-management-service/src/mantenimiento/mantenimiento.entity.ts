@@ -83,8 +83,11 @@ export class SolicitudMantenimiento {
   @Column({ type: 'simple-json', default: () => "'[]'", name: 'remisiones' })
   remisiones: Array<Record<string, any>>;
 
-  @Column({ type: 'uuid', nullable: true, name: 'id_categoria' })
-  idCategoria: string;
+  @Column({ type: 'int', nullable: true, name: 'id_categoria' })
+  idCategoria: number;
+
+  @Column({ type: 'int', nullable: true, name: 'id_subcategoria' })
+  idSubcategoria: number;
 
   @Column({ type: 'timestamptz', nullable: true, name: 'fecha_radicacion' })
   fechaRadicacion: Date;

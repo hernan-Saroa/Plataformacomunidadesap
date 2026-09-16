@@ -94,7 +94,8 @@ export interface SolicitudMantenimiento {
   salon?: string;
   ubicacionDetalle?: string;
   tipoAtencion: string;
-  idCategoria?: string;
+  idCategoria?: number;
+  idSubcategoria?: number;
   fechaRadicacion?: string;
   usuarioSolicitanteId?: string;
   usuarioSolicitanteEmail?: string;
@@ -121,12 +122,23 @@ export interface CreateMantenimientoPayload {
   uploadedEvidenciaIds?: string[];
   prioridad?: string;
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
+  idCategoria?: number;
+  idSubcategoria?: number;
 }
 
 export interface RemitirATIPayload {
   motivo: string;
   consecutivoCruzadoTi?: string;
   canalRemision?: 'EMAIL_SIN_INTEGRAR' | 'MANUAL';
+}
+
+export interface CategoriaServicioPayload {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+  isActivo?: boolean;
+  color?: string;
 }
 
 export interface EstadisticasInfraestructura {
@@ -143,7 +155,7 @@ const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any)._
 
 const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
 
-export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD';
+export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD' | 'CATEGORIA_SERVICIO';
 
 export const infraestructuraService = {
   async getCatalogo(nombre: NombreCatalogo): Promise<CatalogoItem[]> {
@@ -168,9 +180,14 @@ export const infraestructuraService = {
     }
   },
 
-  async getEspacios(): Promise<EspacioFisico[]> {
+  async getEspacios(params?: { idBloque?: string; tipo?: string; estado?: string }): Promise<EspacioFisico[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/espacios`, { credentials: 'include' });
+      const q = new URLSearchParams();
+      if (params?.idBloque) q.append('idBloque', params.idBloque);
+      if (params?.tipo) q.append('tipo', params.tipo);
+      if (params?.estado) q.append('estado', params.estado);
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/espacios${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error(`Error al obtener espacios (${res.status})`);
       return await res.json();
     } catch (err) {
@@ -196,12 +213,13 @@ export const infraestructuraService = {
     }
   },
 
-  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string }): Promise<SolicitudMantenimiento[]> {
+  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string; idCategoria?: number }): Promise<SolicitudMantenimiento[]> {
     try {
       const q = new URLSearchParams();
       if (params?.incluirTI === true) q.append('incluirTI', 'true');
       if (params?.estado) q.append('estado', params.estado);
       if (params?.prioridad) q.append('prioridad', params.prioridad);
+      if (Number.isInteger(params?.idCategoria)) q.append('idCategoria', String(params?.idCategoria));
       const qs = q.toString() ? ('?' + q.toString()) : '';
       const res = await fetch(`${API_BASE_URL}/mantenimiento${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
@@ -351,6 +369,68 @@ export const infraestructuraService = {
       console.warn(`[infraestructuraService] getEvidenciasBySolicitud(${idSolicitud}):`, err);
       return [];
     }
+  },
+
+  async getCategoriasServicio(opts?: { soloActivos?: boolean }): Promise<CatalogoItem[]> {
+    try {
+      const q = new URLSearchParams();
+      if (opts?.soloActivos === true) q.append('soloActivos', 'true');
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio${qs}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Listar categorías ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[getCategoriasServicio] falló:', err);
+      return [];
+    }
+  },
+
+  async crearCategoriaServicio(payload: CategoriaServicioPayload): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando categoría';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarCategoriaServicio(idCatalogo: number, payload: Partial<CategoriaServicioPayload>): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando categoría';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleCategoriaServicio(idCatalogo: number): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio/${encodeURIComponent(String(idCatalogo))}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Toggle categoría falló');
+    return await res.json();
+  },
+
+  async eliminarCategoriaServicio(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Eliminar categoría falló');
+    return await res.json();
   },
 
   async getSedesAlcanceUMI(): Promise<Sede[]> {

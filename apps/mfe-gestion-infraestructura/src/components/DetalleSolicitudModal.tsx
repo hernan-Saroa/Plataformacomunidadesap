@@ -17,6 +17,7 @@ interface DetalleSolicitudModalProps {
   open: boolean;
   idSolicitud: string | null;
   onClose: () => void;
+  catalogoCS?: CatalogoItem[];
 }
 
 const LUCIDE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -98,6 +99,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   open,
   idSolicitud,
   onClose,
+  catalogoCS = [],
 }) => {
   const [detalle, setDetalle] = useState<SolicitudMantenimiento | null>(null);
   const [evidenciasEndpoint, setEvidenciasEndpoint] = useState<SolicitudEvidencia[]>([]);
@@ -105,6 +107,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [cargando, setCargando] = useState(false);
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
+  const [catalogoCSLocal, setCatalogoCSLocal] = useState<CatalogoItem[]>([]);
 
   const [mostrarRemitir, setMostrarRemitir] = useState<boolean>(false);
   const [remitirMotivo, setRemitirMotivo] = useState<string>('');
@@ -126,26 +129,31 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setEvidenciasEndpoint([]);
       setRemisiones([]);
       try {
-        const [d, evs, est, pri, rems] = await Promise.all([
+        const tareas: Promise<any>[] = [
           infraestructuraService.getMantenimientoById(idSolicitud),
           infraestructuraService.getEvidenciasBySolicitud(idSolicitud),
           infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getRemisiones(idSolicitud || ''),
-        ]);
+        ];
+        if (!catalogoCS || catalogoCS.length === 0) {
+          tareas.push(infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'));
+        }
+        const [d, evs, est, pri, rems, csFallback] = await Promise.all(tareas);
         if (cancelado) return;
         setDetalle(d);
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
         setRemisiones(Array.isArray(rems) ? rems : []);
         setCatalogoEstado(est);
         setCatalogoPrioridad(pri);
+        if (csFallback && Array.isArray(csFallback)) setCatalogoCSLocal(csFallback);
       } finally {
         if (!cancelado) setCargando(false);
       }
     };
     cargar();
     return () => { cancelado = true; };
-  }, [open, idSolicitud]);
+  }, [open, idSolicitud, catalogoCS]);
 
   const mapEstado = useMemo(() => {
     const m = new Map<string, CatalogoItem>();
@@ -158,6 +166,18 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     for (const it of catalogoPrioridad) m.set((it.codigo || '').toUpperCase(), it);
     return m;
   }, [catalogoPrioridad]);
+
+  const csEffective = useMemo<CatalogoItem[]>(() => {
+    return (catalogoCS && catalogoCS.length > 0) ? catalogoCS : catalogoCSLocal;
+  }, [catalogoCS, catalogoCSLocal]);
+
+  const mapIdCategoria = useMemo(() => {
+    const m = new Map<number, CatalogoItem>();
+    for (const it of csEffective) {
+      if (Number.isInteger(it.idCatalogo)) m.set(it.idCatalogo as number, it);
+    }
+    return m;
+  }, [csEffective]);
 
   const evidenciasFinales = useMemo<SolicitudEvidencia[]>(() => {
     return dedupeEvidencias([evidenciasEndpoint, detalle?.evidencias || []]);
@@ -370,6 +390,25 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   );
                 })()
               )}
+              {Number.isInteger(detalle?.idCategoria) && (() => {
+                const cat = mapIdCategoria.get(detalle!.idCategoria as number);
+                if (!cat) return null;
+                const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+                return (
+                  <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
+                    {cat.nombre}
+                  </span>
+                );
+              })()}
+              {Number.isInteger(detalle?.idSubcategoria) && (() => {
+                const sub = mapIdCategoria.get(detalle!.idSubcategoria as number);
+                if (!sub) return null;
+                return (
+                  <span className="inline-block text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200" title={sub.codigo || ''}>
+                    Sub: {sub.nombre}
+                  </span>
+                );
+              })()}
             </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
               {cargando ? (
