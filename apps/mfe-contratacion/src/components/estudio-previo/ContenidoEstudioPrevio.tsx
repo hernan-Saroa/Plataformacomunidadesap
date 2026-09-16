@@ -12,6 +12,7 @@ import {
   CircleCheck,
   MessageSquare,
   Ban,
+  ClipboardCheck,
 } from 'lucide-react';
 
 import { useEstudioPrevio } from '../../hooks/useEstudioPrevio';
@@ -21,6 +22,7 @@ import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { Modal } from '../shared/Modal';
 import { BloqueDocumento } from './BloqueDocumento';
+import { ListaChequeoRadicacion } from './ListaChequeoRadicacion';
 import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
 import { usarAprobacion } from '../shared/usarAprobacion';
 
@@ -57,11 +59,22 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
     irACampo,
     cargar,
     documentoFaltante,
+    documentosDeLaLista,
   } = useEstudioPrevio(procesoId);
 
   const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
   const [revisiones, setRevisiones] = useState<RevisionEstudioPrevio[]>([]);
-  const [seccion, setSeccion] = useState<'campos' | 'documentos' | 'historial'>('campos');
+  const [seccion, setSeccion] = useState<
+    'campos' | 'documentos' | 'radicacion' | 'historial'
+  >('campos');
+  /**
+   * Cuántos documentos de la lista de chequeo faltan.
+   *
+   * Lo cuenta el panel de la radicación y lo sube hasta aquí para que la
+   * pestaña lo avise: si el número viviera solo dentro del panel, el área se
+   * enteraría de que le falta el paquete al intentar enviar, que es tarde.
+   */
+  const [faltanDeLaLista, setFaltanDeLaLista] = useState(0);
   const [accion, setAccion] = useState<'aprobar' | 'devolver' | 'negar' | null>(null);
   const [observaciones, setObservaciones] = useState('');
   const [procesando, setProcesando] = useState(false);
@@ -79,20 +92,50 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
       contratacionService.revisiones(procesoId),
     ])
       .then(([exp, revs]) => {
-        setDocumentos(exp.documentos.filter((d) => d.numeral === '3.1'));
+        // Sin `!d.requisito`, los documentos de la lista de chequeo saldrían
+        // aquí: llevan el mismo numeral porque son de esta actividad, pero el
+        // entregable de la pestaña es el estudio previo firmado. Cada uno tiene
+        // su sitio, y mezclarlos haría parecer que hay cuatro estudios previos.
+        setDocumentos(exp.documentos.filter((d) => d.numeral === '3.1' && !d.requisito));
         setRevisiones(revs);
       })
       .catch(() => undefined);
 
+  /**
+   * Cuántos documentos de la lista faltan, antes de que nadie abra la pestaña.
+   *
+   * Si el número viviera solo dentro del panel de la radicación, el aviso no
+   * aparecería hasta que alguien entrara a mirarlo, y el área se enteraría de
+   * que le falta el paquete al intentar enviar.
+   *
+   * Aparte del `Promise.all` de los anexos y no dentro: sumarle una promesa
+   * retrasa un tick la llegada del expediente y del historial, que es lo que
+   * la pantalla pinta primero.
+   */
+  const contarLoQueFaltaDeLaLista = () =>
+    contratacionService
+      .listaChequeo(procesoId)
+      .then((l) => setFaltanDeLaLista(l.faltantes.length))
+      .catch(() => undefined);
+
   useEffect(() => {
     cargarAnexos();
+    contarLoQueFaltaDeLaLista();
   }, [procesoId]);
 
-  // Al bloquearse el envío por falta del documento, se abre su pestaña:
-  // el mensaje solo no basta si el usuario está viendo el formulario.
+  /*
+   * Al bloquearse el envío, se abre la pestaña de lo que falta: el mensaje
+   * solo no basta si el usuario está viendo el formulario.
+   *
+   * El estudio previo manda sobre la lista cuando faltan los dos. Es el
+   * entregable de la actividad y lo que el área ya sabe que tiene que
+   * adjuntar; la lista de chequeo es el paso siguiente, y llevarle allí
+   * primero le escondería lo principal.
+   */
   useEffect(() => {
     if (documentoFaltante) setSeccion('documentos');
-  }, [documentoFaltante]);
+    else if (documentosDeLaLista.length > 0) setSeccion('radicacion');
+  }, [documentoFaltante, documentosDeLaLista.length]);
 
   /** Campos agrupados por sección, en el orden de la configuración. */
   const grupos = useMemo(() => {
@@ -237,6 +280,13 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           [
             { id: 'campos' as const, label: 'Formulario', icono: FileText },
             { id: 'documentos' as const, label: 'Documento', icono: Paperclip, n: documentos.length },
+            {
+              id: 'radicacion' as const,
+              label: 'Lista de chequeo',
+              icono: ClipboardCheck,
+              n: faltanDeLaLista,
+              alerta: faltanDeLaLista > 0,
+            },
             { id: 'historial' as const, label: 'Historial', icono: MessageSquare, n: revisiones.length },
           ]
         ).map((t) => {
@@ -260,7 +310,13 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
               {t.n !== undefined && t.n > 0 && (
                 <span
                   className={`text-[9.5px] font-bold px-1.5 rounded-full tabular-nums ${
-                    activa ? 'bg-[#E0EDFF] text-[#003DA5]' : 'bg-slate-100 text-slate-500'
+                    /* En ámbar cuando el número es lo que falta y no lo que
+                       hay: el mismo gris que el resto lo leería como progreso. */
+                    'alerta' in t && t.alerta
+                      ? 'bg-amber-100 text-amber-800'
+                      : activa
+                        ? 'bg-[#E0EDFF] text-[#003DA5]'
+                        : 'bg-slate-100 text-slate-500'
                   }`}
                 >
                   {t.n}
@@ -322,6 +378,16 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
             onAdjuntado={refrescar}
           />
         </div>
+      )}
+
+      {/* Lo que se remite con el estudio previo para radicar en la Dirección */}
+      {seccion === 'radicacion' && (
+        <ListaChequeoRadicacion
+          procesoId={procesoId}
+          bloqueado={bloqueado}
+          onResumen={setFaltanDeLaLista}
+          onCambio={refrescar}
+        />
       )}
 
       {/* Historial de revisión */}

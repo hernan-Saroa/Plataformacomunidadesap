@@ -17,10 +17,12 @@ describe('LaborOracleIntegrationService', () => {
       { CEDULA: '123', COD_CARGO: '202812', GRADO: '12', TIPO: 'E' },
       { CEDULA: '123', COD_CARGO: '204409', GRADO: '09', TIPO: 'N', CENTROCOSTO: 'Grupo normal' },
     ] });
+    const connection = { execute, callTimeout: 0 };
     jest.spyOn(service as any, 'withConnection').mockImplementation(async (callback: any) =>
-      callback({ execute }, { OUT_FORMAT_OBJECT: 1 }, { qualifiedView: 'SCHEMA.VISTA' }),
+      callback(connection, { OUT_FORMAT_OBJECT: 1 }, { qualifiedView: 'SCHEMA.VISTA' }),
     );
     const rows = await service.findSuggestedRequestsByPositionCodes(['202812'], 10000, true);
+    expect(connection.callTimeout).toBe(8000);
     expect(execute).toHaveBeenCalledTimes(1);
     const [sql, binds] = execute.mock.calls[0];
     expect(sql).toContain("WHERE REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '') IN");
@@ -28,6 +30,26 @@ describe('LaborOracleIntegrationService', () => {
     expect(binds).toEqual({ cod0: '202812', limite: 10000 });
     expect(rows.map(row => row.cod_cargo)).toEqual(['202812', '204409']);
     expect(rows[1].internal_group).toBe('Grupo normal');
+  });
+
+  it('permite configurar el timeout de la consulta masiva', async () => {
+    const previous = process.env.ORACLE_FNC_MATRIX_TIMEOUT_MS;
+    process.env.ORACLE_FNC_MATRIX_TIMEOUT_MS = '12000';
+    const connection = {
+      callTimeout: 0,
+      execute: jest.fn().mockResolvedValue({ rows: [] }),
+    };
+    jest.spyOn(service as any, 'withConnection').mockImplementation(async (callback: any) =>
+      callback(connection, { OUT_FORMAT_OBJECT: 1 }, { qualifiedView: 'SCHEMA.VISTA' }),
+    );
+
+    try {
+      await service.findSuggestedRequestsByPositionCodes(['202812']);
+      expect(connection.callTimeout).toBe(12000);
+    } finally {
+      if (previous === undefined) delete process.env.ORACLE_FNC_MATRIX_TIMEOUT_MS;
+      else process.env.ORACLE_FNC_MATRIX_TIMEOUT_MS = previous;
+    }
   });
 
   it('mapea CENTROCOSTO como grupo interno cuando Oracle no informa otro grupo', () => {

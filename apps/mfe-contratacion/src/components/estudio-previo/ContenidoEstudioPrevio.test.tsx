@@ -46,6 +46,16 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     vi.spyOn(contratacionService, 'obtenerExpediente').mockResolvedValue({
       documentos: [],
     } as never);
+    // La pantalla pregunta también por el paquete de la radicación para poder
+    // avisar en la pestaña de cuántos documentos faltan. Sin el doble, la
+    // llamada real revienta y el efecto se corta antes de pintar el historial.
+    vi.spyOn(contratacionService, 'listaChequeo').mockResolvedValue({
+      modalidad: 'MINIMA_CUANTIA',
+      modalidadNombre: 'Mínima Cuantía',
+      radicadoGestionDocumental: null,
+      documentos: [],
+      faltantes: [],
+    } as never);
   });
 
   const pintar = (datos: Record<string, unknown>) => {

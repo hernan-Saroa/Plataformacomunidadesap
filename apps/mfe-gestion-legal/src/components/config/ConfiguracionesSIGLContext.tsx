@@ -952,6 +952,36 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     const fuentesLocales = leerListaLocal<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
     if (fuentesLocales) setTiposFuenteNormativa(fuentesLocales);
 
+    // Resuelve una lista contra las tres fuentes posibles, en orden de autoridad.
+    //
+    // La clave está en distinguir "nunca se configuró" de "se configuró y quedó vacía":
+    // los valores por defecto son una semilla inicial, NO un respaldo permanente. Antes,
+    // al no existir fila en el backend se re-mostraban los 4 destinatarios de fábrica, y
+    // el autoguardado los reescribía; por eso, si el usuario los borraba todos, volvían
+    // a aparecer solos. Ahora se siembran UNA vez y a partir de ahí el backend manda,
+    // incluso cuando lo que dice es "esta lista está vacía".
+    const resolverLista = <T,>(
+      remota: T[] | null,
+      local: T[] | null,
+      iniciales: T[],
+      clave: string,
+      aplicar: (valor: T[]) => void,
+    ) => {
+      if (remota) {
+        aplicar(remota);
+        localStorage.setItem(clave, JSON.stringify(remota));
+        return;
+      }
+      // Sin fila en el backend. Si hay caché local se respeta (puede ser una lista que el
+      // usuario vació a propósito); si no hay nada, es una instalación nueva y se siembra.
+      const semilla = local ?? iniciales;
+      aplicar(semilla);
+      localStorage.setItem(clave, JSON.stringify(semilla));
+      legalService.saveConfiguration(clave, semilla).catch(err => {
+        console.warn(`⚠️ No se pudo sembrar ${clave} en el backend:`, err);
+      });
+    };
+
     const loadListasTerminosInformes = async () => {
       const [destinatariosRemotos, entesRemotos, fuentesRemotas] = await Promise.all([
         leerListaBackend<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme),
@@ -962,18 +992,13 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       // Si el usuario ya empezó a editar, la respuesta del backend llegó tarde: descartarla.
       if (usuarioEditoRef.current) return;
 
-      if (destinatariosRemotos) {
-        setDestinatariosInforme(destinatariosRemotos);
-        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(destinatariosRemotos));
-      }
-      if (entesRemotos) {
-        setEntesSolicitantesInforme(entesRemotos);
-        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(entesRemotos));
-      }
-      if (fuentesRemotas) {
-        setTiposFuenteNormativa(fuentesRemotas);
-        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, JSON.stringify(fuentesRemotas));
-      }
+      resolverLista(destinatariosRemotos, destinatariosLocales, destinatariosInformeIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, setDestinatariosInforme);
+      resolverLista(entesRemotos, entesSolicitantesLocales, entesSolicitantesInformeIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, setEntesSolicitantesInforme);
+      resolverLista(fuentesRemotas, fuentesLocales, tiposFuenteNormativaIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, setTiposFuenteNormativa);
+
       console.log('✅ Listas de Términos e Informes sincronizadas desde backend');
     };
     loadListasTerminosInformes();

@@ -31,11 +31,7 @@ export function ModuloConfiguracionPremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('CONDUCTAS_DISCIPLINARIAS'); // Por defecto en Conductas Disciplinarias
   const { isMobile } = useResponsive();
 
-  const user = authService.getCurrentUser() as any;
-  const roles: string[] = Array.isArray(user?.roles)
-    ? user.roles.map((r: any) => typeof r === 'string' ? r : r?.code || r?.name || '')
-    : [];
-  const isJefe = roles.includes('JEFE_DE_LA_OCID');
+  const isJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
 
   const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE);
 

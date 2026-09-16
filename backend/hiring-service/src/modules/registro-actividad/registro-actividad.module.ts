@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
+import { CdpModule } from '../cdp/cdp.module';
 import { RegistroActividadService } from './registro-actividad.service';
 import { RegistroActividadController } from './registro-actividad.controller';
 
@@ -35,6 +36,9 @@ import { Expediente } from '../../entities/expediente.entity';
     // El registro decide si la actividad queda cerrada o pasa a revision, y
     // quien revisa lo dice la matriz: la regla vive en aprobacion, no aqui.
     AprobacionModule,
+    // Un registro que cierra puede cerrar la etapa 3 —el comité de la 3.7 en
+    // contratación directa—, y con ella nace la solicitud de CDP.
+    CdpModule,
   ],
   controllers: [RegistroActividadController],
   providers: [RegistroActividadService],

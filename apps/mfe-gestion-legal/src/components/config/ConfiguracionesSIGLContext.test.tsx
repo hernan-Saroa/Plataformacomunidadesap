@@ -96,6 +96,55 @@ describe('ConfiguracionesSIGLContext · persistencia de las listas de Términos 
     expect(screen.getByTestId('destinatarios')).not.toHaveTextContent('Valor anterior');
   });
 
+  it('si el usuario borró todos, la lista queda vacía y NO reaparecen los de fábrica', async () => {
+    // Fila existente en backend con lista vacía: es una decisión del usuario, no "sin configurar".
+    vi.mocked(legalService.getConfiguration).mockImplementation(async (key: string) =>
+      key === CLAVE_DESTINATARIOS ? { value: [] } : null
+    );
+
+    renderProvider();
+
+    await waitFor(() => expect(legalService.getConfiguration).toHaveBeenCalled());
+    await act(async () => { });
+
+    expect(ctx.destinatariosInforme).toEqual([]);
+    expect(ctx.getDestinatariosInformeActivos()).toEqual([]);
+    // Y no se vuelve a sembrar por detrás.
+    const sembrados = vi.mocked(legalService.saveConfiguration).mock.calls
+      .filter(c => c[0] === CLAVE_DESTINATARIOS);
+    expect(sembrados).toHaveLength(0);
+  });
+
+  it('respeta una lista vaciada aunque el backend todavía no tenga la fila (usa la caché local)', async () => {
+    localStorage.setItem(CLAVE_DESTINATARIOS, '[]');
+    vi.mocked(legalService.getConfiguration).mockResolvedValue(null);
+
+    renderProvider();
+
+    await waitFor(() => expect(legalService.getConfiguration).toHaveBeenCalled());
+    await act(async () => { });
+
+    expect(ctx.destinatariosInforme).toEqual([]);
+  });
+
+  it('en una instalación nueva siembra los valores de fábrica UNA vez en el backend', async () => {
+    vi.mocked(legalService.getConfiguration).mockResolvedValue(null);
+
+    renderProvider();
+
+    await waitFor(() => expect(legalService.getConfiguration).toHaveBeenCalled());
+    await act(async () => { });
+
+    // Se muestran los de fábrica...
+    expect(ctx.destinatariosInforme.length).toBeGreaterThan(0);
+    // ...y quedan escritos en backend, para que a partir de ahí la fila exista y
+    // un borrado total se pueda distinguir de "nunca configurado".
+    const sembrado = vi.mocked(legalService.saveConfiguration).mock.calls
+      .find(c => c[0] === CLAVE_DESTINATARIOS);
+    expect(sembrado).toBeDefined();
+    expect(sembrado![1]).toEqual(ctx.destinatariosInforme);
+  });
+
   it('guarda los destinatarios y los tipos de fuente normativa en el backend', async () => {
     renderProvider();
     await waitFor(() => expect(legalService.getConfiguration).toHaveBeenCalled());
