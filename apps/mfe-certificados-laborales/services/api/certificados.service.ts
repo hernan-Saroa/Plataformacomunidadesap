@@ -121,7 +121,18 @@ export type CertificateCorrectionListResponse =
       page: number;
       limit: number;
       totalPages: number;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     };
+
+/** Columnas por las que el backend acepta ordenar la bandeja de correcciones. */
+export type CorrectionSortField =
+  | 'status'
+  | 'request_number'
+  | 'requester_name'
+  | 'certificate_number'
+  | 'created_at'
+  | 'due_date';
 
 export type PrimaTecnicaCategoria = string;
 
@@ -300,6 +311,8 @@ export const certificadosService = {
       limit?: number;
       status?: CorrectionStatus | 'ALL';
       search?: string;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     }, options?: CorrectionReadOptions): Promise<CertificateCorrectionListResponse> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params, correctionReadConfig(options));
     },

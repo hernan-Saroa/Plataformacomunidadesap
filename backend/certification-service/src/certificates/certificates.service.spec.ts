@@ -932,6 +932,182 @@ describe('CertificatesService', () => {
     );
   });
 
+  describe('montos al aprobar una correccion', () => {
+    const normalize = (input: any, certificate: any) =>
+      service['normalizeCorrectedCertificateData'](
+        {
+          full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+          document_type: 'CC',
+          id_number: '53062883',
+          career_category: 'Profesional Especializado',
+          position_category: 'Cra. Administrativa',
+          hiring_date: '2024-05-14',
+          department: 'Dirección de Talento Humano',
+          campus: 'Bogotá',
+          ...certificate,
+        } as any,
+        input,
+      );
+
+    it('conserva los centavos del monto calculado cuando no se editó', () => {
+      // La prima es salario x porcentaje: 1508313.52 llega al formulario como
+      // 1508314 porque la corrección solo admite pesos enteros.
+      const patch = normalize(
+        { technical_bonus: 1508314, include_technical_bonus: true },
+        { technical_bonus: '1508313.52', include_technical_bonus: true },
+      );
+
+      expect(Number(patch.technical_bonus)).toBe(1508313.52);
+    });
+
+    it('aplica el monto nuevo cuando sí se editó', () => {
+      const patch = normalize(
+        { technical_bonus: 1600000, include_technical_bonus: true },
+        { technical_bonus: '1508313.52', include_technical_bonus: true },
+      );
+
+      expect(Number(patch.technical_bonus)).toBe(1600000);
+    });
+
+    it('sigue rechazando un monto con decimales escrito a mano', () => {
+      expect(() =>
+        normalize(
+          { technical_bonus: 1508313.99, include_technical_bonus: true },
+          { technical_bonus: '1000000', include_technical_bonus: true },
+        ),
+      ).toThrow('pesos enteros');
+    });
+
+    it('no falla cuando el monto no viene en la petición', () => {
+      const patch = normalize(
+        { include_technical_bonus: true },
+        { technical_bonus: '1508313.52', include_technical_bonus: true },
+      );
+
+      expect(Number(patch.technical_bonus)).toBe(1508313.52);
+    });
+
+    it('aplica el mismo criterio al salario', () => {
+      const conservado = normalize(
+        { monthly_salary: 4772636 },
+        { monthly_salary: '4772635.60' },
+      );
+      expect(Number(conservado.monthly_salary)).toBe(4772635.6);
+
+      const editado = normalize(
+        { monthly_salary: 5000000 },
+        { monthly_salary: '4772635.60' },
+      );
+      expect(Number(editado.monthly_salary)).toBe(5000000);
+    });
+  });
+
+  describe('comparativo de cambios en montos', () => {
+    const changes = (before: any, after: any) =>
+      service['correctionChanges'](before, after);
+
+    it('no reporta cambio cuando solo se perdieron los centavos', () => {
+      // Caso real: la prima llega de Oracle con centavos y el formulario de
+      // corrección la redondea al abrirse, sin que el coordinador toque nada.
+      expect(changes({ technical_bonus: '1508313.52' }, { technical_bonus: 1508314 })).toEqual([]);
+      expect(changes({ monthly_salary: '4772636.40' }, { monthly_salary: 4772636 })).toEqual([]);
+    });
+
+    it('sigue reportando un cambio real de monto', () => {
+      const resultado = changes(
+        { technical_bonus: '1508313.52' },
+        { technical_bonus: 1600000 },
+      );
+      expect(resultado).toEqual([
+        {
+          field: 'technical_bonus',
+          label: 'Prima técnica o de coordinación',
+          before: '1508314',
+          after: '1600000',
+        },
+      ]);
+    });
+
+    it('detecta una diferencia de un solo peso', () => {
+      expect(changes({ monthly_salary: 100 }, { monthly_salary: 101 })).toHaveLength(1);
+    });
+
+    it('tolera montos vacíos o no numéricos sin inventar cambios', () => {
+      expect(changes({ technical_bonus: null }, { technical_bonus: 0 })).toEqual([]);
+      expect(changes({ technical_bonus: undefined }, { technical_bonus: '0' })).toEqual([]);
+    });
+
+    it('no altera la comparación de los demás campos', () => {
+      expect(
+        changes({ department: 'Dirección A' }, { department: 'Dirección B' }),
+      ).toHaveLength(1);
+      expect(changes({ department: 'Igual' }, { department: 'Igual' })).toEqual([]);
+    });
+  });
+
+  describe('ordenamiento de la bandeja de correcciones', () => {
+    const resolve = (sort?: string) =>
+      service['resolveCorrectionSort'](sort as any);
+
+    it('acepta cada columna de la lista blanca', () => {
+      expect(resolve('status')).toEqual({ column: 'correction.status', field: 'status' });
+      expect(resolve('request_number')).toEqual({
+        column: 'correction.request_number',
+        field: 'request_number',
+      });
+      expect(resolve('requester_name')).toEqual({
+        column: 'correction.requester_name',
+        field: 'requester_name',
+      });
+      expect(resolve('certificate_number')).toEqual({
+        column: 'certificate.certificate_number',
+        field: 'certificate_number',
+      });
+      expect(resolve('created_at')).toEqual({
+        column: 'correction.created_at',
+        field: 'created_at',
+      });
+      expect(resolve('due_date')).toEqual({
+        column: 'correction.due_date',
+        field: 'due_date',
+      });
+    });
+
+    it('cae a la fecha de recepción ante cualquier valor desconocido', () => {
+      const porDefecto = { column: 'correction.created_at', field: 'created_at' };
+      expect(resolve(undefined)).toEqual(porDefecto);
+      expect(resolve('')).toEqual(porDefecto);
+      expect(resolve('resolution_description')).toEqual(porDefecto);
+      expect(resolve('correction.created_at')).toEqual(porDefecto);
+    });
+
+    it('nunca deja pasar texto arbitrario al ORDER BY', () => {
+      // El ORDER BY no admite parámetros vinculados: la unica defensa es que la
+      // columna salga siempre del mapa.
+      const inyecciones = [
+        'created_at; DROP TABLE certification.certificates',
+        "created_at' OR '1'='1",
+        '(SELECT 1)',
+        '1',
+        '__proto__',
+        'constructor',
+      ];
+      for (const intento of inyecciones) {
+        expect(resolve(intento)).toEqual({
+          column: 'correction.created_at',
+          field: 'created_at',
+        });
+      }
+    });
+
+    it('normaliza mayúsculas y espacios de la columna', () => {
+      expect(resolve('  DUE_DATE  ')).toEqual({
+        column: 'correction.due_date',
+        field: 'due_date',
+      });
+    });
+  });
+
   describe('avisos al radicar una solicitud de correccion', () => {
     const buildRequest = () =>
       ({
@@ -1022,7 +1198,7 @@ describe('CertificatesService', () => {
       );
     });
 
-    it('no repite el aviso cuando el modo seguro redirige a todos al mismo buzon', async () => {
+    it('en modo seguro sigue avisando por cada revisor, marcando el destinatario real', async () => {
       const post = jest.fn().mockResolvedValue(undefined);
       prepare(
         [
@@ -1035,8 +1211,41 @@ describe('CertificatesService', () => {
 
       await service['sendCorrectionRequestCreatedEmails'](buildRequest(), 0);
 
-      // Un acuse + un unico aviso interno, no uno por revisor.
-      expect(post).toHaveBeenCalledTimes(2);
+      // Un acuse + un aviso POR REVISOR: antes se deduplicaba por el correo ya
+      // redirigido y los dos colapsaban en un unico envio, con lo que parecia
+      // que solo se avisaba al primero de la lista.
+      expect(post).toHaveBeenCalledTimes(3);
+      const avisos = post.mock.calls.slice(1).map((call) => call[0]);
+      expect(avisos.every((aviso: any) => aviso.to === 'pruebasesap@gmail.com')).toBe(true);
+      expect(avisos[0].subject).toContain('[Para coordinador@esap.edu.co]');
+      expect(avisos[1].subject).toContain('[Para revisor@esap.edu.co]');
+      expect(avisos[0].html).toContain('Coordinador Uno');
+      expect(avisos[1].html).toContain('Revisor Dos');
+    });
+
+    it('deduplica por el correo real cuando alguien tiene el permiso por varios roles', async () => {
+      const post = prepare([
+        { email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' },
+        { email: 'COORDINADOR@esap.edu.co', name: 'Coordinador Uno' },
+        { email: 'revisor@esap.edu.co', name: 'Revisor Dos' },
+      ]);
+
+      await service['sendCorrectionRequestCreatedEmails'](buildRequest(), 0);
+
+      // Un acuse + dos avisos: la misma persona no recibe el aviso dos veces.
+      expect(post).toHaveBeenCalledTimes(3);
+      expect(post.mock.calls.slice(1).map((call) => call[0].to)).toEqual([
+        'coordinador@esap.edu.co',
+        'revisor@esap.edu.co',
+      ]);
+    });
+
+    it('sin redireccion no altera el asunto', async () => {
+      const post = prepare([{ email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' }]);
+
+      await service['sendCorrectionRequestCreatedEmails'](buildRequest(), 0);
+
+      expect(post.mock.calls[1][0].subject).not.toContain('[Para ');
     });
   });
 
@@ -1102,6 +1311,41 @@ describe('CertificatesService', () => {
       expect(aviso.html).toContain('Grado 16');
       expect(aviso.html).toContain('Diego Fernando Ramírez');
       expect(aviso.html).toContain('Coordinador Uno');
+    });
+
+    it('no repite la direccion cuando el revisor no tiene nombre propio', async () => {
+      const post = prepare();
+      const request = buildResolved(true);
+      // El token sin `name` deja el username (que aqui es el correo) como nombre.
+      request.reviewed_by_name = 'superuser@esap.edu.co';
+      request.reviewed_by_email = 'superuser@esap.edu.co';
+
+      await service['sendCorrectionResolutionReviewerEmails'](request, {
+        approved: true,
+        changes: [],
+        evidenceCount: 0,
+        certificateNumber: '12_620_700_20_CD 107',
+      });
+
+      const html = post.mock.calls[0][0].html;
+      const bloque = html.slice(html.indexOf('Resuelta por'));
+      const ocurrencias = bloque.split('superuser@esap.edu.co').length - 1;
+      expect(ocurrencias).toBe(1);
+    });
+
+    it('muestra nombre y correo cuando son datos distintos', async () => {
+      const post = prepare();
+
+      await service['sendCorrectionResolutionReviewerEmails'](buildResolved(true), {
+        approved: true,
+        changes: [],
+        evidenceCount: 0,
+        certificateNumber: '12_620_700_20_CD 107',
+      });
+
+      const html = post.mock.calls[0][0].html;
+      expect(html).toContain('Diego Fernando Ramírez');
+      expect(html).toContain('diego.ramirez@esap.edu.co');
     });
 
     it('avisa el rechazo con el motivo y sin comparativo de cambios', async () => {
