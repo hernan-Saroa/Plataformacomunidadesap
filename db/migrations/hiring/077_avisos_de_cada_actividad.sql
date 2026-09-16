@@ -1,5 +1,5 @@
 -- ============================================================================
--- 070 · Los avisos de cada actividad se configuran
+-- 077 · Los avisos de cada actividad se configuran
 --
 -- EFDS-1183. Hasta aquí, quién se enteraba de qué estaba escrito en el código.
 --

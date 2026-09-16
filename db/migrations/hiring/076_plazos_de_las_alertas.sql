@@ -1,5 +1,5 @@
 -- ============================================================================
--- 069 · Los plazos de las alertas se configuran
+-- 076 · Los plazos de las alertas se configuran
 --
 -- EFDS-1183. Hasta aquí los plazos de las alertas eran constantes en el código:
 -- 30 días para todo vencimiento, 2 días de tolerancia para un proceso sin
