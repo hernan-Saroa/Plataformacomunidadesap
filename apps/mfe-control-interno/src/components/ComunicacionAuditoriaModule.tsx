@@ -35,20 +35,20 @@ import controlInternoService from '../../../services/api/controlInternoService';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 import { exportarPDFInformeCierre } from './services/exportarPDFInformeCierreEjecutivo';
 import { configuracionesProfesionalesOCIApi } from './services/api';
-import { API_MODE, getServiceUrl } from '../../../config/environment';
+import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
 
 
 // ====================================
 // TIPOS Y DATOS
 // ====================================
 
-/** URL de previsualización del soporte del hallazgo (endpoint público /documentos/:id/preview). */
-function urlPreviewDocumento(idOrUrl: string): string {
+/** URL del soporte del hallazgo para verlo o descargarlo (endpoints /documentos/:id/preview y /download). */
+function urlDocumento(idOrUrl: string, accion: 'preview' | 'download'): string {
   if (/^https?:\/\//i.test(idOrUrl)) return idOrUrl;
   const base = API_MODE === 'gateway'
     ? `${getServiceUrl('control-institucional')}/control-institucional/api/v1/documentos`
     : `${getServiceUrl('control-institucional')}/documentos`;
-  return `${base}/${encodeURIComponent(idOrUrl)}/preview`;
+  return `${base}/${encodeURIComponent(idOrUrl)}/${accion}`;
 }
 
 interface Auditoria {
@@ -985,8 +985,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const handleDescargarDocumentoControversia = async (url: string, nombre: string) => {
     try {
       toast.loading('Descargando documento...', { id: 'descarga-doc' });
-      const safeUrl = encodeURI(url);
-      const blob = await controlInternoService.downloadDocumento(safeUrl);
+      // El servicio compartido de este microfrontend no tiene descarga de documentos:
+      // se descarga directo del endpoint, igual que en el expediente.
+      const res = await fetch(urlDocumento(url, 'download'), { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status} al descargar`);
+      const blob = await res.blob();
       const windowUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = windowUrl;
@@ -1839,8 +1842,11 @@ const SeccionGestionHallazgos: React.FC<{
   const handleDescargarDocumentoControversia = async (url: string, nombre: string) => {
     try {
       toast.loading('Descargando documento...', { id: 'descarga-doc' });
-      const safeUrl = encodeURI(url);
-      const blob = await controlInternoService.downloadDocumento(safeUrl);
+      // El servicio compartido de este microfrontend no tiene descarga de documentos:
+      // se descarga directo del endpoint, igual que en el expediente.
+      const res = await fetch(urlDocumento(url, 'download'), { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status} al descargar`);
+      const blob = await res.blob();
       const windowUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = windowUrl;
@@ -1972,7 +1978,7 @@ const SeccionGestionHallazgos: React.FC<{
                             className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-[#003DA5] hover:border-[#003DA5] shadow-sm"
                             onClick={() => {
                               if (hallazgo.documentoControversiaUrl) {
-                                window.open(urlPreviewDocumento(hallazgo.documentoControversiaUrl), '_blank', 'noopener');
+                                window.open(urlDocumento(hallazgo.documentoControversiaUrl, 'preview'), '_blank', 'noopener');
                               } else {
                                 toast.error('El enlace del documento no está disponible.');
                               }
