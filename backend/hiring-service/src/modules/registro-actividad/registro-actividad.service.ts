@@ -294,7 +294,7 @@ export class RegistroActividadService {
         } as Partial<RegistroActividad>),
       );
 
-      await this.marcarActividad(
+      const estadoResultante = await this.marcarActividad(
         em,
         procesoId,
         numeral,
@@ -307,7 +307,12 @@ export class RegistroActividadService {
         procesoId,
         registro.id,
         'GUARDAR',
-        { numeral, fecha: dto.fecha, conSoporte: documento !== null },
+        // El estado va en la traza porque registrar, donde hay aprobadores, es
+        // también enviar a aprobación: sin él, el expediente no distinguía un
+        // registro que cerró la actividad de uno que la dejó esperando visto
+        // bueno, y los avisos de «se envía a aprobación» no tenían de dónde
+        // enterarse.
+        { numeral, fecha: dto.fecha, conSoporte: documento !== null, estado: estadoResultante },
         acceso,
       );
     });
@@ -438,7 +443,7 @@ export class RegistroActividadService {
     cumplida: boolean,
     acceso: HiringAccess,
     modalidad: string | null = null,
-  ) {
+  ): Promise<'BORRADOR' | 'EN_REVISION' | 'APROBADO'> {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
@@ -459,11 +464,13 @@ export class RegistroActividadService {
           numeral,
           estado: estado as any,
           datos: {},
-          ...(cumplida ? { enviadoPor: acceso.userName } : {}),
+          // Con el id y no solo el nombre: sin él la devolución no encontraba a
+          // quién avisar, igual que pasaba cuando la entidad no lo declaraba.
+          ...(cumplida ? { enviadoPor: acceso.userName, enviadoPorId: acceso.userId ?? null } : {}),
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
-      return;
+      return estado;
     }
 
     actividad.estado = estado as any;
@@ -474,6 +481,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
+    return estado;
   }
 
   private async traza(

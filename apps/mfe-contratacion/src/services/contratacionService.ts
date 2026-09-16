@@ -69,6 +69,9 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  ConfiguracionAvisos,
+  EventoAviso,
+  PapelAviso,
   ParametroAlerta,
   EstadisticasGestion,
   ExpedienteAuditoria,
@@ -702,6 +705,7 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
+
 
   /**
    * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
@@ -1873,6 +1877,7 @@ export const contratacionService = {
     });
   },
 
+
   // --------------------- traslado del informe y subsanaciones (6.4 a 6.6) ---
 
   /**
@@ -1969,6 +1974,7 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify(nota.trim() ? { nota: nota.trim() } : {}),
     }),
+
 
   // ---------------------------------------- adjudicación, etapa 7 (7.1-7.4) ---
 
@@ -2341,6 +2347,23 @@ export const contratacionService = {
       method: 'PUT',
       body: JSON.stringify(cambios),
     }),
+
+  /** Los avisos de una actividad: si avisa de cada cosa y a quién (EFDS-1183). */
+  avisosDeActividad: (numeral: string) => pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos`),
+
+  guardarAvisoDeActividad: (
+    numeral: string,
+    evento: EventoAviso,
+    cambios: { activo?: boolean; papeles?: PapelAviso[]; roles?: string[] },
+  ) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Deshace lo cambiado en un aviso: vuelve a regir lo sugerido. */
+  restablecerAvisoDeActividad: (numeral: string, evento: EventoAviso) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, { method: 'DELETE' }),
 
   /** Indicadores de gestión de la contratación (EFDS-1189). */
   estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>

@@ -3015,3 +3015,36 @@ export interface ParametroAlerta {
   descripcion: string;
 }
 
+// ---------------------------------------------- avisos a la campana (EFDS-1183)
+
+/** Lo que puede pasar en un proceso y merece un aviso. */
+export type EventoAviso =
+  | 'DEVUELTA'
+  | 'ENVIADA_A_APROBACION'
+  | 'APROBADA'
+  | 'ABOGADO_ASIGNADO'
+  | 'RECIBIDO_EN_CONTRATACION'
+  | 'PROCESO_RADICADO'
+  | 'REGISTRADA'
+  | 'DOCUMENTO_ADJUNTO';
+
+/** El papel que alguien cumple en un proceso concreto. */
+export type PapelAviso = 'QUIEN_ENVIO' | 'QUIEN_APRUEBA' | 'ABOGADO' | 'CONTRATACION' | 'RADICADOR';
+
+/** Un aviso de una actividad: cuándo sale, si está encendido y a quién le llega. */
+export interface AvisoEvento {
+  evento: EventoAviso;
+  nombre: string;
+  ayuda: string;
+  /** Si alguien lo cambió; si no, rige lo sugerido. */
+  personalizado: boolean;
+  activo: boolean;
+  papeles: PapelAviso[];
+  roles: { code: string; name: string }[];
+}
+
+export interface ConfiguracionAvisos {
+  papeles: { codigo: PapelAviso; nombre: string }[];
+  avisos: AvisoEvento[];
+}
+

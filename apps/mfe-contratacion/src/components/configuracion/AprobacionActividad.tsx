@@ -152,8 +152,7 @@ export function AprobacionActividad({ numeral }: Props) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-[12.5px] font-bold text-slate-800 m-0">Aprobación</p>
-        <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
+        <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
           Si esta actividad necesita el visto bueno de alguien antes de darse por terminada.
           Los procesos ya aprobados no cambian: lo que se configure aquí rige de ahora en
           adelante.
