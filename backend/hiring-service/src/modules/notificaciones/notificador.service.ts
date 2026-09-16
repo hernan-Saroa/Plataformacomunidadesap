@@ -1,7 +1,9 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
+import { PERMISO_PRESUPUESTO_GESTIONAR, PERMISO_PROCESO_TOMAR } from '../../auth/permisos';
 import { AvisosService } from './avisos.service';
+import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
 import {
   AvisoConfigurado,
@@ -25,7 +27,7 @@ export const motorDeAvisosEncendido = () =>
  * pasaba antes de que existiera.
  */
 @Injectable()
-export class NotificadorService {
+export class NotificadorService implements OnApplicationBootstrap {
   private readonly logger = new Logger(NotificadorService.name);
   private readonly campana: Campana;
   private readonly avisos: AvisosService;
@@ -74,6 +76,9 @@ export class NotificadorService {
       candidatos.push(...(await this.quienCumple(papel, ocurrido, proceso.modalidad ?? null)));
     }
     if (aviso.roles.length) candidatos.push(...(await this.cuentasConRol(aviso.roles)));
+    // Las personas nombradas llegan como id de persona: `cuentasDe` las traduce.
+    candidatos.push(...aviso.personas);
+    if (aviso.dependencias.length) candidatos.push(...(await this.personasDeDependencias(aviso.dependencias)));
 
     // Las personas designadas llegan como id de persona; la campana necesita la cuenta.
     const cuentas = await this.campana.cuentasDe(candidatos);
@@ -107,6 +112,145 @@ export class NotificadorService {
       })),
     );
     return resultado.enviados;
+  }
+
+  /**
+   * Avisa «te toca» de las actividades que se acaban de habilitar (EFDS-1183).
+   *
+   * No hay un momento en el código donde una actividad «se habilita»: se
+   * habilita porque otra se cerró, y se cierran por decenas de caminos —la
+   * aprobación, el registro, cada panel con el suyo—. Por eso no se escucha un
+   * evento, se mira el resultado: tras cada cambio confirmado en un proceso se
+   * calcula qué se puede empezar, con la misma regla del riel, y se avisa lo
+   * que no se había avisado antes.
+   *
+   * Lo avisado se anota aunque el aviso esté apagado, para que encenderlo
+   * después no suelte de golpe todo lo que se habilitó mientras tanto.
+   */
+  async revisarHabilitadas(procesoId: string, actorId: string | null, actorNombre: string | null) {
+    if (!motorDeAvisosEncendido()) return 0;
+
+    const nuevas = await this.anotarHabilitadas(procesoId);
+    return this.despachar(
+      nuevas.map((numeral) => ({
+        evento: 'HABILITADA' as const,
+        numeral,
+        procesoId,
+        actorId,
+        actorNombre,
+        observaciones: null,
+      })),
+    );
+  }
+
+  /**
+   * Al arrancar por primera vez, lo que ya estaba habilitado se da por avisado.
+   *
+   * El aviso de «te toca» viene encendido. Sin esto, la primera vez que alguien
+   * tocara cada proceso existente saldría un «te toca» por una actividad que se
+   * habilitó hace semanas, y el día del despliegue la campana de todos se
+   * llenaría de avisos que ya no dicen nada. Solo corre con la tabla vacía: en
+   * cuanto hay algo anotado, cada habilitación nueva se avisa en su momento.
+   *
+   * Fuera del arranque y sin bloquearlo: si falla, el servicio sigue.
+   */
+  onApplicationBootstrap() {
+    setImmediate(() => {
+      this.lineaBase()
+        .then((n) => n && this.logger.log(`Línea base de «te toca»: ${n} actividades ya habilitadas`))
+        .catch((error: any) => this.logger.warn(`No se pudo anotar la línea base de «te toca»: ${error.message}`));
+    });
+  }
+
+  async lineaBase(): Promise<number> {
+    if (!motorDeAvisosEncendido()) return 0;
+    const [{ hay }] = await this.dataSource.query(
+      `SELECT EXISTS (SELECT 1 FROM hiring.avisos_habilitacion) AS hay`,
+    );
+    if (hay) return 0;
+
+    const procesos: { id: string }[] = await this.dataSource.query(`SELECT id FROM hiring.procesos`);
+    let anotadas = 0;
+    for (const { id } of procesos) anotadas += (await this.anotarHabilitadas(id)).length;
+    return anotadas;
+  }
+
+  /** Anota las actividades que se pueden empezar y devuelve las que no estaban anotadas. */
+  private async anotarHabilitadas(procesoId: string): Promise<string[]> {
+    const pasos: PasoDelFlujo[] = (
+      await this.dataSource.query(
+        `SELECT a.numeral,
+                pa.estado,
+                NOT EXISTS (
+                  SELECT 1 FROM hiring.actividades_excluidas x
+                   WHERE x.numeral = a.numeral AND x.modalidad = p.modalidad
+                ) AND COALESCE(pa.estado, '') <> 'NO_APLICA' AS aplica
+           FROM hiring.procesos p
+           JOIN hiring.actividades a ON a.activa
+           LEFT JOIN hiring.proceso_actividades pa
+                  ON pa.proceso_id = p.id AND pa.numeral = a.numeral
+          WHERE p.id = $1
+          ORDER BY a.etapa, a.orden`,
+        [procesoId],
+      )
+    ).map((f: any) => ({
+      numeral: f.numeral,
+      estado: f.estado ?? null,
+      aplica: f.aplica === true,
+      construida: !SIN_PANEL.has(f.numeral),
+    }));
+    if (!pasos.length) return [];
+
+    const candidatas = porEmpezar(pasos);
+    if (!candidatas.length) return [];
+
+    // Se reclaman en la misma sentencia que se anotan: si dos cambios del mismo
+    // proceso llegan juntos, solo uno se queda con cada actividad.
+    const nuevas: { numeral: string }[] = await this.dataSource.query(
+      `INSERT INTO hiring.avisos_habilitacion (proceso_id, numeral)
+       SELECT $1, n FROM unnest($2::text[]) AS n
+       ON CONFLICT (proceso_id, numeral) DO NOTHING
+       RETURNING numeral`,
+      [procesoId, candidatas],
+    );
+    return nuevas.map((n) => n.numeral);
+  }
+
+  /**
+   * Las cuentas activas que tienen un permiso.
+   *
+   * Para lo que todavía no es de nadie —la bandeja de Contratación, la solicitud
+   * de CDP—: se avisa a quien puede tomarlo, igual que la bandeja decide quién
+   * lo ve.
+   */
+  private async cuentasConPermiso(permiso: string): Promise<string[]> {
+    const filas = await this.dataSource.query(
+      `SELECT DISTINCT u.id_user::text AS id
+         FROM auth."user" u
+         JOIN auth.user_roles ur       ON ur.id_user = u.id_user AND ur.is_active = true
+         JOIN auth.role r              ON r.id = ur.id_rol AND r.is_active = true
+         JOIN auth.role_permissions rp ON rp.id_rol = r.id AND rp.is_active = true
+         JOIN auth.permission perm     ON perm.id_permission = rp.id_permission AND perm.is_active = true
+        WHERE u.is_active = true AND perm.code = $1`,
+      [permiso],
+    );
+    return filas.map((f: any) => f.id);
+  }
+
+  /**
+   * Las personas de cada dependencia, según `auth.personas`.
+   *
+   * Es la dependencia que Gestión de Personas le asigna a cada una: si alguien
+   * cambia de área allá, los avisos le siguen sin tocar la configuración.
+   */
+  private async personasDeDependencias(dependencias: string[]): Promise<string[]> {
+    const filas = await this.dataSource.query(
+      `SELECT id_person::text AS id
+         FROM auth.personas
+        WHERE id_dependencia::text = ANY($1::text[])`,
+      [dependencias],
+    );
+    return filas.map((f: any) => f.id);
   }
 
   private async cuentasConRol(roles: string[]): Promise<string[]> {
@@ -185,6 +329,31 @@ export class NotificadorService {
         const roles: string[] = Array.isArray(regla.config?.roles) ? regla.config.roles : [];
         const personas: string[] = Array.isArray(regla.config?.personas) ? regla.config.personas : [];
         return [...(roles.length ? await this.cuentasConRol(roles) : []), ...personas];
+      }
+      case 'BANDEJA_CONTRATACION':
+        return this.cuentasConPermiso(PERMISO_PROCESO_TOMAR);
+      case 'EQUIPO_FINANCIERO':
+        return this.cuentasConPermiso(PERMISO_PRESUPUESTO_GESTIONAR);
+      case 'COMITE_EVALUADOR': {
+        // Personas del comité vigente: la campana las traduce a sus cuentas.
+        const filas = await this.dataSource.query(
+          `SELECT m.persona_id::text AS id
+             FROM hiring.comites_evaluadores c
+             JOIN hiring.miembros_comite m ON m.comite_id = c.id
+            WHERE c.proceso_id = $1 AND c.estado = 'VIGENTE' AND m.persona_id IS NOT NULL`,
+          [ocurrido.procesoId],
+        );
+        return filas.map((f: any) => f.id);
+      }
+      case 'SUPERVISOR': {
+        const filas = await this.dataSource.query(
+          `SELECT s.persona_id::text AS id
+             FROM hiring.supervisiones_contrato s
+             JOIN hiring.contratos k ON k.id = s.contrato_id
+            WHERE k.proceso_id = $1 AND s.estado = 'VIGENTE' AND s.persona_id IS NOT NULL`,
+          [ocurrido.procesoId],
+        );
+        return filas.map((f: any) => f.id);
       }
     }
   }

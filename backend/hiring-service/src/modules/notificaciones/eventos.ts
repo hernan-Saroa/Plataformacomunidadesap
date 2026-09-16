@@ -6,15 +6,17 @@
  * probarse sin base de datos.
  */
 
+import { quienLaHace } from './quien-la-hace';
+import { SE_HABILITA_AL_ASIGNAR_ABOGADO, SIN_PANEL } from './secuencia';
+
 /** Lo que puede pasar en un proceso y merece un aviso. */
 export type EventoAviso =
+  | 'HABILITADA'
   | 'DEVUELTA'
   | 'ENVIADA_A_APROBACION'
   | 'APROBADA'
-  | 'ABOGADO_ASIGNADO'
   | 'RECIBIDO_EN_CONTRATACION'
   | 'PROCESO_RADICADO'
-  | 'REGISTRADA'
   | 'DOCUMENTO_ADJUNTO';
 
 /**
@@ -24,7 +26,23 @@ export type EventoAviso =
  * entidad— de «avisar al abogado de este proceso», que es casi siempre lo que
  * se quiere decir.
  */
-export type PapelAviso = 'QUIEN_ENVIO' | 'QUIEN_APRUEBA' | 'ABOGADO' | 'CONTRATACION' | 'RADICADOR';
+export type PapelAviso =
+  | 'QUIEN_ENVIO'
+  | 'QUIEN_APRUEBA'
+  | 'ABOGADO'
+  | 'CONTRATACION'
+  | 'RADICADOR'
+  | 'BANDEJA_CONTRATACION'
+  | 'EQUIPO_FINANCIERO'
+  | 'COMITE_EVALUADOR'
+  | 'SUPERVISOR';
+
+/** Lo que rige mientras nadie cambie un aviso. */
+export interface Sugerido {
+  activo: boolean;
+  papeles: PapelAviso[];
+  roles?: string[];
+}
 
 export interface DefinicionEvento {
   codigo: EventoAviso;
@@ -46,16 +64,60 @@ export interface DefinicionEvento {
    * que alguien tenga que configurarlas una por una, y la tabla solo guarda lo
    * que la Dirección decidió distinto.
    */
-  sugerido: { activo: boolean; papeles: PapelAviso[] };
+  sugerido: Sugerido;
+  /**
+   * Avisos que no se configuran: salen siempre, a quien les corresponde.
+   *
+   * Enviar a aprobación, aprobar y devolver solo existen donde la actividad
+   * tiene aprobación, y el destinatario no se puede decir con una dependencia,
+   * un rol ni una persona: es quien la envió o quien la aprueba *en ese
+   * proceso*. Ofrecer apagarlos sería ofrecer que la aprobación deje de
+   * funcionar sin que nadie se entere.
+   */
+  siempre?: boolean;
+  /**
+   * Lo sugerido cuando depende de la actividad.
+   *
+   * «Le toca a alguien» no le toca a la misma persona en la 4.1 que en la 9.2:
+   * el CDP lo expide la Financiera y los pagos los tramita el supervisor.
+   */
+  sugeridoEn?: (numeral: string) => Sugerido;
+  /** La ayuda cuando depende de la actividad: no sale igual en todas. */
+  ayudaEn?: (numeral: string) => string;
 }
 
 /** En el orden en que importan: primero lo que para el trabajo de alguien. */
 export const EVENTOS: DefinicionEvento[] = [
   {
+    codigo: 'HABILITADA',
+    nombre: 'Le toca a alguien hacerla',
+    ayuda:
+      'Cuando se termina lo que venía antes y esta actividad ya se puede trabajar, para que quien la hace sepa que es su turno.',
+    numeral: null,
+    sugerido: { activo: false, papeles: [] },
+    // Encendido, a quien hace cada actividad: es el aviso que más trabajo
+    // destraba, y apagado hasta que alguien configurara las 63 no avisaba nada.
+    // Donde no hay pantalla viene apagado: le diría a alguien que empiece algo
+    // que no puede hacer en la plataforma, y lo enciende quien sepa que sirve.
+    sugeridoEn: (numeral) => {
+      const destino = quienLaHace(numeral);
+      if (!destino) return { activo: false, papeles: [] };
+      const sinPantalla = SIN_PANEL.has(numeral) && numeral !== SE_HABILITA_AL_ASIGNAR_ABOGADO;
+      return { activo: !sinPantalla, ...destino };
+    },
+    ayudaEn: (numeral) =>
+      numeral === SE_HABILITA_AL_ASIGNAR_ABOGADO
+        ? 'Sale cuando, en la 3.3, la Dirección se hace cargo del proceso y elige al abogado: ahí le toca revisarlo.'
+        : SIN_PANEL.has(numeral)
+          ? 'Sale cuando el proceso llega a esta actividad. Se hace fuera de la plataforma, así que no detiene a las siguientes.'
+          : 'Sale cuando se termina lo que venía antes y esta actividad ya se puede trabajar, para que quien la hace sepa que es su turno.',
+  },
+  {
     codigo: 'DEVUELTA',
     nombre: 'Se devuelve una actividad',
     ayuda: 'Para que quien la trabajó sepa que tiene algo que corregir.',
     numeral: null,
+    siempre: true,
     sugerido: { activo: true, papeles: ['QUIEN_ENVIO'] },
   },
   {
@@ -63,6 +125,7 @@ export const EVENTOS: DefinicionEvento[] = [
     nombre: 'Se envía a aprobación',
     ayuda: 'Para que quien aprueba sepa que tiene algo esperando su visto bueno.',
     numeral: null,
+    siempre: true,
     sugerido: { activo: true, papeles: ['QUIEN_APRUEBA'] },
   },
   {
@@ -70,14 +133,8 @@ export const EVENTOS: DefinicionEvento[] = [
     nombre: 'Se aprueba una actividad',
     ayuda: 'Para que quien la envió sepa que puede seguir con la siguiente.',
     numeral: null,
+    siempre: true,
     sugerido: { activo: true, papeles: ['QUIEN_ENVIO'] },
-  },
-  {
-    codigo: 'ABOGADO_ASIGNADO',
-    nombre: 'Se asigna o cambia el abogado',
-    ayuda: 'Para que el abogado sepa que tiene un proceso nuevo a su cargo.',
-    numeral: '3.4',
-    sugerido: { activo: true, papeles: ['ABOGADO'] },
   },
   {
     codigo: 'RECIBIDO_EN_CONTRATACION',
@@ -88,17 +145,10 @@ export const EVENTOS: DefinicionEvento[] = [
   },
   {
     codigo: 'PROCESO_RADICADO',
-    nombre: 'Se radica un proceso',
-    ayuda: 'Para que la Dirección sepa que llegó un proceso nuevo a la bandeja.',
+    nombre: 'Se crea un proceso',
+    ayuda: 'Sale cuando el área crea el proceso, para que la Dirección sepa que viene uno nuevo.',
     numeral: '3.1',
-    sugerido: { activo: false, papeles: [] },
-  },
-  {
-    codigo: 'REGISTRADA',
-    nombre: 'Se registra una actividad',
-    ayuda: 'Para seguir el avance de un proceso sin tener que entrar a mirarlo.',
-    numeral: null,
-    sugerido: { activo: false, papeles: ['ABOGADO'] },
+    sugerido: { activo: true, papeles: [], roles: ['DIRECTOR_CONTRATACION'] },
   },
   {
     codigo: 'DOCUMENTO_ADJUNTO',
@@ -115,11 +165,20 @@ export const PAPELES: { codigo: PapelAviso; nombre: string }[] = [
   { codigo: 'ABOGADO', nombre: 'El abogado del proceso' },
   { codigo: 'CONTRATACION', nombre: 'Quien lo recibió en Contratación' },
   { codigo: 'RADICADOR', nombre: 'Quien radicó el proceso' },
+  { codigo: 'BANDEJA_CONTRATACION', nombre: 'Quien puede recibirlo en Contratación' },
+  { codigo: 'EQUIPO_FINANCIERO', nombre: 'El equipo financiero' },
+  { codigo: 'COMITE_EVALUADOR', nombre: 'El comité evaluador' },
+  { codigo: 'SUPERVISOR', nombre: 'El supervisor del contrato' },
 ];
 
 const CODIGOS_EVENTO = new Set(EVENTOS.map((e) => e.codigo));
 
-/** Los eventos que pueden pasar en una actividad. */
+/**
+ * Los eventos que pueden pasar en una actividad.
+ *
+ * «Le toca a alguien» está en todas: toda actividad tiene un momento en que
+ * le toca a alguien, aunque se haga fuera de la plataforma.
+ */
 export function eventosDeActividad(numeral: string): DefinicionEvento[] {
   return EVENTOS.filter((e) => e.numeral === null || e.numeral === numeral);
 }
@@ -140,6 +199,10 @@ export interface AvisoConfigurado {
   activo: boolean;
   papeles: PapelAviso[];
   roles: string[];
+  /** Ids de persona nombrados uno a uno, como en la pestaña de Aprobación. */
+  personas: string[];
+  /** Ids de `auth.dependencias`: avisa a todas las personas de cada una. */
+  dependencias: string[];
 }
 
 /** Lee una fila de `hiring.avisos`, descartando lo que no tenga forma válida. */
@@ -148,6 +211,8 @@ export function leerAviso(fila: {
   activo: boolean;
   papeles: unknown;
   roles: unknown;
+  personas?: unknown;
+  dependencias?: unknown;
 }): AvisoConfigurado | null {
   if (!esEvento(fila.evento)) return null;
   const lista = (v: unknown) =>
@@ -159,6 +224,11 @@ export function leerAviso(fila: {
     activo: fila.activo === true,
     papeles: lista(fila.papeles).filter(esPapel),
     roles: lista(fila.roles),
+    personas: lista(fila.personas),
+    // Los ids llegan como número o como texto según quién los guardó.
+    dependencias: Array.isArray(fila.dependencias)
+      ? fila.dependencias.filter((x) => x !== null && x !== '').map(String)
+      : [],
   };
 }
 
@@ -166,15 +236,25 @@ export function leerAviso(fila: {
 export function avisoQueRige(
   evento: EventoAviso,
   configurado: AvisoConfigurado | undefined,
+  numeral?: string,
 ): AvisoConfigurado {
-  if (configurado) return configurado;
   const definicion = EVENTOS.find((e) => e.codigo === evento);
+  const sugerido =
+    (numeral && definicion?.sugeridoEn?.(numeral)) || definicion?.sugerido || { activo: false, papeles: [] };
+
+  // Los papeles son siempre los del evento: se avisan solos y no se eligen.
+  // Lo que se elige —dependencias, roles, personas— es lo que se suma.
+  if (configurado && !definicion?.siempre) {
+    return { ...configurado, papeles: sugerido.papeles };
+  }
   return {
     evento,
     personalizado: false,
-    activo: definicion?.sugerido.activo ?? false,
-    papeles: definicion?.sugerido.papeles ?? [],
-    roles: [],
+    activo: definicion?.siempre ? true : sugerido.activo,
+    papeles: sugerido.papeles,
+    roles: sugerido.roles ?? [],
+    personas: [],
+    dependencias: [],
   };
 }
 
@@ -208,8 +288,9 @@ export interface EventoOcurrido {
  * fija, y la aprobación genérica sí porque sirve a todas. Aquí se traducen esas
  * formas a un solo vocabulario.
  *
- * Registrar donde hay aprobadores es a la vez registrar y enviar a aprobación,
- * así que una fila puede producir dos eventos.
+ * Registrar una actividad no es un aviso aparte: donde hay aprobadores es
+ * enviarla a aprobación, y donde no, cerrarla —y eso lo cuenta el «le toca» de
+ * la siguiente—. Ofrecer los dos era avisar dos veces de lo mismo.
  *
  * Lo que no se reconoce devuelve una lista vacía y no avisa. Es a propósito: un
  * panel nuevo que registre sus eventos no dispara nada hasta que se diga aquí
@@ -217,12 +298,7 @@ export interface EventoOcurrido {
  */
 export function eventosDeTraza(t: TrazaLeida): EventoOcurrido[] {
   const uno = eventoUnico(t);
-  if (!uno) return [];
-
-  if (uno.evento === 'REGISTRADA' && t.detalle?.estado === 'EN_REVISION') {
-    return [uno, { ...uno, evento: 'ENVIADA_A_APROBACION' }];
-  }
-  return [uno];
+  return uno ? [uno] : [];
 }
 
 function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
@@ -254,7 +330,8 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     case 'participacion_proceso:RADICAR':
       return ocurrido('RECIBIDO_EN_CONTRATACION', '3.3');
     case 'participacion_proceso:DESIGNAR':
-      return detalle.papel === 'ABOGADO' ? ocurrido('ABOGADO_ASIGNADO', '3.4') : null;
+      // Asignar el abogado es el «le toca» de la 3.4: desde ahí puede revisar.
+      return detalle.papel === 'ABOGADO' ? ocurrido('HABILITADA', SE_HABILITA_AL_ASIGNAR_ABOGADO) : null;
 
     // La aprobación genérica guarda el numeral; el estudio previo es la 3.1.
     case 'aprobacion_actividad:ENVIAR':
@@ -280,7 +357,7 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
       return ocurrido('DEVUELTA', '3.1');
 
     case 'registros_actividad:GUARDAR':
-      return ocurrido('REGISTRADA', numeral);
+      return t.detalle?.estado === 'EN_REVISION' ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
     case 'documento_actividad:ADJUNTAR':
       return ocurrido('DOCUMENTO_ADJUNTO', numeral);
 
@@ -319,6 +396,19 @@ export function mensajeDeAviso(
   const quien = ocurrido.actorNombre ? ` por ${ocurrido.actorNombre}` : '';
 
   switch (ocurrido.evento) {
+    case 'HABILITADA':
+      if (ocurrido.numeral === SE_HABILITA_AL_ASIGNAR_ABOGADO) {
+        return {
+          titulo: 'Te toca revisar un proceso',
+          mensaje: `Te asignaron el proceso${elProceso}${quien}: revisa su estudio previo.`,
+          prioridad: 'Media',
+        };
+      }
+      return {
+        titulo: 'Te toca una actividad',
+        mensaje: `${que}${proceso} ya se puede trabajar: se terminó lo que venía antes.`,
+        prioridad: 'Media',
+      };
     case 'DEVUELTA':
       return {
         titulo: 'Te devolvieron una actividad',
@@ -340,12 +430,6 @@ export function mensajeDeAviso(
         mensaje: `${que}${proceso} fue aprobada${quien}.`,
         prioridad: 'Media',
       };
-    case 'ABOGADO_ASIGNADO':
-      return {
-        titulo: 'Tienes un proceso asignado',
-        mensaje: `Se asignó abogado al proceso${elProceso}${quien}.`,
-        prioridad: 'Media',
-      };
     case 'RECIBIDO_EN_CONTRATACION':
       return {
         titulo: 'Contratación recibió el proceso',
@@ -354,14 +438,8 @@ export function mensajeDeAviso(
       };
     case 'PROCESO_RADICADO':
       return {
-        titulo: 'Se radicó un proceso',
-        mensaje: `Se radicó el proceso${elProceso}${quien}.`,
-        prioridad: 'Media',
-      };
-    case 'REGISTRADA':
-      return {
-        titulo: 'Se registró una actividad',
-        mensaje: `${que}${proceso} fue registrada${quien}.`,
+        titulo: 'Hay un proceso nuevo',
+        mensaje: `Se creó el proceso${elProceso}${quien}.`,
         prioridad: 'Media',
       };
     case 'DOCUMENTO_ADJUNTO':

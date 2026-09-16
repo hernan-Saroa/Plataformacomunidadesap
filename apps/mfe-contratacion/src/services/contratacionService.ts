@@ -76,7 +76,6 @@ import {
   AlertaVencimiento,
   ConfiguracionAvisos,
   EventoAviso,
-  PapelAviso,
   ParametroAlerta,
   EstadisticasGestion,
   ExpedienteAuditoria,
@@ -2499,12 +2498,15 @@ export const contratacionService = {
   guardarAvisoDeActividad: (
     numeral: string,
     evento: EventoAviso,
-    cambios: { activo?: boolean; papeles?: PapelAviso[]; roles?: string[] },
+    cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
   ) =>
     pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, {
       method: 'PUT',
       body: JSON.stringify(cambios),
     }),
+
+  /** Las dependencias de la ESAP, del catálogo de la plataforma. */
+  dependencias: () => pedir<{ id: string; nombre: string }[]>('/configuracion/dependencias'),
 
   /** Deshace lo cambiado en un aviso: vuelve a regir lo sugerido. */
   restablecerAvisoDeActividad: (numeral: string, evento: EventoAviso) =>

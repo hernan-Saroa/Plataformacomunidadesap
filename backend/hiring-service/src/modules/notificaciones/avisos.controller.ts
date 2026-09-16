@@ -26,12 +26,13 @@ export class AvisosController {
   @Permisos(PERMISO_CONFIG_ADMINISTRAR)
   @ApiOperation({
     summary: 'Encender, apagar o cambiar a quién llega un aviso de la actividad',
-    description: 'Recibe { activo, papeles, roles }; lo que no llegue se conserva. Rige desde que se guarda.',
+    description:
+      'Recibe { activo, dependencias, roles, personas }; lo que no llegue se conserva. Los avisos que salen siempre no se configuran.',
   })
   guardar(
     @Param('numeral') numeral: string,
     @Param('evento') evento: string,
-    @Body() cambios: { activo?: boolean; papeles?: string[]; roles?: string[] },
+    @Body() cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
     @Req() req: any,
   ) {
     return this.avisos.guardar(numeral, evento, cambios, getHiringAccess(req));
@@ -43,5 +44,20 @@ export class AvisosController {
   @ApiOperation({ summary: 'Volver al aviso sugerido' })
   restablecer(@Param('numeral') numeral: string, @Param('evento') evento: string) {
     return this.avisos.restablecer(numeral, evento);
+  }
+}
+
+/** Las dependencias de la plataforma, para elegir a quién avisar. */
+@ApiTags('Configuración · Notificaciones')
+@Controller('configuracion/dependencias')
+export class DependenciasController {
+  constructor(private readonly avisos: AvisosService) {}
+
+  @Get()
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_PROCESO_VER)
+  @ApiOperation({ summary: 'Dependencias de la ESAP, del catálogo de la plataforma' })
+  listar() {
+    return this.avisos.dependencias();
   }
 }

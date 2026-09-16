@@ -3,7 +3,8 @@ import { EventoOcurrido } from './eventos';
 
 /**
  * El motor de avisos, sin base de datos: cada consulta se responde según lo que
- * pregunta, para poder decir qué pasa con avisos, papeles y fallos (EFDS-1183).
+ * pregunta, para poder decir qué pasa con avisos, destinatarios y fallos
+ * (EFDS-1183).
  */
 describe('NotificadorService · despachar', () => {
   const devuelta: EventoOcurrido = {
@@ -15,15 +16,21 @@ describe('NotificadorService · despachar', () => {
     observaciones: 'Falta el CDP',
   };
 
+  /** Un aviso que se configura: adjuntar un documento. */
+  const adjunto: EventoOcurrido = { ...devuelta, evento: 'DOCUMENTO_ADJUNTO', numeral: '3.2', observaciones: null };
+
   /** Responde cada consulta por su contenido. `avisos` es lo configurado. */
   const conBase = (avisos: any[], extra: Record<string, any[]> = {}) => {
-    const query = jest.fn(async (sql: string) => {
+    const query = jest.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM hiring.avisos')) return avisos;
       if (sql.includes('FROM hiring.procesos WHERE id')) return [{ modalidad: 'LICITACION', radicado: 'CTO-1' }];
       if (sql.includes('FROM hiring.proceso_actividades')) return extra.envio ?? [];
       if (sql.includes("tipo = 'EXIGE_APROBACION'")) return extra.aprobacion ?? [];
+      if (sql.includes('perm.code = $1')) return extra.permiso ?? [];
       if (sql.includes('FROM auth.user_roles')) return extra.roles ?? [];
       if (sql.includes('participaciones_proceso')) return extra.abogado ?? [];
+      if (sql.includes('supervisiones_contrato')) return extra.supervisor ?? [];
+      if (sql.includes('WHERE id_dependencia::text')) return extra.dependencia ?? [];
       if (sql.includes('FROM hiring.actividades')) return [{ nombre: 'Revisión y reparto' }];
       return [];
     });
@@ -37,95 +44,138 @@ describe('NotificadorService · despachar', () => {
   };
 
   const cuerpo = (f: jest.Mock) => JSON.parse(f.mock.calls[0][1].body).notifications;
+  const destinatarios = (f: jest.Mock) => cuerpo(f).map((a: any) => a.id_usuario_destinatario).sort();
 
   afterEach(() => {
     delete process.env.NOTIFICACIONES_CONFIGURABLES;
   });
 
-  it('un aviso apagado en la actividad no avisa a nadie', async () => {
-    const f = fetchOk();
-    const { srv } = conBase([{ evento: 'DEVUELTA', activo: false, papeles: ['QUIEN_ENVIO'], roles: [] }], {
-      envio: [{ id: 'u-ana' }],
+  describe('los que salen siempre', () => {
+    it('la devolución le llega a quien envió la actividad', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([], { envio: [{ id: 'u-ana' }] });
+
+      expect(await srv.despachar([devuelta])).toBe(1);
+      const [aviso] = cuerpo(f);
+      expect(aviso.id_usuario_destinatario).toBe('u-ana');
+      expect(aviso.prioridad).toBe('Alta');
+      expect(aviso.mensaje).toContain('«Falta el CDP»');
     });
 
-    expect(await srv.despachar([devuelta])).toBe(0);
-    expect(f).not.toHaveBeenCalled();
-  });
+    it('apagarla en la base no la apaga: la aprobación no se queda muda', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([{ evento: 'DEVUELTA', activo: false, papeles: [], roles: [] }], {
+        envio: [{ id: 'u-ana' }],
+      });
 
-  it('la devolución le llega a quien envió la actividad', async () => {
-    const f = fetchOk();
-    const { srv } = conBase([{ evento: 'DEVUELTA', activo: true, papeles: ['QUIEN_ENVIO'], roles: [] }], {
-      envio: [{ id: 'u-ana' }],
+      expect(await srv.despachar([devuelta])).toBe(1);
+      expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-ana');
     });
 
-    expect(await srv.despachar([devuelta])).toBe(1);
-    const [aviso] = cuerpo(f);
-    expect(aviso.id_usuario_destinatario).toBe('u-ana');
-    expect(aviso.prioridad).toBe('Alta');
-    expect(aviso.mensaje).toContain('«Falta el CDP»');
-  });
-
-  it('«quien aprueba» sale de lo configurado en la pestaña de Aprobación', async () => {
-    const f = fetchOk();
-    const { srv } = conBase(
-      [{ evento: 'ENVIADA_A_APROBACION', activo: true, papeles: ['QUIEN_APRUEBA'], roles: [] }],
-      {
+    it('«quien aprueba» sale de lo configurado en la pestaña de Aprobación', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([], {
         aprobacion: [{ modalidad: null, config: { roles: ['DIRECTOR_CONTRATACION'], personas: [] } }],
         roles: [{ id: 'u-director-2' }],
-      },
-    );
+      });
 
-    await srv.despachar([{ ...devuelta, evento: 'ENVIADA_A_APROBACION', actorId: 'u-ana' }]);
-    expect(cuerpo(f).map((a: any) => a.id_usuario_destinatario)).toEqual(['u-director-2']);
-  });
-
-  it('no le avisa a quien hizo la acción aunque tenga el rol', async () => {
-    const f = fetchOk();
-    const { srv } = conBase([{ evento: 'DEVUELTA', activo: true, papeles: [], roles: ['DIRECTOR_CONTRATACION'] }], {
-      roles: [{ id: 'u-director' }],
+      await srv.despachar([{ ...devuelta, evento: 'ENVIADA_A_APROBACION', actorId: 'u-ana' }]);
+      expect(destinatarios(f)).toEqual(['u-director-2']);
     });
 
-    expect(await srv.despachar([devuelta])).toBe(0);
-    expect(f).not.toHaveBeenCalled();
-  });
+    it('a quien envió antes de que se guardara su cuenta también le llega', async () => {
+      // Las actividades ya enviadas solo dejaron el nombre de usuario: la consulta
+      // lo traduce a cuenta para que la devolución no se quede sin destinatario.
+      const f = fetchOk();
+      const { srv, query } = conBase([], { envio: [{ id: 'u-ana' }] });
 
-  it('a quien envió antes de que se guardara su cuenta también le llega', async () => {
-    // Las actividades ya enviadas solo dejaron el nombre de usuario: la consulta
-    // lo traduce a cuenta para que la devolución no se quede sin destinatario.
-    const f = fetchOk();
-    const { srv, query } = conBase([{ evento: 'DEVUELTA', activo: true, papeles: ['QUIEN_ENVIO'], roles: [] }], {
-      envio: [{ id: 'u-ana' }],
+      await srv.despachar([devuelta]);
+
+      const sql = String(query.mock.calls.find(([s]) => String(s).includes('proceso_actividades'))?.[0]);
+      expect(sql).toContain('u.username = pa.enviado_por');
+      expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-ana');
     });
 
-    await srv.despachar([devuelta]);
+    it('el mismo hecho registrado dos veces avisa una sola', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([], { envio: [{ id: 'u-ana' }] });
 
-    const sql = String(query.mock.calls.find(([s]) => String(s).includes('proceso_actividades'))?.[0]);
-    expect(sql).toContain('u.username = pa.enviado_por');
-    expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-ana');
+      await srv.despachar([devuelta, { ...devuelta }]);
+      expect(f).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it('el mismo hecho registrado dos veces avisa una sola', async () => {
-    const f = fetchOk();
-    const { srv } = conBase([{ evento: 'DEVUELTA', activo: true, papeles: ['QUIEN_ENVIO'], roles: [] }], {
-      envio: [{ id: 'u-ana' }],
+  describe('los que se configuran', () => {
+    it('apagado no avisa a nadie', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([{ evento: 'DOCUMENTO_ADJUNTO', activo: false, roles: ['DIRECTOR_CONTRATACION'] }], {
+        roles: [{ id: 'u-otro' }],
+      });
+
+      expect(await srv.despachar([adjunto])).toBe(0);
+      expect(f).not.toHaveBeenCalled();
     });
 
-    await srv.despachar([devuelta, { ...devuelta }]);
-    expect(f).toHaveBeenCalledTimes(1);
+    it('llega a todas las personas de la dependencia elegida', async () => {
+      const f = fetchOk();
+      const { srv, query } = conBase([{ evento: 'DOCUMENTO_ADJUNTO', activo: true, dependencias: ['7'] }], {
+        dependencia: [{ id: 'u-financiera-1' }, { id: 'u-financiera-2' }],
+      });
+
+      expect(await srv.despachar([adjunto])).toBe(2);
+      expect(destinatarios(f)).toEqual(['u-financiera-1', 'u-financiera-2']);
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('WHERE id_dependencia::text'));
+      expect(llamada?.[1]).toEqual([['7']]);
+    });
+
+    it('llega a los roles y a las personas nombradas, además de a quien corresponde', async () => {
+      const f = fetchOk();
+      const { srv } = conBase(
+        [{ evento: 'DOCUMENTO_ADJUNTO', activo: true, roles: ['DIRECTOR_CONTRATACION'], personas: ['u-ana'] }],
+        { roles: [{ id: 'u-directora' }], abogado: [{ id: 'u-abogado' }] },
+      );
+
+      await srv.despachar([adjunto]);
+      expect(destinatarios(f)).toEqual(['u-abogado', 'u-ana', 'u-directora']);
+    });
+
+    it('no le avisa a quien hizo la acción aunque tenga el rol', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([{ evento: 'DOCUMENTO_ADJUNTO', activo: true, roles: ['DIRECTOR_CONTRATACION'] }], {
+        roles: [{ id: 'u-director' }],
+      });
+
+      expect(await srv.despachar([adjunto])).toBe(0);
+      expect(f).not.toHaveBeenCalled();
+    });
   });
 
-  it('sin nada configurado rige lo sugerido: la devolución avisa a quien envió', async () => {
-    const f = fetchOk();
-    const { srv } = conBase([], { envio: [{ id: 'u-ana' }] });
+  describe('a quien le toca', () => {
+    it('«el supervisor del contrato» es el de la supervisión vigente de ese proceso', async () => {
+      const f = fetchOk();
+      const { srv, query } = conBase([], { supervisor: [{ id: 'u-supervisora' }] });
 
-    expect(await srv.despachar([devuelta])).toBe(1);
-    expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-ana');
+      expect(await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral: '9.2' }])).toBe(1);
+      expect(cuerpo(f)[0].id_usuario_destinatario).toBe('u-supervisora');
+      const sql = String(query.mock.calls.find(([s]) => String(s).includes('supervisiones_contrato'))?.[0]);
+      expect(sql).toContain("s.estado = 'VIGENTE'");
+    });
+
+    it('«el equipo financiero» son las cuentas con permiso de presupuesto', async () => {
+      fetchOk();
+      const { srv, query } = conBase([]);
+
+      await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral: '4.1' }]);
+
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
+      expect(llamada?.[1]).toEqual(['contratacion.presupuesto.gestionar']);
+    });
   });
 
-  it('con el interruptor apagado no hace nada', async () => {
+  it('con el interruptor general apagado no hace nada', async () => {
     process.env.NOTIFICACIONES_CONFIGURABLES = 'false';
     const f = fetchOk();
-    const { srv, query } = conBase([{ evento: 'DEVUELTA', activo: true, papeles: ['QUIEN_ENVIO'], roles: [] }]);
+    const { srv, query } = conBase([]);
 
     expect(await srv.despachar([devuelta])).toBe(0);
     expect(query).not.toHaveBeenCalled();

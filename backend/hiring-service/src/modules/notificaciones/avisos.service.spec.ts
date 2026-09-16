@@ -2,80 +2,155 @@ import { BadRequestException } from '@nestjs/common';
 
 import { AvisosService } from './avisos.service';
 
-/** Los avisos de cada actividad, con lo sugerido mientras nadie los cambie (EFDS-1183). */
+/**
+ * Los avisos de cada actividad (EFDS-1183).
+ *
+ * Los de la aprobación y el del abogado salen siempre; el resto se enciende y
+ * se dirige a dependencias, roles y personas, con lo sugerido mientras nadie lo
+ * cambie.
+ */
 describe('AvisosService', () => {
   const acceso = { userId: 'u1', userName: 'director@esap.edu.co', roles: [], puedeEditar: true } as never;
 
-  const conFilas = (filas: any[]) => {
+  const conFilas = (filas: any[], extra: { requiere?: boolean; dependencias?: any[] } = {}) => {
     const query = jest.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM hiring.avisos')) return filas;
+      if (sql.includes("tipo = 'EXIGE_APROBACION'")) return [{ requiere: extra.requiere ?? false }];
+      if (sql.includes('FROM auth.dependencias')) return extra.dependencias ?? [];
       if (sql.includes('FROM auth.role')) return [{ code: 'DIRECTOR_CONTRATACION', name: 'Director de Contratación' }];
       return [];
     });
     return { srv: new AvisosService({ query } as never), query };
   };
 
-  it('sin nada configurado, la actividad avisa con lo sugerido', async () => {
-    // Así las 55 actividades avisan desde el primer día sin configurarlas.
-    const { srv } = conFilas([]);
-    const { avisos } = await srv.deActividad('3.2');
-    const devuelta = avisos.find((a) => a.evento === 'DEVUELTA');
+  describe('los que salen siempre', () => {
+    it('con aprobación, avisa al enviar, al aprobar y al devolver, sin poder apagarse', async () => {
+      const { srv } = conFilas([], { requiere: true });
+      const { siempre, avisos } = await srv.deActividad('3.2');
 
-    expect(devuelta).toMatchObject({ activo: true, papeles: ['QUIEN_ENVIO'], personalizado: false });
+      expect(siempre.map((s) => s.evento)).toEqual(['DEVUELTA', 'ENVIADA_A_APROBACION', 'APROBADA']);
+      expect(siempre.find((s) => s.evento === 'ENVIADA_A_APROBACION')?.aQuien).toEqual(['Quien la aprueba']);
+      expect(avisos.map((a) => a.evento)).not.toContain('DEVUELTA');
+    });
+
+    it('sin aprobación no se muestran: en esa actividad nunca saldrían', async () => {
+      const { srv } = conFilas([], { requiere: false });
+
+      expect((await srv.deActividad('3.2')).siempre).toEqual([]);
+    });
+
+    it('en la 3.4 el «le toca» es del abogado, y dice dónde se asigna', async () => {
+      const { srv } = conFilas([], { requiere: false });
+      const { siempre, avisos } = await srv.deActividad('3.4');
+      const leToca = avisos.find((a) => a.evento === 'HABILITADA');
+
+      expect(siempre).toEqual([]);
+      expect(leToca).toMatchObject({ activo: true, papeles: ['ABOGADO'] });
+      expect(leToca?.ayuda).toContain('en la 3.3');
+    });
+
+    it('lo que se haya guardado para ellos no los cambia', async () => {
+      const { srv } = conFilas([{ evento: 'DEVUELTA', activo: false, papeles: [], roles: [] }]);
+
+      expect(await srv.queRige('3.2', 'DEVUELTA')).toMatchObject({ activo: true, papeles: ['QUIEN_ENVIO'] });
+    });
+
+    it('no se dejan configurar', async () => {
+      const { srv } = conFilas([]);
+
+      await expect(srv.guardar('3.2', 'DEVUELTA', { activo: false }, acceso)).rejects.toThrow(
+        'Este aviso sale siempre y no se configura',
+      );
+    });
   });
 
-  it('solo ofrece los eventos que pueden pasar en esa actividad', async () => {
-    const { srv } = conFilas([]);
+  describe('los que se configuran', () => {
+    it('«se crea un proceso» llega encendido para el Director de Contratación', async () => {
+      const { srv } = conFilas([]);
+      const aviso = (await srv.deActividad('3.1')).avisos.find((a) => a.evento === 'PROCESO_RADICADO');
 
-    expect((await srv.deActividad('3.2')).avisos.map((a) => a.evento)).not.toContain('ABOGADO_ASIGNADO');
-    expect((await srv.deActividad('3.4')).avisos.map((a) => a.evento)).toContain('ABOGADO_ASIGNADO');
-  });
+      expect(aviso).toMatchObject({
+        activo: true,
+        personalizado: false,
+        roles: [{ code: 'DIRECTOR_CONTRATACION', name: 'Director de Contratación' }],
+      });
+    });
 
-  it('lo configurado manda sobre lo sugerido, y dice el rol por su nombre', async () => {
-    const { srv } = conFilas([
-      { evento: 'DEVUELTA', activo: true, papeles: [], roles: ['DIRECTOR_CONTRATACION'] },
-    ]);
-    const devuelta = (await srv.deActividad('3.2')).avisos.find((a) => a.evento === 'DEVUELTA');
+    it('«le toca a alguien» llega configurado en cada actividad', async () => {
+      const { srv } = conFilas([]);
+      const aviso = (await srv.deActividad('4.1')).avisos.find((a) => a.evento === 'HABILITADA');
 
-    expect(devuelta).toMatchObject({
-      personalizado: true,
-      papeles: [],
-      roles: [{ code: 'DIRECTOR_CONTRATACION', name: 'Director de Contratación' }],
+      expect(aviso).toMatchObject({ activo: true, personalizado: false, papeles: ['EQUIPO_FINANCIERO'] });
+    });
+
+    it('dice cada dependencia por su nombre, del catálogo de la plataforma', async () => {
+      const { srv } = conFilas([{ evento: 'DOCUMENTO_ADJUNTO', activo: true, roles: [], personas: [], dependencias: [7] }], {
+        dependencias: [{ id: '7', nombre: 'Dirección Financiera', activo: 'true' }],
+      });
+      const aviso = (await srv.deActividad('3.2')).avisos.find((a) => a.evento === 'DOCUMENTO_ADJUNTO');
+
+      expect(aviso?.dependencias).toEqual([{ id: '7', nombre: 'Dirección Financiera' }]);
+    });
+
+    it('muestra a cada persona por su nombre', async () => {
+      const query = jest.fn(async (sql: string) => {
+        if (sql.includes('FROM hiring.avisos')) {
+          return [{ evento: 'HABILITADA', activo: true, papeles: [], roles: [], personas: ['p-ana'] }];
+        }
+        if (sql.includes('FROM auth.personas')) return [{ id: 'p-ana', nombre: 'Ana Lucía Osorio' }];
+        return [];
+      });
+      const srv = new AvisosService({ query } as never);
+
+      const aviso = (await srv.deActividad('4.1')).avisos.find((a) => a.evento === 'HABILITADA');
+      expect(aviso?.personas).toEqual([{ id: 'p-ana', nombre: 'Ana Lucía Osorio' }]);
+    });
+
+    it('no deja encender uno sin nadie a quien avisar', async () => {
+      const { srv, query } = conFilas([]);
+
+      await expect(srv.guardar('3.1', 'PROCESO_RADICADO', { activo: true, roles: [] }, acceso)).rejects.toThrow(
+        'Elige a quién avisar antes de encenderlo',
+      );
+      expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT'))).toBe(false);
+    });
+
+    it('guarda dependencias, roles y personas, y conserva lo que no se manda', async () => {
+      const { srv, query } = conFilas([]);
+
+      await srv.guardar('3.2', 'DOCUMENTO_ADJUNTO', { activo: true, dependencias: ['7'] }, acceso);
+
+      const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT'));
+      expect(insert?.[1]).toEqual([
+        '3.2',
+        'DOCUMENTO_ADJUNTO',
+        true,
+        '["ABOGADO"]',
+        '[]',
+        '[]',
+        '["7"]',
+        'director@esap.edu.co',
+      ]);
+    });
+
+    it('no ofrece avisos que no pueden pasar en esa actividad', async () => {
+      const { srv } = conFilas([]);
+
+      await expect(srv.guardar('3.2', 'ABOGADO_ASIGNADO', { activo: false }, acceso)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   it('sin la tabla no se cae: rige lo sugerido', async () => {
     const srv = new AvisosService({ query: jest.fn().mockRejectedValue(new Error('no existe')) } as never);
 
-    expect((await srv.queRige('3.2', 'DEVUELTA')).activo).toBe(true);
+    expect((await srv.queRige('3.1', 'PROCESO_RADICADO')).activo).toBe(true);
   });
 
-  it('no deja encender un aviso sin nadie a quien avisar', async () => {
-    const { srv, query } = conFilas([]);
+  it('sin el catálogo de dependencias no se cae: no ofrece ninguna', async () => {
+    const srv = new AvisosService({ query: jest.fn().mockRejectedValue(new Error('no existe')) } as never);
 
-    await expect(srv.guardar('3.1', 'PROCESO_RADICADO', { activo: true }, acceso)).rejects.toThrow(
-      'Elige a quién avisar antes de encenderlo',
-    );
-    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT'))).toBe(false);
-  });
-
-  it('guarda por actividad y conserva lo que no se manda', async () => {
-    const { srv, query } = conFilas([]);
-
-    await srv.guardar('3.2', 'APROBADA', { activo: false }, acceso);
-
-    const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT'));
-    expect(insert?.[1]).toEqual(['3.2', 'APROBADA', false, '["QUIEN_ENVIO"]', '[]', 'director@esap.edu.co']);
-  });
-
-  it('rechaza avisos que no son de esa actividad y papeles que no existen', async () => {
-    const { srv } = conFilas([]);
-
-    await expect(srv.guardar('3.2', 'ABOGADO_ASIGNADO', { activo: false }, acceso)).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(srv.guardar('3.2', 'APROBADA', { papeles: ['JEFE'] }, acceso)).rejects.toThrow(
-      'Alguno de los papeles no existe',
-    );
+    expect(await srv.dependencias()).toEqual([]);
   });
 });

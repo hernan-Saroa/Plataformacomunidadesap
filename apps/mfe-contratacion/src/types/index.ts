@@ -3204,17 +3204,25 @@ export interface ParametroAlerta {
 
 /** Lo que puede pasar en un proceso y merece un aviso. */
 export type EventoAviso =
+  | 'HABILITADA'
   | 'DEVUELTA'
   | 'ENVIADA_A_APROBACION'
   | 'APROBADA'
-  | 'ABOGADO_ASIGNADO'
   | 'RECIBIDO_EN_CONTRATACION'
   | 'PROCESO_RADICADO'
-  | 'REGISTRADA'
   | 'DOCUMENTO_ADJUNTO';
 
 /** El papel que alguien cumple en un proceso concreto. */
-export type PapelAviso = 'QUIEN_ENVIO' | 'QUIEN_APRUEBA' | 'ABOGADO' | 'CONTRATACION' | 'RADICADOR';
+export type PapelAviso =
+  | 'QUIEN_ENVIO'
+  | 'QUIEN_APRUEBA'
+  | 'ABOGADO'
+  | 'CONTRATACION'
+  | 'RADICADOR'
+  | 'BANDEJA_CONTRATACION'
+  | 'EQUIPO_FINANCIERO'
+  | 'COMITE_EVALUADOR'
+  | 'SUPERVISOR';
 
 /** Un aviso de una actividad: cuándo sale, si está encendido y a quién le llega. */
 export interface AvisoEvento {
@@ -3226,10 +3234,24 @@ export interface AvisoEvento {
   activo: boolean;
   papeles: PapelAviso[];
   roles: { code: string; name: string }[];
+  /** Personas nombradas una a una, como en Aprobación. */
+  personas: { id: string; nombre: string }[];
+  /** Dependencias de la plataforma: el aviso llega a toda su gente. */
+  dependencias: { id: string; nombre: string }[];
+}
+
+/** Un aviso que sale siempre y no se configura, con a quién le llega. */
+export interface AvisoSiempre {
+  evento: EventoAviso;
+  nombre: string;
+  ayuda: string;
+  aQuien: string[];
 }
 
 export interface ConfiguracionAvisos {
   papeles: { codigo: PapelAviso; nombre: string }[];
+  requiereAprobacion: boolean;
+  siempre: AvisoSiempre[];
   avisos: AvisoEvento[];
 }
 
