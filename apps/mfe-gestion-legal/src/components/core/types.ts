@@ -499,6 +499,8 @@ export interface SolicitudInforme {
   tipoInforme: string;
   enteSolicitante: string;
   destinatario?: string;
+  // Norma, contrato, resolución u otro documento que origina la obligación de reportar.
+  fundamentoNormativo?: Array<{ tipo: string; cita: string; actualizacionPeriodica?: boolean; mesRecordatorio?: number }>;
   radicadoExterno: string;
   asunto: string;
   descripcion?: string;

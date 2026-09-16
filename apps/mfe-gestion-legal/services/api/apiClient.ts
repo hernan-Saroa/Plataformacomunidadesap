@@ -33,6 +33,12 @@ interface RetryConfig {
   delay: number;
 }
 
+// Las respuestas de la API llevan el ETag que Express pone por defecto, así que el navegador
+// las revalida y recibe 304. Si su caché en disco está corrupta o llena, leer el body de ese
+// 304 falla con ERR_CACHE_WRITE_FAILURE y fetch rechaza con "Failed to fetch". 'no-store'
+// saca al caché HTTP del camino: ni lee ni escribe.
+const NO_HTTP_CACHE: RequestInit = { cache: 'no-store' };
+
 export interface UploadProgressDetail {
   progress: number;
   loaded: number;
@@ -366,6 +372,7 @@ export class ApiClient {
         },
         signal: controller.signal,
         ...CORS_CONFIG,
+        ...NO_HTTP_CACHE,
       });
 
       clearTimeout(timeoutId);
@@ -430,6 +437,7 @@ export class ApiClient {
         },
         signal: controller.signal,
         ...CORS_CONFIG,
+        ...NO_HTTP_CACHE,
       });
 
       clearTimeout(timeoutId);

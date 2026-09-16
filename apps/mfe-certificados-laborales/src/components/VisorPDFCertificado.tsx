@@ -15,6 +15,32 @@ import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
 import { QRCodeCanvas } from 'qrcode.react';
 
+/**
+ * Centro de costo (grupo interno de trabajo) del primer valor utilizable.
+ * Descarta los marcadores de "no aplica" igual que `resolveLaborInternalGroup`
+ * del backend, para que ambas copias de la regla resuelvan lo mismo.
+ */
+export const resolverCentroCosto = (
+  ...valores: Array<string | null | undefined>
+): string => {
+  const NO_APLICA = ['n a', 'na', 'no aplica', 'no aplica ninguno', 'ninguno'];
+  for (const valor of valores) {
+    const texto = String(valor ?? '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!texto) continue;
+    const clave = texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    if (clave && !NO_APLICA.includes(clave)) return texto;
+  }
+  return '';
+};
+
 interface VisorPDFCertificadoProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,6 +97,7 @@ interface VisorPDFCertificadoProps {
     // Campos adicionales del backend
     position_location?: string; // Ubicación del cargo
     department?: string; // Departamento
+    certificate_dependency?: string;
     cod_cargo?: string; // Dependencia padre
     cod_grade?: string; // Grado del cargo
     campus?: string; // Sede
@@ -164,7 +191,7 @@ export function VisorPDFCertificado({
       .trim();
   };
 
-  const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) => {
+const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) => {
     const left = normalizarTexto(String(a || '').replace(/\u00a0/g, ' ').trim());
     const right = normalizarTexto(String(b || '').replace(/\u00a0/g, ' ').trim());
     if (!left || !right) return false;
@@ -392,7 +419,28 @@ export function VisorPDFCertificado({
         ? ubicacionCargo
         : observationsEncargo;
 
-    const dato7 = dependenciaHijo || certificado.position_location || '';
+    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
+    // solo usa la dependencia cuando no hay centro de costo. Misma regla y
+    // mismo orden que labor-certificate-pdf.service.ts en el backend: esta
+    // vista previa se renderiza aqui, asi que si las dos copias no coinciden el
+    // usuario ve una cosa en pantalla y otra en el PDF.
+    //
+    // No se usa `position_location`: es el unico campo cuyo significado se
+    // invierte segun la fuente (en las filas locales trae el grupo y en las de
+    // Oracle la dependencia o incluso la sucursal).
+    const centroCosto = resolverCentroCosto(
+      requestData?.internal_group,
+      requestData?.internalGroup,
+      requestData?.cost_center,
+      requestData?.costCenter,
+      (certificado as any)?.internal_group,
+      (certificado as any)?.cost_center,
+    );
+    const dato7 =
+      centroCosto ||
+      dependenciaHijo ||
+      normalizarDependencia(requestData?.organization_department) ||
+      '';
     const cargoDato6 = tipoVinculacion;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
@@ -450,7 +498,9 @@ export function VisorPDFCertificado({
       '[GRUPO]': grupoVariableResolved,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA]': (certificado as any).is_corrected
+        ? dato7
+        : requestData?.certificate_dependency ?? certificado.certificate_dependency ?? dato7,
       '[DEPENDENCIA_PADRE]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
@@ -793,19 +843,66 @@ export function VisorPDFCertificado({
   const renderFuncionesLaborales = (
     functions: Array<{ ordinal: number; description: string }>,
   ): string => {
+    const list = renderListaFuncionesLaborales(functions);
+    if (!list) return '';
+    return `<section class="labor-functions-section"><p class="labor-functions-legal-intro">Conforme lo establece <em>el Manual Espec\u00EDfico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP -.</em></p><p class="labor-functions-title">Las funciones para el cargo de son:</p>${list}</section>`;
+  };
+
+  const renderListaFuncionesLaborales = (
+    functions: Array<{ ordinal: number; description: string }>,
+  ): string => {
     if (!functions.length) return '';
     const items = functions
       .map((item) => `<li class="labor-function-item">${escaparHtml(item.description)}</li>`)
       .join('');
-    return `<section class="labor-functions-section"><p class="labor-functions-title">Las funciones asociadas al cargo son:</p><ul class="labor-functions-list">${items}</ul></section>`;
+    return `<ol class="labor-functions-list">${items}</ol>`;
+  };
+
+  const prepararBloqueFuncionesPlantilla = (html: string): string =>
+    html.replace(
+      /<section\b(?=[^>]*\bdata-functions-template=["']true["'])[^>]*>([\s\S]*?)<\/section>/gi,
+      (_match, body: string) => (incluirFunciones ? body : ''),
+    );
+
+  const reemplazarTokenFunciones = (
+    html: string,
+    functions: Array<{ ordinal: number; description: string }>,
+  ): { html: string; replaced: boolean } => {
+    const list = renderListaFuncionesLaborales(functions);
+    let replaced = false;
+    let result = html.replace(/<p>([\s\S]*?)<\/p>/gi, (paragraph, body: string) => {
+      const text = body.replace(/<[^>]+>/g, '').trim();
+      if (!/^\[FUNCIONES\]$/i.test(text)) return paragraph;
+      replaced = true;
+      return list;
+    });
+
+    if (!replaced && /\[FUNCIONES\]/i.test(result)) {
+      result = result.replace(/\[FUNCIONES\]/gi, list);
+      replaced = true;
+    }
+
+    return { html: result, replaced };
   };
 
   const insertarFuncionesLaborales = (
     html: string,
     functions: Array<{ ordinal: number; description: string }>,
   ): string => {
+    if (!functions.length) {
+      return html
+        .replace(/<p>([\s\S]*?)<\/p>/gi, (paragraph, body: string) =>
+          /^\[FUNCIONES\]$/i.test(body.replace(/<[^>]+>/g, '').trim())
+            ? ''
+            : paragraph,
+        )
+        .replace(/\[FUNCIONES\]/gi, '');
+    }
+
+    const tokenResult = reemplazarTokenFunciones(html, functions);
+    if (tokenResult.replaced) return tokenResult.html;
+
     const section = renderFuncionesLaborales(functions);
-    if (!section) return html;
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
@@ -813,11 +910,17 @@ export function VisorPDFCertificado({
       const sectionNode = sectionDoc.body.firstElementChild;
       if (!sectionNode) return `${html}${section}`;
 
-      const expideNode = Array.from(doc.body.querySelectorAll('p, div')).find((node) =>
+      const paragraphs = Array.from(doc.body.querySelectorAll('p, div'));
+      const compensationNode = paragraphs.find((node) => {
+        const text = normalizarTexto(node.textContent || '');
+        return text.includes('salari') || text.includes('asignaci') || text.includes('prima');
+      });
+      const issueNode = paragraphs.find((node) =>
         normalizarTexto(node.textContent || '').includes('se expide'),
       );
-      if (expideNode) {
-        expideNode.parentNode?.insertBefore(doc.importNode(sectionNode, true), expideNode);
+      const insertionNode = compensationNode || issueNode;
+      if (insertionNode) {
+        insertionNode.parentNode?.insertBefore(doc.importNode(sectionNode, true), insertionNode);
       } else {
         doc.body.appendChild(doc.importNode(sectionNode, true));
       }
@@ -1270,7 +1373,11 @@ export function VisorPDFCertificado({
   }
 
   const contenidoNormalizado = plantillaConfig.certificateContentHtml
-    ? limpiarSeccionesSalario(reemplazarVariables(plantillaConfig.certificateContentHtml))
+    ? limpiarSeccionesSalario(
+        reemplazarVariables(
+          prepararBloqueFuncionesPlantilla(plantillaConfig.certificateContentHtml),
+        ),
+      )
     : '';
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
@@ -1371,6 +1478,10 @@ export function VisorPDFCertificado({
         .labor-functions-section {
           margin: 0 0 12pt 0;
         }
+        .certificate-content-block .labor-functions-legal-intro,
+        .labor-functions-legal-intro {
+          margin: 0 0 12pt 0;
+        }
         .certificate-content-block .labor-functions-title,
         .labor-functions-title {
           margin: 0 0 8pt 0;
@@ -1381,7 +1492,7 @@ export function VisorPDFCertificado({
           margin: 0 0 12pt 0;
           padding: 0 0 0 20pt;
           list-style-position: outside;
-          list-style-type: disc;
+          list-style-type: decimal;
         }
         .certificate-content-block .labor-functions-list .labor-function-item,
         .labor-functions-list .labor-function-item {
@@ -1509,6 +1620,22 @@ export function VisorPDFCertificado({
             Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.empleado.dependencia || certificado.department || certificado.position_location || ''}.
           </p>
 
+          {funcionesLaborales.length > 0 && (
+            <section className="labor-functions-section" style={{ fontSize: '12pt', lineHeight: '1.5' }}>
+              <p className="labor-functions-legal-intro">
+                Conforme lo establece <em>el Manual Espec\u00EDfico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP -.</em>
+              </p>
+              <p className="labor-functions-title">Las funciones para el cargo de son:</p>
+              <ol className="labor-functions-list">
+                {funcionesLaborales.map((funcion, index) => (
+                  <li className="labor-function-item" key={`${funcion.ordinal}-${index}`}>
+                    {funcion.description}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
           {incluirSalario && (
             <p style={{
               textAlign: 'justify',
@@ -1530,19 +1657,6 @@ export function VisorPDFCertificado({
               dangerouslySetInnerHTML={{ __html: primaTecnicaParrafos }}
               style={{ lineHeight: '1.5', fontSize: '12pt' }}
             />
-          )}
-
-          {funcionesLaborales.length > 0 && (
-            <section className="labor-functions-section" style={{ fontSize: '12pt', lineHeight: '1.5' }}>
-              <p className="labor-functions-title">Las funciones asociadas al cargo son:</p>
-              <ul className="labor-functions-list">
-                {funcionesLaborales.map((funcion, index) => (
-                  <li className="labor-function-item" key={`${funcion.ordinal}-${index}`}>
-                    {funcion.description}
-                  </li>
-                ))}
-              </ul>
-            </section>
           )}
 
           <div style={{ height: '12pt' }}></div>

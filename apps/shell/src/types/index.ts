@@ -269,6 +269,7 @@ export interface CreateUserDTO {
   // PROGRAMAS ACADÉMICOS - Vinculación académica del usuario
   asignacionesProgramas?: CreateAsignacionProgramaDTO[];  // Array de programas académicos vinculados
   programaPrincipalId?: string;                  // ID del programa principal (si aplica)
+  idDependencia?: number | null;                 // Dependencia a la que pertenece la persona
 }
 
 /**
@@ -312,6 +313,7 @@ export interface UpdateUserDTO {
   // PROGRAMAS ACADÉMICOS - Vinculación académica del usuario
   asignacionesProgramas?: CreateAsignacionProgramaDTO[];
   programaPrincipalId?: string;
+  idDependencia?: number | null;
 }
 
 export interface UsersStats {

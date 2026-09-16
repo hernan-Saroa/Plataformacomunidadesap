@@ -1,16 +1,27 @@
 import React, { ReactNode } from 'react';
 import { Check, Minus, ChevronDown, Lock, Paperclip } from 'lucide-react';
 
-export type EstadoActividadUI = 'aprobada' | 'en_curso' | 'pendiente' | 'no_aplica';
+// El tipo vive con la función que lo produce; se reexporta porque el riel y el
+// detalle ya lo importaban desde aquí.
+export type { EstadoActividadUI } from './estadoActividad';
+import type { EstadoActividadUI } from './estadoActividad';
 
 export interface ActividadEtapa {
   numeral: string;
   nombre: string;
   descripcion?: string;
+  /** Etapa de la matriz a la que pertenece; el riel agrupa por ella. */
+  etapa?: number;
   estado: EstadoActividadUI;
   /** Texto de apoyo bajo el nombre (ej. "faltan 13 campos"). */
   detalle?: string;
-  /** Solo las actividades con HU entregada son navegables. */
+  /**
+   * Si ya se puede trabajar: la secuencia llegó hasta ella y tiene panel.
+   *
+   * Dejó de decidir si se puede abrir (EFDS-1183). Todas se abren, para poder
+   * ver qué piden; lo que esto gobierna es si el panel acepta escritura o se
+   * monta en solo lectura.
+   */
   disponible?: boolean;
   /** Documentos cargados en esta actividad. */
   adjuntos?: number;

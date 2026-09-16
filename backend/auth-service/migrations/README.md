@@ -1,11 +1,18 @@
 # Migraciones de Base de Datos - Estructura Organizacional
 
+> **NOTA DE UBICACIÓN**: Las migraciones SQL de auth-service viven en
+> `backend/auth-service/db/migrations/`. Este directorio `migrations/` se
+> conserva únicamente para compatibilidad con el `run-migration.js`
+> legacy. Para cualquier migración nueva, crear el archivo en
+> `db/migrations/` (formato `NNN_descripcion.sql`).
+
 Este directorio contiene las migraciones SQL para la estructura organizacional de ESAP.
 
 ## Contenido
 
 - `001-create-estructura-organizacional.sql` - Creación de tablas y esquema
 - `002-seed-estructura-organizacional.sql` - Datos iniciales (326 unidades organizacionales)
+- `003_dependencias_app_columns_and_seed.sql` - Catálogo transversal de dependencias ESAP (RF transversal, idempotente)
 
 ## Estructura de Datos
 

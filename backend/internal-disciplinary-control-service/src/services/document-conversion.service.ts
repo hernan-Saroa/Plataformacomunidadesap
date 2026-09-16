@@ -28,6 +28,10 @@ interface WordPlaceholderReplacement {
   value: string;
 }
 
+interface ConvertWordToPdfOptions {
+  autoConfigTipo?: string;
+}
+
 @Injectable()
 export class DocumentConversionService {
   private readonly logger = new Logger(DocumentConversionService.name);
@@ -38,6 +42,7 @@ export class DocumentConversionService {
     documentUrl: string,
     preferredPdfName: string,
     replacements: WordPlaceholderReplacement[] = [],
+    options: ConvertWordToPdfOptions = {},
   ): Promise<ConvertedDocumentResult> {
     const inputFilename = path.basename(decodeURIComponent(documentUrl));
     const inputPath = this.storageService.getFullPath(documentUrl);
@@ -87,6 +92,7 @@ export class DocumentConversionService {
         conversionInputPath,
         outputPath,
         replacements,
+        options,
       );
       replacedMarkers = Array.from(
         new Set([...replacedMarkers, ...conversionReplacedMarkers]),
@@ -133,6 +139,7 @@ export class DocumentConversionService {
     inputPath: string,
     outputPath: string,
     replacements: WordPlaceholderReplacement[] = [],
+    options: ConvertWordToPdfOptions = {},
   ): Promise<string[]> {
     this.logger.log(`[Conversion] Starting Word to PDF conversion for: ${inputPath}`);
     const errors: string[] = [];
@@ -144,6 +151,7 @@ export class DocumentConversionService {
         inputPath,
         outputPath,
         replacements,
+        options,
       );
       this.logger.log(`[Conversion] Mammoth + Puppeteer succeeded`);
       return replacedMarkers;
@@ -310,7 +318,18 @@ export class DocumentConversionService {
     inputPath: string,
     outputPath: string,
     replacements: WordPlaceholderReplacement[] = [],
+    options: ConvertWordToPdfOptions = {},
   ): Promise<string[]> {
+    const { autoConfigTipo } = options;
+    // Aplicar restricción de altura solo para tipos de auto con pie de página problemático
+    // (ej. Auto Inhibitorio con iconos ICONTEC/ISO en el footer)
+    // Usamos la configuración paramétrica (autoConfigTipo) en lugar de hardcoded strings
+    const shouldConstrainFooterImages = autoConfigTipo
+      ? ['INHIBITORIO', 'AUTO_INHIBITORIO'].some((t) =>
+          autoConfigTipo.toUpperCase().includes(t.toUpperCase()),
+        )
+      : false;
+
     let browser;
     try {
       this.logger.log(`[Mammoth] Starting conversion: ${inputPath} -> ${outputPath}`);
@@ -343,64 +362,82 @@ export class DocumentConversionService {
       // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
       // así que el membrete y el pie de página insertados como encabezado/pie de
       // Word se pierden en la conversión. Se extraen aparte (imágenes y texto) y
-      // se anteponen/adjuntan al contenido.
+      // se inyectan como encabezado/pie de página REALES de Puppeteer, para que
+      // queden fijos en el margen y se repitan en todas las páginas, tal como en
+      // el documento original (antes se anteponían al cuerpo y salían en línea a
+      // mitad de página, en desorden).
       const headerContent = await this.extractHeaderContent(inputPath);
+      const footerContent = await this.extractFooterContent(inputPath);
+
+      // El membrete y el pie de ESAP son imágenes tipo "banner" que ocupan todo el
+      // ancho de la página (el logo queda a la izquierda; "www.esap.edu.co" a la
+      // derecha). Se renderizan a ancho completo, no centradas ni encogidas.
+      // FIX: Para Auto Inhibitorio, el pie tiene iconos (ICONTEC/ISO) que son banner ancho.
+      // Aumentamos el margen inferior para que quepan sin solaparse con el cuerpo.
+      // El margen normal es 4cm; usamos 5.5cm para dar espacio al banner del pie.
+      const footerImageStyle = shouldConstrainFooterImages
+        ? 'display:block; width:100%; height:auto; object-fit:contain;'
+        : 'display:block; width:100%;';
+      // Margen inferior para dar espacio completo al banner del pie institucional,
+      // las 5 líneas de contacto y la paginación para TODOS los autos con pie
+      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '4.8cm';
       const headerImagesHtml = headerContent.images
-        .map(
-          (src) =>
-            `<img src="${src}" style="max-width:100%; display:block; margin: 0 0 12pt 0;" />`,
-        )
+        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
       const headerTextHtml = headerContent.textBlocks
         .map(
           (texto) =>
-            `<p style="text-align:center; font-size:10pt; margin: 0 0 4pt 0;">${this.escapeHtmlText(texto)}</p>`,
+            `<div style="text-align:center; font-size:8pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
-
-      const footerContent = await this.extractFooterContent(inputPath);
       const footerImagesHtml = footerContent.images
-        .map(
-          (src) =>
-            `<img src="${src}" style="max-width:100%; display:block; margin: 12pt 0 0 0;" />`,
-        )
+        .map((src) => `<img src="${src}" style="${footerImageStyle}" />`)
         .join('');
       const footerTextHtml = footerContent.textBlocks
         .map(
           (texto) =>
-            `<p style="text-align:center; font-size:10pt; margin: 4pt 0 0 0;">${this.escapeHtmlText(texto)}</p>`,
+            `<div style="text-align:left; font-size:7pt; line-height:1.2;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
 
-      // Crear HTML completo con estilos básicos
+      const hasHeader = headerImagesHtml.length > 0 || headerTextHtml.length > 0;
+      const hasFooter = footerImagesHtml.length > 0 || footerTextHtml.length > 0;
+
+      const headerTemplate = this.buildHeaderTemplate(headerImagesHtml, headerTextHtml);
+      const footerTemplate = this.buildFooterTemplate(footerImagesHtml, footerTextHtml);
+
+      // Crear HTML completo con estilos limpios sin doble margen de body
       const fullHtml = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
           <style>
+            @page {
+              size: A4;
+            }
             body {
               font-family: 'Times New Roman', Times, serif;
               font-size: 12pt;
-              line-height: 1.5;
-              margin: 2cm;
+              line-height: 1.4;
+              margin: 0;
+              padding: 0;
+              color: #000;
             }
             .mammoth-style-wrapper {
               max-width: 100%;
             }
-            /* Estilos adicionales para mejor compatibilidad */
-            p { margin: 0 0 10pt 0; }
+            p { 
+              margin: 0 0 8pt 0; 
+              text-align: justify;
+            }
             table { border-collapse: collapse; width: 100%; }
             td, th { border: 1px solid #000; padding: 4pt; }
           </style>
         </head>
         <body>
           <div class="mammoth-style-wrapper">
-            ${headerImagesHtml}
-            ${headerTextHtml}
             ${htmlContent}
-            ${footerImagesHtml}
-            ${footerTextHtml}
           </div>
         </body>
         </html>
@@ -418,7 +455,6 @@ export class DocumentConversionService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--single-process',
           '--disable-gpu'
         ]
       });
@@ -427,16 +463,21 @@ export class DocumentConversionService {
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
-      // Generar PDF
+      // Generar PDF. Cuando hay membrete/pie se activa displayHeaderFooter y se
+      // amplía el margen superior/inferior para que las plantillas quepan sin
+      // solaparse con el cuerpo.
       this.logger.log(`[Mammoth] Generating PDF...`);
       await page.pdf({
         path: outputPath,
         format: 'A4',
         printBackground: true,
+        displayHeaderFooter: hasHeader || hasFooter,
+        headerTemplate,
+        footerTemplate,
         margin: {
-          top: '2cm',
+          top: hasHeader ? '3.8cm' : '2cm',
           right: '2cm',
-          bottom: '2cm',
+          bottom: hasFooter ? footerMarginBottom : '2cm',
           left: '2cm'
         }
       });
@@ -452,6 +493,48 @@ export class DocumentConversionService {
         await browser.close();
       }
     }
+  }
+
+  /**
+   * Construye la plantilla HTML del encabezado para la exportación a PDF.
+   * La imagen del membrete se renderiza a ancho completo y el texto institucional
+   * se superpone de forma absoluta en el espacio superior del banner, evitando que
+   * se desplace hacia abajo y se solape con el cuerpo del auto.
+   */
+  buildHeaderTemplate(headerImagesHtml: string, headerTextHtml: string): string {
+    const hasHeader = Boolean(headerImagesHtml || headerTextHtml);
+    if (!hasHeader) {
+      return '<div></div>';
+    }
+
+    const headerBodyHtml = headerImagesHtml
+      ? `<div style="position:relative; width:100%;">${headerImagesHtml}${
+          headerTextHtml
+            ? `<div style="position:absolute; left:0; top:8px; width:100%; padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`
+            : ''
+        }</div>`
+      : `<div style="padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`;
+
+    return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">${headerBodyHtml}</div>`;
+  }
+
+  /**
+   * Construye la plantilla HTML del pie de página para la exportación a PDF.
+   */
+  buildFooterTemplate(footerImagesHtml: string, footerTextHtml: string): string {
+    const hasFooter = Boolean(footerImagesHtml || footerTextHtml);
+    if (!hasFooter) {
+      return '<div></div>';
+    }
+
+    const footerPageNumberHtml =
+      '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+
+    const footerBodyHtml = footerImagesHtml
+      ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
+      : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
+
+    return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`;
   }
 
   private escapePowerShellString(value: string): string {

@@ -12,6 +12,36 @@ describe('LaborOracleIntegrationService', () => {
   const buildSuggestedRequest = (row: Record<string, unknown>) =>
     service['buildSuggestedRequest'](row);
 
+  it('consulta por documento las vinculaciones relacionadas al cargo en un solo SELECT', async () => {
+    const execute = jest.fn().mockResolvedValue({ rows: [
+      { CEDULA: '123', COD_CARGO: '202812', GRADO: '12', TIPO: 'E' },
+      { CEDULA: '123', COD_CARGO: '204409', GRADO: '09', TIPO: 'N', CENTROCOSTO: 'Grupo normal' },
+    ] });
+    jest.spyOn(service as any, 'withConnection').mockImplementation(async (callback: any) =>
+      callback({ execute }, { OUT_FORMAT_OBJECT: 1 }, { qualifiedView: 'SCHEMA.VISTA' }),
+    );
+    const rows = await service.findSuggestedRequestsByPositionCodes(['202812'], 10000, true);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const [sql, binds] = execute.mock.calls[0];
+    expect(sql).toContain("WHERE REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '') IN");
+    expect(sql).toContain("WHERE REGEXP_REPLACE(TO_CHAR(COD_CARGO), '[^0-9]', '') IN (:cod0)");
+    expect(binds).toEqual({ cod0: '202812', limite: 10000 });
+    expect(rows.map(row => row.cod_cargo)).toEqual(['202812', '204409']);
+    expect(rows[1].internal_group).toBe('Grupo normal');
+  });
+
+  it('mapea CENTROCOSTO como grupo interno cuando Oracle no informa otro grupo', () => {
+    expect(buildSuggestedRequest({ CENTROCOSTO: 'Grupo Académico' }).internal_group)
+      .toBe('Grupo Académico');
+  });
+
+  it('prioriza el grupo explícito y usa CENTROCOSTO si contiene N/A', () => {
+    expect(buildSuggestedRequest({ GRUPO_INTERNO: 'Grupo Académico', CENTROCOSTO: 'CC-100' }).internal_group)
+      .toBe('Grupo Académico');
+    expect(buildSuggestedRequest({ GRUPO_INTERNO: 'N/A', CENTROCOSTO: 'Grupo Académico' }).internal_group)
+      .toBe('Grupo Académico');
+  });
+
   it('prioriza CENTROCOSTO para la dependencia del certificado', () => {
     const request = buildSuggestedRequest({
       CENTROCOSTO: 'Grupo de Seguridad y Salud en el Trabajo',

@@ -32,11 +32,19 @@ import {
   type CertificateCorrectionTraceEvent,
 } from './certificate-correction-request.entity';
 import { LaborFunctionsService } from './labor-functions.service';
+import { resolveLaborInternalGroup } from './labor-functions.utils';
 import {
   findDuplicateLaborFunctions,
   normalizeLaborFunctionText,
   parseLaborFunctionsRaw,
 } from './labor-functions.utils';
+import {
+  attachLaborOrganizationContexts,
+  buildLaborOrganizationContext,
+  selectNormalLaborRequest,
+} from './labor-organization-context.utils';
+import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
+import { MANAGE_CORRECTIONS_PERMISSION } from './certificate-corrections.constants';
 
 type TemplateType = 'docente' | 'administrador';
 
@@ -96,6 +104,16 @@ const CERTIFICATION_EMAIL_SAFE_MODE =
   'false';
 const CERTIFICATION_EMAIL_SAFE_RECIPIENT =
   process.env.CERTIFICATION_EMAIL_SAFE_RECIPIENT || 'pruebasesap@gmail.com';
+
+// Enlace directo a la bandeja de correcciones que se incluye en el aviso a los
+// revisores. Si no se configura, el correo se envía igual pero sin el botón.
+const CERTIFICATION_CORRECTIONS_PANEL_URL = (
+  process.env.CERTIFICATION_CORRECTIONS_PANEL_URL || ''
+).trim();
+
+// Tope de espera de los avisos de radicación. Solo aplica a esos correos: la
+// aprobación y el rechazo siguen sin timeout porque son bloqueantes a propósito.
+const CORRECTION_NOTIFICATION_TIMEOUT_MS = 15000;
 
 type GeoLookupResult = {
   city?: string;
@@ -1424,6 +1442,33 @@ export class CertificatesService {
       .map(({ request }) => request);
   }
 
+  /**
+   * Vinculacion FINAL que usa el certificado para una persona.
+   *
+   * No basta con `selectPreferredRequestForCertificate`: despues de elegir la
+   * vinculacion base, el certificado aplica la fuente salarial y el merge de
+   * codigos, y ese merge es el que puede reemplazar cod_cargo/cod_grade (por
+   * ejemplo, tomando el grado del encargo vigente). Quien quiera saber "con que
+   * cargo sale esta persona en su certificado" tiene que pasar por aqui: usar
+   * solo el selector devuelve el cargo base y contradice al documento impreso.
+   *
+   * Es de solo lectura y delega en las implementaciones privadas para que no
+   * existan dos criterios distintos de "cual vinculacion vale".
+   */
+  resolveRequestUsedForCertificate(
+    requests: CertificateRequest[],
+  ): CertificateRequest | null {
+    const selected = this.selectPreferredRequestForCertificate(requests);
+    if (!selected) {
+      return null;
+    }
+    const salarySource = this.selectSalarySourceForCertificate(
+      selected,
+      requests,
+    );
+    return this.mergeRequestWithSalarySource(selected, salarySource, requests);
+  }
+
   private selectPreferredRequestForCertificate(
     requests: CertificateRequest[],
   ): CertificateRequest | null {
@@ -1531,29 +1576,7 @@ export class CertificatesService {
     selectedRequest: CertificateRequest,
     requests: CertificateRequest[],
   ): CertificateRequest {
-    const activeWithoutEncargo = this.sortRequestsBySelectionDate(
-      requests,
-    ).filter((request) => {
-      const isActive =
-        this.resolveEmploymentStatus(
-          request.hiring_date,
-          request.request_date,
-          request.status,
-        ) === 'ACTIVO';
-      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
-      return isActive && !isEncargo;
-    });
-
-    const primaryAdministrativeActiveWithoutEncargo =
-      activeWithoutEncargo.filter((request) =>
-        this.isPrimaryAdministrativeAct(request.position_category),
-      );
-
-    return (
-      primaryAdministrativeActiveWithoutEncargo[0] ||
-      activeWithoutEncargo[0] ||
-      selectedRequest
-    );
+    return selectNormalLaborRequest(selectedRequest, requests);
   }
 
   private mergeRequestWithSalarySource(
@@ -1599,6 +1622,7 @@ export class CertificatesService {
       ...mergedBase,
       cod_cargo: preferredCodCargo ?? mergedBase.cod_cargo,
       cod_grade: preferredCodGrade ?? mergedBase.cod_grade,
+      ...buildLaborOrganizationContext(selectedRequest, relatedRequests),
     };
   }
 
@@ -1635,6 +1659,10 @@ export class CertificatesService {
     cert.request = cert.request
       ? ({ ...cert.request, ...requestContext } as CertificateRequest)
       : requestContext;
+    if (cert.is_corrected) {
+      cert.request.certificate_dependency = undefined;
+      cert.request.certificate_organization = undefined;
+    }
 
     if (requestContext.cod_cargo) {
       cert.cod_cargo = requestContext.cod_cargo;
@@ -1817,6 +1845,7 @@ export class CertificatesService {
     private templateConfigService: TemplateConfigService,
     private laborOracleIntegrationService: LaborOracleIntegrationService,
     private laborFunctionsService: LaborFunctionsService,
+    private permissionsService: LaborCertificatePermissionsService,
   ) {}
 
   // ============================================
@@ -1824,9 +1853,10 @@ export class CertificatesService {
   // ============================================
 
   async findAllSolicitudes() {
-    return await this.requestRepo.find({
+    const requests = await this.requestRepo.find({
       order: { request_date: 'DESC' },
     });
+    return attachLaborOrganizationContexts(requests);
   }
 
   /**
@@ -2286,6 +2316,38 @@ export class CertificatesService {
     });
   }
 
+  /**
+   * Dependencia que realmente imprime la plantilla en `[DEPENDENCIA]`.
+   *
+   * Replica la precedencia de LaborCertificatePdfService: para un certificado
+   * normal manda la dependencia del certificado (centro de costo primero) y en
+   * uno ya corregido manda lo que dejó guardado la corrección. Se usa para
+   * precargar el formulario de corrección con el valor que el coordinador ve
+   * en el documento, y no con la columna cruda `department`, que puede diferir.
+   */
+  private resolveEffectiveCertificateDependency(
+    certificate?: Certificate | null,
+  ): string {
+    if (!certificate) return '';
+    const text = (value: unknown) => String(value ?? '').trim();
+    const certificateDepartment = text(certificate.department);
+    const request = certificate.request;
+    const centroCosto = text(
+      resolveLaborInternalGroup(request?.internal_group, request?.cost_center),
+    );
+
+    if ((certificate as Certificate & { is_corrected?: boolean }).is_corrected === true) {
+      return certificateDepartment || centroCosto;
+    }
+
+    const dato7 =
+      centroCosto ||
+      text(request?.department) ||
+      certificateDepartment ||
+      text(request?.organization_department);
+    return text(request?.certificate_dependency) || dato7;
+  }
+
   private certificateCorrectionSnapshot(certificate: Certificate) {
     return {
       id: certificate.id,
@@ -2305,7 +2367,9 @@ export class CertificatesService {
       include_functions: certificate.include_functions,
       functions_snapshot: certificate.functions_snapshot,
       salary_text: certificate.salary_text,
-      department: certificate.department,
+      // La dependencia efectiva, no la columna cruda: es la que se compara en
+      // el "antes / después" y la que ve el coordinador en el documento.
+      department: this.resolveEffectiveCertificateDependency(certificate),
       cod_cargo: certificate.cod_cargo,
       cod_grade: certificate.cod_grade,
       encargo_type:
@@ -2502,6 +2566,11 @@ export class CertificatesService {
       }
       throw error;
     }
+
+    // Acuse de recibo al solicitante y aviso a quienes gestionan correcciones.
+    // No bloquea el radicado: la solicitud ya quedó guardada.
+    await this.sendCorrectionRequestCreatedEmails(saved, files.length);
+
     return {
       id: saved.id,
       request_number: saved.request_number,
@@ -2593,7 +2662,17 @@ export class CertificatesService {
     });
     if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
-    return this.correctionResponse(request);
+    const response = this.correctionResponse(request);
+    if (!response.certificate) return response;
+    // Se expone la dependencia efectiva (sin tocar la entidad ni la BD) para que
+    // el formulario precargue el mismo valor que imprime el certificado.
+    return {
+      ...response,
+      certificate: {
+        ...response.certificate,
+        department: this.resolveEffectiveCertificateDependency(request.certificate),
+      },
+    };
   }
 
   async previewCertificateCorrectionRequest(
@@ -2962,6 +3041,8 @@ export class CertificatesService {
         }),
       );
     }
+    // Se calcula una sola vez: alimenta la trazabilidad y el aviso interno.
+    const appliedChanges = this.correctionChanges(originalSnapshot, correctedSnapshot);
     request.status = 'APPROVED';
     request.reviewed_by_id = reviewer.id || null;
     request.reviewed_by_name = reviewer.name || 'Coordinador Certificados Laborales';
@@ -2986,11 +3067,20 @@ export class CertificatesService {
           recipient: sent.to,
           delivery_status: 'SENT',
            evidence_count: request.resolution_evidence.length,
-           changes: this.correctionChanges(originalSnapshot, correctedSnapshot),
+           changes: appliedChanges,
         },
       }),
     );
     await this.correctionRequestRepo.save(request);
+
+    // Aviso interno de cierre. No bloquea: el caso ya quedó resuelto y el
+    // solicitante ya recibió su certificado corregido.
+    await this.sendCorrectionResolutionReviewerEmails(request, {
+      approved: true,
+      changes: appliedChanges,
+      evidenceCount: request.resolution_evidence.length,
+      certificateNumber: String(request.certificate?.certificate_number || 'No disponible'),
+    });
 
     return {
       ...this.correctionResponse(request),
@@ -3116,6 +3206,385 @@ export class CertificatesService {
     return `<div style="font-family:Arial,'Helvetica Neue',sans-serif;background:#f0f4f8;padding:32px 16px;margin:0"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center"><table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#fff;border:1px solid #dde3ed;border-radius:10px;overflow:hidden"><tr><td style="height:4px;background:#ef4444;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="background:#003DA5;padding:20px 28px"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td><div style="font-size:20px;font-weight:800;color:#fff">ESAP</div><div style="font-size:10px;color:#bfdbfe;margin-top:2px;letter-spacing:.8px;text-transform:uppercase">Certificados Laborales</div></td><td align="right"><span style="background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px">Solicitud no aprobada</span></td></tr></table></td></tr><tr><td style="padding:30px 28px 8px"><h1 style="margin:0 0 8px;font-size:22px;color:#111827">Resultado de tu solicitud de corrección</h1><p style="margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6">Hola <strong style="color:#334155">${requesterName}</strong>, finalizamos la revisión de la información y las evidencias remitidas.</p><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:14px 16px"><span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase">Solicitud</span><br><strong style="font-size:14px;color:#003DA5">${requestNumber}</strong><br><span style="display:inline-block;margin-top:9px;font-size:12px;color:#64748b">Certificado ${certificateNumber}</span></td></tr></table><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fff1f2;border:1px solid #fecdd3;border-radius:8px"><tr><td style="padding:15px 16px;font-size:13px;color:#9f1239;line-height:1.65"><strong>Descripción de la decisión</strong><br>${reason}</td></tr></table>${evidenceNotice}<p style="margin:22px 0 14px;font-size:13px;color:#64748b;line-height:1.6">Esta respuesta y sus soportes quedan registrados en la trazabilidad de la solicitud.</p></td></tr><tr><td style="padding:14px 28px 18px;background:#f8fafc;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:12px;color:#94a3b8">ESAP — Escuela Superior de Administración Pública</p></td></tr></table></td></tr></table></div>`;
   }
 
+  /**
+   * Fecha legible para los correos del flujo de correcciones. Se fija a la zona
+   * de Bogotá para que el texto no dependa de la zona del proceso.
+   */
+  private formatCorrectionEmailDate(
+    value?: Date | string | null,
+    withTime = false,
+  ): string {
+    if (!value) return 'No disponible';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return 'No disponible';
+    return new Intl.DateTimeFormat('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Bogota',
+      ...(withTime ? { hour: '2-digit' as const, minute: '2-digit' as const } : {}),
+    }).format(date);
+  }
+
+  /**
+   * Acuse de recibo para el ciudadano: confirma el radicado y el plazo. No
+   * lleva adjuntos ni información interna del trámite.
+   */
+  private buildCorrectionAcknowledgementEmailHtml(
+    request: CertificateCorrectionRequest,
+    evidenceCount: number,
+  ): string {
+    const requestNumber = this.escapeEmailHtml(request.request_number);
+    const requesterName = this.escapeEmailHtml(request.requester_name || 'usuario');
+    const certificateNumber = this.escapeEmailHtml(
+      String(request.certificate_snapshot?.certificate_number || 'Certificado laboral ESAP'),
+    );
+    const description = this.escapeEmailHtml(request.description || '');
+    const dueDate = this.escapeEmailHtml(this.formatCorrectionEmailDate(request.due_date));
+    const evidenceNotice =
+      evidenceCount > 0
+        ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:16px"><tr><td style="padding:13px 16px;font-size:13px;color:#475569;line-height:1.5">Recibimos ${evidenceCount === 1 ? '1 archivo de soporte' : `${evidenceCount} archivos de soporte`} junto con tu solicitud.</td></tr></table>`
+        : '';
+
+    return `<div style="font-family:Arial,'Helvetica Neue',sans-serif;background:#f0f4f8;padding:32px 16px;margin:0"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center"><table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#fff;border:1px solid #dde3ed;border-radius:10px;overflow:hidden"><tr><td style="height:4px;background:#F59E0B;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="background:#003DA5;padding:20px 28px"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td><div style="font-size:20px;font-weight:800;color:#fff">ESAP</div><div style="font-size:10px;color:#bfdbfe;margin-top:2px;letter-spacing:.8px;text-transform:uppercase">Certificados Laborales</div></td><td align="right"><span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px">Solicitud radicada</span></td></tr></table></td></tr><tr><td style="padding:30px 28px 8px"><h1 style="margin:0 0 8px;font-size:22px;color:#111827">Recibimos tu solicitud de corrección</h1><p style="margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6">Hola <strong style="color:#334155">${requesterName}</strong>, tu solicitud quedó radicada y será revisada por el equipo de Certificados Laborales. Guarda este número para hacer seguimiento.</p><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:16px"><span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase">Número de radicado</span><br><strong style="font-size:16px;color:#003DA5;letter-spacing:.3px">${requestNumber}</strong><table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:12px"><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Certificado</span><br><span style="font-size:14px;font-weight:600;color:#374151">${certificateNumber}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Fecha máxima de respuesta</span><br><span style="font-size:14px;font-weight:600;color:#374151">${dueDate}</span></td></tr></table></td></tr></table><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px"><tr><td style="padding:15px 16px;font-size:13px;color:#92400e;line-height:1.65"><strong>Lo que nos reportaste</strong><br>${description}</td></tr></table>${evidenceNotice}<p style="margin:22px 0 14px;font-size:13px;color:#64748b;line-height:1.6">Tienes un plazo máximo de <strong style="color:#334155">15 días hábiles</strong> para recibir una respuesta. Te escribiremos a este mismo correo cuando la revisión termine, tanto si la corrección se aprueba como si no.</p><p style="margin:0 0 14px;font-size:12px;color:#94a3b8;line-height:1.6">No respondas a este mensaje: es una notificación automática.</p></td></tr><tr><td style="padding:14px 28px 18px;background:#f8fafc;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:12px;color:#94a3b8">ESAP — Escuela Superior de Administración Pública</p></td></tr></table></td></tr></table></div>`;
+  }
+
+  /**
+   * Aviso interno para quienes tienen el permiso de gestionar correcciones.
+   * Lleva los datos que el revisor necesita para priorizar el caso.
+   */
+  private buildCorrectionReviewerAlertEmailHtml(
+    request: CertificateCorrectionRequest,
+    evidenceCount: number,
+    reviewerName?: string | null,
+  ): string {
+    const requestNumber = this.escapeEmailHtml(request.request_number);
+    const requesterName = this.escapeEmailHtml(request.requester_name || 'No disponible');
+    const requesterEmail = this.escapeEmailHtml(request.requester_email || 'No disponible');
+    const idNumber = this.escapeEmailHtml(
+      String(request.certificate_snapshot?.id_number || 'No disponible'),
+    );
+    const certificateNumber = this.escapeEmailHtml(
+      String(request.certificate_snapshot?.certificate_number || 'No disponible'),
+    );
+    const description = this.escapeEmailHtml(request.description || '');
+    const receivedAt = this.escapeEmailHtml(
+      this.formatCorrectionEmailDate(request.created_at || new Date(), true),
+    );
+    const dueDate = this.escapeEmailHtml(this.formatCorrectionEmailDate(request.due_date));
+    const greeting = reviewerName
+      ? `Hola <strong style="color:#334155">${this.escapeEmailHtml(reviewerName)}</strong>, se`
+      : 'Se';
+    const evidenceLabel =
+      evidenceCount === 0 ? 'Ninguno' : evidenceCount === 1 ? '1 archivo' : `${evidenceCount} archivos`;
+    const panelButton = CERTIFICATION_CORRECTIONS_PANEL_URL
+      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:22px 0 6px"><tr><td align="center"><a href="${this.escapeEmailHtml(CERTIFICATION_CORRECTIONS_PANEL_URL)}" style="display:inline-block;background:#003DA5;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:12px 26px;border-radius:8px">Abrir la bandeja de correcciones</a></td></tr></table>`
+      : '';
+
+    return `<div style="font-family:Arial,'Helvetica Neue',sans-serif;background:#f0f4f8;padding:32px 16px;margin:0"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center"><table cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #dde3ed;border-radius:10px;overflow:hidden"><tr><td style="height:4px;background:#2563EB;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="background:#003DA5;padding:20px 28px"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td><div style="font-size:20px;font-weight:800;color:#fff">ESAP</div><div style="font-size:10px;color:#bfdbfe;margin-top:2px;letter-spacing:.8px;text-transform:uppercase">Certificados Laborales</div></td><td align="right"><span style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px">Requiere gestión</span></td></tr></table></td></tr><tr><td style="padding:30px 28px 8px"><h1 style="margin:0 0 8px;font-size:21px;color:#111827">Nueva solicitud de corrección de certificado laboral</h1><p style="margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6">${greeting} radicó una solicitud desde el portal de autoservicio y está pendiente de revisión en la bandeja de correcciones.</p><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;margin-bottom:16px"><tr><td style="padding:16px"><span style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase">Radicado</span><br><strong style="font-size:16px;color:#003DA5;letter-spacing:.3px">${requestNumber}</strong></td></tr></table><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:16px"><p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Detalle del caso</p><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="padding:8px 0"><span style="font-size:12px;color:#6b7280">Solicitante</span><br><span style="font-size:14px;font-weight:600;color:#374151">${requesterName}</span><br><span style="font-size:12px;color:#6b7280">${requesterEmail}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Documento</span><br><span style="font-size:14px;font-weight:600;color:#374151">${idNumber}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Certificado</span><br><span style="font-size:14px;font-weight:600;color:#374151">${certificateNumber}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Recibida</span><br><span style="font-size:14px;font-weight:600;color:#374151">${receivedAt}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Fecha límite de respuesta</span><br><span style="font-size:14px;font-weight:700;color:#b91c1c">${dueDate}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Soportes adjuntos por el solicitante</span><br><span style="font-size:14px;font-weight:600;color:#374151">${evidenceLabel}</span></td></tr></table></td></tr></table><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #003DA5;border-radius:8px"><tr><td style="padding:15px 16px;font-size:13px;color:#334155;line-height:1.65"><strong style="color:#0f172a">Justificación reportada por el solicitante</strong><br>${description}</td></tr></table>${panelButton}<p style="margin:18px 0 14px;font-size:12px;color:#94a3b8;line-height:1.6">Recibes este aviso porque tu rol tiene habilitado el permiso para aprobar solicitudes de corrección. Es una notificación automática, no respondas a este mensaje.</p></td></tr><tr><td style="padding:14px 28px 18px;background:#f8fafc;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:12px;color:#94a3b8">ESAP — Escuela Superior de Administración Pública</p></td></tr></table></td></tr></table></div>`;
+  }
+
+  /**
+   * Envío puntual al servicio institucional de notificaciones, sin adjuntos.
+   *
+   * Lleva timeout propio porque estos avisos salen desde el endpoint público de
+   * radicación: si el servicio de notificaciones queda colgado, el ciudadano no
+   * puede quedarse esperando la respuesta de su solicitud.
+   */
+  private async postCorrectionNotificationEmail(payload: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+  }): Promise<void> {
+    const response = await fetch(
+      `${this.resolveNotificationsBaseUrl()}/api/v1/emails/send`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(CORRECTION_NOTIFICATION_TIMEOUT_MS),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Notifications service error (${response.status})`);
+    }
+  }
+
+  /**
+   * Avisos que salen cuando el ciudadano radica una corrección desde el portal:
+   * un acuse de recibo para él y una alerta para cada persona que hoy tenga
+   * habilitado el permiso de gestionar correcciones.
+   *
+   * A diferencia de la aprobación y el rechazo, aquí el correo NO es bloqueante:
+   * la solicitud ya quedó radicada y el ciudadano no debe perderla porque el
+   * servicio de notificaciones esté caído. Cualquier fallo se registra en el log
+   * y el flujo continúa.
+   */
+  private async sendCorrectionRequestCreatedEmails(
+    request: CertificateCorrectionRequest,
+    evidenceCount: number,
+  ): Promise<void> {
+    const requestNumber = request.request_number;
+
+    try {
+      const to = this.resolveOutboundEmailRecipient(request.requester_email);
+      await this.postCorrectionNotificationEmail({
+        to,
+        subject: `Solicitud de corrección ${requestNumber} radicada - Certificados Laborales ESAP`,
+        text: `Recibimos tu solicitud de corrección ${requestNumber}. Será revisada por el equipo de Certificados Laborales en un plazo máximo de 15 días hábiles.`,
+        html: this.buildCorrectionAcknowledgementEmailHtml(request, evidenceCount),
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `No fue posible enviar el acuse de recibo de la solicitud ${requestNumber}: ${error?.message || error}`,
+      );
+    }
+
+    let reviewers: Array<{ email: string; name: string | null }> = [];
+    try {
+      reviewers = await this.permissionsService.findActiveRecipientsWithPermission(
+        MANAGE_CORRECTIONS_PERMISSION,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `No fue posible resolver los revisores de correcciones para la solicitud ${requestNumber}: ${error?.message || error}`,
+      );
+      return;
+    }
+
+    if (reviewers.length === 0) {
+      this.logger.warn(
+        `La solicitud ${requestNumber} no tiene revisores con el permiso ${MANAGE_CORRECTIONS_PERMISSION}; no se envió el aviso interno.`,
+      );
+      return;
+    }
+
+    // En modo seguro todos los destinatarios se redirigen a la misma cuenta, así
+    // que se deduplica para no mandar el mismo aviso varias veces.
+    const alerts = new Map<string, { to: string; name: string | null }>();
+    for (const reviewer of reviewers) {
+      const to = this.resolveOutboundEmailRecipient(reviewer.email);
+      const key = to.toLowerCase();
+      if (!alerts.has(key)) alerts.set(key, { to, name: reviewer.name });
+    }
+
+    const results = await Promise.allSettled(
+      Array.from(alerts.values()).map((alert) =>
+        this.postCorrectionNotificationEmail({
+          to: alert.to,
+          subject: `Nueva solicitud de corrección ${requestNumber} - Certificados Laborales ESAP`,
+          text: `Se radicó la solicitud de corrección ${requestNumber} de ${request.requester_name || 'un solicitante'} sobre el certificado ${String(request.certificate_snapshot?.certificate_number || 'laboral')}. Está pendiente de revisión en la bandeja de correcciones.`,
+          html: this.buildCorrectionReviewerAlertEmailHtml(
+            request,
+            evidenceCount,
+            alert.name,
+          ),
+        }),
+      ),
+    );
+
+    const failed = results.filter((result) => result.status === 'rejected').length;
+    if (failed > 0) {
+      this.logger.error(
+        `El aviso de la solicitud ${requestNumber} falló para ${failed} de ${results.length} revisor(es).`,
+      );
+    } else {
+      this.logger.log(
+        `Aviso de nueva solicitud ${requestNumber} enviado a ${results.length} revisor(es).`,
+      );
+    }
+  }
+
+  /**
+   * Recorta un valor del comparativo para que la tabla de cambios del correo
+   * siga siendo legible aunque el campo sea muy largo (por ejemplo el listado
+   * completo de funciones laborales).
+   */
+  private correctionChangeValueForEmail(value: unknown): string {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '—';
+    return raw.length > 220 ? `${raw.slice(0, 217)}…` : raw;
+  }
+
+  /**
+   * Comparativo "antes / después" para el correo de resolución. Se arma como
+   * bloques apilados y no como columnas, para que no se rompa en móvil ni en
+   * los clientes de correo que ignoran los anchos de tabla.
+   */
+  private buildCorrectionChangesBlockHtml(
+    changes: Array<{ label: string; before: string; after: string }>,
+  ): string {
+    if (changes.length === 0) {
+      return `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:14px 16px;font-size:13px;color:#64748b;line-height:1.5">No se modificaron datos del certificado: se reemitió el documento sin cambios en la información.</td></tr></table>`;
+    }
+
+    const rows = changes
+      .map((change) => {
+        const label = this.escapeEmailHtml(change.label);
+        const before = this.escapeEmailHtml(
+          this.correctionChangeValueForEmail(change.before),
+        );
+        const after = this.escapeEmailHtml(
+          this.correctionChangeValueForEmail(change.after),
+        );
+        return `<tr><td style="padding:12px 0;border-top:1px solid #e2e8f0"><p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#0f172a">${label}</p><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="padding:7px 10px;background:#fef2f2;border-left:3px solid #fca5a5;border-radius:4px"><span style="font-size:10px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.5px">Antes</span><br><span style="font-size:13px;color:#7f1d1d;line-height:1.5;word-break:break-word">${before}</span></td></tr><tr><td style="height:6px;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="padding:7px 10px;background:#f0fdf4;border-left:3px solid #86efac;border-radius:4px"><span style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px">Después</span><br><span style="font-size:13px;color:#14532d;line-height:1.5;word-break:break-word">${after}</span></td></tr></table></td></tr>`;
+      })
+      .join('');
+
+    const title =
+      changes.length === 1
+        ? '1 campo modificado'
+        : `${changes.length} campos modificados`;
+
+    return `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:14px 16px"><p style="margin:0;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Cambios aplicados al certificado</p><p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#003DA5">${title}</p><table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:6px">${rows}</table></td></tr></table>`;
+  }
+
+  /**
+   * Aviso interno de cierre del caso para quienes gestionan correcciones: qué
+   * se decidió, quién lo resolvió y, cuando se aprobó, qué cambió exactamente
+   * en el certificado. No reemplaza el correo del solicitante, que sigue siendo
+   * el que lleva el PDF corregido o el motivo del rechazo.
+   */
+  private buildCorrectionResolutionReviewerEmailHtml(
+    request: CertificateCorrectionRequest,
+    options: {
+      approved: boolean;
+      changes: Array<{ label: string; before: string; after: string }>;
+      evidenceCount: number;
+      certificateNumber: string;
+      reviewerName?: string | null;
+    },
+  ): string {
+    const { approved, changes, evidenceCount, certificateNumber } = options;
+    const requestNumber = this.escapeEmailHtml(request.request_number);
+    const requesterName = this.escapeEmailHtml(request.requester_name || 'No disponible');
+    const requesterEmail = this.escapeEmailHtml(request.requester_email || 'No disponible');
+    const idNumber = this.escapeEmailHtml(
+      String(request.certificate_snapshot?.id_number || 'No disponible'),
+    );
+    const resolvedBy = this.escapeEmailHtml(
+      request.reviewed_by_name || 'Coordinador Certificados Laborales',
+    );
+    const resolvedByEmail = request.reviewed_by_email
+      ? `<br><span style="font-size:12px;color:#6b7280">${this.escapeEmailHtml(request.reviewed_by_email)}</span>`
+      : '';
+    const resolvedAt = this.escapeEmailHtml(
+      this.formatCorrectionEmailDate(request.resolved_at || new Date(), true),
+    );
+    const decisionText = this.escapeEmailHtml(request.resolution_description || '');
+    const originalRequest = this.escapeEmailHtml(request.description || '');
+    const greeting = options.reviewerName
+      ? `Hola <strong style="color:#334155">${this.escapeEmailHtml(options.reviewerName)}</strong>, la`
+      : 'La';
+
+    const accent = approved ? '#16A34A' : '#DC2626';
+    const badgeBg = approved ? '#dcfce7' : '#fee2e2';
+    const badgeColor = approved ? '#166534' : '#991b1b';
+    const badgeText = approved ? 'Corrección aprobada' : 'Solicitud rechazada';
+    const headline = approved
+      ? 'Se aprobó una solicitud de corrección'
+      : 'Se rechazó una solicitud de corrección';
+    const intro = approved
+      ? `${greeting} solicitud fue resuelta y el certificado corregido ya se envió al solicitante.`
+      : `${greeting} solicitud fue revisada y no procedía. El solicitante ya recibió la respuesta con el motivo.`;
+
+    const decisionBlock = `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${approved ? '#f0fdf4' : '#fff1f2'};border:1px solid ${approved ? '#bbf7d0' : '#fecdd3'};border-radius:8px;margin-bottom:16px"><tr><td style="padding:15px 16px;font-size:13px;color:${approved ? '#14532d' : '#9f1239'};line-height:1.65"><strong>${approved ? 'Descripción de la decisión' : 'Motivo del rechazo'}</strong><br>${decisionText}</td></tr></table>`;
+
+    const changesBlock = approved
+      ? this.buildCorrectionChangesBlockHtml(changes)
+      : '';
+
+    const evidenceBlock =
+      evidenceCount > 0
+        ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:13px 16px;font-size:13px;color:#475569;line-height:1.5">Se ${evidenceCount === 1 ? 'adjuntó 1 evidencia' : `adjuntaron ${evidenceCount} evidencias`} de la decisión, ${evidenceCount === 1 ? 'disponible' : 'disponibles'} en el detalle del caso.</td></tr></table>`
+        : '';
+
+    const panelButton = CERTIFICATION_CORRECTIONS_PANEL_URL
+      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:20px 0 6px"><tr><td align="center"><a href="${this.escapeEmailHtml(CERTIFICATION_CORRECTIONS_PANEL_URL)}" style="display:inline-block;background:#003DA5;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:12px 26px;border-radius:8px">Ver el detalle del caso</a></td></tr></table>`
+      : '';
+
+    return `<div style="font-family:Arial,'Helvetica Neue',sans-serif;background:#f0f4f8;padding:32px 16px;margin:0"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center"><table cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #dde3ed;border-radius:10px;overflow:hidden"><tr><td style="height:4px;background:${accent};font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="background:#003DA5;padding:20px 28px"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td><div style="font-size:20px;font-weight:800;color:#fff">ESAP</div><div style="font-size:10px;color:#bfdbfe;margin-top:2px;letter-spacing:.8px;text-transform:uppercase">Certificados Laborales</div></td><td align="right"><span style="background:${badgeBg};color:${badgeColor};font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px">${badgeText}</span></td></tr></table></td></tr><tr><td style="padding:30px 28px 8px"><h1 style="margin:0 0 8px;font-size:21px;color:#111827">${headline}</h1><p style="margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6">${intro}</p><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:16px"><span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase">Radicado</span><br><strong style="font-size:16px;color:#003DA5;letter-spacing:.3px">${requestNumber}</strong><table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:10px"><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Solicitante</span><br><span style="font-size:14px;font-weight:600;color:#374151">${requesterName}</span><br><span style="font-size:12px;color:#6b7280">${requesterEmail}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Documento</span><br><span style="font-size:14px;font-weight:600;color:#374151">${idNumber}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Certificado</span><br><span style="font-size:14px;font-weight:600;color:#374151">${this.escapeEmailHtml(certificateNumber)}</span></td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Resuelta por</span><br><span style="font-size:14px;font-weight:600;color:#374151">${resolvedBy}</span>${resolvedByEmail}</td></tr><tr><td style="padding:8px 0;border-top:1px solid #f1f5f9"><span style="font-size:12px;color:#6b7280">Fecha de resolución</span><br><span style="font-size:14px;font-weight:600;color:#374151">${resolvedAt}</span></td></tr></table></td></tr></table><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #94a3b8;border-radius:8px;margin-bottom:16px"><tr><td style="padding:14px 16px;font-size:13px;color:#475569;line-height:1.6"><strong style="color:#0f172a">Lo que reportó el solicitante</strong><br>${originalRequest}</td></tr></table>${decisionBlock}${changesBlock}${evidenceBlock}${panelButton}<p style="margin:18px 0 14px;font-size:12px;color:#94a3b8;line-height:1.6">Recibes este aviso porque tu rol tiene habilitado el permiso para aprobar solicitudes de corrección. Es una notificación automática, no respondas a este mensaje.</p></td></tr><tr><td style="padding:14px 28px 18px;background:#f8fafc;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:12px;color:#94a3b8">ESAP — Escuela Superior de Administración Pública</p></td></tr></table></td></tr></table></div>`;
+  }
+
+  /**
+   * Avisa a quienes gestionan correcciones que un caso quedó resuelto.
+   *
+   * Igual que el aviso de radicación, NO es bloqueante: la aprobación y el
+   * rechazo ya se guardaron y el solicitante ya recibió su correo, que es el
+   * que sí condiciona la resolución. Un fallo aquí solo queda en el log.
+   */
+  private async sendCorrectionResolutionReviewerEmails(
+    request: CertificateCorrectionRequest,
+    options: {
+      approved: boolean;
+      changes: Array<{ label: string; before: string; after: string }>;
+      evidenceCount: number;
+      certificateNumber: string;
+    },
+  ): Promise<void> {
+    const requestNumber = request.request_number;
+    const decision = options.approved ? 'aprobada' : 'rechazada';
+
+    let reviewers: Array<{ email: string; name: string | null }> = [];
+    try {
+      reviewers = await this.permissionsService.findActiveRecipientsWithPermission(
+        MANAGE_CORRECTIONS_PERMISSION,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `No fue posible resolver los revisores para el cierre de la solicitud ${requestNumber}: ${error?.message || error}`,
+      );
+      return;
+    }
+
+    if (reviewers.length === 0) {
+      this.logger.warn(
+        `La solicitud ${requestNumber} quedó ${decision} pero no hay revisores con el permiso ${MANAGE_CORRECTIONS_PERMISSION} a quienes avisar.`,
+      );
+      return;
+    }
+
+    // En modo seguro todos los destinatarios se redirigen al mismo buzón.
+    const alerts = new Map<string, { to: string; name: string | null }>();
+    for (const reviewer of reviewers) {
+      const to = this.resolveOutboundEmailRecipient(reviewer.email);
+      const key = to.toLowerCase();
+      if (!alerts.has(key)) alerts.set(key, { to, name: reviewer.name });
+    }
+
+    const changeSummary = options.approved
+      ? options.changes.length === 0
+        ? 'Se reemitió el certificado sin cambios en la información.'
+        : `Campos modificados: ${options.changes.map((change) => change.label).join(', ')}.`
+      : '';
+
+    const results = await Promise.allSettled(
+      Array.from(alerts.values()).map((alert) =>
+        this.postCorrectionNotificationEmail({
+          to: alert.to,
+          subject: `Resuelta: corrección ${requestNumber} ${decision} - Certificados Laborales ESAP`,
+          text: `La solicitud de corrección ${requestNumber} de ${request.requester_name || 'un solicitante'} sobre el certificado ${options.certificateNumber} fue ${decision} por ${request.reviewed_by_name || 'el equipo de Certificados Laborales'}. ${changeSummary}`.trim(),
+          html: this.buildCorrectionResolutionReviewerEmailHtml(request, {
+            ...options,
+            reviewerName: alert.name,
+          }),
+        }),
+      ),
+    );
+
+    const failed = results.filter((result) => result.status === 'rejected').length;
+    if (failed > 0) {
+      this.logger.error(
+        `El aviso de cierre de la solicitud ${requestNumber} falló para ${failed} de ${results.length} revisor(es).`,
+      );
+    } else {
+      this.logger.log(
+        `Aviso de solicitud ${requestNumber} ${decision} enviado a ${results.length} revisor(es).`,
+      );
+    }
+  }
+
   private async sendCorrectionRejectionEmail(
     request: CertificateCorrectionRequest,
     files: any[] = [],
@@ -3208,6 +3677,19 @@ export class CertificatesService {
       }),
     );
     await this.correctionRequestRepo.save(request);
+
+    // Aviso interno de cierre. No bloquea: el rechazo ya quedó registrado y el
+    // solicitante ya recibió la respuesta con el motivo.
+    await this.sendCorrectionResolutionReviewerEmails(request, {
+      approved: false,
+      changes: [],
+      evidenceCount: request.resolution_evidence.length,
+      certificateNumber: String(
+        request.certificate?.certificate_number ||
+          request.certificate_snapshot?.certificate_number ||
+          'No disponible',
+      ),
+    });
 
     return {
       ...this.correctionResponse(request),
@@ -4310,7 +4792,6 @@ export class CertificatesService {
           position_name: laborFunctions.profile?.position_name,
           department_name: laborFunctions.profile?.department_name,
           internal_group: laborFunctions.profile?.internal_group,
-          cost_center: laborFunctions.profile?.cost_center,
           functions: laborFunctions.functions,
         }
       : null;
@@ -4371,7 +4852,10 @@ export class CertificatesService {
       where: { id: saved.id },
       relations: ['request'],
     });
-    return savedWithRequest || saved;
+    return this.applyRequestContextToCertificate(
+      savedWithRequest || saved,
+      relatedRequests,
+    );
   }
 
   // ============================================
@@ -4952,6 +5436,7 @@ export class CertificatesService {
           cod_grade: requestContext.cod_grade,
           department: requestContext.department,
           position_location: requestContext.position_location,
+          certificate_dependency: certificate.request?.certificate_dependency,
         }
       : undefined;
 
@@ -5169,6 +5654,7 @@ export class CertificatesService {
     });
 
     if (certificadoExistente) {
+      this.applyRequestContextToCertificate(certificadoExistente, solicitudes);
       await this.ensureTemplateSnapshotForCertificate(certificadoExistente);
       return {
         existe: true,
@@ -5300,6 +5786,7 @@ export class CertificatesService {
         position_location: verificacion.solicitud.position_location,
         monthly_salary: verificacion.solicitud.monthly_salary,
         department: verificacion.solicitud.department,
+        certificate_dependency: verificacion.solicitud.certificate_dependency,
         cod_cargo: verificacion.solicitud.cod_cargo,
         cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,
@@ -5346,6 +5833,7 @@ export class CertificatesService {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
       includeFunctions?: boolean;
+      publicBaseUrl?: string;
     } = {},
   ) {
     const documentoTrim = (documento || '').trim();
@@ -5417,9 +5905,36 @@ export class CertificatesService {
       validation_expires_at: null,
     });
 
+    // El autoservicio no tiene una sesion autenticada para invocar la ruta
+    // administrativa de reenvio. Una vez validado el codigo de un solo uso,
+    // entrega el certificado al mismo correo con el que se valido la identidad.
+    // La generacion del documento no se revierte si notifications-service falla.
+    let emailSent = false;
+    let email = this.normalizarCorreo(solicitud.email);
+    try {
+      const delivery = await this.enviarCertificadoLaboralPorEmail(
+        nuevoCertificado,
+        {
+          to: email,
+          includeSalary,
+          includeTechnicalBonus,
+          includeFunctions,
+          publicBaseUrl: options.publicBaseUrl,
+        },
+      );
+      emailSent = true;
+      email = delivery.to;
+    } catch (error) {
+      this.logger.warn(
+        `Certificado ${nuevoCertificado.id} generado, pero no pudo enviarse por email: ${error?.message || error}`,
+      );
+    }
+
     return {
       mensaje: 'Certificado generado exitosamente',
       certificado: nuevoCertificado,
+      emailSent,
+      email,
     };
   }
 }

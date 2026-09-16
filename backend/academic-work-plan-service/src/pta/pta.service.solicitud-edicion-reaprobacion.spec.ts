@@ -38,6 +38,8 @@ describe('PtaService - reaprobacion de componentes reabiertos', () => {
 
     expect(investigacion).toMatchObject({
       estado: 'pendiente',
+      estado_visual: 'pendiente',
+      aplica: true,
       scope: 'solicitud_edicion',
       scopeId: 'sol-1',
     });
@@ -50,5 +52,37 @@ describe('PtaService - reaprobacion de componentes reabiertos', () => {
         }),
       ]),
     );
+  });
+
+  it('expone No aplica sin alterar la autoaprobacion tecnica del workflow', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    service.ptaComponentApprovalRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn((value: any) => value),
+      save: jest.fn((value: any) => Promise.resolve(value)),
+    };
+    service.ptaRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'pta-1',
+        datosEstructurados: {
+          asignaturas: [{ total_horas: 120 }],
+          investigacion_actividades: [],
+          extension_actividades: [],
+          complementarias: [],
+        },
+      }),
+    };
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+
+    const result = await service.getComponentesAprobacion('pta-1');
+    const investigacion = result.find((item: any) => item.componente === 'investigacion');
+
+    expect(investigacion).toMatchObject({
+      estado: 'aprobado',
+      estado_visual: 'no_aplica',
+      aplica: false,
+      horas: 0,
+      aprobadorNombre: 'Sistema',
+    });
   });
 });

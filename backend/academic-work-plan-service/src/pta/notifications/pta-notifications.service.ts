@@ -530,4 +530,33 @@ export class PtaNotificationsService {
     this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de devolución de "${opts.componente}"`);
     return true;
   }
+
+  /**
+   * REQ-RUND-F022 — Envía por correo el enlace de un acceso externo temporal al
+   * Macro Docente recién otorgado. Best-effort: si no hay contacto con forma de
+   * correo, o si notifications-service no responde, no lanza — GGP siempre puede
+   * copiar el enlace manualmente desde la UI como respaldo.
+   */
+  async notifyAccesoExternoOtorgado(opts: {
+    enteNombre: string;
+    enteContacto: string | null;
+    path: string;
+    fechaFin: Date;
+  }): Promise<boolean> {
+    const to = (opts.enteContacto || '').trim();
+    if (!to || !to.includes('@')) return false;
+
+    const enlace = `${this.resolvePublicAppUrl()}${opts.path}`;
+    const fechaFinTxt = opts.fechaFin.toLocaleDateString('es-CO');
+    const subject = `Acceso temporal al Macro Docente RUND — ${opts.enteNombre}`;
+    const text = `Se le otorgó un acceso temporal de consulta al Macro Docente (RUND) de la ESAP, vigente hasta el ${fechaFinTxt}.\n\nEnlace de consulta: ${enlace}\n\nEste enlace es personal e intransferible: toda consulta realizada con él queda registrada.`;
+    const html = `
+      <p>Se le otorgó un acceso temporal de consulta al <strong>Macro Docente</strong> (RUND) de la ESAP, vigente hasta el <strong>${this.escapeHtml(fechaFinTxt)}</strong>.</p>
+      <p><a href="${this.escapeHtml(enlace)}">${this.escapeHtml(enlace)}</a></p>
+      <p>Este enlace es personal e intransferible: toda consulta realizada con él queda registrada.</p>
+    `;
+    await this.sendEmail(to, subject, text, html);
+    this.logger.log(`Acceso externo Macro Docente notificado por correo a ${to} (${opts.enteNombre})`);
+    return true;
+  }
 }

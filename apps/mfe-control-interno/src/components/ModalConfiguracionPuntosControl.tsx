@@ -92,7 +92,8 @@ function generarPuntosControlAutomaticos(
   frecuencia: FrecuenciaPuntoControl,
   fechaInicio: string,
   fechaFin: string,
-  _nombreActividad: string
+  _nombreActividad: string,
+  puntosExistentes: PuntoControl[] = []
 ): PuntoControl[] {
   if (frecuencia === 'personalizada') return [];
 
@@ -153,18 +154,19 @@ function generarPuntosControlAutomaticos(
     const m = String(fecha.getMonth() + 1).padStart(2, '0');
     const d = String(fecha.getDate()).padStart(2, '0');
     const fechaProgramada = `${y}-${m}-${d}`;
+    const pe = puntosExistentes[i];
     return {
-      id: `pc-auto-${i + 1}`,
+      id: pe?.id || `pc-auto-${i + 1}`,
       orden: i + 1,
       nombre: `Corte ${i + 1}`,
-      descripcion: '',
+      descripcion: pe?.descripcion || '',
       fechaProgramada,
-      fechaSeguimiento: sumarMeses(fechaProgramada, 2),
-      fechaReal: null,
-      responsable: '',
-      estado: 'pendiente',
-      observaciones: '',
-      evidencias: []
+      fechaSeguimiento: pe?.fechaSeguimiento || sumarMeses(fechaProgramada, 2),
+      fechaReal: pe?.fechaReal || null,
+      responsable: pe?.responsable || '',
+      estado: pe?.estado || 'pendiente',
+      observaciones: pe?.observaciones || '',
+      evidencias: pe?.evidencias || []
     };
   });
 }
@@ -261,7 +263,8 @@ export function ModalConfiguracionPuntosControl({
             frecuenciaSeleccionada,
             fechaInicioActividad,
             fechaCorteLocal || fechaFinActividad,
-            nombreActividad
+            nombreActividad,
+            puntosControlExistentes
           )
         );
       }
@@ -273,14 +276,19 @@ export function ModalConfiguracionPuntosControl({
 
     if (frecuenciaSeleccionada !== 'personalizada') {
       if (frecuenciaCambio || !manualmenteEditado.current) {
-        setPuntosControl(
-          generarPuntosControlAutomaticos(
-            frecuenciaSeleccionada,
-            fechaInicioActividad,
-            fechaCorteLocal || fechaFinActividad,
-            nombreActividad
-          )
-        );
+        if (!frecuenciaCambio && puntosControlExistentes.length > 0) {
+          setPuntosControl(puntosControlExistentes);
+        } else {
+          setPuntosControl(
+            generarPuntosControlAutomaticos(
+              frecuenciaSeleccionada,
+              fechaInicioActividad,
+              fechaCorteLocal || fechaFinActividad,
+              nombreActividad,
+              puntosControlExistentes
+            )
+          );
+        }
       }
       if (frecuenciaCambio) manualmenteEditado.current = false;
     } else {
@@ -404,8 +412,9 @@ export function ModalConfiguracionPuntosControl({
       }
     }
 
-    onGuardar(puntosControl, frecuenciaSeleccionada, fechaCorteLocal);
-    toast.success(`${puntosControl.length} fecha${puntosControl.length !== 1 ? 's' : ''} de corte configurada${puntosControl.length !== 1 ? 's' : ''}`);
+    const puntosFinales = puntosOrdenados.map((p, idx) => ({ ...p, orden: idx + 1 }));
+    onGuardar(puntosFinales, frecuenciaSeleccionada, fechaCorteLocal);
+    toast.success(`${puntosFinales.length} fecha${puntosFinales.length !== 1 ? 's' : ''} de corte configurada${puntosFinales.length !== 1 ? 's' : ''}`);
     onClose();
   };
 

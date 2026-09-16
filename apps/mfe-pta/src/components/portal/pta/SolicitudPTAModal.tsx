@@ -25,6 +25,14 @@ export const CASOS = [
   { key: 'caso_3', label: 'Otro caso', desc: 'Tengo un motivo diferente que requiere aprobación del administrador.', icon: HelpCircle, color: '#6B21A8' },
 ] as const;
 
+// Motivos que el docente puede elegir hoy. caso_1 (otra territorial), caso_2
+// (rehacer PTA) y caso_3 (otro caso) dejaron de usarse en el portal, pero SIGUEN
+// en CASOS a proposito: el backoffice (PtaBackofficeModule) los resuelve y los
+// etiqueta para las solicitudes historicas que ya existen con esos tipos, y
+// PortalDocentePTA lee resolucionAccion === caso_1. Quitarlos del catalogo
+// dejaria esos registros sin etiqueta; aqui solo se filtra lo seleccionable.
+export const CASOS_SELECCIONABLES = CASOS.filter(c => c.key === 'edicion_pta');
+
 export const COMPONENTES_EDICION = [
   { key: 'docencia', label: 'Docencia', icon: BookOpen, color: '#003DA5' },
   { key: 'investigacion', label: 'Investigación', icon: FlaskConical, color: '#7C3AED' },
@@ -114,6 +122,20 @@ export function obtenerEstadoMotivo(
   };
 }
 
+// Verdadero cuando el docente puede elegir al menos un motivo. Es la condicion
+// que habilita el resto del formulario (justificacion y adjuntos): sin motivo
+// elegible la solicitud no se puede enviar, asi que tampoco debe poder
+// escribirse ni adjuntarse nada.
+export function haySolicitudDisponible(
+  hasPtaCreado: boolean,
+  ptasEditablesCount: number,
+  casosList: readonly { key: string }[] = CASOS_SELECCIONABLES,
+): boolean {
+  return casosList.some(
+    c => !obtenerEstadoMotivo(c.key, hasPtaCreado, ptasEditablesCount).disabled,
+  );
+}
+
 export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas = [], onClose, onSuccess }: SolicitudPTAModalProps) {
   const hasPtaCreado = useMemo(
     () => ptas.some(pta => Boolean(pta?.id)),
@@ -141,6 +163,14 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
 
   const getMotivoState = (cKey: string) => obtenerEstadoMotivo(cKey, hasPtaCreado, ptasEditables.length);
 
+  // El resto del formulario solo tiene sentido si el docente puede elegir al
+  // menos un motivo. Antes el gate era unicamente `!hasPtaCreado`, asi que con
+  // un PTA creado pero todavia sin aprobar la unica opcion quedaba
+  // deshabilitada y aun asi se podia escribir la justificacion y adjuntar
+  // PDF, para una solicitud que nunca iba a poder enviarse.
+  const hayMotivoDisponible = haySolicitudDisponible(hasPtaCreado, ptasEditables.length);
+  const formularioBloqueado = !hasPtaCreado || !hayMotivoDisponible;
+
   const wordCount = justificacion.trim().split(/\s+/).filter(Boolean).length;
   const caracteresRestantes = MAX_CARACTERES_DESCRIPCION - justificacion.length;
   const casoInfo = CASOS.find(c => c.key === caso);
@@ -148,7 +178,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
   const descripcionValida = justificacion.length <= MAX_CARACTERES_DESCRIPCION
     && (esEdicion ? justificacion.trim().length > 0 : wordCount >= 50);
   const formularioValido = Boolean(
-    hasPtaCreado
+    !formularioBloqueado
     && caso
     && descripcionValida
     && (caso !== 'caso_3' || casoLibre.trim())
@@ -156,8 +186,10 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
   );
 
   const handleAddFiles = (files: FileList) => {
-    if (!hasPtaCreado) {
-      toast.error('Debes crear un PTA antes de adjuntar documentos.');
+    if (formularioBloqueado) {
+      toast.error(hasPtaCreado
+        ? 'Tu PTA debe estar aprobado en su totalidad para adjuntar documentos.'
+        : 'Debes crear un PTA antes de adjuntar documentos.');
       return;
     }
     const seleccionados = Array.from(files);
@@ -254,7 +286,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
         <div style={{ padding: 'clamp(16px, 4vw, 20px) clamp(14px, 5vw, 24px)', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div>
             <h3 id="solicitudes-pta-title" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#111827', margin: 0 }}>Solicitudes PTA</h3>
-            <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '4px 0 0' }}>Solicita la edición de un PTA ya enviado o la creación de otro plan</p>
+            <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '4px 0 0' }}>Solicita habilitar la edición de un PTA ya aprobado</p>
           </div>
           <button type="button" aria-label="Cerrar solicitudes PTA" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <X style={{ width: 16, height: 16, color: '#6B7280' }} />
@@ -284,7 +316,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 8 }}>Motivo de la solicitud *</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {CASOS.map(c => {
+                {CASOS_SELECCIONABLES.map(c => {
                   const Icon = c.icon;
                   const selected = caso === c.key;
                   const { disabled, desc } = getMotivoState(c.key);
@@ -399,20 +431,22 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
               </label>
               <textarea
                 value={justificacion}
-                disabled={!hasPtaCreado}
+                disabled={formularioBloqueado}
                 onChange={e => setJustificacion(e.target.value.slice(0, MAX_CARACTERES_DESCRIPCION))}
                 maxLength={MAX_CARACTERES_DESCRIPCION}
                 rows={5}
                 placeholder={!hasPtaCreado
                   ? 'Debes crear tu Plan de Trabajo Académico antes de registrar una justificación...'
+                  : formularioBloqueado
+                  ? 'Tu PTA debe estar aprobado en su totalidad para registrar una solicitud de edición...'
                   : esEdicion
                   ? 'Explica qué necesitas modificar en los componentes seleccionados y el motivo del cambio...'
                   : 'Explique detalladamente por qué necesita crear un nuevo PTA. Incluya contexto, razones académicas y cualquier información relevante para el administrador (mínimo 50 palabras)...'}
                 style={{
                   width: '100%', padding: '10px 12px', borderRadius: 8,
-                  border: `1px solid ${!hasPtaCreado ? '#E5E7EB' : descripcionValida ? '#6EE7B7' : '#D1D5DB'}`,
-                  background: !hasPtaCreado ? '#F9FAFB' : 'white',
-                  cursor: !hasPtaCreado ? 'not-allowed' : 'text',
+                  border: `1px solid ${formularioBloqueado ? '#E5E7EB' : descripcionValida ? '#6EE7B7' : '#D1D5DB'}`,
+                  background: formularioBloqueado ? '#F9FAFB' : 'white',
+                  cursor: formularioBloqueado ? 'not-allowed' : 'text',
                   fontSize: '0.82rem', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box',
                 }}
               />
@@ -427,9 +461,9 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span>Documentos de soporte opcionales (máximo 5 PDF · 10 MB cada uno)</span>
-                {!hasPtaCreado && (
+                {formularioBloqueado && (
                   <span style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 500 }}>
-                    (Deshabilitado hasta crear PTA)
+                    {hasPtaCreado ? '(Deshabilitado hasta que el PTA esté aprobado)' : '(Deshabilitado hasta crear PTA)'}
                   </span>
                 )}
               </label>
@@ -450,19 +484,19 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
               {archivos.length < MAX_ARCHIVOS_SOLICITUD && (
                 <button
                   type="button"
-                  disabled={!hasPtaCreado}
+                  disabled={formularioBloqueado}
                   onClick={() => {
-                    if (!hasPtaCreado) return;
+                    if (formularioBloqueado) return;
                     fileRef.current?.click();
                   }}
                   style={{
                     width: '100%', padding: '10px', borderRadius: 8,
-                    border: `2px dashed ${!hasPtaCreado ? '#E5E7EB' : '#D1D5DB'}`,
-                    background: !hasPtaCreado ? '#F9FAFB' : '#FAFAFA',
-                    cursor: !hasPtaCreado ? 'not-allowed' : 'pointer',
+                    border: `2px dashed ${formularioBloqueado ? '#E5E7EB' : '#D1D5DB'}`,
+                    background: formularioBloqueado ? '#F9FAFB' : '#FAFAFA',
+                    cursor: formularioBloqueado ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    fontSize: '0.78rem', color: !hasPtaCreado ? '#9CA3AF' : '#6B7280',
-                    fontWeight: 600, opacity: !hasPtaCreado ? 0.6 : 1,
+                    fontSize: '0.78rem', color: formularioBloqueado ? '#9CA3AF' : '#6B7280',
+                    fontWeight: 600, opacity: formularioBloqueado ? 0.6 : 1,
                   }}
                 >
                   <Upload style={{ width: 14, height: 14 }} /> Adjuntar PDF
@@ -473,7 +507,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
                 type="file"
                 accept=".pdf"
                 multiple
-                disabled={!hasPtaCreado}
+                disabled={formularioBloqueado}
                 style={{ display: 'none' }}
                 onChange={e => {
                   if (e.target.files) handleAddFiles(e.target.files);

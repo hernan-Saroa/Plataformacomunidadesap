@@ -42,6 +42,9 @@ services:
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service:3010
       AUDIT_SERVICE_URL: http://audit-service:3011
       HIRING_SERVICE_URL: http://hiring-service:3012
+      ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
+      INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service:3015
     ports:
       - "3000:3000"
     depends_on:
@@ -57,6 +60,9 @@ services:
       - travel-expenses-service
       - audit-service
       - hiring-service
+      - academic-schedule-service
+      - infrastructure-management-service
+      - chatbot-service
     networks:
       - superapp-net
 
@@ -141,6 +147,13 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
+      OPENKM_BASE_URL: ${OPENKM_BASE_URL:-}
+      OPENKM_USERNAME: ${OPENKM_USERNAME:-}
+      OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
+      OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      RUND_DOCUMENT_MAX_SIZE_BYTES: ${RUND_DOCUMENT_MAX_SIZE_BYTES:-10485760}
+      RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-true}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
@@ -196,6 +209,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3005
+      TZ: America/Bogota
 
       JWT_SECRET: esap-super-secret-jwt-key-2024
 
@@ -209,6 +223,8 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://localhost:3000}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     ports:
       - "3005:3005"
@@ -304,6 +320,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
     ports:
       - "3008:3008"
     depends_on:
@@ -311,6 +328,8 @@ services:
       - redis
     networks:
       - superapp-net
+    volumes:
+      - ./backend/legal-management-service/uploads:/app/uploads
 
   # ============ NOTIFICATIONS SERVICE ============
   notifications-service:
@@ -352,6 +371,8 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3010
+      # Ruta del storage de archivos dentro del contenedor (se monta como volumen)
+      TRAVEL_EXPENSES_STORAGE_PATH: /app/uploads
 
       DB_HOST: db
       DB_PORT: 5432
@@ -362,6 +383,8 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+    volumes:
+      - ./backend/travel-expenses-service/uploads:/app/uploads
     ports:
       - "3010:3010"
     depends_on:
@@ -423,6 +446,91 @@ services:
     networks:
       - superapp-net
 
+  # ============ ACADEMIC SCHEDULE SERVICE ============
+  academic-schedule-service:
+    build:
+      context: ./backend/academic-schedule-service
+      dockerfile: Dockerfile
+    container_name: academic-schedule-service
+    env_file:
+      - ./backend/academic-schedule-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3013
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: password
+      DB_NAME: esap_db
+      DB_SCHEMA: academic-schedule
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3013:3013"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ INFRASTRUCTURE MANAGEMENT SERVICE ============
+  infrastructure-management-service:
+    build:
+      context: ./backend/infrastructure-management-service
+      dockerfile: Dockerfile
+    container_name: infrastructure-management-service
+    env_file:
+      - ./backend/infrastructure-management-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3014
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: password
+      DB_NAME: esap_db
+      DB_SCHEMA: infrastructure-management
+
+      REDIS_URL: redis://redis:6379
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3014:3014"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - superapp-net
+
+  # ============ CHATBOT SERVICE ============
+  chatbot-service:
+    build:
+      context: ./backend/chatbot-service
+      dockerfile: Dockerfile
+    container_name: chatbot-service
+    env_file:
+      - ./backend/chatbot-service/.env
+    environment:
+      NODE_ENV: development
+      PORT: 3015
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: password
+      DB_NAME: esap_db
+      DB_SCHEMA: chatbot
+
+      JWT_SECRET: esap_jwt_secret_dev_2024
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3015:3015"
+    depends_on:
+      - db
+    networks:
+      - superapp-net
 
   # ============ POSTGRES ============
   db:
@@ -455,7 +563,6 @@ services:
 
 networks:
   superapp-net:
-
 
 volumes:
   pgdata:

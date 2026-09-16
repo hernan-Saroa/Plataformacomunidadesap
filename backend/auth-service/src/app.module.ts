@@ -12,6 +12,7 @@ import { Module } from './users/module.entity';
 import { Geopolitica } from './users/geopolitica.entity';
 import { Sede } from './users/sede.entity';
 import { Seccional } from './users/seccional.entity';
+import { Dependencia } from './users/dependencia.entity';
 import { ProgramaAcademico } from './programas/programa.entity';
 import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
@@ -46,6 +47,7 @@ import { SystemSetting } from './settings/system-setting.entity';
         Geopolitica,
         Sede,
         Seccional,
+        Dependencia,
         ProgramaAcademico,
         Asignatura,
         CarpetaDigital,

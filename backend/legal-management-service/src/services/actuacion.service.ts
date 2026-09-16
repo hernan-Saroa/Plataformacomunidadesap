@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { Actuacion } from '../entities/actuacion.entity';
@@ -7,6 +7,19 @@ import { ExpedienteService } from './expediente.service';
 import { TerminosService } from './terminos.service';
 import { ConfigurationsService } from './configurations.service';
 import { NotificationClientService } from './notification-client.service';
+
+// Solo PDF y Word requieren firma electrónica en los flujos de aprobación (debe coincidir
+// con requiresSignature de apps/utils/fileUtils.ts en el frontend).
+const SIGNABLE_EXTENSIONS = ['.pdf', '.doc', '.docx'];
+function isSignableDocument(nombre: string | null | undefined): boolean {
+    if (!nombre) return false;
+    const cleaned = nombre.toLowerCase().replace(/\s*\(firmado\)\s*/g, '').trim();
+    const queryIndex = cleaned.indexOf('?');
+    const withoutQuery = queryIndex === -1 ? cleaned : cleaned.substring(0, queryIndex);
+    const dotIndex = withoutQuery.lastIndexOf('.');
+    const ext = dotIndex === -1 ? '' : withoutQuery.substring(dotIndex);
+    return SIGNABLE_EXTENSIONS.includes(ext);
+}
 
 @Injectable()
 export class ActuacionService {
@@ -77,6 +90,13 @@ export class ActuacionService {
 
         const saved = await this.actuacionRepository.save(nuevaActuacion);
 
+        // Notificar al responsable asignado que tiene una nueva actividad pendiente
+        if (saved.responsableId && expediente) {
+            this.notificarResponsableAsignado(expediente, saved).catch(err => {
+                this.logger.error(`Error enviando notificación de responsable asignado: ${err?.message}`);
+            });
+        }
+
         // Si requiere aprobación, enviamos notificaciones del pendiente
         if (saved.metadata && saved.metadata.estadoAutorizacion === 'PENDIENTE' && expediente) {
             this.enviarNotificacionPendiente(expediente, saved).catch(err => {
@@ -111,6 +131,82 @@ export class ActuacionService {
                     undefined
                 );
             }
+        }
+    }
+
+    /**
+     * Notifica (in-app + correo) al usuario asignado como responsable de una actuación
+     * recién registrada de que tiene una nueva actividad pendiente en el expediente.
+     */
+    private async notificarResponsableAsignado(expediente: any, actuacion: Actuacion): Promise<void> {
+        if (!actuacion.responsableId) return;
+
+        const detail = await this.getUserDetails(actuacion.responsableId);
+        if (!detail) {
+            this.logger.warn(`No se pudo resolver el responsable "${actuacion.responsableId}" para notificar la actuación ${actuacion.id}`);
+            return;
+        }
+
+        const esDisciplinario =
+            expediente.jurisdiccion === 'DISCIPLINARIO' ||
+            expediente.jurisdiccion === 'Disciplinaria' ||
+            expediente.tipoProceso === 'DISCIPLINARIO' ||
+            expediente.tipoProceso === 'Disciplinario';
+        const url = `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`;
+
+        await this.notificationClient.notifyUserById(detail.id_user, {
+            tipo_notificacion: 'ACTUACION_ASIGNADA',
+            titulo: 'Nueva actividad pendiente',
+            mensaje: `Se te asignó como responsable de la actuación "${actuacion.tipoActuacion}" en el expediente ${expediente.radicado}.`,
+            descripcion_corta: `Actuación asignada en ${expediente.radicado}`,
+            icono: 'ClipboardList',
+            color: '#6366F1',
+            prioridad: 'Alta',
+            categoria: 'gestion-legal',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver expediente',
+            url_accion: url,
+            datos_adicionales: {
+                actuacionId: actuacion.id,
+                expedienteId: expediente.id,
+                radicado: expediente.radicado
+            }
+        });
+
+        if (detail.email) {
+            const emailSubject = `Nueva actividad pendiente - Radicado: ${expediente.radicado}`;
+            const emailHtml = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                <h2 style="color: #003DA5; border-bottom: 2px solid #003DA5; padding-bottom: 10px;">Nueva Actividad Pendiente</h2>
+                <p>Estimado(a) <strong>${detail.fullName}</strong>,</p>
+                <p>Se te ha asignado como responsable de una actuación procesal en el expediente <strong>${expediente.radicado}</strong>:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                  <tr style="background-color: #f9f9f9;">
+                    <td style="padding: 10px; font-weight: bold; width: 30%;">Expediente / Radicado:</td>
+                    <td style="padding: 10px;">${expediente.radicado}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 10px; font-weight: bold;">Tipo de Actuación:</td>
+                    <td style="padding: 10px;">${actuacion.tipoActuacion}</td>
+                  </tr>
+                  <tr style="background-color: #f9f9f9;">
+                    <td style="padding: 10px; font-weight: bold;">Descripción:</td>
+                    <td style="padding: 10px;">${actuacion.descripcion || 'Sin descripción'}</td>
+                  </tr>
+                </table>
+                <p>Por favor ingrese a la plataforma de Gestión Legal de la ESAP para revisar los detalles.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}${url}"
+                     style="background-color: #003DA5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                    Ir al Expediente
+                  </a>
+                </div>
+                <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+                  Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+                </p>
+              </div>
+            `;
+            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
         }
     }
 
@@ -319,12 +415,21 @@ export class ActuacionService {
      * Autoriza automáticamente la actuación cuando todos sus documentos asociados que
      * requieren firma ya fueron firmados individualmente (uno por uno, cada uno con su
      * propia verificación de identidad). Ya no se exige un segundo paso manual de "Autorizar
-     * Actuación" con OTP: la firma de los documentos es la autorización.
+     * Actuación" con OTP para ESTE caso: la firma de los documentos es la autorización.
+     *
+     * Revalida en el servidor (nunca confiando solo en el frontend):
+     *   1. Que el usuario que llama cumple el rol/usuario configurado como aprobador.
+     *   2. Que existe al menos un documento firmable asociado y que todos están firmados.
+     * Una actuación sin documentos firmables NO puede autorizarse por esta vía (BUG 1461:
+     * antes se autorizaba sola con solo entrar a la pestaña de Actuaciones, sin firma ni
+     * token de ningún tipo). Esas actuaciones deben usar POST /:actuacionId/autorizar (OTP).
      */
     async autorizarPorDocumentosFirmados(
         actuacionId: string,
         userEmail: string,
-        userName: string
+        userName: string,
+        callerRoles: string[] = [],
+        callerUserId?: string
     ): Promise<Actuacion> {
         const actuacion = await this.actuacionRepository.findOne({ where: { id: actuacionId } });
         if (!actuacion) throw new NotFoundException('Actuación no encontrada');
@@ -332,6 +437,42 @@ export class ActuacionService {
         const metadata = actuacion.metadata || {};
         if (metadata.estadoAutorizacion === 'AUTORIZADO') {
             return actuacion;
+        }
+
+        const isSuperAdmin = (callerRoles || []).includes('SUPER_ADMIN');
+        if (!isSuperAdmin) {
+            if (metadata.aprobacionTipo === 'rol' && metadata.aprobacionRol) {
+                if (!(callerRoles || []).includes(String(metadata.aprobacionRol).toUpperCase())) {
+                    throw new ForbiddenException(`Se requiere el rol "${metadata.aprobacionRol}" para autorizar esta actuación`);
+                }
+            } else if (metadata.aprobacionTipo === 'usuario' && metadata.aprobacionUsuario) {
+                if (!callerUserId || String(callerUserId) !== String(metadata.aprobacionUsuario)) {
+                    throw new ForbiddenException('Solo el usuario configurado como aprobador puede autorizar esta actuación');
+                }
+            }
+        }
+
+        const associatedDocIds = metadata.documentosAsociados || [];
+        const documentoRepository = this.dataSource.getRepository(Documento);
+        const resolvedDocs = associatedDocIds.length > 0
+            ? await documentoRepository.find({ where: { id: In(associatedDocIds) } })
+            : [];
+
+        const isDocSigned = (d: Documento) => {
+            if (!d?.descripcion) return false;
+            try {
+                const data = JSON.parse(d.descripcion);
+                return !!(data && data.firmado);
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const documentosFirmables = resolvedDocs.filter(doc => isSignableDocument(doc.nombre));
+        if (documentosFirmables.length === 0 || !documentosFirmables.every(isDocSigned)) {
+            throw new BadRequestException(
+                'No se puede autorizar automáticamente: esta actuación no tiene documentos firmados asociados. Use la autorización manual con verificación OTP.'
+            );
         }
 
         return this.finalizarAutorizacion(actuacion, metadata, userEmail, userName);
@@ -370,26 +511,58 @@ export class ActuacionService {
                 expediente.tipoProceso === 'DISCIPLINARIO' ||
                 expediente.tipoProceso === 'Disciplinario';
 
+            const urlAccion = `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`;
+            const dto = {
+                tipo_notificacion: 'ACTUACION_AUTORIZADA',
+                titulo: `Actuación Autorizada y Firmada`,
+                mensaje: `La actuación "${actuacion.tipoActuacion}" ha sido autorizada y firmada por ${userName}.`,
+                descripcion_corta: `Actuación firmada en ${expediente.radicado}`,
+                icono: 'FileCheck',
+                color: '#10B981',
+                prioridad: 'Media' as const,
+                categoria: 'gestion-legal',
+                tiene_accion: true,
+                texto_boton_accion: 'Ver expediente',
+                url_accion: urlAccion,
+                datos_adicionales: {
+                    actuacionId: actuacion.id,
+                    expedienteId: expediente.id,
+                    radicado: expediente.radicado
+                }
+            };
+
+            const emailSubject = `Actuación Firmada - Radicado: ${expediente.radicado}`;
+            const emailHtml = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                <h2 style="color: #10B981; border-bottom: 2px solid #10B981; padding-bottom: 10px;">Actuación Autorizada y Firmada</h2>
+                <p>Estimado(a) funcionario(a),</p>
+                <p>La actuación <strong>"${actuacion.tipoActuacion}"</strong> del expediente <strong>${expediente.radicado}</strong> ha sido autorizada y firmada por <strong>${userName}</strong>.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}${urlAccion}"
+                     style="background-color: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                    Ver Expediente
+                  </a>
+                </div>
+                <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+                  Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+                </p>
+              </div>
+            `;
+
+            // Notificar al abogado sustanciador ("resuelve") del expediente
             if (expediente.abogadoSustanciador) {
-                await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, {
-                    tipo_notificacion: 'ACTUACION_AUTORIZADA',
-                    titulo: `Actuación Autorizada y Firmada`,
-                    mensaje: `La actuación "${actuacion.tipoActuacion}" ha sido autorizada y firmada por ${userName}.`,
-                    descripcion_corta: `Actuación firmada en ${expediente.radicado}`,
-                    icono: 'FileCheck',
-                    color: '#10B981',
-                    prioridad: 'Media',
-                    categoria: 'gestion-legal',
-                    tiene_accion: true,
-                    texto_boton_accion: 'Ver expediente',
-                    url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`,
-                    datos_adicionales: {
-                        actuacionId: actuacion.id,
-                        expedienteId: expediente.id,
-                        radicado: expediente.radicado
-                    }
-                });
+                await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, dto);
+                const detail = await this.getUserDetails(expediente.abogadoSustanciador);
+                if (detail?.email) {
+                    await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+                }
             }
+
+            // Notificar al secretariado de Gestión Legal
+            await this.notificationClient.notifyByRoles(['SECRETARIADO_GESTION_LEGAL'], dto, {
+                subject: emailSubject,
+                html: emailHtml
+            });
         }
 
         return saved;
@@ -450,56 +623,97 @@ export class ActuacionService {
                 });
             }
 
+            const urlAccion = `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`;
+
             if (expediente.abogadoSustanciador) {
-                await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, {
+                const dto = {
                     tipo_notificacion: 'ACTUACION_DEVUELTA',
                     titulo: `Actuación Devuelta con Observaciones`,
                     mensaje: `La actuación "${actuacion.tipoActuacion}" ha sido devuelta por ${userName}. Observaciones: "${observaciones}". El expediente regresó a la etapa ${etapaAnterior}.`,
                     descripcion_corta: `Actuación devuelta en ${expediente.radicado}`,
                     icono: 'AlertTriangle',
                     color: '#DC2626',
-                    prioridad: 'Alta',
+                    prioridad: 'Alta' as const,
                     categoria: 'gestion-legal',
                     tiene_accion: true,
                     texto_boton_accion: 'Ver expediente',
-                    url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`,
+                    url_accion: urlAccion,
                     datos_adicionales: {
                         actuacionId: actuacion.id,
                         expedienteId: expediente.id,
                         radicado: expediente.radicado
                     }
-                });
+                };
+                await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, dto);
+
+                const detail = await this.getUserDetails(expediente.abogadoSustanciador);
+                if (detail?.email) {
+                    const emailSubject = `Actuación Devuelta - Radicado: ${expediente.radicado}`;
+                    const emailHtml = `
+                      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                        <h2 style="color: #DC2626; border-bottom: 2px solid #DC2626; padding-bottom: 10px;">Actuación Devuelta con Observaciones</h2>
+                        <p>Estimado(a) funcionario(a),</p>
+                        <p>La actuación <strong>"${actuacion.tipoActuacion}"</strong> del expediente <strong>${expediente.radicado}</strong> ha sido devuelta por <strong>${userName}</strong>, quien debe corregirla.</p>
+                        <p><strong>Observaciones:</strong> ${observaciones}</p>
+                        <p>El expediente regresó a la etapa <strong>${etapaAnterior}</strong>.</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                          <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}${urlAccion}"
+                             style="background-color: #DC2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                            Ver Expediente
+                          </a>
+                        </div>
+                        <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+                          Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+                        </p>
+                      </div>
+                    `;
+                    await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+                }
             }
 
             if (anteriorColumna && anteriorColumna.aprobacionTipo && anteriorColumna.aprobacionTipo !== 'ninguno') {
+                const dto = {
+                    tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
+                    titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
+                    mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
+                    descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
+                    icono: 'ArrowLeft',
+                    color: '#3B82F6',
+                    prioridad: 'Media' as const,
+                    categoria: 'gestion-legal',
+                    tiene_accion: true,
+                    texto_boton_accion: 'Ver expediente',
+                    url_accion: urlAccion
+                };
+                const emailSubject = `Expediente devuelto a etapa ${anteriorColumna.nombre} - Radicado: ${expediente.radicado}`;
+                const emailHtml = `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <h2 style="color: #3B82F6; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">Expediente Devuelto</h2>
+                    <p>Estimado(a) funcionario(a),</p>
+                    <p>El expediente <strong>${expediente.radicado}</strong> ha regresado a la etapa <strong>${anteriorColumna.nombre}</strong> tras la devolución de la actuación <strong>"${actuacion.tipoActuacion}"</strong>.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                      <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}${urlAccion}"
+                         style="background-color: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                        Ver Expediente
+                      </a>
+                    </div>
+                    <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+                      Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+                    </p>
+                  </div>
+                `;
+
                 if (anteriorColumna.aprobacionTipo === 'rol' && anteriorColumna.aprobacionRol) {
-                    await this.notificationClient.notifyByRole(anteriorColumna.aprobacionRol, {
-                        tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
-                        titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
-                        mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
-                        descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
-                        icono: 'ArrowLeft',
-                        color: '#3B82F6',
-                        prioridad: 'Media',
-                        categoria: 'gestion-legal',
-                        tiene_accion: true,
-                        texto_boton_accion: 'Ver expediente',
-                        url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`
+                    await this.notificationClient.notifyByRoles([anteriorColumna.aprobacionRol], dto, {
+                        subject: emailSubject,
+                        html: emailHtml
                     });
                 } else if (anteriorColumna.aprobacionTipo === 'usuario' && anteriorColumna.aprobacionUsuario) {
-                    await this.notificationClient.notifyUserById(anteriorColumna.aprobacionUsuario, {
-                        tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
-                        titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
-                        mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
-                        descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
-                        icono: 'ArrowLeft',
-                        color: '#3B82F6',
-                        prioridad: 'Media',
-                        categoria: 'gestion-legal',
-                        tiene_accion: true,
-                        texto_boton_accion: 'Ver expediente',
-                        url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`
-                    });
+                    await this.notificationClient.notifyUserById(anteriorColumna.aprobacionUsuario, dto);
+                    const detail = await this.getUserDetails(anteriorColumna.aprobacionUsuario);
+                    if (detail?.email) {
+                        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+                    }
                 }
             }
         }

@@ -122,6 +122,10 @@ export class CreateProcesoAuditableDto {
   @IsString()
   tipoProcesoId?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  esEspecial?: boolean;
+
   @IsString()
   @IsNotEmpty()
   macroproceso: string;

@@ -237,7 +237,7 @@ export function ConfiguracionProcesosModule() {
       tipo,
       macroproceso: p.macroproceso || '',
       dependencia:  p.dependencia  || '',
-      esEspecial:   espIds.has(p.id),
+      esEspecial:   p.esEspecial ?? espIds.has(p.id),
     });
     setModalOpen(true);
   };
@@ -267,6 +267,7 @@ export function ConfiguracionProcesosModule() {
         codigo:       form.codigo,
         tipo:         form.tipo as any,
         tipoProcesoId: tiposList.find(t => t.value === form.tipo)?.id,
+        esEspecial:   form.esEspecial,
         macroproceso: filteredUnidades[0].nombre, // Backward compatibility
         unidadesAuditables: filteredUnidades,
         dependencia:  dependenciaStr,
@@ -582,7 +583,7 @@ export function ConfiguracionProcesosModule() {
                       <td className="px-3 py-2.5 font-medium text-gray-900">
                         <span className="flex items-center gap-1.5">
                           {p.nombre}
-                          {espIds.has(p.id) && (
+                          {(p.esEspecial ?? espIds.has(p.id)) && (
                             <span className="text-amber-500 text-sm leading-none" title="Proceso especial — se audita todos los años">★</span>
                           )}
                         </span>

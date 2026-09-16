@@ -37,6 +37,20 @@ export class ExpedienteController {
         }
     }
 
+    /**
+     * Verificación en vivo de radicado duplicado, sin el filtrado por abogado sustanciador
+     * que aplica el listado (@Get()) — usada por el wizard de creación para bloquear el
+     * avance del paso 1 antes de que el usuario diligencie los 7 pasos del formulario.
+     */
+    @Get('radicado/:radicado/existe')
+    async existeRadicado(
+        @Param('radicado') radicado: string,
+        @Query('excludeId') excludeId?: string,
+    ): Promise<{ existe: boolean }> {
+        const existe = await this.expedienteService.existeRadicado(radicado, excludeId);
+        return { existe };
+    }
+
     @Get(':id')
     async obtener(@Param('id') id: string): Promise<Expediente | null> {
         return this.expedienteService.findOne(id);

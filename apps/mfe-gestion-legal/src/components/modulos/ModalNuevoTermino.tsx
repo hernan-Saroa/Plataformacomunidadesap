@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send, Scale, Trash2, Building, Clock } from 'lucide-react';
+import { Plus, Calendar, User, FileText, AlertTriangle, Repeat, X, Send, Scale, Trash2, Building, Clock } from 'lucide-react';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import {
     NOMBRES_MESES,
@@ -26,14 +26,6 @@ interface ModalNuevoTerminoProps {
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
 }
-
-const MODULOS_PROCESO = [
-    { value: 'DEFENSA_JUDICIAL', label: 'Defensa Judicial' },
-    { value: 'JUZGAMIENTO', label: 'Juzgamiento Disciplinario' },
-    { value: 'ASESORIA', label: 'Asesoría Jurídica' },
-    { value: 'ORGANOS_CONTROL', label: 'Órganos de Control' },
-    { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' },
-];
 
 const PRIORIDADES = [
     { value: 'ALTA', label: 'Alta', color: '#DC2626', bg: '#FEE2E2' },
@@ -75,7 +67,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         prioridad: 'MEDIA',
         observaciones: '',
         responsableId: '',
-        origenModulo: '',
         destinatario: '',
         enteSolicitante: '',
         tipoDias: 'CALENDARIO'
@@ -91,7 +82,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             prioridad: 'MEDIA',
             observaciones: '',
             responsableId: '',
-            origenModulo: '',
             destinatario: '',
             enteSolicitante: '',
             tipoDias: 'CALENDARIO'
@@ -229,27 +219,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                 />
 
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
-                    {/* Módulo de origen */}
-                    <div className="space-y-2">
-                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-                            <Briefcase className="w-4 h-4" />
-                            Módulo / Submódulo de Origen *
-                        </Label>
-                        <Select
-                            value={formData.origenModulo}
-                            onValueChange={(val: string) => setFormData({ ...formData, origenModulo: val })}
-                        >
-                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
-                                <SelectValue placeholder="Seleccione módulo..." />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white z-[9999]">
-                                {MODULOS_PROCESO.map((mod) => (
-                                    <SelectItem key={mod.value} value={mod.value}>{mod.label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
                     {/* Nombre de la actuación */}
                     <div className="space-y-2">
                         <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">

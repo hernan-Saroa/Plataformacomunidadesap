@@ -1,0 +1,375 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "RUND — Consulta de perfil para PTA",
+    "version": "1.0.0",
+    "description": "REQ-RUND-F015 · Flujo C.3 · TD-FO-019 ERS RUND. Contrato implementado para validación con el equipo PTA. Consulta de solo lectura; nunca publica cédula, puntaje ni salario, incluso para roles con acceso completo al perfil general. No sustituye los endpoints de las pantallas actuales."
+  },
+  "servers": [
+    {
+      "url": "/pta/api/v1",
+      "description": "API Gateway; el prefijo identifica la versión pública del contrato."
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/rund/interoperabilidad/perfiles/{cedula}": {
+      "get": {
+        "operationId": "consultarPerfilRundPorCedula",
+        "summary": "Consultar el perfil académico del docente para PTA",
+        "description": "Requiere JWT válido con sujeto y rol GESTION_PROFESORAL, SUPER_ADMIN o ADMIN, o permiso banco-docentes.rund.view/manage resuelto en la base de datos. El identificador de entrada es cédula, nunca UUID. Si se omite periodo se priorizan registros con idRund, después con periodo y luego updatedAt descendente, con id como desempate; se recomienda enviar periodo. La respuesta de errores no refleja la cédula.",
+        "parameters": [
+          {
+            "name": "cedula",
+            "in": "path",
+            "required": true,
+            "description": "Cédula como texto, sin puntos ni espacios; conserva ceros iniciales.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,20}$",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "example": "001020304050"
+          },
+          {
+            "name": "periodo",
+            "in": "query",
+            "required": false,
+            "description": "Periodo exacto. Si el docente existe en otro periodo se responde 404 RUND_DOCENTE_SIN_PERIODO sin indicar alta.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-[12]$"
+            },
+            "example": "2026-2"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Perfil encontrado; todos los campos del esquema están presentes. Campos descriptivos ausentes se representan con null.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultaExitosa"
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "docente_id": "22222222-2222-4222-8222-222222222222",
+                    "perfil": {
+                      "nombre_completo": "DOCENTE FICTICIO",
+                      "perfil_academico": "Administración pública",
+                      "perfil_academico_profesional": "Docencia",
+                      "nivel_formacion": "MAESTRIA"
+                    },
+                    "categoria": "ASOCIADO",
+                    "territorial": {
+                      "id": "33333333-3333-4333-8333-333333333333",
+                      "nombre": "Territorial ficticia",
+                      "codigo": "99"
+                    },
+                    "horas_programables": 800,
+                    "estado_vinculacion": "ACTIVO",
+                    "tipo_vinculacion": "CARRERA",
+                    "periodo": "2026-2"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cédula o periodo inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "code": "RUND_CEDULA_INVALIDA",
+                  "message": "La cédula debe contener entre 1 y 20 dígitos, sin separadores."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "JWT ausente, inválido, vencido o sin sujeto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "JWT válido sin rol o permiso de consulta RUND.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "No tienes autorización para esta operación RUND."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado. Diferenciar docente inexistente (puede gestionar Flujo 1) de ausencia de periodo (no crear duplicados).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoEncontrado"
+                },
+                "examples": {
+                  "docente": {
+                    "value": {
+                      "statusCode": 404,
+                      "code": "RUND_DOCENTE_NO_ENCONTRADO",
+                      "message": "No se encontró un perfil docente en RUND. El PTA puede gestionar el alta mediante el Flujo 1.",
+                      "flujo_alta": "FLUJO_1"
+                    }
+                  },
+                  "periodo": {
+                    "value": {
+                      "statusCode": 404,
+                      "code": "RUND_DOCENTE_SIN_PERIODO",
+                      "message": "El docente existe en RUND, pero no tiene un registro para el periodo solicitado.",
+                      "flujo_alta": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno. No debe interpretarse como necesidad de alta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "Internal server error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Auditoría no disponible: no se entrega el perfil.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "statusCode": 503,
+                  "message": "No fue posible registrar el acceso. Intente nuevamente."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token emitido mediante el mecanismo de autenticación existente. Esta HU no crea un servidor OAuth2 ni un flujo client_credentials."
+      }
+    },
+    "schemas": {
+      "PerfilPta": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "docente_id",
+          "perfil",
+          "categoria",
+          "territorial",
+          "horas_programables",
+          "estado_vinculacion",
+          "tipo_vinculacion",
+          "periodo"
+        ],
+        "properties": {
+          "docente_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "perfil": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nombre_completo",
+              "perfil_academico",
+              "perfil_academico_profesional",
+              "nivel_formacion"
+            ],
+            "properties": {
+              "nombre_completo": {
+                "type": "string",
+                "nullable": true
+              },
+              "perfil_academico": {
+                "type": "string",
+                "nullable": true
+              },
+              "perfil_academico_profesional": {
+                "type": "string",
+                "nullable": true
+              },
+              "nivel_formacion": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "categoria": {
+            "type": "string",
+            "nullable": true
+          },
+          "territorial": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "nombre",
+              "codigo"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "nullable": true
+              },
+              "nombre": {
+                "type": "string",
+                "nullable": true
+              },
+              "codigo": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "horas_programables": {
+            "type": "integer",
+            "description": "Horas asignables registradas en RUND; no resta las ya distribuidas en un PTA."
+          },
+          "estado_vinculacion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Estado de Docente en RUND, sin convertir retirados en activos ni filtrar estados."
+          },
+          "tipo_vinculacion": {
+            "type": "string",
+            "nullable": true
+          },
+          "periodo": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ConsultaExitosa": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "success",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PerfilPta"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "statusCode",
+          "message"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "NoEncontrado": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statusCode",
+          "code",
+          "message",
+          "flujo_alta"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "enum": [
+              404
+            ]
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "RUND_DOCENTE_NO_ENCONTRADO",
+              "RUND_DOCENTE_SIN_PERIODO"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "flujo_alta": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "FLUJO_1",
+              null
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,18 +6,28 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@esap-mfe/shared-types": "*",
+    "@esap-mfe/shared-ui": "*",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.10.1",
-    "@esap-mfe/shared-ui": "*"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@originjs/vite-plugin-federation": "^1.4.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
     "@vitejs/plugin-react-swc": "^3.10.2",
+    "jsdom": "^25.0.1",
     "vite": "^6.3.5",
-    "@originjs/vite-plugin-federation": "^1.4.1"
+    "vitest": "^2.1.8"
   }
 }

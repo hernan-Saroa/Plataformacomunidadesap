@@ -1,33 +1,87 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Plane,
   FileText,
   Clock,
-  CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Plus,
   Search,
   Filter,
   DollarSign,
   MapPin,
   Calendar,
-  User,
-  Building,
   Receipt,
   FileCheck,
-  Download,
   Eye,
-  Send,
-  Sparkles,
-  ChevronRight,
-  ShieldCheck,
   CreditCard,
+  X,
+  UserCheck,
+  Settings,
+  Download,
+  Send,
+  Flag,
+  Undo2,
+  ShieldCheck,
+  Award,
+  UserPlus,
 } from 'lucide-react';
+import TableroCargaAnalistas from './TableroCargaAnalistas';
+import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
+import AnalystInbox from './AnalystInbox';
+import ControlViaticosModal from './ControlViaticosModal';
+import AutorizacionInbox from './AutorizacionInbox';
+import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
-import { SolicitudViatico, ResumenEstadisticoViaticos } from '../types/viaticos';
+import SearchableSelect from './SearchableSelect';
+import {
+  SolicitudViatico,
+  ResumenEstadisticoViaticos,
+  SolicitudComisionResponse,
+  SolicitudControlViaticosResponse,
+  DocumentoSoporte,
+  ResultadoConsolidacion,
+} from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
+import NuevaSolicitudModal from './NuevaSolicitudModal';
+import ParametrizacionManager from './ParametrizacionManager';
+import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones';
+const Permissions = {
+  VIATICOS_SOLICITUDES_READ_OWN: 'travel_expenses:view_own_requests',
+  VIATICOS_SOLICITUDES_CREATE: 'travel_expenses:create_request',
+  VIATICOS_SOLICITUDES_READ_INBOX: 'travel_expenses:read_inbox',
+  VIATICOS_SOLICITUDES_SET_PRIORITY: 'travel_expenses:set_priority',
+  VIATICOS_SOLICITUDES_RETURN: 'travel_expenses:return_request',
+  VIATICOS_SOLICITUDES_ASSIGN_ANALYST: 'travel_expenses:assign_analyst',
+  VIATICOS_SOLICITUDES_VIEW_ASSIGNED: 'travel_expenses:view_assigned_requests',
+  VIATICOS_TIQUETES_VIEW: 'travel_expenses:tickets.view',
+  VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
+  VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
+  VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
+  VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
+  VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
+} as const;
+
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion';
+
+const ORDEN_ESTADOS_TABLA: Record<string, number> = {
+  EN_AUTORIZACION: 1,
+  SOLICITADA_SIIF: 2,
+  VERIFICADA: 3,
+  AUTORIZADA: 4,
+  DEVUELTA: 5,
+  RADICADA: 5,
+  EXTEMPORANEA: 6,
+  SOLICITADO: 7,
+  PENDIENTE: 8,
+};
+
+function prioridadEstadoTabla(estado: string): number {
+  return ORDEN_ESTADOS_TABLA[estado] ?? 9;
+}
 
 export default function ViaticosModulePremium() {
   const [seccion, setSeccion] = useState<Seccion>('solicitudes');
@@ -37,48 +91,35 @@ export default function ViaticosModulePremium() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
+  const [solicitudAResumir, setSolicitudAResumir] = useState<SolicitudComisionResponse | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
-
-  // Formulario nueva solicitud
-  const [pasoForm, setPasoForm] = useState(1);
-  const [formDatos, setFormDatos] = useState({
-    nombreComisionado: '',
-    cedulaComisionado: '',
-    cargoComisionado: '',
-    dependencia: 'Subdirección Académica',
-    sedeOrigen: 'Sede Central Bogotá',
-    ciudadDestino: '',
-    departamentoDestino: '',
-    fechaInicio: '',
-    fechaFin: '',
-    diasComision: 2,
-    tipoComision: 'SERVICIOS_INSTITUCIONALES',
-    medioTransporte: 'AEREO',
-    justificacion: '',
-    montoSolicitadoViaticos: 560000,
-    montoSolicitadoGastosViaje: 120000,
-    requiereTiqueteAereo: true,
+  const [documentosSoporte, setDocumentosSoporte] = useState<DocumentoSoporte[]>([]);
+  const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const [esSuperAdmin, setEsSuperAdmin] = useState(false);
+  const [esSecretario, setEsSecretario] = useState(false);
+  const [esAnalista, setEsAnalista] = useState(false);
+  const [esControlViaticos, setEsControlViaticos] = useState(false);
+  const [esSubdireccion, setEsSubdireccion] = useState(false);
+  const [esDireccionNacional, setEsDireccionNacional] = useState(false);
+  const [cargandoRol, setCargandoRol] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      localStorage.getItem('token') ||
+      localStorage.getItem('access_token') ||
+      (window as any).__esap_auth_cache,
+    );
   });
-
-  const cargarDatos = async () => {
-    setCargando(true);
-    try {
-      const [list, res] = await Promise.all([
-        viaticosService.obtenerSolicitudes(),
-        viaticosService.obtenerResumenEstadistico(),
-      ]);
-      setSolicitudes(list);
-      setResumen(res);
-    } catch (e) {
-      console.error('Error cargando viáticos:', e);
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+  const [prioridadSeleccionada, setPrioridadSeleccionada] = useState<string>('');
+  const [motivoDevolucion, setMotivoDevolucion] = useState('');
+  const [guardandoPrioridad, setGuardandoPrioridad] = useState(false);
+  const [devolviendo, setDevolviendo] = useState(false);
+  const [analistaSeleccionadoId, setAnalistaSeleccionadoId] = useState<string | null>(null);
+  const [asignando, setAsignando] = useState(false);
+  const [modalControlViaticosAbierta, setModalControlViaticosAbierta] = useState(false);
+  const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
+  const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
 
   const grupos: MenuGroup[] = [
     {
@@ -90,7 +131,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Comisiones de servicios oficiales',
           icon: <Plane className="w-5 h-5" />,
           color: '#003DA5',
-          badge: solicitudes.length,
+        },
+        {
+          id: 'mis-solicitudes',
+          label: 'Mis Solicitudes Asignadas',
+          subtitle: 'Solicitudes pendientes de revisión',
+          icon: <UserCheck className="w-5 h-5" />,
+          color: '#10B981',
         },
         {
           id: 'tiquetes',
@@ -113,51 +160,138 @@ export default function ViaticosModulePremium() {
           icon: <FileCheck className="w-5 h-5" />,
           color: '#7C3AED',
         },
+        {
+          id: 'autorizaciones',
+          label: 'Autorización Corporativa',
+          subtitle: 'Visto bueno de gasto e itinerario (Etapa 6)',
+          icon: <FileCheck className="w-5 h-5" />,
+          color: '#4F46E5',
+        },
+        {
+          id: 'autorizaciones-direccion',
+          label: 'Autorización Extemporánea',
+          subtitle: 'Visto bueno Dirección Nacional (Etapa 6)',
+          icon: <Award className="w-5 h-5" />,
+          color: '#9333EA',
+        },
+        {
+          id: 'configuracion',
+          label: 'Configuración',
+          subtitle: 'Parametrización de formulario y documentos',
+          icon: <Settings className="w-5 h-5" />,
+          color: '#64748B',
+        },
       ],
     },
   ];
 
-  const handleCrearSolicitud = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const cargarDatos = async () => {
+    setCargando(true);
     try {
-      await viaticosService.crearSolicitud({
-        ...formDatos,
-        tipoComision: formDatos.tipoComision as any,
-        medioTransporte: formDatos.medioTransporte as any,
-      });
-      setModalNuevaAbierta(false);
-      setPasoForm(1);
-      cargarDatos();
-    } catch (error) {
-      console.error('Error guardando solicitud:', error);
+      const { solicitudes: list } = await viaticosService.obtenerSolicitudes();
+
+      const esSecretarioRol =
+        esSuperAdmin ||
+        authService.hasRole('SECRETARIO') ||
+        authService.hasRole('SECRETARIO_VIATICOS') ||
+        authService.hasRole('SUPERVISOR') ||
+        authService.hasAnyPermission([
+          Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+          Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+          Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
+          Permissions.VIATICOS_SOLICITUDES_RETURN,
+        ]);
+
+      let solicitudesCombinadas = [...list];
+
+      if (esSecretarioRol) {
+        try {
+          const bandeja = await viaticosService.obtenerBandejaSecretario();
+          const solicitudesBandeja = bandeja.data.map((item) => viaticosService.mapearSolicitudLista(item));
+          const map = new Map<string, SolicitudViatico>();
+          solicitudesCombinadas.forEach((s) => map.set(s.id, s));
+          solicitudesBandeja.forEach((s) => map.set(s.id, s));
+          solicitudesCombinadas = Array.from(map.values());
+        } catch (e) {
+          console.error('Error cargando bandeja secretario:', e);
+        }
+      }
+
+      setSolicitudes(solicitudesCombinadas);
+      const res = await viaticosService.obtenerResumenEstadistico();
+      setResumen(res);
+    } catch (e) {
+      console.error('Error cargando viáticos:', e);
+    } finally {
+      setCargando(false);
     }
   };
 
-  const solicitudesFiltradas = solicitudes.filter((sol) => {
-    const cumpleBusqueda =
-      sol.nombreComisionado.toLowerCase().includes(busqueda.toLowerCase()) ||
-      sol.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      sol.ciudadDestino.toLowerCase().includes(busqueda.toLowerCase()) ||
-      sol.dependencia.toLowerCase().includes(busqueda.toLowerCase());
+  useEffect(() => {
+    const determinarRol = async () => {
+      try {
+        await authService.getCurrentUser();
+      } catch {
+        // si falla verify, getCurrentUserSync() usará la caché del shell
+      } finally {
+        const superAdmin = authService.isSuperAdmin();
+        const subdir = authService.isSubdireccionGestionCorporativa();
+        const dirNac = authService.isDireccionNacional();
+        const secretario =
+          superAdmin ||
+          authService.hasRole('SECRETARIO') ||
+          authService.hasRole('SECRETARIO_VIATICOS') ||
+          authService.hasRole('SUPERVISOR') ||
+          authService.hasAnyPermission([
+            Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+            Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+            Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
+            Permissions.VIATICOS_SOLICITUDES_RETURN,
+          ]);
+        setEsSuperAdmin(superAdmin);
+        setEsSecretario(secretario);
+        setEsAnalista(authService.isAnalista());
+        setEsControlViaticos(authService.isControlViaticos());
+        setEsSubdireccion(subdir);
+        setEsDireccionNacional(dirNac);
+        if (dirNac && !superAdmin && !subdir) {
+          setSeccion('autorizaciones-direccion');
+        } else if (subdir && !superAdmin) {
+          setSeccion('autorizaciones');
+        }
+        setCargandoRol(false);
+      }
+    };
 
-    const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
-    return cumpleBusqueda && cumpleEstado;
-  });
+    determinarRol();
+  }, []);
+
+  useEffect(() => {
+    if (!cargandoRol && (!esAnalista || esSuperAdmin)) {
+      cargarDatos();
+    }
+  }, [cargandoRol, esAnalista, esSuperAdmin]);
+
+  const solicitudesFiltradas = solicitudes
+    .filter((sol) => {
+      const termino = busqueda.toLowerCase();
+      const cumpleBusqueda =
+        !termino ||
+        sol.nombreComisionado.toLowerCase().includes(termino) ||
+        sol.codigo.toLowerCase().includes(termino) ||
+        sol.ciudadDestino.toLowerCase().includes(termino) ||
+        sol.dependencia.toLowerCase().includes(termino);
+      const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
+      return cumpleBusqueda && cumpleEstado;
+    })
+    .sort(
+      (a, b) =>
+        prioridadEstadoTabla(a.estado) - prioridadEstadoTabla(b.estado) ||
+        (a.creadoEn < b.creadoEn ? 1 : -1),
+    );
 
   const getBadgeEstado = (estado: string) => {
-    const config: Record<string, { label: string; bg: string; text: string }> = {
-      BORRADOR: { label: 'Borrador', bg: 'bg-gray-100', text: 'text-gray-700' },
-      SOLICITADO: { label: 'Solicitado', bg: 'bg-blue-100', text: 'text-blue-800' },
-      APROBADO_JEFE: { label: 'Aprobado Jefe', bg: 'bg-indigo-100', text: 'text-indigo-800' },
-      APROBADO_TALENTO_HUMANO: { label: 'Aprobado TH', bg: 'bg-purple-100', text: 'text-purple-800' },
-      RESOLUCION_EMITIDA: { label: 'Resolución Emitida', bg: 'bg-emerald-100', text: 'text-emerald-800' },
-      TIQUETES_COMPRADOS: { label: 'Tiquetes Emitidos', bg: 'bg-cyan-100', text: 'text-cyan-800' },
-      EN_COMISION: { label: 'En Comisión', bg: 'bg-amber-100', text: 'text-amber-800' },
-      PENDIENTE_LEGALIZACION: { label: 'Por Legalizar', bg: 'bg-orange-100', text: 'text-orange-800' },
-      LEGALIZADO: { label: 'Legalizado', bg: 'bg-green-100', text: 'text-green-800' },
-      RECHAZADO: { label: 'Rechazado', bg: 'bg-red-100', text: 'text-red-800' },
-    };
-    const c = config[estado] || { label: estado, bg: 'bg-gray-100', text: 'text-gray-800' };
+    const c = getConfigEstado(estado);
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${c.bg} ${c.text}`}>
         {c.label}
@@ -165,587 +299,1019 @@ export default function ViaticosModulePremium() {
     );
   };
 
+  const handleSolicitudCreada = (solicitud: SolicitudComisionResponse) => {
+    const ref = solicitud.consecutivoUnico || 'su solicitud';
+    setMensajeExito(`La solicitud ${ref} fue radicada correctamente.`);
+    cargarDatos();
+  };
+
+  const handleSolicitudConsolidada = (resultado: ResultadoConsolidacion) => {
+    const ref = resultado.consecutivoUnico || 'el expediente';
+    setMensajeExito(
+      `El expediente ${ref} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
+    );
+    setSolicitudAResumir(null);
+    cargarDatos();
+  };
+
+  const handleConsolidar = async (sol: SolicitudViatico) => {
+    try {
+      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setSolicitudAResumir(completa);
+    } catch (e) {
+      console.error('Error abriendo consolidación:', e);
+      setMensajeExito('No fue posible abrir el expediente para consolidación.');
+    }
+  };
+
+  const handleVerDetalle = async (sol: SolicitudViatico) => {
+    setSolicitudSeleccionada(sol);
+    setPrioridadSeleccionada(sol.prioridad || 'MEDIA');
+    setAnalistaSeleccionadoId(sol.analistaAsignadoId || null);
+    setMotivoDevolucion('');
+    setCargandoDocumentos(true);
+    setDocumentosSoporte([]);
+    try {
+      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setDocumentosSoporte(completa.documentosSoporte || []);
+      if (completa.analistaAsignadoId) {
+        setAnalistaSeleccionadoId(completa.analistaAsignadoId);
+      }
+      if (completa.prioridad) {
+        setPrioridadSeleccionada(completa.prioridad);
+      }
+    } catch (e) {
+      console.error('Error cargando documentos de soporte:', e);
+      setMensajeExito('No fue posible cargar los documentos de soporte de esta solicitud.');
+    } finally {
+      setCargandoDocumentos(false);
+    }
+  };
+
+  const handleExportarPDF = async (solicitud: { id: string; codigo?: string; consecutivoUnico?: string }) => {
+    setExportando(true);
+    try {
+      const codigo = solicitud.codigo || solicitud.consecutivoUnico || '';
+      const blob = await viaticosService.exportarFormato023(solicitud.id, codigo);
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setMensajeExito(`Formato 023 de la solicitud ${codigo} generado.`);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error('Error al exportar Formato 023:', error);
+      setMensajeExito('Error al exportar el Formato 023. Intente nuevamente.');
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const handleGuardarPrioridad = async () => {
+    if (!solicitudSeleccionada || !prioridadSeleccionada) return;
+    setGuardandoPrioridad(true);
+    try {
+      await viaticosService.actualizarPrioridad(solicitudSeleccionada.id, prioridadSeleccionada);
+      setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
+      cargarDatos();
+    } catch (error) {
+      console.error('Error guardando prioridad:', error);
+      setMensajeExito('No fue posible actualizar la prioridad.');
+    } finally {
+      setGuardandoPrioridad(false);
+    }
+  };
+
+  const handleDevolverSolicitud = async () => {
+    if (!solicitudSeleccionada || !motivoDevolucion.trim()) return;
+    setDevolviendo(true);
+    try {
+      await viaticosService.devolverSolicitud(solicitudSeleccionada.id, motivoDevolucion.trim());
+      setMensajeExito('Solicitud devuelta a la dependencia correctamente.');
+      setMotivoDevolucion('');
+      cargarDatos();
+      setSolicitudSeleccionada(null);
+    } catch (error) {
+      console.error('Error devolviendo solicitud:', error);
+      setMensajeExito('No fue posible devolver la solicitud.');
+    } finally {
+      setDevolviendo(false);
+    }
+  };
+
+  const handleConfirmarAsignacion = async () => {
+    if (!solicitudSeleccionada || !analistaSeleccionadoId) return;
+    setAsignando(true);
+    try {
+      await viaticosService.asignarAnalista({
+        solicitudId: solicitudSeleccionada.id,
+        analistaId: analistaSeleccionadoId,
+      });
+      setMensajeExito('Comisión asignada al analista correctamente.');
+      setAnalistaSeleccionadoId(null);
+      cargarDatos();
+      setSolicitudSeleccionada(null);
+    } catch (error) {
+      console.error('Error asignando analista:', error);
+      setMensajeExito('No fue posible asignar la comisión al analista.');
+    } finally {
+      setAsignando(false);
+    }
+  };
+
+  const handleAbrirControlCruzado = async (sol: SolicitudViatico) => {
+    setCargandoControlViaticos(true);
+    setSolicitudControlViaticos(null);
+    setModalControlViaticosAbierta(true);
+    try {
+      const full = await viaticosService.obtenerSolicitudControlViaticos(sol.id);
+      setSolicitudControlViaticos(full);
+    } catch (err) {
+      console.error('Error cargando solicitud para Control Cruzado:', err);
+      setMensajeExito('No fue posible cargar el expediente para control cruzado.');
+    } finally {
+      setCargandoControlViaticos(false);
+    }
+  };
+
+  const currentUser = typeof (authService as any).getCurrentUserSync === 'function'
+    ? (authService as any).getCurrentUserSync()
+    : null;
+  const tieneContextoAuth = Boolean(
+    currentUser &&
+      (currentUser.roles?.length || currentUser.permissions?.length),
+  );
+
+  const puedeVerSolicitudes =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_SOLICITUDES_READ_OWN,
+      Permissions.VIATICOS_SOLICITUDES_CREATE,
+      Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
+      Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
+      Permissions.VIATICOS_SOLICITUDES_RETURN,
+      'travel_expenses:read_siif_requested',
+      'travel_expenses:double_check_request',
+    ]) ||
+    authService.isControlViaticos();
+  const puedeCrearSolicitud =
+    (!tieneContextoAuth || esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE)) &&
+    !esControlViaticos;
+  const puedeVerTiquetes =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_TIQUETES_VIEW,
+      Permissions.VIATICOS_TIQUETES_MANAGE,
+    ]);
+  const puedeVerLegalizaciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_LEGALIZACIONES_VIEW,
+      Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+    ]);
+  const puedeVerResoluciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasAnyPermission([
+      Permissions.VIATICOS_RESOLUCIONES_VIEW,
+      Permissions.VIATICOS_RESOLUCIONES_MANAGE,
+    ]);
+  const puedeVerConfiguracion =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
+  const puedeVerSolicitudesAsignadas =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
+  const puedeVerControlViaticos =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_siif_requested') ||
+    authService.hasPermission('travel_expenses:double_check_request') ||
+    authService.hasPermission('travel_expenses:return_to_analyst') ||
+    authService.isControlViaticos();
+  const puedeVerAutorizaciones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_authorizations') ||
+    authService.hasPermission('travel_expenses:authorize_expense') ||
+    authService.hasPermission('travel_expenses:return_authorization');
+  const puedeVerAutorizacionesDireccion =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esDireccionNacional ||
+    authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+    authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
+    authService.hasPermission('travel_expenses:reject_extemporaneous');
+
+  const gruposFiltrados: MenuGroup[] = grupos
+    .map((grupo) => {
+      let items = grupo.items.filter((item) => {
+        if (item.id === 'solicitudes') return puedeVerSolicitudes;
+        if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
+        if (item.id === 'tiquetes') return puedeVerTiquetes;
+        if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
+        if (item.id === 'resoluciones') return puedeVerResoluciones;
+        if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
+        if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
+        if (item.id === 'configuracion') return puedeVerConfiguracion;
+        return true;
+      });
+
+      if (esDireccionNacional && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'autorizaciones-direccion') return -1;
+          if (b.id === 'autorizaciones-direccion') return 1;
+          return 0;
+        });
+      } else if (esSubdireccion && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'autorizaciones') return -1;
+          if (b.id === 'autorizaciones') return 1;
+          return 0;
+        });
+      }
+
+      return {
+        ...grupo,
+        items,
+      };
+    })
+    .filter((grupo) => grupo.items.length > 0);
+
+  if (cargandoRol) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-xs text-slate-400">Cargando módulo de viáticos...</div>
+      </div>
+    );
+  }
+
+  if (esAnalista && !esSuperAdmin) {
+    return <AnalystInbox />;
+  }
+
   return (
     <ModuleLayout
       moduleName="VIÁTICOS Y GASTOS DE VIAJE"
       moduleDescription="Gestión de Comisiones de Servicios y Tiquetes Institucionales · ESAP"
       moduleIcon={<Plane className="w-6 h-6" />}
       moduleColor="#003DA5"
-      groups={grupos}
+      groups={gruposFiltrados}
       activeSection={seccion}
-      onSectionChange={(s) => setSeccion(s as Seccion)}
+      onSectionChange={(s) => {
+        setSeccion(s as Seccion);
+        setModalNuevaAbierta(false);
+        setSolicitudSeleccionada(null);
+        setSolicitudAResumir(null);
+      }}
     >
-      {/* ── KPI HEADER ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
-            <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
-            <Plane className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
-            <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <Clock className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
-            <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-            <MapPin className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">
-              ${(resumen?.montoTotalEjecutado || 0).toLocaleString('es-CO')}
-            </h3>
-            <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-            <DollarSign className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
-
-      {/* ── TAB CONTENT ── */}
-      {seccion === 'solicitudes' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Plane className="w-5 h-5 text-[#003DA5]" />
-                Solicitudes de Comisión y Viáticos
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setFormDatos({
-                  nombreComisionado: '',
-                  cedulaComisionado: '',
-                  cargoComisionado: '',
-                  dependencia: 'Subdirección Académica',
-                  sedeOrigen: 'Sede Central Bogotá',
-                  ciudadDestino: '',
-                  departamentoDestino: '',
-                  fechaInicio: '',
-                  fechaFin: '',
-                  diasComision: 2,
-                  tipoComision: 'SERVICIOS_INSTITUCIONALES',
-                  medioTransporte: 'AEREO',
-                  justificacion: '',
-                  montoSolicitadoViaticos: 560000,
-                  montoSolicitadoGastosViaje: 120000,
-                  requiereTiqueteAereo: true,
-                });
-                setPasoForm(1);
-                setModalNuevaAbierta(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Nueva Solicitud de Comisión
-            </button>
-          </div>
-
-          {/* Filtros */}
-          <div className="flex flex-col md:flex-row md:items-center gap-3 my-4">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="text"
-                placeholder="Buscar por funcionario, código, ciudad o dependencia..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-slate-400" />
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="TODOS">Todos los Estados</option>
-                <option value="SOLICITADO">Solicitado</option>
-                <option value="APROBADO_TALENTO_HUMANO">Aprobado TH</option>
-                <option value="RESOLUCION_EMITIDA">Resolución Emitida</option>
-                <option value="EN_COMISION">En Comisión</option>
-                <option value="LEGALIZADO">Legalizado</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Tabla de solicitudes */}
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3">Código / Solicitante</th>
-                  <th className="px-4 py-3">Destino / Fechas</th>
-                  <th className="px-4 py-3">Tipo & Transporte</th>
-                  <th className="px-4 py-3">Monto Estimado</th>
-                  <th className="px-4 py-3">Estado</th>
-                  <th className="px-4 py-3 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {solicitudesFiltradas.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                      No se encontraron solicitudes de viáticos registradas.
-                    </td>
-                  </tr>
-                ) : (
-                  solicitudesFiltradas.map((sol) => (
-                    <tr key={sol.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-[11px] font-bold text-blue-700">{sol.codigo}</span>
-                        <div className="font-bold text-slate-800 text-sm mt-0.5">{sol.nombreComisionado}</div>
-                        <div className="text-[11px] text-slate-400">{sol.cargoComisionado} · {sol.dependencia}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 font-bold text-slate-700">
-                          <MapPin className="w-3.5 h-3.5 text-red-500" />
-                          {sol.ciudadDestino} ({sol.departamentoDestino})
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          {sol.fechaInicio} al {sol.fechaFin} ({sol.diasComision} días)
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">
-                          {sol.tipoComision.replace(/_/g, ' ')}
-                        </span>
-                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-                          <Plane className="w-3 h-3 text-blue-500" />
-                          {sol.medioTransporte}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-black text-slate-900 text-sm">
-                          ${sol.montoTotalEstimado.toLocaleString('es-CO')}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          Viáticos: ${sol.montoSolicitadoViaticos.toLocaleString('es-CO')}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">{getBadgeEstado(sol.estado)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setSolicitudSeleccionada(sol)}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-slate-500" />
-                          Ver Detalle
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+      {mensajeExito && (
+        <div className="mb-4 flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-xs font-semibold">
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            {mensajeExito}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMensajeExito(null)}
+            className="text-emerald-600 hover:text-emerald-800 font-bold"
+            aria-label="Cerrar aviso"
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      {seccion === 'tiquetes' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-600" />
-                Reserva y Emisión de Pasajes
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Gestión de itinerarios, pasajes aéreos y terrestres para funcionarios en comisión de servicios.
-              </p>
-            </div>
-            <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold">
-              Convenio Marco Satena / Avianca / Clic
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-blue-700">TKT-2026-9481</span>
-                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[11px] font-bold">EMITIDO</span>
-              </div>
-              <h4 className="font-bold text-slate-800 mt-2">Bogotá (BOG) ➔ Medellín (MDE)</h4>
-              <p className="text-xs text-slate-500">Pasajero: Carlos Eduardo Ramírez (Docente Ocasional)</p>
-              <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-600 space-y-1">
-                <div>✈️ Avianca AV9320 · Salida: 2026-08-20 06:30 AM</div>
-                <div>✈️ Avianca AV9325 · Regreso: 2026-08-23 07:15 PM</div>
-                <div className="font-bold text-slate-800">Localizador: ESAP942A</div>
-              </div>
-            </div>
-
-            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-blue-700">TKT-2026-9482</span>
-                <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-[11px] font-bold">RESERVADO</span>
-              </div>
-              <h4 className="font-bold text-slate-800 mt-2">Bogotá (BOG) ➔ Cali (CLO)</h4>
-              <p className="text-xs text-slate-500">Pasajero: Ana María Gómez (Asesora Planeación)</p>
-              <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-600 space-y-1">
-                <div>✈️ Clic Air CL4021 · Salida: 2026-08-25 08:00 AM</div>
-                <div>✈️ Clic Air CL4028 · Regreso: 2026-08-27 06:00 PM</div>
-                <div className="font-bold text-slate-800">Localizador: ESAP883B</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {seccion === 'legalizaciones' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-amber-600" />
-                Legalización y Cumplido de Comisión
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Revisión de facturas, cumplidos firmados y cálculo de reintegros o devoluciones.
-              </p>
-            </div>
-          </div>
-          <div className="p-8 text-center text-slate-400 text-xs">
-            <Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-            Cargue de soportes de legalización activo para comisiones finalizadas.
-          </div>
-        </div>
-      )}
-
-      {seccion === 'resoluciones' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <FileCheck className="w-5 h-5 text-purple-600" />
-                Resoluciones Institucionales de Comisión
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Actos administrativos oficializados por la Subdirección de Gestión Institucional.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="p-4 rounded-xl border border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-3">
-                <FileText className="w-6 h-6 text-purple-600" />
-                <div>
-                  <h4 className="font-bold text-slate-800 text-sm">Resolución N° RES-0452-2026</h4>
-                  <p className="text-xs text-slate-500">Por la cual se autoriza comisión de servicios a Medellín - Carlos Ramírez</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-1"
-              >
-                <Download className="w-3.5 h-3.5" /> PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL NUEVA SOLICITUD DE COMISIÓN ── */}
-      {modalNuevaAbierta && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-blue-50 text-[#003DA5] rounded-xl">
-                  <Plane className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Nueva Solicitud de Comisión de Servicios</h3>
-                  <p className="text-xs text-slate-400">Paso {pasoForm} de 3</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalNuevaAbierta(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCrearSolicitud} className="space-y-4">
-              {pasoForm === 1 && (
-                <div className="space-y-4">
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
-                    1. Datos del Funcionario Comisionado
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Nombre Completo *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. María Fernanda López"
-                        value={formDatos.nombreComisionado}
-                        onChange={(e) => setFormDatos({ ...formDatos, nombreComisionado: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Cédula de Ciudadanía *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. 1019283746"
-                        value={formDatos.cedulaComisionado}
-                        onChange={(e) => setFormDatos({ ...formDatos, cedulaComisionado: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Cargo *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. Profesional Especializado"
-                        value={formDatos.cargoComisionado}
-                        onChange={(e) => setFormDatos({ ...formDatos, cargoComisionado: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Dependencia *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formDatos.dependencia}
-                        onChange={(e) => setFormDatos({ ...formDatos, dependencia: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                  </div>
-                  <div className="pt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setPasoForm(2)}
-                      className="px-4 py-2 bg-[#003DA5] text-white rounded-xl text-xs font-bold flex items-center gap-1"
-                    >
-                      Siguiente <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {pasoForm === 2 && (
-                <div className="space-y-4">
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
-                    2. Destino y Fechas de Comisión
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Ciudad Destino *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. Cartagena"
-                        value={formDatos.ciudadDestino}
-                        onChange={(e) => setFormDatos({ ...formDatos, ciudadDestino: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Departamento *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. Bolívar"
-                        value={formDatos.departamentoDestino}
-                        onChange={(e) => setFormDatos({ ...formDatos, departamentoDestino: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Fecha Inicio *</label>
-                      <input
-                        type="date"
-                        required
-                        value={formDatos.fechaInicio}
-                        onChange={(e) => setFormDatos({ ...formDatos, fechaInicio: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Fecha Fin *</label>
-                      <input
-                        type="date"
-                        required
-                        value={formDatos.fechaFin}
-                        onChange={(e) => setFormDatos({ ...formDatos, fechaFin: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                  </div>
-                  <div className="pt-3 flex justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setPasoForm(1)}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold"
-                    >
-                      Atrás
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPasoForm(3)}
-                      className="px-4 py-2 bg-[#003DA5] text-white rounded-xl text-xs font-bold flex items-center gap-1"
-                    >
-                      Siguiente <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {pasoForm === 3 && (
-                <div className="space-y-4">
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
-                    3. Justificación y Estimación de Gastos
-                  </h4>
+      {modalNuevaAbierta || solicitudAResumir ? (
+        <NuevaSolicitudModal
+          abierta={modalNuevaAbierta || Boolean(solicitudAResumir)}
+          onCerrar={() => {
+            setModalNuevaAbierta(false);
+            setSolicitudAResumir(null);
+          }}
+          onSolicitudCreada={handleSolicitudCreada}
+          onSolicitudConsolidada={handleSolicitudConsolidada}
+          solicitudAResumir={solicitudAResumir}
+          esSuperAdmin={esSuperAdmin}
+        />
+      ) : (
+        <>
+           {/* ── SOLICITUDES ── */}
+           {seccion === 'solicitudes' && puedeVerSolicitudes && (
+            <>
+              {/* ── KPI HEADER (Específico de Solicitudes) ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Objeto / Justificación *</label>
-                    <textarea
-                      required
-                      rows={3}
-                      placeholder="Describa el objetivo institucional de la comisión..."
-                      value={formDatos.justificacion}
-                      onChange={(e) => setFormDatos({ ...formDatos, justificacion: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                    />
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
+                    <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Medio de Transporte</label>
-                      <select
-                        value={formDatos.medioTransporte}
-                        onChange={(e) => setFormDatos({ ...formDatos, medioTransporte: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      >
-                        <option value="AEREO">Aéreo</option>
-                        <option value="TERRESTRE">Terrestre</option>
-                        <option value="VEHICULO_INSTITUCIONAL">Vehículo Institucional</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-700 block mb-1">Valor Estimado Viáticos ($)</label>
-                      <input
-                        type="number"
-                        value={formDatos.montoSolicitadoViaticos}
-                        onChange={(e) => setFormDatos({ ...formDatos, montoSolicitadoViaticos: Number(e.target.value) })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                      />
-                    </div>
-                  </div>
-                  <div className="pt-3 flex justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setPasoForm(2)}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold"
-                    >
-                      Atrás
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 bg-[#003DA5] text-white rounded-xl text-xs font-bold inline-flex items-center gap-2"
-                    >
-                      <Send className="w-4 h-4" /> Radicar Solicitud
-                    </button>
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
+                    <Plane className="w-6 h-6" />
                   </div>
                 </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
+                    <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
+                    <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
+                    <h3 className="text-2xl font-black text-slate-800 mt-1">
+                      {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
+                    </h3>
+                    <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                    <DollarSign className="w-6 h-6" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Plane className="w-5 h-5 text-[#003DA5]" />
+                     Solicitudes de Comisión y Viáticos
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                    Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
+                  </p>
+                </div>
+                {puedeCrearSolicitud && (
+                  <button
+                    type="button"
+                    onClick={() => setModalNuevaAbierta(true)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Nueva Solicitud de Comisión
+                  </button>
+                )}
+              </div>
+
+              {/* Filtros */}
+              <div className="flex flex-col md:flex-row md:items-center gap-3 my-4">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por funcionario, código, ciudad o dependencia..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <SearchableSelect
+                    id="filtroEstado"
+                    options={[
+                      { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+                      { value: 'AUTORIZADA', label: 'Autorizada' },
+                      { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
+                      { value: 'VERIFICADA', label: 'Verificada' },
+                      { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
+                      { value: 'SOLICITADO', label: 'Solicitado' },
+                      { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
+                      { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
+                      { value: 'EN_COMISION', label: 'En Comisión' },
+                      { value: 'LEGALIZADO', label: 'Legalizado' },
+                    ]}
+                    value={filtroEstado}
+                    onChange={(valor) => setFiltroEstado(valor)}
+                    placeholder="Filtrar por estado"
+                  />
+                </div>
+              </div>
+
+              {cargando && solicitudes.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <AlertCircle className="w-4 h-4" /> Cargando solicitudes de viáticos...
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+                      <tr>
+                         <th className="px-4 py-3">Código / Solicitante</th>
+                         <th className="px-4 py-3">Destino / Fechas</th>
+                         <th className="px-4 py-3">Tipo & Transporte</th>
+                         <th className="px-4 py-3">Monto Estimado</th>
+                         <th className="px-4 py-3">Estado</th>
+                          {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && <th className="px-4 py-3">Prioridad</th>}
+                         <th className="px-4 py-3 text-right">Acciones</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 bg-white">
+                       {solicitudesFiltradas.length === 0 ? (
+                         <tr>
+                            <td colSpan={(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
+                             No se encontraron solicitudes de viáticos registradas.
+                           </td>
+                         </tr>
+                      ) : (
+                        solicitudesFiltradas.map((sol) => (
+                          <tr key={sol.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[10px] text-slate-400 tracking-wide">{sol.codigo}</span>
+                                {authService.isSuperAdmin() && sol.esCreadoPorMi && (
+                                  <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
+                                    <UserCheck className="w-3 h-3" />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-bold text-slate-800 text-sm mt-0.5">{sol.nombreComisionado}</div>
+                              <div className="text-[11px] text-slate-400">
+                                {sol.cargoComisionado} · {sol.dependencia}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1 font-bold text-slate-700">
+                                <MapPin className="w-3.5 h-3.5 text-red-500" />
+                                {sol.ciudadDestino} ({sol.departamentoDestino})
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                {sol.fechaInicio} al {sol.fechaFin} ({sol.diasComision} días)
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                                {sol.tipoComision.replace(/_/g, ' ')}
+                              </span>
+                              <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                                <Plane className="w-3 h-3 text-blue-500" />
+                                {sol.medioTransporte}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-black text-slate-900 text-sm">
+                                {formatearMoneda(sol.montoTotalEstimado)}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Viáticos: {formatearMoneda(sol.montoSolicitadoViaticos)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1 items-start">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {getBadgeEstado(sol.estado)}
+                                  {sol.radicadoFueraJornada && (
+                                    <span className="inline-flex items-center text-amber-600" title="Radicado fuera de jornada">
+                                      <AlertCircle className="w-3.5 h-3.5" />
+                                    </span>
+                                  )}
+                                </div>
+                                {(sol.motivoDevolucion || sol.observacionesSegundaRevision) && (
+                                  <div
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 max-w-[200px]"
+                                    title={`Motivo de Devolución: ${sol.motivoDevolucion || sol.observacionesSegundaRevision}`}
+                                  >
+                                    <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                                    <span className="truncate">
+                                      {sol.motivoDevolucion || sol.observacionesSegundaRevision}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                             {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && (
+                              <td className="px-4 py-3">
+                                {['SOLICITADO', 'EXTEMPORANEA'].includes(sol.estado) ? (
+                                  <select
+                                    value={sol.prioridad || 'MEDIA'}
+                                    onChange={async (e) => {
+                                      const nueva = e.target.value;
+                                      try {
+                                        await viaticosService.actualizarPrioridad(sol.id, nueva);
+                                        setMensajeExito(`Prioridad de ${sol.codigo || 'la solicitud'} actualizada a ${nueva}.`);
+                                        cargarDatos();
+                                      } catch (err) {
+                                        console.error(err);
+                                        setMensajeExito('No fue posible actualizar la prioridad.');
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                                      sol.prioridad === 'ALTA'
+                                        ? 'bg-red-50 text-red-700 border-red-200 hover:border-red-400'
+                                        : sol.prioridad === 'MEDIA'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400'
+                                          : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400'
+                                    }`}
+                                    title="Cambiar prioridad de revisión"
+                                  >
+                                    <option value="ALTA">Alta</option>
+                                    <option value="MEDIA">Media</option>
+                                    <option value="BAJA">Baja</option>
+                                  </select>
+                                ) : sol.prioridad ? (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                      sol.prioridad === 'ALTA'
+                                        ? 'bg-red-50 text-red-700'
+                                        : sol.prioridad === 'MEDIA'
+                                          ? 'bg-amber-50 text-amber-700'
+                                          : 'bg-emerald-50 text-emerald-700'
+                                    }`}
+                                  >
+                                    {sol.prioridad}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400">—</span>
+                                )}
+                              </td>
+                            )}
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleExportarPDF(sol)}
+                                  disabled={exportando}
+                                  className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors disabled:opacity-50"
+                                  title="Exportar Formato 023"
+                                  aria-label="Exportar Formato 023"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleVerDetalle(sol)}
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                  title="Ver Detalle"
+                                  aria-label="Ver Detalle"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                </button>
+                                {['SOLICITADO', 'EXTEMPORANEA'].includes(sol.estado) &&
+                                  (esSuperAdmin ||
+                                    esSecretario ||
+                                    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleVerDetalle(sol)}
+                                      className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors"
+                                      title={
+                                        sol.analistaAsignadoId
+                                          ? 'Reasignar Analista / Cambiar Prioridad'
+                                          : 'Asignar Analista (Etapa 4)'
+                                      }
+                                      aria-label="Asignar Analista"
+                                    >
+                                      <UserPlus className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                                {sol.estado === 'PENDIENTE' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+                                      setSolicitudAResumir(completa);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors"
+                                    title="Continuar solicitud en borrador"
+                                    aria-label="Continuar solicitud"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {puedeCrearSolicitud && ['RADICADA', 'DEVUELTA'].includes(sol.estado) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleConsolidar(sol)}
+                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                                    title="Consolidar y enviar a revisión (RF-LIQ-004)"
+                                    aria-label="Consolidar y enviar a revisión"
+                                  >
+                                    <Send className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {(sol.estado === 'SOLICITADA_SIIF' || sol.estado === 'VERIFICADA') && puedeVerControlViaticos && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleAbrirControlCruzado(sol)}
+                                    className={`p-1.5 rounded-lg transition-colors ${
+                                      sol.estado === 'VERIFICADA'
+                                        ? 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                    }`}
+                                    title={
+                                      sol.estado === 'SOLICITADA_SIIF'
+                                        ? 'Realizar Control Cruzado (Segunda Revisión)'
+                                        : 'Consultar Expediente Verificado (2do Nivel)'
+                                    }
+                                    aria-label={
+                                      sol.estado === 'SOLICITADA_SIIF'
+                                        ? 'Realizar Control Cruzado'
+                                        : 'Consultar Expediente Verificado'
+                                    }
+                                  >
+                                    {sol.estado === 'VERIFICADA' ? (
+                                      <Eye className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </form>
-          </div>
-        </div>
+            </div>
+          </>
+        )}
+
+           {/* ── TIQUETES ── */}
+           {seccion === 'tiquetes' && puedeVerTiquetes && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-emerald-600" />
+                    Reserva y Emisión de Pasajes
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Gestión de itinerarios, pasajes aéreos y terrestres para funcionarios en comisión de servicios.
+                  </p>
+                </div>
+                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold">
+                  Convenio Marco Satena / Avianca / Clic
+                </span>
+              </div>
+              <div className="p-8 text-center text-slate-400 text-xs">
+                <CreditCard className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                La gestión de pasajes y alojamiento se habilita tras la emisión de la resolución de comisión.
+              </div>
+            </div>
+          )}
+
+           {/* ── LEGALIZACIONES ── */}
+           {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-amber-600" />
+                    Legalización y Cumplido de Comisión
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Revisión de facturas, cumplidos firmados y cálculo de reintegros o devoluciones.
+                  </p>
+                </div>
+              </div>
+              <div className="p-8 text-center text-slate-400 text-xs">
+                <Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                Cargue de soportes de legalización activo para comisiones finalizadas.
+              </div>
+            </div>
+          )}
+
+            {/* ── RESOLUCIONES ── */}
+            {seccion === 'resoluciones' && puedeVerResoluciones && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6">
+               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <FileCheck className="w-5 h-5 text-purple-600" />
+                     Resoluciones Institucionales de Comisión
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                     Actos administrativos oficializados por la Subdirección de Gestión Institucional.
+                   </p>
+                 </div>
+               </div>
+               <div className="p-8 text-center text-slate-400 text-xs">
+                 <FileText className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                 Las resoluciones asociadas a cada solicitud aparecerán aquí tras su aprobación.
+               </div>
+             </div>
+           )}
+
+             {/* ── MIS SOLICITUDES ASIGNADAS ── */}
+{seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (
+                <SolicitudesAsignadasAnalista />
+              )}
+
+              {/* ── AUTORIZACIÓN CORPORATIVA (ETAPA 6) ── */}
+              {seccion === 'autorizaciones' && puedeVerAutorizaciones && (
+                <AutorizacionInbox />
+              )}
+
+              {/* ── AUTORIZACIÓN EXTEMPORÁNEA DIRECCIÓN NACIONAL (ETAPA 6) ── */}
+              {seccion === 'autorizaciones-direccion' && puedeVerAutorizacionesDireccion && (
+                <AutorizacionDireccionInbox />
+              )}
+
+             {/* ── CONFIGURACIÓN ── */}
+             {seccion === 'configuracion' && puedeVerConfiguracion && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+                 <div>
+                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Settings className="w-5 h-5 text-slate-600" />
+                     Configuración del Módulo de Viáticos
+                   </h2>
+                   <p className="text-xs text-slate-500 mt-0.5">
+                     Parámetros, formularios, checklist y reglas de negocio del módulo.
+                   </p>
+                 </div>
+               </div>
+               <div className="mt-4">
+                 <ParametrizacionManager />
+               </div>
+             </div>
+           )}
+
+          {/* ── MODAL DETALLE DE SOLICITUD ── */}
+          {solicitudSeleccionada && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-start sm:items-center justify-center p-4 pt-20 sm:pt-4 overflow-y-auto">
+              <div className="bg-white rounded-2xl max-w-xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col max-h-[calc(100vh-6rem)]">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
+                  <div className="min-w-0 flex-1 pr-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[10px] text-slate-400 tracking-wide truncate">
+                        {solicitudSeleccionada.codigo}
+                      </span>
+                      {authService.isSuperAdmin() && solicitudSeleccionada.esCreadoPorMi && (
+                        <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
+                          <UserCheck className="w-3 h-3" />
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-sm font-black text-slate-900 truncate">
+                      {solicitudSeleccionada.nombreComisionado}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSolicitudSeleccionada(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                    aria-label="Cerrar detalle"
+                    title="Cerrar"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="px-5 py-4 space-y-2.5 text-xs overflow-y-auto flex-1 min-h-0 scrollbar-thin">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-50 rounded-lg px-3 py-2">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Cargo</span>
+                      <span className="font-semibold text-slate-800 text-xs">{solicitudSeleccionada.cargoComisionado}</span>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg px-3 py-2">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Dependencia</span>
+                      <span className="font-semibold text-slate-800 text-xs">{solicitudSeleccionada.dependencia}</span>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg px-3 py-2">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Destino</span>
+                      <span className="font-semibold text-slate-800 text-xs">
+                        {solicitudSeleccionada.ciudadDestino} ({solicitudSeleccionada.departamentoDestino})
+                      </span>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg px-3 py-2">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Fechas</span>
+                      <span className="font-semibold text-slate-800 text-xs">
+                        {solicitudSeleccionada.fechaInicio} → {solicitudSeleccionada.fechaFin}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado</span>
+                    <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
+                  </div>
+                  {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] uppercase tracking-wider text-rose-800 font-black block">
+                            Devolución de Control Viáticos (Hallazgo para subsanar)
+                          </span>
+                          <p className="text-xs text-rose-900 mt-1 font-mono bg-white/70 p-2.5 rounded-lg border border-rose-200/60 whitespace-pre-wrap leading-relaxed">
+                            {solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Justificación</span>
+                    <p className="bg-slate-50 p-2.5 rounded-lg text-slate-700 leading-relaxed border border-slate-100">
+                      {solicitudSeleccionada.justificacion}
+                    </p>
+                  </div>
+
+                   <div>
+                     <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Archivos adjuntos</span>
+                     {cargandoDocumentos ? (
+                       <div className="py-2 text-xs text-slate-400">Cargando archivos...</div>
+                     ) : documentosSoporte.length === 0 ? (
+                       <p className="text-xs text-slate-500 italic">No hay documentos adjuntos.</p>
+                     ) : (
+                       <div className="space-y-1.5">
+                         {documentosSoporte.map((doc) => {
+                           const urlArchivo = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
+                           return (
+                             <div
+                               key={doc.id}
+                               className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100"
+                             >
+                               <div className="min-w-0 flex-1">
+                                 <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
+                                 <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
+                               </div>
+                               <div className="shrink-0 ml-2">
+                                 <button
+                                   type="button"
+                                   onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
+                                   className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
+                                   title="Abrir en nueva pestaña"
+                                 >
+                                   <Eye className="w-3.5 h-3.5" />
+                                 </button>
+                               </div>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     )}
+                   </div>
+
+                   {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                     <div className="mt-4 space-y-3">
+                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                         <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>
+                         <div className="flex items-center gap-2 mb-2">
+                           <Flag className="w-4 h-4 text-blue-600" />
+                           <span className="text-xs font-bold text-slate-700">Prioridad</span>
+                         </div>
+                         <select
+                           value={prioridadSeleccionada}
+                           onChange={(e) => setPrioridadSeleccionada(e.target.value)}
+                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         >
+                           <option value="ALTA">Alta</option>
+                           <option value="MEDIA">Media</option>
+                           <option value="BAJA">Baja</option>
+                         </select>
+                         <button
+                           type="button"
+                           onClick={async () => {
+                             if (!solicitudSeleccionada) return;
+                             setGuardandoPrioridad(true);
+                             try {
+                               await viaticosService.actualizarPrioridad(solicitudSeleccionada.id, prioridadSeleccionada);
+                               setMensajeExito(`Prioridad actualizada a ${prioridadSeleccionada} correctamente.`);
+                               cargarDatos();
+                             } catch (error) {
+                               console.error('Error guardando prioridad:', error);
+                               setMensajeExito('No fue posible actualizar la prioridad.');
+                             } finally {
+                               setGuardandoPrioridad(false);
+                             }
+                           }}
+                           disabled={guardandoPrioridad}
+                           className="mt-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {guardandoPrioridad ? 'Guardando...' : 'Guardar Prioridad'}
+                         </button>
+                       </div>
+
+                       <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                         <div className="flex items-center gap-2 mb-2">
+                           <Undo2 className="w-4 h-4 text-red-600" />
+                           <span className="text-xs font-bold text-slate-700">Devolver a Dependencia</span>
+                         </div>
+                         <textarea
+                           value={motivoDevolucion}
+                           onChange={(e) => setMotivoDevolucion(e.target.value)}
+                           placeholder="Escriba el motivo detallado de la devolución..."
+                           rows={3}
+                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                         />
+                         <button
+                           type="button"
+                           onClick={async () => {
+                             if (!solicitudSeleccionada || !motivoDevolucion.trim()) return;
+                             setDevolviendo(true);
+                             try {
+                               await viaticosService.devolverSolicitud(solicitudSeleccionada.id, motivoDevolucion.trim());
+                               setMensajeExito('Solicitud devuelta a la dependencia correctamente.');
+                               setMotivoDevolucion('');
+                               cargarDatos();
+                               setSolicitudSeleccionada(null);
+                             } catch (error) {
+                               console.error('Error devolviendo solicitud:', error);
+                               setMensajeExito('No fue posible devolver la solicitud.');
+                             } finally {
+                               setDevolviendo(false);
+                             }
+                           }}
+                           disabled={devolviendo || !motivoDevolucion.trim()}
+                           className="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition-colors"
+                         >
+                           {devolviendo ? 'Devolviendo...' : 'Confirmar Devolución'}
+                         </button>
+                       </div>
+                     </div>
+                   )}
+
+                   {(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST)) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                     <div className="mt-4 space-y-3">
+                       <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                         <span className="text-[10px] uppercase tracking-wider text-indigo-600 font-bold block mb-2">Asignar Solicitud a Analista (RF-REC-002)</span>
+                          <TableroCargaAnalistas
+                            analistaSeleccionadoId={analistaSeleccionadoId}
+                            onSeleccionarAnalista={setAnalistaSeleccionadoId}
+                            analistaAsignadoId={solicitudSeleccionada.analistaAsignadoId}
+                            solicitudId={solicitudSeleccionada.id}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleConfirmarAsignacion}
+                            style={
+                              asignando || !analistaSeleccionadoId
+                                ? { backgroundColor: '#e2e8f0', color: '#475569', cursor: 'not-allowed', pointerEvents: 'none' }
+                                : { backgroundColor: '#4f46e5', color: '#ffffff', cursor: 'pointer' }
+                            }
+                            className="mt-3 w-full px-3 py-2 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            {asignando ? 'Asignando...' : 'Confirmar Asignación'}
+                          </button>
+                       </div>
+                     </div>
+                   )}
+                </div>
+                <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
+                  <button
+                    type="button"
+                    onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
+                    disabled={exportando}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {exportando ? 'Exportando...' : 'Exportar PDF'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSolicitudSeleccionada(null)}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* ── MODAL DETALLE DE SOLICITUD ── */}
-      {solicitudSeleccionada && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <span className="font-mono text-xs font-bold text-blue-700">{solicitudSeleccionada.codigo}</span>
-                <h3 className="text-base font-black text-slate-900">{solicitudSeleccionada.nombreComisionado}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSolicitudSeleccionada(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="py-4 space-y-3 text-xs">
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-bold">Cargo:</span>
-                <span className="font-semibold text-slate-800">{solicitudSeleccionada.cargoComisionado}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-bold">Dependencia:</span>
-                <span className="font-semibold text-slate-800">{solicitudSeleccionada.dependencia}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-bold">Destino:</span>
-                <span className="font-semibold text-slate-800">
-                  {solicitudSeleccionada.ciudadDestino} ({solicitudSeleccionada.departamentoDestino})
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-bold">Fechas:</span>
-                <span className="font-semibold text-slate-800">
-                  {solicitudSeleccionada.fechaInicio} al {solicitudSeleccionada.fechaFin}
-                </span>
-              </div>
-              <div className="py-1">
-                <span className="text-slate-400 font-bold block mb-1">Justificación:</span>
-                <p className="bg-slate-50 p-2.5 rounded-xl text-slate-700 leading-relaxed">
-                  {solicitudSeleccionada.justificacion}
-                </p>
-              </div>
-            </div>
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSolicitudSeleccionada(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ControlViaticosModal
+        abierta={modalControlViaticosAbierta}
+        solicitud={solicitudControlViaticos}
+        cargando={cargandoControlViaticos}
+        onCerrar={() => {
+          setModalControlViaticosAbierta(false);
+          setSolicitudControlViaticos(null);
+        }}
+        onRefrescar={() => {
+          setModalControlViaticosAbierta(false);
+          setSolicitudControlViaticos(null);
+          setMensajeExito('Segunda revisión completada y actualizada exitosamente.');
+          cargarDatos();
+        }}
+      />
     </ModuleLayout>
   );
 }

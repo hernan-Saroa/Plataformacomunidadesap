@@ -1,5 +1,13 @@
 import React from 'react';
 import { CampoFormulario } from '../../types';
+import { SelectorPersona } from './SelectorPersona';
+
+/**
+ * Campos que nombran a un funcionario. Va por codigo y no por tipo porque
+ * campos_formulario no distingue "texto" de "nombre de persona": agregarle un
+ * tipo nuevo obligaria a migrar el CHECK y a que el backend lo entienda.
+ */
+const CAMPOS_DE_PERSONA = ['responsable_area'];
 
 interface Props {
   campo: CampoFormulario;
@@ -23,6 +31,10 @@ function formatearMoneda(valor: number | string | undefined): string {
  * de datos, así que agregar un campo al estudio previo no toca este archivo.
  */
 export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props) {
+  // Los campos de solo lectura se muestran siempre inertes, aunque el estudio
+  // previo esté en borrador: su valor se define al crear el proceso.
+  const soloLectura = campo.soloLectura === true;
+  disabled = disabled || soloLectura;
   const id = `campo-${campo.codigo}`;
   const describedBy = [error ? `${id}-error` : null, campo.ayuda ? `${id}-ayuda` : null]
     .filter(Boolean)
@@ -36,6 +48,21 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
   const clase = `${claseBase} ${claseEstado}`;
 
   const control = () => {
+    // Los campos que nombran a un funcionario se eligen del directorio, no se
+    // escriben: con texto libre la misma persona queda registrada de varias
+    // formas y el expediente deja de servir para filtrar por responsable.
+    if (CAMPOS_DE_PERSONA.includes(campo.codigo)) {
+      return (
+        <SelectorPersona
+          id={id}
+          value={valor ?? ''}
+          disabled={disabled}
+          invalido={!!error}
+          onChange={onChange}
+        />
+      );
+    }
+
     switch (campo.tipo) {
       case 'texto_largo':
         return (
@@ -107,6 +134,66 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
           </select>
         );
 
+      // Los cuatro siguientes los agrega la configuración de etapas: son las
+      // formas en que se cierran las actividades del resto del proceso.
+
+      case 'fecha':
+        return (
+          <input
+            id={id}
+            type="date"
+            className={clase}
+            value={valor ?? ''}
+            disabled={disabled}
+            aria-invalid={!!error}
+            aria-describedby={describedBy || undefined}
+            onChange={(e) => onChange(e.target.value || undefined)}
+          />
+        );
+
+      case 'casilla':
+        // La etiqueta va al lado y no encima: una casilla suelta bajo su
+        // título no dice qué se está confirmando.
+        return (
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              id={id}
+              type="checkbox"
+              className="mt-0.5 w-4 h-4 rounded border-gray-300 text-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20 disabled:opacity-50"
+              checked={valor === true}
+              disabled={disabled}
+              aria-invalid={!!error}
+              aria-describedby={describedBy || undefined}
+              onChange={(e) => onChange(e.target.checked)}
+            />
+            <span className="text-[12.5px] leading-snug text-slate-700">{campo.etiqueta}</span>
+          </label>
+        );
+
+      case 'responsable':
+        // Del directorio y no escrito a mano: con texto libre la misma persona
+        // queda registrada de varias formas y el expediente deja de servir
+        // para filtrar por quién aprobó.
+        return (
+          <SelectorPersona
+            id={id}
+            value={valor ?? ''}
+            disabled={disabled}
+            invalido={!!error}
+            onChange={onChange}
+          />
+        );
+
+      case 'archivo':
+        // El adjunto no se sube desde aquí: los documentos del expediente
+        // pasan por su propio flujo, que calcula el hash y los versiona. Este
+        // campo solo deja constancia de que la actividad lo exige.
+        return (
+          <p className="text-[12px] text-slate-500 m-0 rounded-md border border-dashed border-gray-300 bg-slate-50 px-3 py-2">
+            Adjunta el documento desde la pestaña <strong>Documento</strong>.
+          </p>
+        );
+
       default:
         return (
           <input
@@ -130,10 +217,14 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
     >
       <label htmlFor={id} className="text-[11px] font-bold text-gray-600 leading-tight">
         {campo.etiqueta}
-        {campo.obligatorio && (
+        {campo.obligatorio && !soloLectura && (
           <span className="text-red-600 ml-0.5" aria-label="obligatorio">
             *
           </span>
+        )}
+        {/* Sin esto el campo se ve gris sin motivo y parece una falla. */}
+        {soloLectura && (
+          <span className="ml-1.5 font-semibold text-slate-400">· se define al crear el proceso</span>
         )}
       </label>
 

@@ -15,6 +15,7 @@ import { BancoDocenteEstadoModal } from './BancoDocenteEstadoModal';
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
+import { RundExtractionNotificationDetail } from './RundExtractionNotificationDetail';
 
 const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   TC:       { background: '#dbeafe', color: '#1d4ed8' },
@@ -164,6 +165,10 @@ export function BancoDocentesPTA() {
   const [periodoSearch, setPeriodoSearch] = useState('');
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [selectedDocente, setSelectedDocente] = useState<string | null>(null);
+  const [notificationDocente,setNotificationDocente]=useState<string|null>(()=>{
+    const id=new URLSearchParams(window.location.search).get('rundDocenteId');
+    return id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)?id:null;
+  });
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
@@ -171,6 +176,7 @@ export function BancoDocentesPTA() {
   const [bulkResult, setBulkResult] = useState<any>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const searchTimeout = useRef<any>(null);
+  const listadoRequest = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);  const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -243,6 +249,7 @@ export function BancoDocentesPTA() {
 
   useEffect(() => {
     setSearch('');
+    setSelectedDocente(null);
     setFilterTerritorial('');
     setFilterDedicacion('');
     setFilterVinculacion('');
@@ -263,12 +270,14 @@ export function BancoDocentesPTA() {
   };
 
   const loadData = useCallback(async (p = page) => {
+    const requestId = ++listadoRequest.current;
     setLoading(true);
     try {
       const [res, listStatsRes] = await Promise.all([
         getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
         getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
       ]);
+      if (requestId !== listadoRequest.current) return;
       if (res.success && res.data) {
         const apiItems = res.data.items || res.data.data || [];
         const normalizedItems = apiItems.map((docente: any) => ({
@@ -287,7 +296,7 @@ export function BancoDocentesPTA() {
     } catch {
       // Fallback silencioso: los servicios ya manejan errores internamente
     } finally {
-      setLoading(false);
+      if (requestId === listadoRequest.current) setLoading(false);
     }
   }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, search, page, filterPeriodo]);
 
@@ -296,8 +305,11 @@ export function BancoDocentesPTA() {
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => { loadData(1); setPage(1); }, 400);
     return () => clearTimeout(searchTimeout.current);
-  }, [search]);
-  useEffect(() => { loadData(page); }, [page]);
+  }, [search, filterPeriodo, filterTerritorial, filterDedicacion, filterVinculacion, filterEstado]);
+  useEffect(() => {
+    clearTimeout(searchTimeout.current);
+    loadData(page);
+  }, [page]);
 
   const handleBulkUpload = async () => {
     if (!bulkFile) return;
@@ -383,6 +395,11 @@ export function BancoDocentesPTA() {
     marginBottom: '-1px',
     transition: 'all 0.15s',
   });
+
+  if(notificationDocente)return <RundExtractionNotificationDetail docenteId={notificationDocente} onClose={()=>{
+    const url=new URL(window.location.href);url.searchParams.delete('rundDocenteId');
+    window.history.replaceState(window.history.state,'',url);setNotificationDocente(null);
+  }}/>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minHeight: '100vh', background: '#f8fafc' }}>
@@ -737,7 +754,8 @@ export function BancoDocentesPTA() {
 
                         {/* ── Celda CATEGORÍA ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle', fontSize: '13px', color: '#374151' }}>
-                          {d.categoria || '—'}
+                          <div>{d.vinculacion || '—'}</div>
+                          {d.categoria && <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>Categoría: {d.categoria}</div>}
                         </td>
 
                         {/* ── Celda ESTADO — Badge con icono estilo Personas ── */}
@@ -831,8 +849,8 @@ export function BancoDocentesPTA() {
                       {selectedDocente === d.id && (
                         <BancoDocenteDetalleInline
                           docente={d}
-                          onClose={() => setSelectedDocente(null)}
-                          onEdit={(doc) => { setSelectedDocente(null); setEditDocente(doc); }}
+                          periodoCarga={filterPeriodo || undefined}
+                          onUpdated={() => { void loadData(); }}
                         />
                       )}
                     </React.Fragment>

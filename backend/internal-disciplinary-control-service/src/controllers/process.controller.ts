@@ -27,6 +27,13 @@ import {
 import { ProcessService } from '../services/process.service';
 import { NewsService } from '../services/news.service';
 import { AutoService } from '../services/auto.service';
+import { ProcessExportService } from '../services/process-export.service';
+import {
+  IndiceElectronicoExportService,
+  IndiceElectronicoDocumentoDto,
+  IndiceElectronicoExpedienteDto,
+  limpiarNombreArchivo,
+} from '../services/indice-electronico-export.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
@@ -51,6 +58,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { diskStorage, MulterError } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
@@ -66,6 +74,9 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
   'SECRETARIA_RADICADOR',
+  'SECRETARIO_RADICADOR',
+  'RADICADOR_DISCIPLINARIO',
+  'RADICADOR',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -107,23 +118,38 @@ export class ProcessController {
     private autoService: AutoService,
     private httpService: HttpService,
     private permissionsService: PermissionsService,
+    private processExportService: ProcessExportService,
+    private indiceElectronicoExportService: IndiceElectronicoExportService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
-    if (typeof role === 'string') {
-      const normalized = role.trim().toUpperCase();
-      return normalized || null;
+    const raw =
+      typeof role === 'string'
+        ? role
+        : role && typeof role === 'object'
+          ? (role as any).code || (role as any).name || (role as any).nombre || ''
+          : '';
+
+    if (!raw || typeof raw !== 'string') return null;
+
+    const normalized = raw
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+
+    if (
+      normalized === 'SECRETARIA_RADICADOR' ||
+      normalized === 'SECRETARIO_RADICADOR' ||
+      normalized === 'RADICADOR_DISCIPLINARIO' ||
+      normalized === 'RADICADOR' ||
+      normalized.includes('SECRETARI') ||
+      normalized.includes('RADICADOR')
+    ) {
+      return 'SECRETARIA_RADICADOR';
     }
 
-    if (role && typeof role === 'object' && 'code' in role) {
-      const code = (role as { code?: unknown }).code;
-      if (typeof code === 'string') {
-        const normalized = code.trim().toUpperCase();
-        return normalized || null;
-      }
-    }
-
-    return null;
+    return normalized || null;
   }
 
   private extractNormalizedRoles(req: AuthenticatedRequest): Set<string> {
@@ -141,7 +167,11 @@ export class ProcessController {
     const normalizedRoles = this.extractNormalizedRoles(req);
 
     for (const role of normalizedRoles) {
-      if (DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role)) {
+      if (
+        DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role) ||
+        role.includes('RADICADOR') ||
+        role.includes('SECRETARI')
+      ) {
         return true;
       }
     }
@@ -352,7 +382,8 @@ export class ProcessController {
     return await this.processService.changeStage(
       id,
       changeStageDto.stageId,
-      changeStageDto.kanbanNotice
+      changeStageDto.kanbanNotice,
+      req.user?.roles
     );
   }
 
@@ -994,7 +1025,8 @@ export class ProcessController {
             esAutoDigital: true,
             estado: auto.estado,
             tipoAuto: auto.tipo, // Tipo específico para edición
-            numero: auto.numero // Número para pre-llenar título
+            numero: auto.numero, // Número para pre-llenar título
+            radicadorAsignadoId: auto.radicadorAsignadoId || null,
           },
         };
       });
@@ -1065,8 +1097,43 @@ export class ProcessController {
   }
 
   /**
+   * Descargar el Índice Electrónico del expediente en el formato oficial EI-FO-020 (Excel).
+   * Recibe el mismo listado de documentos que ya se muestra en la pestaña Índice Electrónico
+   * (calculado por el frontend con getDocuments) para garantizar que el archivo generado
+   * corresponda exactamente a lo que el usuario está viendo en pantalla.
+   */
+  @Post(':id/indice-electronico')
+  @ApiOperation({
+    summary: 'Descargar Índice Electrónico (EI-FO-020)',
+    description: 'Genera el Índice Electrónico del expediente en el formato oficial EI-FO-020, a partir de los documentos visibles en la pestaña Índice Electrónico',
+  })
+  async descargarIndiceElectronico(
+    @Param('id') id: string,
+    @Body() body: { expediente: IndiceElectronicoExpedienteDto; documentos: IndiceElectronicoDocumentoDto[] },
+    @Res() res: Response,
+  ): Promise<void> {
+    const workbook = await this.indiceElectronicoExportService.generar(
+      body.expediente,
+      body.documentos || [],
+    );
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="IndiceElectronico_${body.expediente?.radicado || id}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
    * Descargar documento del expediente
    */
+  @Public()
   @Get(':id/documents/:documentId/download')
   @ApiOperation({
     summary: 'Descargar documento',
@@ -1083,7 +1150,9 @@ export class ProcessController {
     @Query('view') view: string,
     @Res() res: Response,
   ) {
-    await this.ensureSensitiveProcessAccess(req, processId);
+    if (req.user) {
+      await this.ensureSensitiveProcessAccess(req, processId);
+    }
     const evidencias = await this.processService.getEvidenceByProcessId(processId);
     let documento: any = evidencias.find(e => e.id === documentId);
 
@@ -1136,7 +1205,8 @@ export class ProcessController {
     }
 
     // Obtener el nombre original del archivo para la cabecera Content-Disposition
-    const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+    const rawNombre = documento.filename || documento.nombreDocumento || 'documento';
+    const nombreArchivo = limpiarNombreArchivo(rawNombre) || rawNombre;
 
     // Si es para visualización, enviar con content-type adecuado y disposition inline
     if (view === 'true') {
@@ -1253,6 +1323,33 @@ export class ProcessController {
       return [];
     }
     return await this.processService.findRadicatedNewsWithDocuments();
+  }
+
+  /**
+   * Exportar informe de vencimientos de los procesos disciplinarios (Excel)
+   * Solo disponible para el Radicador (rol SECRETARIA_RADICADOR)
+   */
+  @Get('export')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
+  @ApiOperation({
+    summary: 'Exportar informe de vencimientos',
+    description: 'Genera y descarga el informe de vencimientos de los procesos disciplinarios en formato Excel',
+  })
+  async exportVencimientos(@Res() res: Response): Promise<void> {
+    const workbook = await this.processExportService.generateVencimientosReport();
+    const fecha = new Date().toISOString().split('T')[0];
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="Informe_Vencimientos_OCID_${fecha}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   }
 
   /**

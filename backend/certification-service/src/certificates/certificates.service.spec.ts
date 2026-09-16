@@ -827,4 +827,385 @@ describe('CertificatesService', () => {
     ).rejects.toThrow('servicio de correo no disponible');
     expect(save).not.toHaveBeenCalled();
   });
+
+  it('envia el certificado desde el autoservicio despues de validar el codigo', async () => {
+    const solicitud = {
+      id: 'solicitud-autoservicio',
+      id_number: '53062883',
+      document_type: 'CC',
+      email: 'empleado@esap.edu.co',
+      status: 'A',
+      validation_code: '123456',
+      validation_expires_at: new Date(Date.now() + 60_000),
+    } as unknown as CertificateRequest;
+    const certificado = {
+      id: 'certificado-autoservicio',
+      request: solicitud,
+    } as unknown as Certificate;
+    const update = jest.fn().mockResolvedValue(undefined);
+    (service as any).requestRepo = {
+      findOne: jest.fn().mockResolvedValue(solicitud),
+      save: jest.fn().mockResolvedValue(solicitud),
+      update,
+    };
+    jest
+      .spyOn(service as any, 'resolveEmploymentStatus')
+      .mockReturnValue('ACTIVO');
+    jest.spyOn(service, 'createCertificado').mockResolvedValue(certificado);
+    const enviar = jest
+      .spyOn(service as any, 'enviarCertificadoLaboralPorEmail')
+      .mockResolvedValue({ to: 'empleado@esap.edu.co' });
+
+    const result = await service.validarCodigoYGenerarCertificado(
+      '53062883',
+      '123456',
+      {
+        documentType: 'CC',
+        includeSalary: true,
+        includeTechnicalBonus: true,
+        includeFunctions: true,
+        publicBaseUrl: 'https://comunidad.esap.edu.co',
+      },
+    );
+
+    expect(update).toHaveBeenCalledWith(solicitud.id, {
+      validation_code: null,
+      validation_expires_at: null,
+    });
+    expect(enviar).toHaveBeenCalledWith(certificado, {
+      to: 'empleado@esap.edu.co',
+      includeSalary: true,
+      includeTechnicalBonus: true,
+      includeFunctions: true,
+      publicBaseUrl: 'https://comunidad.esap.edu.co',
+    });
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      enviar.mock.invocationCallOrder[0],
+    );
+    expect(result).toMatchObject({
+      certificado,
+      emailSent: true,
+      email: 'empleado@esap.edu.co',
+    });
+  });
+
+  it('conserva el certificado generado si falla el correo del autoservicio', async () => {
+    const solicitud = {
+      id: 'solicitud-autoservicio',
+      id_number: '53062883',
+      document_type: 'CC',
+      email: 'empleado@esap.edu.co',
+      status: 'A',
+      validation_code: '123456',
+      validation_expires_at: new Date(Date.now() + 60_000),
+    } as unknown as CertificateRequest;
+    const certificado = {
+      id: 'certificado-autoservicio',
+      request: solicitud,
+    } as unknown as Certificate;
+    (service as any).requestRepo = {
+      findOne: jest.fn().mockResolvedValue(solicitud),
+      save: jest.fn().mockResolvedValue(solicitud),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    (service as any).logger = { warn: jest.fn() };
+    jest
+      .spyOn(service as any, 'resolveEmploymentStatus')
+      .mockReturnValue('ACTIVO');
+    jest.spyOn(service, 'createCertificado').mockResolvedValue(certificado);
+    jest
+      .spyOn(service as any, 'enviarCertificadoLaboralPorEmail')
+      .mockRejectedValue(new Error('notifications-service no disponible'));
+
+    const result = await service.validarCodigoYGenerarCertificado(
+      '53062883',
+      '123456',
+    );
+
+    expect(result).toMatchObject({
+      certificado,
+      emailSent: false,
+      email: 'empleado@esap.edu.co',
+    });
+    expect((service as any).logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('notifications-service no disponible'),
+    );
+  });
+
+  describe('avisos al radicar una solicitud de correccion', () => {
+    const buildRequest = () =>
+      ({
+        request_number: 'COR-20260915-ABC12345',
+        description: 'El cargo del certificado no corresponde al actual.',
+        requester_name: 'Diana Maria Gutierrez',
+        requester_email: 'solicitante@gmail.com',
+        certificate_snapshot: {
+          certificate_number: '12_620_700_20_CD 104',
+          id_number: '53062883',
+        },
+        created_at: new Date(2026, 8, 15, 10, 42, 0),
+        due_date: new Date(2026, 9, 6, 12, 0, 0),
+      }) as any;
+
+    const prepare = (
+      reviewers: Array<{ email: string; name: string | null }>,
+      post = jest.fn().mockResolvedValue(undefined),
+    ) => {
+      (service as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+      (service as any).permissionsService = {
+        findActiveRecipientsWithPermission: jest.fn().mockResolvedValue(reviewers),
+      };
+      // Sin modo seguro, para verificar los destinatarios reales.
+      (service as any).resolveOutboundEmailRecipient = (email: string) => email;
+      (service as any).postCorrectionNotificationEmail = post;
+      return post;
+    };
+
+    it('envia el acuse al solicitante y un aviso a cada revisor con el permiso', async () => {
+      const post = prepare([
+        { email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' },
+        { email: 'revisor@esap.edu.co', name: null },
+      ]);
+
+      await service['sendCorrectionRequestCreatedEmails'](buildRequest(), 2);
+
+      expect(post).toHaveBeenCalledTimes(3);
+      const [acuse, ...avisos] = post.mock.calls.map((call) => call[0]);
+
+      expect(acuse.to).toBe('solicitante@gmail.com');
+      expect(acuse.subject).toContain('COR-20260915-ABC12345 radicada');
+      expect(acuse.html).toContain('Recibimos tu solicitud de corrección');
+      // El acuse no expone informacion interna del tramite.
+      expect(acuse.html).not.toContain('bandeja de correcciones');
+
+      expect(avisos.map((aviso: any) => aviso.to)).toEqual([
+        'coordinador@esap.edu.co',
+        'revisor@esap.edu.co',
+      ]);
+      expect(avisos[0].subject).toContain('Nueva solicitud de corrección');
+      expect(avisos[0].html).toContain('Coordinador Uno');
+      expect(avisos[0].html).toContain('12_620_700_20_CD 104');
+      expect(avisos[0].html).toContain('53062883');
+      expect(avisos[0].html).toContain('2 archivos');
+      // Sin nombre de persona el aviso sale igual, con saludo generico.
+      expect(avisos[1].html).toContain('Se radicó una solicitud');
+    });
+
+    it('no interrumpe el radicado cuando el servicio de notificaciones falla', async () => {
+      const post = prepare(
+        [{ email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' }],
+        jest.fn().mockRejectedValue(new Error('notifications-service no disponible')),
+      );
+
+      await expect(
+        service['sendCorrectionRequestCreatedEmails'](buildRequest(), 0),
+      ).resolves.toBeUndefined();
+
+      expect(post).toHaveBeenCalledTimes(2);
+      expect((service as any).logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('acuse de recibo'),
+      );
+      expect((service as any).logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('falló para 1 de 1'),
+      );
+    });
+
+    it('envia el acuse aunque no haya nadie con el permiso y deja el aviso en el log', async () => {
+      const post = prepare([]);
+
+      await service['sendCorrectionRequestCreatedEmails'](buildRequest(), 0);
+
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(post.mock.calls[0][0].to).toBe('solicitante@gmail.com');
+      expect((service as any).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('no tiene revisores con el permiso'),
+      );
+    });
+
+    it('no repite el aviso cuando el modo seguro redirige a todos al mismo buzon', async () => {
+      const post = jest.fn().mockResolvedValue(undefined);
+      prepare(
+        [
+          { email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' },
+          { email: 'revisor@esap.edu.co', name: 'Revisor Dos' },
+        ],
+        post,
+      );
+      (service as any).resolveOutboundEmailRecipient = () => 'pruebasesap@gmail.com';
+
+      await service['sendCorrectionRequestCreatedEmails'](buildRequest(), 0);
+
+      // Un acuse + un unico aviso interno, no uno por revisor.
+      expect(post).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('avisos al resolver una solicitud de correccion', () => {
+    const buildResolved = (approved: boolean) =>
+      ({
+        request_number: 'COR-20260915-UD3PW0TDN',
+        description: 'El cargo del certificado no corresponde al que desempeño hoy.',
+        requester_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+        requester_email: 'esap.pruebas@gmail.com',
+        reviewed_by_name: 'Diego Fernando Ramírez',
+        reviewed_by_email: 'diego.ramirez@esap.edu.co',
+        resolution_description: approved
+          ? 'Se actualizó el cargo conforme a la resolución de encargo aportada.'
+          : 'La evidencia aportada no corresponde al periodo certificado.',
+        resolved_at: new Date(2026, 8, 15, 15, 20, 0),
+        certificate_snapshot: {
+          certificate_number: '12_620_700_20_CD 104',
+          id_number: '53062883',
+        },
+      }) as any;
+
+    const prepare = (post = jest.fn().mockResolvedValue(undefined)) => {
+      (service as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+      (service as any).permissionsService = {
+        findActiveRecipientsWithPermission: jest
+          .fn()
+          .mockResolvedValue([
+            { email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' },
+            { email: 'revisor@esap.edu.co', name: 'Revisor Dos' },
+          ]),
+      };
+      (service as any).resolveOutboundEmailRecipient = (email: string) => email;
+      (service as any).postCorrectionNotificationEmail = post;
+      return post;
+    };
+
+    it('avisa la aprobación a cada revisor con el comparativo de cambios', async () => {
+      const post = prepare();
+
+      await service['sendCorrectionResolutionReviewerEmails'](buildResolved(true), {
+        approved: true,
+        changes: [
+          {
+            label: 'Cargo',
+            before: 'Profesional Especializado Código 2028 Grado 12',
+            after: 'Profesional Especializado Código 2028 Grado 16',
+          },
+          { label: 'Grado', before: '12', after: '16' },
+        ],
+        evidenceCount: 1,
+        certificateNumber: '12_620_700_20_CD 104',
+      });
+
+      expect(post).toHaveBeenCalledTimes(2);
+      const aviso = post.mock.calls[0][0];
+      expect(aviso.to).toBe('coordinador@esap.edu.co');
+      expect(aviso.subject).toContain('COR-20260915-UD3PW0TDN aprobada');
+      expect(aviso.text).toContain('Campos modificados: Cargo, Grado.');
+      expect(aviso.html).toContain('2 campos modificados');
+      expect(aviso.html).toContain('Antes');
+      expect(aviso.html).toContain('Grado 12');
+      expect(aviso.html).toContain('Grado 16');
+      expect(aviso.html).toContain('Diego Fernando Ramírez');
+      expect(aviso.html).toContain('Coordinador Uno');
+    });
+
+    it('avisa el rechazo con el motivo y sin comparativo de cambios', async () => {
+      const post = prepare();
+
+      await service['sendCorrectionResolutionReviewerEmails'](buildResolved(false), {
+        approved: false,
+        changes: [],
+        evidenceCount: 0,
+        certificateNumber: '12_620_700_20_CD 104',
+      });
+
+      const aviso = post.mock.calls[0][0];
+      expect(aviso.subject).toContain('COR-20260915-UD3PW0TDN rechazada');
+      expect(aviso.html).toContain('Motivo del rechazo');
+      expect(aviso.html).toContain('no corresponde al periodo certificado');
+      expect(aviso.html).not.toContain('Cambios aplicados al certificado');
+    });
+
+    it('indica cuando se reemitió el certificado sin cambios de información', async () => {
+      const post = prepare();
+
+      await service['sendCorrectionResolutionReviewerEmails'](buildResolved(true), {
+        approved: true,
+        changes: [],
+        evidenceCount: 0,
+        certificateNumber: '12_620_700_20_CD 104',
+      });
+
+      expect(post.mock.calls[0][0].html).toContain(
+        'No se modificaron datos del certificado',
+      );
+    });
+
+    it('recorta los valores muy largos del comparativo', () => {
+      const largo = 'Funciones: '.concat('a'.repeat(400));
+      const html = service['buildCorrectionChangesBlockHtml']([
+        { label: 'Funciones laborales', before: 'Sin funciones', after: largo },
+      ]);
+
+      expect(html).toContain('…');
+      expect(html).not.toContain('a'.repeat(300));
+    });
+
+    it('no interrumpe la resolución cuando el aviso interno falla', async () => {
+      const post = prepare(
+        jest.fn().mockRejectedValue(new Error('notifications-service no disponible')),
+      );
+
+      await expect(
+        service['sendCorrectionResolutionReviewerEmails'](buildResolved(true), {
+          approved: true,
+          changes: [],
+          evidenceCount: 0,
+          certificateNumber: '12_620_700_20_CD 104',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(post).toHaveBeenCalledTimes(2);
+      expect((service as any).logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('falló para 2 de 2'),
+      );
+    });
+
+    it('registra el rechazo aunque no se pueda resolver a quién avisar', async () => {
+      const save = jest.fn();
+      const request = {
+        id: 'request-id',
+        request_number: 'COR-PRUEBA-004',
+        status: 'IN_REVIEW',
+        requester_email: 'persona@esap.edu.co',
+        submitted_evidence: [],
+        resolution_evidence: [],
+        traceability: [],
+        certificate: { certificate_number: 'CERT-004' },
+      };
+      (service as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+      (service as any).correctionRequestRepo = {
+        findOne: jest.fn().mockResolvedValue(request),
+        save,
+      };
+      jest
+        .spyOn(service as any, 'sendCorrectionRejectionEmail')
+        .mockResolvedValue({ to: 'persona@esap.edu.co' });
+      (service as any).permissionsService = {
+        findActiveRecipientsWithPermission: jest
+          .fn()
+          .mockRejectedValue(new Error('auth no disponible')),
+      };
+
+      await expect(
+        service.rejectCertificateCorrectionRequest(
+          'request-id',
+          'La solicitud no procede conforme a la evidencia institucional.',
+          [],
+          { name: 'Coordinador' },
+        ),
+      ).resolves.toMatchObject({ email_sent: true });
+
+      // El rechazo quedó guardado pese al fallo del aviso interno.
+      expect(save).toHaveBeenCalled();
+      expect((service as any).logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('No fue posible resolver los revisores'),
+      );
+    });
+  });
 });

@@ -12,84 +12,25 @@
  */
 
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { motion } from 'motion/react';
 import {
   FileText, Download, ChevronLeft, CheckCircle2, X,
   AlertTriangle, Shield, Clock, User, Building2, BookOpen,
   FlaskConical, Globe, ListChecks, Award, QrCode, Loader2, Briefcase,
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import { PTA_COLORS } from './shared/ptaColors';
+import { PTA_COMPONENT_PROGRESS_ORDER, labelDeComponente } from './shared/ptaComponentPermissions';
+import { getPtaApprovalDisplayStatus } from './shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
-import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 
-/**
- * html2canvas 1.x no reconoce funciones de color CSS modernas como oklch()
- * (usadas por las clases de Tailwind v4, p. ej. en HierarchySelectionSummary)
- * y lanza una excepción silenciosa al recorrer el árbol clonado. Se convierten
- * a rgba() dentro del clon usado para la captura, sin afectar la vista real.
- */
-const normalizarColoresParaCaptura = (documentoClonado: Document, elementoClonado: HTMLElement) => {
-  const vista = documentoClonado.defaultView;
-  if (!vista) return;
-
-  const patronColorModerno = /(?:oklch|oklab|lab|lch|color)\((?:[^()]|\([^()]*\))*\)/gi;
-  const propiedadesColor = [
-    'background-color', 'background-image',
-    'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
-    'box-shadow', 'caret-color', 'color', 'fill', 'outline-color', 'stroke',
-    'text-decoration-color', 'text-shadow', '-webkit-text-stroke-color',
-  ];
-  const cacheColores = new Map<string, string>();
-  const canvasColor = documentoClonado.createElement('canvas');
-  canvasColor.width = 1;
-  canvasColor.height = 1;
-  const contextoColor = canvasColor.getContext('2d', { willReadFrequently: true });
-
-  const convertirColor = (colorCss: string): string => {
-    const cacheado = cacheColores.get(colorCss);
-    if (cacheado) return cacheado;
-    if (!contextoColor) return 'rgba(0, 0, 0, 1)';
-    try {
-      contextoColor.clearRect(0, 0, 1, 1);
-      contextoColor.fillStyle = '#010203';
-      contextoColor.fillStyle = colorCss;
-      contextoColor.fillRect(0, 0, 1, 1);
-      const [r, g, b, alpha] = contextoColor.getImageData(0, 0, 1, 1).data;
-      const convertido = `rgba(${r}, ${g}, ${b}, ${(alpha / 255).toFixed(4)})`;
-      cacheColores.set(colorCss, convertido);
-      return convertido;
-    } catch {
-      return 'rgba(0, 0, 0, 1)';
-    }
-  };
-
-  const elementos = [elementoClonado, ...Array.from(elementoClonado.querySelectorAll<HTMLElement>('*'))];
-  for (const elemento of elementos) {
-    const estiloCalculado = vista.getComputedStyle(elemento);
-    for (const propiedad of propiedadesColor) {
-      const valor = estiloCalculado.getPropertyValue(propiedad);
-      if (!valor || !/(?:oklch|oklab|lab|lch|color)\(/i.test(valor)) continue;
-      elemento.style.setProperty(propiedad, valor.replace(patronColorModerno, convertirColor), 'important');
-    }
-  }
-};
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
-// 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
-// Las claves coinciden con auth.permission (migración 327) y con el panel de aprobación.
-const COMPONENTE_APROBACION_SLOTS: { key: string; label: string }[] = [
-  { key: 'academica', label: 'Docencia' },
-  { key: 'investigacion', label: 'Investigación' },
-  { key: 'ext_capacitacion', label: 'Ext. Capacitación' },
-  { key: 'ext_procesos', label: 'Ext. Procesos Selección' },
-  { key: 'ext_fortalecimiento', label: 'Ext. Fortalecimiento' },
-  { key: 'ext_gobierno', label: 'Ext. Alto Gobierno' },
-  { key: 'complementarias', label: 'Complementarias' },
-];
+// Comparte los ámbitos vigentes con el panel; incluye Territorial y Gestión Profesoral.
+const COMPONENTE_APROBACION_SLOTS = PTA_COMPONENT_PROGRESS_ORDER.map(key => ({ key, label: labelDeComponente(key) }));
 
 interface ReporteIndividualPTAProps {
   pta: any;
@@ -151,7 +92,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       })
       .catch(() => { /* si no está disponible, se muestran como pendientes */ });
     return () => { cancelled = true; };
-  }, [pta?.id]);
+  }, [pta]);
 
   if (!pta) return null;
 
@@ -260,45 +201,33 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           : (en === 'Pendiente Gestión Profesoral' || en === 'Pendiente Gestion Profesoral') ? 'N2 — Decanatura'
           : (en === 'Aprobado DEF' || en === 'Aprobado') ? 'N3 — Gestión Profesoral'
           : en,
-        aprobador: getField(h, 'actorRol', 'actor_rol') || getField(h, 'actorId', 'actor') || 'N/A',
+        aprobador: getPtaHistoryActorLabel(h, pta),
         fecha: fecha ? new Date(fecha).toLocaleDateString('es-CO') : 'N/A',
         observaciones: getField(h, 'comentarios', 'observaciones') || 'Sin observaciones',
         aprobado: true,
       };
     });
 
-  const handleExportPDF = async () => {
-    if (!printRef.current || exportingPdf) return;
+  /**
+   * Exportacion del reporte.
+   *
+   * Antes se rasterizaba TODO el informe con html2canvas en una sola imagen y
+   * se cortaba por pixeles entre paginas: cada salto partia por la mitad la
+   * fila, la tarjeta o el titulo que cayera ahi, el texto no quedaba
+   * seleccionable y el archivo pesaba de mas.
+   *
+   * Ahora se imprime de verdad. El bloque `@media print` del render controla
+   * los saltos (clases `r01-*`), asi que el PDF sale con texto real, cabeceras
+   * de tabla repetidas y sin bloques partidos.
+   */
+  const handleExportPDF = () => {
+    if (exportingPdf) return;
     setExportingPdf(true);
     try {
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        windowWidth: 900,
-        onclone: normalizarColoresParaCaptura,
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = pdf.internal.pageSize.getHeight();
-      const margin = 8;
-      const usableW = pdfW - margin * 2;
-      const imgH = (canvas.height * usableW) / canvas.width;
-      let yOffset = 0;
-      let page = 0;
-      while (yOffset < imgH) {
-        if (page > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', margin, margin - yOffset, usableW, imgH);
-        yOffset += pdfH - margin * 2;
-        page++;
-      }
-      const nombre = pta.docente_nombre || pta.nombre_docente || 'PTA';
-      pdf.save(`${versionLabel}_${nombre.replace(/\s+/g, '_')}_${pta.periodo || '2025-2'}.pdf`);
+      window.print();
     } catch (err) {
       console.error('PDF export error:', err);
-      toast.error('No fue posible generar el PDF del reporte. Intente nuevamente.');
+      toast.error('No fue posible abrir el diálogo de impresión.');
     } finally {
       setExportingPdf(false);
     }
@@ -314,6 +243,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
       onClick={handleBackdropClick}
+      className="r01-overlay"
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: 'rgba(17, 24, 39, 0.25)',
@@ -341,7 +271,9 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         }}
       >
         {/* ═══ STICKY HEADER ═══ */}
-        <div className="print:hidden" style={{
+        {/* `print:hidden` de Tailwind no existe en el snapshot precompilado del
+            MFE; la clase propia `r01-no-print` sí se define abajo. */}
+        <div className="print:hidden r01-no-print" style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           padding: '12px 20px', borderBottom: '1px solid #E5E7EB',
           background: 'linear-gradient(135deg, #FAFBFF 0%, #EFF6FF 100%)',
@@ -396,7 +328,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         }}>
 
       {/* Report Content */}
-      <div ref={printRef} style={{
+      <div ref={printRef} className="r01-hoja" style={{
         background: 'white',
         overflow: 'hidden', fontFamily: "'Inter', 'Segoe UI', sans-serif",
       }}>
@@ -907,12 +839,13 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           }}>
             {COMPONENTE_APROBACION_SLOTS.map(slot => {
               const apr = componentesAprobacion.find((c: any) => c.componente === slot.key);
-              const estado = apr?.estado || 'pendiente';
+              const estado = getPtaApprovalDisplayStatus(pta, apr || { componente: slot.key });
+              const noAplica = estado === 'no_aplica';
               const aprobado = estado === 'aprobado';
               const devuelto = estado === 'devuelto';
               const badgeBg = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#F3F4F6';
               const badgeColor = aprobado ? '#065F46' : devuelto ? '#991B1B' : '#9CA3AF';
-              const fecha = apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
+              const fecha = !noAplica && apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
               return (
                 <div key={slot.key} style={{
                   padding: 12, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center',
@@ -922,14 +855,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     {slot.label}
                   </div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: aprobado || devuelto ? '#111827' : '#9CA3AF', marginBottom: 5, minHeight: 18 }}>
-                    {aprobado || devuelto ? (apr?.aprobadorNombre || 'Revisor Autorizado') : '—'}
+                    {(aprobado || devuelto) && apr?.aprobadorNombre !== 'Sistema' ? (apr?.aprobadorNombre || '—') : '—'}
                   </div>
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '3px 10px', borderRadius: 6,
                     background: badgeBg, color: badgeColor, fontSize: '0.66rem', fontWeight: 600,
                   }}>
-                    {aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
+                    {noAplica ? 'No aplica' : estado === 'no_iniciado' ? 'No iniciado' : estado === 'en_revision' ? 'En revisión' : aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
                       : devuelto ? (<><Clock style={{ width: 11, height: 11 }} /> Devuelto</>)
                         : (<><Clock style={{ width: 11, height: 11 }} /> Pendiente por firmar</>)}
                   </div>
@@ -979,6 +912,150 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       </div>
         </div>
       </motion.div>
+
+      {/* ═══ IMPRESION ═══
+          El reporte se exporta con window.print(), asi que todo el control de
+          la paginacion vive aqui. El aislamiento se explica en el bloque
+          @media print de abajo. */}
+      <style>{`
+        @media print {
+          /* El reporte NO se monta con portal: varios paneles del backoffice
+             ya se portan ellos mismos a <body> y lo renderizan dentro, asi que
+             moverlo aparte lo dejaba como hermano del panel padre, este le
+             pasaba por encima y la pantalla quedaba inutilizable.
+             Por eso el aislamiento se hace sin tocar el DOM:
+               1. :has() colapsa (display:none) todo lo que NO contenga el
+                  reporte, sin importar cuan anidado este. Esto es lo que evita
+                  las hojas en blanco al final.
+               2. El par visibility hidden/visible queda como respaldo para
+                  motores sin :has(): el contenido sale correcto aunque
+                  pueda arrastrar alguna hoja de mas. */
+          body * { visibility: hidden !important; }
+          .r01-overlay,
+          .r01-overlay * { visibility: visible !important; }
+          body > *:not(:has(.r01-overlay)) { display: none !important; }
+
+          /* Los ANCESTROS tambien hay que neutralizarlos. El reporte se abre
+             dentro de paneles del backoffice que son position:fixed, con
+             max-height y overflow:hidden: aunque el reporte crezca, el padre lo
+             recorta y el PDF sale con una sola pagina y el contenido cortado.
+             :has() permite alcanzarlos sin saber quienes son. */
+          body :has(.r01-overlay) {
+            position: static !important;
+            display: block !important;
+            inset: auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            transform: none !important;
+            box-shadow: none !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: #fff !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
+
+          html, body {
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+          }
+
+          /* En flujo normal: cualquier alto o posicionamiento fijo se traduce
+             en hojas vacias. */
+          .r01-overlay {
+            position: static !important;
+            display: block !important;
+            inset: auto !important;
+            width: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #fff !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
+          .r01-overlay > * {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+            transform: none !important;
+            opacity: 1 !important;
+          }
+          /* Los contenedores con scroll recortan el contenido en papel. */
+          .r01-overlay * { overflow: visible !important; }
+
+          .r01-no-print { display: none !important; }
+
+          /* Fondos y colores de estado se imprimen tal cual. */
+          .r01-hoja {
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* ── Paginacion ─────────────────────────────────────────────────
+             El contenido es dinamico (un PTA puede traer 1 asignatura o 40),
+             asi que no se fuerzan saltos por seccion: se protege lo que no
+             debe partirse y el resto fluye. */
+
+          /* Ninguna fila se corta por la mitad. */
+          .r01-hoja tr { break-inside: avoid; page-break-inside: avoid; }
+
+          /* La cabecera de cada tabla se repite en la pagina siguiente. */
+          .r01-hoja thead { display: table-header-group; }
+          .r01-hoja tfoot { display: table-footer-group; }
+
+          /* Las tablas si pueden repartirse entre paginas. */
+          .r01-hoja table {
+            break-inside: auto;
+            page-break-inside: auto;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+          }
+          .r01-hoja th,
+          .r01-hoja td {
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+          }
+
+          /* Un encabezado de seccion nunca queda solo al pie de una pagina. */
+          .r01-seccion-titulo {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            break-after: avoid;
+            page-break-after: avoid;
+          }
+
+          /* Sin lineas sueltas al inicio o al final de pagina. */
+          .r01-hoja p, .r01-hoja div { orphans: 3; widows: 3; }
+        }
+
+        @page {
+          size: A4 portrait;
+          margin: 12mm 10mm 14mm;
+        }
+      `}</style>
     </motion.div>
   );
 }
@@ -986,7 +1063,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
 // Helper components
 function SectionHeader({ icon: Icon, label, color = '#003DA5' }: { icon: any; label: string; color?: string }) {
   return (
-    <div style={{
+    <div className="r01-seccion-titulo" style={{
       padding: '10px 32px', background: `${color}08`,
       borderTop: `1px solid ${color}20`, borderBottom: `1px solid ${color}20`,
       display: 'flex', alignItems: 'center', gap: 8,

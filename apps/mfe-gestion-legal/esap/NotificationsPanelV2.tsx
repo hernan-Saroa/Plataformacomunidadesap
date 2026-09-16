@@ -19,7 +19,8 @@ import {
   TrendingUp,
   ChevronRight,
   AlertTriangle,
-  Info
+  Info,
+  MailCheck
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -119,7 +120,8 @@ export function NotificationsPanelV2({
       Settings,
       Bell,
       AlertTriangle,
-      Info
+      Info,
+      MailCheck
     };
     return icons[iconName] || Bell;
   };

@@ -1,0 +1,39 @@
+{
+  "executedAt": "2026-09-07T15:22:01.028Z",
+  "environment": "PostgreSQL local, base temporal y datos ficticios",
+  "businessDataModified": false,
+  "results": [
+    {
+      "name": "200: consulta por cédula con ceros y documento almacenado con puntos; no requiere cuenta de usuario",
+      "passed": true
+    },
+    {
+      "name": "periodo exacto tiene prioridad sobre fecha de actualización; preserva estado y horas",
+      "passed": true
+    },
+    {
+      "name": "sin periodo selecciona de forma determinista el registro priorizado más actualizado",
+      "passed": true
+    },
+    {
+      "name": "404 por periodo ausente conserva la distinción frente al alta",
+      "passed": true
+    },
+    {
+      "name": "404 para cédula inexistente indica Flujo 1",
+      "passed": true
+    },
+    {
+      "name": "401 sin autenticación y 400 para entrada inválida",
+      "passed": true
+    },
+    {
+      "name": "auditoría real contiene actor, fecha, hora y campo; excluye valores sensibles",
+      "passed": true
+    },
+    {
+      "name": "503 al fallar auditoría y ninguna modificación de perfiles",
+      "passed": true
+    }
+  ]
+}

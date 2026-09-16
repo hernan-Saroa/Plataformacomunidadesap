@@ -3,6 +3,7 @@ import { serviceMap } from './proxy.config';
 import { HttpService } from '@nestjs/axios';
 import type { Request, Response } from 'express';
 import { lastValueFrom } from 'rxjs';
+import { isRundAuditUrl, redactRundAuditUrl } from '../audit/rund-audit-redaction';
 
 const parseIpHeader = (value?: string | string[]): string[] => {
   const raw = Array.isArray(value) ? value.join(',') : value || '';
@@ -171,7 +172,9 @@ export class GatewayService {
 
     // Si el request llegó con cookie HttpOnly (OTIC-001) y no trae Authorization header,
     // extraer el token de la cookie e inyectarlo como Authorization para los microservicios.
+    const isPublicEndpoint = /^\/(auth|login|forgot-password|reset-password)/.test(req.path);
     const cookieToken = (() => {
+      if (isPublicEndpoint) return null;
       const cookieHeader = req.headers.cookie || '';
       for (const part of cookieHeader.split(';')) {
         const [key, ...rest] = part.trim().split('=');
@@ -183,12 +186,19 @@ export class GatewayService {
       cookieToken && !req.headers.authorization
         ? { authorization: `Bearer ${cookieToken}` }
         : {};
+    const queryToken = (req.query?.token as string) || '';
+    const authHeaderFromToken =
+      !req.headers.authorization && !cookieToken && queryToken
+        ? { authorization: `Bearer ${queryToken}` }
+        : {};
 
     const forwardHeaders: Record<string, any> = {
       ...req.headers,
       ...userHeaders,
       ...authHeaderFromCookie,
+      ...authHeaderFromToken,
       host: undefined, // Eliminar host para evitar conflictos
+      'x-forwarded-host': (req.headers['x-forwarded-host'] as string) || (req.headers.host as string),
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
     };
@@ -204,17 +214,19 @@ export class GatewayService {
     }
 
     try {
-      // Detectar si se espera un archivo binario basándose en el Accept header
+      // Detectar si se espera un archivo binario basándose en el Accept header o ruta
       const acceptHeader = (req.headers['accept'] as string) || '';
       const isBinaryFileRoute =
-        /\/(?:documentos|evidencias)\/[^/]+\/(?:preview|download)(?:\?|$)/i.test(req.originalUrl);
+        /\/(?:documentos|evidencias|documents)\/[^/]+\/(?:preview|download)(?:\?|$)/i.test(req.originalUrl) ||
+        /\.pdf(?:\?|$)/i.test(req.originalUrl) ||
+        /\/disciplinary-autos\/[^/]+\/pdf(?:\?|$)/i.test(req.originalUrl);
       const expectsBinaryFile = acceptHeader.includes('application/zip') ||
                                 acceptHeader.includes('application/octet-stream') ||
                                 acceptHeader.includes('application/pdf') ||
                                 acceptHeader.includes('image/') ||
                                 isBinaryFileRoute;
 
-      console.log(`[Gateway] Forwarding to: ${targetUrl}`);
+      console.log(`[Gateway] Forwarding to: ${redactRundAuditUrl(targetUrl)}`);
       console.log(`[Gateway] Expects binary: ${expectsBinaryFile}`);
       console.log(`[Gateway] Accept header: ${acceptHeader}`);
 
@@ -284,11 +296,11 @@ export class GatewayService {
       return res.status(response.status).send(response.data);
     } catch (error: any) {
       console.error(`[Gateway] Error caught:`, {
-        message: error.message,
+        message: isRundAuditUrl(req.originalUrl || req.url) ? 'Error al consultar RUND' : error.message,
         code: error.code,
         responseStatus: error.response?.status,
         config: {
-          url: error.config?.url,
+          url: redactRundAuditUrl(error.config?.url || ''),
           method: error.config?.method,
           responseType: error.config?.responseType,
         }
@@ -344,12 +356,18 @@ export class GatewayService {
     const targetUrl = `${serviceUrl}${pathWithoutService}`;
 
     try {
+      const headers = { ...req.headers };
+      const queryToken = (req.query?.token as string) || '';
+      if (!headers.authorization && queryToken) {
+        headers.authorization = `Bearer ${queryToken}`;
+      }
+
       const response = await lastValueFrom(
         this.http.request({
           method: req.method,
           url: targetUrl,
           data: req.body,
-          headers: req.headers,
+          headers,
           responseType: 'stream',
         }),
       );
@@ -360,13 +378,17 @@ export class GatewayService {
         if (value) res.setHeader(key, value as any);
       });
       response.data.pipe(res);
-    } catch (error) {
+    } catch (error: any) {
       const status = error.response?.status || 500;
-      const msg =
-        typeof error.response?.data === 'string'
-          ? error.response.data
-          : error.response?.data?.message || 'Error at API Gateway';
-      return res.status(status).send(msg);
+      let msg = 'Error at API Gateway';
+      if (typeof error.response?.data === 'string') {
+        msg = error.response.data;
+      } else if (error.response?.data?.message) {
+        msg = error.response.data.message;
+      } else if (error.message) {
+        msg = error.message;
+      }
+      return res.status(status).json({ message: msg, statusCode: status });
     }
   }
 }

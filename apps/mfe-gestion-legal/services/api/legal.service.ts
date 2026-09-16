@@ -91,6 +91,19 @@ export class LegalService {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
 
+    /**
+     * Verifica en vivo si un radicado ya existe en el sistema, sin la restricción por
+     * abogado sustanciador que aplica getExpedientes() a usuarios sin rol de vista global.
+     * excludeId se usa al editar, para no marcar como duplicado el propio expediente.
+     */
+    async existeRadicado(radicado: string, excludeId?: string): Promise<boolean> {
+        const res = await apiClient.get<{ existe: boolean }>(
+            `${SERVICE_PREFIX}/expedientes/radicado/${encodeURIComponent(radicado)}/existe`,
+            excludeId ? { excludeId } : undefined,
+        );
+        return !!res?.existe;
+    }
+
 
 
     async getJuzgamientoProcesos(): Promise<any[]> {
@@ -322,6 +335,7 @@ export class LegalService {
         descripcion: string;
         fechaActuacion: string;
         responsable?: string;
+        responsableId?: string;
         estado?: string;
         observaciones?: string;
         documentosAsociados?: string[];
@@ -335,6 +349,7 @@ export class LegalService {
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
             if (data.responsable) formData.append('responsable', data.responsable);
+            if (data.responsableId) formData.append('responsableId', data.responsableId);
             if (data.estado) formData.append('estado', data.estado);
             if (data.observaciones) formData.append('observaciones', data.observaciones);
             if (data.documentosAsociados) {
@@ -605,9 +620,10 @@ export class LegalService {
 
     // --- CONTROL DE TÉRMINOS E INFORMES ---
 
-    async getTerminosListado(responsableId?: string): Promise<any[]> {
+    async getTerminosListado(responsableId?: string, estado?: string): Promise<any[]> {
         const params = new URLSearchParams();
         if (responsableId) params.append('responsableId', responsableId);
+        if (estado) params.append('estado', estado);
 
         // Endpoint: /legal-management/api/v1/legal/terminos/listado
         return apiClient.get(`${SERVICE_PREFIX}/terminos/listado?${params.toString()}`);
@@ -650,8 +666,9 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/upload-documento`, formData);
     }
 
-    async eliminarTermino(id: string): Promise<void> {
-        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}`);
+    async eliminarTermino(id: string, permanente?: boolean): Promise<void> {
+        const query = permanente ? '?permanente=true' : '';
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/${id}${query}`);
     }
 
     async getNotasTermino(id: string): Promise<any[]> {
@@ -731,7 +748,14 @@ export class LegalService {
         return apiClient.put<any>(`${SERVICE_PREFIX}/pei/indicador/${id}`, data);
     }
 
-    async registrarAvanceIndicador(id: string, data: any): Promise<any> {
+    async registrarAvanceIndicador(id: string, data: any, evidenciaFile?: File): Promise<any> {
+        if (evidenciaFile) {
+            const formData = new FormData();
+            if (data.valor !== undefined) formData.append('valor', String(data.valor));
+            if (data.observaciones) formData.append('observaciones', data.observaciones);
+            formData.append('evidencia', evidenciaFile);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, formData);
+        }
         return apiClient.post<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, data);
     }
 
@@ -1451,7 +1475,12 @@ export class CorreosJuridicosService {
      * a la pestaña Documentos del proceso destino.
      * @param targetModule 'DEFENSA' | 'DISCIPLINARIO' | 'ASESORIA' (o los valores canónicos)
      */
-    async derivarNuevoProceso(id: string, procesoId: string, targetModule: string): Promise<CorreoJuridico> {
+    async derivarNuevoProceso(id: string, procesoId: string, targetModule: string): Promise<{
+        correo: CorreoJuridico;
+        vinculado: boolean;
+        documentosCopiados: number;
+        documentosTotal: number;
+    }> {
         return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/derivar-nuevo-proceso`, { procesoId, targetModule });
     }
 

@@ -27,7 +27,7 @@ import {
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
   getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada,
-  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA
+  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA, validarReenvioPTA
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -37,6 +37,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
+import { PTADecisionLoading } from '../../pta/PTADecisionLoading';
 import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
@@ -137,6 +138,7 @@ function DocumentosPendientesAlert({ documentosPendientes }: { documentosPendien
 
 
 interface PTAFormProps {
+  syncVersion?: string | null;
   onBack: () => void;
   userPersonId: string;
   ptaId?: string | null;
@@ -1976,7 +1978,7 @@ function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
   return EXT_SUBSECTION_TO_COMPONENT[section] || 'ext_fortalecimiento';
 }
 
-export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
+export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
   // El mismo formulario se reutiliza en el backoffice. Solo el flujo docente
   // solicitado cambia sus avisos; la experiencia administrativa se conserva.
   const toast = isAdminEdit ? systemToast : docentePtaAlert;
@@ -2862,6 +2864,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Cargar aprobaciones por componente (para detectar devoluciones + comentarios del revisor).
   useEffect(() => {
     if (!ptaId) { setComponentesAprobacion([]); return; }
+    if (saving) return;
     let cancelado = false;
     getComponentesAprobacion(ptaId)
       .then((res: any) => {
@@ -2869,7 +2872,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       })
       .catch((err: any) => console.warn('[PTAForm] No se pudieron cargar aprobaciones por componente:', err?.message || err));
     return () => { cancelado = true; };
-  }, [ptaId]);
+  }, [ptaId, syncVersion, saving]);
 
   // Load active period codigo — solo para PTAs nuevos
   useEffect(() => {
@@ -3748,8 +3751,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // ═══ HANDLERS: INVESTIGACIÓN ═══════════════════════════════════════
 
-  // Modo catálogo (sin proyecto): agrega fila con dropdown de catálogo
-  // Modo libre (con proyecto): agrega fila de texto libre + horas
+  // Las actividades conservan el catálogo con o sin proyecto.
   const tieneProyecto = !!(invProyecto.nombre && invProyecto.nombre.trim());
 
   const handleAddInvActividad = () => {
@@ -3805,7 +3807,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         ? hInvestigacionProyecto
         : 0;
       const remainingLimit = Math.max(0, maxLimit - otherSum - projectHours);
-      const isProyecto = !!(invProyecto.nombre && invProyecto.nombre.trim());
 
       if (field === 'actividad_id') {
         const cat = actividadesParaDropdown.find((c: any) => c.id === value);
@@ -3824,7 +3825,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         
         if (val < 1 && value !== '') val = 1; // Ni negativos ni 0
         
-        if (!isProyecto && updated.horas_unitarias > 0 && val > updated.horas_unitarias) {
+        if (!String(updated.actividad_id).startsWith('LIBRE_') && updated.horas_unitarias > 0 && val > updated.horas_unitarias) {
             val = updated.horas_unitarias; // No mayor al default si viene del catálogo
         }
         
@@ -4518,11 +4519,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const itemLabel = `la actividad de investigación ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.investigacionActividad(activity.id, field);
         requireText(activity.territorial_id, keyFor('territorial_id'), 'investigacion', `Territorial de ${itemLabel}`);
-        if (tieneProyecto) {
-          requireText(activity.nombre, keyFor('nombre'), 'investigacion', `Nombre de ${itemLabel}`);
-        } else {
-          requireText(activity.actividad_id, keyFor('actividad_id'), 'investigacion', `Actividad de investigación ${index + 1}`);
-        }
+        requireText(activity.actividad_id, keyFor('actividad_id'), 'investigacion', `Actividad de investigación ${index + 1}`);
         requirePositiveHours(activity.horas_total, keyFor('horas_total'), 'investigacion', `Horas de ${itemLabel}`);
         requireText(activity.descripcion, keyFor('descripcion'), 'investigacion', `Descripción de ${itemLabel}`);
         requireDates(activity, keyFor, 'investigacion', itemLabel);
@@ -4623,7 +4620,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     invProyecto,
     maxExtLimit,
     ptaRules,
-    tieneProyecto,
   ]);
 
   const requiredFieldKeySet = useMemo(
@@ -5167,6 +5163,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     requestingFirmaCodeRef.current = true;
     setRequestingFirmaCode(true);
     try {
+      if (accion === 'via_save' && isEnRevisionDocente) {
+        if (!currentPtaId) throw new Error('No se pudo identificar el PTA para validar el reenvío.');
+        // Ambos botones de reaprobación pasan por aquí. Se comprueba la versión
+        // guardada con las mismas reglas del envío antes de solicitar el OTP.
+        if (savingRef.current) throw new Error('Espera a que termine de guardar el PTA e intenta nuevamente.');
+        const saved = await handleSaveRef.current?.(false, true);
+        if (!saved) return false;
+        const validation = await validarReenvioPTA(currentPtaId);
+        if (!validation.success) {
+          throw new Error(validation.message || 'Revisa las actividades del PTA antes de enviarlo a reaprobación.');
+        }
+      }
       const etapaLabel = getFirmaEtapaLabel();
       const res = await requestPTAFirmaDocenteCode({
         ptaId: currentPtaId,
@@ -5195,7 +5203,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       requestingFirmaCodeRef.current = false;
       setRequestingFirmaCode(false);
     }
-  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, userPersonId, validateEnvioDocente]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, isEnRevisionDocente, periodo, userPersonId, validateEnvioDocente]);
 
   const closeConfirmResumen = useCallback((afterClose?: () => void) => {
     if (confirmResumenClosingRef.current) return;
@@ -5422,6 +5430,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       )}
 
       {/* Firma digital del docente — requerida antes de cada envío y enviar código de aprobación por email */}
+      {requestingFirmaCode && <PTADecisionLoading />}
       {showFirmaDocente && (
         <FirmaDigitalPTA
           ptaId={currentPtaId || ''}
@@ -6581,7 +6590,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         <button
                           type="button"
                           onClick={() => setInvActividades([])}
-                          className="px-3 py-1.5 rounded-lg bg-purple-700 text-white text-xs font-bold hover:bg-purple-800 transition-colors"
+                          className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2"
                         >
                           Conservar proyecto
                         </button>
@@ -6892,170 +6901,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         text="Sin actividades adicionales"
                         sub={tieneProyecto ? "Puedes agregar actividades relacionadas con este proyecto" : "Ej: Semilleros, publicaciones, pares evaluadores"}
                         small />
-                    ) : tieneProyecto ? (
-                      /* ── MODO LIBRE: nombre + horas directo ── */
-                      <div className="flex flex-col gap-3">
-                        {invActividades.map((act, idx) => (
-                          <div key={act.id} className={repeatedEntryCardClass(idx, 'investigacion')}>
-                            <RepeatedEntryHeader index={idx} label="Actividad de investigación" color={PTA_COLORS.INVESTIGACION} />
-                            {isEditable && (
-                              <button type="button" onClick={() => requestDelete('¿Está seguro de que desea eliminar esta actividad de investigación? Esta acción no se puede deshacer.', () => setInvActividades(prev => prev.filter(a => a.id !== act.id)))}
-                                title={`Eliminar Actividad ${idx + 1}`}
-                                aria-label={`Eliminar Actividad ${idx + 1}`}
-                                className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                            <div className="mb-2">
-                              <FormSelect
-                                label="Territorial"
-                                value={act.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
-                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pr-8">
-                              <div className="md:col-span-2">
-                                <FormInput
-                                  label={`Actividad ${idx + 1}`}
-                                  value={act.nombre}
-                                  disabled={!isEditable}
-                                  required
-                                  fieldKey={ptaFieldKey.investigacionActividad(act.id, 'nombre')}
-                                  error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'nombre')]}
-                                  placeholder="Ej: Publicación artículo, Semillero de investigación..."
-                                  onChange={v => setInvActividades(prev => prev.map(a =>
-                                    a.id === act.id ? { ...a, nombre: v, actividad_id: 'LIBRE_' + act.id } : a
-                                  ))}
-                                />
-                              </div>
-                              <div>
-                                <FormInput
-                                  label="Horas"
-                                  type="number"
-                                  min={1}
-                                  value={act.horas_total || ''}
-                                  disabled={!isEditable}
-                                  required
-                                  fieldKey={ptaFieldKey.investigacionActividad(act.id, 'horas_total')}
-                                  error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'horas_total')]}
-                                  placeholder="0"
-                                  onChange={v => {
-                                    let val = Number(v) || 0;
-                                    if (val < 0) val = 0;
-                                    const limiteMax = maxInvLimit;
-                                    const otherActsSum = invActividades.filter(a => a.id !== act.id).reduce((sum, a) => sum + (a.horas_total || 0), 0);
-                                    const projectHours = (permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion)
-                                      ? hInvestigacionProyecto
-                                      : 0;
-                                    const remaining = Math.max(0, limiteMax - otherActsSum - projectHours);
-                                    if (val > remaining) val = remaining;
-                                    setInvActividades(prev => prev.map(a =>
-                                      a.id === act.id ? { ...a, horas_total: val, horas_unitarias: val, cantidad: 1 } : a
-                                    ));
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <FormInput label="Descripción" type="text" value={act.descripcion} disabled={!isEditable}
-                              required
-                              fieldKey={ptaFieldKey.investigacionActividad(act.id, 'descripcion')}
-                              error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'descripcion')]}
-                              placeholder="Describe brevemente la actividad..."
-                              onChange={v => setInvActividades(prev => prev.map(a =>
-                                a.id === act.id ? { ...a, descripcion: v } : a
-                              ))} />
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              <FormInput label="Fecha Inicio" type="date" value={act.fecha_inicio} disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'fecha_inicio')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'fecha_inicio')]}
-                                min={periodoFechaMin || undefined}
-                                max={periodoFechaMax || undefined}
-                                onChange={v => setInvActividades(prev => prev.map(a =>
-                                  a.id === act.id ? { ...a, fecha_inicio: v } : a
-                                ))} />
-                              <FormInput label="Fecha Fin" type="date" value={act.fecha_fin} disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'fecha_fin')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'fecha_fin')]}
-                                min={periodoFechaMin || undefined}
-                                max={periodoFechaMax || undefined}
-                                onChange={v => setInvActividades(prev => prev.map(a =>
-                                  a.id === act.id ? { ...a, fecha_fin: v } : a
-                                ))} />
-                            </div>
-                            {/* ── Resolución de la actividad ── */}
-                            <div className="mt-1 pt-2 border-t border-purple-100/80">
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <FormInput
-                                  label="N° / Nombre Resolución"
-                                  value={act.resolucion_nombre || ''}
-                                  disabled={!isEditable}
-                                  placeholder="Ej: Res. 0234/2026"
-                                  onChange={v => setInvActividades(prev => prev.map(a =>
-                                    a.id === act.id ? { ...a, resolucion_nombre: v } : a
-                                  ))}
-                                />
-                                <div>
-                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">
-                                    Adjunto Resolución
-                                  </label>
-                                  {act.resolucion_archivo || act.resolucion_archivo_url ? (
-                                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 min-h-[36px]">
-                                      <Paperclip className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                                      <span className="text-xs text-green-800 font-medium truncate flex-1">
-                                        {act.resolucion_archivo?.name || act.resolucion_archivo_url || 'Archivo cargado'}
-                                      </span>
-                                      <ResolutionFilePreviewButton
-                                        file={act.resolucion_archivo}
-                                        storedUrl={act.resolucion_archivo_url}
-                                        label={act.resolucion_archivo?.name || act.resolucion_nombre || `resolución de la actividad ${idx + 1}`}
-                                      />
-                                      {isEditable && (
-                                        <button type="button"
-                                          onClick={() => setInvActividades(prev => prev.map(a =>
-                                            a.id === act.id ? { ...a, resolucion_archivo: null, resolucion_archivo_url: '' } : a
-                                          ))}
-                                          className="p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors"
-                                          title="Quitar archivo">
-                                          <XIcon className="w-3.5 h-3.5" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
-                                      isEditable ? 'border-purple-300 bg-white shadow-sm hover:border-purple-400 hover:bg-purple-50/40 hover:shadow-md cursor-pointer' : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
-                                    }`}>
-                                      <FileUp className="w-4 h-4 text-purple-400" />
-                                      <span className="text-xs text-purple-500 font-medium">
-                                        {isEditable ? 'Adjuntar resolución...' : 'Sin archivo'}
-                                      </span>
-                                      {isEditable && (
-                                        <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" className="hidden"
-                                          onChange={e => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                              setInvActividades(prev => prev.map(a =>
-                                                a.id === act.id ? { ...a, resolucion_archivo: file, resolucion_archivo_url: '' } : a
-                                              ));
-                                            }
-                                            e.target.value = '';
-                                          }} />
-                                      )}
-                                    </label>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
                     ) : (
                       /* ── MODO CATÁLOGO: dropdown de actividades ── */
                       <div className="flex flex-col gap-3">
@@ -7090,10 +6935,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   fieldKey={ptaFieldKey.investigacionActividad(act.id, 'actividad_id')}
                                   error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'actividad_id')]}
                                   onChange={v => handleInvActChange(act.id, 'actividad_id', v)}
-                                  options={actividadesParaDropdown.map((a: any) => ({
-                                    value: a.id,
-                                    label: `${a.nombre} (hasta ${a.max_horas || a.horas_max || 0}h)`,
-                                  }))}
+                                  options={[
+                                    // Conserva visibles las actividades guardadas fuera del catálogo actual.
+                                    ...(act.actividad_id && act.nombre && !actividadesParaDropdown.some((a: any) => a.id === act.actividad_id)
+                                      ? [{ value: act.actividad_id, label: act.nombre }]
+                                      : []),
+                                    ...actividadesParaDropdown.map((a: any) => ({
+                                      value: a.id,
+                                      label: `${a.nombre} (hasta ${a.max_horas || a.horas_max || 0}h)`,
+                                    })),
+                                  ]}
                                   placeholder="Seleccionar..." />
                               </div>
                               <FormInput label="Horas" type="number" value={act.horas_total} disabled={!isEditable}

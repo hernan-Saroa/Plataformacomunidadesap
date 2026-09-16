@@ -15,7 +15,8 @@ import {
   Clock,
   QrCode,
   UserPlus,
-  Upload
+  Upload,
+  Building2
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { motion } from 'motion/react';
@@ -285,6 +286,22 @@ export function UserExpandedView({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Dependencia */}
+              {user.dependencia && (
+                <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-indigo-100">
+                    <Building2 className="w-4 h-4 text-indigo-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-indigo-600 font-medium">Dependencia</p>
+                    <p className="text-sm font-semibold text-indigo-900 truncate" title={user.dependencia.nomDependencia}>{user.dependencia.nomDependencia}</p>
+                    {user.dependencia.codDependencia && (
+                      <p className="text-xs text-indigo-600/70 truncate">{user.dependencia.codDependencia}</p>
+                    )}
+                  </div>
                 </div>
               )}
 

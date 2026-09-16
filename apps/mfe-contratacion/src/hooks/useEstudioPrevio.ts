@@ -73,19 +73,47 @@ export function useEstudioPrevio(procesoId: string | null) {
     });
   }, []);
 
+  /**
+   * Guarda el borrador, y si choca por versión lo reintenta una vez.
+   *
+   * El conflicto casi siempre es contra un cambio propio —adjuntar un
+   * documento, otra pestaña abierta—, y pedir recargar costaría lo que el
+   * usuario acaba de escribir. Si el segundo intento vuelve a chocar, propaga:
+   * ahí sí hay alguien más editando.
+   */
+  const guardarReintentando = useCallback(
+    async (version: number): Promise<number> => {
+      try {
+        const res = await contratacionService.guardarBorrador(
+          procesoId!,
+          estado.valores,
+          version,
+        );
+        return res.version;
+      } catch (err: any) {
+        if (!(err instanceof ConflictoError)) throw err;
+
+        const actual = await contratacionService.obtenerEstudioPrevio(procesoId!);
+        const res = await contratacionService.guardarBorrador(
+          procesoId!,
+          estado.valores,
+          actual.version,
+        );
+        return res.version;
+      }
+    },
+    [procesoId, estado.valores],
+  );
+
   const guardar = useCallback(async () => {
     if (!procesoId || !estado.datos) return;
     setEstado((e) => ({ ...e, guardando: true, mensaje: null }));
     try {
-      const res = await contratacionService.guardarBorrador(
-        procesoId,
-        estado.valores,
-        estado.datos.version,
-      );
+      const version = await guardarReintentando(estado.datos.version);
       setEstado((e) => ({
         ...e,
         guardando: false,
-        datos: e.datos ? { ...e.datos, version: res.version } : e.datos,
+        datos: e.datos ? { ...e.datos, version } : e.datos,
         mensaje: { tipo: 'ok', texto: 'Borrador guardado' },
       }));
     } catch (err: any) {
@@ -96,19 +124,19 @@ export function useEstudioPrevio(procesoId: string | null) {
           tipo: 'error',
           texto:
             err instanceof ConflictoError
-              ? `${err.message} Recarga la página para ver los cambios.`
+              ? `${err.message} Copia lo que escribiste antes de recargar.`
               : err.message,
         },
       }));
     }
-  }, [procesoId, estado.valores, estado.datos]);
+  }, [procesoId, estado.datos, guardarReintentando]);
 
   /** Guarda y envía. El 422 se traduce en la lista de faltantes marcada en pantalla. */
   const enviar = useCallback(async () => {
     if (!procesoId || !estado.datos) return;
     setEstado((e) => ({ ...e, enviando: true, mensaje: null, faltantes: [], documentoFaltante: false }));
     try {
-      await contratacionService.guardarBorrador(procesoId, estado.valores, estado.datos.version);
+      await guardarReintentando(estado.datos.version);
       await contratacionService.enviarARevision(procesoId);
       await cargar();
       setEstado((e) => ({
@@ -138,7 +166,7 @@ export function useEstudioPrevio(procesoId: string | null) {
         mensaje: { tipo: 'error', texto: err.message },
       }));
     }
-  }, [procesoId, estado.valores, estado.datos, cargar]);
+  }, [procesoId, estado.datos, cargar, guardarReintentando]);
 
   const irACampo = useCallback((codigo: string) => {
     const contenedor = document.querySelector(`[data-campo="${codigo}"]`);

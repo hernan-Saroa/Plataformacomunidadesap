@@ -10,9 +10,11 @@
  * el layout crítico va con estilos inline y la impresión se aísla con el
  * bloque @media print del render.
  */
+import { createPortal } from 'react-dom';
 import { Printer, Download, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
@@ -21,7 +23,10 @@ import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPens
 interface PTAResumenPrintProps {
   pta: any;
   onClose: () => void;
+  /** Id interno de la persona. NO es la identificación del docente. */
   userPersonId: string;
+  /** Documento de identidad del docente (cédula). Se prefiere sobre el id interno. */
+  userDocumento?: string;
   userName?: string;
   /** Registros reales de aprobación por componente (getComponentesAprobacion). Opcional. */
   componentesAprobacion?: any[];
@@ -59,12 +64,12 @@ const SUBCOMP_LABELS: Record<string, string> = {
  * El backend auto-aprueba con aprobadorNombre='Sistema' los componentes que no
  * tienen actividades, para no bloquear el flujo. Mostrar "Sistema" en el detalle
  * hacía parecer que alguien lo avaló; para el lector no está aprobado por nadie,
- * así que se rotula como pendiente.
+ * y no se presenta como una firma humana ni como una tarea pendiente.
  */
 const NOMBRE_APROBADOR_AUTOMATICO = 'Sistema';
 function nombreAprobadorVisible(nombre?: string | null): string | null {
   if (!nombre) return null;
-  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? 'Pendiente' : nombre;
+  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? null : nombre;
 }
 const coarseKeyDe = (key: string): string => {
   if (key.startsWith('academica')) return 'academica';
@@ -118,12 +123,7 @@ const rangoF = (i?: string, f?: string) => {
 };
 
 /** Estado real de aprobación por componente (componentes_estado del DTO). */
-function estadoComp(pta: any, key: string): string | null {
-  if (['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado)) return 'aprobado';
-  if (pta?.estado === 'Borrador') return null;
-  const arr = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
-  return arr.find((c: any) => c?.key === key)?.estado || null;
-}
+const estadoComp = getPtaComponentDisplayStatus;
 
 /** Horas ya aprobadas de un componente (mismo criterio que ReportePTAInstitucional). */
 function horasAprobadasComp(pta: any, key: string, horasTotales: number): number {
@@ -135,6 +135,9 @@ function horasAprobadasComp(pta: any, key: string, horasTotales: number): number
 }
 
 const ESTADO_COMP_CFG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  no_aplica: { label: 'No aplica', color: '#64748B', bg: '#F1F5F9', icon: Clock },
+  no_iniciado: { label: 'No iniciado', color: '#64748B', bg: '#F1F5F9', icon: Clock },
+  en_revision: { label: 'En revisión', color: '#92400E', bg: '#FEF3C7', icon: Clock },
   aprobado: { label: 'Aprobado', color: '#047857', bg: '#D1FAE5', icon: CheckCircle2 },
   devuelto: { label: 'Devuelto', color: '#B91C1C', bg: '#FEE2E2', icon: RotateCcw },
   pendiente: { label: 'Pendiente', color: '#92400E', bg: '#FEF3C7', icon: Clock },
@@ -164,7 +167,7 @@ function Dato({ label, value }: { label: string; value: any }) {
 /** Encabezado de sección numerado con el color del componente. */
 function TituloSeccion({ num, titulo, color, totalHoras, estado }: { num: number; titulo: string; color: string; totalHoras?: number; estado?: string | null }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: '#F3F4F6', borderLeft: `4px solid ${color}`, padding: '7px 12px', marginBottom: 12 }}>
+    <div className="resumen-pta-titulo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: '#F3F4F6', borderLeft: `4px solid ${color}`, padding: '7px 12px', marginBottom: 12 }}>
       <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{num}. {titulo}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {estado !== undefined && <ChipEstadoComp estado={estado} />}
@@ -184,7 +187,40 @@ const TDC: React.CSSProperties = { ...TD, textAlign: 'center', whiteSpace: 'nowr
 const SUB: React.CSSProperties = { fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 };
 const zebra = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? '#FAFAFA' : '#fff' });
 
-export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
+export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
+  /**
+   * Identificación del docente para el documento oficial.
+   *
+   * `userPersonId` es el id interno (un UUID) y se imprimía tal cual, que no
+   * identifica a nadie. El backend ya resuelve la cédula contra la ficha
+   * institucional y la publica en el DTO con varios alias históricos; se leen
+   * todos y el id interno queda solo como último recurso.
+   */
+  const identificacionDocente =
+    userDocumento
+    || pta?.documento_identidad
+    || pta?.docente_identificacion
+    || pta?.cedula
+    || pta?.numero_documento
+    || pta?.docente?.documento_identidad
+    || userPersonId
+    || '';
+  const tipoDocumento = pta?.tipo_documento || '';
+
+  /**
+   * Nombre institucional completo. `userName` es el nombre corto de la sesión
+   * ("ALIX HURTADO"); en un documento oficial debe ir el de la ficha
+   * ("ALIX ZULAY HURTADO SOTO").
+   */
+  const nombreDocente =
+    pta?.docente_nombre
+    || pta?.nombre_docente
+    || pta?.docenteNombre
+    || pta?.docente?.nombre_completo
+    || pta?.docente?.nombre
+    || userName
+    || '';
+
   const handlePrint = () => window.print();
 
   const today = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -274,17 +310,118 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
   const detalleAprobacionCompleto = [...detalleAprobacion, ...detalleTerritorialDoc]
     .sort((a, b) => b.fechaOrden.localeCompare(a.fechaOrden));
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
-      {/* Aislamiento de impresión: solo la hoja del resumen es visible al imprimir. */}
+      {/* Aislamiento de impresión: solo la hoja del resumen llega al papel. */}
       <style>{`
         @media print {
-          body * { visibility: hidden !important; }
-          .resumen-pta-overlay { position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; overflow: visible !important; padding: 0 !important; background: #fff !important; display: block !important; }
-          .resumen-pta-sheet, .resumen-pta-sheet * { visibility: visible !important; }
-          .resumen-pta-sheet { position: relative !important; margin: 0 auto !important; box-shadow: none !important; max-width: 100% !important; max-height: none !important; overflow: visible !important; border-radius: 0 !important; }
-          .resumen-pta-body { overflow: visible !important; }
+          /* La hoja se monta como hijo directo de <body> (createPortal), asi que
+             el resto de la aplicacion se puede apagar con display:none.
+             Con el visibility:hidden anterior lo oculto seguia ocupando alto
+             y el documento heredaba la altura del portal docente completo: de ahi
+             salia una ultima pagina en blanco. */
+          body > *:not(.resumen-pta-overlay) { display: none !important; }
+
+          html, body {
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+          }
+
+          /* En flujo normal, sin position ni alto fijos: cualquier resto de
+             altura se traduce en paginas vacias. */
+          .resumen-pta-overlay {
+            position: static !important;
+            display: block !important;
+            inset: auto !important;
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #fff !important;
+          }
+
+          .resumen-pta-sheet {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            overflow: visible !important;
+            border-radius: 0 !important;
+            transform: none !important;
+            opacity: 1 !important;
+          }
+
+          .resumen-pta-body { overflow: visible !important; padding: 0 !important; }
           .resumen-pta-hide-print { display: none !important; }
+
+          /* Los contenedores con overflow:auto (scroll horizontal de tablas)
+             recortan el contenido al imprimir: en papel no hay scroll. */
+          .resumen-pta-body * { overflow: visible !important; }
+
+          /* Las tablas traen un min-width pensado para pantalla (620-760px). En
+             A4 vertical el ancho util es ~190mm y la ultima columna quedaba
+             cortada; aqui se dejan fluir al ancho real de la pagina. */
+          .resumen-pta-body table {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+          }
+          .resumen-pta-body th,
+          .resumen-pta-body td {
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+          }
+
+          /* Fondos y colores de estado se imprimen tal cual; sin esto Chrome
+             descarta los rellenos y el documento pierde la lectura por color. */
+          .resumen-pta-sheet { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+          /* == Paginacion ==================================================
+             El contenido es dinamico (un PTA puede traer 1 asignatura o 40),
+             asi que no se fuerzan saltos por seccion: se protegen los bloques
+             que no deben partirse y se deja que el resto fluya. */
+
+          /* Ninguna fila se corta por la mitad entre dos paginas. */
+          .resumen-pta-body tr { break-inside: avoid; page-break-inside: avoid; }
+
+          /* La cabecera de la tabla se repite en cada pagina que ocupe. */
+          .resumen-pta-body thead { display: table-header-group; }
+          .resumen-pta-body tfoot { display: table-footer-group; }
+
+          /* Las tablas si pueden repartirse entre paginas (si no, una tabla
+             larga se iria entera a la pagina siguiente dejando un hueco). */
+          .resumen-pta-body table { break-inside: auto; page-break-inside: auto; }
+
+          /* Bloques atomicos: se mueven completos a la pagina siguiente antes
+             que partirse. */
+          .resumen-pta-card,
+          .resumen-pta-membrete,
+          .resumen-pta-firmas { break-inside: avoid; page-break-inside: avoid; }
+
+          /* Un encabezado de seccion nunca queda solo al pie de una pagina. */
+          .resumen-pta-titulo { break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; }
+
+          /* Sin lineas sueltas al inicio o al final de pagina. */
+          .resumen-pta-body p, .resumen-pta-body div { orphans: 3; widows: 3; }
+        }
+
+        @page {
+          size: A4 portrait;
+          margin: 12mm 10mm 14mm;
         }
       `}</style>
       <div
@@ -327,7 +464,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
           {/* ── Contenido imprimible ── */}
           <div className="resumen-pta-body" style={{ padding: '28px 32px', background: '#fff', color: '#111827' }}>
             {/* Membrete */}
-            <div style={{ borderBottom: '3px solid #003DA5', paddingBottom: 14, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <div className="resumen-pta-membrete" style={{ borderBottom: '3px solid #003DA5', paddingBottom: 14, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0 }}>
                 <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#003DA5', lineHeight: 1.2 }}>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
                 <h2 style={{ margin: '4px 0 0', fontSize: '0.95rem', fontWeight: 700 }}>PLAN DE TRABAJO ACADÉMICO (PTA) — RESUMEN INDIVIDUAL</h2>
@@ -347,14 +484,14 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
             </div>
 
             {/* 1. Información del Docente */}
-            <div style={{ marginBottom: 24 }}>
+            <div className="resumen-pta-seccion" style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('info')} titulo="Información del Docente" color="#003DA5" />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px 16px', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px' }}>
+              <div className="resumen-pta-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px 16px', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px' }}>
                 {/* Mismas variantes de nombre que ReportePTAInstitucional: según el
                     origen del DTO el campo llega como docente_nombre, nombre_docente
                     o anidado en `docente`, y con una sola alternativa quedaba vacío. */}
-                <Dato label="Nombre" value={userName || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre || pta?.docente?.nombre_completo || pta?.docente?.nombre} />
-                <Dato label="Identificación (ID)" value={userPersonId} />
+                <Dato label="Nombre" value={nombreDocente} />
+                <Dato label="Identificación" value={tipoDocumento ? `${tipoDocumento} ${identificacionDocente}` : identificacionDocente} />
                 <Dato label="Dedicación" value={pta?.dedicacion} />
                 <Dato label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />
                 <Dato label="Sede Territorial" value={pta?.territorial} />
@@ -367,7 +504,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
             </div>
 
             {/* 2. Docencia Directa */}
-            <div style={{ marginBottom: 24 }}>
+            <div className="resumen-pta-seccion" style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('docencia')} titulo="Docencia Directa" color={PTA_COLORS.DOCENCIA} totalHoras={horasDoc} estado={estadoComp(pta, 'academica')} />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
@@ -421,7 +558,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
 
             {/* 3. Investigación */}
             {hayInv && (
-              <div style={{ marginBottom: 24 }}>
+              <div className="resumen-pta-seccion" style={{ marginBottom: 24 }}>
                 <TituloSeccion num={numDe('investigacion')} titulo="Investigación" color={PTA_COLORS.INVESTIGACION} totalHoras={horasInv} estado={estadoComp(pta, 'investigacion')} />
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
@@ -476,7 +613,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
 
             {/* 4. Extensión Académica */}
             {extActs.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
+              <div className="resumen-pta-seccion" style={{ marginBottom: 24 }}>
                 <TituloSeccion num={numDe('extension')} titulo="Extensión Académica" color={PTA_COLORS.EXTENSION} totalHoras={horasExt} estado={estadoComp(pta, 'extension')} />
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
@@ -513,7 +650,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
 
             {/* 5. Actividades Complementarias */}
             {compActs.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
+              <div className="resumen-pta-seccion" style={{ marginBottom: 24 }}>
                 <TituloSeccion num={numDe('complementarias')} titulo="Actividades Complementarias" color="#A16207" totalHoras={horasComp} estado={estadoComp(pta, 'complementarias')} />
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
@@ -549,7 +686,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
             )}
 
             {/* 6. Resumen de Horas y Aprobación */}
-            <div style={{ marginBottom: 24 }}>
+            <div className="resumen-pta-seccion" style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('resumen')} titulo="Resumen de Horas y Aprobación" color="#111827" />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
@@ -568,7 +705,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
                     {resumenComponentes.map((c, i) => (
                       <tr key={c.key} style={zebra(i)}>
                         <td style={{ ...TD, fontWeight: 700, borderLeft: `4px solid ${c.color}` }}>{c.label}</td>
-                        <td style={TDC}>{c.horas > 0 ? <ChipEstadoComp estado={estadoComp(pta, c.key)} /> : <span style={{ color: '#9CA3AF', fontSize: '0.66rem' }}>Sin horas</span>}</td>
+                        <td style={TDC}><ChipEstadoComp estado={c.horas > 0 ? estadoComp(pta, c.key) : 'no_aplica'} /></td>
                         <td style={{ ...TDC, fontWeight: 800 }}>{c.horas}</td>
                         <td style={{ ...TDC, background: '#F0FDF4' }}>{c.aprobadas}</td>
                         <td style={{ ...TDC, background: '#FEF9C3' }}>{c.pendientes}</td>
@@ -606,12 +743,12 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
             </div>
 
             {/* Firmas */}
-            <div style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid #E5E7EB' }}>
+            <div className="resumen-pta-firmas" style={{ marginTop: 36, paddingTop: 24, borderTop: '1px solid #E5E7EB' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 32 }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ borderBottom: '1px solid #9CA3AF', width: 200, margin: '0 auto 8px' }} />
                   <p style={{ margin: 0, fontWeight: 700, fontSize: '0.78rem' }}>Firma del Docente</p>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>{userName || ''} · ID: {userPersonId?.substring(0, 12)}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>{nombreDocente}{identificacionDocente ? ` · C.C. ${identificacionDocente}` : ''}</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   {['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado) ? (
@@ -641,6 +778,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

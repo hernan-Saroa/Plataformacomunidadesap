@@ -14,6 +14,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/auth\/api\/v\d+\/reset-password/i,
     /^\/auth\/api\/v\d+\/verify-reset-code/i,
     /^\/auth\/api\/v\d+\/login-settings/i,
+    // Geopolítica: catálogo público de departamentos/municipios de Colombia
+    // (auth.geopolitica). No requiere JWT; cualquier frontend lo consulta y solo
+    // se usa el catálogo estático del frontend si la API está caída.
+    /^\/auth\/api\/v\d+\/estructura-organizacional\/geopolitica\/.+/i,
     /^\/certificados\/api\/v\d+\/validate/i,
     /^\/certificates\/api\/v\d+\/validate/i,
     // Autoservicio certificados laborales (públicos)
@@ -35,6 +39,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/empresa/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-revision-con-soporte/i,
+    // Catálogo dinámico usado por el selector público de títulos faltantes.
+    /^\/registro-academico\/api\/v\d+\/graduate-programs\/options\/?$/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/qr/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/numero/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/estadisticas/i,
@@ -61,8 +67,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // destinatario externo, sin sesion en la plataforma => sin JWT)
     /^\/legal\/api\/v\d+\/correos\/track\/open\/.+/i,
     /^\/legal\/api\/v\d+\/correos\/track\/download\/.+/i,
+  ];
 
-
+  private readonly publicByMethodPatterns: Array<{ method: RegExp; path: RegExp }> = [
+    // Catálogos de EFDS-1730 Gestión de Infraestructura UMI. Son públicos igual
+    // que la geopolitica del auth service, porque los usan tanto el MFE sin
+    // sesion (preview) como fallos de SSR / primer render. Limitar a GET para
+    // no abrir accidentalmente POST /evidencias/upload o POST /mantenimiento.
+    {
+      method: /^GET$/i,
+      path: /^\/infraestructura\/api\/v\d+\/mantenimiento\/catalogos\/[^/]+\/?$/i,
+    },
   ];
 
   constructor(private readonly reflector: Reflector) {
@@ -76,7 +91,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    if (this.isPublic(context) || this.matchesPublicPath(request)) {
+    if (this.isPublic(context) || this.matchesPublicPath(request) || this.matchesPublicByMethod(request)) {
       return true;
     }
 
@@ -107,6 +122,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const patterns = [...this.defaultPublicPatterns, ...configured];
     return patterns.some((regex) => regex.test(requestPath));
+  }
+
+  private matchesPublicByMethod(req: Request): boolean {
+    const requestPath = this.normalizePath(req.originalUrl);
+    const method = req.method || 'GET';
+    return this.publicByMethodPatterns.some(
+      ({ method: mPattern, path: pPattern }) =>
+        mPattern.test(method) && pPattern.test(requestPath),
+    );
   }
 
   private normalizePath(path: string): string {

@@ -50,6 +50,17 @@ export class Documento {
   @Column({ name: 'subido_por', length: 120, nullable: true })
   subidoPor: string;
 
+  /**
+   * Formato del SIG del que salió este documento.
+   *
+   * Es lo que separa un documento requerido —la actividad tiene ese formato
+   * asignado, y sin él no se cierra— de un adjunto adicional, que se guarda
+   * igual pero no se exige. Sin esto solo se puede decir «falta un adjunto»,
+   * nunca «falta el BS-FO-047».
+   */
+  @Column({ name: 'plantilla_id', type: 'uuid', nullable: true })
+  plantillaId: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

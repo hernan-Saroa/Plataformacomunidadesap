@@ -5,6 +5,7 @@ import * as QRCode from 'qrcode';
 import puppeteer from 'puppeteer';
 import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
+import { resolveLaborInternalGroup } from './labor-functions.utils';
 
 type TemplateType = 'docente' | 'administrador';
 type TechnicalBonusCategory = string;
@@ -783,6 +784,21 @@ export class LaborCertificatePdfService {
       :
       (certificate as Certificate & { request?: { position_location?: string } }).request
         ?.position_location || '';
+    // El centro de costo se lee SIEMPRE de la solicitud, incluso en
+    // certificados corregidos: la correccion edita dependencia y ubicacion, no
+    // el grupo interno, y la entidad Certificate no tiene columnas donde
+    // guardarlo. Asi la regla "centro de costo primero" vale tambien ahi.
+    const requestInternalGroup =
+      (certificate as Certificate & { request?: { internal_group?: string } }).request
+        ?.internal_group || '';
+    const requestCostCenter =
+      (certificate as Certificate & { request?: { cost_center?: string } }).request
+        ?.cost_center || '';
+    const requestOrganizationDepartment = preferCorrectedCertificate
+      ? ''
+      :
+      (certificate as Certificate & { request?: { organization_department?: string } })
+        .request?.organization_department || '';
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
@@ -852,14 +868,55 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    const dato7 =
-      requestDepartment ||
-      certificate.department ||
-      '';
+    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
+    // solo usa la dependencia cuando no hay centro de costo.
+    //
+    // OJO con el cruce de datos entre fuentes: la misma informacion llega en
+    // columnas distintas segun de donde venga la fila.
+    //
+    //   Campo                   | Filas locales        | Filas de Oracle FNC
+    //   ------------------------|----------------------|--------------------------
+    //   internal_group          | grupo                | GRUPO_INTERNO, si no CC
+    //   cost_center             | vacio                | CENTROCOSTO
+    //   department              | dependencia          | CENTROCOSTO, si no DEPEND.
+    //   organization_department | dependencia          | DEPENDENCIA
+    //   position_location       | grupo, si no depend. | DEPENDENCIA, si no SUCURSAL
+    //
+    // `internal_group` y `organization_department` significan lo mismo en las
+    // dos fuentes, asi que son los anclajes fiables. `position_location` NO se
+    // usa a proposito: es el unico campo cuyo significado se invierte entre
+    // fuentes y en Oracle puede traer la SUCURSAL (p. ej. "SEDE CENTRAL"), que
+    // no es una dependencia.
+    //
+    // Resultado: centro de costo si existe, dependencia si no, y el mismo
+    // comportamiento en local, dev, qa, pre y produccion.
+    const centroCosto = resolveLaborInternalGroup(
+      requestInternalGroup,
+      requestCostCenter,
+    );
+    // En un certificado corregido la dependencia que guardo el coordinador es
+    // la fuente de verdad y va primero: el formulario de correccion muestra ese
+    // campo, asi que lo que edita tiene que ser lo que se imprime. Antes el
+    // centro de costo ganaba siempre y la edicion quedaba sin efecto.
+    // Al radicar la correccion el campo se precarga con la dependencia efectiva
+    // (ver resolveEffectiveCertificateDependency), de modo que una correccion
+    // que no toca la dependencia sigue imprimiendo exactamente lo mismo.
+    const dato7 = preferCorrectedCertificate
+      ? requestDepartment || centroCosto || ''
+      : centroCosto ||
+        requestDepartment ||
+        certificate.department ||
+        requestOrganizationDepartment ||
+        '';
     const grupoVariable =
       requestPositionLocation ||
       certificate.position_location ||
       '';
+    // El servicio resuelve la vinculacion normal vigente sin reemplazar los
+    // datos del encargo. Las correcciones conservan su precedencia actual.
+    const dependenciaVariable = preferCorrectedCertificate
+      ? dato7
+      : certificate.request?.certificate_dependency ?? dato7;
     const cargoDato6 = tipoVinculacion;
 
     const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
@@ -898,7 +955,7 @@ export class LaborCertificatePdfService {
       '[SEDE]': certificate.campus || '',
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA]': dependenciaVariable,
       '[DEPENDENCIA_PADRE]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
@@ -942,7 +999,9 @@ export class LaborCertificatePdfService {
       activeTemplateVariables.push({
         code: '[FUNCIONES]',
         label: TEMPLATE_VARIABLE_META['[FUNCIONES]'].label,
-        value: laborFunctions.map((item) => `• ${item.description}`).join('\n'),
+        value: laborFunctions
+          .map((item, index) => `${index + 1}. ${item.description}`)
+          .join('\n'),
         source_fields: templateVariableSourceFields('[FUNCIONES]', templateType),
       });
     }
@@ -958,8 +1017,11 @@ export class LaborCertificatePdfService {
       : replacements;
 
     let result = this.normalizeTemplateHtml(templateHtml || '');
+    result = this.prepareLaborFunctionsTemplate(
+      result,
+      laborFunctions.length > 0,
+    );
     result = this.replaceVariables(result, replacementsForRender);
-    result = result.replace(/\[FUNCIONES\]/gi, '');
     result = this.normalizeSpacing(result);
     result = this.normalizeParagraphStructure(result);
 
@@ -977,11 +1039,20 @@ export class LaborCertificatePdfService {
 
     result = this.normalizeParagraphStructure(result);
     if (laborFunctions.length) {
-      result = this.insertLaborFunctions(
+      const tokenResult = this.replaceLaborFunctionsToken(
         result,
         laborFunctions,
         params.highlightVariables === true,
       );
+      result = tokenResult.replaced
+        ? tokenResult.html
+        : this.insertLaborFunctions(
+            result,
+            laborFunctions,
+            params.highlightVariables === true,
+          );
+    } else {
+      result = this.removeLaborFunctionsToken(result);
     }
 
     return result;
@@ -1221,6 +1292,15 @@ export class LaborCertificatePdfService {
     functions: Array<{ ordinal: number; description: string }>,
     highlightVariables = false,
   ): string {
+    const list = this.renderLaborFunctionsList(functions, highlightVariables);
+    if (!list) return '';
+    return `<section class="labor-functions-section"><p class="labor-functions-legal-intro">Conforme lo establece <em>el Manual Espec\u00EDfico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP -.</em></p><p class="labor-functions-title">Las funciones para el cargo de son:</p>${list}</section>`;
+  }
+
+  private renderLaborFunctionsList(
+    functions: Array<{ ordinal: number; description: string }>,
+    highlightVariables = false,
+  ): string {
     if (!functions.length) return '';
     const items = functions
       .map((item) => {
@@ -1233,7 +1313,49 @@ export class LaborCertificatePdfService {
         return `<li class="labor-function-item">${rendered}</li>`;
       })
       .join('');
-    return `<section class="labor-functions-section"><p class="labor-functions-title">Las funciones asociadas al cargo son:</p><ul class="labor-functions-list">${items}</ul></section>`;
+    return `<ol class="labor-functions-list">${items}</ol>`;
+  }
+
+  private prepareLaborFunctionsTemplate(
+    html: string,
+    showFunctions: boolean,
+  ): string {
+    return html.replace(
+      /<section\b(?=[^>]*\bdata-functions-template=["']true["'])[^>]*>([\s\S]*?)<\/section>/gi,
+      (_match, body: string) => (showFunctions ? body : ''),
+    );
+  }
+
+  private replaceLaborFunctionsToken(
+    html: string,
+    functions: Array<{ ordinal: number; description: string }>,
+    highlightVariables = false,
+  ): { html: string; replaced: boolean } {
+    const list = this.renderLaborFunctionsList(functions, highlightVariables);
+    let replaced = false;
+    let result = html.replace(/<p>([\s\S]*?)<\/p>/gi, (paragraph, body: string) => {
+      const text = body.replace(/<[^>]+>/g, '').trim();
+      if (!/^\[FUNCIONES\]$/i.test(text)) return paragraph;
+      replaced = true;
+      return list;
+    });
+
+    if (!replaced && /\[FUNCIONES\]/i.test(result)) {
+      result = result.replace(/\[FUNCIONES\]/gi, list);
+      replaced = true;
+    }
+
+    return { html: result, replaced };
+  }
+
+  private removeLaborFunctionsToken(html: string): string {
+    return html
+      .replace(/<p>([\s\S]*?)<\/p>/gi, (paragraph, body: string) =>
+        /^\[FUNCIONES\]$/i.test(body.replace(/<[^>]+>/g, '').trim())
+          ? ''
+          : paragraph,
+      )
+      .replace(/\[FUNCIONES\]/gi, '');
   }
 
   private insertLaborFunctions(
@@ -1244,27 +1366,16 @@ export class LaborCertificatePdfService {
     const section = this.renderLaborFunctions(functions, highlightVariables);
     if (!section) return html;
 
-    const expideIndex = html.toLocaleLowerCase('es').indexOf('se expide');
-    if (expideIndex >= 0) {
-      const htmlBeforeExpide = html.slice(0, expideIndex);
-      const paragraphStart = Math.max(
-        htmlBeforeExpide.lastIndexOf('<p'),
-        htmlBeforeExpide.lastIndexOf('<div'),
-      );
-      if (paragraphStart >= 0) {
-        return `${html.slice(0, paragraphStart)}${section}${html.slice(paragraphStart)}`;
-      }
+    const compensationRegex = /<(p|div)\b[^>]*>(?:(?!<\/\1>)[\s\S])*?(salari|asignaci|\bprima\b)(?:(?!<\/\1>)[\s\S])*?<\/\1>/i;
+    const compensationMatch = compensationRegex.exec(html);
+    if (compensationMatch?.index !== undefined) {
+      return `${html.slice(0, compensationMatch.index)}${section}${html.slice(compensationMatch.index)}`;
     }
 
-    const salaryOrBonusRegex = /<(p|div)\b[^>]*>(?:(?!<\/\1>)[\s\S])*?(salari|asignaci|\bprima\b)(?:(?!<\/\1>)[\s\S])*?<\/\1>/gi;
-    let lastMatch: RegExpExecArray | null = null;
-    let match: RegExpExecArray | null = null;
-    while ((match = salaryOrBonusRegex.exec(html)) !== null) {
-      lastMatch = match;
-    }
-    if (lastMatch && lastMatch.index !== undefined) {
-      const insertAt = lastMatch.index + lastMatch[0].length;
-      return `${html.slice(0, insertAt)}${section}${html.slice(insertAt)}`;
+    const issueRegex = /<(p|div)\b[^>]*>(?:(?!<\/\1>)[\s\S])*?se expide(?:(?!<\/\1>)[\s\S])*?<\/\1>/i;
+    const issueMatch = issueRegex.exec(html);
+    if (issueMatch?.index !== undefined) {
+      return `${html.slice(0, issueMatch.index)}${section}${html.slice(issueMatch.index)}`;
     }
 
     return `${html}${section}`;
@@ -1479,6 +1590,9 @@ export class LaborCertificatePdfService {
             .labor-functions-section {
               margin: 0 0 12pt 0;
             }
+            .certificate-content-block .labor-functions-legal-intro {
+              margin: 0 0 12pt 0;
+            }
             .certificate-content-block .labor-functions-title {
               margin: 0 0 8pt 0;
               page-break-after: avoid;
@@ -1488,7 +1602,7 @@ export class LaborCertificatePdfService {
               margin: 0 0 12pt 0;
               padding: 0 0 0 20pt;
               list-style-position: outside;
-              list-style-type: disc;
+              list-style-type: decimal;
             }
             .certificate-content-block .labor-functions-list .labor-function-item {
               margin: 0 0 8pt 0;

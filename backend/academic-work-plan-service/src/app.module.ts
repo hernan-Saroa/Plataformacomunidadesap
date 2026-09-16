@@ -7,7 +7,9 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PtaModule } from './pta/pta.module';
+import { ContratoProgramacionModule } from './contrato-programacion/contrato-programacion.module';
 import { BancoDocentesModule } from './pta/banco-docentes/banco-docentes.module';
+import { MacroDocenteModule } from './pta/macro-docente/macro-docente.module';
 import { EstructuraImportModule } from './estructura-import/estructura-import.module';
 import { PlanTrabajoAcademicoEntity } from './pta/entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './pta/entities/historial-estado-pta.entity';
@@ -78,7 +80,11 @@ import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.
     }),
     AuthModule,
     PtaModule,
+    // Superficie que consume Programacion Academica. Modulo aparte, aditivo: no
+    // reorganiza nada del PTA (ver contrato-programacion/README.md).
+    ContratoProgramacionModule,
     BancoDocentesModule,
+    MacroDocenteModule,
     EstructuraImportModule,
   ],
   controllers: [AppController],

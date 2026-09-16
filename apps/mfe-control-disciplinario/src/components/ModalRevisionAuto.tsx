@@ -22,6 +22,7 @@ import {
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import { Permissions } from '../../../../packages/shared-types/src/permissions';
+import { ModalSeleccionarRadicador } from './ModalSeleccionarRadicador';
 
 // ==================== INTERFACES ====================
 
@@ -46,6 +47,8 @@ export interface BorradorPendiente {
   historial: AccionRevision[];
   tiempoEspera?: string;
   procesoId?: string;
+  radicadorAsignadoId?: string;
+  radicadorAsignadoNombre?: string;
   // Campos de prórroga (solo para AUTO_PRORROGA)
   tipo?: string;
   prorrogaMeses?: number;
@@ -64,7 +67,7 @@ export interface AccionRevision {
 interface ModalRevisionAutoProps {
   borrador: BorradorPendiente;
   onClose: () => void;
-  onAprobar: (comentarios: string) => void | Promise<void>;
+  onAprobar: (comentarios: string, radicadorAsignadoId?: string) => void | Promise<void>;
   onDevolver?: (motivo: string, comentarios: string, archivos: File[]) => void;
   onRefresh?: () => void | Promise<void>;
   mostrarBotonDevolver?: boolean;
@@ -484,12 +487,14 @@ export function ModalRevisionAuto({
   onRefresh,
   mostrarBotonDevolver = true,
   tituloModal = 'Revisión de Auto',
-  descripcionModal
+  descripcionModal,
+  onSeleccionarRadicador,
 }: ModalRevisionAutoProps) {
 
   const [comentariosJefe, setComentariosJefe] = useState('');
   const [showModalAprobar, setShowModalAprobar] = useState(false);
   const [showModalDevolver, setShowModalDevolver] = useState(false);
+  const [showModalRadicador, setShowModalRadicador] = useState(false);
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
   const [archivoAuto, setArchivoAuto] = useState<File | null>(null);
   const [tipoVista, setTipoVista] = useState<'texto' | 'archivo'>('texto');
@@ -501,6 +506,13 @@ export function ModalRevisionAuto({
   const [subiendoDoc, setSubiendoDoc] = useState(false);
   const [aprobandoAuto, setAprobandoAuto] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [comentariosPendientes, setComentariosPendientes] = useState<string>('');
+  const [radicadorPreseleccionadoId, setRadicadorPreseleccionadoId] = useState<string | null>(null);
+  const [radicadorPreseleccionadoNombre, setRadicadorPreseleccionadoNombre] = useState<string>('');
+
+  const requiereSeleccionRadicador = (_tipo?: string): boolean => {
+    return true;
+  };
 
   useEffect(() => {
     if (!borrador.autoId) return;
@@ -613,14 +625,18 @@ export function ModalRevisionAuto({
         duration: Infinity,
       });
 
-      await onAprobar(comentarios);
+      await onAprobar(comentarios, radicadorPreseleccionadoId);
 
       toast.success('Auto aprobado correctamente', {
         id: toastId,
-        description: 'El documento final ya quedó generado.',
+        description: radicadorPreseleccionadoNombre
+          ? `Radicador asignado: ${radicadorPreseleccionadoNombre}`
+          : 'El documento final ya quedó generado.',
         duration: 4000,
       });
       setShowModalAprobar(false);
+      setRadicadorPreseleccionadoId(null);
+      setRadicadorPreseleccionadoNombre('');
       onClose();
     } catch (error) {
       console.error('Error confirmando aprobacion del auto:', error);
@@ -631,6 +647,13 @@ export function ModalRevisionAuto({
     } finally {
       setAprobandoAuto(false);
     }
+  };
+
+  const handleRadicadorSeleccionado = async (radicadorId: string, radicadorNombre: string) => {
+    setShowModalRadicador(false);
+    setRadicadorPreseleccionadoId(radicadorId);
+    setRadicadorPreseleccionadoNombre(radicadorNombre);
+    setShowModalAprobar(true);
   };
 
   const handleConfirmarDevolucion = (motivo: string, comentarios: string, archivos: File[]) => {
@@ -1081,7 +1104,7 @@ export function ModalRevisionAuto({
                         </p>
                       </div>
                       <span className="text-xs" style={{ color: '#9CA3AF' }}>
-                        {new Date(accion.fecha).toLocaleString('es-CO')}
+                        {new Date(accion.fecha).toLocaleString('es-CO', { timeZone: 'America/Bogota' })}
                       </span>
                     </div>
                   </div>
@@ -1105,7 +1128,13 @@ export function ModalRevisionAuto({
             )}
             {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
               <button
-                onClick={() => setShowModalAprobar(true)}
+                onClick={() => {
+                  if (requiereSeleccionRadicador(borrador.tipo) && !radicadorPreseleccionadoId) {
+                    setShowModalRadicador(true);
+                  } else {
+                    setShowModalAprobar(true);
+                  }
+                }}
                 disabled={aprobandoAuto}
                 className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${aprobandoAuto ? 'opacity-80 cursor-wait' : ''}`}
                 style={{ background: '#059669' }}
@@ -1113,6 +1142,11 @@ export function ModalRevisionAuto({
                 {aprobandoAuto ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                 {aprobandoAuto ? 'Aprobando...' : 'Aprobar Auto'}
               </button>
+            )}
+            {radicadorPreseleccionadoNombre && (
+              <div className="px-4 py-2 rounded-lg text-xs font-semibold" style={{ background: '#D1FAE5', color: '#065F46' }}>
+                Radicador: {radicadorPreseleccionadoNombre}
+              </div>
             )}
             <button
               onClick={onClose}
@@ -1142,6 +1176,15 @@ export function ModalRevisionAuto({
           <ModalDevolucion
             onConfirm={handleConfirmarDevolucion}
             onCancel={() => setShowModalDevolver(false)}
+          />
+        )}
+        {showModalRadicador && (
+          <ModalSeleccionarRadicador
+            isOpen={showModalRadicador}
+            autoTipo={borrador.tipo || borrador.titulo || ''}
+            procesoNumero={borrador.numeroProceso}
+            onClose={() => setShowModalRadicador(false)}
+            onSelect={handleRadicadorSeleccionado}
           />
         )}
       </AnimatePresence>

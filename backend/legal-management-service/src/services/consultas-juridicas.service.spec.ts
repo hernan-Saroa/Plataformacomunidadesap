@@ -43,7 +43,12 @@ describe('ConsultasJuridicasService', () => {
             calcularDiasHabiles: jest.fn(),
         };
         mockDocumentosService = { create: jest.fn() };
-        mockNotificationClient = { notifyByRoles: jest.fn() };
+        mockNotificationClient = {
+            notifyByRoles: jest.fn(),
+            notifyUserById: jest.fn(),
+            getUserDetailsById: jest.fn().mockResolvedValue(null),
+            sendEmail: jest.fn(),
+        };
         mockLegalNotifications = { notifyProcesoCreado: jest.fn() };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -63,6 +68,12 @@ describe('ConsultasJuridicasService', () => {
     });
 
     afterEach(() => jest.clearAllMocks());
+
+    // aprobarRespuesta()/devolverRespuesta() disparan la notificación al abogado sin
+    // esperarla (fire-and-forget) para no bloquear la respuesta HTTP. Este helper deja
+    // correr la cola de microtareas para que la notificación ya se haya enviado antes
+    // de las aserciones.
+    const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
     describe('create()', () => {
         it('debe generar numeroRadicado con formato CJ-{YEAR}-{SEQUENCIAL:4d}', async () => {
@@ -132,6 +143,92 @@ describe('ConsultasJuridicasService', () => {
             mockConsultaRepo.findOne.mockResolvedValue(null);
 
             await expect(service.responder('missing', { tipoRespuesta: 'favorable' })).rejects.toBeInstanceOf(NotFoundException);
+        });
+    });
+
+    describe('aprobarRespuesta()', () => {
+        it('debe cambiar estado a respondido y notificar (in-app + correo) al abogado asignado', async () => {
+            const consulta = {
+                id: 'consulta-6',
+                numeroRadicado: 'CJ-2026-0006',
+                estado: 'pendiente_revision_jefe',
+                abogadoAsignadoId: 'abogado-1',
+            } as ConsultaJuridica;
+            mockConsultaRepo.findOne.mockResolvedValue(consulta);
+            mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' });
+
+            const result = await service.aprobarRespuesta('consulta-6', 'Jefe');
+            await flushPromises();
+
+            expect(result.estado).toBe('respondido');
+            expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+                'abogado-1',
+                expect.objectContaining({ tipo_notificacion: 'RESPUESTA_APROBADA' }),
+            );
+            expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+                'abogado@esap.edu.co',
+                expect.stringContaining('CJ-2026-0006'),
+                expect.any(String),
+            );
+        });
+
+        it('no debe intentar notificar si la consulta no tiene abogado asignado', async () => {
+            const consulta = { id: 'consulta-7', estado: 'pendiente_revision_jefe' } as ConsultaJuridica;
+            mockConsultaRepo.findOne.mockResolvedValue(consulta);
+
+            await service.aprobarRespuesta('consulta-7', 'Jefe');
+            await flushPromises();
+
+            expect(mockNotificationClient.notifyUserById).not.toHaveBeenCalled();
+            expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('devolverRespuesta()', () => {
+        it('debe cambiar estado a devuelta_por_jefe y notificar (in-app + correo) al abogado con el motivo', async () => {
+            const consulta = {
+                id: 'consulta-8',
+                numeroRadicado: 'CJ-2026-0008',
+                estado: 'pendiente_revision_jefe',
+                abogadoAsignadoId: 'abogado-2',
+            } as ConsultaJuridica;
+            mockConsultaRepo.findOne.mockResolvedValue(consulta);
+            mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'abogado-2', email: 'abogado2@esap.edu.co' });
+
+            const result = await service.devolverRespuesta('consulta-8', 'Falta el oficio', 'Jefe');
+            await flushPromises();
+
+            expect(result.estado).toBe('devuelta_por_jefe');
+            expect(result.comentarioDevolucionJefe).toBe('Falta el oficio');
+            expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+                'abogado-2',
+                expect.objectContaining({
+                    tipo_notificacion: 'RESPUESTA_DEVUELTA',
+                    mensaje: expect.stringContaining('Falta el oficio'),
+                }),
+            );
+            expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+                'abogado2@esap.edu.co',
+                expect.stringContaining('CJ-2026-0008'),
+                expect.any(String),
+            );
+        });
+
+        it('no debe enviar correo si el abogado asignado no tiene email registrado', async () => {
+            const consulta = {
+                id: 'consulta-9',
+                numeroRadicado: 'CJ-2026-0009',
+                estado: 'pendiente_revision_jefe',
+                abogadoAsignadoId: 'abogado-3',
+            } as ConsultaJuridica;
+            mockConsultaRepo.findOne.mockResolvedValue(consulta);
+            mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'abogado-3', email: null });
+
+            await service.devolverRespuesta('consulta-9', 'Motivo', 'Jefe');
+            await flushPromises();
+
+            expect(mockNotificationClient.notifyUserById).toHaveBeenCalled();
+            expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
         });
     });
 

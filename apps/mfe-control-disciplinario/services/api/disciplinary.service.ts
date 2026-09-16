@@ -71,6 +71,13 @@ export interface DisciplinaryNews {
     radicadorEmail?: string;
     createdAt: string;
     updatedAt: string;
+    historialAuditoria?: {
+        id: string;
+        tipo: string;
+        usuario: string;
+        fecha: string;
+        observaciones?: string;
+    }[];
 }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
@@ -173,7 +180,8 @@ export interface ProcessStatistics {
 
 export interface DisciplinaryProcessActuacion {
     id: string;
-    processId: string;
+    processId: string | null;
+    newsId?: string | null;
     tipo: string;
     etapa?: string | null;
     descripcion: string;
@@ -249,6 +257,7 @@ export interface LegalAuto {
     processId: string;
     process?: DisciplinaryProcess;
     createdAt: string;
+    radicadorAsignadoId?: string;
 }
 
 // Tipo para configuración de autos
@@ -259,6 +268,7 @@ export interface AutoConfiguration {
     estado: string;
     plantilla?: string;
     stage: string | null;
+    nextStage?: string | null;
     orden: number;
     createdAt: string;
     updatedAt: string;
@@ -276,6 +286,7 @@ export interface CreateAutoConfigurationDto {
     estado?: 'activo' | 'inactivo';
     plantilla?: string;
     stage?: string;
+    nextStage?: string;
     orden?: number;
 }
 
@@ -286,6 +297,7 @@ export interface UpdateAutoConfigurationDto {
     estado?: 'activo' | 'inactivo';
     plantilla?: string;
     stage?: string;
+    nextStage?: string;
     orden?: number;
     // Campos de plantilla
     nombre_plantilla?: string;
@@ -559,12 +571,36 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    async getNoticiaById(id: string): Promise<DisciplinaryNews> {
+        return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
+    async getActuacionesNoticia(newsId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`
+        );
+    }
+
+    async createActuacionNoticia(
+        newsId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`,
+            data
+        );
+    }
+
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
     }
 
     async restoreNews(id: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
+    }
+
+    async deleteNews(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
     }
 
     /**
@@ -576,6 +612,10 @@ class DisciplinaryService {
 
     async returnNews(id: string, observaciones: string, radicadorId?: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones, radicadorId });
+    }
+
+    async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/resubmit`, { observaciones });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
@@ -856,6 +896,9 @@ class DisciplinaryService {
                 estado: auto.estado,
                 tipoAuto: auto.tipo,
                 numero: auto.numero,
+                rejectionDocumentUrl: auto.rejectionDocumentUrl || null,
+                rejectionDocumentName: auto.rejectionDocumentName || null,
+                radicadorAsignadoId: auto.radicadorAsignadoId || null,
             },
         };
     }
@@ -1060,10 +1103,12 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async aprobarAuto(id: string, aprobadoPorId: string): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, {
-            action: 'APPROVE'
-        });
+    async aprobarAuto(id: string, aprobadoPorId: string, radicadorAsignadoId?: string): Promise<LegalAuto> {
+        const body: any = { action: 'APPROVE' };
+        if (radicadorAsignadoId) {
+            body.radicadorAsignadoId = radicadorAsignadoId;
+        }
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/approve?aprobadoPorId=${aprobadoPorId}`, body);
     }
 
     async firmarAuto(id: string, userId: string, data?: any): Promise<LegalAuto> {
@@ -1077,10 +1122,40 @@ class DisciplinaryService {
         });
     }
 
+    async uploadRejectionDocument(id: string, file: File): Promise<LegalAuto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-rejection-document`, formData);
+    }
+
+    async getRadicadoresDisponibles(): Promise<
+        Array<{
+            id: string;
+            nombre: string;
+            email: string;
+            autosAsignados: number;
+            cargaPorcentaje: number;
+        }>
+    > {
+        return apiClient.get<Array<{
+            id: string;
+            nombre: string;
+            email: string;
+            autosAsignados: number;
+            cargaPorcentaje: number;
+        }>>(`${SERVICE_PREFIX}/disciplinary-autos/radicadores-disponibles`);
+    }
+
+    async assignRadicadorToAuto(id: string, radicadorAsignadoId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/assign-radicador`, {
+            radicadorAsignadoId,
+        });
+    }
+
     async sendJuridica(
-        id: string, 
-        enviadoPorId: string, 
-        enviadoPorEmail?: string, 
+        id: string,
+        enviadoPorId: string,
+        enviadoPorEmail?: string,
         enviadoPorNombre?: string
     ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
@@ -1088,6 +1163,10 @@ class DisciplinaryService {
             enviadoPorEmail,
             enviadoPorNombre,
         });
+    }
+
+    async revertirAprobacionAuto(id: string, revertidoPorId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/revert-approval?revertidoPorId=${revertidoPorId}`, {});
     }
 
     async registrarNotificacion(id: string, fecha: string, evidencia?: string): Promise<LegalAuto> {

@@ -5,6 +5,7 @@ import { Person } from '../users/person.entity';
 import { CarpetaDigital } from './carpeta-digital.entity';
 import { TipoDocumento } from './tipo-documento.entity';
 import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
+import { auditRundDocuments, protectRundFolderDocument, isRundFolderDocument, rundOriginalResourceId } from './rund-document-access';
 
 @Injectable()
 export class CarpetaDigitalService {
@@ -116,7 +117,7 @@ export class CarpetaDigitalService {
    *
    * Acepta personaId puro o el formato "carpeta:<personaId>" (legado del frontend).
    */
-  async listDocumentosByPersona(personaIdOrCarpetaId: string) {
+  async listDocumentosByPersona(personaIdOrCarpetaId: string, user?: any) {
     const personaId = String(personaIdOrCarpetaId || '').replace(/^carpeta:/, '').trim();
     if (!personaId) return [];
 
@@ -170,7 +171,10 @@ export class CarpetaDigitalService {
       });
     }
 
-    return docsDto;
+    if (docsDto.some(isRundFolderDocument)) {
+      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
+    }
+    return docsDto.map((doc) => protectRundFolderDocument(doc, user));
   }
 
   /**
@@ -187,7 +191,7 @@ export class CarpetaDigitalService {
     tamanoBytes?: number;
     comentarios?: string | null;
     fechaVencimiento?: Date | null;
-  }) {
+  }, user?: any) {
     if (!data?.personaId) throw new BadRequestException('personaId es requerido');
     if (!data?.nombre) throw new BadRequestException('nombre es requerido');
     if (!data?.urlArchivo) throw new BadRequestException('urlArchivo es requerido');
@@ -208,39 +212,52 @@ export class CarpetaDigitalService {
       fechaVencimiento: data.fechaVencimiento || null,
       fechaSubida: new Date(),
     });
+    if (isRundFolderDocument(doc)) {
+      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
+    }
     const saved = await this.documentoRepo.save(doc);
-    return this.toDocumentoDto(saved, carpeta.personaId);
+    return protectRundFolderDocument(this.toDocumentoDto(saved, carpeta.personaId), user);
   }
 
-  async reclassifyDocumento(documentoId: string, data: { tipoDocumentoId?: string; categoria?: string }) {
+  async reclassifyDocumento(documentoId: string, data: { tipoDocumentoId?: string; categoria?: string }, user?: any) {
     const id = String(documentoId || '').replace(/^rund:/, '');
     const existing = await this.documentoRepo.findOne({ where: { id } });
     if (!existing) throw new NotFoundException('Documento no encontrado');
+    const isRund = isRundFolderDocument(existing);
+    if (isRund || isRundFolderDocument(data)) {
+      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_RECLASIFICAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+    }
     if (data.tipoDocumentoId) existing.tipoDocumentoId = data.tipoDocumentoId;
-    if (data.categoria) existing.categoria = data.categoria;
+    if (data.categoria && !isRund) existing.categoria = data.categoria;
     const saved = await this.documentoRepo.save(existing);
-    return this.toDocumentoDto(saved);
+    return protectRundFolderDocument(this.toDocumentoDto(saved), user);
   }
 
-  async validateDocumento(documentoId: string, data: { estado: 'validado' | 'rechazado'; comentarios?: string; validadoPor?: string }) {
+  async validateDocumento(documentoId: string, data: { estado: 'validado' | 'rechazado'; comentarios?: string; validadoPor?: string }, user?: any) {
     const id = String(documentoId || '').replace(/^rund:/, '');
     const existing = await this.documentoRepo.findOne({ where: { id } });
     if (!existing) throw new NotFoundException('Documento no encontrado');
     if (!['validado', 'rechazado'].includes(data.estado)) {
       throw new BadRequestException('estado debe ser validado o rechazado');
     }
+    if (isRundFolderDocument(existing)) {
+      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_VALIDAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+    }
     existing.estado = data.estado;
     existing.comentarios = data.comentarios || existing.comentarios;
     existing.validadoPor = data.validadoPor || existing.validadoPor;
     existing.fechaValidacion = new Date();
     const saved = await this.documentoRepo.save(existing);
-    return this.toDocumentoDto(saved);
+    return protectRundFolderDocument(this.toDocumentoDto(saved), user);
   }
 
-  async deleteDocumento(documentoId: string) {
+  async deleteDocumento(documentoId: string, user?: any) {
     const id = String(documentoId || '').replace(/^rund:/, '');
     const existing = await this.documentoRepo.findOne({ where: { id } });
     if (!existing) throw new NotFoundException('Documento no encontrado');
+    if (isRundFolderDocument(existing)) {
+      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_RETIRAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+    }
     await this.documentoRepo.delete(id);
     return { id };
   }

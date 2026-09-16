@@ -73,6 +73,9 @@ services:
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-pre:3010
       AUDIT_SERVICE_URL: http://audit-service-pre:3011
       HIRING_SERVICE_URL: http://hiring-service-pre:3012
+      ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service-pre:3013
+      INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service-pre:3014
+      CHATBOT_SERVICE_URL: http://chatbot-service-pre:3015
     ports:
       - "3000:3000"
     depends_on:
@@ -88,6 +91,9 @@ services:
       - travel-expenses-service
       - audit-service
       - hiring-service
+      - academic-schedule-service
+      - infrastructure-management-service
+      - chatbot-service
     networks:
       - superapp-net-pre
     restart: unless-stopped
@@ -203,13 +209,21 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
+      OPENKM_BASE_URL: ${OPENKM_BASE_URL:-}
+      OPENKM_USERNAME: ${OPENKM_USERNAME:-}
+      OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
+      OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      RUND_DOCUMENT_MAX_SIZE_BYTES: ${RUND_DOCUMENT_MAX_SIZE_BYTES:-10485760}
+      RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-false}
+
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
-      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-NOT_DEFINED}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://172.16.202.222}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://172.16.202.222}
     ports:
       - "3003:3003"
     depends_on:
@@ -273,6 +287,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3005
+      TZ: America/Bogota
 
       DB_HOST: db
       DB_PORT: 5432
@@ -287,6 +302,8 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://172.16.202.222}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://172.16.202.222}
       DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     ports:
       - "3005:3005"
@@ -400,6 +417,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
       # Host público del ambiente: fallback para construir los enlaces de descarga
       # de adjuntos en los correos (tracking). Normalmente se resuelve dinámicamente
       # desde la request, pero se deja como respaldo y por consistencia con qa/prod.
@@ -413,6 +431,8 @@ services:
         condition: service_started
     networks:
       - superapp-net-pre
+    volumes:
+      - ./backend/legal-management-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ NOTIFICATIONS SERVICE ============
@@ -541,6 +561,91 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
     ports:
       - "3012:3012"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-pre
+    restart: unless-stopped
+
+  # ============ ACADEMIC SCHEDULE SERVICE ============
+  academic-schedule-service:
+    build:
+      context: ./backend/academic-schedule-service
+      dockerfile: Dockerfile
+    container_name: academic-schedule-service-pre
+    environment:
+      NODE_ENV: production
+      PORT: 3013
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: academic-schedule
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3013:3013"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-pre
+    restart: unless-stopped
+
+  # ============ INFRASTRUCTURE MANAGEMENT SERVICE ============
+  infrastructure-management-service:
+    build:
+      context: ./backend/infrastructure-management-service
+      dockerfile: Dockerfile
+    container_name: infrastructure-management-service-pre
+    environment:
+      NODE_ENV: production
+      PORT: 3014
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: infrastructure-management
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3014:3014"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-pre
+    restart: unless-stopped
+
+  # ============ CHATBOT SERVICE ============
+  chatbot-service:
+    build:
+      context: ./backend/chatbot-service
+      dockerfile: Dockerfile
+    container_name: chatbot-service-pre
+    environment:
+      NODE_ENV: production
+      PORT: 3015
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_DATABASE: esap_db
+      DB_SCHEMA: chatbot
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+      API_GATEWAY_URL: http://api-gateway:3000
+      CORS_ORIGIN: "*"
+    ports:
+      - "3015:3015"
     depends_on:
       db:
         condition: service_healthy

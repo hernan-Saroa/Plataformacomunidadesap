@@ -556,9 +556,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const [showPDFViewer, setShowPDFViewer] = useState(false);
   const [showCorrectionRequest, setShowCorrectionRequest] = useState(false);
   const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | 'email' | null>(null);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const emailDestinoRef = useRef<string | null>(null);
-  const lastEmailSentRef = useRef<string | null>(null);
+  const [emailDeliveryStatus, setEmailDeliveryStatus] = useState<'sent' | 'failed' | null>(null);
+  const [deliveredEmail, setDeliveredEmail] = useState('');
   const isMobile = useIsMobile();
   const isTouchDevice = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -1093,6 +1092,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           includeSalary: incluirSalario,
           includeTechnicalBonus: incluirPrimaTecnica,
           includeFunctions: incluirFunciones,
+          publicBaseUrl: getPublicBaseUrl(),
         }
       );
       const cert = response?.certificado;
@@ -1229,12 +1229,29 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
       registrarCertificado(certificado);
       setCertificadoExistente(false);
+      const correoEntregado = typeof response.email === 'string' ? response.email.trim() : '';
+      setEmailDeliveryStatus(response.emailSent ? 'sent' : 'failed');
+      setDeliveredEmail(correoEntregado);
       setValidandoCodigo(false);
 
       toast.success('¡Certificado generado exitosamente!', {
         description: 'Tu certificado está listo para descargar',
         duration: 5000
       });
+
+      if (response.emailSent) {
+        toast.success('Copia enviada al correo', {
+          id: 'auto-email-cert',
+          description: `Se envió a ${correoEntregado || empleadoEncontrado?.correo_institucional}`,
+          duration: 4000,
+        });
+      } else {
+        toast.error('No se pudo enviar el certificado por correo', {
+          id: 'auto-email-cert',
+          description: 'El certificado quedó generado y puedes descargarlo. Intenta nuevamente más tarde.',
+          duration: 5000,
+        });
+      }
 
       console.log('✅ Certificado generado:', certificado);
 
@@ -1357,9 +1374,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setEstadoLaboral(null);
     setCertificadoGenerado(null);
     setCertificadoExistente(false);
+    setEmailDeliveryStatus(null);
+    setDeliveredEmail('');
     certificadoBaseRef.current = null;
-    emailDestinoRef.current = null;
-    lastEmailSentRef.current = null;
     numeroDocumentoRef.current = '';
     if (numeroDocumentoInputRef.current) {
       numeroDocumentoInputRef.current.value = '';
@@ -1369,40 +1386,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       codigoMobileInputRef.current.value = '';
     }
   };
-
-  const enviarCertificadoPorEmail = async (certificadoId: string) => {
-    const destinatario = emailDestinoRef.current;
-    if (!destinatario) {
-      toast.error('No hay un correo registrado para este empleado');
-      setIsSendingEmail(false);
-      return;
-    }
-
-    try {
-      const response = await certificadosService.laborales.reenviar(certificadoId, {
-        includeSalary: incluirSalario,
-        includeTechnicalBonus: incluirPrimaTecnica,
-        templateType: certificadoGenerado?.certificado_completo?.templateType,
-        publicBaseUrl: getPublicBaseUrl(),
-      });
-
-      toast.success('Copia enviada al correo', {
-        id: 'auto-email-cert',
-        description: `Se envió a ${response?.email || destinatario}`,
-        duration: 4000,
-      });
-    } catch (error: any) {
-      toast.error('No se pudo enviar el certificado por correo', {
-        id: 'auto-email-cert',
-        description: error?.message || 'Intenta nuevamente',
-        duration: 5000,
-      });
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
-
-
 
   const handleAutoActionComplete = () => {
     setShowPDFViewer(false);
@@ -1415,26 +1398,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       setPasoActual('certificado-generado');
     }
   }, [certificadoGenerado, empleadoEncontrado, pasoActual]);
-
-  useEffect(() => {
-    const cert = certificadoGenerado;
-    if (!cert?.certificado_completo) return;
-    if (isSendingEmail) return;
-    if (lastEmailSentRef.current === cert.numero_radicado) return;
-
-    const destinatario =
-      empleadoEncontrado?.correo_institucional ||
-      cert.certificado_completo.empleado?.email ||
-      cert.certificado_completo?.employee_email ||
-      '';
-    if (!destinatario) return;
-
-    lastEmailSentRef.current = cert.numero_radicado;
-    emailDestinoRef.current = destinatario;
-    setIsSendingEmail(true);
-    toast.loading('Enviando certificado a tu correo...', { id: 'auto-email-cert' });
-    void enviarCertificadoPorEmail(cert.certificado_completo.id);
-  }, [certificadoGenerado, empleadoEncontrado, isSendingEmail, incluirSalario, incluirPrimaTecnica]);
 
   // Si se marca certificado existente, asegura que el paso sea certificado
   useEffect(() => {
@@ -2026,15 +1989,23 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       <div className="flex-1">
                         {(() => {
                           const correoDestino =
-                            empleadoEncontrado.correo_institucional && empleadoEncontrado.correo_institucional !== 'N/A'
+                            deliveredEmail ||
+                            (empleadoEncontrado.correo_institucional && empleadoEncontrado.correo_institucional !== 'N/A'
                               ? empleadoEncontrado.correo_institucional
-                              : 'tu correo registrado';
+                              : 'tu correo registrado');
+                          const correoFueEnviado = emailDeliveryStatus === 'sent';
+                          const correoFallo = emailDeliveryStatus === 'failed';
+                          const descripcionCorreo = correoFueEnviado
+                            ? ` Se ha enviado una copia a ${correoDestino}.`
+                            : correoFallo
+                              ? ' No fue posible enviar la copia por correo, pero puedes descargar el certificado ahora.'
+                              : '';
                           const titulo = certificadoExistente
                             ? 'Ya tienes un certificado vigente'
                             : '¡Certificado generado exitosamente!';
                           const descripcion = certificadoExistente
-                            ? `Este certificado ya estaba generado y se mantiene vigente. Puedes descargarlo, imprimirlo o compartirlo. También se encuentra disponible en ${correoDestino}.`
-                            : `Tu certificado laboral ha sido generado y está listo para descargar. Se ha enviado una copia a ${correoDestino}.`;
+                            ? `Este certificado ya estaba generado y se mantiene vigente. Puedes descargarlo, imprimirlo o compartirlo.${descripcionCorreo}`
+                            : `Tu certificado laboral ha sido generado y está listo para descargar.${descripcionCorreo}`;
                           return (
                             <>
                               <h3 className="text-xl font-bold text-green-900 mb-2">
@@ -2299,7 +2270,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                           <li>✓ Este certificado tiene validez legal para trámites oficiales</li>
                           <li>✓ Código QR validable en cualquier momento</li>
                           <li>✓ Firma electrónica con trazabilidad completa</li>
-                          <li>✓ Copia enviada a tu correo institucional registrado</li>
+                          <li>
+                            {emailDeliveryStatus === 'sent'
+                              ? '✓ Copia enviada a tu correo institucional registrado'
+                              : emailDeliveryStatus === 'failed'
+                                ? '• Copia por correo pendiente de envío'
+                                : '• Copia disponible según el estado del envío'}
+                          </li>
                         </ul>
                       </div>
                     </div>

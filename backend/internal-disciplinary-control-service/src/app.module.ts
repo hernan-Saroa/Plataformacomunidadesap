@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { resolve } from 'path';
@@ -40,6 +40,7 @@ import { ReglasAlertaController } from './controllers/reglas-alerta.controller';
 import { AlertasController } from './controllers/alertas.controller';
 import { JobsController } from './controllers/jobs.controller';
 import { DisciplinaryProcessActuacionesController } from './controllers/disciplinary-process-actuaciones.controller';
+import { DisciplinaryNewsActuacionesController } from './controllers/disciplinary-news-actuaciones.controller';
 import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
 import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
 import { DisciplinaryProcessReassignmentController } from './controllers/disciplinary-process-reassignment.controller';
@@ -48,6 +49,8 @@ import { DisciplinaryBehaviorController } from './controllers/disciplinary-behav
 // Services
 import { NewsService } from './services/news.service';
 import { ProcessService } from './services/process.service';
+import { ProcessExportService } from './services/process-export.service';
+import { IndiceElectronicoExportService } from './services/indice-electronico-export.service';
 import { AutoService } from './services/auto.service';
 import { SequenceService } from './services/sequence.service';
 import { StorageService, getUploadRootDir } from './services/storage.service';
@@ -104,6 +107,7 @@ import { NotificationClientService } from './services/notification-client.servic
 import { RolesGuard } from './auth/roles.guard';
 import { PermissionsService } from './auth/services/permissions.service';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { frontendContextMiddleware } from './common/url-resolver.util';
 
 @Module({
   imports: [
@@ -161,6 +165,7 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     AlertasController,
     JobsController,
     DisciplinaryProcessActuacionesController,
+    DisciplinaryNewsActuacionesController,
     DisciplinaryProcessTasksController,
     DisciplinaryProcessNotesController,
     DisciplinaryExportController,
@@ -177,6 +182,8 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     AppService,
     NewsService,
     ProcessService,
+    ProcessExportService,
+    IndiceElectronicoExportService,
     AutoService,
     SequenceService,
     StorageService,
@@ -211,4 +218,8 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     PermissionsGuard,
   ],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(frontendContextMiddleware).forRoutes('*');
+  }
+}

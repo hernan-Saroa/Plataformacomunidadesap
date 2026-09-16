@@ -180,7 +180,7 @@ describe('AutoController', () => {
       const req: any = { user: { userId: 'user-123', name: 'Jefe De Prueba' } };
       const result = await controller.approve('auto-123', reviewAutoDto, 'user-123', req);
 
-      expect(mockAutoService.approve).toHaveBeenCalledWith('auto-123', reviewAutoDto, 'user-123', 'Jefe De Prueba');
+      expect(mockAutoService.approve).toHaveBeenCalledWith('auto-123', reviewAutoDto, 'user-123', 'Jefe De Prueba', undefined);
       expect(result).toEqual(mockAuto);
     });
 
@@ -206,9 +206,9 @@ describe('AutoController', () => {
 
       mockAutoService.sign.mockResolvedValue(mockAuto);
 
-      const result = await controller.sign('auto-123', 'user-123');
+      const result = await controller.sign('auto-123', 'user-123', {} as any);
 
-      expect(mockAutoService.sign).toHaveBeenCalledWith('auto-123', 'user-123');
+      expect(mockAutoService.sign).toHaveBeenCalledWith('auto-123', {}, 'user-123');
       expect(result).toEqual(mockAuto);
     });
 

@@ -2,6 +2,7 @@ import { Column, Entity, OneToOne, ManyToOne, JoinColumn, PrimaryColumn, CreateD
 import { User } from './user.entity';
 import { Seccional } from './seccional.entity';
 import { Sede } from './sede.entity';
+import { Dependencia } from './dependencia.entity';
 
 
 @Entity('personas')
@@ -37,7 +38,6 @@ export class Person {
   phone: string;
 
 
-
   @CreateDateColumn({ name: 'fec_creacion' })
   created_at: Date;
 
@@ -62,6 +62,16 @@ export class Person {
   @ManyToOne(() => Sede, { nullable: true })
   @JoinColumn({ name: 'id_sede' })
   sede: Sede | null;
+
+  // Relación con Dependencia (catálogo transversal auth.dependencias).
+  // Consumido por el módulo de viáticos (cupo presupuestal de tiquetes por
+  // dependencia) y otros microservicios.
+  @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
+  idDependencia: number | null;
+
+  @ManyToOne(() => Dependencia, { nullable: true })
+  @JoinColumn({ name: 'id_dependencia' })
+  dependencia: Dependencia | null;
 
   @Column({ name: 'fec_nacimiento' })
   fec_nacimiento: string;

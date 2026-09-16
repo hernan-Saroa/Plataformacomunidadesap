@@ -35,11 +35,14 @@ import {
   TrendingUp,
   FileCheck,
   Layout,
+  Building,
   Building2,
   BarChart3,
   Gavel,
   Rows4,
-  Plane
+  BriefcaseBusiness,
+  Plane,
+  Bot
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { ESAPLogo } from '../assets/ESAPLogo';
@@ -47,7 +50,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'chatbot';
 
 export interface ActiveModuleItem {
   code: string;
@@ -101,13 +104,18 @@ function getModuleAliases(module: string): string[] {
     'contratacion': ['contratacion', 'hiring'],
     'hiring': ['contratacion', 'hiring'],
     'viaticos': ['viaticos', 'travel-expenses'],
+    'programacion-academica': ['programacion-academica', 'academic-schedule'],
+    'academic-schedule': ['programacion-academica', 'academic-schedule'],
+    'gestion-infraestructura': ['gestion-infraestructura', 'infraestructura', 'infrastructure'],
+    'infraestructura': ['gestion-infraestructura', 'infraestructura', 'infrastructure'],
+    'chatbot': ['chatbot', 'asistente-virtual', 'chat'],
     'users-management': ['users-management', 'users'],
     'roles-administration': ['roles-administration', 'roles'],
     'graduates': ['graduates'],
     'graduates-verification': ['graduates-verification', 'graduates'],
     'graduates-certificates': ['graduates-certificates'],
     'verification-certificates': ['verification-certificates'],
-    'banco-docentes-pta': ['banco-docentes-pta', 'gestion-profesoral', 'rund'],
+    'banco-docentes-pta': ['banco-docentes-pta', 'banco-docentes', 'gestion-profesoral', 'rund'],
     // 'gestion-profesoral': ['gestion-profesoral', 'banco-docentes-pta', 'rund'],
   };
   return map[module] || [module];
@@ -134,6 +142,10 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'gestion-legal': { name: 'Gestión Legal (SIGL)', description: 'Sistema Integrado Legal' },
   'contratacion': { name: 'Contratación', description: 'Licitaciones y Contratos' },
   'viaticos': { name: 'Viáticos y Gastos de Viaje', description: 'Comisiones de Servicios y Tiquetes' },
+  'programacion-academica': { name: 'Programación Académica', description: 'Gestión de franjas horarias y aulas' },
+  'gestion-infraestructura': { name: 'Gestión de Infraestructura', description: 'Sedes, espacios físicos y mantenimiento' },
+  'dependencias': { name: 'Dependencias', description: 'Catálogo transversal ESAP' },
+  'chatbot': { name: 'ChatBot Institucional', description: 'Asistente virtual y consultas inteligentes' },
 };
 
 export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], activeModules = [], activeModuleCodes: propsActiveModuleCodes, userPermissions = [] }: SidebarProps) {
@@ -153,6 +165,17 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             : (overrideSubtitle || DEFAULT_MODULE_CONFIG[module]?.description),
         };
       }
+    }
+
+    // Fallback al catálogo estático cuando el módulo no está dado de alta
+    // en auth.module (caso típico: módulos transversales nuevos como
+    // 'dependencias' que aún no se registran en la BD).
+    const cfg = DEFAULT_MODULE_CONFIG[module];
+    if (cfg) {
+      return {
+        title: overrideTitle || cfg.name,
+        subtitle: overrideSubtitle || cfg.description || '',
+      };
     }
 
     return {
@@ -176,7 +199,27 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       const aliases = getModuleAliases(module);
       return hasAllModules || aliases.some((alias) => assignedModules.includes(alias));
     }
-    if (userRole?.includes('SUPER_ADMIN') && module === 'modules') return true;
+    if (userRole?.includes('SUPER_ADMIN') && (module === 'modules' || module === 'dependencias')) return true;
+
+    // 'dependencias' es transversal a la plataforma (consumida por viáticos,
+    // estructura organizacional, control interno, etc.). Para que esté
+    // disponible en "Configuración General" sin requerir alta explícita en
+    // auth.module ni asignación por rol, se muestra a cualquier usuario
+    // con sesión activa. La autorización fina (CRUD) la hace el JwtAuthGuard
+    // global en el backend.
+    if (module === 'dependencias') {
+      if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) {
+        return true;
+      }
+      if (hasAllModules) return true;
+      if (activeModuleCodes && activeModuleCodes.length > 0) {
+        const aliases = getModuleAliases(module);
+        if (aliases.some(alias => activeModuleCodes.includes(alias))) return true;
+      }
+      if (!assignedModules || assignedModules.length === 0) return true;
+      const aliases = getModuleAliases(module);
+      return aliases.some(alias => assignedModules.includes(alias) || assignedModules.includes(module));
+    }
 
     // 1. Si la API devolvió los módulos activos de la DB (is_active = true),
     // verificar que el módulo no esté desactivado globalmente en auth.module.
@@ -208,12 +251,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   // Secciones y visibilidad basada en módulos asignados
   const gestionPersonasModules: ModuleType[] = [
     'users-management',
+    'banco-docentes-pta',
     'carpeta-digital',
     'estructura-organizacional',
     'programas-academicos',
     'roles-administration',
     'audit',
     'reports',
+    'firma-electronica',
   ];
   const hasGestionPersonas = gestionPersonasModules.some(canShowModule);
 
@@ -224,11 +269,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     'gestion-profesoral',
     'pta',
     'certificados-laborales',
-    'firma-electronica',
     'control-interno',
     'control-disciplinario',
     'gestion-legal',
     'centro-alertas',
+    'programacion-academica',
+    'gestion-infraestructura',
+    'contratacion',
+    'viaticos',
   ];
   const hasGestionAcademica = gestionAcademicaModules.some(canShowModule);
 
@@ -1128,8 +1176,34 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 </AnimatePresence>
                 
                 {renderMenuItem('executive', <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
-                {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
               </div>
+
+              {/* Configuración General — agrupador transversal */}
+              {(
+                canShowModule('modules') ||
+                canShowModule('dependencias')
+              ) && (
+                <div className="mb-8">
+                  <AnimatePresence mode="wait">
+                    {!effectiveCollapsed && renderSectionHeader('config-general', <Settings className="w-3 h-3" />, 'CONFIGURACIÓN GENERAL', 5)}
+                  </AnimatePresence>
+                  <AnimatePresence>
+                    {(effectiveCollapsed || expandedSections['config-general']) && (
+                      <motion.div
+                        key="config-general-content"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                        className="overflow-hidden"
+                      >
+                        {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                        {renderMenuItem('dependencias', <BriefcaseBusiness className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
               {/* Módulos Administrativos (GESTIÓN PERSONAS) */}
               {hasGestionPersonas && (
@@ -1217,6 +1291,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   {renderMenuItem('graduates-certificates', <Award className="w-5 h-5" strokeWidth={2} />)}
 
                   {renderMenuItem('pta', <Briefcase className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('programacion-academica', <Calendar className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('gestion-infraestructura', <Building className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('certificados-laborales', <FileCheck className="w-5 h-5" strokeWidth={2} />)}
 
                   {/* Separador visual - Módulos de Control y Gestión Legal */}
@@ -1244,6 +1320,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   {renderMenuItem('gestion-legal', <Scale className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('contratacion', <FileText className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('viaticos', <Plane className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('chatbot', <Bot className="w-5 h-5" strokeWidth={2} />)}
                 </motion.div>
               )}
             </AnimatePresence>

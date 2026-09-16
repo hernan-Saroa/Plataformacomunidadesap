@@ -46,6 +46,19 @@ export const normalizeCombinedPositionCode = (
     : positionCode;
 };
 
+// CENTROCOSTO is the legacy source name for Grupo Interno de Trabajo.
+// An explicit group takes precedence; placeholders do not hide a legacy value.
+export const resolveLaborInternalGroup = (...values: unknown[]): string | null => {
+  for (const value of values) {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    const key = normalizeLaborFunctionText(text);
+    if (key && !['n a', 'na', 'no aplica', 'no aplica ninguno', 'ninguno'].includes(key)) {
+      return text;
+    }
+  }
+  return null;
+};
+
 export const buildLaborFunctionMatchKey = (input: {
   combinedCode: string;
   hierarchicalLevel?: unknown;
@@ -58,8 +71,7 @@ export const buildLaborFunctionMatchKey = (input: {
     normalizeLaborFunctionText(input.hierarchicalLevel),
     normalizeLaborFunctionText(input.positionName),
     normalizeLaborFunctionText(input.department),
-    normalizeLaborFunctionText(input.internalGroup),
-    normalizeLaborFunctionText(input.costCenter),
+    normalizeLaborFunctionText(resolveLaborInternalGroup(input.internalGroup, input.costCenter)),
   ].join('|');
   const fingerprint = createHash('sha256')
     .update(normalizedContext, 'utf8')

@@ -130,14 +130,14 @@ const MAPA_PERMISOS: Record<string, string> = {
 };
 
 // Roles que tienen TODOS los permisos (superusuarios)
-const ROLES_SUPERUSUARIO = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO'];
+const ROLES_SUPERUSUARIO = ['SUPER_ADMIN'];
 
 /**
  * Hook flexible para validar permisos del módulo Control Interno
  * 
  * @description Este hook verifica permisos basándose en:
  * 1. Lista de permisos del usuario (strings como 'control-interno.plan-anual.approve')
- * 2. Roles de superusuario (ADMIN, SUPER_ADMIN) que tienen acceso total
+ * 2. Roles de superusuario (SUPER_ADMIN) que tienen acceso total
  * 3. Mapeo flexible de módulo+acción a permiso específico
  * 
  * NO depende de nombres de roles específicos como 'JEFE_OCI' o 'AUDITOR'.
@@ -163,25 +163,34 @@ export function useControlInternoPermissions(
       permisos = [...userData.permissions];
     }
     
-    // Si no hay datos en props, leer del caché en memoria compartido por el shell (OTIC-002)
+    // Si no hay datos en props, leer del caché en memoria compartido por el shell (OTIC-002) o storage
     if (roles.length === 0 && permisos.length === 0) {
       try {
         // window.__esap_auth_cache es el puente en-memoria que setea el shell tras verifyToken/login
-        const windowUser = (window as any).__esap_auth_cache;
+        let windowUser = (window as any).__esap_auth_cache;
+        if (!windowUser && typeof window !== 'undefined') {
+          try {
+            const rawUser = localStorage.getItem('usuario') || localStorage.getItem('auth_user') || localStorage.getItem('esap_user');
+            if (rawUser) windowUser = JSON.parse(rawUser);
+          } catch (e) {}
+        }
         if (windowUser) {
           const userRoles: any[] = Array.isArray(windowUser.roles) ? windowUser.roles : [];
 
           const roleCodes = userRoles
-            .map((r: any) => (typeof r === 'string' ? r : r?.code || ''))
+            .map((r: any) => (typeof r === 'string' ? r : r?.code || r?.name || ''))
             .filter(Boolean);
           roles.push(...roleCodes);
 
-          // Permisos directos del usuario
+          // Permisos directos del usuario (strings u objetos { code: string })
           if (Array.isArray(windowUser.permissions)) {
-            permisos.push(...windowUser.permissions.filter(Boolean));
+            const directPerms = windowUser.permissions
+              .map((p: any) => (typeof p === 'string' ? p : p?.code || ''))
+              .filter(Boolean);
+            permisos.push(...directPerms);
           }
 
-          // Permisos dentro de cada rol
+          // Permisos dentro de cada rol (strings u objetos { code: string })
           const rolePerms = userRoles.flatMap((r: any) =>
             Array.isArray(r?.permissions)
               ? r.permissions
@@ -204,9 +213,13 @@ export function useControlInternoPermissions(
       })
       .filter(Boolean);
     
-    // Normalizar permisos
+    // Normalizar permisos (soporta strings y objetos)
     const permisosNormalizados = permisos
-      .map((p: any) => typeof p === 'string' ? p.toLowerCase().trim() : '')
+      .map((p: any) => {
+        if (typeof p === 'string') return p.toLowerCase().trim();
+        if (p?.code) return String(p.code).toLowerCase().trim();
+        return '';
+      })
       .filter(Boolean);
     
     return {

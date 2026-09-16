@@ -107,4 +107,36 @@ export const serviceMap = {
     'http://localhost:3012',
     'http://hiring-service:3012',
   ),
+
+  // Programación Académica - Puerto 3013
+  'programacion-academica': serviceUrl(
+    'ACADEMIC_SCHEDULE_SERVICE_URL',
+    'http://localhost:3013',
+    'http://academic-schedule-service:3013',
+  ),
+
+  // Gestión de Infraestructura - Puerto 3014
+  infraestructura: serviceUrl(
+    'INFRASTRUCTURE_MANAGEMENT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://infrastructure-management-service:3014',
+  ),
+  'gestion-infraestructura': serviceUrl(
+    'INFRASTRUCTURE_MANAGEMENT_SERVICE_URL',
+    'http://localhost:3014',
+    'http://infrastructure-management-service:3014',
+  ),
+  
+  // ChatBot Service - Puerto 3015
+  chatbot: serviceUrl(
+    'CHATBOT_SERVICE_URL',
+    'http://localhost:3015',
+    'http://chatbot-service:3015',
+  ),
+  'chatbot-service': serviceUrl(
+    'CHATBOT_SERVICE_URL',
+    'http://localhost:3015',
+    'http://chatbot-service:3015',
+  ),
 };
+

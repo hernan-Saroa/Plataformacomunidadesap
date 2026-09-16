@@ -53,52 +53,13 @@ import { siglFullTourSteps } from '../design-system/tourStepsMultiModulo';
 import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../services/api/legal.service';
 import { authService } from '../../services/api/authService';
-import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
-
-type VistaDisponible =
-  | 'defensa-judicial'
-  | 'juzgamiento'
-  | 'asesoria'
-  | 'centro-comunicaciones'
-  | 'terminos'
-  | 'organos-control'
-  | 'procesos-coactivos'
-  | 'expedientes'
-  | 'plan-accion'
-  | 'riesgos'
-  | 'planes-mejoramiento'
-  | 'configuraciones';
-
-/**
- * Lee `?modulo=<vista>` del querystring para posicionar la vista inicial cuando
- * el módulo se abre desde una notificación. Acepta los códigos que emite el
- * backend (`legal-notifications.service.ts`: defensa-judicial, juzgamiento, asesoria,
- * organos-control, procesos-coactivos) y cualquier otro valor de `VistaDisponible`.
- */
-const VISTAS_VALIDAS: VistaDisponible[] = [
-  'defensa-judicial',
-  'juzgamiento',
-  'asesoria',
-  'centro-comunicaciones',
-  'terminos',
-  'organos-control',
-  'procesos-coactivos',
-  'expedientes',
-  'plan-accion',
-  'riesgos',
-  'planes-mejoramiento',
-  'configuraciones',
-];
-
-function getVistaInicialDesdeQuery(): VistaDisponible {
-  if (typeof window === 'undefined') return 'defensa-judicial';
-  const moduloParam = new URLSearchParams(window.location.search).get('modulo');
-  if (moduloParam && VISTAS_VALIDAS.includes(moduloParam as VistaDisponible)) {
-    return moduloParam as VistaDisponible;
-  }
-  return 'defensa-judicial';
-}
+import {
+  VistaDisponible,
+  VISTAS_VALIDAS,
+  puedeVerVista,
+  getVistaInicialDesdeQuery,
+} from './gestionLegalVistaPermisos';
 
 function getAuthContextKey(): string {
   const user = authService.getCurrentUser() as any;
@@ -208,6 +169,7 @@ export function GestionLegalFull() {
   //   asesoria              → ModuloAsesoriaJuridicaV3
   //   organos-control       → OrganosControl
   //   procesos-coactivos    → ProcesosCoactivosV3
+  //   centro-comunicaciones → CentroComunicacionesJuridicasV3 (p.ej. acuse de recibido de un correo)
   useEffect(() => {
     const moduloAVista: Record<string, VistaDisponible> = {
       'defensa-judicial': 'defensa-judicial',
@@ -215,6 +177,7 @@ export function GestionLegalFull() {
       'asesoria': 'asesoria',
       'organos-control': 'organos-control',
       'procesos-coactivos': 'procesos-coactivos',
+      'centro-comunicaciones': 'centro-comunicaciones',
     };
 
     const handleOpen = (event: Event) => {
@@ -282,7 +245,7 @@ export function GestionLegalFull() {
       subtitle: 'Defensa de ESAP ante demandas externas',
       icon: <Scale className="w-5 h-5" />,
       color: '#10B981',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE),
+      visible: puedeVerVista('defensa-judicial'),
     },
     {
       id: 'juzgamiento',
@@ -290,7 +253,7 @@ export function GestionLegalFull() {
       subtitle: 'Control disciplinario de funcionarios',
       icon: <Gavel className="w-5 h-5" />,
       color: '#DC2626',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_MANAGE),
+      visible: puedeVerVista('juzgamiento'),
     },
     {
       id: 'asesoria',
@@ -298,7 +261,7 @@ export function GestionLegalFull() {
       subtitle: 'Consultas jurídicas de dependencias',
       icon: <FileQuestion className="w-5 h-5" />,
       color: '#8B5CF6',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_MANAGE),
+      visible: puedeVerVista('asesoria'),
     },
 
     // MÓDULOS DE SOPORTE
@@ -308,7 +271,7 @@ export function GestionLegalFull() {
       subtitle: 'Radicación y notificaciones',
       icon: <Inbox className="w-5 h-5" />,
       color: '#3B82F6',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_MANAGE),
+      visible: puedeVerVista('centro-comunicaciones'),
     },
     {
       id: 'terminos',
@@ -316,7 +279,7 @@ export function GestionLegalFull() {
       subtitle: 'Gestión de vencimientos y reportes',
       icon: <CalendarClock className="w-5 h-5" />,
       color: '#6366F1',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_TERMINOS_MANAGE),
+      visible: puedeVerVista('terminos'),
     },
     {
       id: 'organos-control',
@@ -324,7 +287,7 @@ export function GestionLegalFull() {
       subtitle: 'Requerimientos externos de control',
       icon: <Building2 className="w-5 h-5" />,
       color: '#2563EB',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_MANAGE),
+      visible: puedeVerVista('organos-control'),
     },
     {
       id: 'procesos-coactivos',
@@ -332,7 +295,7 @@ export function GestionLegalFull() {
       subtitle: 'Cobro judicial y administrativo',
       icon: <DollarSign className="w-5 h-5" />,
       color: '#F59E0B',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_MANAGE),
+      visible: puedeVerVista('procesos-coactivos'),
     },
     {
       id: 'expedientes',
@@ -340,7 +303,7 @@ export function GestionLegalFull() {
       subtitle: 'Gestión documental de procesos',
       icon: <FolderOpen className="w-5 h-5" />,
       color: '#0891B2',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_MANAGE),
+      visible: puedeVerVista('expedientes'),
     },
 
     // MÓDULOS DE GESTIÓN ESTRATÉGICA
@@ -350,7 +313,7 @@ export function GestionLegalFull() {
       subtitle: 'Indicadores y metas institucionales',
       icon: <Target className="w-5 h-5" />,
       color: '#7C3AED',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_MANAGE),
+      visible: puedeVerVista('plan-accion'),
     },
     {
       id: 'riesgos',
@@ -358,7 +321,7 @@ export function GestionLegalFull() {
       subtitle: 'Matriz de riesgos y controles',
       icon: <AlertTriangle className="w-5 h-5" />,
       color: '#DC2626',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_MANAGE),
+      visible: puedeVerVista('riesgos'),
     },
     {
       id: 'planes-mejoramiento',
@@ -366,7 +329,7 @@ export function GestionLegalFull() {
       subtitle: 'Acciones de mejora institucional',
       icon: <ClipboardCheck className="w-5 h-5" />,
       color: '#14B8A6',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE),
+      visible: puedeVerVista('planes-mejoramiento'),
     },
     {
       id: 'configuraciones',
@@ -374,7 +337,7 @@ export function GestionLegalFull() {
       subtitle: 'Ajustes y parámetros del SIGL',
       icon: <Settings className="w-5 h-5" />,
       color: '#94A3B8',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_MANAGE),
+      visible: puedeVerVista('configuraciones'),
     },
   ];
 

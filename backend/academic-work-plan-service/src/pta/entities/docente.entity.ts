@@ -11,6 +11,12 @@ export class DocenteEntity {
   @Column({ name: 'territorialId', type: 'text' })
   territorialId: string;
 
+  @Column({ name: 'territorialReportada', type: 'text', nullable: true })
+  territorialReportada: string | null;
+
+  @Column({ name: 'datosCargaMasiva', type: 'jsonb', nullable: true })
+  datosCargaMasiva: Record<string, string | number | null> | null;
+
   @Column({ name: 'cetapId', type: 'text', nullable: true })
   cetapId: string | null;
 

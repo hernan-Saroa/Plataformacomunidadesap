@@ -167,7 +167,7 @@ describe('ControlDisciplinarioFull', () => {
     fireEvent.click(screen.getByTestId('aprobar-btn-auto-auto-123'));
 
     await waitFor(() => {
-      expect(disciplinaryService.aprobarAuto).toHaveBeenCalledWith('auto-123', '1');
+      expect(disciplinaryService.aprobarAuto).toHaveBeenCalledWith('auto-123', '1', undefined);
     });
   });
 

@@ -426,6 +426,7 @@ export class UniversoAuditoriasService {
       tipo: tipoProceso?.codigo || createDto.tipo,
       tipoProcesoId: tipoProceso?.id,
       tipoProceso: tipoProceso || undefined,
+      esEspecial: createDto.esEspecial ?? false,
       macroproceso: createDto.macroproceso,
       unidadesAuditables: createDto.unidadesAuditables || [],
       responsable: createDto.responsable || 'Sin asignar',
@@ -468,6 +469,7 @@ export class UniversoAuditoriasService {
       proceso.tipoProceso = tipoProceso || undefined;
       proceso.tipo = tipoProceso?.codigo || updateDto.tipo || proceso.tipo;
     }
+    if (updateDto.esEspecial !== undefined) proceso.esEspecial = updateDto.esEspecial;
     if (updateDto.macroproceso) proceso.macroproceso = updateDto.macroproceso;
     if (updateDto.unidadesAuditables !== undefined) proceso.unidadesAuditables = updateDto.unidadesAuditables;
     if (updateDto.responsable) proceso.responsable = updateDto.responsable;

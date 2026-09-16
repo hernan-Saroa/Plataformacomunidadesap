@@ -53,8 +53,9 @@ export class SmartClassificationService implements OnModuleInit {
      * ORDEN DE EVALUACIÓN:
      * 1. DISCARD (negative lookahead) — fuerza CORREO si hay palabras blandas
      * 2. JUDICIAL — términos de juzgados/tribunales/sentencias
-     * 3. OFICIO ESTRICTO — requiere keyword fuerte + remitente institucional
-     * 4. null → pasa al Bayesiano
+     * 3. CONSULTA — solicitudes internas de concepto/asesoría jurídica
+     * 4. OFICIO ESTRICTO — requiere keyword fuerte + remitente institucional
+     * 5. null → pasa al Bayesiano
      */
     private applyHeuristics(subject: string, body: string, hasAttachments: boolean): Omit<ClassificationResult, 'method'> | null {
         const content = `${subject} ${body}`.toUpperCase();
@@ -84,7 +85,22 @@ export class SmartClassificationService implements OnModuleInit {
             return { category: 'JUDICIAL', confidence: 1.0, module: 'MOD-01: Defensa Judicial' };
         }
 
-        // ═══ PASO 3: OFICIO — REGLAS ESTRICTAS (debe cumplir keyword + remitente) ═══
+        // ═══ PASO 3: CONSULTA — Asesoría Jurídica (solicitudes internas de concepto) ═══
+        const consultaKeywords = [
+            'CONSULTA JURIDICA', 'CONSULTA JURÍDICA',
+            'CONCEPTO JURIDICO', 'CONCEPTO JURÍDICO',
+            'SOLICITUD DE CONCEPTO', 'EMITIR CONCEPTO', 'ABSOLVER CONSULTA',
+            'SOLICITUD DE ASESORIA', 'SOLICITUD DE ASESORÍA',
+            'ASESORIA JURIDICA', 'ASESORÍA JURÍDICA',
+            'ACOMPAÑAMIENTO JURIDICO', 'ACOMPAÑAMIENTO JURÍDICO',
+            'INTERPRETACION NORMATIVA', 'INTERPRETACIÓN NORMATIVA',
+            'DUDA JURIDICA', 'DUDA JURÍDICA',
+        ];
+        if (consultaKeywords.some(kw => content.includes(kw))) {
+            return { category: 'CONSULTA', confidence: 0.9, module: 'MOD-03: Asesoría Jurídica' };
+        }
+
+        // ═══ PASO 4: OFICIO — REGLAS ESTRICTAS (debe cumplir keyword + remitente) ═══
         // Keywords fuertes que POR SÍ SOLOS marcan OFICIO
         const strongOficioKeywords = [
             'AUTO INTERLOCUTORIO', 'PLIEGO DE CARGOS', 'FALLO DISCIPLINARIO',
@@ -152,28 +168,37 @@ export class SmartClassificationService implements OnModuleInit {
             }
         }
 
-        // Map categories to Modules
+        return {
+            category: classification,
+            confidence,
+            module: this.resolveModuleForCategory(classification, subject, body),
+            method: 'BAYESIAN'
+        };
+    }
+
+    /**
+     * Mapea una categoría (JUDICIAL, OFICIO, CONSULTA, CORREO) al módulo sugerido
+     * correspondiente. Para OFICIO, usa las entidades extraídas del texto para decidir
+     * entre Defensa Judicial y Juzgamiento Disciplinario.
+     *
+     * Único punto de verdad para esta relación categoría → módulo: lo usan tanto la
+     * clasificación automática (Bayesiana) como la corrección manual de un usuario,
+     * para que `moduloSugerido` nunca quede desincronizado de `categoria`.
+     */
+    public resolveModuleForCategory(category: string, subject: string, body: string): string {
+        if (category === 'OFICIO') {
+            const entities = this.extractEntities(subject, body);
+            return entities.submodulo === 'JUZGAMIENTO_DISCIPLINARIO'
+                ? 'MOD-02: Juzgamiento Disciplinario'
+                : 'MOD-01: Defensa Judicial';
+        }
+
         const moduleMap: Record<string, string> = {
             'JUDICIAL': 'MOD-01: Defensa Judicial',
             'CORREO': 'Buzón General',
             'CONSULTA': 'MOD-03: Asesoría Jurídica'
         };
-
-        let moduleAssigned = moduleMap[classification] || 'Buzón General';
-
-        if (classification === 'OFICIO') {
-            const entities = this.extractEntities(subject, body);
-            moduleAssigned = entities.submodulo === 'JUZGAMIENTO_DISCIPLINARIO'
-                ? 'MOD-02: Juzgamiento Disciplinario'
-                : 'MOD-01: Defensa Judicial';
-        }
-
-        return {
-            category: classification,
-            confidence,
-            module: moduleAssigned,
-            method: 'BAYESIAN'
-        };
+        return moduleMap[category] || 'Buzón General';
     }
 
     /**

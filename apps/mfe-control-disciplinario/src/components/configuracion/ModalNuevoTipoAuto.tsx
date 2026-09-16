@@ -15,7 +15,7 @@ import { disciplinaryService } from '../../../../services/api/disciplinary.servi
 import { type TipoAuto } from './SeccionPlantillasAutosUnificada';
 
 // ─── Tipos de acción disponibles ───────────────────────────────────────────
-export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO';
+export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO' | 'INHIBITORIO';
 
 // Mapea el tipo del backend al tipoAccion del formulario
 const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
@@ -28,6 +28,9 @@ const mapBackendToTipoAccion = (tipoBackend: string): TipoAccion => {
       return 'PRORROGA';
     case 'AUTO_FORMULACION_PLIEGO':
       return 'PLIEGO';
+    case 'AUTO_INHIBITORIO':
+    case 'INHIBITORIO':
+      return 'INHIBITORIO';
     default:
       // Para tipos dinámicos de apertura: AUTO_APERTURA_*
       if (tipoBackend.startsWith('AUTO_APERTURA_')) {
@@ -72,6 +75,12 @@ const TIPOS_ACCION: {
     label: 'Pliego de Cargos',
     descripcion: 'Formula el pliego de cargos al investigado',
     conAccion: true,
+  },
+  {
+    id: 'INHIBITORIO',
+    label: 'Inhibitorio',
+    descripcion: 'Inhibe el proceso disciplinario',
+    conAccion: false,
   },
 ];
 
@@ -144,9 +153,12 @@ export function ModalNuevoTipoAuto({
       let etapa = tipoEdicion.etapa;
       let tipoAccion = mapBackendToTipoAccion(tipoEdicion.tipo || '');
 
-      // Si es tipo dinámico de apertura y no hay etapa específica, extraerla del tipo
+      // Si es tipo dinámico de apertura y no hay etapa específica, extraerla del tipo.
+      // El sufijo del tipo ya viene con guiones bajos, igual que el value de las
+      // opciones del <select> de etapas (ej. AUTO_APERTURA_SEGUNDA_INSTANCIA -> SEGUNDA_INSTANCIA);
+      // no se debe convertir a espacios o el <select> no encuentra la opción.
       if (tipoEdicion.tipo?.startsWith('AUTO_APERTURA_') && tipoEdicion.tipo !== 'AUTO_APERTURA') {
-        const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '').replace(/_/g, ' ');
+        const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '');
         etapa = etapaFromTipo;
       }
 
@@ -438,13 +450,19 @@ export function ModalNuevoTipoAuto({
                         {loadingStages ? (
                           <option disabled>Cargando etapas...</option>
                         ) : (
-                          stages
-                            .sort((a, b) => a.orden - b.orden)
-                            .map((stage) => (
-                              <option key={stage.id} value={stage.etapa}>
-                                {stage.etapa}
-                              </option>
-                            ))
+                          <>
+                            {formData.etapa &&
+                              !stages.some((stage) => stage.etapa === formData.etapa) && (
+                                <option value={formData.etapa}>{formData.etapa}</option>
+                              )}
+                            {[...stages]
+                              .sort((a, b) => a.orden - b.orden)
+                              .map((stage) => (
+                                <option key={stage.id} value={stage.etapa}>
+                                  {stage.etapa}
+                                </option>
+                              ))}
+                          </>
                         )}
                       </select>
                       <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">

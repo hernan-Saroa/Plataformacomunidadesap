@@ -17,6 +17,7 @@ import { config, getDefaultHeaders, getUserContextHeaders, CORS_CONFIG, API_MODE
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
+import { isRundRequest } from './rundCachePolicy';
 import { syncEngine } from './syncEngine';
 import { getAppOnlineStatus } from '../../utils/connectivity';
 
@@ -369,6 +370,9 @@ export class ApiClient {
 
     // 🔴 MODO OFFLINE: Interceptar si no hay conexión
     if (!getAppOnlineStatus()) {
+      if (isRundRequest(url)) {
+        throw new Error('RUND requiere conexión para verificar los permisos y registrar el acceso.');
+      }
       if (isGet) {
         try {
           const cached = await offlineCache.getCache(url);

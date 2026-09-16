@@ -1,6 +1,10 @@
-import { IsString, IsOptional, IsBoolean, IsIn, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsIn, IsObject, IsUUID } from 'class-validator';
 
 export class CreateNotificationDto {
+  @IsOptional()
+  @IsUUID()
+  clave_idempotencia?: string;
+
   @IsString()
   id_usuario_destinatario: string;
 

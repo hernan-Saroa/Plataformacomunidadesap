@@ -5,6 +5,9 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ResponseInterceptor } from './common/response.interceptor';
+import { DataSource } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
+import { rundFolderStaticAccess } from './carpeta-digital/rund-document-access';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -15,6 +18,7 @@ async function bootstrap() {
   // y __dirname apunta a /dist (prod) o /src (dev): con un único '..' caemos en la
   // raíz del service donde vive la carpeta uploads/.
   const uploadsDir = join(__dirname, '..', 'uploads');
+  app.use(rundFolderStaticAccess(app.get(DataSource), app.get(JwtService)));
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
   });
@@ -48,6 +52,10 @@ async function bootstrap() {
       'x-user-roles',
       'x-user-email',
       'x-user-name',
+      'X-Frontend-Base-Url',
+      'x-frontend-base-url',
+      'X-Frontend-Url',
+      'x-frontend-url',
     ],
     exposedHeaders: ['Content-Length', 'Content-Type'],
     credentials: true,
@@ -73,6 +81,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
+  const server = app.getHttpServer() as any;
+  server.maxHeaderSize = 32 * 1024; // 32KB to avoid HPE_HEADER_OVERFLOW
   console.log(`Auth service corriendo en puerto ${port} con CORS habilitado`);
   console.log(`📋 LoginSettings module cargado`); // trigger hot-reload
 }

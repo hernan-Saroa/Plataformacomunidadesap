@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { CreateDisciplinaryProcessActuacionDto } from '../dtos/disciplinary-process-actuacion.dto';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
+import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
 
 @Injectable()
 export class DisciplinaryProcessActuacionesService {
@@ -12,6 +13,8 @@ export class DisciplinaryProcessActuacionesService {
     private readonly actuacionesRepository: Repository<DisciplinaryProcessActuacion>,
     @InjectRepository(DisciplinaryProcess)
     private readonly processRepository: Repository<DisciplinaryProcess>,
+    @InjectRepository(DisciplinaryNews)
+    private readonly newsRepository: Repository<DisciplinaryNews>,
   ) {}
 
   private readonly stageOrderMap: Record<string, string> = {
@@ -27,15 +30,49 @@ export class DisciplinaryProcessActuacionesService {
   };
 
   async listByProcess(processId: string): Promise<DisciplinaryProcessActuacion[]> {
-    await this.ensureProcessExists(processId);
+    const process = await this.ensureProcessExists(processId);
+
+    // Se incluyen tambien las actuaciones registradas contra la noticia origen
+    // (etapa de Radicacion en adelante), para que el historial sea continuo.
+    const query = this.actuacionesRepository
+      .createQueryBuilder('actuacion')
+      .where('actuacion.processId = :processId', { processId });
+
+    if (process.newsId) {
+      query.orWhere('actuacion.newsId = :newsId', { newsId: process.newsId });
+    }
+
+    return query
+      .orderBy('actuacion.fechaActuacion', 'DESC')
+      .addOrderBy('actuacion.createdAt', 'DESC')
+      .getMany();
+  }
+
+  async listByNews(newsId: string): Promise<DisciplinaryProcessActuacion[]> {
+    await this.ensureNewsExists(newsId);
 
     return this.actuacionesRepository.find({
-      where: { processId },
+      where: { newsId },
       order: {
         fechaActuacion: 'DESC',
         createdAt: 'DESC',
       },
     });
+  }
+
+  private parseFechaActuacion(fechaStr?: string | null): Date {
+    if (!fechaStr) return new Date();
+    const dateOnlyMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const hoyBogota = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      if (fechaStr === hoyBogota) {
+        return new Date();
+      }
+      const [, y, m, d] = dateOnlyMatch;
+      return new Date(`${y}-${m}-${d}T12:00:00-05:00`);
+    }
+    const date = new Date(fechaStr);
+    return isNaN(date.getTime()) ? new Date() : date;
   }
 
   async create(
@@ -46,11 +83,32 @@ export class DisciplinaryProcessActuacionesService {
 
     const actuacion = this.actuacionesRepository.create({
       processId,
+      newsId: null,
       tipo: dto.tipo.trim().toLowerCase(),
       etapa: dto.etapa?.trim() || process.etapaActual,
       descripcion: dto.descripcion.trim(),
       responsableNombre: dto.responsableNombre.trim(),
-      fechaActuacion: new Date(dto.fechaActuacion),
+      fechaActuacion: this.parseFechaActuacion(dto.fechaActuacion),
+      observaciones: dto.observaciones?.trim() || null,
+    });
+
+    return this.actuacionesRepository.save(actuacion);
+  }
+
+  async createForNews(
+    newsId: string,
+    dto: CreateDisciplinaryProcessActuacionDto,
+  ): Promise<DisciplinaryProcessActuacion> {
+    await this.ensureNewsExists(newsId);
+
+    const actuacion = this.actuacionesRepository.create({
+      processId: null,
+      newsId,
+      tipo: dto.tipo.trim().toLowerCase(),
+      etapa: dto.etapa?.trim() || 'RADICACION',
+      descripcion: dto.descripcion.trim(),
+      responsableNombre: dto.responsableNombre.trim(),
+      fechaActuacion: this.parseFechaActuacion(dto.fechaActuacion),
       observaciones: dto.observaciones?.trim() || null,
     });
 
@@ -67,5 +125,17 @@ export class DisciplinaryProcessActuacionesService {
     }
 
     return process;
+  }
+
+  private async ensureNewsExists(newsId: string): Promise<DisciplinaryNews> {
+    const news = await this.newsRepository.findOne({
+      where: { id: newsId },
+    });
+
+    if (!news) {
+      throw new HttpException('Noticia disciplinaria no encontrada', HttpStatus.NOT_FOUND);
+    }
+
+    return news;
   }
 }

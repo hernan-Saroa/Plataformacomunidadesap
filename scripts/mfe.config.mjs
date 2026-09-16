@@ -31,6 +31,9 @@ export const remoteApps = [
   { workspace: '@esap-mfe/pta', appDir: 'mfe-pta', federationName: 'pta', devPort: 3113, serviceName: 'frontend-mfe-pta' },
   { workspace: '@esap-mfe/contratacion', appDir: 'mfe-contratacion', federationName: 'contratacion', devPort: 3114, serviceName: 'frontend-mfe-contratacion' },
   { workspace: '@esap-mfe/viaticos', appDir: 'mfe-viaticos', federationName: 'viaticos', devPort: 3115, serviceName: 'frontend-mfe-viaticos' },
+  { workspace: '@esap-mfe/programacion-academica', appDir: 'mfe-programacion-academica', federationName: 'programacion_academica', devPort: 3116, serviceName: 'frontend-mfe-programacion-academica' },
+  { workspace: '@esap-mfe/gestion-infraestructura', appDir: 'mfe-gestion-infraestructura', federationName: 'gestion_infraestructura', devPort: 3117, serviceName: 'frontend-mfe-gestion-infraestructura' },
+  { workspace: '@esap-mfe/chatbot', appDir: 'mfe-chatbot', federationName: 'chatbot', devPort: 3118, serviceName: 'frontend-mfe-chatbot' },
 ];
 
 export const frontendApps = [shellApp, ...remoteApps];

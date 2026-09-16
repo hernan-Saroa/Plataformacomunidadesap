@@ -33,15 +33,15 @@ describe('PtaService - avance de aprobación por componente', () => {
 
     await service.attachComponentApprovalProgress(dtos);
 
-    // Complementarias no aparece: no tiene horas en este PTA (mismo criterio de
-    // "colapsado sin horas = invisible" que ya aplica a Docencia/Extensión).
-    expect(dtos[0].componentes_total).toBe(3);
+    expect(dtos[0].componentes_total).toBe(2);
     expect(dtos[0].componentes_aprobados).toBe(0);
-    expect(dtos[0].componentes_estado).toEqual([
+    expect(dtos[0].componentes_estado).toHaveLength(4);
+    expect(dtos[0].componentes_estado).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'academica', estado: 'no_iniciado' }),
-      expect.objectContaining({ key: 'investigacion', estado: 'no_iniciado' }),
+      expect.objectContaining({ key: 'investigacion', estado: 'no_aplica', horas: 0 }),
       expect.objectContaining({ key: 'extension', estado: 'no_iniciado' }),
-    ]);
+      expect.objectContaining({ key: 'complementarias', estado: 'no_aplica', horas: 0 }),
+    ]));
   });
 
   it('calcula horas aprobadas/pendientes de Docencia cuando solo Posgrado está aprobado', async () => {
@@ -78,9 +78,14 @@ describe('PtaService - avance de aprobación por componente', () => {
       horas_aprobadas: 50,
       horas_pendientes: 50,
     }));
+    expect(dtos[0].componentes_estado).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'investigacion', estado: 'no_aplica' }),
+      expect.objectContaining({ key: 'extension', estado: 'no_aplica' }),
+      expect.objectContaining({ key: 'complementarias', estado: 'no_aplica' }),
+    ]));
   });
 
-  it('conserva la autoaprobación de componentes vacíos después de iniciar la revisión', async () => {
+  it('marca No aplica los componentes vacíos después de iniciar la revisión', async () => {
     const service = createService();
     const dtos: any[] = [{
       id: 'pta-review',
@@ -93,16 +98,56 @@ describe('PtaService - avance de aprobación por componente', () => {
 
     await service.attachComponentApprovalProgress(dtos);
 
-    // Complementarias no aparece: sin horas en este PTA, igual que en el test
-    // anterior. Investigación sí se autoaprueba (0 horas) porque el PTA ya salió
-    // de Borrador; Docencia no, porque tiene horas reales (564) por revisar.
-    expect(dtos[0].componentes_total).toBe(2);
-    expect(dtos[0].componentes_aprobados).toBe(1);
-    expect(dtos[0].componentes_estado).toEqual([
+    expect(dtos[0].componentes_total).toBe(1);
+    expect(dtos[0].componentes_aprobados).toBe(0);
+    expect(dtos[0].componentes_estado).toHaveLength(4);
+    expect(dtos[0].componentes_estado).toEqual(expect.arrayContaining([
       // 'en_revision': Docencia tiene horas y ninguna fila de PtaComponentReview
       // todavía (etapa de Revisión pendiente antes de poder aprobarse).
       expect.objectContaining({ key: 'academica', estado: 'en_revision' }),
-      expect.objectContaining({ key: 'investigacion', estado: 'aprobado' }),
+      expect.objectContaining({ key: 'investigacion', estado: 'no_aplica' }),
+      expect.objectContaining({ key: 'extension', estado: 'no_aplica' }),
+      expect.objectContaining({ key: 'complementarias', estado: 'no_aplica' }),
+    ]));
+  });
+
+  it('mantiene visible la reaprobación humana cuando se retiró la última actividad', async () => {
+    const service = createService([
+      { ptaId: 'pta-edicion', componente: 'academica_pregrado', estado: 'aprobado' },
+      { ptaId: 'pta-edicion', componente: 'ext_capacitacion', estado: 'pendiente', scope: 'solicitud_edicion' },
     ]);
+    const dtos: any[] = [{
+      id: 'pta-edicion', estado: 'Pendiente Jefatura', horas_docencia: 384,
+      horas_investigacion: 0, horas_complementarias: 0, extension_actividades: [],
+    }];
+    await service.attachComponentApprovalProgress(dtos);
+    expect(dtos[0].componentes_total).toBe(2);
+    expect(dtos[0].componentes_aprobados).toBe(1);
+    expect(dtos[0].componentes_estado).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'extension', horas: 0, estado: 'pendiente', requiere_reaprobacion: true }),
+    ]));
+  });
+
+  it('no convierte en aprobado un componente vacío aunque el PTA global esté aprobado', async () => {
+    const service = createService();
+    const dtos: any[] = [{
+      id: 'pta-aprobado',
+      estado: 'Aprobado',
+      horas_docencia: 384,
+      horas_investigacion: 200,
+      horas_complementarias: 170,
+      extension_actividades: [],
+    }];
+
+    await service.attachComponentApprovalProgress(dtos);
+
+    expect(dtos[0].componentes_total).toBe(3);
+    expect(dtos[0].componentes_aprobados).toBe(3);
+    expect(dtos[0].componentes_estado).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'academica', estado: 'aprobado', horas: 384 }),
+      expect.objectContaining({ key: 'investigacion', estado: 'aprobado', horas: 200 }),
+      expect.objectContaining({ key: 'extension', estado: 'no_aplica', horas: 0 }),
+      expect.objectContaining({ key: 'complementarias', estado: 'aprobado', horas: 170 }),
+    ]));
   });
 });
