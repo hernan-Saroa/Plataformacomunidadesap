@@ -7,9 +7,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon, ArrowRight, UserCheck, Send, Scale
+  FileText, Search, CheckCircle, Calendar, Filter, Clock, AlertTriangle, Shield, Eye, X as XIcon, ArrowRight, UserCheck, Send
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { disciplinaryService } from '../../services/api/disciplinary.service';
 import { authService } from '../../services/api/authService';
@@ -77,6 +78,7 @@ interface RevisionAprobacionJefeProps {
   onAprobarReasignacion?: (solicitudId: string, observaciones: string) => void;
   onRechazarReasignacion?: (solicitudId: string, motivoRechazo: string) => void;
   onRefresh?: () => void | Promise<void>;
+  modoEnvioJuridica?: boolean;
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -89,11 +91,29 @@ export function RevisionAprobacionJefe({
   onSendJuridica,
   onAprobarReasignacion,
   onRechazarReasignacion,
-  onRefresh
+  onRefresh,
+  modoEnvioJuridica
 }: RevisionAprobacionJefeProps) {
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudReasignacion | null>(null);
+  const isJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
+  const isRadicador = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
+  const canSendJuridica =
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    isRadicador ||
+    authService.isSuperAdmin();
+  const esSoloEnvioJuridica = modoEnvioJuridica ?? (!isJefe && (isRadicador || canSendJuridica));
+
   const [borradorEnvioJuridica, setBorradorEnvioJuridica] = useState<BorradorPendiente | null>(null);
+  const [enviandoJuridica, setEnviandoJuridica] = useState(false);
+
+  // Solo mostrar los autos que requieren envío a jurídica si estamos en modo envío a jurídica
+  const borradoresParaMostrar = esSoloEnvioJuridica
+    ? borradores.filter(b => 
+        b.estado === 'aprobado' && 
+        (b.titulo?.toLowerCase().includes('pliego') || b.plantilla?.toLowerCase().includes('pliego') || b.titulo?.toLowerCase().includes('cargo') || b.plantilla?.toLowerCase().includes('cargo') || b.tipo === 'PLIEGO_CARGOS' || b.tipo === 'AUTO_FORMULACION_PLIEGO')
+      )
+    : borradores;
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto'>('todos');
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'autos' | 'reasignaciones'>('todos');
@@ -101,10 +121,10 @@ export function RevisionAprobacionJefe({
   const [fechaHasta, setFechaHasta] = useState('');
   const [mostrarFiltroFecha, setMostrarFiltroFecha] = useState(false);
 
-  const pendientes = borradores.filter(b => b.estado === 'pendiente_revision').length;
-  const enRevision = borradores.filter(b => b.estado === 'en_revision').length;
-  const aprobados = borradores.filter(b => b.estado === 'aprobado').length;
-  const devueltos = borradores.filter(b => b.estado === 'devuelto').length;
+  const pendientes = borradoresParaMostrar.filter(b => b.estado === 'pendiente_revision').length;
+  const enRevision = borradoresParaMostrar.filter(b => b.estado === 'en_revision').length;
+  const aprobados = borradoresParaMostrar.filter(b => b.estado === 'aprobado').length;
+  const devueltos = borradoresParaMostrar.filter(b => b.estado === 'devuelto').length;
   const activos = pendientes + enRevision;
 
   // ✅ NUEVO: Estadísticas de reasignaciones
@@ -112,14 +132,14 @@ export function RevisionAprobacionJefe({
   const reasignacionesAprobadas = solicitudesReasignacion.filter(s => s.estado === 'aprobada').length;
   const reasignacionesRechazadas = solicitudesReasignacion.filter(s => s.estado === 'rechazada').length;
 
-  const borradorsFiltrados = borradores.filter(b => {
+  const borradorsFiltrados = borradoresParaMostrar.filter(b => {
     const matchesSearch = searchQuery === '' || 
       b.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.profesional.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.denunciado.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesEstado = filtroEstado === 'todos' || b.estado === filtroEstado;
+    const matchesEstado = esSoloEnvioJuridica || filtroEstado === 'todos' || b.estado === filtroEstado;
 
     // Filtro por fecha
     let matchesFecha = true;
@@ -201,6 +221,38 @@ export function RevisionAprobacionJefe({
     }
   };
 
+  const handleConfirmarEnvioJuridica = async () => {
+    if (!borradorEnvioJuridica) return;
+    try {
+      setEnviandoJuridica(true);
+      const currentUser = authService.getCurrentUser();
+      const userId = currentUser?.id || '';
+      await disciplinaryService.sendJuridica(
+        borradorEnvioJuridica.id,
+        userId,
+        currentUser?.email,
+        currentUser?.fullName || currentUser?.firstName
+      );
+      toast.success('Proceso enviado a Jurídica exitosamente', {
+        description: `El proceso ${borradorEnvioJuridica.numeroProceso} ha sido remitido a la Oficina Jurídica.`,
+      });
+      if (onSendJuridica) {
+        onSendJuridica(borradorEnvioJuridica.id);
+      }
+      setBorradorEnvioJuridica(null);
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (err: any) {
+      console.error('Error enviando a jurídica:', err);
+      toast.error('Error al enviar a Jurídica', {
+        description: err.message || 'No fue posible completar el envío a jurídica.',
+      });
+    } finally {
+      setEnviandoJuridica(false);
+    }
+  };
+
   const FILTROS_AUTOS = [
     { id: 'todos' as const, label: 'Todos', count: borradores.length },
     { id: 'pendiente_revision' as const, label: 'Pendientes', count: pendientes },
@@ -232,49 +284,65 @@ export function RevisionAprobacionJefe({
       <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
         <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#D1FAE5' }}>
-              <Shield style={{ width: 20, height: 20, color: '#10B981' }} />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: esSoloEnvioJuridica ? '#ECFDF5' : '#D1FAE5' }}>
+              {esSoloEnvioJuridica ? (
+                <Send style={{ width: 20, height: 20, color: '#059669' }} />
+              ) : (
+                <Shield style={{ width: 20, height: 20, color: '#10B981' }} />
+              )}
             </div>
             <div>
               <h1 className="text-lg font-black" style={{ color: '#003DA5' }}>
-                Revisión y Aprobación de Autos
+                {esSoloEnvioJuridica ? 'Envío a Jurídica' : 'Revisión y Aprobación de Autos'}
               </h1>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Bandeja del Jefe OCID · SIGL v5.1
+                {esSoloEnvioJuridica 
+                  ? 'Bandeja de Radicación · Autos Aprobados para Remisión Legal · SIGL v5.1'
+                  : 'Bandeja del Jefe OCID · SIGL v5.1'}
               </p>
             </div>
           </div>
 
           {/* Stats rápidas */}
           <div className="flex items-center gap-2">
-            {/* ✅ NUEVO: Tabs para cambiar entre Autos y Reasignaciones */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
-              <button
-                onClick={() => setFiltroTipo('autos')}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                  filtroTipo === 'autos' 
-                    ? 'bg-white shadow-sm text-[#003DA5]' 
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Autos ({borradores.length})
-              </button>
-              <button
-                onClick={() => setFiltroTipo('reasignaciones')}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  filtroTipo === 'reasignaciones' 
-                    ? 'bg-white shadow-sm text-[#003DA5]' 
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Reasignaciones ({solicitudesReasignacion.length})
-                {reasignacionesPendientes > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white">
-                    {reasignacionesPendientes}
-                  </span>
-                )}
-              </button>
-            </div>
+            {esSoloEnvioJuridica ? (
+              <div className="px-3.5 py-1.5 rounded-lg border flex items-center gap-2.5" style={{ background: '#ECFDF5', borderColor: '#A7F3D0' }}>
+                <Send style={{ width: 14, height: 14, color: '#059669' }} />
+                <div>
+                  <p className="text-[10px] text-gray-600 font-medium">Pendientes de Envío a Jurídica</p>
+                  <p className="text-lg font-black text-emerald-700">{borradoresParaMostrar.length}</p>
+                </div>
+              </div>
+            ) : (
+              /* Tabs para cambiar entre Autos y Reasignaciones */
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
+                <button
+                  onClick={() => setFiltroTipo('autos')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    filtroTipo === 'autos' 
+                      ? 'bg-white shadow-sm text-[#003DA5]' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Autos ({borradores.length})
+                </button>
+                <button
+                  onClick={() => setFiltroTipo('reasignaciones')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    filtroTipo === 'reasignaciones' 
+                      ? 'bg-white shadow-sm text-[#003DA5]' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Reasignaciones ({solicitudesReasignacion.length})
+                  {reasignacionesPendientes > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white">
+                      {reasignacionesPendientes}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
             
             {filtroTipo === 'autos' && (
               <>
@@ -338,18 +406,28 @@ export function RevisionAprobacionJefe({
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            {FILTROS.map(f => (
+            {esSoloEnvioJuridica ? (
               <button
-                key={f.id}
-                onClick={() => setFiltroEstado(f.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  filtroEstado === f.id ? 'text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                }`}
-                style={filtroEstado === f.id ? { background: '#003DA5' } : undefined}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm flex items-center gap-1.5"
+                style={{ background: '#003DA5' }}
               >
-                {f.label} ({f.count})
+                <Send style={{ width: 12, height: 12 }} />
+                Pendientes de Envío ({borradorsFiltrados.length})
               </button>
-            ))}
+            ) : (
+              FILTROS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFiltroEstado(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    filtroEstado === f.id ? 'text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                  style={filtroEstado === f.id ? { background: '#003DA5' } : undefined}
+                >
+                  {f.label} ({f.count})
+                </button>
+              ))
+            )}
 
             {/* Separador visual */}
             <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block" />
@@ -457,6 +535,7 @@ export function RevisionAprobacionJefe({
               const estadoCfg = ESTADO_CONFIG[borrador.estado] || ESTADO_CONFIG.pendiente_revision;
               const prioridadCfg = PRIORIDAD_CONFIG[borrador.prioridad] || PRIORIDAD_CONFIG.media;
               const esActivo = borrador.estado === 'pendiente_revision' || borrador.estado === 'en_revision';
+              const esListoParaJuridica = (borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && borrador.estado === 'aprobado';
               
               return (
                 <motion.div
@@ -467,11 +546,17 @@ export function RevisionAprobacionJefe({
                   exit={{ opacity: 0, scale: 0.96 }}
                   transition={{ duration: 0.2 }}
                   className={`bg-white rounded-xl border-2 px-4 py-3.5 transition-all ${
-                    esActivo ? 'hover:shadow-lg cursor-pointer hover:border-blue-300' : 'opacity-75'
+                    esSoloEnvioJuridica
+                      ? 'hover:shadow-lg cursor-pointer hover:border-emerald-400'
+                      : esActivo
+                        ? 'hover:shadow-lg cursor-pointer hover:border-blue-300'
+                        : 'opacity-75'
                   }`}
-                  style={{ borderColor: esActivo ? '#E5E7EB' : '#F3F4F6' }}
+                  style={{ borderColor: esSoloEnvioJuridica ? '#A7F3D0' : esActivo ? '#E5E7EB' : '#F3F4F6' }}
                   onClick={() => {
-                    if (esActivo && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE)) {
+                    if (esSoloEnvioJuridica) {
+                      setBorradorSeleccionado(borrador);
+                    } else if (esActivo && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE)) {
                       setBorradorSeleccionado(borrador);
                     } else if (esActivo) {
                       toast.error('No tiene permisos para revisar borradores');
@@ -553,7 +638,7 @@ export function RevisionAprobacionJefe({
 
                       {/* Advertencia para auto pliego de cargos */}
                       {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && esActivo && (
-                        <div className="mt-2 p-2 rounded-lg border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
+<div className="mt-2 p-2 rounded-lg border-2" style={{ background: '#FFFBEB', borderColor: '#F59E0B' }}>
                           <div className="flex items-start gap-1.5">
                             <AlertTriangle style={{ width: 12, height: 12, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
                             <p className="text-[10px] leading-relaxed" style={{ color: '#92400E' }}>
@@ -564,22 +649,19 @@ export function RevisionAprobacionJefe({
                       )}
 
                       {/* Botón Envío a jurídica para autos aprobados de pliego de cargos */}
-                      {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && borrador.estado === 'aprobado' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
-                        <div className="mt-2 flex justify-end">
+                      {borrador.estado === 'aprobado' && canSendJuridica && (esSoloEnvioJuridica || (borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego') || borrador.titulo?.toLowerCase().includes('cargo') || borrador.plantilla?.toLowerCase().includes('cargo') || borrador.tipo === 'PLIEGO_CARGOS' || borrador.tipo === 'AUTO_FORMULACION_PLIEGO')) && (
+                        <div className="mt-2.5 flex justify-end">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA)) {
-                                setBorradorEnvioJuridica(borrador);
-                              } else {
-                                toast.error('No tiene permisos para realizar envíos a jurídica');
-                              }
+                              setBorradorEnvioJuridica(borrador);
                             }}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                            style={{ background: '#10B981', color: 'white' }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-all hover:shadow hover:brightness-110"
+                            style={{ backgroundColor: '#2563EB' }}
                           >
-                            <Send style={{ width: 12, height: 12 }} />
-                            Envío a jurídica
+                            <Send className="w-3.5 h-3.5" />
+                            Enviar a Jurídica
                           </button>
                         </div>
                       )}
@@ -721,14 +803,30 @@ export function RevisionAprobacionJefe({
           )}
 
           {borradoresOrdenados.length === 0 && filtroTipo === 'autos' && (
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#9CA3AF' }} />
-              <p className="text-sm font-bold mb-1 text-gray-500">No se encontraron borradores</p>
-              <p className="text-xs text-gray-400">
-                {searchQuery || filtroEstado !== 'todos' || hayFiltroFechaActivo
-                  ? 'Intenta cambiar los filtros de búsqueda'
-                  : 'Cuando un profesional envíe un auto a revisión, aparecerá aquí'}
-              </p>
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+              {esSoloEnvioJuridica ? (
+                <>
+                  <Send className="w-12 h-12 mx-auto mb-3 text-emerald-500" />
+                  <p className="text-sm font-bold mb-1 text-gray-800">
+                    {searchQuery ? 'No se encontraron autos con los filtros aplicados' : 'No hay autos pendientes de envío a Jurídica'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {searchQuery
+                      ? 'Intenta ajustar los términos de búsqueda'
+                      : 'Los autos de pliego de cargos aprobados por el Jefe OCID aparecerán aquí para su remisión a Jurídica.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: '#9CA3AF' }} />
+                  <p className="text-sm font-bold mb-1 text-gray-500">No se encontraron borradores</p>
+                  <p className="text-xs text-gray-400">
+                    {searchQuery || filtroEstado !== 'todos' || hayFiltroFechaActivo
+                      ? 'Intenta cambiar los filtros de búsqueda'
+                      : 'Cuando un profesional envíe un auto a revisión, aparecerá aquí'}
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -747,104 +845,6 @@ export function RevisionAprobacionJefe({
         </div>
       </div>
 
-      {/* Modal de Envío a Jurídica */}
-      <AnimatePresence>
-        {borradorEnvioJuridica && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex items-center gap-3 p-4 border-b border-gray-200">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#D1FAE5' }}>
-                  <Scale style={{ width: 20, height: 20, color: '#10B981' }} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Envío a Oficina Jurídica</h3>
-                  <p className="text-xs text-gray-500">Confirmar envío del auto a jurídica</p>
-                </div>
-              </div>
-
-              <div className="p-4 space-y-4">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText style={{ width: 14, height: 14, color: '#003DA5' }} />
-                    <span className="text-sm font-bold text-gray-900">{borradorEnvioJuridica.titulo}</span>
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    Proceso: {borradorEnvioJuridica.numeroProceso}<br />
-                    Denunciado: {borradorEnvioJuridica.denunciado}
-                  </p>
-                </div>
-
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle style={{ width: 16, height: 16, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
-                    <div className="text-sm text-amber-800">
-                      <p className="font-medium mb-1">Esta acción cerrará permanentemente el proceso</p>
-                      <p className="text-xs leading-relaxed">
-                        Al enviar a la Oficina Jurídica, el proceso disciplinario será archivado y ya no podrá ser modificado.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => setBorradorEnvioJuridica(null)}
-                    className="flex-1 px-4 py-2 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!borradorEnvioJuridica?.autoId) {
-                        toast.error('Error: No se pudo identificar el auto');
-                        return;
-                      }
-
-                      try {
-                         const currentUser = authService.getCurrentUser();
-                         const userId = currentUser?.id || '';
-                         await disciplinaryService.sendJuridica(
-                             borradorEnvioJuridica.autoId, 
-                             userId, 
-                             currentUser?.email, 
-                             currentUser?.fullName || currentUser?.firstName
-                         );
-
-                        toast.success('Auto enviado a jurídica exitosamente', {
-                          description: `El proceso ${borradorEnvioJuridica.numeroProceso} ha sido cerrado y archivado`,
-                          duration: 5000,
-                        });
-
-                        onSendJuridica?.(borradorEnvioJuridica.id);
-                        setBorradorEnvioJuridica(null);
-                      } catch (error) {
-                        toast.error('Error al enviar a jurídica', {
-                          description: 'No se pudo conectar con el servidor. Intente nuevamente.',
-                        });
-                      }
-                    }}
-                    className="flex-1 px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors"
-                    style={{ background: '#10B981' }}
-                  >
-                    Confirmar Envío
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Modal de Revisión - Componente Central Unificado */}
       <AnimatePresence>
         {borradorSeleccionado && (
@@ -854,12 +854,50 @@ export function RevisionAprobacionJefe({
             onAprobar={handleAprobar}
             onDevolver={handleDevolver}
             onRefresh={onRefresh}
-            mostrarBotonDevolver={true}
-            tituloModal="Revisión de Auto"
+            mostrarBotonDevolver={!esSoloEnvioJuridica}
+            tituloModal={esSoloEnvioJuridica ? "Detalle de Auto - Listo para Envío a Jurídica" : "Revisión de Auto"}
             descripcionModal={`Sistema Integrado de Gestión Legal (SIGL v5.1) - ${borradorSeleccionado.numeroProceso}`}
           />
         )}
       </AnimatePresence>
+
+      {/* Modal de confirmación para envío a jurídica */}
+      {borradorEnvioJuridica && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
+                <Send className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Confirmar Envío a Jurídica</h3>
+                <p className="text-xs text-gray-500">Proceso {borradorEnvioJuridica.numeroProceso}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              ¿Está seguro de enviar este proceso a la Oficina Jurídica? Esta acción registrará la remisión en el expediente disciplinario.
+            </p>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setBorradorEnvioJuridica(null)}
+                disabled={enviandoJuridica}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleConfirmarEnvioJuridica}
+                disabled={enviandoJuridica}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {enviandoJuridica ? 'Enviando...' : 'Confirmar Envío'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✅ NUEVO: Modal para aprobar/rechazar reasignaciones */}
       {solicitudSeleccionada && (

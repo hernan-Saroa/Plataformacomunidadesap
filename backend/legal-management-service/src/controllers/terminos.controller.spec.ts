@@ -1,13 +1,18 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { AlertasVencimientoTerminosService } from '../services/alertas-vencimiento-terminos.service';
 import { TerminosService } from '../services/terminos.service';
 import { TerminosController } from './terminos.controller';
 
 describe('TerminosController', () => {
     let controller: TerminosController;
     let mockTerminosService: any;
+    let mockAlertas: any;
 
     beforeEach(async () => {
+        mockAlertas = {
+            verificarTerminoInmediato: jest.fn().mockResolvedValue({ alertasEnviadas: 0, recordatoriosEnviados: 0 }),
+        };
         mockTerminosService = {
             create: jest.fn((data: any) => Promise.resolve({ id: 'term-1', ...data })),
             update: jest.fn((id: string, data: any) => Promise.resolve({ id, ...data })),
@@ -27,7 +32,10 @@ describe('TerminosController', () => {
 
         const module: TestingModule = await Test.createTestingModule({
             controllers: [TerminosController],
-            providers: [{ provide: TerminosService, useValue: mockTerminosService }],
+            providers: [
+                { provide: TerminosService, useValue: mockTerminosService },
+                { provide: AlertasVencimientoTerminosService, useValue: mockAlertas },
+            ],
         }).compile();
 
         controller = module.get<TerminosController>(TerminosController);
@@ -288,17 +296,25 @@ describe('TerminosController', () => {
         it('con esResuelveSolo=true debe ignorar responsableId y usar responsableKeys propios', async () => {
             const req = { headers: { 'x-user-roles': 'RESUELVE_GESTION_LEGAL', 'x-user-id': 'user-42' } };
 
-            await controller.getListado('otro-responsable', req);
+            await controller.getListado('otro-responsable', undefined, req);
 
-            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: undefined, responsableKeys: ['user-42'] });
+            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: undefined, responsableKeys: ['user-42'], estado: undefined });
         });
 
         it('sin rol de auto-restricción debe respetar el responsableId de la query', async () => {
             const req = { headers: {} };
 
-            await controller.getListado('resp-x', req);
+            await controller.getListado('resp-x', undefined, req);
 
-            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: 'resp-x', responsableKeys: undefined });
+            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: 'resp-x', responsableKeys: undefined, estado: undefined });
+        });
+
+        it('debe reenviar el filtro estado (ej. ELIMINADO) al servicio', async () => {
+            const req = { headers: {} };
+
+            await controller.getListado(undefined, 'ELIMINADO', req);
+
+            expect(mockTerminosService.getSemaforoList).toHaveBeenCalledWith({ responsableId: undefined, responsableKeys: undefined, estado: 'ELIMINADO' });
         });
     });
 
@@ -352,7 +368,13 @@ describe('TerminosController', () => {
         it('debe delegar el borrado (lógico) al servicio', async () => {
             await controller.remove('term-1');
 
-            expect(mockTerminosService.remove).toHaveBeenCalledWith('term-1');
+            expect(mockTerminosService.remove).toHaveBeenCalledWith('term-1', false);
+        });
+
+        it('con permanente=true debe indicarle al servicio un borrado real (no lógico)', async () => {
+            await controller.remove('term-1', 'true');
+
+            expect(mockTerminosService.remove).toHaveBeenCalledWith('term-1', true);
         });
     });
 
@@ -441,6 +463,31 @@ describe('TerminosController', () => {
             await controller.uploadDocumento('term-1', file);
 
             expect(mockTerminosService.addDocumentoLogico).toHaveBeenCalledWith('term-1', file);
+        });
+    });
+
+    // ---------------------------------------------------------------------
+    // Reevaluación inmediata de alertas al editar (update)
+    // ---------------------------------------------------------------------
+    describe('update() · reevaluación de alertas', () => {
+        it('al guardar la anticipación personalizada rearma solo ese umbral y evalúa de una', async () => {
+            await controller.update('term-1', { horasAnticipacionAlertaPersonalizada: 48 });
+            expect(mockAlertas.verificarTerminoInmediato).toHaveBeenCalledWith('term-1', { rearmar: 'personalizada' });
+        });
+
+        it('al quitar la anticipación personalizada (null) también rearma', async () => {
+            await controller.update('term-1', { horasAnticipacionAlertaPersonalizada: null });
+            expect(mockAlertas.verificarTerminoInmediato).toHaveBeenCalledWith('term-1', { rearmar: 'personalizada' });
+        });
+
+        it('al mover la fecha de vencimiento rearma TODOS los umbrales (plazo nuevo)', async () => {
+            await controller.update('term-1', { fechaVencimiento: '2026-12-31' });
+            expect(mockAlertas.verificarTerminoInmediato).toHaveBeenCalledWith('term-1', { rearmar: 'todas' });
+        });
+
+        it('una edición que no toca las alertas evalúa sin rearmar nada', async () => {
+            await controller.update('term-1', { nuevoComentario: 'ojo con esto' });
+            expect(mockAlertas.verificarTerminoInmediato).toHaveBeenCalledWith('term-1', { rearmar: undefined });
         });
     });
 });

@@ -52,6 +52,10 @@ async function bootstrap() {
       'x-user-roles',
       'x-user-email',
       'x-user-name',
+      'X-Frontend-Base-Url',
+      'x-frontend-base-url',
+      'X-Frontend-Url',
+      'x-frontend-url',
     ],
     exposedHeaders: ['Content-Length', 'Content-Type'],
     credentials: true,
@@ -77,6 +81,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
+  const server = app.getHttpServer() as any;
+  server.maxHeaderSize = 32 * 1024; // 32KB to avoid HPE_HEADER_OVERFLOW
   console.log(`Auth service corriendo en puerto ${port} con CORS habilitado`);
   console.log(`📋 LoginSettings module cargado`); // trigger hot-reload
 }

@@ -14,6 +14,7 @@ type OracleExecuteResult<T extends OracleRow = OracleRow> = {
 };
 
 type OracleConnection = {
+  callTimeout?: number;
   execute<T extends OracleRow = OracleRow>(
     sql: string,
     bindParams?: Record<string, unknown>,
@@ -98,6 +99,18 @@ type LaborOracleMappedRow = {
 @Injectable()
 export class LaborOracleIntegrationService {
   private readonly logger = new Logger(LaborOracleIntegrationService.name);
+
+  /**
+   * La consulta global de la matriz puede recorrer buena parte de la vista
+   * Oracle. Nunca debe dejar bloqueado el listado administrativo completo.
+   * `callTimeout` cancela el round-trip en Oracle; a diferencia de un
+   * `Promise.race`, no deja la consulta pesada ejecutandose en segundo plano.
+   */
+  private getMatrixCallTimeoutMs(): number {
+    const configured = Number(process.env.ORACLE_FNC_MATRIX_TIMEOUT_MS);
+    if (!Number.isFinite(configured)) return 8_000;
+    return Math.min(25_000, Math.max(1_000, Math.trunc(configured)));
+  }
   private oracleClientInitialized = false;
 
   private normalizeBoolean(value: unknown): boolean {
@@ -679,5 +692,123 @@ export class LaborOracleIntegrationService {
     return result.rows
       .map((row) => row.suggested_certificate_request)
       .filter(Boolean);
+  }
+
+  /**
+   * Busca vinculaciones por cedula o por nombre. Alimenta la consulta de
+   * empleado de la matriz de funciones, donde el administrador necesita ver los
+   * datos EXACTOS de una persona para poder crearle el perfil que le cruce.
+   */
+  async findSuggestedRequestsBySearch(
+    term: string,
+    limit = 50,
+  ): Promise<LaborOracleSuggestedRequest[]> {
+    const cleaned = String(term ?? '').trim();
+    if (cleaned.length < 3) return [];
+
+    const digits = cleaned.replace(/\D+/g, '');
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
+
+    return await this.withConnection(async (connection, driver, config) => {
+      const conditions: string[] = [];
+      const binds: Record<string, unknown> = { limite: safeLimit };
+
+      if (digits) {
+        conditions.push(
+          "REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '') LIKE :documentoLike",
+        );
+        binds.documentoLike = `%${digits}%`;
+      }
+      conditions.push('UPPER(NOMBRE_COMPLETO) LIKE :nombreLike');
+      binds.nombreLike = `%${cleaned.toUpperCase()}%`;
+
+      const result = await connection.execute(
+        `SELECT *
+           FROM ${config.qualifiedView}
+          WHERE (${conditions.join(' OR ')})
+            AND ROWNUM <= :limite`,
+        binds,
+        { outFormat: driver.OUT_FORMAT_OBJECT },
+      );
+
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      return rows
+        .map((row) => this.buildSuggestedRequest(row))
+        .filter((item) => item?.id_number);
+    });
+  }
+
+  /**
+   * Vinculaciones vigentes en Oracle para un conjunto de cod_cargo.
+   *
+   * Alimenta el cruce de asociados de la matriz de funciones en los ambientes
+   * donde los empleados NO viven en la tabla local: `certificate_request` solo
+   * se llena bajo demanda y por documento (autoservicio y prima tecnica), asi
+   * que en PRE la matriz no tenia contra que cruzar.
+   *
+   * El filtro compara solo digitos con REGEXP_REPLACE para no depender de como
+   * venga escrito COD_CARGO en la vista (con guiones, espacios o ceros a la
+   * izquierda). La lista IN se parte en bloques porque Oracle admite maximo
+   * 1000 elementos por expresion.
+   */
+  async findSuggestedRequestsByPositionCodes(
+    codes: string[],
+    limit = 10000,
+    includeRelatedRequests = false,
+  ): Promise<LaborOracleSuggestedRequest[]> {
+    const normalizedCodes = Array.from(
+      new Set(
+        (codes || [])
+          .map((code) => String(code ?? '').replace(/\D+/g, ''))
+          .filter(Boolean),
+      ),
+    );
+    if (!normalizedCodes.length) return [];
+
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 10000), 50000);
+
+    return await this.withConnection(async (connection, driver, config) => {
+      // El valor predeterminado del driver es 0 (sin limite). Esta consulta es
+      // best-effort: si excede el limite, LaborFunctionsService captura el
+      // error y responde con los contratos ya sincronizados en PostgreSQL.
+      connection.callTimeout = this.getMatrixCallTimeoutMs();
+      const collected: LaborOracleSuggestedRequest[] = [];
+
+      for (let start = 0; start < normalizedCodes.length; start += 900) {
+        const chunk = normalizedCodes.slice(start, start + 900);
+        const binds: Record<string, unknown> = { limite: safeLimit };
+        const placeholders = chunk.map((code, index) => {
+          const key = `cod${index}`;
+          binds[key] = code;
+          return `:${key}`;
+        });
+
+        // Incluye el nombramiento normal aunque tenga otro codigo de cargo.
+        // Una sola consulta por lote, sin consultas adicionales por empleado.
+        const positionFilter = `REGEXP_REPLACE(TO_CHAR(COD_CARGO), '[^0-9]', '') IN (${placeholders.join(', ')})`;
+        const filter = includeRelatedRequests
+          ? `REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '') IN (
+              SELECT REGEXP_REPLACE(TO_CHAR(CEDULA), '[^0-9]', '')
+              FROM ${config.qualifiedView} WHERE ${positionFilter}
+            )`
+          : positionFilter;
+        const result = await connection.execute(
+          `SELECT *
+             FROM ${config.qualifiedView}
+            WHERE ${filter}
+              AND ROWNUM <= :limite`,
+          binds,
+          { outFormat: driver.OUT_FORMAT_OBJECT },
+        );
+
+        const rows = Array.isArray(result.rows) ? result.rows : [];
+        rows.forEach((row) => {
+          const suggested = this.buildSuggestedRequest(row);
+          if (suggested?.id_number) collected.push(suggested);
+        });
+      }
+
+      return collected;
+    });
   }
 }

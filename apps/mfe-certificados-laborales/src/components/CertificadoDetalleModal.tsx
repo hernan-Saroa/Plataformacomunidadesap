@@ -335,7 +335,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.dependencia}
+                            {certificado.certificate_dependency ?? certificado.request?.certificate_dependency ?? certificado.empleado.dependencia}
                           </p>
                         </div>
                         <div>

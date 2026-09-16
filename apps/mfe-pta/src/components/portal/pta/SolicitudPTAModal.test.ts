@@ -4,6 +4,8 @@ vi.mock('../../../services/api/ptaApi', () => ({}));
 import {
   admiteSolicitudEdicion,
   CASOS,
+  CASOS_SELECCIONABLES,
+  haySolicitudDisponible,
   normalizeEstado,
   obtenerEstadoMotivo,
 } from './SolicitudPTAModal';
@@ -114,6 +116,49 @@ describe('SolicitudPTAModal - Reglas de Habilitación y Deshabilitación de Soli
 
       const r3 = obtenerEstadoMotivo('caso_3', true, 1);
       expect(r3.disabled).toBe(false);
+    });
+  });
+
+  describe('CASOS_SELECCIONABLES (motivos visibles para el docente)', () => {
+    it('solo ofrece la solicitud de edición', () => {
+      expect(CASOS_SELECCIONABLES.map(c => c.key)).toEqual(['edicion_pta']);
+    });
+
+    it('conserva caso_1, caso_2 y caso_3 en el catálogo CASOS para el backoffice', () => {
+      // El backoffice los sigue etiquetando y resolviendo para las solicitudes
+      // históricas; quitarlos del catálogo dejaría esos registros sin etiqueta.
+      const keys = CASOS.map(c => c.key);
+      expect(keys).toContain('caso_1');
+      expect(keys).toContain('caso_2');
+      expect(keys).toContain('caso_3');
+    });
+  });
+
+  describe('haySolicitudDisponible (gate del formulario)', () => {
+    it('bloquea el formulario cuando no hay PTA creado', () => {
+      expect(haySolicitudDisponible(false, 0)).toBe(false);
+    });
+
+    it('bloquea el formulario con PTA creado pero sin aprobar: el único motivo está deshabilitado', () => {
+      // Este era el hueco: la opción se veía en gris y aun así la
+      // justificación y el adjunto quedaban activos.
+      expect(obtenerEstadoMotivo('edicion_pta', true, 0).disabled).toBe(true);
+      expect(haySolicitudDisponible(true, 0)).toBe(false);
+    });
+
+    it('habilita el formulario cuando hay un PTA aprobado en su totalidad', () => {
+      expect(obtenerEstadoMotivo('edicion_pta', true, 1).disabled).toBe(false);
+      expect(haySolicitudDisponible(true, 1)).toBe(true);
+    });
+
+    it('queda alineado con el estado del motivo en todos los escenarios', () => {
+      const escenarios: Array<[boolean, number]> = [[false, 0], [false, 1], [true, 0], [true, 1], [true, 3]];
+      for (const [hasPta, editables] of escenarios) {
+        const algunoHabilitado = CASOS_SELECCIONABLES.some(
+          c => !obtenerEstadoMotivo(c.key, hasPta, editables).disabled,
+        );
+        expect(haySolicitudDisponible(hasPta, editables)).toBe(algunoHabilitado);
+      }
     });
   });
 });

@@ -105,8 +105,11 @@ const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
 const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
+const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestructura/Module'), ['GestionInfraestructuraModule']);
+const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
+import { ChatbotFloatingButton } from './ChatbotFloatingButton';
 
 // ✅ Loading Spinner Component
 function ModuleLoader() {
@@ -161,6 +164,8 @@ type ModuleView =
   | 'contratacion'
   | 'viaticos'
   | 'programacion-academica'
+  | 'gestion-infraestructura'
+  | 'chatbot'
   | 'modules'
   | 'dependencias';
 
@@ -238,6 +243,10 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'viaticos': 'viaticos',
   'programacion-academica': 'programacion-academica',
   'academic-schedule': 'programacion-academica',
+  'gestion-infraestructura': 'gestion-infraestructura',
+  'infraestructura': 'gestion-infraestructura',
+  'chatbot': 'chatbot',
+  'asistente-virtual': 'chatbot',
   'banco-docentes-pta': 'banco-docentes-pta',
   'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
@@ -261,12 +270,14 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'graduates-certificates',
   'pta',
   'programacion-academica',
+  'gestion-infraestructura',
   'certificados-laborales',
   'control-interno',
   'control-disciplinario',
   'gestion-legal',
   'contratacion',
   'viaticos',
+  'chatbot',
 ];
 
 const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
@@ -290,6 +301,7 @@ const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   'gestion-passwords': 'gestion-passwords',
   pta: 'pta',
   'programacion-academica': 'programacion-academica',
+  'gestion-infraestructura': 'gestion-infraestructura',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-profesoral': 'gestion-profesoral',
 };
@@ -439,15 +451,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     .map(normalizeRoleCode)
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
+  const urlParamModule = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('module') as ModuleView | null)
+    : null;
+  const isUrlDisciplinario = typeof window !== 'undefined' && (
+    urlParamModule === 'control-disciplinario' ||
+    window.location.pathname.startsWith('/control-disciplinario')
+  );
+
   const finalInitialModule =
+    (isUrlDisciplinario ? 'control-disciplinario' : undefined) ??
+    (urlParamModule && isViewAccessible(urlParamModule) ? urlParamModule : undefined) ??
     (hasDashboardAccess ? 'executive' : undefined) ??
     moduleFromArray ??
     (isViewAccessible(initialModule as ModuleView) ? initialModule : undefined) ??
     (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
 
   const getDefaultSidebarModule = (view: ModuleView) => MODULE_TO_DEFAULT_SIDEBAR[view] || '';
-
-
 
   // Siempre iniciar en la primera vista habilitada del menu visible para el rol.
   const [currentModule, setCurrentModule] = useState<ModuleView>(
@@ -531,11 +551,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         }
       };
 
+      const handleOpenDisciplinario = () => {
+        setCurrentModule('control-disciplinario');
+        setCurrentSidebarModule('control-disciplinario');
+      };
+
+      // Si hay un expediente disciplinario pendiente de abrir, conmutar al módulo
+      if (sessionStorage.getItem('control-disciplinario:pendingOpenExpediente')) {
+        handleOpenDisciplinario();
+      }
+
       window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
       window.addEventListener('portal-view-change', handlePortalViewChange);
+      window.addEventListener('control-disciplinario:open-expediente', handleOpenDisciplinario);
       return () => {
         window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
         window.removeEventListener('portal-view-change', handlePortalViewChange);
+        window.removeEventListener('control-disciplinario:open-expediente', handleOpenDisciplinario);
       };
     }, []);
 
@@ -843,6 +875,24 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           </Suspense>
         );
 
+      case 'gestion-infraestructura':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GestionInfraestructuraModule />
+          </Suspense>
+        );
+
+      case 'chatbot':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ChatbotModule
+              userEmail={currentUser.email}
+              userId={currentUser.personId}
+              userName={currentUser.name}
+            />
+          </Suspense>
+        );
+
       case 'modules':
         return (
           <Suspense fallback={<ModuleLoader />}>
@@ -973,6 +1023,19 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               onLogout={handleLogout}
             />
           )}
+
+          {/* Botón Flotante ChatBot Asistente Virtual */}
+          <ChatbotFloatingButton
+            isActive={activeModules.length === 0 || activeModules.some((m) => m.code === 'chatbot')}
+            userEmail={currentUser.email}
+            userId={currentUser.personId}
+            userName={currentUser.name}
+            currentModule={currentModule}
+            onOpenFullModule={() => {
+              setCurrentSidebarModule('chatbot');
+              setCurrentModule('chatbot');
+            }}
+          />
         </div>
       </TourProvider>
     </NotificationsProvider>

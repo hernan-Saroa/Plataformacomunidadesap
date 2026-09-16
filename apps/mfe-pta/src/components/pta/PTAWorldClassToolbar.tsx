@@ -115,7 +115,7 @@ function getWorkflowStageId(pta: any) {
     'NOTIFICADO_DOCENTE',
   ].includes(key)) return 'concertacion';
   if (key === 'ESCALADO_SNA') return 'sna';
-  if (['EN_FIRME', 'RADICADO', 'EN_EJECUCION'].includes(key) || (pta?.dias_en_proceso > 7 && key === 'APROBADO')) return 'SEGUIMIENTO';
+  if (['EN_FIRME', 'RADICADO', 'EN_EJECUCION'].includes(key)) return 'SEGUIMIENTO';
   if (key === 'APROBADO') return 'aprobado';
 
   return estado || 'sin_estado';

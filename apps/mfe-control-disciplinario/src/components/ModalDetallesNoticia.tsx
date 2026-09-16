@@ -1406,11 +1406,13 @@ function TabActuaciones({
     try {
       setGuardando(true);
       setFormError(null);
+      const hoy = hoyISO();
+      const fechaEnvio = (!fecha || fecha === hoy) ? new Date().toISOString() : fecha;
       await disciplinaryService.createActuacionNoticia(noticiaId, {
         tipo,
         descripcion: descripcion.trim(),
         responsableNombre,
-        fechaActuacion: fecha || hoyISO(),
+        fechaActuacion: fechaEnvio,
         observaciones: observaciones.trim() || undefined,
       });
       resetForm();
@@ -1569,14 +1571,17 @@ const HISTORIAL_TIPO_META: Record<string, { label: string; color: string; bg: st
 
 const formatFechaHistorial = (fecha: string): string => {
   if (!fecha) return 'Sin fecha';
-  const d = new Date(fecha);
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = soloFecha
+    ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
+    : new Date(fecha);
   if (isNaN(d.getTime())) return 'Sin fecha';
+  const tieneHora = !soloFecha && (fecha.includes('T') || fecha.includes(':'));
   return d.toLocaleString('es-CO', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    ...(tieneHora ? { hour: '2-digit', minute: '2-digit' } : {}),
     timeZone: 'America/Bogota',
   });
 };

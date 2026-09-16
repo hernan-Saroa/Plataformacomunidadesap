@@ -73,8 +73,20 @@ export class TareasNotasService {
         const url = `/gestion-legal?modulo=${moduloVista}&radicado=${encodeURIComponent(radicado)}`;
         const accion = esReasignacion ? 'reasignó' : 'asignó';
 
+        // tarea.responsableId puede venir como id_user, public_id o id_person según el
+        // origen del dato (dropdown de abogados, auto-asignación, registros antiguos).
+        // Se resuelve siempre contra auth.user antes de notificar para garantizar que
+        // id_usuario_destinatario coincide con el id_user real que usa el frontend al
+        // consultar sus notificaciones (mismo patrón que notifyUserById).
+        const detalle = await this.notificationClient.getUserDetailsById(tarea.responsableId);
+        if (!detalle) {
+            this.logger.warn(`No se encontró usuario para responsableId="${tarea.responsableId}", no se notifica la tarea "${tarea.titulo}"`);
+            return;
+        }
+        const idUsuarioDestinatario = detalle.id_user;
+
         await this.notificationClient.sendMany([{
-            id_usuario_destinatario: tarea.responsableId,
+            id_usuario_destinatario: idUsuarioDestinatario,
             tipo_notificacion: esReasignacion ? 'TAREA_REASIGNADA' : 'TAREA_ASIGNADA',
             titulo: esReasignacion ? 'Tarea reasignada' : 'Nueva tarea asignada',
             mensaje: `Se te ${accion} la tarea "${tarea.titulo}" en el proceso ${radicado}.`,
@@ -95,10 +107,9 @@ export class TareasNotasService {
             },
         }]);
 
-        this.logger.log(`Notificación de tarea ${esReasignacion ? 'reasignada' : 'asignada'} enviada — Tarea: ${tarea.titulo}, Responsable: ${tarea.responsableId}`);
+        this.logger.log(`Notificación de tarea ${esReasignacion ? 'reasignada' : 'asignada'} enviada — Tarea: ${tarea.titulo}, Responsable: ${idUsuarioDestinatario}`);
 
-        const detalle = await this.notificationClient.getUserDetailsById(tarea.responsableId);
-        if (detalle?.email) {
+        if (detalle.email) {
             const emailHtml = `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                     <h2 style="color: #6366F1; border-bottom: 2px solid #6366F1; padding-bottom: 10px;">${esReasignacion ? 'Tarea Reasignada' : 'Nueva Tarea Asignada'}</h2>

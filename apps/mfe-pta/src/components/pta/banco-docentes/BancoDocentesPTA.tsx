@@ -15,6 +15,7 @@ import { BancoDocenteEstadoModal } from './BancoDocenteEstadoModal';
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
+import { RundExtractionNotificationDetail } from './RundExtractionNotificationDetail';
 
 const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   TC:       { background: '#dbeafe', color: '#1d4ed8' },
@@ -164,6 +165,10 @@ export function BancoDocentesPTA() {
   const [periodoSearch, setPeriodoSearch] = useState('');
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [selectedDocente, setSelectedDocente] = useState<string | null>(null);
+  const [notificationDocente,setNotificationDocente]=useState<string|null>(()=>{
+    const id=new URLSearchParams(window.location.search).get('rundDocenteId');
+    return id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)?id:null;
+  });
   const [editDocente, setEditDocente] = useState<any>(null);
   const [estadoDocente, setEstadoDocente] = useState<any>(null);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
@@ -390,6 +395,11 @@ export function BancoDocentesPTA() {
     marginBottom: '-1px',
     transition: 'all 0.15s',
   });
+
+  if(notificationDocente)return <RundExtractionNotificationDetail docenteId={notificationDocente} onClose={()=>{
+    const url=new URL(window.location.href);url.searchParams.delete('rundDocenteId');
+    window.history.replaceState(window.history.state,'',url);setNotificationDocente(null);
+  }}/>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minHeight: '100vh', background: '#f8fafc' }}>

@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --prefer-offline
 COPY --from=builder /app/dist ./dist
 
 # Expose the port the app runs on
-EXPOSE 3000
+EXPOSE 3010
 
 # Start the application
 CMD ["node", "dist/main"]

@@ -26,6 +26,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       {} as any,
+      { isEnabled: () => false } as any,
     );
 
   const exactRequest = {
@@ -132,6 +133,7 @@ describe('LaborFunctionsService strict association', () => {
     const service = new LaborFunctionsService(
       { find: jest.fn().mockResolvedValue([{ ...profile, internal_group: null, cost_center: 'Grupo heredado' }]) } as any,
       {} as any, { find: jest.fn().mockResolvedValue([]) } as any, {} as any,
+      { isEnabled: () => false } as any,
     );
     const result = await service.list({ search: 'grupo heredado' });
     expect(result.total).toBe(1);
@@ -231,8 +233,11 @@ describe('LaborFunctionsService strict association', () => {
     })).toThrow(expectedMessage);
   });
 
-  it('rechaza funciones duplicadas antes de persistir', () => {
-    expect(() => (buildService() as any).normalizePayload({
+  it('acepta la fila cuando una función se repite dentro de ella y la guarda deduplicada', () => {
+    // Repetir una función dentro de la MISMA fila dejó de ser un error: no hay
+    // riesgo de duplicar el perfil y la lista se guarda única. La duplicidad que
+    // sí sigue bloqueando es la de fila contra fila (misma identidad).
+    const normalized = (buildService() as any).normalizePayload({
       positionCode: '2028',
       gradeCode: '24',
       combinedCode: '202824',
@@ -240,9 +245,46 @@ describe('LaborFunctionsService strict association', () => {
       positionName: 'Profesional Especializado',
       departmentName: 'Dirección de Formación',
       functions: '1. Formular planes institucionales. 2. Formular planes institucionales.',
-    })).toThrow(
-      'funciones duplicadas: la función 2 repite la función 1: «Formular planes institucionales.»',
-    );
+    });
+
+    expect(normalized.functions).toEqual(['Formular planes institucionales.']);
+  });
+
+  it('conserva el orden y todas las funciones distintas al deduplicar', () => {
+    const normalized = (buildService() as any).normalizePayload({
+      positionCode: '2028',
+      gradeCode: '24',
+      combinedCode: '202824',
+      hierarchicalLevel: 'Profesional',
+      positionName: 'Profesional Especializado',
+      departmentName: 'Dirección de Formación',
+      functions: '1. Formular planes institucionales. 2. Presentar informes de gestión. 3. Formular planes institucionales. 4. Atender auditorías internas.',
+    });
+
+    expect(normalized.functions).toEqual([
+      'Formular planes institucionales.',
+      'Presentar informes de gestión.',
+      'Atender auditorías internas.',
+    ]);
+  });
+
+  it('reporta en la carga masiva cuántas funciones repetidas se omitieron', async () => {
+    const service = buildService([]);
+    const result = await service.validateBulk([
+      {
+        rowNumber: 1,
+        positionCode: '2028',
+        gradeCode: '24',
+        combinedCode: '202824',
+        hierarchicalLevel: 'Profesional',
+        positionName: 'Profesional Especializado',
+        departmentName: 'Dirección de Formación',
+        functions: '1. Formular planes institucionales. 2. Formular planes institucionales.',
+      },
+    ] as any);
+
+    expect(result.results[0].status).toBe('valid');
+    expect(result.results[0].message).toContain('Se omitieron 1 función repetida');
   });
 
   it('valida todas las filas de una carga antes de persistir', async () => {
@@ -384,7 +426,8 @@ describe('LaborFunctionsService strict association', () => {
     const profileRepository = { find: jest.fn().mockResolvedValue([{ ...profile, match_key: 'legacy-key' }]), save: jest.fn() };
     const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
     const service = new LaborFunctionsService({} as any, {} as any, {} as any,
-      { transaction: jest.fn(async (callback) => callback(manager)) } as any);
+      { transaction: jest.fn(async (callback) => callback(manager)) } as any,
+      { isEnabled: () => false } as any);
     if (method === 'create') {
       await expect(service.create(groupPayload)).rejects.toThrow('Ya existe un registro');
     } else {
@@ -406,6 +449,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       { find: jest.fn().mockResolvedValue([]) } as any,
       {} as any,
+      { isEnabled: () => false } as any,
     );
 
     const result = await service.list({ page: 24, limit: 15 });
@@ -422,6 +466,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       { find: jest.fn().mockResolvedValue([]) } as any,
       {} as any,
+      { isEnabled: () => false } as any,
     );
 
     await service.list({ page: 1, limit: 15 });
@@ -475,6 +520,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       dataSource as any,
+      { isEnabled: () => false } as any
     );
 
     const result = await service.update(currentProfile.id, {
@@ -525,6 +571,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       dataSource as any,
+      { isEnabled: () => false } as any
     );
 
     await expect(service.update(currentProfile.id, {
@@ -550,6 +597,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       {} as any,
+      { isEnabled: () => false } as any,
     );
 
     await expect(service.remove(profile.id)).resolves.toEqual({
@@ -581,6 +629,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       dataSource as any,
+      { isEnabled: () => false } as any
     );
 
     await expect(service.removeMany([...ids, ids[0]])).resolves.toEqual({
@@ -603,6 +652,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       { transaction: jest.fn() } as any,
+      { isEnabled: () => false } as any,
     );
 
     await expect(service.removeMany([])).rejects.toThrow(
@@ -631,6 +681,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       dataSource as any,
+      { isEnabled: () => false } as any
     );
 
     await expect(service.removeMany(ids)).rejects.toThrow(

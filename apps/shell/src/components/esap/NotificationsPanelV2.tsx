@@ -179,6 +179,47 @@ function tryHandlePtaNotificationInApp(
   }
 }
 
+/**
+ * Intenta manejar in-app las notificaciones de Control Interno Disciplinario
+ * cuyo `url_accion` sigue el patrón `/?module=control-disciplinario&processId=...`
+ * o `/control-disciplinario?...`.
+ */
+function tryHandleControlDisciplinarioNotificationInApp(
+  url: string,
+  notif: { datos_adicionales?: any },
+): boolean {
+  try {
+    const isDisciplinarioUrl =
+      url.startsWith('/control-disciplinario') ||
+      url.includes('module=control-disciplinario') ||
+      notif.datos_adicionales?.processId ||
+      notif.datos_adicionales?.radicadoProceso;
+    if (!isDisciplinarioUrl) return false;
+
+    let processId = notif.datos_adicionales?.processId;
+    let radicado = notif.datos_adicionales?.radicadoProceso || notif.datos_adicionales?.radicado;
+    let autoId = notif.datos_adicionales?.autoId;
+    let noticiaId = notif.datos_adicionales?.noticiaId;
+
+    const queryStart = url.indexOf('?');
+    if (queryStart !== -1) {
+      const params = new URLSearchParams(url.slice(queryStart + 1));
+      processId = params.get('processId') || processId;
+      radicado = params.get('radicado') || radicado;
+      autoId = params.get('autoId') || autoId;
+      noticiaId = params.get('noticiaId') || noticiaId;
+    }
+
+    const detail = { processId, radicado, autoId, noticiaId, seccion: 'expediente' };
+
+    sessionStorage.setItem('control-disciplinario:pendingOpenExpediente', JSON.stringify(detail));
+    window.dispatchEvent(new CustomEvent('control-disciplinario:open-expediente', { detail }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function NotificationsPanelV2({
   isOpen,
   onClose
@@ -248,6 +289,9 @@ export function NotificationsPanelV2({
     let handledInApp = tryHandleLegalNotificationInApp(url, notif);
     if (!handledInApp) {
       handledInApp = tryHandleControlInternoNotificationInApp(url, notif);
+    }
+    if (!handledInApp) {
+      handledInApp = tryHandleControlDisciplinarioNotificationInApp(url, notif);
     }
     if (!handledInApp) {
       handledInApp = tryHandlePtaNotificationInApp(url, notif);

@@ -8,6 +8,7 @@ import { AprobacionesModule } from './aprobaciones/aprobaciones.module';
 import { UniversoAuditoriasModule } from './universo-auditorias/universo-auditorias.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { ProgramaAnualModule } from './programa-anual/programa-anual.module';
+import { ProgramaAnualVersionesModule } from './programa-anual-versiones/programa-anual-versiones.module';
 import { PlanIndividualModule } from './plan-individual/plan-individual.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { EvidenciasModule } from './evidencias/evidencias.module';
@@ -26,6 +27,7 @@ import { EtapasAuditoriaModule } from './etapas-auditoria/etapas-auditoria.modul
  */
 @Module({
   imports: [
+    ProgramaAnualVersionesModule,
     PlanAnual5RolesModule,
     InformesLeyModule,
     AuditoriasModule,

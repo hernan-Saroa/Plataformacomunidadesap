@@ -45,7 +45,27 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token', 'X-User-ID', 'X-User-Roles', 'X-User-Email', 'X-User-Name'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+      'x-client-platform',
+      'x-client-version',
+      'X-Client-Platform',
+      'X-Client-Version',
+      'X-Access-Token',
+      'X-Auth-Token',
+      'X-User-ID',
+      'X-User-Roles',
+      'X-User-Email',
+      'X-User-Name',
+      'X-Frontend-Base-Url',
+      'x-frontend-base-url',
+      'X-Frontend-Url',
+      'x-frontend-url',
+    ],
     credentials: true,
     maxAge: 86400, // 24 hours
   });
@@ -65,6 +85,7 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT || 3000);
   const server = app.getHttpServer();
+  server.maxHeaderSize = 32 * 1024; // 32KB to avoid HPE_HEADER_OVERFLOW
   server.requestTimeout = requestTimeoutMs;
   server.headersTimeout = requestTimeoutMs + 1000;
   server.keepAliveTimeout = 65000;

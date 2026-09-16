@@ -32,6 +32,7 @@ import {
   IndiceElectronicoExportService,
   IndiceElectronicoDocumentoDto,
   IndiceElectronicoExpedienteDto,
+  limpiarNombreArchivo,
 } from '../services/indice-electronico-export.service';
 import {
   CreateDisciplinaryProcessDto,
@@ -57,6 +58,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { diskStorage, MulterError } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
@@ -72,6 +74,9 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
   'SECRETARIA_RADICADOR',
+  'SECRETARIO_RADICADOR',
+  'RADICADOR_DISCIPLINARIO',
+  'RADICADOR',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -118,20 +123,33 @@ export class ProcessController {
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
-    if (typeof role === 'string') {
-      const normalized = role.trim().toUpperCase();
-      return normalized || null;
+    const raw =
+      typeof role === 'string'
+        ? role
+        : role && typeof role === 'object'
+          ? (role as any).code || (role as any).name || (role as any).nombre || ''
+          : '';
+
+    if (!raw || typeof raw !== 'string') return null;
+
+    const normalized = raw
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+
+    if (
+      normalized === 'SECRETARIA_RADICADOR' ||
+      normalized === 'SECRETARIO_RADICADOR' ||
+      normalized === 'RADICADOR_DISCIPLINARIO' ||
+      normalized === 'RADICADOR' ||
+      normalized.includes('SECRETARI') ||
+      normalized.includes('RADICADOR')
+    ) {
+      return 'SECRETARIA_RADICADOR';
     }
 
-    if (role && typeof role === 'object' && 'code' in role) {
-      const code = (role as { code?: unknown }).code;
-      if (typeof code === 'string') {
-        const normalized = code.trim().toUpperCase();
-        return normalized || null;
-      }
-    }
-
-    return null;
+    return normalized || null;
   }
 
   private extractNormalizedRoles(req: AuthenticatedRequest): Set<string> {
@@ -149,7 +167,11 @@ export class ProcessController {
     const normalizedRoles = this.extractNormalizedRoles(req);
 
     for (const role of normalizedRoles) {
-      if (DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role)) {
+      if (
+        DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role) ||
+        role.includes('RADICADOR') ||
+        role.includes('SECRETARI')
+      ) {
         return true;
       }
     }
@@ -179,13 +201,31 @@ export class ProcessController {
     );
   }
 
+  private async hasFullSensitiveAccessByPermissions(req: AuthenticatedRequest): Promise<boolean> {
+    const normalizedRoles = Array.from(this.extractNormalizedRoles(req));
+    if (normalizedRoles.length === 0) return false;
+
+    if (normalizedRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))) {
+      return true;
+    }
+
+    const userPermissions = await this.permissionsService.getPermissionsByRoles(normalizedRoles);
+    return userPermissions.some(perm =>
+      perm === 'control-disciplinario.es_jefe_ocid' ||
+      perm === 'control-disciplinario.es_radicador' ||
+      perm === 'control-disciplinario.procesos.view_all' ||
+      perm === 'control-disciplinario.expediente-electronico.view_all'
+    );
+  }
+
   private async getSensitiveAccessContext(req: AuthenticatedRequest): Promise<{
     fullAccess: boolean;
     canViewAllExpedientes: boolean;
     userId?: string;
     email?: string;
   }> {
-    const legacyFullAccess = this.hasFullSensitiveAccess(req);
+    const hasFullPermission = await this.hasFullSensitiveAccessByPermissions(req);
+    const legacyFullAccess = hasFullPermission || this.hasFullSensitiveAccess(req);
     const canViewAll = legacyFullAccess || await this.hasExpedienteViewAllPermission(req);
 
     return {
@@ -360,7 +400,8 @@ export class ProcessController {
     return await this.processService.changeStage(
       id,
       changeStageDto.stageId,
-      changeStageDto.kanbanNotice
+      changeStageDto.kanbanNotice,
+      req.user?.roles
     );
   }
 
@@ -1110,6 +1151,7 @@ export class ProcessController {
   /**
    * Descargar documento del expediente
    */
+  @Public()
   @Get(':id/documents/:documentId/download')
   @ApiOperation({
     summary: 'Descargar documento',
@@ -1126,7 +1168,9 @@ export class ProcessController {
     @Query('view') view: string,
     @Res() res: Response,
   ) {
-    await this.ensureSensitiveProcessAccess(req, processId);
+    if (req.user) {
+      await this.ensureSensitiveProcessAccess(req, processId);
+    }
     const evidencias = await this.processService.getEvidenceByProcessId(processId);
     let documento: any = evidencias.find(e => e.id === documentId);
 
@@ -1179,7 +1223,8 @@ export class ProcessController {
     }
 
     // Obtener el nombre original del archivo para la cabecera Content-Disposition
-    const nombreArchivo = documento.filename || documento.nombreDocumento || 'documento';
+    const rawNombre = documento.filename || documento.nombreDocumento || 'documento';
+    const nombreArchivo = limpiarNombreArchivo(rawNombre) || rawNombre;
 
     // Si es para visualización, enviar con content-type adecuado y disposition inline
     if (view === 'true') {
@@ -1303,7 +1348,7 @@ export class ProcessController {
    * Solo disponible para el Radicador (rol SECRETARIA_RADICADOR)
    */
   @Get('export')
-  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
   @ApiOperation({
     summary: 'Exportar informe de vencimientos',
     description: 'Genera y descarga el informe de vencimientos de los procesos disciplinarios en formato Excel',

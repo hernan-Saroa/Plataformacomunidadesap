@@ -378,7 +378,9 @@ export class DocumentConversionService {
       const footerImageStyle = shouldConstrainFooterImages
         ? 'display:block; width:100%; height:auto; object-fit:contain;'
         : 'display:block; width:100%;';
-      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '2cm';
+      // Margen inferior para dar espacio completo al banner del pie institucional,
+      // las 5 líneas de contacto y la paginación para TODOS los autos con pie
+      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '4.8cm';
       const headerImagesHtml = headerContent.images
         .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
@@ -394,56 +396,41 @@ export class DocumentConversionService {
       const footerTextHtml = footerContent.textBlocks
         .map(
           (texto) =>
-            `<div style="text-align:left; font-size:7pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
+            `<div style="text-align:left; font-size:7pt; line-height:1.2;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
 
       const hasHeader = headerImagesHtml.length > 0 || headerTextHtml.length > 0;
       const hasFooter = footerImagesHtml.length > 0 || footerTextHtml.length > 0;
 
-      // Puppeteer no hereda los estilos de la página en las plantillas de
-      // encabezado/pie y fija un tamaño de fuente diminuto por defecto: se fuerzan
-      // los estilos en línea y se deja padding lateral igual al margen del cuerpo.
-      // El "Página X de Y" del pie original es un campo de Word (no <w:t>), así que
-      // no lo trae la extracción: se reconstruye con los contadores de Puppeteer.
-      const footerPageNumberHtml =
-        '<div style="text-align:center; font-size:7pt; line-height:1.3;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+      const headerTemplate = this.buildHeaderTemplate(headerImagesHtml, headerTextHtml);
+      const footerTemplate = this.buildFooterTemplate(footerImagesHtml, footerTextHtml);
 
-      // La imagen del membrete va a sangre (ancho completo). El texto del pie
-      // (dirección) se superpone sobre el banner por la izquierda, como en el
-      // documento original; si no hay imagen, simplemente se apila.
-      const headerTemplate = hasHeader
-        ? `<div style="width:100%; -webkit-print-color-adjust:exact;">${headerImagesHtml}${
-            headerTextHtml
-              ? `<div style="padding:1mm 2cm 0; box-sizing:border-box;">${headerTextHtml}</div>`
-              : ''
-          }</div>`
-        : '<div></div>';
-      const footerBodyHtml = footerImagesHtml
-        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:0; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
-        : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
-      const footerTemplate = hasFooter
-        ? `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact;">${footerPageNumberHtml}${footerBodyHtml}</div>`
-        : '<div></div>';
-
-      // Crear HTML completo con estilos básicos
+      // Crear HTML completo con estilos limpios sin doble margen de body
       const fullHtml = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
           <style>
+            @page {
+              size: A4;
+            }
             body {
               font-family: 'Times New Roman', Times, serif;
               font-size: 12pt;
-              line-height: 1.5;
-              margin: 2cm;
+              line-height: 1.4;
+              margin: 0;
+              padding: 0;
+              color: #000;
             }
             .mammoth-style-wrapper {
               max-width: 100%;
             }
-            /* Estilos adicionales para mejor compatibilidad */
-            p { margin: 0 0 10pt 0; }
+            p { 
+              margin: 0 0 8pt 0; 
+              text-align: justify;
+            }
             table { border-collapse: collapse; width: 100%; }
             td, th { border: 1px solid #000; padding: 4pt; }
           </style>
@@ -468,7 +455,6 @@ export class DocumentConversionService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--single-process',
           '--disable-gpu'
         ]
       });
@@ -491,11 +477,6 @@ export class DocumentConversionService {
         margin: {
           top: hasHeader ? '3.8cm' : '2cm',
           right: '2cm',
-          // El pie institucional es alto (banner a ancho completo + varias líneas
-          // de dirección superpuestas): necesita un margen inferior generoso o se
-          // recorta. Debe coincidir con el yPosition de la firma en
-          // pdf-modifier.service para que no se solapen.
-          // Para inhibitorio usamos margen mayor (5.5cm) para que quepan los iconos ICONTEC/ISO
           bottom: hasFooter ? footerMarginBottom : '2cm',
           left: '2cm'
         }
@@ -512,6 +493,48 @@ export class DocumentConversionService {
         await browser.close();
       }
     }
+  }
+
+  /**
+   * Construye la plantilla HTML del encabezado para la exportación a PDF.
+   * La imagen del membrete se renderiza a ancho completo y el texto institucional
+   * se superpone de forma absoluta en el espacio superior del banner, evitando que
+   * se desplace hacia abajo y se solape con el cuerpo del auto.
+   */
+  buildHeaderTemplate(headerImagesHtml: string, headerTextHtml: string): string {
+    const hasHeader = Boolean(headerImagesHtml || headerTextHtml);
+    if (!hasHeader) {
+      return '<div></div>';
+    }
+
+    const headerBodyHtml = headerImagesHtml
+      ? `<div style="position:relative; width:100%;">${headerImagesHtml}${
+          headerTextHtml
+            ? `<div style="position:absolute; left:0; top:8px; width:100%; padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`
+            : ''
+        }</div>`
+      : `<div style="padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`;
+
+    return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">${headerBodyHtml}</div>`;
+  }
+
+  /**
+   * Construye la plantilla HTML del pie de página para la exportación a PDF.
+   */
+  buildFooterTemplate(footerImagesHtml: string, footerTextHtml: string): string {
+    const hasFooter = Boolean(footerImagesHtml || footerTextHtml);
+    if (!hasFooter) {
+      return '<div></div>';
+    }
+
+    const footerPageNumberHtml =
+      '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+
+    const footerBodyHtml = footerImagesHtml
+      ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
+      : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
+
+    return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`;
   }
 
   private escapePowerShellString(value: string): string {

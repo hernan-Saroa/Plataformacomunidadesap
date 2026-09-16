@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, FileSpreadsheet
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -93,6 +93,73 @@ function formatearDiasRestantes(diasRestantes: number): { texto: string; color: 
   return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#10B981', bg: '#D1FAE5' };
 }
 
+/** Mapea un TerminoProcesal del backend a la forma que usa el frontend (SolicitudInforme). */
+function mapTerminoASolicitud(t: any): SolicitudInforme {
+  return {
+    id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
+    etapa: t.estado as any,
+    tipoInforme: t.origenModulo,
+    moduloOrigen: t.origenModulo, // Add this for filter compatibility
+    enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
+    destinatario: t.destinatario || '',
+    fundamentoNormativo: t.fundamentoNormativo || [],
+    radicadoExterno: t.numeroRadicado || 'N/A',
+    asunto: t.nombreActuacion,
+    descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '',
+
+    responsable: nombreLegible(t.responsableNombre) || nombreLegible(t.responsableId) || 'Sin asignar',
+    responsableId: t.responsableId || null, // Preserve UUID for filtering
+    fechaSolicitud: new Date(t.fechaBase),
+    fechaVencimiento: new Date(t.fechaVencimiento),
+    diasTotales: t.diasTermino,
+    diasRestantes: t.calculo?.diasRestantes ?? 0,
+    datosRequeridos: [],
+    horasAnticipacionAlertaPersonalizada: t.horasAnticipacionAlertaPersonalizada ?? null,
+    recordatorioManualHorasAnticipacion: t.recordatorioManualHorasAnticipacion ?? null,
+    metadata: { uuid: t.id, updatedAt: t.updatedAt }, // Store real UUID here
+  } as SolicitudInforme;
+}
+
+/**
+ * Mapea un evento del endpoint de calendario a SolicitudInforme.
+ *
+ * Se usa solo como respaldo para la pestaña "Eliminados": a diferencia del listado, el calendario
+ * nunca ha filtrado por estado, así que devuelve también los términos con soft delete incluso en
+ * versiones del backend que no soportan `?estado=ELIMINADO`. Trae menos campos (el título viene
+ * como "RADICADO - Actuación"), pero sí el UUID real, que es lo que necesitan Restaurar y
+ * Eliminar Permanentemente.
+ */
+function mapEventoCalendarioASolicitud(evento: any): SolicitudInforme {
+  const titulo = String(evento.title || '');
+  const separador = titulo.indexOf(' - ');
+  const radicado = separador > 0 ? titulo.slice(0, separador).trim() : '';
+  const actuacion = separador > 0 ? titulo.slice(separador + 3).trim() : titulo.trim();
+  const origen = evento.extendedProps?.origen;
+
+  return {
+    id: radicado || String(evento.id).substring(0, 8),
+    etapa: evento.extendedProps?.estado as any,
+    tipoInforme: origen,
+    moduloOrigen: origen,
+    enteSolicitante: origen === 'MANUAL' ? 'Usuario' : 'Sistema',
+    destinatario: '',
+    fundamentoNormativo: [],
+    radicadoExterno: radicado || 'N/A',
+    asunto: actuacion || 'Sin título',
+    descripcion: '',
+    responsable: 'Sin asignar',
+    responsableId: null,
+    fechaSolicitud: new Date(evento.start),
+    fechaVencimiento: new Date(evento.start),
+    diasTotales: 0,
+    diasRestantes: 0,
+    datosRequeridos: [],
+    horasAnticipacionAlertaPersonalizada: null,
+    recordatorioManualHorasAnticipacion: null,
+    metadata: { uuid: evento.id },
+  } as SolicitudInforme;
+}
+
 /** Agrupa solicitudes por período (mes-año de vencimiento) para "VistaLista". */
 function agruparPorPeriodo(solicitudes: SolicitudInforme[]): Array<{ clave: string; etiqueta: string; items: SolicitudInforme[] }> {
   const grupos: Record<string, SolicitudInforme[]> = {};
@@ -143,8 +210,10 @@ export function ModuloTerminosInformesV3() {
   const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
   const [terminoAEliminar, setTerminoAEliminar] = useState<{ id: string, permanente: boolean } | null>(null);
   const [modalExportarOpen, setModalExportarOpen] = useState(false);
+  const [formatoExportar, setFormatoExportar] = useState<'pdf' | 'excel'>('pdf');
 
   const [loading, setLoading] = useState(true);
+  const [terminosEliminados, setTerminosEliminados] = useState<SolicitudInforme[]>([]);
 
   // NOTA: Las notificaciones de términos urgentes/críticos se manejan
   // ahora centralmente en GestionLegalFull para mayor consistencia
@@ -178,13 +247,36 @@ export function ModuloTerminosInformesV3() {
       }));
   }, [solicitudes]);
 
-  // ✅ Función para restaurar una solicitud archivada
-  // `itemId` ya es el UUID real de backend (ver itemsArchivados), no el radicado visible.
+  // ✅ Items eliminados (soft delete) para la pestaña "Eliminados" de Archivados.
+  const itemsEliminados = useMemo(() => {
+    return terminosEliminados.map(s => ({
+      id: s.metadata?.uuid || s.id,
+      codigo: s.id,
+      nombre: s.asunto || 'Sin título',
+      tipo: s.tipoInforme || 'Término',
+      estado: 'ELIMINADO' as const,
+      fechaArchivado: s.metadata?.updatedAt ? new Date(s.metadata.updatedAt) : new Date(),
+      usuarioArchivo: s.responsable || 'Sistema',
+      motivoArchivo: s.descripcion || 'Término eliminado desde el Timeline de Vencimientos.',
+      metadatos: {
+        'Módulo': s.moduloOrigen || 'N/A',
+        'Responsable': s.responsable,
+      }
+    }));
+  }, [terminosEliminados]);
+
+  const itemsArchivadosYEliminados = useMemo(
+    () => [...itemsArchivados, ...itemsEliminados],
+    [itemsArchivados, itemsEliminados]
+  );
+
+  // ✅ Función para restaurar una solicitud archivada o eliminada
+  // `itemId` ya es el UUID real de backend (ver itemsArchivados/itemsEliminados), no el radicado visible.
   const handleRestaurar = async (itemId: string) => {
     try {
       await legalService.updateTermino(itemId, { estado: 'PENDIENTE', closedAt: null });
       toast.success('Término restaurado exitosamente');
-      await fetchData();
+      await Promise.all([fetchData(), fetchEliminados()]);
     } catch (e) {
       toast.error('Error al restaurar término');
     }
@@ -203,11 +295,14 @@ export function ModuloTerminosInformesV3() {
       // `id` ya es el UUID real de backend, asignado en el momento del clic (ver handleEliminar,
       // VistaTimeline/VistaLista y ModalDetalleSolicitudInforme). No se vuelve a buscar por el id
       // visible (radicado), que puede repetirse entre varios términos del mismo expediente.
-      await legalService.eliminarTermino(id);
+      // Un delete "normal" (papelera del Timeline) es soft delete: el término pasa a la
+      // pestaña "Eliminados" de Archivados en vez de borrarse de una vez. Solo "Eliminar
+      // Permanentemente" desde esa pestaña hace un borrado real e irreversible.
+      await legalService.eliminarTermino(id, permanente);
       toast.success(permanente ? 'Término eliminado permanentemente' : 'Término eliminado');
       setModalDetalleOpen(false);
       setModalEliminarOpen(false);
-      await fetchData();
+      await Promise.all([fetchData(), fetchEliminados()]);
     } catch (e) {
       toast.error('Error al eliminar término');
     }
@@ -221,29 +316,7 @@ export function ModuloTerminosInformesV3() {
       setLoading(true);
       const data = await legalService.getTerminosListado();
       // Map backend TerminoProcesal to frontend SolicitudInforme
-      const mapped: SolicitudInforme[] = data.map((t: any) => ({
-        id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
-        etapa: t.estado as any,
-        tipoInforme: t.origenModulo,
-        moduloOrigen: t.origenModulo, // Add this for filter compatibility
-        enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
-        destinatario: t.destinatario || '',
-        fundamentoNormativo: t.fundamentoNormativo || [],
-        radicadoExterno: t.numeroRadicado || 'N/A',
-        asunto: t.nombreActuacion,
-        descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
-
-        responsable: nombreLegible(t.responsableNombre) || nombreLegible(t.responsableId) || 'Sin asignar',
-        responsableId: t.responsableId || null, // Preserve UUID for filtering
-        fechaSolicitud: new Date(t.fechaBase),
-        fechaVencimiento: new Date(t.fechaVencimiento),
-        diasTotales: t.diasTermino,
-        diasRestantes: t.calculo?.diasRestantes ?? 0,
-        datosRequeridos: [],
-        horasAnticipacionAlertaPersonalizada: t.horasAnticipacionAlertaPersonalizada ?? null,
-        recordatorioManualHorasAnticipacion: t.recordatorioManualHorasAnticipacion ?? null,
-        metadata: { uuid: t.id } // Store real UUID here
-      }));
+      const mapped: SolicitudInforme[] = data.map(mapTerminoASolicitud);
 
       // ✅ Filtrado por rol RESUELVE_GESTION_LEGAL
       const currentUser = authService.getCurrentUser() as any;
@@ -303,9 +376,53 @@ export function ModuloTerminosInformesV3() {
     }
   };
 
+  // Términos eliminados (soft delete), para la pestaña "Eliminados" de Archivados.
+  // El listado principal excluye ELIMINADO por defecto, así que se piden aparte.
+  const fetchEliminados = async () => {
+    try {
+      const data = await legalService.getTerminosListado(undefined, 'ELIMINADO');
+      // Salvaguarda: no confiar ciegamente en que el backend haya aplicado el filtro
+      // `estado=ELIMINADO` (p. ej. una versión desplegada desactualizada que lo ignore y
+      // devuelva el listado activo completo) — de lo contrario, términos activos/recién
+      // creados aparecerían de inmediato en "Eliminados", y "Eliminar Permanentemente"
+      // desde ahí borraría términos que en realidad seguían vigentes.
+      const soloEliminados = data.filter((t: any) => t.estado === 'ELIMINADO');
+
+      // Si el listado trajo términos pero ninguno eliminado, el backend ignoró el filtro (versión
+      // sin soporte para `?estado=`). En ese caso no se puede confiar en esa respuesta —serían
+      // términos activos— y se recuperan los eliminados por el calendario, que nunca ha filtrado
+      // por estado y por tanto sí los devuelve en cualquier versión del servicio.
+      if (soloEliminados.length === 0 && data.length > 0) {
+        console.warn(
+          `[Términos] El servicio ignoró el filtro estado=ELIMINADO (devolvió ${data.length} términos, ninguno eliminado). ` +
+          'Recuperando los eliminados desde el calendario.',
+        );
+        setTerminosEliminados(await fetchEliminadosDesdeCalendario());
+        return;
+      }
+
+      setTerminosEliminados(soloEliminados.map(mapTerminoASolicitud));
+    } catch (error) {
+      console.error('Error fetching términos eliminados:', error);
+      toast.error('Error al cargar los términos eliminados', {
+        description: (error as any)?.message || 'Intente nuevamente.',
+      });
+    }
+  };
+
+  /** Respaldo de `fetchEliminados` vía calendario (ver mapEventoCalendarioASolicitud). */
+  const fetchEliminadosDesdeCalendario = async (): Promise<SolicitudInforme[]> => {
+    // Rango amplio a propósito: interesa todo el histórico, no una ventana de fechas.
+    const eventos = await legalService.getTerminosCalendario('1900-01-01', '2999-12-31');
+    return eventos
+      .filter((e: any) => e.extendedProps?.estado === 'ELIMINADO')
+      .map(mapEventoCalendarioASolicitud);
+  };
+
 
   useEffect(() => {
     fetchData();
+    fetchEliminados();
   }, []);
 
   // NOTA: La generación de notificaciones para términos urgentes/críticos
@@ -752,7 +869,7 @@ export function ModuloTerminosInformesV3() {
       {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={canModifyTerminos ? handleArchivar : undefined} onEliminar={canModifyTerminos ? handleEliminar : undefined} />}
       {vistaActual === 'archivados' && (
         <VistaArchivados
-          items={itemsArchivados}
+          items={itemsArchivadosYEliminados}
           moduloNombre="Términos e Informes"
           onRestaurar={canModifyTerminos ? handleRestaurar : undefined}
           onEliminarPermanente={canModifyTerminos ? handleEliminarPermanente : undefined}
@@ -803,7 +920,9 @@ export function ModuloTerminosInformesV3() {
                 <div>
                   <h3 className="font-bold text-gray-900">Eliminar Término</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    ¿Confirma que desea eliminar este término? Esta acción no se puede deshacer.
+                    {terminoAEliminar?.permanente
+                      ? '¿Confirma que desea eliminar este término? Esta acción no se puede deshacer.'
+                      : '¿Confirma que desea eliminar este término? Pasará a "Archivados > Eliminados", donde podrá restaurarlo o eliminarlo de forma permanente.'}
                   </p>
                 </div>
               </div>
@@ -830,45 +949,82 @@ export function ModuloTerminosInformesV3() {
 
       {/* Modal Seleccionar Formato de Exportación */}
       {modalExportarOpen && (
-        <Dialog open={modalExportarOpen} onOpenChange={setModalExportarOpen}>
-          <DialogContent hideCloseButton className="max-w-sm">
-            <DialogTitle>Exportar términos e informes</DialogTitle>
-            <DialogDescription>
-              Seleccione el formato en el que desea descargar {solicitudesFiltradas.length} término{solicitudesFiltradas.length === 1 ? '' : 's'}.
-            </DialogDescription>
-
-            <div className="flex justify-center gap-4 py-3">
-              <Button
-                variant="outline"
-                onClick={handleExportarPDF}
-                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-red-300 hover:bg-red-50/60"
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
-                  <FileText className="w-5 h-5" />
-                </span>
-                <span className="flex flex-col items-center leading-tight">
-                  <span className="text-sm font-semibold text-gray-900">PDF</span>
-                  <span className="text-xs text-gray-500">Documento</span>
-                </span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleExportarExcel}
-                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-green-300 hover:bg-green-50/60"
-              >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-green-600">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </span>
-                <span className="flex flex-col items-center leading-tight">
-                  <span className="text-sm font-semibold text-gray-900">Excel</span>
-                  <span className="text-xs text-gray-500">.xlsx</span>
-                </span>
-              </Button>
+        <Dialog
+          open={modalExportarOpen}
+          onOpenChange={(open) => {
+            setModalExportarOpen(open);
+            if (open) setFormatoExportar('pdf');
+          }}
+        >
+          <DialogContent hideCloseButton size="md">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <FileText className="w-5 h-5" />
+              </span>
+              <div>
+                <DialogTitle>Exportar vencimiento de informes</DialogTitle>
+                <DialogDescription>
+                  Se descargarán{' '}
+                  <span className="font-semibold text-gray-900">
+                    {solicitudesFiltradas.length} informe{solicitudesFiltradas.length === 1 ? '' : 's'}
+                  </span>{' '}
+                  con su estado de vencimiento actual.
+                </DialogDescription>
+              </div>
             </div>
 
-            <div className="flex justify-center border-t border-gray-100 pt-3">
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setFormatoExportar('pdf')}
+                aria-pressed={formatoExportar === 'pdf'}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${formatoExportar === 'pdf' ? 'border-amber-400 bg-amber-50/60' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-bold text-gray-600">
+                  PDF
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Documento PDF</span>
+                  <span className="block text-xs text-gray-500">Listo para imprimir, firmar o compartir por correo</span>
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${formatoExportar === 'pdf' ? 'border-amber-500' : 'border-gray-300'
+                  }`}>
+                  {formatoExportar === 'pdf' && <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormatoExportar('excel')}
+                aria-pressed={formatoExportar === 'excel'}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${formatoExportar === 'excel' ? 'border-amber-400 bg-amber-50/60' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-bold text-gray-600">
+                  XLS
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Hoja de cálculo Excel</span>
+                  <span className="block text-xs text-gray-500">Datos abiertos para filtrar, ordenar o cruzar cifras</span>
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${formatoExportar === 'excel' ? 'border-amber-500' : 'border-gray-300'
+                  }`}>
+                  {formatoExportar === 'excel' && <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />}
+                </span>
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400">
+              Los términos vencidos se marcarán en el documento tal como aparecen en el tablero.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
               <Button variant="ghost" onClick={() => setModalExportarOpen(false)} className="text-gray-500 hover:text-gray-700">
                 Cancelar
+              </Button>
+              <Button onClick={formatoExportar === 'pdf' ? handleExportarPDF : handleExportarExcel}>
+                Exportar {formatoExportar === 'pdf' ? 'PDF' : 'Excel'}
               </Button>
             </div>
           </DialogContent>

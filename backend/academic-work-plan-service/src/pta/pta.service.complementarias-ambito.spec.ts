@@ -33,7 +33,9 @@ describe('PtaService - ámbitos de Complementarias (EFDS-1353)', () => {
     const part = await clasificar(service, [
       { actividad_id: 'A_PRE', horas: 10 },
       { actividad_id: 'A_POS', horas: 20 },
-      { actividad_id: 'A_TER', horas: 30 },
+      // La Decanatura que resuelve es la de la territorial capturada en la
+      // complementaria: sin ella no hay ámbito territorial (ver más abajo).
+      { actividad_id: 'A_TER', horas: 30, territorial_id: 'Meta' },
       { actividad_id: 'A_GP', horas: 40 },
     ]);
 
@@ -51,10 +53,72 @@ describe('PtaService - ámbitos de Complementarias (EFDS-1353)', () => {
       { id: 'A_MIX', nivel_programa: 'posgrado', tipo_aprobacion: 'decanatura' },
     ]);
 
-    const part = await clasificar(service, [{ actividad_id: 'A_MIX', horas: 10 }]);
+    const part = await clasificar(service, [{ actividad_id: 'A_MIX', horas: 10, territorial_id: 'Meta' }]);
 
     expect(part.complementarias_territorial).toHaveLength(1);
     expect(part.complementarias_posgrado).toHaveLength(0);
+  });
+
+  // Un ítem de Decanatura SIN territorial capturada (datos previos a que el
+  // formulario la volviera obligatoria, o cargas desde el backoffice) no tiene
+  // Decanatura a la cual enrutarse. Antes quedaba igual en
+  // 'complementarias_territorial' y nadie salvo el superusuario podía
+  // resolverlo: assertAlcanceComplementariasTerritoriales exige alcance sobre
+  // TODOS los pares y un par sin territorial nunca es "propio". El PTA quedaba
+  // trabado sin salida.
+  it('no enruta a Decanatura un ítem sin territorial capturada', async () => {
+    const service = conCatalogo([
+      { id: 'A_TER', tipo_aprobacion: 'decanatura' },
+      { id: 'A_TER_POS', tipo_aprobacion: 'decanatura', nivel_programa: 'posgrado' },
+    ]);
+
+    const part = await clasificar(service, [
+      { actividad_id: 'A_TER', horas: 30 },
+      { actividad_id: 'A_TER_POS', horas: 20 },
+    ]);
+
+    expect(part.complementarias_territorial).toHaveLength(0);
+    // Con nivel declarado se resuelve por nivel; sin nivel, por el catch-all.
+    // Nunca por Gestión Profesoral: la actividad está configurada como Decanatura.
+    expect(part.complementarias_posgrado).toHaveLength(1);
+    expect(part.complementarias).toHaveLength(1);
+    expect(part.complementarias_gestion_profesoral).toHaveLength(0);
+  });
+
+  // El conteo en lote del listado (attachComponentApprovalProgress) replica el
+  // enrutamiento a mano: debe aplicar exactamente la misma regla, o el rótulo
+  // colapsado "Complementarias" contaría las horas en un componente distinto
+  // del que realmente se aprueba.
+  it('el enrutamiento en lote del listado aplica la misma regla', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    service.ptaComponentApprovalRepo = { find: jest.fn().mockResolvedValue([]) };
+    service.configuracionRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    service.logger = { warn: jest.fn() };
+    service.getCatalogoActividadesComplementarias = jest.fn().mockResolvedValue([
+      { id: 'A_TER', tipo_aprobacion: 'decanatura' },
+      { id: 'A_TER_CON', tipo_aprobacion: 'decanatura' },
+    ]);
+    service.getCatalogoActividadesAcademicoAdmin = jest.fn().mockResolvedValue([]);
+
+    const dtos: any[] = [{
+      id: 'pta-1',
+      estado: 'Pendiente Jefatura',
+      horas_investigacion: 0,
+      extension_actividades: [],
+      asignaturas: [],
+      complementarias: [
+        { actividad_id: 'A_TER', horas: 30 },
+        { actividad_id: 'A_TER_CON', horas: 12, territorial_id: 'Meta' },
+      ],
+    }];
+
+    await service.attachComponentApprovalProgress(dtos);
+
+    expect(dtos[0].complementarias_por_componente).toEqual(expect.objectContaining({
+      complementarias: 30,
+      complementarias_territorial: 12,
+      complementarias_gestion_profesoral: 0,
+    }));
   });
 
   // Config previa a EFDS-1353: sin ámbito declarado se mantiene el catch-all,

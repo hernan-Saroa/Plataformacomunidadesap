@@ -2,9 +2,12 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import {
   DisciplinaryProcess,
   ProcessStatus,
@@ -25,6 +28,8 @@ import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-a
 import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
+import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
+import { buildEmailButton } from '../common/email-button.util';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { NotificationClientService } from './notification-client.service';
@@ -53,6 +58,7 @@ export class ProcessService {
     private newsService: NewsService,
     private alertasService: AlertasService,
     private notificationClient: NotificationClientService,
+    @Optional() private readonly httpService?: HttpService,
   ) { }
 
   private normalizeAccessEmail(email?: string | null): string | null {
@@ -656,6 +662,23 @@ export class ProcessService {
             datos_adicionales: { procesoId: resultado.id, radicado: resultado.radicadoProceso },
           }).catch(() => {});
         }
+
+        // Notificar también a todos los radicadores del nuevo proceso creado y asignado
+        await this.notificarRadicadoresProceso(
+          `[NUEVO PROCESO] Proceso disciplinario asignado: ${resultado.radicadoProceso}`,
+          'Nuevo proceso disciplinario creado y asignado',
+          `Se ha creado el proceso disciplinario ${resultado.radicadoProceso} y se ha asignado al profesional ${resultado.abogadoAsignadoNombre}.`,
+          [
+            { label: 'Radicado del Proceso', valor: resultado.radicadoProceso },
+            { label: 'Profesional Asignado', valor: resultado.abogadoAsignadoNombre },
+            { label: 'Etapa Inicial', valor: resultado.etapaActual || 'Indagación Previa' },
+            ...(comentario ? [{ label: 'Observaciones', valor: comentario }] : []),
+          ],
+          'PROCESO_CREADO_RADICADOR',
+          'Briefcase',
+          '#2563EB',
+          { procesoId: resultado.id, radicado: resultado.radicadoProceso },
+        );
       } catch (notifError) {
         console.error('Error creando notificación de asignación:', notifError);
         // No fallamos la transacción principal si falla la notificación
@@ -1010,20 +1033,26 @@ export class ProcessService {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
   }
 
+  private isCargosStage(stageName: string): boolean {
+    if (!stageName) return false;
+    const s = stageName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    return s === 'CARGOS' || s.includes('CARGO') || s.includes('PLIEGO') || s === 'EVALUACION' || s.includes('EVALUAC');
+  }
+
+  private isJuzgamientoStage(stageName: string): boolean {
+    if (!stageName) return false;
+    const s = stageName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    return s === 'JUZGAMIENTO' || s.includes('JUZG');
+  }
+
   async changeStage(
     id: string,
     stageId: string,
-    kanbanNotice?: string
+    kanbanNotice?: string,
+    userRoles?: unknown,
   ): Promise<DisciplinaryProcess> {
     try {
       const proceso = await this.findById(id, false);
-
-      // if (proceso.estado === ProcessStatus.CERRADO) {
-      //   throw new HttpException(
-      //     'No se puede cambiar la etapa de un proceso CERRADO',
-      //     HttpStatus.FORBIDDEN,
-      //   );
-      // }
 
       let newStageConfig: StageConfiguration | null;
 
@@ -1035,6 +1064,21 @@ export class ProcessService {
         newStageConfig = await this.stageConfigurationRepository.findOne({
           where: { etapa: stageId, activo: true },
         });
+        if (!newStageConfig) {
+          // Búsqueda insensible a mayúsculas/minúsculas
+          newStageConfig = await this.stageConfigurationRepository
+            .createQueryBuilder('stage')
+            .where('LOWER(stage.etapa) = LOWER(:stageId)', { stageId })
+            .andWhere('stage.activo = true')
+            .getOne();
+        }
+        if (!newStageConfig && this.isJuzgamientoStage(stageId)) {
+          newStageConfig = await this.stageConfigurationRepository
+            .createQueryBuilder('stage')
+            .where('UPPER(stage.etapa) LIKE :juzg', { juzg: '%JUZG%' })
+            .andWhere('stage.activo = true')
+            .getOne();
+        }
       }
 
       if (!newStageConfig) {
@@ -1045,14 +1089,72 @@ export class ProcessService {
       }
 
       // Get current stage configuration to get its orden
-      const currentStageConfig = await this.stageConfigurationRepository.findOne({
+      let currentStageConfig = await this.stageConfigurationRepository.findOne({
         where: { etapa: proceso.etapaActual, activo: true },
       });
       if (!currentStageConfig) {
-        throw new HttpException(
-          `Current stage configuration for ${proceso.etapaActual} not found`,
-          HttpStatus.BAD_REQUEST,
-        );
+        currentStageConfig = await this.stageConfigurationRepository
+          .createQueryBuilder('stage')
+          .where('LOWER(stage.etapa) = LOWER(:etapa)', { etapa: proceso.etapaActual })
+          .andWhere('stage.activo = true')
+          .getOne();
+      }
+      if (!currentStageConfig && this.isCargosStage(proceso.etapaActual)) {
+        currentStageConfig = await this.stageConfigurationRepository
+          .createQueryBuilder('stage')
+          .where('UPPER(stage.etapa) LIKE :cargos', { cargos: '%CARGO%' })
+          .orWhere('UPPER(stage.etapa) LIKE :eval', { eval: '%EVALUAC%' })
+          .andWhere('stage.activo = true')
+          .getOne();
+      }
+      if (!currentStageConfig) {
+        if (this.isCargosStage(proceso.etapaActual)) {
+          currentStageConfig = { orden: 5, etapa: proceso.etapaActual } as StageConfiguration;
+        } else {
+          throw new HttpException(
+            `Current stage configuration for ${proceso.etapaActual} not found`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
+
+      // Validación de rol Secretario/Radicador: solo puede trasladar Cargos → Juzgamiento
+      if (userRoles) {
+        const rolesArray: string[] = Array.isArray(userRoles)
+          ? userRoles.map((r: any) => (typeof r === 'string' ? r : (r?.code || r?.name || r?.nombre || ''))).filter(Boolean)
+          : typeof userRoles === 'string'
+            ? [userRoles]
+            : [];
+        const isRadicador = rolesArray.some((r: string) => {
+          const u = r.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+          return (
+            u === 'SECRETARIA_RADICADOR' ||
+            u === 'SECRETARIO_RADICADOR' ||
+            u === 'RADICADOR_DISCIPLINARIO' ||
+            u === 'RADICADOR' ||
+            u.includes('RADICADOR') ||
+            u.includes('SECRETARI')
+          );
+        });
+        const isAdminOrJefe = rolesArray.some((r: string) => {
+          const u = r.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+          return u === 'SUPER_ADMIN' || u === 'ADMIN' || u.includes('JEFE');
+        });
+
+        if (isRadicador && !isAdminOrJefe) {
+          if (this.isJuzgamientoStage(proceso.etapaActual) && this.isCargosStage(newStageConfig.etapa)) {
+            throw new HttpException(
+              'No está permitido el traslado desde Juzgamiento hacia Cargos',
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+          if (!(this.isCargosStage(proceso.etapaActual) && this.isJuzgamientoStage(newStageConfig.etapa))) {
+            throw new HttpException(
+              'El rol Secretario/Radicador únicamente puede realizar el traslado de procesos desde la etapa Cargos hacia Juzgamiento',
+              HttpStatus.FORBIDDEN,
+            );
+          }
+        }
       }
 
       if (kanbanNotice !== undefined) {
@@ -1061,7 +1163,12 @@ export class ProcessService {
 
       if (proceso.etapaActual !== newStageConfig.etapa) {
         if (proceso.estado === ProcessStatus.ACTIVO) {
-          this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+          this.validarTransicionEtapa(
+            currentStageConfig.orden,
+            newStageConfig.orden,
+            currentStageConfig.etapa,
+            newStageConfig.etapa,
+          );
         }
 
         // Calcular nuevo vencimiento
@@ -1598,7 +1705,12 @@ export class ProcessService {
    * NOTA: Se permiten movimientos hacia ATRÁS (a etapas anteriores) para dar flexibilidad.
    * Los movimientos hacia adelante deben seguir el flujo específico definido.
    */
-  private validarTransicionEtapa(ordenActual: number, ordenNueva: number): void {
+  private validarTransicionEtapa(
+    ordenActual: number,
+    ordenNueva: number,
+    etapaActualNombre?: string,
+    etapaNuevaNombre?: string,
+  ): void {
     console.log('Validating transition from orden', ordenActual, 'to orden', ordenNueva);
 
     // No puede pasar a la misma etapa
@@ -1607,6 +1719,20 @@ export class ProcessService {
         `No se puede pasar de la etapa con orden ${ordenActual} a la misma etapa`,
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    // Regla especial explícita: No se permite traslado desde Juzgamiento hacia Cargos
+    if (etapaActualNombre && etapaNuevaNombre && this.isJuzgamientoStage(etapaActualNombre) && this.isCargosStage(etapaNuevaNombre)) {
+      throw new HttpException(
+        'No está permitido el traslado desde Juzgamiento hacia Cargos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Regla especial explícita: Traslado desde Cargos hacia Juzgamiento siempre es válido
+    if (etapaActualNombre && etapaNuevaNombre && this.isCargosStage(etapaActualNombre) && this.isJuzgamientoStage(etapaNuevaNombre)) {
+      console.log('Transición permitida: Cargos → Juzgamiento');
+      return;
     }
 
     // SEGUNDA_INSTANCIA (orden 9) es etapa final, no puede salir de aquí
@@ -1906,6 +2032,23 @@ export class ProcessService {
       }).catch(() => {});
     }
 
+    // Notificar a todos los radicadores sobre la asociación de procesos
+    await this.notificarRadicadoresProceso(
+      `[PROCESOS ASOCIADOS] Asociación entre ${procesoOrigen.radicadoProceso} y ${procesoDestino.radicadoProceso}`,
+      'Procesos disciplinarios asociados',
+      `El proceso ${procesoOrigen.radicadoProceso} ha sido asociado con el proceso ${procesoDestino.radicadoProceso} (tipo: ${tipoAsociacion}). Justificación: ${justificacion}`,
+      [
+        { label: 'Proceso Origen', valor: procesoOrigen.radicadoProceso },
+        { label: 'Proceso Destino', valor: procesoDestino.radicadoProceso },
+        { label: 'Tipo de Asociación', valor: tipoAsociacion },
+        { label: 'Justificación', valor: justificacion },
+      ],
+      'PROCESOS_ASOCIADOS_RADICADOR',
+      'GitMerge',
+      '#0891B2',
+      { procesoOrigenId, procesoDestinoId, tipoAsociacion },
+    );
+
     return procesoOrigenActualizado;
   }
 
@@ -2029,5 +2172,145 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
        };
      });
    }
- }
+
+  /**
+   * Notifica a todos los usuarios con rol/permiso Radicador en la plataforma
+   * mediante notificación in-app y correo electrónico institucional ESAP.
+   */
+  private async notificarRadicadoresProceso(
+    asunto: string,
+    titulo: string,
+    mensaje: string,
+    detalles: Array<{ label: string; valor: string }>,
+    tipoNotificacion: string,
+    icono: string = 'Briefcase',
+    color: string = '#2563EB',
+    datosAdicionales?: Record<string, any>,
+  ): Promise<void> {
+    try {
+      const radicadoresRows: any[] = await this.processRepository.manager.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND perm.code = $1`,
+        ['control-disciplinario.es_radicador'],
+      );
+
+      const radicadores = (radicadoresRows || []).map((r) => ({
+        id: r.id_user,
+        email: (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim(),
+        nombre: r.nom_largo || r.username || 'Radicador',
+      }));
+
+      if (!radicadores.length) return;
+
+      const baseUrl = resolveFrontendBaseUrl();
+      const processId = datosAdicionales?.processId || '';
+      const radicadoProceso = datosAdicionales?.radicadoProceso || detalles[0]?.valor || '';
+      const urlAccion = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(processId)}&radicado=${encodeURIComponent(radicadoProceso)}`;
+
+      // In-app notifications
+      const notifs = radicadores.map((rad) => ({
+        id_usuario_destinatario: rad.id,
+        tipo_notificacion: tipoNotificacion,
+        titulo,
+        mensaje,
+        descripcion_corta: `${titulo} - ${detalles[0]?.valor || ''}`,
+        icono,
+        color,
+        prioridad: 'Media' as const,
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver proceso',
+        url_accion: urlAccion,
+        datos_adicionales: datosAdicionales,
+      }));
+      await this.notificationClient.sendMany(notifs).catch(() => {});
+
+      // Email institucional ESAP
+      const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+      const filasDetalle = detalles
+        .map(
+          (d) => `
+          <tr>
+            <td style="padding: 10px 14px; font-weight: 600; color: #374151; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; width: 38%; font-size: 13px;">${d.label}</td>
+            <td style="padding: 10px 14px; color: #1f2937; background-color: #ffffff; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${d.valor}</td>
+          </tr>`,
+        )
+        .join('');
+
+      const html = `
+        <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+          <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+            <table cellspacing="0" cellpadding="0" border="0" style="max-width:580px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07);">
+              <tr>
+                <td style="background-image:linear-gradient(135deg,#001A6E 0%,#003DA5 100%);background-color:#001A6E;padding:0;">
+                  <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr><td style="height:4px;background-color:#60A5FA;font-size:0;line-height:0;">&nbsp;</td></tr>
+                    <tr><td style="padding:22px 28px 18px 28px;">
+                      <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                        <td>
+                          <div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">ESAP</div>
+                          <div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;">Control Interno Disciplinario</div>
+                        </td>
+                        <td align="right">
+                          <span style="background-color:#003DA5;color:#ffffff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:0.3px;display:inline-block;">Aviso</span>
+                        </td>
+                      </tr></table>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:28px;">
+                  <h1 style="margin:0 0 14px 0;font-size:19px;font-weight:700;color:#111827;line-height:1.4;">${titulo}</h1>
+                  <p style="margin:0 0 20px 0;font-size:14px;color:#4b5563;line-height:1.6;">${mensaje}</p>
+
+                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;border-collapse:collapse;">
+                    ${filasDetalle}
+                  </table>
+
+                  ${buildEmailButton(urlAccion, 'Ingresar a la Plataforma')}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                  <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">ESAP — Escuela Superior de Administración Pública &bull; Oficina de Control Interno Disciplinario</p>
+                  <p style="margin:4px 0 0 0;font-size:11px;color:#cbd5e1;text-align:center;">Este correo fue generado automáticamente. Por favor no responder.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr></table>
+        </div>
+      `;
+
+      await Promise.all(
+        radicadores
+          .filter((rad) => rad.email && rad.email.length > 0)
+          .map(async (rad) => {
+            try {
+              if (this.httpService) {
+                await firstValueFrom(
+                  this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+                    to: rad.email,
+                    subject: asunto,
+                    html,
+                    text: mensaje,
+                  }),
+                );
+              }
+            } catch (err: any) {
+              console.warn(`[ProcessService] No se pudo enviar correo a ${rad.email}:`, err?.message || err);
+            }
+          }),
+      );
+    } catch (error: any) {
+      console.error('Error notificando a radicadores en ProcessService:', error?.message || error);
+    }
+  }
+}
 

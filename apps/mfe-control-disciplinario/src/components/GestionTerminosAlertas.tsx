@@ -236,9 +236,8 @@ const ALERTAS_MOCK: Alerta[] = [
 export function GestionTerminosAlertas() {
   const currentUser = authService.getCurrentUser();
   const esProfesional =
-    authService.hasRole('PROFESIONAL') ||
-    authService.hasRole('PROFESIONAL_SUSTANCIADOR') ||
-    authService.hasRole('PROFESIONAL_ASIGNADO');
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_PROFESIONAL) ||
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_VIEW_MINE);
 
   const [terminos, setTerminos] = useState<Termino[]>([]);
   const [cargandoTerminos, setCargandoTerminos] = useState(false);

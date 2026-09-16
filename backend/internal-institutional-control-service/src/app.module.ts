@@ -43,6 +43,7 @@ import { TipoProceso } from './esap/universo-auditorias/entities/tipo-proceso.en
 import { Documento } from './esap/documentos/entities/documento.entity';
 import { ProgramaAnual } from './esap/programa-anual/entities/programa-anual.entity';
 import { AuditoriaProgramada } from './esap/programa-anual/entities/auditoria-programada.entity';
+import { VersionProgramaAnual } from './esap/programa-anual-versiones/entities/version-programa-anual.entity';
 import { PlanIndividual } from './esap/plan-individual/entities/plan-individual.entity';
 import { Notificacion } from './esap/notificaciones/entities/notificacion.entity';
 import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferencia-notificacion.entity';
@@ -132,6 +133,7 @@ import { SeguimientoPlan } from './esap/planes-mejoramiento/entities/seguimiento
             Documento,
             ProgramaAnual,
             AuditoriaProgramada,
+            VersionProgramaAnual,
             PlanIndividual,
             Notificacion,
             PreferenciaNotificacion,

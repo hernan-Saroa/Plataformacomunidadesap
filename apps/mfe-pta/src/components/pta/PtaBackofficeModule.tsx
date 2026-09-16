@@ -28,6 +28,7 @@ import {
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
   getPTAById, aprobarComponentesLote,
   type AprobarComponentesLoteResultado,
+  getPTADecisionListScope, type PTADecisionListScope,
 } from '../../services/api/ptaApi';
 import { apiClient } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
@@ -1181,25 +1182,6 @@ const ESTADOS_CONCERTACION_KEYS = new Set([
 ]);
 const ESTADOS_SNA_KEYS = new Set(['ESCALADO_SNA']);
 const ESTADOS_SEGUIMIENTO_KEYS = new Set(['EN_FIRME', 'RADICADO', 'EN_EJECUCION']);
-const FRONTEND_GROUPED_ESTADO_FILTERS = new Set([
-  'BORRADOR',
-  'BORRADORES',
-  'PENDIENTES',
-  'APROBACION',
-  'CONCERTACION',
-  'SNA',
-  'APROBADO',
-  'APROBADOS',
-  'SEGUIMIENTO',
-]);
-
-function getBackendEstadoFilter(filtroEstado?: string) {
-  if (!filtroEstado) return undefined;
-  return FRONTEND_GROUPED_ESTADO_FILTERS.has(normalizeEstadoKey(filtroEstado))
-    ? undefined
-    : filtroEstado;
-}
-
 function matchesEstadoWorkflowFilter(pta: any, filtroEstado?: string) {
   const filterKey = normalizeEstadoKey(filtroEstado);
   if (!filterKey) return true;
@@ -1405,9 +1387,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const isSuperUserEffective = auth.isSuperUser || perfil.rol === 'admin';
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
     if (isSuperUserEffective) return [...PTA_COMPONENT_KEYS];
-    return (permisos.componentesAprobables || [])
+    return [...new Set([...(permisos.componentesAprobables || []),
+      ...(permisos.componentesRevisables || []).map(key => key.split(':')[0])])]
       .filter((key): key is PTAComponentKey => PTA_COMPONENT_KEYS.includes(key as PTAComponentKey));
-  }, [isSuperUserEffective, permisos.componentesAprobables]);
+  }, [isSuperUserEffective, permisos.componentesAprobables, permisos.componentesRevisables]);
   const shouldRestrictByComponentPermission = !isSuperUserEffective && visibleComponentKeys.length > 0;
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
 
@@ -1419,8 +1402,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
    */
   const bulkApprovalGroups = useMemo(() => {
     if (isSuperUserEffective) return PTA_BULK_APPROVAL_GROUPS;
-    return PTA_BULK_APPROVAL_GROUPS.filter(g => g.componentKeys.some(k => visibleComponentKeySet.has(k)));
-  }, [isSuperUserEffective, visibleComponentKeySet]);
+    return PTA_BULK_APPROVAL_GROUPS.filter(g => g.componentKeys.some(k => permisos.componentesAprobables?.includes(k)));
+  }, [isSuperUserEffective, permisos.componentesAprobables]);
 
   // Unión de todos los componentes que le corresponden al usuario actual según su
   // rol/permisos (los mismos que alimentan los botones de "Aprobar componentes de
@@ -1505,6 +1488,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const { addNotification } = useNotifications();
   const [ptas, setPtas] = useState<any[]>([]);
+  const [decisionListScope, setDecisionListScope] = useState<PTADecisionListScope | null>(null);
   const [loading, setLoading] = useState(true);
 
   // ═══ Banco de Docentes: personas desde módulo Personas (fuente única de verdad) ═══
@@ -1534,6 +1518,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [showPeriodoDropdownPTA, setShowPeriodoDropdownPTA] = useState(false);
   const cargarPeriodosRequestRef = useRef(0);
   const loadDataRequestRef = useRef(0);
+  const filtroPeriodoRef = useRef(filtroPeriodo);
+  filtroPeriodoRef.current = filtroPeriodo;
+  useEffect(() => () => {
+    ++loadDataRequestRef.current;
+    ++cargarPeriodosRequestRef.current;
+  }, []);
 
   const cargarPeriodosPTA = useCallback(async (preferredCode?: string) => {
     const requestId = ++cargarPeriodosRequestRef.current;
@@ -1784,6 +1774,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // ═══ Eliminación definitiva de PTA (solo admin) — confirmación propia ═══
   const [deleteConfirmPta, setDeleteConfirmPta] = useState<any | null>(null);
   const [deletingPta, setDeletingPta] = useState(false);
+  const deletingPtaRef = useRef(false);
 
   // ═══ Feature 26: Data Freshness Indicator ═══
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
@@ -1854,7 +1845,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     const interval = setInterval(() => {
       setRefreshCountdown(prev => {
         if (prev <= 1) {
-          loadData();
+          void loadData(false);
           setLastRefreshed(new Date());
           return 120;
         }
@@ -2043,11 +2034,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     sistema: 'backoffice',
     interval: 10000,
     enabled: true,
+    onRefresh: () => loadData(false),
     onDataChanged: (events) => {
       // Auto-refresh data when portal makes changes
       console.log(`[Backoffice Sync] ${events.length} nuevos eventos del Portal`);
-      loadData();
-      events.forEach(evt => {
+      events.filter(evt => evt.sistema_origen !== 'backoffice').forEach(evt => {
         const docName = evt.docente_nombre || 'Docente';
         const estadoLabel = evt.estado_nuevo?.replace(/_/g, ' ') || evt.tipo;
 
@@ -2091,32 +2082,34 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     },
   });
 
-  const loadData = async () => {
+  const loadData = async (showLoading = true) => {
     // La primera renderización todavía no conoce el período activo. Consultar en
     // ese instante sin `periodo` trae todos los PTAs y puede sobrescribir después
     // la respuesta filtrada. Esperamos siempre la inicialización del selector.
-    if (!periodosInicializadosPTA || !filtroPeriodo) return;
+    if (!periodosInicializadosPTA || !filtroPeriodo || filtroPeriodo !== filtroPeriodoRef.current) return;
 
     const requestId = ++loadDataRequestRef.current;
     const periodoConsulta = filtroPeriodo;
-    const estadoConsulta = filtroEstado;
-    setLoading(true);
-    const estadoBackend = getBackendEstadoFilter(estadoConsulta);
+    if (showLoading) setLoading(true);
     const ptaFilters: any = {
       periodo: periodoConsulta,
       nivelAprobacion: permisos.nivelAprobacion,
       isSuperUser: auth.isSuperUser,
     };
-    if (estadoBackend) ptaFilters.estado = estadoBackend;
+    // All tabs and indicators share the complete period list. Filter locally.
 
-    const [ptaRes, statsRes] = await Promise.all([
-      getAllPTAs(ptaFilters),
-      getPTAEstadisticas(periodoConsulta),
+    const reportPtaId = showReporteR01 ? selectedPTA?.id : null;
+    const [ptaRes, statsRes, reportRes, scopeRes] = await Promise.all([
+      getAllPTAs(ptaFilters, true).catch(() => ({ success: false, data: null })),
+      getPTAEstadisticas(periodoConsulta).catch(() => ({ success: false, data: null })),
+      reportPtaId ? getPTAById(reportPtaId).catch(() => null) : Promise.resolve(null),
+      getPTADecisionListScope().catch(() => ({ success: false, data: null })),
     ]);
 
     // Si el usuario cambió de período mientras respondía la API, esta respuesta
     // ya es obsoleta y no debe reemplazar los datos de la selección más reciente.
-    if (requestId !== loadDataRequestRef.current) return;
+    if (requestId !== loadDataRequestRef.current || periodoConsulta !== filtroPeriodoRef.current) return;
+    if (scopeRes.success && scopeRes.data) setDecisionListScope(scopeRes.data);
     
     // Auto-seed desactivado: la tabla solo muestra PTAs reales enviados por docentes
     
@@ -2125,9 +2118,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       setPtas(ptaRes.data);
     } else {
       console.warn('[PtaBackoffice] PTA data is not an array:', ptaRes);
-      setPtas([]);
+      // Keep the last valid list on transient failures, including pending PTAs.
     }
     if (statsRes.success) setEstadisticas(statsRes.data);
+    if (reportRes?.success && reportRes.data) {
+      setSelectedPTA((current: any) => current?.id === reportPtaId ? { ...current, ...reportRes.data } : current);
+    }
     setLoading(false);
     setLastRefreshed(new Date());
     setRefreshCountdown(120);
@@ -2137,9 +2133,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (!periodosInicializadosPTA || !filtroPeriodo) return;
     loadData();
     setCurrentPage(1);
-  }, [filtroEstado, filtroPeriodo, periodosInicializadosPTA]);
+  }, [filtroPeriodo, periodosInicializadosPTA]);
   // Reset page when search changes
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstadoRegistro]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstado, filtroEstadoRegistro]);
 
   // ═══ Cargar personas cuando se navega al Banco de Docentes ═══
   useEffect(() => {
@@ -2248,7 +2244,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     toast.success('Prioridad actualizada', { description: 'El orden se guardará automáticamente' });
   }, []);
 
-  const filteredPtas = useMemo(() => {
+  const filtroTerritorialEfectivo = decisionListScope?.configured ? decisionListScope.territoriales : permisos.filtroTerritorial;
+  const filtroProgramaEfectivo = decisionListScope?.configured ? decisionListScope.programas : permisos.filtroPrograma;
+  const scopedPtas = useMemo(() => {
     let result = ptas;
     // Defensa adicional: aun durante una recarga/cambio rápido, la tabla solo
     // puede renderizar registros cuyo período coincide con el selector global.
@@ -2256,68 +2254,43 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       result = result.filter((p: any) => String(p?.periodo || '') === filtroPeriodo);
     }
     // Apply territorial filter for Jefatura role — filtra por territoriales de las ASIGNATURAS del PTA
-    if (permisos.filtroTerritorial && permisos.filtroTerritorial.length > 0) {
+    if (filtroTerritorialEfectivo && filtroTerritorialEfectivo.length > 0) {
       result = result.filter((p: any) => {
-        // Primero: territoriales de las asignaturas del componente Docencia
-        const terAsigs: string[] = Array.isArray(p.territorialesAsignaturas) ? p.territorialesAsignaturas : [];
-        if (terAsigs.length > 0) {
-          return terAsigs.some(tid => permisos.filtroTerritorial!.includes(tid));
-        }
-        // Fallback: territorial del docente si el PTA no tiene asignaturas con territorial asignada
-        return permisos.filtroTerritorial!.includes(p.territorial_id) ||
-          permisos.filtroTerritorial!.some(tid =>
-            p.territorial?.toLowerCase().includes(tid.replace('ter-', '').toLowerCase())
-          );
+        if (Array.isArray(p.componentes_en_alcance)) return p.componentes_en_alcance.length > 0;
+        const norm = (value: unknown) => String(value ?? '').normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        const scope = new Set(filtroTerritorialEfectivo.map(norm));
+        const assignmentTokens = [
+          ...(Array.isArray(p.territoriales_docencia_ids) ? p.territoriales_docencia_ids : []),
+          ...(Array.isArray(p.territorialesAsignaturas) ? p.territorialesAsignaturas : []),
+        ];
+        if (assignmentTokens.length) return assignmentTokens.some(t => scope.has(norm(t)));
+        return [p.territorial_id, p.territorial].some(t => t && scope.has(norm(t)));
       });
     }
     // Apply program filter for Decanatura role
-    if (permisos.filtroPrograma && permisos.filtroPrograma.length > 0) {
+    if (filtroProgramaEfectivo && filtroProgramaEfectivo.length > 0) {
       result = result.filter((p: any) =>
-        permisos.filtroPrograma!.includes(p.programa_id) ||
-        permisos.filtroPrograma!.some(pid =>
-          p.programa?.toLowerCase().includes(pid.toLowerCase())
-        )
+        (Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 :
+        filtroProgramaEfectivo.includes(p.programa_id) ||
+        filtroProgramaEfectivo.some(pid =>
+          [p.programa, ...(p.programasAsignaturas || [])].some(value => value?.toLowerCase().includes(pid.toLowerCase()))
+        ))
       );
     }
     if (shouldRestrictByComponentPermission) {
-      result = result.filter((p: any) => hasAnyComponentApprovalData(p, visibleComponentKeys));
-
-      // Alcance TERRITORIAL: el permiso pta.*.academica.territorial habilita el
-      // componente, pero no dice cuál territorial. Si el único alcance de Docencia del
-      // usuario es el territorial, solo debe ver los PTAs con asignaturas de SU
-      // seccional (antes veía todas: Antioquia veía Chocó y Huila).
-      const soloDocenciaTerritorial =
-        visibleComponentKeySet.has('academica_territorial')
-        && !visibleComponentKeySet.has('academica_pregrado')
-        && !visibleComponentKeySet.has('academica_posgrado');
-
-      // OJO: `filtroTerritorial` no tiene un formato garantizado — puede traer
-      // id_seccional ("900014"), nombres, o ids legacy del mapa fijo ("ter-02"), que
-      // nunca coincidirían con los del PTA. Por eso se comparan tokens normalizados
-      // (ids + nombres) y, si NINGÚN PTA cruza, se asume incompatibilidad de formatos
-      // y no se filtra: la autorización real la impone el backend al revisar/aprobar,
-      // y vaciar la lista sería peor que mostrar de más.
-      const norm = (v: any) => String(v ?? '')
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      const misTokens = new Set((permisos.filtroTerritorial || []).map(norm).filter(Boolean));
-
-      if (soloDocenciaTerritorial && misTokens.size > 0) {
-        const tokensDelPta = (p: any): string[] => [
-          ...(Array.isArray(p?.territoriales_docencia_ids) ? p.territoriales_docencia_ids : []),
-          ...(Array.isArray(p?.territorialesAsignaturas) ? p.territorialesAsignaturas : []),
-        ].map(norm).filter(Boolean);
-
-        const coincideAlguno = result.some((p: any) => tokensDelPta(p).some(t => misTokens.has(t)));
-        if (coincideAlguno) {
-          result = result.filter((p: any) => {
-            const tokens = tokensDelPta(p);
-            if (tokens.length === 0) return true;
-            return tokens.some(t => misTokens.has(t));
-          });
-        }
-      }
+      result = result.filter((p: any) => Array.isArray(p.componentes_en_alcance)
+        ? p.componentes_en_alcance.length > 0 : hasAnyComponentApprovalData(p, visibleComponentKeys));
     }
+    if (decisionListScope?.configured && decisionListScope.cetaps) {
+      result = result.filter(p => Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 : decisionListScope.cetaps!.some(cetap =>
+        [p.cetap, ...(p.cetapsAsignaturas || [])].some(value => String(value || '').toLowerCase() === cetap.toLowerCase())));
+    }
+    return result;
+  }, [ptas, filtroPeriodo, filtroTerritorialEfectivo, filtroProgramaEfectivo, decisionListScope, shouldRestrictByComponentPermission, visibleComponentKeys]);
+
+  const filteredPtas = useMemo(() => {
+    let result = scopedPtas;
     // Apply search query (expanded multi-field)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -2355,7 +2328,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     }
 
     return result;
-  }, [ptas, filtroPeriodo, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, estadoDeMisComponentes]);
+  }, [scopedPtas, searchQuery, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, estadoDeMisComponentes]);
+
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(filteredPtas.length / PAGE_SIZE));
+    setCurrentPage(page => Math.max(1, Math.min(page, pages)));
+  }, [filteredPtas.length, PAGE_SIZE]);
 
   // ═══ Feature 23/33: Comparador único de la tabla ═══
   // Anclados primero (el anclado más reciente queda de primero), luego prioridad
@@ -2449,12 +2427,19 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   // ═══ Eliminación definitiva de PTA (solo admin) ═══
   const confirmarEliminarPta = async () => {
-    if (!deleteConfirmPta || deletingPta) return;
+    if (!deleteConfirmPta || deletingPtaRef.current || !auth.isSuperUser) return;
     const pta = deleteConfirmPta;
+    deletingPtaRef.current = true;
     setDeletingPta(true);
     try {
       const result = await deletePTA(pta.id);
       if (result.success) {
+        // Ignorar consultas iniciadas antes de eliminar y reflejar el resultado
+        // confirmado incluso si la siguiente consulta falla por conexión.
+        ++loadDataRequestRef.current;
+        setPtas(prev => prev.filter(item => item.id !== pta.id));
+        setSelectedPTA((prev: any) => prev?.id === pta.id ? null : prev);
+        setSelectedIds(prev => { const next = new Set(prev); next.delete(pta.id); return next; });
         // Limpiar referencias locales al PTA eliminado para no dejar residuos
         setPinnedIds(prev => { if (!prev.has(pta.id)) return prev; const next = new Set(prev); next.delete(pta.id); return next; });
         setCompareIds(prev => prev.filter(id => id !== pta.id));
@@ -2464,7 +2449,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         pushActivity('sistema', pta.docente_nombre || 'PTA', 'Eliminado', `PTA ${pta.periodo || ''} eliminado definitivamente`);
         toast.success('PTA eliminado definitivamente', { description: [pta.docente_nombre, pta.periodo].filter(Boolean).join(' · ') });
         setDeleteConfirmPta(null);
-        loadData();
+        void loadData(false);
       } else {
         toast.error(result.message || 'Error al eliminar el PTA');
       }
@@ -2472,6 +2457,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       console.error('[PTA] Error al eliminar:', err);
       toast.error('Error al eliminar el PTA');
     } finally {
+      deletingPtaRef.current = false;
       setDeletingPta(false);
     }
   };
@@ -2588,11 +2574,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   };
 
   const statCards = estadisticas ? [
-    { label: 'Total PTAs', value: ptas.length, icon: FileText, color: '#003DA5', bg: '#EFF6FF' },
+    { label: 'Total PTAs', value: scopedPtas.length, icon: FileText, color: '#003DA5', bg: '#EFF6FF' },
     // "Pendientes" cuenta solo lo que le queda por resolver a ESTE usuario: si ya
     // aprobó su componente, el PTA deja de sumar aunque siga pendiente para otros.
-    { label: 'Pendientes', value: ptas.filter((p: any) => isEstadoPendienteAprobacion(p.estado) && tienePendientesParaMi(p)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
-    { label: 'Aprobados', value: ptas.filter((p: any) => p.estado === 'Aprobado').length, icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
+    { label: 'Pendientes', value: scopedPtas.filter((p: any) => isEstadoPendienteAprobacion(p.estado) && tienePendientesParaMi(p)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
+    { label: 'Aprobados', value: scopedPtas.filter((p: any) => p.estado === 'Aprobado').length, icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
     { label: 'En Concertación', value: estadisticas.enConcertacion || 0, icon: MessageSquare, color: '#7C3AED', bg: '#F3E8FF' },
     { label: 'Rechazados', value: estadisticas.rechazados || 0, icon: XCircle, color: '#DC2626', bg: '#FEE2E2' },
     { label: 'Avance', value: `${estadisticas.porcentajeAvance || 0}%`, icon: TrendingUp, color: '#0891B2', bg: '#ECFEFF' },
@@ -2629,7 +2615,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }
 
   // Pending PTAs count for mobile badge
-  const listaPendientesAprobar = filteredPtas.filter((p: any) =>
+  const listaPendientesAprobar = scopedPtas.filter((p: any) =>
     isEstadoPendienteAprobacion(p.estado) &&
     puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective) &&
     tienePendientesParaMi(p)
@@ -2935,7 +2921,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         </button>
 
         {/* Eliminar PTA — solo super admin */}
-        {perfil?.rol === 'admin' && (
+        {auth.isSuperUser && (
           <button
             onClick={() => setDeleteConfirmPta(pta)}
             style={{
@@ -3031,7 +3017,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       </h1>
                       {estadisticas && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-blue-100 text-blue-700 border border-blue-300">
-                          {ptas.length} PTAs
+                          {scopedPtas.length} PTAs
                         </span>
                       )}
                       {pendingForApprovalCount > 0 && (
@@ -3285,7 +3271,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         /* ═══ GESTIÓN — Vista principal ═══ */
         <div className="py-6 px-2 max-w-none mx-auto flex flex-col gap-6 w-full">
           {/* Territorial/Program Filter Banner */}
-          {(permisos.filtroTerritorial || permisos.filtroPrograma) && (
+          {(filtroTerritorialEfectivo || filtroProgramaEfectivo || decisionListScope?.cetaps) && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3302,9 +3288,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               <div>
                 <span style={{ fontWeight: 700 }}>Vista filtrada por su rol</span>
                 <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: 2 }}>
-                  {permisos.filtroTerritorial && <span>Territoriales: <strong>{permisos.filtroTerritorial.join(', ')}</strong> · </span>}
-                  {permisos.filtroPrograma && <span>Programas: <strong>{permisos.filtroPrograma.join(', ')}</strong> · </span>}
-                  Mostrando {filteredPtas.length} de {ptas.length} PTAs
+                  {filtroTerritorialEfectivo && <span>Territoriales: <strong>{filtroTerritorialEfectivo.join(', ')}</strong> · </span>}
+                  {filtroProgramaEfectivo && <span>Programas: <strong>{filtroProgramaEfectivo.join(', ')}</strong> · </span>}
+                  {decisionListScope?.configured && decisionListScope.cetaps && <span>CETAPs: <strong>{decisionListScope.cetaps.join(', ')}</strong> · </span>}
+                  Mostrando {filteredPtas.length} de {scopedPtas.length} PTAs
                 </div>
               </div>
             </motion.div>
@@ -3315,7 +3302,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             estadisticas={estadisticas}
             filtroEstado={filtroEstado}
             setFiltroEstado={setFiltroEstado}
-            ptas={ptas}
+            ptas={scopedPtas}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             filtroPeriodo={filtroPeriodo}
@@ -4277,7 +4264,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           <button onClick={() => { setInlineNotePtaId(inlineNotePtaId === pta.id ? null : pta.id); setInlineNoteText(inlineNotes[pta.id] || ''); setShowMoreMenuPtaId(null); }} style={{ padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#374151', width: '100%' }} onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><StickyNote style={{ width: 14, height: 14 }} /> Nota rápida {hasNote && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#7C3AED', marginLeft: 'auto' }} />}</button>
                           <button onClick={() => { togglePin(pta.id); setShowMoreMenuPtaId(null); }} style={{ padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#374151', width: '100%' }} onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><Star style={{ width: 14, height: 14, color: isPinned ? '#D97706' : 'currentColor', fill: isPinned ? '#D97706' : 'none' }} /> {isPinned ? 'Desanclar' : 'Anclar al inicio'}</button>
                           <button onClick={() => { toggleCompare(pta.id); setShowMoreMenuPtaId(null); }} style={{ padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#374151', width: '100%' }} onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><GitCompare style={{ width: 14, height: 14 }} /> {isComparing ? 'Quit. comparación' : 'Comparar'}</button>
-                          {perfil?.rol === 'admin' && (
+                          {auth.isSuperUser && (
                             <>
                               <div style={{ height: 1, background: '#E5E7EB', margin: '4px 0' }} />
                               <button
@@ -5240,6 +5227,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           )}
           {selectedPTA && !showReporteR01 && (
             <PTADetallePanelBackoffice
+              key={selectedPTA.id}
               pta={selectedPTA}
               onClose={() => { setSelectedPTA(null); setShowReporteR01(false); setShowApproval(false); setShowDevolucion(false); }}
               onAprobar={() => { setSelectedPTA(null); loadData(); }}
@@ -5248,14 +5236,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 // Actualización optimista para que el panel (que permanece abierto)
                 // refleje el cambio al instante, sin esperar el round-trip de loadData().
                 setPtas(prev => prev.map(p => (p.id === updatedPta.id ? { ...p, ...updatedPta } : p)));
-                setSelectedPTA((prev: any) => prev ? { ...prev, ...updatedPta } : prev);
+                setSelectedPTA((prev: any) => prev?.id === updatedPta.id ? { ...prev, ...updatedPta } : prev);
                 // Los avales de Revisor/Aprobador por componente solo tocaban el estado
                 // local: los contadores de la vista principal (pestañas Todos/Aprobación/
                 // Aprobado, estadísticas, % de avance) quedaban desactualizados hasta el
                 // siguiente refresh manual. Recargar aquí iguala este flujo al resto de
                 // acciones (aprobar, devolver, lote), que ya llaman loadData().
-                loadData();
+                void loadData(false);
               }}
+              syncVersion={syncState.lastSyncTime}
               onConcertar={() => { setConcertacionPtaId(selectedPTA.id); setSelectedPTA(null); }}
               onVerInformacion={() => setShowReporteR01(true)}
               puedeAprobar={permisos.puedeAprobar}
@@ -6443,7 +6432,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 <div style={{ margin: '10px 22px 0', padding: '9px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <AlertTriangle style={{ width: 14, height: 14, color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
                   <span style={{ fontSize: '0.72rem', color: '#991B1B', lineHeight: 1.5 }}>
-                    Esta acción <strong>no se puede deshacer</strong>. Se eliminará el PTA con todos sus componentes y su historial de aprobaciones.
+                    Esta acción <strong>no se puede deshacer</strong>. Se eliminará el PTA con sus componentes, evidencias, historial de aprobaciones y solicitudes de edición asociadas.
                   </span>
                 </div>
 
