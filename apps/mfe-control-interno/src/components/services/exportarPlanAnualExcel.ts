@@ -145,16 +145,32 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
     // 5. Rellenar Datos
     let currentRow = 7;
 
-    const formatearFecha = (fecha: string, forzarVigencia?: string | number) => {
+    // Las fechas se exportan tal como se parametrizaron: no se fuerza el año de la
+    // vigencia y las ISO (YYYY-MM-DD) se leen sin pasar por UTC, que restaba un día.
+    const formatearFecha = (fecha?: string) => {
       if (!fecha) return '';
       try {
+        const iso = String(fecha).split('T')[0];
+        const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+        if (partes) return `${Number(partes[3])}/${Number(partes[2])}/${partes[1]}`;
         const d = new Date(fecha);
         if (isNaN(d.getTime())) return fecha;
-        const year = forzarVigencia ? forzarVigencia : d.getFullYear();
-        return `${d.getDate()}/${d.getMonth() + 1}/${year}`;
+        return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
       } catch (e) {
         return fecha;
       }
+    };
+
+    /** Fecha del corte de seguimiento: la del punto de control de la tarea y, si no, la de la actividad. */
+    const fechaCorte = (act: any, tarea?: any) => {
+      const puntos = act.puntosControl || act.puntos_control || [];
+      const puntoId = tarea?.puntoControlId || tarea?.punto_control_id;
+      const punto = puntoId ? puntos.find((p: any) => p?.id === puntoId) : undefined;
+      return (
+        punto?.fechaSeguimiento || punto?.fechaProgramada ||
+        tarea?.fechaEntrega || tarea?.fechaLimite || tarea?.fecha_limite || tarea?.fechaSeguimiento ||
+        act.fechaCorte || act.fecha_corte || ''
+      );
     };
 
     const fixEncoding = (str: string) => {
@@ -198,12 +214,12 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
               row.getCell(2).value = fixEncoding(rol.nombre || '');
               row.getCell(3).value = fixEncoding(act.nombre || '');
               row.getCell(4).value = getResponsable(act);
-              row.getCell(5).value = formatearFecha(act.fechaInicio, plan.vigencia);
-              row.getCell(6).value = formatearFecha(act.fechaFin, plan.vigencia);
+              row.getCell(5).value = formatearFecha(act.fechaInicio || act.fecha_inicio);
+              row.getCell(6).value = formatearFecha(act.fechaFin || act.fecha_fin);
               row.getCell(7).value = act.control || 'Se hace seguimiento';
               row.getCell(8).value = act.estado === 'COMPLETADA' ? 100 : pct;
               row.getCell(9).value = 'Sin tareas';
-              row.getCell(10).value = '';
+              row.getCell(10).value = formatearFecha(fechaCorte(act));
               row.getCell(11).value = 0;
               row.getCell(12).value = 'Sin evidencia';
 
@@ -224,14 +240,14 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
                 row.getCell(2).value = fixEncoding(rol.nombre || '');
                 row.getCell(3).value = fixEncoding(act.nombre || '');
                 row.getCell(4).value = getResponsable(act);
-                row.getCell(5).value = formatearFecha(act.fechaInicio, plan.vigencia);
-                row.getCell(6).value = formatearFecha(act.fechaFin, plan.vigencia);
+                row.getCell(5).value = formatearFecha(act.fechaInicio || act.fecha_inicio);
+                row.getCell(6).value = formatearFecha(act.fechaFin || act.fecha_fin);
                 row.getCell(7).value = act.control || 'Se hace seguimiento';
                 row.getCell(8).value = act.estado === 'COMPLETADA' ? 100 : pct;
 
                 // Datos de la tarea
                 row.getCell(9).value = tarea.nombre || tarea.descripcion || '';
-                row.getCell(10).value = formatearFecha(tarea.fechaLimite || tarea.fecha_limite || tarea.fechaSeguimiento);
+                row.getCell(10).value = formatearFecha(fechaCorte(act, tarea));
                 row.getCell(11).value = tarea.estado === 'Completada' ? 100 : (tarea.avance || 0);
                 row.getCell(12).value = tarea.evidencia || 'Sin evidencia';
 
