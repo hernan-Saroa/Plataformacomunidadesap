@@ -139,39 +139,34 @@ export function calcularDiasComision(fechaInicio: string, fechaFin: string): num
   return Math.max(0, diff + 1);
 }
 
-export function esDiaHabil(fecha: Date): boolean {
-  const dia = fecha.getDay();
-  return dia !== 0 && dia !== 6;
+import {
+  esDiaHabil as esDiaHabilStd,
+  contarDiasHabiles as contarDiasHabilesStd,
+  validarAnticipacionRadicacion as validarAnticipacionRadicacionStd,
+} from './diasHabilesUtils';
+
+export * from './diasHabilesUtils';
+
+export function esDiaHabil(
+  fecha: Date | string,
+  festivos?: ReadonlySet<string> | string[],
+): boolean {
+  return esDiaHabilStd(fecha, festivos);
 }
 
-export function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
-  let count = 0;
-  const fecha = new Date(fechaInicio);
-  while (fecha <= fechaFin) {
-    if (esDiaHabil(fecha)) {
-      count++;
-    }
-    fecha.setDate(fecha.getDate() + 1);
-  }
-  return count;
+export function contarDiasHabilesEntre(
+  fechaInicio: Date | string,
+  fechaFin: Date | string,
+  festivos?: ReadonlySet<string> | string[],
+): number {
+  return contarDiasHabilesStd(fechaInicio, fechaFin, festivos, { modo: 'rango_completo' });
 }
 
-export function validarAnticipacionRadicacion(fechaInicio: string) {
-  if (!fechaInicio) return null;
-  const ahora = new Date();
-  const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-  const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-  const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
-
-  const inicio = new Date(`${fechaInicio}T00:00:00`);
-  const diasHabiles = contarDiasHabilesEntre(ahora, inicio);
-  const extemporanea = diasHabiles < 14;
-
-  return {
-    extemporanea,
-    diasHabiles,
-    radicadoFueraJornada,
-  };
+export function validarAnticipacionRadicacion(
+  fechaInicio: string,
+  festivos?: ReadonlySet<string> | string[],
+) {
+  return validarAnticipacionRadicacionStd(fechaInicio, festivos);
 }
 
 /**
