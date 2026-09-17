@@ -22,6 +22,12 @@ const SERVICE_PREFIX = '/certificados/api/v1';
 
 export type CorrectionStatus = 'PENDING' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED';
 
+type CorrectionReadOptions = { silent?: boolean };
+const correctionReadConfig = (options?: CorrectionReadOptions) => ({
+  cache: 'no-store' as RequestCache,
+  ...(options?.silent ? { skipErrorToast: true, retries: 0 } : {}),
+});
+
 export type CorrectionEvidence = {
   index: number;
   originalName: string;
@@ -115,7 +121,18 @@ export type CertificateCorrectionListResponse =
       page: number;
       limit: number;
       totalPages: number;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     };
+
+/** Columnas por las que el backend acepta ordenar la bandeja de correcciones. */
+export type CorrectionSortField =
+  | 'status'
+  | 'request_number'
+  | 'requester_name'
+  | 'certificate_number'
+  | 'created_at'
+  | 'due_date';
 
 export type PrimaTecnicaCategoria = string;
 
@@ -171,6 +188,108 @@ export type LaborFunctionProfileApi = {
   updated_at: string;
 };
 
+export type LaborFunctionAssociationApi = {
+  id: string;
+  /** De donde salio la vinculacion: la tabla local o la vista Oracle FNC. */
+  origen: 'local' | 'oracle';
+  request_number: string;
+  full_name: string;
+  id_number: string;
+  document_type: string | null;
+  email: string | null;
+  campus: string | null;
+  status: string;
+  position_name: string | null;
+  position_category: string | null;
+  hierarchical_level: string | null;
+  combined_code: string;
+  department_name: string | null;
+  internal_group: string | null;
+  hiring_date: string | null;
+  request_date: string | null;
+  created_at: string;
+};
+
+export type LaborFunctionAssociationsResponseApi = {
+  profile: {
+    id: string;
+    combined_code: string;
+    position_code: string;
+    grade_code: string | null;
+    position_name: string;
+    hierarchical_level: string | null;
+    department_name: string | null;
+    internal_group: string | null;
+    function_count: number;
+  };
+  items: LaborFunctionAssociationApi[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: {
+    associations: number;
+    uniquePeople: number;
+    byStatus: Record<string, number>;
+    fromLocal: number;
+    fromOracle: number;
+    oracleAvailable: boolean;
+  };
+};
+
+export type LaborFunctionProfileHintApi = {
+  id: string;
+  combined_code: string;
+  position_code: string;
+  grade_code: string | null;
+  hierarchical_level: string | null;
+  position_name: string;
+  department_name: string | null;
+  internal_group: string | null;
+  function_count: number;
+  is_active: boolean;
+};
+
+export type LaborPersonLookupItemApi = {
+  certificate_dependency?: string;
+  origen: 'local' | 'oracle';
+  full_name: string | null;
+  id_number: string | null;
+  document_type: string | null;
+  email: string | null;
+  hiring_date: string | null;
+  position_category: string | null;
+  status: string | null;
+  request_number: string | null;
+  /** Datos exactos con los que hay que crear el perfil para que le cruce. */
+  matrix: {
+    position_code: string | null;
+    grade_code: string | null;
+    combined_code: string | null;
+    hierarchical_level: string | null;
+    position_name: string | null;
+    department_name: string | null;
+    internal_group: string | null;
+  };
+  /** Cuántas vinculaciones tiene la persona; solo se muestra la vigente. */
+  total_vinculaciones: number;
+  matched_profile: LaborFunctionProfileHintApi | null;
+  /** Cuántos perfiles comparten el cod_cargo (para contexto, no se listan). */
+  profiles_same_code: number;
+  /** Perfiles que fallan por UN solo dato, con el nombre de ese dato. */
+  near_matches: Array<
+    LaborFunctionProfileHintApi & { differing_fields: string[] }
+  >;
+};
+
+export type LaborPersonLookupResponseApi = {
+  search: string;
+  total: number;
+  limit: number;
+  items: LaborPersonLookupItemApi[];
+  sources: { local: number; oracle: number; oracleAvailable: boolean };
+};
+
 export type LaborFunctionProfilePayloadApi = {
   positionCode?: string;
   gradeCode?: string;
@@ -192,11 +311,13 @@ export const certificadosService = {
       limit?: number;
       status?: CorrectionStatus | 'ALL';
       search?: string;
-    }): Promise<CertificateCorrectionListResponse> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params);
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
+    }, options?: CorrectionReadOptions): Promise<CertificateCorrectionListResponse> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params, correctionReadConfig(options));
     },
 
-    async estadisticas(): Promise<{
+    async estadisticas(options?: CorrectionReadOptions): Promise<{
       total: number;
       pending: number;
       in_review: number;
@@ -204,11 +325,11 @@ export const certificadosService = {
       rejected: number;
       overdue: number;
     }> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/stats`);
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/stats`, undefined, correctionReadConfig(options));
     },
 
-    async obtener(id: string): Promise<CertificateCorrectionRequest> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/${id}`);
+    async obtener(id: string, options?: CorrectionReadOptions): Promise<CertificateCorrectionRequest> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/${id}`, undefined, correctionReadConfig(options));
     },
 
     async iniciarRevision(id: string): Promise<CertificateCorrectionRequest> {
@@ -351,6 +472,52 @@ export const certificadosService = {
       stats: { profiles: number; functions: number; associatedRequests: number };
     }> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/labor-functions`, params);
+    },
+
+    async listarAsociadosFuncionesLaborales(
+      id: string,
+      params?: { search?: string; page?: number; limit?: number },
+    ): Promise<LaborFunctionAssociationsResponseApi> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/labor-functions/${id}/associations`,
+        params,
+      );
+    },
+
+    async consultarEmpleadoFuncionesLaborales(
+      search: string,
+      params?: { limit?: number },
+    ): Promise<LaborPersonLookupResponseApi> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/labor-functions/person-lookup`,
+        { search, ...(params || {}) },
+      );
+    },
+
+    /** Todos los perfiles del filtro actual, en forma compacta (seleccionar todo). */
+    async listarSeleccionFuncionesLaborales(
+      params?: { search?: string },
+    ): Promise<{
+      total: number;
+      items: Array<
+        Pick<
+          LaborFunctionProfileApi,
+          | 'id'
+          | 'combined_code'
+          | 'position_code'
+          | 'grade_code'
+          | 'position_name'
+          | 'department_name'
+          | 'internal_group'
+          | 'function_count'
+          | 'association_count'
+        >
+      >;
+    }> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/labor-functions/selection`,
+        params,
+      );
     },
 
     async crearFuncionesLaborales(

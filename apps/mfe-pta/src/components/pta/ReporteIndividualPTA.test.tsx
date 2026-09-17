@@ -1,11 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
+import { getComponentesAprobacion } from '../../services/api/ptaApi';
 
 vi.mock('../../services/api/ptaApi', () => ({ getComponentesAprobacion: vi.fn().mockResolvedValue({ success: false }) }));
 afterEach(cleanup);
 
 describe('aprobaciones del reporte R-01 (vista y exportación)', () => {
+  it('actualiza la firma de una aprobación mientras el mismo reporte permanece abierto', async () => {
+    const pta = { id: 'pta-1', estado: 'Pendiente Jefatura', horas_docencia: 384 };
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [] });
+    const { rerender } = render(<ReporteIndividualPTA pta={pta} onClose={() => {}} />);
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [
+      { componente: 'academica_territorial', estado: 'aprobado', horas: 384, aprobadorNombre: 'Aprobador simultáneo' },
+    ] });
+    rerender(<ReporteIndividualPTA pta={{ ...pta, estado: 'Aprobado' }} onClose={() => {}} />);
+    expect(await screen.findByText('Aprobador simultáneo')).toBeTruthy();
+  });
   it('no imprime firmas automáticas de Extensión y usa los ámbitos actuales', () => {
     const pta = {
       estado: 'Aprobado', horas_docencia: 384, horas_investigacion: 200, horas_extension: 0, horas_complementarias: 170, horas_asignables: 800,

@@ -49,15 +49,15 @@ export class DisciplinaryProcessActuacion {
   @Column({ name: 'responsableNombre', type: 'varchar', length: 255 })
   responsableNombre: string;
 
-  @Column({ name: 'fechaActuacion', type: 'timestamp' })
+  @Column({ name: 'fechaActuacion', type: 'timestamptz' })
   fechaActuacion: Date;
 
   @Column({ type: 'text', nullable: true })
   observaciones: string | null;
 
-  @CreateDateColumn({ name: 'createdAt' })
+  @CreateDateColumn({ name: 'createdAt', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt' })
+  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamptz' })
   updatedAt: Date;
 }

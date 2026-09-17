@@ -54,7 +54,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
         cumplida: boolean,
         acceso: unknown,
         modalidad?: string | null,
-      ): Promise<boolean>;
+      ): Promise<{ estado: string; cierra: boolean }>;
     };
 
   const acceso = { userName: 'Adrián Castro', userId: 'u-1' } as never;
@@ -116,7 +116,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
   it('avisa de que cerró, para que se pregunte por la etapa', async () => {
     const { em } = conActividad(actividadEnBorrador());
 
-    const cerro = await servicio(null).marcarActividad(
+    const { cierra: cerro } = await servicio(null).marcarActividad(
       em,
       'p-1',
       '3.2',
@@ -134,7 +134,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
     // nadie hubiera aprobado el registro.
     const { em } = conActividad(actividadEnBorrador());
 
-    const cerro = await servicio({ roles: ['DIRECTOR_CONTRATACION'] }).marcarActividad(
+    const { cierra: cerro } = await servicio({ roles: ['DIRECTOR_CONTRATACION'] }).marcarActividad(
       em,
       'p-1',
       '3.2',
@@ -149,7 +149,7 @@ describe('RegistroActividadService · en qué estado queda la actividad al regis
   it('tampoco al anular, que reabre la actividad', async () => {
     const { em } = conActividad({ ...actividadEnBorrador(), estado: 'APROBADO' });
 
-    const cerro = await servicio(null).marcarActividad(em, 'p-1', '3.2', false, acceso, null);
+    const { cierra: cerro } = await servicio(null).marcarActividad(em, 'p-1', '3.2', false, acceso, null);
 
     expect(cerro).toBe(false);
   });

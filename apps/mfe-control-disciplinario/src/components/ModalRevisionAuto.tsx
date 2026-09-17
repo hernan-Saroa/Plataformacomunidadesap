@@ -1104,7 +1104,7 @@ export function ModalRevisionAuto({
                         </p>
                       </div>
                       <span className="text-xs" style={{ color: '#9CA3AF' }}>
-                        {new Date(accion.fecha).toLocaleString('es-CO')}
+                        {new Date(accion.fecha).toLocaleString('es-CO', { timeZone: 'America/Bogota' })}
                       </span>
                     </div>
                   </div>

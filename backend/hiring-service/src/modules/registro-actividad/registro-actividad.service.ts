@@ -312,7 +312,7 @@ export class RegistroActividadService {
         } as Partial<RegistroActividad>),
       );
 
-      const cerro = await this.marcarActividad(
+      const { estado: estadoResultante, cierra: cerro } = await this.marcarActividad(
         em,
         procesoId,
         numeral,
@@ -325,7 +325,12 @@ export class RegistroActividadService {
         procesoId,
         registro.id,
         'GUARDAR',
-        { numeral, fecha: dto.fecha, conSoporte: documento !== null },
+        // El estado va en la traza porque registrar, donde hay aprobadores, es
+        // también enviar a aprobación: sin él, el expediente no distinguía un
+        // registro que cerró la actividad de uno que la dejó esperando visto
+        // bueno, y los avisos de «se envía a aprobación» no tenían de dónde
+        // enterarse.
+        { numeral, fecha: dto.fecha, conSoporte: documento !== null, estado: estadoResultante },
         acceso,
       );
 
@@ -463,10 +468,11 @@ export class RegistroActividadService {
    * una actividad con aprobador configurado se daba por buena sin que nadie la
    * mirara y el envío quedaba como un paso que ya no cambiaba nada.
    *
-   * Devuelve si la dejó cerrada, que es lo que quien llama necesita para saber
-   * si preguntar por el cierre de la etapa. Se devuelve en vez de recalcularse
-   * fuera: la condición ya está resuelta aquí, y repetirla es la forma de que
-   * las dos acaben discrepando.
+   * Devuelve el estado en que la dejó y si la cerró. El estado va a la traza,
+   * de donde se entera el aviso de «se envía a aprobación»; el cierre es lo que
+   * quien llama necesita para saber si preguntar por el cierre de la etapa. Se
+   * devuelven en vez de recalcularse fuera: la condición ya está resuelta aquí,
+   * y repetirla es la forma de que las dos acaben discrepando.
    */
   private async marcarActividad(
     em: EntityManager,
@@ -475,7 +481,7 @@ export class RegistroActividadService {
     cumplida: boolean,
     acceso: HiringAccess,
     modalidad: string | null = null,
-  ): Promise<boolean> {
+  ): Promise<{ estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO'; cierra: boolean }> {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
@@ -496,11 +502,13 @@ export class RegistroActividadService {
           numeral,
           estado: estado as any,
           datos: {},
-          ...(cumplida ? { enviadoPor: acceso.userName } : {}),
+          // Con el id y no solo el nombre: sin él la devolución no encontraba a
+          // quién avisar, igual que pasaba cuando la entidad no lo declaraba.
+          ...(cumplida ? { enviadoPor: acceso.userName, enviadoPorId: acceso.userId ?? null } : {}),
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
-      return cierra;
+      return { estado, cierra };
     }
 
     actividad.estado = estado as any;
@@ -511,7 +519,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
-    return cierra;
+    return { estado, cierra };
   }
 
   private async traza(

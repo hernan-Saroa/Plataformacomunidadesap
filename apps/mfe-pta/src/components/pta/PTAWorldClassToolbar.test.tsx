@@ -40,6 +40,15 @@ function tabButton(label: string) {
 }
 
 describe('PTAWorldClassToolbar — contadores de las pestañas Todos/Aprobación/Aprobado', () => {
+  it('conserva en Aprobado los PTA aprobados hace más de siete días', () => {
+    render(<PTAWorldClassToolbar {...baseProps({ ptas: [
+      { id: '1', estado: 'Aprobado', dias_en_proceso: 37 },
+      { id: '2', estado: 'Pendiente Jefatura', dias_en_proceso: 32 },
+    ] })} />);
+    expect(tabButton('Todos').textContent).toContain('2');
+    expect(tabButton('Aprobado').textContent).toContain('1');
+    expect(tabButton('Aprobación').textContent).toContain('1');
+  });
   it('cuenta cada PTA en su pestaña de flujo (Aprobación=pendientes, Aprobado=aprobados)', () => {
     const ptas = [
       { id: '1', estado: 'Pendiente Jefatura' },

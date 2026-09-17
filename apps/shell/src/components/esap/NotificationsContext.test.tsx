@@ -72,6 +72,26 @@ describe('NotificationsContext — filtro de categoria por módulo (bug RESUELVE
     await waitFor(() => expect(result.current.notifications).toHaveLength(1));
     expect(result.current.unreadCount).toBe(1);
   });
+  it('muestra el aviso personal de RUND aunque el usuario esté en otro módulo',async()=>{
+    vi.mocked(notificationsService.getUserNotifications).mockResolvedValue([
+      buildApiNotification({tipo_notificacion:'rund_extraccion_finalizada',categoria:'RUND'}),
+    ] as any);
+    const {result}=renderWithModule('control-disciplinario');
+    await waitFor(()=>expect(result.current.unreadCount).toBe(1));
+  });
+  it('reanuda la campana después de una caída temporal sin recargar la página',async()=>{
+    vi.useFakeTimers();
+    vi.mocked(notificationsService.getUserNotifications).mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue([buildApiNotification()] as any);
+    const {result,unmount}=renderWithModule('gestion-legal');
+    try {
+      await act(async()=>{await Promise.resolve();});
+      expect(result.current.unreadCount).toBe(0);
+      await act(async()=>{await vi.advanceTimersByTimeAsync(30000);});
+      expect(result.current.unreadCount).toBe(1);
+      expect(notificationsService.getUserNotifications).toHaveBeenCalledTimes(2);
+    }finally{unmount();vi.useRealTimers();}
+  });
 
   it('gestion-legal: una notificación de asignación de TAREA (TAREA_ASIGNADA, categoria "gestion-legal") también debe ser visible', async () => {
     (notificationsService.getUserNotifications as any).mockResolvedValue([

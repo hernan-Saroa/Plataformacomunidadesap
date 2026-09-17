@@ -30,6 +30,22 @@ import * as mammoth from 'mammoth';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
+// ✅ Helper para limpiar identificadores únicos (timestamp_uuid_) de nombres de archivos
+const limpiarNombreArchivo = (nombre?: string | null): string => {
+  if (!nombre || typeof nombre !== 'string') return '';
+  let limpio = nombre.trim();
+  if (limpio.includes('/') || limpio.includes('\\')) {
+    const lastPart = limpio.split(/[\/\\]/).pop();
+    if (lastPart && lastPart.includes('.')) {
+      limpio = lastPart;
+    }
+  }
+  limpio = limpio.replace(/^\d{10,}_(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})_/, '');
+  limpio = limpio.replace(/^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32})_/, '');
+  limpio = limpio.replace(/^\d{10,14}_/, '');
+  return limpio;
+};
+
 // ============ INTERFACES ============
 
 interface TipoDocumento {
@@ -405,7 +421,15 @@ const DOCUMENTOS_CRONOLOGICOS: Documento[] = [
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function ExpedientesElectronicosWorldClass() {
+interface ExpedientesElectronicosProps {
+  initialExpedienteId?: string;
+  initialRadicado?: string;
+}
+
+export function ExpedientesElectronicosWorldClass({
+  initialExpedienteId,
+  initialRadicado,
+}: ExpedientesElectronicosProps = {}) {
   const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE);
 
   if (!hasAccess) {
@@ -463,7 +487,7 @@ export function ExpedientesElectronicosWorldClass() {
      setError(null);
      try {
        // ✅ Filtrar procesos según rol: Jefe/Radicador ven todos, Profesional solo los suyos
-       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+       const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
        const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
        const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
        const currentUserId = authService.getCurrentUser()?.id;
@@ -555,7 +579,7 @@ export function ExpedientesElectronicosWorldClass() {
                
                todosDocumentos.push({
                  id: doc.id,
-                 descripcionPrincipal: doc.nombre || doc.descripcion || 'Documento sin descripción',
+                 descripcionPrincipal: limpiarNombreArchivo(doc.nombre || doc.descripcion || 'Documento sin descripción'),
                  tipologiaDocumental: doc.tipo || 'Documento',
                  anexos: 'N/A',
                  fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
@@ -591,7 +615,7 @@ export function ExpedientesElectronicosWorldClass() {
            noticia.documentos.forEach((doc: any) => {
               todosDocumentos.push({
                   id: doc.id,
-                  descripcionPrincipal: doc.descripcion || 'Documento sin descripción',
+                  descripcionPrincipal: limpiarNombreArchivo(doc.descripcion || 'Documento sin descripción'),
                   tipologiaDocumental: doc.tipo || 'Documento',
                   anexos: 'N/A',
                   fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
@@ -701,6 +725,49 @@ export function ExpedientesElectronicosWorldClass() {
   useEffect(() => {
     cargarDatos();
   }, [cargarDatos]);
+
+  // ✅ Seleccionar y expandir automáticamente el expediente especificado (por URL o notificación)
+  useEffect(() => {
+    let targetId = initialExpedienteId;
+    let targetRadicado = initialRadicado;
+
+    if (!targetId && !targetRadicado) {
+      try {
+        const raw = sessionStorage.getItem('control-disciplinario:pendingOpenExpediente');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          targetId = parsed.processId || null;
+          targetRadicado = parsed.radicado || null;
+        }
+      } catch {}
+    }
+
+    if (!targetId && !targetRadicado && typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      targetId = sp.get('processId') || undefined;
+      targetRadicado = sp.get('radicado') || undefined;
+    }
+
+    if ((targetId || targetRadicado) && expedientes.length > 0) {
+      const match = expedientes.find(
+        (e) =>
+          (targetId && e.id === targetId) ||
+          (targetRadicado && (
+            e.radicado?.toLowerCase() === targetRadicado.toLowerCase() ||
+            e.radicadoNoticia?.toLowerCase() === targetRadicado.toLowerCase()
+          ))
+      );
+
+      if (match) {
+        setExpedienteSeleccionado(match.id);
+        setExpedientesExpandidos((prev) => new Set([...prev, match.id]));
+        setBusqueda(match.radicado);
+        try {
+          sessionStorage.removeItem('control-disciplinario:pendingOpenExpediente');
+        } catch {}
+      }
+    }
+  }, [initialExpedienteId, initialRadicado, expedientes]);
 
   // Toggle expandir/colapsar expediente
   const toggleExpediente = (expedienteId: string) => {
@@ -1197,6 +1264,52 @@ export function ExpedientesElectronicosWorldClass() {
     const docsExpediente = documentos.filter(d => d.expedienteId === expedienteId)
       .sort((a, b) => new Date(a.fechaSubida).getTime() - new Date(b.fechaSubida).getTime());
 
+    const getDocumentDownloadUrl = (d: Documento): string => {
+      let downloadUrl = '';
+      const fullFilename = (d.archivoAcceso || d.archivoNombre || d.nombre || '').trim();
+
+      // ✅ 1. Si ya viene una URL absoluta (http/https), usarla directamente
+      if (d.downloadUrl && (d.downloadUrl.startsWith('http://') || d.downloadUrl.startsWith('https://'))) {
+        downloadUrl = d.downloadUrl;
+      }
+      // ✅ 2. Si es una ruta física de archivos /files/... (adjuntos de noticia o guardados físicamente)
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/files/')) {
+        downloadUrl = disciplinaryService.getAbsoluteFileUrl(d.downloadUrl);
+      }
+      // ✅ 3. Si es un auto procesal /disciplinary-autos/... (descarga/visualización de auto)
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/disciplinary-autos/')) {
+        downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? d.downloadUrl : `/api/v1${d.downloadUrl}`);
+      }
+      // ✅ 4. Si ya incluye el prefijo de servicio /control-disciplinario/...
+      else if (d.downloadUrl && d.downloadUrl.startsWith('/control-disciplinario/')) {
+        const cleanPath = d.downloadUrl.replace(/^\/control-disciplinario(\/api\/v1)?/, '');
+        downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? cleanPath : `/api/v1${cleanPath}`);
+      }
+      // ✅ 5. Si tiene expedienteId e id de documento (documentos de proceso / evidencias)
+      else if (d.expedienteId && d.id) {
+        const restPath = `/disciplinary-processes/${d.expedienteId}/documents/${d.id}/download?view=true`;
+        downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
+      }
+      // ✅ 6. Si d.downloadUrl viene como otra ruta relativa
+      else if (d.downloadUrl) {
+        downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? d.downloadUrl : `/api/v1${d.downloadUrl}`);
+      }
+      // ✅ 7. Fallback únicamente si no existe ninguna URL de descarga previa
+      else if (fullFilename && !/^https?:\/\//i.test(fullFilename)) {
+        downloadUrl = disciplinaryService.getAbsoluteFileUrl(`/files/${encodeURIComponent(fullFilename)}`);
+      } else if (fullFilename) {
+        downloadUrl = fullFilename;
+      }
+
+      if (downloadUrl && typeof window !== 'undefined') {
+        const token = authService.getToken?.() || localStorage.getItem('token') || '';
+        if (token && !downloadUrl.includes('token=')) {
+          downloadUrl += (downloadUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+        }
+      }
+      return downloadUrl;
+    };
+
     try {
       await disciplinaryService.descargarIndiceElectronico(
         expedienteId,
@@ -1206,7 +1319,7 @@ export function ExpedientesElectronicosWorldClass() {
           responsable: expediente.responsable,
         },
         docsExpediente.map(doc => ({
-          descripcionPrincipal: doc.descripcionPrincipal,
+          descripcionPrincipal: limpiarNombreArchivo(doc.descripcionPrincipal),
           tipologiaDocumental: doc.tipologiaDocumental,
           anexos: doc.anexos,
           fechaCreacion: formatearFechaHojaControl(doc.fechaCreacion),
@@ -1215,7 +1328,8 @@ export function ExpedientesElectronicosWorldClass() {
           paginaFinal: doc.paginaFinal,
           formato: doc.formato,
           tamanoKB: doc.tamanoKB,
-          archivoAcceso: doc.archivoAcceso,
+          archivoAcceso: doc.archivoAcceso || doc.archivoNombre || doc.nombre || 'documento.pdf',
+          urlAcceso: getDocumentDownloadUrl(doc),
         })),
         `IndiceElectronico_${expediente.radicado}.xlsx`,
       );

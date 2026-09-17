@@ -567,6 +567,9 @@ export class ConfiguracionService {
         etapa: a.etapa,
         nombre: a.nombre,
         descripcion: a.descripcion,
+        // El plazo se configura en la ficha: la matriz lo lleva para abrirla con él.
+        plazoDias: a.plazoDias ?? null,
+        alertaDiasAntes: a.alertaDiasAntes ?? null,
         campos,
         celdas: (modalidades as any[]).map((m) => {
           const llave = `${a.numeral}::${m.codigo}`;

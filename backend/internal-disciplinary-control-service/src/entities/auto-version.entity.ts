@@ -33,6 +33,6 @@ export class AutoVersion {
     @Column({ type: 'text', nullable: true })
     documentName: string | null;
 
-    @CreateDateColumn()
+    @CreateDateColumn({ type: 'timestamptz' })
     createdAt: Date;
 }

@@ -35,6 +35,7 @@ import {
   getBancoDocenteById,
 } from '../../../services/api/ptaApi';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { getPtaHistoryActorLabel } from '../../../utils/ptaHistoryActor';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
@@ -596,7 +597,11 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
   const [aprobacionTerritorialReporte, setAprobacionTerritorialReporte] = useState<any[]>([]);
   const loadPtasRequestRef = useRef(0);
+  const loadPtasPendingRef = useRef<number | null>(null);
   const loadSolicitudesRequestRef = useRef(0);
+  const loadDetalleRequestRef = useRef(0);
+  const selectedPtaIdRef = useRef(selectedPtaId);
+  selectedPtaIdRef.current = selectedPtaId;
 
   // El portal docente siempre trabaja en el periodo marcado como vigente. Los
   // registros históricos se conservan en memoria para no modificar reglas
@@ -612,9 +617,11 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const { addNotification } = useNotifications();
 
   // ═══ Data loaders (defined before sync hook) ═══
-  const loadPtas = useCallback(async () => {
+  const loadPtas = useCallback(async (showLoading = true) => {
+    if (!showLoading && loadPtasPendingRef.current !== null) return;
     const requestId = ++loadPtasRequestRef.current;
-    setLoading(true);
+    loadPtasPendingRef.current = requestId;
+    if (showLoading) setLoading(true);
     try {
       const [periodoActivo, res] = await Promise.all([
         getActivePeriodoAcademico(),
@@ -623,22 +630,22 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
       if (requestId !== loadPtasRequestRef.current) return;
 
       const periodoCodigo = getPeriodoCode(periodoActivo);
-      setActivePeriodo(periodoCodigo);
-      setActivePeriodoData(periodoActivo || null);
+      if (!periodoCodigo && !showLoading) return;
 
       // El encabezado oficial del reporte usa la ficha RUND/Banco de Docentes.
       // Este lookup acepta persona_id, usuario_id o docente_id y devuelve la
       // cédula y los demás datos institucionales sin confundirlos con UUIDs.
-      const perfilRes = await getBancoDocenteById(userPersonId, periodoCodigo || undefined);
-      if (requestId !== loadPtasRequestRef.current) return;
-      setDocentePerfil(perfilRes.success ? perfilRes.data : null);
+      if (showLoading) {
+        const perfilRes = await getBancoDocenteById(userPersonId, periodoCodigo || undefined);
+        if (requestId !== loadPtasRequestRef.current) return;
+        if (perfilRes.success) setDocentePerfil(perfilRes.data);
+      }
 
       if (res.success && Array.isArray(res.data)) {
         const loadedPtas = res.data;
         const loadedPtasPeriodo = periodoCodigo
           ? loadedPtas.filter((pta: any) => getPeriodoCode(pta?.periodo) === periodoCodigo)
           : [];
-        setAllPtas(loadedPtas);
 
         const approvalEntries = await Promise.all(
           loadedPtasPeriodo
@@ -646,34 +653,41 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
             .map(async (pta: any) => {
               try {
                 const compRes = await getComponentesAprobacion(pta.id);
-                return [pta.id, compRes.success && Array.isArray(compRes.data) ? compRes.data : []] as const;
+                return [pta.id, compRes.success && Array.isArray(compRes.data) ? compRes.data : null] as const;
               } catch {
-                return [pta.id, []] as const;
+                return [pta.id, null] as const;
               }
             })
         );
         if (requestId !== loadPtasRequestRef.current) return;
-        setComponentApprovalsByPta(Object.fromEntries(approvalEntries));
+        setActivePeriodo(periodoCodigo);
+        setActivePeriodoData(periodoActivo || null);
+        setAllPtas(loadedPtas);
+        setComponentApprovalsByPta(previous => Object.fromEntries(
+          approvalEntries.map(([id, rows]) => [id, rows ?? previous[id] ?? []]),
+        ));
       } else {
         console.warn('[Portal PTA] Response data is not an array:', res);
-        setAllPtas([]);
-        setComponentApprovalsByPta({});
       }
     } catch (error) {
       if (requestId !== loadPtasRequestRef.current) return;
       console.error('[Portal PTA] Error loading PTAs:', error);
-      setAllPtas([]);
-      setActivePeriodoData(null);
-      setDocentePerfil(null);
-      setComponentApprovalsByPta({});
     } finally {
+      if (loadPtasPendingRef.current === requestId) loadPtasPendingRef.current = null;
       if (requestId === loadPtasRequestRef.current) setLoading(false);
     }
   }, [userPersonId]);
 
   const loadPtaDetalle = useCallback(async (id: string) => {
-    const res = await getPTAById(id);
-    if (res.success) setSelectedPta(res.data);
+    const requestId = ++loadDetalleRequestRef.current;
+    try {
+      const res = await getPTAById(id);
+      if (requestId === loadDetalleRequestRef.current && selectedPtaIdRef.current === id && res.success) {
+        setSelectedPta(res.data);
+      }
+    } catch (error) {
+      console.warn('[Portal PTA] No se pudo actualizar el detalle:', error);
+    }
   }, []);
 
   // ═══ Solicitudes PTA — cargar notificaciones resueltas ═══
@@ -699,7 +713,22 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   // sobre el siguiente docente mientras termina la nueva consulta.
   useEffect(() => {
     loadSolicitudesRequestRef.current += 1;
+    loadPtasRequestRef.current += 1;
+    loadDetalleRequestRef.current += 1;
     setTodasLasSolicitudes([]);
+    setAllPtas([]);
+    setComponentApprovalsByPta({});
+    setDocentePerfil(null);
+    setSelectedPtaId(null);
+    setSelectedPta(null);
+    setEditPtaId(null);
+    setIsReporteOpen(false);
+    setVista('v01_dashboard');
+    return () => {
+      loadSolicitudesRequestRef.current += 1;
+      loadPtasRequestRef.current += 1;
+      loadDetalleRequestRef.current += 1;
+    };
   }, [userPersonId]);
 
   const solicitudesResueltas = useMemo(() => {
@@ -757,7 +786,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   useEffect(() => { loadPtas(); loadSolicitudes(); }, [loadPtas, loadSolicitudes]);
 
   useEffect(() => {
-    if (selectedPtaId) loadPtaDetalle(selectedPtaId);
+    setSelectedPta(null);
+    if (selectedPtaId) void loadPtaDetalle(selectedPtaId);
+    return () => { loadDetalleRequestRef.current += 1; };
   }, [selectedPtaId, loadPtaDetalle]);
 
   // El desglose de Docencia por (territorial, nivel) solo se necesita para
@@ -770,10 +801,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     }
     let cancelado = false;
     getAprobacionTerritorial(selectedPta.id).then(res => {
-      if (!cancelado) setAprobacionTerritorialReporte(res.success && Array.isArray(res.data) ? res.data : []);
-    });
+      if (!cancelado && res.success && Array.isArray(res.data)) setAprobacionTerritorialReporte(res.data);
+    }).catch(() => { /* Keep the last confirmed state on a transient failure. */ });
     return () => { cancelado = true; };
-  }, [isReporteOpen, vista, selectedPta?.id]);
+  }, [isReporteOpen, vista, selectedPta]);
 
   useEffect(() => {
     if (
@@ -804,18 +835,16 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     interval: 10000,
     docenteId: userPersonId,
     enabled: true,
+    onRefresh: () => Promise.all([
+      loadPtas(false),
+      loadSolicitudes(),
+      selectedPtaId ? loadPtaDetalle(selectedPtaId) : Promise.resolve(),
+    ]),
     onDataChanged: (events) => {
-      console.log(`[Portal Sync] ${events.length} nuevos eventos del Backoffice`);
-      loadPtas();
-      loadSolicitudes();
-      // Also reload selected PTA detail if viewing one
-      if (selectedPtaId) {
-        loadPtaDetalle(selectedPtaId);
-      }
       // Dispatch custom event for child components (like PTAForm) to reload catalogs
       window.dispatchEvent(new CustomEvent('pta-realtime-sync', { detail: events }));
       // Show toast + push to platform bell for each event
-      events.forEach(evt => {
+      events.filter(evt => evt.sistema_origen !== 'portal').forEach(evt => {
         const label = evt.estado_nuevo?.replace(/_/g, ' ') || evt.tipo;
         const isAprobado = evt.estado_nuevo === 'Aprobado';
         const isRechazado = evt.estado_nuevo === 'Rechazado';
@@ -953,7 +982,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     return <RevisionPropuesta ptaId={selectedPtaId} onBack={() => { setVista('v01_dashboard'); setSelectedPtaId(null); loadPtas(); }} userPersonId={userPersonId} />;
   }
   if (vista === 'v03_formulario') {
-    return <PTAForm onBack={() => { setVista('v01_dashboard'); setEditPtaId(null); loadPtas(); }} userPersonId={userPersonId} ptaId={editPtaId} />;
+    return <PTAForm syncVersion={syncState.lastSyncTime} onBack={() => { setVista('v01_dashboard'); setEditPtaId(null); loadPtas(); }} userPersonId={userPersonId} ptaId={editPtaId} />;
   }
   if (vista === 'v09_imprimir' && selectedPtaId) {
     return (
@@ -961,6 +990,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         pta={selectedPta}
         onClose={() => setVista('v01_dashboard')}
         userPersonId={userPersonId}
+        userDocumento={docentePerfil?.documento_identidad || ''}
         userName={userName}
         componentesAprobacion={componentApprovalsByPta[selectedPtaId] || []}
         aprobacionTerritorial={aprobacionTerritorialReporte}
@@ -1456,9 +1486,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       </div>
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-gray-100 text-[9.5px] text-gray-400 leading-normal">
-                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
-                    </div>
                   </div>
                 );
 
@@ -1520,9 +1547,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       </div>
                     </div>
 
-                    <div className="mt-3 px-2.5 py-1.5 rounded-lg bg-blue-50/60 border border-blue-100/60 text-[0.55rem] sm:text-[0.6rem] text-blue-700">
-                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
-                    </div>
                   </div>
                 );
               })()}
@@ -1823,8 +1847,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       const accion = h.tipoAccion || h.tipo_accion || h.accion;
                       const fecha = h.createdAt || h.created_at || h.fecha;
                       const comentarios = h.comentarios || h.observaciones;
-                      const actor = h.actorNombre || h.actor_nombre || h.actor || h.actorId || h.actor_id;
-                      const actorRol = h.actorRol || h.actor_rol;
+                      const actor = getPtaHistoryActorLabel(h, selectedPta, selectedPta?.docente_nombre || docentePerfil?.nombre_completo || userName, userPersonId);
                       const detalles = parseDetallesTransicion(h.detallesTransicion || h.detalles_transicion);
                       const componenteLabel = detalles.componente ? (HISTORIAL_COMP_LABELS[detalles.componente] || detalles.componente) : null;
                       return (
@@ -1843,7 +1866,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                             {accion && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>{String(accion).replace(/_/g, ' ')}</div>}
                             {componenteLabel && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>Componente: {componenteLabel}</div>}
                             {comentarios && <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{comentarios}</div>}
-                            {actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {actor}{actorRol ? ` — ${actorRol}` : ''}</div>}
+                            {actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {actor}</div>}
                           </div>
                         </div>
                       );

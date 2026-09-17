@@ -363,7 +363,7 @@ const ACTIVIDADES_ETAPA_3 = [
  * situación que las once y se habían quedado fuera de la cuenta, saliendo con
  * candado en el riel.
  */
-const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
+export const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   '3.2': 'Análisis del sector y estudio de mercado',
   // La 3.3 y la 3.4 salieron de aquí con EFDS-1183. Ninguna de las dos se
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
@@ -392,7 +392,7 @@ const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
  * las que la modalidad excluye. Cuando estén las sesenta y tres, esto devuelve
  * siempre true y la excepción sobra.
  */
-const TIENEN_PANEL = (numeral: string): boolean =>
+export const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
   numeral === NUMERAL_RADICACION ||
   numeral === NUMERAL_MODALIDAD ||

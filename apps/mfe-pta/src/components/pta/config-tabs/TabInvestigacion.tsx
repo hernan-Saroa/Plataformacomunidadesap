@@ -255,7 +255,8 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                     />
                   </button>
                   <span
-                    className={`ml-3 min-w-[70px] whitespace-nowrap text-right text-xs font-bold transition-colors duration-200 ${
+                    style={{ width: 80, flexShrink: 0, whiteSpace: 'nowrap' }}
+                    className={`ml-3 text-right text-xs font-bold transition-colors duration-200 ${
                       permiteProyectoYActividades ? 'text-emerald-600' : 'text-slate-400'
                     }`}
                   >
@@ -293,19 +294,28 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 <button
                   type="button"
                   onClick={() => handleChange('inv_resolucion_obligatoria', !draft.inv_resolucion_obligatoria)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
+                  className={`relative inline-flex shrink-0 cursor-pointer items-center overflow-hidden rounded-full border-2 p-0 transition-colors duration-200 ease-in-out outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
                     draft.inv_resolucion_obligatoria
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-slate-200 border-slate-200'
                   }`}
+                  style={{ width: 48, minWidth: 48, height: 28 }}
                   role="switch"
+                  aria-label="N° / Nombre de la Resolución obligatorio"
                   aria-checked={draft.inv_resolucion_obligatoria}
                 >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    draft.inv_resolucion_obligatoria ? 'translate-x-5' : 'translate-x-0.5'
-                  }`} />
+                  <motion.span
+                    className="pointer-events-none absolute rounded-full bg-white shadow-lg"
+                    style={{ left: 2, top: 2, width: 20, height: 20 }}
+                    initial={false}
+                    animate={{ x: draft.inv_resolucion_obligatoria ? 20 : 0 }}
+                    transition={{ x: { type: 'spring', stiffness: 500, damping: 30, mass: 0.7 } }}
+                  />
                 </button>
-                <span className={`ml-3 text-xs font-bold min-w-[70px] text-right ${draft.inv_resolucion_obligatoria ? 'text-emerald-600' : 'text-slate-400'}`}>
+                <span
+                  style={{ width: 80, flexShrink: 0, whiteSpace: 'nowrap' }}
+                  className={`ml-3 text-xs font-bold text-right ${draft.inv_resolucion_obligatoria ? 'text-emerald-600' : 'text-slate-400'}`}
+                >
                   {draft.inv_resolucion_obligatoria ? 'Obligatorio' : 'Opcional'}
                 </span>
               </div>
@@ -321,19 +331,28 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 <button
                   type="button"
                   onClick={() => handleChange('inv_adjunto_obligatorio', !draft.inv_adjunto_obligatorio)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
+                  className={`relative inline-flex shrink-0 cursor-pointer items-center overflow-hidden rounded-full border-2 p-0 transition-colors duration-200 ease-in-out outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
                     draft.inv_adjunto_obligatorio
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-slate-200 border-slate-200'
                   }`}
+                  style={{ width: 48, minWidth: 48, height: 28 }}
                   role="switch"
+                  aria-label="Archivo Adjunto (Resolución) obligatorio"
                   aria-checked={draft.inv_adjunto_obligatorio}
                 >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    draft.inv_adjunto_obligatorio ? 'translate-x-5' : 'translate-x-0.5'
-                  }`} />
+                  <motion.span
+                    className="pointer-events-none absolute rounded-full bg-white shadow-lg"
+                    style={{ left: 2, top: 2, width: 20, height: 20 }}
+                    initial={false}
+                    animate={{ x: draft.inv_adjunto_obligatorio ? 20 : 0 }}
+                    transition={{ x: { type: 'spring', stiffness: 500, damping: 30, mass: 0.7 } }}
+                  />
                 </button>
-                <span className={`ml-3 text-xs font-bold min-w-[70px] text-right ${draft.inv_adjunto_obligatorio ? 'text-emerald-600' : 'text-slate-400'}`}>
+                <span
+                  style={{ width: 80, flexShrink: 0, whiteSpace: 'nowrap' }}
+                  className={`ml-3 text-xs font-bold text-right ${draft.inv_adjunto_obligatorio ? 'text-emerald-600' : 'text-slate-400'}`}
+                >
                   {draft.inv_adjunto_obligatorio ? 'Obligatorio' : 'Opcional'}
                 </span>
               </div>

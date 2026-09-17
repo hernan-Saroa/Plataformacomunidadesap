@@ -74,6 +74,9 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  ConfiguracionAvisos,
+  EventoAviso,
+  ParametroAlerta,
   EstadisticasGestion,
   ExpedienteAuditoria,
   EstadoIncumplimiento,
@@ -2486,7 +2489,48 @@ export const contratacionService = {
     pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
 
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
-  alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
+  /**
+   * Sin `dias` rige la anticipación configurada de cada tipo de vencimiento;
+   * con un número, la misma para todos, que es lo que fija el selector.
+   */
+  alertas: (dias: number | null = null) =>
+    pedir<AlertaVencimiento[]>(dias === null ? '/alertas' : `/alertas?dias=${dias}`),
+
+  /** Anticipación, tolerancia y hora del aviso diario (EFDS-1183). */
+  parametrosAlerta: () => pedir<ParametroAlerta[]>('/alertas/parametros'),
+
+  guardarParametrosAlerta: (cambios: Record<string, number>) =>
+    pedir<ParametroAlerta[]>('/alertas/parametros', {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Los avisos de una actividad: si avisa de cada cosa y a quién (EFDS-1183). */
+  avisosDeActividad: (numeral: string) => pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos`),
+
+  guardarAvisoDeActividad: (
+    numeral: string,
+    evento: EventoAviso,
+    cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
+  ) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Enciende o apaga el correo de los avisos de una actividad. */
+  guardarCorreoDeActividad: (numeral: string, porCorreo: boolean) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/correo`, {
+      method: 'PUT',
+      body: JSON.stringify({ porCorreo }),
+    }),
+
+  /** Las dependencias de la ESAP, del catálogo de la plataforma. */
+  dependencias: () => pedir<{ id: string; nombre: string }[]>('/configuracion/dependencias'),
+
+  /** Deshace lo cambiado en un aviso: vuelve a regir lo sugerido. */
+  restablecerAvisoDeActividad: (numeral: string, evento: EventoAviso) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, { method: 'DELETE' }),
 
   /** Indicadores de gestión de la contratación (EFDS-1189). */
   estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>

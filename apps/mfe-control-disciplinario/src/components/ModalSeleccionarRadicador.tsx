@@ -64,10 +64,21 @@ export function ModalSeleccionarRadicador({
     }
   };
 
-  const radicadoresFiltrados = radicadores.filter((r) =>
-    r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-    r.email.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  const normalize = (str: string) =>
+    (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const queryNorm = normalize(busqueda);
+  const radicadoresFiltrados = radicadores.filter((r) => {
+    if (!queryNorm) return true;
+    return (
+      normalize(r.nombre).includes(queryNorm) ||
+      normalize(r.email).includes(queryNorm)
+    );
+  });
 
   const getCargaColor = (porcentaje: number) => {
     if (porcentaje >= 80) return { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' };
@@ -140,22 +151,41 @@ export function ModalSeleccionarRadicador({
                 </button>
               </div>
               <p className="text-sm mt-2" style={{ color: '#6B7280' }}>
-                Seleccione el Secretario/Radicador responsable de realizar las actuaciones del auto.
+                Seleccione el Secretario/Radicador con permiso de radicación responsable de realizar las actuaciones del auto.
               </p>
             </div>
 
-            {/* Búsqueda */}
+            {/* Búsqueda amigable */}
             <div className="px-6 pt-4">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#9CA3AF' }} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
                 <input
                   type="text"
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                   placeholder="Buscar por nombre o correo..."
-                  className="w-full pl-10 pr-4 py-2 border-2 rounded-xl focus:outline-none focus:border-[#003DA5] text-sm"
-                  style={{ borderColor: '#E5E7EB' }}
+                  className="w-full pl-10 pr-9 py-2.5 border-2 rounded-xl focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20 text-sm transition-all bg-gray-50/50 hover:bg-white focus:bg-white"
+                  style={{ borderColor: busqueda ? '#003DA5' : '#E5E7EB' }}
                 />
+                {busqueda && (
+                  <button
+                    onClick={() => setBusqueda('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Limpiar búsqueda"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-xs text-gray-500 mt-2 px-1">
+                <span>
+                  {radicadores.length} radicador(es) disponible(s)
+                </span>
+                {busqueda && (
+                  <span className="font-semibold text-[#003DA5]">
+                    {radicadoresFiltrados.length} coincidencia(s)
+                  </span>
+                )}
               </div>
             </div>
 
@@ -169,7 +199,17 @@ export function ModalSeleccionarRadicador({
               ) : radicadoresFiltrados.length === 0 ? (
                 <div className="text-center py-10">
                   <Users className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-gray-600 font-semibold">No hay radicadores disponibles</p>
+                  <p className="text-gray-700 font-semibold">
+                    {busqueda ? `No se encontraron radicadores que coincidan con "${busqueda}"` : 'No hay radicadores disponibles'}
+                  </p>
+                  {busqueda && (
+                    <button
+                      onClick={() => setBusqueda('')}
+                      className="mt-2 text-xs font-semibold text-[#003DA5] hover:underline"
+                    >
+                      Limpiar búsqueda
+                    </button>
+                  )}
                 </div>
               ) : (
                 radicadoresFiltrados.map((radicador) => {

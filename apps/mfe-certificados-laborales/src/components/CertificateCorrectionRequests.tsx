@@ -48,11 +48,14 @@ import {
   DialogTitle,
 } from '@esap-mfe/shared-ui/dialog';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { useCorrectionAutoRefresh } from '../hooks/useCorrectionAutoRefresh';
+import { CorrectionDecisionResultDialog, type CorrectionDecisionResult } from './CorrectionDecisionResultDialog';
 import {
   certificadosService,
   type CorrectionCertificatePreview,
   type CertificateCorrectionRequest,
   type CorrectionEvidence,
+  type CorrectionSortField,
   type CorrectionStatus,
   type CorrectionTraceEvent,
 } from '../../services/api/certificados.service';
@@ -323,6 +326,59 @@ const restrictComplementaryDataToActiveTemplate = (
   };
 };
 
+/**
+ * Encabezado de columna ordenable.
+ *
+ * La flecha indica el sentido cuando la columna esta activa y se muestra en gris
+ * claro cuando no lo esta, para que se vea que la columna se puede ordenar sin
+ * competir visualmente con la activa.
+ */
+function SortableHeader({
+  field,
+  label,
+  sort,
+  order,
+  onSort,
+  align = 'left',
+}: {
+  field: CorrectionSortField;
+  label: string;
+  sort: CorrectionSortField;
+  order: 'ASC' | 'DESC';
+  onSort: (field: CorrectionSortField) => void;
+  align?: 'left' | 'right';
+}) {
+  const active = sort === field;
+  const ascending = active && order === 'ASC';
+  const Arrow = ascending ? ChevronUp : ChevronDown;
+  // El `th` pierde 8px de padding y el boton los recupera: asi la etiqueta queda
+  // alineada con el contenido de la columna aunque el boton tenga su propio
+  // fondo al pasar el cursor.
+  return (
+    <th
+      className={`px-3 py-4 ${align === 'right' ? 'text-right' : ''}`}
+      aria-sort={active ? (ascending ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        title={`Ordenar por ${label}`}
+        className={`inline-flex select-none items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition ${
+          active
+            ? 'bg-blue-50 text-[#003DA5]'
+            : 'text-slate-500 hover:bg-slate-100 hover:text-[#003DA5]'
+        }`}
+      >
+        {label}
+        <Arrow
+          className={`h-3 w-3 ${active ? 'text-[#003DA5]' : 'text-slate-300'}`}
+          aria-hidden="true"
+        />
+      </button>
+    </th>
+  );
+}
+
 function StatusBadge({ status }: { status: CorrectionStatus }) {
   const meta = STATUS_META[status];
   return (
@@ -478,7 +534,7 @@ function TraceabilityPanel({ events }: { events: CorrectionTraceEvent[] }) {
                     <div><h3 className="text-sm font-bold text-slate-900">{event.title}</h3><p className="mt-1 text-xs font-medium text-slate-500">{event.actor_name} · {event.actor_role === 'SOLICITANTE' ? 'Solicitante' : 'Coordinador'}</p></div>
                     <time className="whitespace-nowrap text-[11px] font-medium text-slate-500">{formatDate(event.occurred_at, true)}</time>
                   </div>
-                  <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-700">{event.description}</p>
+                  <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-700">{event.description}</p>
                   {(event.metadata?.recipient || deliveryStatus || evidenceCount > 0) && (
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
                       {event.metadata?.recipient && <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-blue-800"><Mail className="h-3 w-3 flex-none" /><span className="max-w-64 truncate">{String(event.metadata.recipient)}</span></span>}
@@ -641,19 +697,33 @@ function MinimumDescriptionFeedback({
 
 export function CertificateCorrectionRequests({ canResend = false }: { canResend?: boolean }) {
   const previewSequenceRef = useRef(0);
+  const listSequenceRef = useRef(0);
+  const listRequestsRef = useRef(0);
+  // Espeja `items` para consultarlo dentro de loadData sin volverlo dependencia
+  // del useCallback (eso reiniciaria la carga en bucle).
+  const itemsRef = useRef<CertificateCorrectionRequest[]>([]);
   const [items, setItems] = useState<CertificateCorrectionRequest[]>([]);
   const [stats, setStats] = useState<CorrectionStats>(EMPTY_STATS);
   const [status, setStatus] = useState<CorrectionStatus | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  // Ordenamiento de la bandeja. El backend valida la columna contra una lista
+  // blanca, así que un valor inesperado cae a la fecha de recepción.
+  const [sort, setSort] = useState<CorrectionSortField>('created_at');
+  const [order, setOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Recarga suave: cuando ya hay filas en pantalla (reordenar, filtrar, paginar)
+  // la tabla no se desmonta, solo se atenua mientras llegan los datos nuevos.
+  const [softLoading, setSoftLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [autoRefreshFailed, setAutoRefreshFailed] = useState(false);
   const [selected, setSelected] = useState<CertificateCorrectionRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editData, setEditData] = useState<EditableCertificate | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [decisionResult, setDecisionResult] = useState<CorrectionDecisionResult | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [rejectReason, setRejectReason] = useState('');
@@ -669,14 +739,23 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState<{ email: string } | null>(null);
 
-  const loadData = useCallback(async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    setLoadError('');
+  const loadData = useCallback(async (showLoading = true, isCurrent = () => true) => {
+    // Background refreshes never overtake a manual load or a filter change.
+    if (!showLoading && listRequestsRef.current > 0) return;
+    const sequence = ++listSequenceRef.current;
+    listRequestsRef.current += 1;
+    const canApply = () => isCurrent() && sequence === listSequenceRef.current;
+    if (showLoading) {
+      if (itemsRef.current.length > 0) setSoftLoading(true);
+      else setLoading(true);
+      setLoadError('');
+    }
     try {
       const [listResponse, statsResponse] = await Promise.all([
-        certificadosService.correcciones.listar({ page, limit: 10, status, search: search.trim() }),
-        certificadosService.correcciones.estadisticas(),
+        certificadosService.correcciones.listar({ page, limit: 10, status, search: search.trim(), sort, order }, { silent: !showLoading }),
+        certificadosService.correcciones.estadisticas({ silent: !showLoading }),
       ]);
+      if (!canApply()) return;
       // ApiClient unwraps legacy responses that contain a top-level `data` key.
       // Accept that shape as well as the current paginated contract so a mixed
       // frontend/backend deployment never hides requests that were loaded.
@@ -694,19 +773,75 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
       setTotal(responseTotal);
       setTotalPages(responseTotalPages);
       setStats(statsResponse || EMPTY_STATS);
+      setLoadError('');
+      setAutoRefreshFailed(false);
+      // A concurrent decision can remove the last open item on this page.
+      if (page > responseTotalPages) setPage(responseTotalPages);
     } catch (error: any) {
-      setLoadError(error?.message || 'No fue posible consultar las solicitudes en este momento.');
+      if (!canApply()) return;
+      if (showLoading) setLoadError(error?.message || 'No fue posible consultar las solicitudes en este momento.');
+      setAutoRefreshFailed(true);
     } finally {
-      setLoading(false);
+      listRequestsRef.current -= 1;
+      if (canApply()) {
+        setLoading(false);
+        setSoftLoading(false);
+      }
     }
-  }, [page, search, status]);
+  }, [order, page, search, sort, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadData(), search ? 350 : 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      listSequenceRef.current += 1;
+    };
   }, [loadData, search]);
 
-  useEffect(() => setPage(1), [status, search]);
+  useEffect(() => setPage(1), [status, search, sort, order]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  // Al tocar una columna: si ya es la activa, invierte el sentido; si no, la
+  // activa con el sentido que mas se espera (descendente en fechas, ascendente
+  // en texto). No altera filtros ni busqueda.
+  const toggleSort = useCallback((field: CorrectionSortField) => {
+    if (sort === field) {
+      setOrder((current) => (current === 'ASC' ? 'DESC' : 'ASC'));
+      return;
+    }
+    setSort(field);
+    // Las fechas se leen de mas reciente a mas antigua; el texto, de la A a la Z.
+    setOrder(field === 'created_at' || field === 'due_date' ? 'DESC' : 'ASC');
+  }, [sort]);
+
+  const refreshList = useCallback(async (isCurrent: () => boolean) => {
+    await loadData(false, isCurrent);
+  }, [loadData]);
+  useCorrectionAutoRefresh(refreshList, true, false);
+
+  const refreshSelected = useCallback(async (isCurrent: () => boolean) => {
+    if (!selected) return;
+    const detail = await certificadosService.correcciones.obtener(selected.id, { silent: true });
+    if (!isCurrent() || isOpenStatus(detail.status)) return;
+    // Preserve drafts while the case is open; show the recorded decision only
+    // when another reviewer has actually finalized it.
+    setSelected(detail);
+    setEditData(toEditData(detail));
+    setApproveOpen(false);
+    setRejectOpen(false);
+    toast.info('Esta solicitud fue finalizada por otro usuario.', {
+      description: 'Se actualizó el detalle con la decisión registrada.',
+    });
+    void loadData(false);
+  }, [selected, loadData]);
+  useCorrectionAutoRefresh(
+    refreshSelected,
+    !!selected && isOpenStatus(selected.status) && !saving && !resending && !detailLoading,
+    false,
+  );
 
   const openRequest = async (request: CertificateCorrectionRequest) => {
     setDetailLoading(true);
@@ -959,7 +1094,12 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
       setEditData(toEditData(response));
       setApproveOpen(false);
       setApprovalFiles([]);
-      toast.success('Certificado corregido y enviado', { description: `El PDF fue remitido a ${response.email}.` });
+      setDecisionResult({
+        decision: 'approved',
+        requestNumber: response.request_number,
+        email: response.email || response.requester_email,
+        emailSent: response.email_sent === true,
+      });
       void loadData(false);
     } catch (error: any) {
       toast.error('No se pudo enviar el certificado corregido', { description: error?.message || 'Verifica el correo e intenta nuevamente.' });
@@ -1012,10 +1152,11 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
       setRejectOpen(false);
       setRejectReason('');
       setRejectFiles([]);
-      toast.success('Solicitud rechazada', {
-        description: response.email_sent
-          ? 'La decisión quedó registrada y el usuario fue notificado.'
-          : 'La decisión quedó registrada; no fue posible enviar el correo de aviso.',
+      setDecisionResult({
+        decision: 'rejected',
+        requestNumber: response.request_number,
+        email: response.requester_email,
+        emailSent: response.email_sent === true,
       });
       void loadData(false);
     } catch (error: any) {
@@ -1263,7 +1404,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
           <aside className="space-y-5">
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2"><FileSearch className="h-5 w-5 text-[#003DA5]" /><h2 className="font-bold text-slate-900">Solicitud del usuario</h2></div>
-              <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-slate-700">{selected.description}</div>
+              <div className="mt-4 whitespace-pre-wrap break-words rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-slate-700">{selected.description}</div>
               <div className="mt-4 space-y-3 border-t border-slate-100 pt-4 text-sm">
                 <div className="flex items-start gap-3"><User className="mt-0.5 h-4 w-4 text-slate-400" /><div><p className="font-semibold text-slate-800">{selected.requester_name}</p><p className="text-xs text-slate-500">CC {original.id_number || editData.id_number}</p></div></div>
                 <div className="flex items-start gap-3"><Mail className="mt-0.5 h-4 w-4 text-slate-400" /><p className="break-all text-xs text-slate-600">{selected.requester_email}</p></div>
@@ -1540,6 +1681,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <Dialog open={approveOpen} onOpenChange={(open: boolean) => !saving && setApproveOpen(open)}>
           <DialogContent
             overlayClassName="correction-decision-overlay"
+            onCloseAutoFocus={(event) => { if (decisionResult) event.preventDefault(); }}
             className="correction-decision-dialog w-[calc(100vw-1.5rem)] max-w-xl max-h-[92dvh] overflow-y-auto rounded-xl border border-slate-200 border-t-4 border-t-[#003DA5] bg-white p-0 shadow-2xl"
           >
             <div className="border-b border-slate-200 bg-white p-6">
@@ -1574,6 +1716,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <Dialog open={rejectOpen} onOpenChange={(open: boolean) => !saving && setRejectOpen(open)}>
           <DialogContent
             overlayClassName="correction-decision-overlay"
+            onCloseAutoFocus={(event) => { if (decisionResult) event.preventDefault(); }}
             className="correction-decision-dialog w-[calc(100vw-1.5rem)] max-w-xl max-h-[92dvh] overflow-y-auto rounded-xl border border-slate-200 border-t-4 border-t-red-600 bg-white shadow-2xl"
           >
             <DialogHeader><div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-red-50 ring-1 ring-red-100"><XCircle className="h-5 w-5 text-red-700" /></div><DialogTitle className="text-xl font-bold text-slate-900">Rechazar solicitud</DialogTitle><DialogDescription>Explica de forma clara por qué el certificado actual es correcto o por qué no procede el cambio.</DialogDescription></DialogHeader>
@@ -1600,6 +1743,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
             </div>
           </DialogContent>
         </Dialog>
+        <CorrectionDecisionResultDialog result={decisionResult} onClose={() => setDecisionResult(null)} />
         {resendDialog}
       </div>
     );
@@ -1629,7 +1773,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
             </div>
           </div>
           <Button onClick={() => void loadData()} variant="outline" className="h-10 rounded-md border-[#003DA5] bg-white px-4 font-semibold text-[#003DA5] hover:bg-blue-50 hover:text-[#002D7A]">
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Actualizar
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading || softLoading ? 'animate-spin' : ''}`} />Actualizar
           </Button>
         </div>
       </motion.section>
@@ -1638,7 +1782,11 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <div className="flex flex-col gap-2 border-b border-blue-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Resumen de atención</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Estado actual de las solicitudes recibidas.</p>
+            <p className="mt-0.5 text-xs text-slate-500" role="status" aria-live="polite">
+              {autoRefreshFailed
+                ? 'Actualización pendiente. Reintentando automáticamente; se conserva la última información disponible.'
+                : 'Actualización automática cada 5 segundos.'}
+            </p>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[#003DA5]">
             <CalendarDays className="h-4 w-4" /> Plazo máximo: 15 días hábiles
@@ -1664,7 +1812,7 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
         <div className="border-b border-slate-200 p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div><h2 className="text-sm font-bold text-slate-900">Bandeja de solicitudes</h2><p className="mt-0.5 text-xs text-slate-500">Consulta y gestiona cada caso desde un único lugar.</p></div>
-            <span className="whitespace-nowrap text-xs font-semibold text-slate-500">{total} resultado{total === 1 ? '' : 's'}</span>
+            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-slate-500">{softLoading && <Loader2 className="h-3 w-3 animate-spin text-[#003DA5]" />}{total} resultado{total === 1 ? '' : 's'}</span>
           </div>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por radicado, certificado, nombre, correo o documento..." className="h-10 w-full rounded-md border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#003DA5] focus:ring-2 focus:ring-blue-100" /></div>
@@ -1672,10 +1820,10 @@ export function CertificateCorrectionRequests({ canResend = false }: { canResend
           </div>
         </div>
 
-        {loading || detailLoading ? <div className="flex min-h-64 items-center justify-center"><div className="text-center"><Loader2 className="mx-auto h-7 w-7 animate-spin text-[#003DA5]" /><p className="mt-3 text-sm font-medium text-slate-500">Cargando solicitudes...</p></div></div> : loadError ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50"><AlertCircle className="h-5 w-5 text-red-600" /></div><h3 className="mt-4 font-bold text-slate-900">No fue posible cargar la bandeja</h3><p className="mt-1 max-w-md text-sm leading-5 text-slate-500">{loadError}</p><Button variant="outline" onClick={() => void loadData()} className="mt-4 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900"><RefreshCw className="mr-2 h-4 w-4" />Intentar nuevamente</Button></div> : items.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-slate-50"><Inbox className="h-5 w-5 text-slate-400" /></div><h3 className="mt-4 font-bold text-slate-800">No hay solicitudes en esta vista</h3><p className="mt-1 text-sm text-slate-500">Cuando se reciba una solicitud aparecerá aquí para su revisión.</p></div> : <>
-          <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[1050px] text-left"><thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-4">Estado</th><th className="px-5 py-4">Solicitud</th><th className="px-5 py-4">Solicitante</th><th className="px-5 py-4">Certificado</th><th className="px-5 py-4">Recibida</th><th className="px-5 py-4">Fecha límite</th><th className="px-5 py-4 text-right">Acción</th></tr></thead><tbody className="divide-y divide-slate-100">{items.map((request) => { const isOverdue = isOpenStatus(request.status) && asDateOnly(request.due_date) < asDateOnly(new Date().toISOString()); return <tr key={request.id} className="group hover:bg-blue-50/40"><td className="px-5 py-4"><StatusBadge status={request.status} /></td><td className="px-5 py-4"><p className="font-mono text-xs font-bold text-[#003DA5]">{request.request_number}</p><p className="mt-1 max-w-56 truncate text-xs text-slate-500">{request.description}</p></td><td className="px-5 py-4"><p className="text-sm font-bold text-slate-800">{request.requester_name}</p><p className="text-xs text-slate-500">{request.requester_email}</p></td><td className="px-5 py-4"><p className="font-mono text-xs font-semibold text-slate-700">{String(request.certificate_snapshot?.certificate_number || '—')}</p><p className="text-xs text-slate-500">{String(request.certificate_snapshot?.id_number || '')}</p></td><td className="px-5 py-4 text-xs text-slate-600">{formatDate(request.created_at, true)}</td><td className="px-5 py-4"><p className={`text-xs font-bold ${isOverdue ? 'text-red-700' : 'text-slate-700'}`}>{formatDate(request.due_date)}</p>{isOverdue && <p className="mt-1 text-[10px] font-bold text-red-600">Plazo vencido</p>}</td><td className="px-5 py-4 text-right"><Button variant="outline" size="sm" onClick={() => void openRequest(request)} className="rounded-lg font-bold text-[#003DA5]">{isOpenStatus(request.status) ? 'Revisar' : 'Ver detalle'}<ChevronRight className="ml-1 h-4 w-4" /></Button></td></tr>; })}</tbody></table></div>
-          <div className="divide-y divide-slate-100 lg:hidden">{items.map((request) => <button key={request.id} type="button" onClick={() => void openRequest(request)} className="block w-full p-4 text-left hover:bg-slate-50"><div className="flex items-start justify-between gap-3"><StatusBadge status={request.status} /><span className="text-[11px] text-slate-500">{formatDate(request.created_at)}</span></div><p className="mt-3 font-bold text-slate-900">{request.requester_name}</p><p className="mt-1 font-mono text-xs font-bold text-[#003DA5]">{request.request_number}</p><p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{request.description}</p><div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">Límite: <strong className="text-slate-700">{formatDate(request.due_date)}</strong></span><ChevronRight className="h-4 w-4 text-[#003DA5]" /></div></button>)}</div>
-        </>}
+        {loading || detailLoading ? <div className="flex min-h-64 items-center justify-center"><div className="text-center"><Loader2 className="mx-auto h-7 w-7 animate-spin text-[#003DA5]" /><p className="mt-3 text-sm font-medium text-slate-500">Cargando solicitudes...</p></div></div> : loadError ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50"><AlertCircle className="h-5 w-5 text-red-600" /></div><h3 className="mt-4 font-bold text-slate-900">No fue posible cargar la bandeja</h3><p className="mt-1 max-w-md text-sm leading-5 text-slate-500">{loadError}</p><Button variant="outline" onClick={() => void loadData()} className="mt-4 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900"><RefreshCw className="mr-2 h-4 w-4" />Intentar nuevamente</Button></div> : items.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center"><div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-slate-50"><Inbox className="h-5 w-5 text-slate-400" /></div><h3 className="mt-4 font-bold text-slate-800">No hay solicitudes en esta vista</h3><p className="mt-1 text-sm text-slate-500">Cuando se reciba una solicitud aparecerá aquí para su revisión.</p></div> : <div className={`transition duration-200 ${softLoading ? 'pointer-events-none opacity-60' : ''}`}>
+          <div className="hidden overflow-x-auto lg:block"><table className="w-full min-w-[1050px] text-left" style={{ minWidth: '1050px' }}><thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500"><tr><SortableHeader field="status" label="Estado" sort={sort} order={order} onSort={toggleSort} /><SortableHeader field="request_number" label="Solicitud" sort={sort} order={order} onSort={toggleSort} /><SortableHeader field="requester_name" label="Solicitante" sort={sort} order={order} onSort={toggleSort} /><SortableHeader field="certificate_number" label="Certificado" sort={sort} order={order} onSort={toggleSort} /><SortableHeader field="created_at" label="Recibida" sort={sort} order={order} onSort={toggleSort} /><SortableHeader field="due_date" label="Fecha límite" sort={sort} order={order} onSort={toggleSort} /><th className="px-5 py-4 text-right">Acción</th></tr></thead><tbody className="divide-y divide-slate-100">{items.map((request) => { const isOverdue = isOpenStatus(request.status) && asDateOnly(request.due_date) < asDateOnly(new Date().toISOString()); return <tr key={request.id} className="group hover:bg-blue-50/40"><td className="whitespace-nowrap px-5 py-4"><StatusBadge status={request.status} /></td><td className="px-5 py-4" style={{ maxWidth: '18rem' }}><p className="truncate font-mono text-xs font-bold text-[#003DA5]">{request.request_number}</p><p className="mt-1 truncate text-xs text-slate-500" title={request.description}>{request.description}</p></td><td className="px-5 py-4" style={{ maxWidth: '16rem' }}><p className="truncate text-sm font-bold text-slate-800" title={request.requester_name}>{request.requester_name}</p><p className="truncate text-xs text-slate-500" title={request.requester_email}>{request.requester_email}</p></td><td className="px-5 py-4" style={{ maxWidth: '13rem' }}><p className="truncate font-mono text-xs font-semibold text-slate-700" title={String(request.certificate_snapshot?.certificate_number || '')}>{String(request.certificate_snapshot?.certificate_number || '—')}</p><p className="truncate text-xs text-slate-500">{String(request.certificate_snapshot?.id_number || '')}</p></td><td className="whitespace-nowrap px-5 py-4 text-xs text-slate-600">{formatDate(request.created_at, true)}</td><td className="whitespace-nowrap px-5 py-4"><p className={`text-xs font-bold ${isOverdue ? 'text-red-700' : 'text-slate-700'}`}>{formatDate(request.due_date)}</p>{isOverdue && <p className="mt-1 text-[10px] font-bold text-red-600">Plazo vencido</p>}</td><td className="whitespace-nowrap px-5 py-4 text-right"><Button variant="outline" size="sm" onClick={() => void openRequest(request)} className="rounded-lg font-bold text-[#003DA5]">{isOpenStatus(request.status) ? 'Revisar' : 'Ver detalle'}<ChevronRight className="ml-1 h-4 w-4" /></Button></td></tr>; })}</tbody></table></div>
+          <div className="divide-y divide-slate-100 lg:hidden">{items.map((request) => <button key={request.id} type="button" onClick={() => void openRequest(request)} className="block w-full p-4 text-left hover:bg-slate-50"><div className="flex items-start justify-between gap-3"><StatusBadge status={request.status} /><span className="text-[11px] text-slate-500">{formatDate(request.created_at)}</span></div><p className="mt-3 truncate font-bold text-slate-900">{request.requester_name}</p><p className="mt-1 truncate font-mono text-xs font-bold text-[#003DA5]">{request.request_number}</p><p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-slate-500">{request.description}</p><div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">Límite: <strong className="text-slate-700">{formatDate(request.due_date)}</strong></span><ChevronRight className="h-4 w-4 text-[#003DA5]" /></div></button>)}</div>
+        </div>}
         {!loading && items.length > 0 && <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between"><p className="text-slate-500">{total} solicitud{total === 1 ? '' : 'es'} · Página {page} de {totalPages}</p><div className="flex gap-2"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Anterior</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Siguiente</Button></div></div>}
       </section>
       {resendDialog}

@@ -210,6 +210,82 @@ export class DisciplinaryProcessReassignmentService {
       }
     }
 
+    // Notificar a todos los radicadores del resultado de la solicitud de reasignación
+    try {
+      const radicadoresRows: any[] = await this.reassignmentRepo.manager.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role r ON r.id = ur.id_rol
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
+                OR UPPER(r.code) LIKE '%RADICADOR%'
+                OR UPPER(r.name) LIKE '%RADICADOR%')`,
+      );
+
+      const radicadores = (radicadoresRows || []).map((r) => ({
+        id: r.id_user,
+        email: (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim(),
+        nombre: r.nom_largo || r.username || 'Radicador',
+      }));
+
+      if (radicadores.length > 0) {
+        const aprobado = dto.approved;
+        const tituloRad = aprobado
+          ? `Reasignación de proceso aprobada - ${radicadoProceso}`
+          : `Reasignación de proceso rechazada - ${radicadoProceso}`;
+        const mensajeRad = aprobado
+          ? `La reasignación del proceso ${radicadoProceso} ha sido aprobada. Nuevo profesional: ${result.newProfessional?.nombreCompleto || 'Asignado'}.`
+          : `La solicitud de reasignación del proceso ${radicadoProceso} ha sido rechazada.`;
+
+        // Notificación en plataforma
+        const notifs = radicadores.map((rad) => ({
+          id_usuario_destinatario: rad.id,
+          tipo_notificacion: aprobado ? 'REASIGNACION_APROBADA' : 'REASIGNACION_RECHAZADA',
+          titulo: tituloRad,
+          mensaje: mensajeRad,
+          descripcion_corta: `Reasignación ${aprobado ? 'aprobada' : 'rechazada'} - ${radicadoProceso}`,
+          icono: aprobado ? 'CheckCircle' : 'XCircle',
+          color: aprobado ? '#16A34A' : '#DC2626',
+          prioridad: 'Media' as const,
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { solicitudId: result.id, procesoId: result.processId },
+        }));
+        await this.notificationClient.sendMany(notifs).catch(() => {});
+
+        // Correo electrónico a todos los radicadores
+        const detalles = [
+          { label: 'Radicado del Proceso', valor: radicadoProceso },
+          { label: 'Estado Solicitud', valor: aprobado ? 'APROBADA' : 'RECHAZADA' },
+          { label: 'Profesional Anterior', valor: result.currentProfessional?.nombreCompleto || 'No especificado' },
+          ...(aprobado && result.newProfessional
+            ? [{ label: 'Nuevo Profesional', valor: result.newProfessional.nombreCompleto || 'Asignado' }]
+            : []),
+          ...(dto.jefeObservations
+            ? [{ label: 'Observaciones del Jefe', valor: dto.jefeObservations }]
+            : []),
+          ...(!aprobado && dto.rejectionReason
+            ? [{ label: 'Motivo de Rechazo', valor: dto.rejectionReason }]
+            : []),
+        ];
+
+        await this.emailService.sendBulkNotification(
+          radicadores,
+          `[REASIGNACIÓN ${aprobado ? 'APROBADA' : 'RECHAZADA'}] Proceso ${radicadoProceso}`,
+          tituloRad,
+          mensajeRad,
+          detalles,
+          'Reasignación de Proceso',
+          aprobado ? '#16A34A' : '#DC2626',
+        );
+      }
+    } catch (err: any) {
+      console.error('Error notificando a radicadores en reasignación:', err?.message || err);
+    }
+
     return result;
   }
 

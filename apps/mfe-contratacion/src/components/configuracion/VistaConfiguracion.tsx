@@ -1,13 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, FileSignature, Grid3x3, Settings, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
+import { CampoConfigurable, FilaMatriz, Modalidad } from '../../types';
 import { Modal } from '../shared/Modal';
 import { ModuleHeader } from '../shared/ModuleHeader';
 
-/** Cada pestaña con su ícono y color, como en control interno. */
+import { DetalleActividad } from './DetalleActividad';
+import { MatrizGeneral } from './MatrizGeneral';
+import { MatrizRoles } from './MatrizRoles';
+import { TipologiasContrato } from './TipologiasContrato';
+import { PETICIONES, Peticion } from './peticiones';
+
 const PESTANAS = [
   {
     clave: 'matriz' as const,
@@ -29,101 +34,66 @@ const PESTANAS = [
   },
 ];
 
-import { DetalleActividad } from './DetalleActividad';
-import { MatrizGeneral } from './MatrizGeneral';
-import { MatrizRoles } from './MatrizRoles';
-import { TipologiasContrato } from './TipologiasContrato';
-import { PETICIONES, Peticion } from './peticiones';
+/** Qué se abrió: la actividad, y la columna desde la que se llegó si fue una celda. */
+interface Seleccion {
+  numeral: string;
+  modalidad: string | null;
+}
 
 /**
- * Módulo de Configuración de Etapas.
+ * Configuraciones del módulo (EFDS-1183).
  *
- * Tres pestañas sobre el mismo flujo: la matriz de actividades, las tipologías
- * de contrato y la matriz de roles y permisos. En la primera, pulsar una celda
- * abre esa actividad en un modal, se ajusta y se cierra — la tabla sigue
- * debajo, con el sitio donde se estaba mirando intacto.
- *
- * Aquí se configura lo que cambia sin desplegar: si una actividad se recorre en
- * cada modalidad, y el texto que lee el gestor. Las condiciones que valida cada
- * actividad se escriben en el código de la etapa: son lógica de negocio, y
- * mantenerlas también en una pantalla obligaba a que dos sitios dijeran lo
- * mismo sin nada que los mantuviera de acuerdo.
+ * La ficha de cada actividad se abre sin modalidad: lo que se pide, los formatos
+ * y la aprobación rigen para las once, y abrirla «en Licitación Pública» hacía
+ * creer que se cambiaba solo esa. Si se llega desde una celda, esa modalidad
+ * queda señalada dentro de la ficha.
  */
-
 export function VistaConfiguracion() {
+  const [pestana, setPestana] = useState<'matriz' | 'tipologias' | 'roles'>('matriz');
+  const [seleccion, setSeleccion] = useState<Seleccion | null>(null);
+  const [fila, setFila] = useState<FilaMatriz | null>(null);
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
-  const [modalidad, setModalidad] = useState('');
-  const [actividades, setActividades] = useState<ActividadAplicable[]>([]);
-  const [seleccion, setSeleccion] = useState<string | null>(null);
   const [campos, setCampos] = useState<CampoConfigurable[]>([]);
   const [cargandoCampos, setCargandoCampos] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /**
-   * Las tres cosas que se parametrizan del flujo: qué actividades recorre cada
-   * modalidad, qué tipologías de contrato existen y qué puede hacer cada rol.
-   */
-  const [pestana, setPestana] = useState<'matriz' | 'tipologias' | 'roles'>('matriz');
+  /** Sube al cerrar la ficha: la matriz vuelve a leer lo que se cambió. */
+  const [versionMatriz, setVersionMatriz] = useState(0);
 
-  const actividad = useMemo(
-    () => actividades.find((a) => a.numeral === seleccion) ?? null,
-    [actividades, seleccion],
-  );
-
-  useEffect(() => {
-    contratacionService
-      .modalidades()
-      .then((lista) => {
-        setModalidades(lista);
-        if (lista.length > 0) setModalidad(lista[0].codigo);
-      })
-      .catch((err: any) => setError(err.message));
-  }, []);
-
-  useEffect(() => {
-    if (!modalidad) return;
-    setError(null);
-    contratacionService
-      .actividadesDeModalidad(modalidad)
-      .then((lista) => {
-        setActividades(lista);
-        // Solo se conserva lo que ya estaba abierto. Elegir una actividad por
-        // defecto abriría el modal sin que nadie lo pida.
-        setSeleccion((actual) =>
-          actual && lista.some((a) => a.numeral === actual) ? actual : null,
-        );
-      })
-      .catch((err: any) => setError(err.message));
-  }, [modalidad]);
-
-  // Los campos se piden al abrir una actividad y no con la matriz: son 63
-  // actividades y la tabla no los enseña, así que traerlos todos de entrada
-  // serían 63 consultas para dibujar una rejilla que no los usa.
   useEffect(() => {
     if (!seleccion) {
+      setFila(null);
       setCampos([]);
       return;
     }
+    setError(null);
+    contratacionService
+      .matriz()
+      .then((m) => {
+        setModalidades(m.modalidades);
+        setFila(m.filas.find((f) => f.numeral === seleccion.numeral) ?? null);
+      })
+      .catch((err: any) => setError(err.message));
+
     setCargandoCampos(true);
     contratacionService
-      .campos(seleccion)
+      .campos(seleccion.numeral)
       .then(setCampos)
       .catch(() => setCampos([]))
       .finally(() => setCargandoCampos(false));
-  }, [seleccion]);
+  }, [seleccion?.numeral]);
 
   const recargarCampos = async () => {
     if (!seleccion) return;
-    setCampos(await contratacionService.campos(seleccion));
+    setCampos(await contratacionService.campos(seleccion.numeral));
   };
 
-  /** Añade algo que el gestor tendrá que hacer para terminar la actividad. */
   const agregarCampo = async (peticion: Peticion) => {
     if (!seleccion) return;
     const { tipo, etiqueta } = PETICIONES[peticion];
     try {
-      await contratacionService.crearCampo(seleccion, { tipo, etiqueta });
+      await contratacionService.crearCampo(seleccion.numeral, { tipo, etiqueta });
       await recargarCampos();
-      toast.success('Se agregó a lo que debe hacer el gestor');
+      toast.success('Se agregó a lo que debe diligenciar el gestor');
     } catch (err: any) {
       toast.error(err.message ?? 'No se pudo agregar');
     }
@@ -139,31 +109,18 @@ export function VistaConfiguracion() {
     }
   };
 
-  /** Decide si el gestor puede terminar la actividad sin diligenciarlo. */
   const exigirCampo = async (campo: CampoConfigurable, obligatorio: boolean) => {
     try {
-      await contratacionService.actualizarCampo(campo.id, {
-        etiqueta: campo.etiqueta,
-        obligatorio,
-      });
+      await contratacionService.actualizarCampo(campo.id, { etiqueta: campo.etiqueta, obligatorio });
       await recargarCampos();
     } catch (err: any) {
       toast.error(err.message ?? 'No se pudo cambiar');
     }
   };
 
-  /**
-   * Deja de pedirlo.
-   *
-   * El campo se desactiva en vez de borrarse: los procesos que ya guardaron un
-   * valor ahí lo conservan, y borrarlo dejaría huérfano lo diligenciado.
-   */
   const quitarCampo = async (campo: CampoConfigurable) => {
     try {
-      await contratacionService.actualizarCampo(campo.id, {
-        etiqueta: campo.etiqueta,
-        activo: false,
-      });
+      await contratacionService.actualizarCampo(campo.id, { etiqueta: campo.etiqueta, activo: false });
       await recargarCampos();
       toast.success('Ya no se le pedirá al gestor');
     } catch (err: any) {
@@ -171,32 +128,15 @@ export function VistaConfiguracion() {
     }
   };
 
-  const cambiarActividad = (cambios: Partial<ActividadAplicable>) =>
-    setActividades((lista) =>
-      lista.map((a) => (a.numeral === seleccion ? { ...a, ...cambios } : a)),
-    );
-
-  /**
-   * Abrir una celda de la matriz en el modal.
-   *
-   * Cambiar la modalidad recarga las actividades, así que la selección se fija
-   * antes: el efecto la conserva si el numeral existe en la lista nueva.
-   */
-  const abrirDetalle = (numeral: string, codigoModalidad?: string) => {
-    if (codigoModalidad && codigoModalidad !== modalidad) setModalidad(codigoModalidad);
-    setSeleccion(numeral);
+  const cerrar = () => {
+    setSeleccion(null);
+    setVersionMatriz((v) => v + 1);
   };
-
-  const nombreModalidad =
-    modalidades.find((m) => m.codigo === modalidad)?.nombre ?? modalidad;
 
   return (
     <div className="space-y-3">
       {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2"
-        >
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
           <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-red-800 m-0">{error}</p>
         </div>
@@ -221,7 +161,7 @@ export function VistaConfiguracion() {
               type="button"
               onClick={() => setPestana(clave)}
               aria-pressed={activa}
-              className={`px-4 py-2.5 rounded-lg text-[12.5px] font-bold flex items-center gap-2
+              className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2
                 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
                   activa ? 'text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                 }`}
@@ -234,34 +174,33 @@ export function VistaConfiguracion() {
         })}
       </div>
 
-      {pestana === 'matriz' && <MatrizGeneral onAbrir={abrirDetalle} />}
+      {pestana === 'matriz' && (
+        <MatrizGeneral
+          key={versionMatriz}
+          onAbrir={(numeral, modalidad) => setSeleccion({ numeral, modalidad: modalidad || null })}
+        />
+      )}
       {pestana === 'tipologias' && <TipologiasContrato />}
       {/* De solo lectura: los roles se administran desde la plataforma, y un
           segundo sitio donde tocarlos dejaría dos verdades sin nada que las
           mantuviera de acuerdo. Aquí se verifica la que rige. */}
       {pestana === 'roles' && <MatrizRoles />}
 
-      {/* La actividad se ajusta encima de la matriz, no en otra pantalla: al
-          cerrar se vuelve a la tabla con la etapa desplegada y el sitio donde
-          se estaba mirando tal como se dejó. */}
       <Modal
-        isOpen={actividad !== null}
-        onClose={() => setSeleccion(null)}
-        title={actividad ? `${actividad.numeral} · ${actividad.nombre}` : ''}
-        description={`En ${nombreModalidad}`}
+        isOpen={seleccion !== null}
+        onClose={cerrar}
+        title={fila ? `${fila.numeral} · ${fila.nombre}` : 'Cargando la actividad…'}
+        description="Se configura una sola vez para todas las modalidades"
         size="large"
         icon={<Settings className="w-5 h-5" />}
         footer={
           <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-            {/* No hay botón de guardar porque no hay nada pendiente de guardar:
-                cada cambio se envía al salir del campo. Decirlo evita cerrar
-                el modal con la duda de haber perdido lo escrito. */}
-            <p className="text-[11px] text-gray-500 m-0">
-              Los cambios se guardan solos y no afectan procesos ya iniciados.
-            </p>
+            {/* No hay botón de guardar porque no hay nada pendiente: cada cambio
+                se guarda al momento. Decirlo evita cerrar con la duda. */}
+            <p className="text-[11px] text-gray-500 m-0">Cada cambio se guarda al momento.</p>
             <button
               type="button"
-              onClick={() => setSeleccion(null)}
+              onClick={cerrar}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
             >
               Cerrar
@@ -269,19 +208,25 @@ export function VistaConfiguracion() {
           </div>
         }
       >
-        {actividad && (
+        {fila ? (
           <DetalleActividad
-            actividad={actividad}
-            modalidad={modalidad}
+            fila={fila}
             modalidades={modalidades}
+            resaltada={seleccion?.modalidad ?? null}
             campos={campos}
             cargandoCampos={cargandoCampos}
-            onCambio={cambiarActividad}
+            onCambioFila={setFila}
             onAgregarCampo={agregarCampo}
             onRenombrarCampo={renombrarCampo}
             onExigirCampo={exigirCampo}
             onQuitarCampo={quitarCampo}
           />
+        ) : (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-12 rounded-lg bg-gray-100 animate-pulse" />
+            ))}
+          </div>
         )}
       </Modal>
     </div>

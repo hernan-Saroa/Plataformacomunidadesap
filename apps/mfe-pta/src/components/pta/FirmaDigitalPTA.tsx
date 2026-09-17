@@ -44,7 +44,7 @@ export interface FirmaData {
   ptaId: string;
 }
 
-type FirmaStep = 'verificacion' | 'generando' | 'confirmacion' | 'completado';
+type FirmaStep = 'verificacion' | 'generando' | 'confirmacion' | 'guardando' | 'completado';
 
 function generateHash(input: string): string {
   // Simulated SHA-256 hash generation
@@ -84,6 +84,7 @@ export function FirmaDigitalPTA({
   const [generatingProgress, setGeneratingProgress] = useState(0);
   const [timerSecs, setTimerSecs] = useState(5 * 60);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const guardandoRef = useRef(false);
   const onCancelarRef = useRef(onCancelar);
   useEffect(() => { onCancelarRef.current = onCancelar; }, [onCancelar]);
 
@@ -186,21 +187,23 @@ export function FirmaDigitalPTA({
     }, 400);
   }, [ptaId, docenteNombre, periodo, totalHoras, firmanteNombre, firmanteCargo, onVerifyCodigo]);
 
-  const confirmarFirma = () => {
-    if (firmaData) {
+  const confirmarFirma = async () => {
+    if (!firmaData || guardandoRef.current) return;
+    guardandoRef.current = true;
+    setStep('guardando');
+    try {
+      const completed = await onFirmaCompleta(firmaData);
+      if (completed === false) {
+        setStep('confirmacion');
+        return;
+      }
       setStep('completado');
-      setTimeout(async () => {
-        try {
-          const completed = await onFirmaCompleta(firmaData);
-          // El certificado solo se confirma cuando la operacion del backend (guardar
-          // y/o cambiar estado) termino. Evita falsos positivos en QA/DEV.
-          if (completed !== false) {
-            toast.success('Firma digital aplicada correctamente');
-          }
-        } catch (error: any) {
-          toast.error(error?.message || 'No se pudo completar la firma y el envio del PTA.');
-        }
-      }, 1500);
+      toast.success('Firma digital aplicada correctamente');
+    } catch (error: any) {
+      setStep('confirmacion');
+      toast.error(error?.message || 'No se pudo completar la firma y el envío del PTA.');
+    } finally {
+      guardandoRef.current = false;
     }
   };
 
@@ -224,14 +227,14 @@ export function FirmaDigitalPTA({
                 <p style={{ fontSize: '0.75rem', opacity: 0.85, margin: '2px 0 0' }}>{etapaLabel} — {firmanteCargo}</p>
               </div>
             </div>
-            <button onClick={onCancelar} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+            <button onClick={onCancelar} disabled={step === 'guardando'} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
               <X style={{ width: 16, height: 16 }} />
             </button>
           </div>
           {/* Progress indicator */}
           <div style={{ display: 'flex', gap: 4, marginTop: 16 }}>
             {['Verificación', 'Generación', 'Confirmación', 'Completado'].map((label, i) => {
-              const stepIdx = ['verificacion', 'generando', 'confirmacion', 'completado'].indexOf(step);
+              const stepIdx = step === 'guardando' ? 2 : ['verificacion', 'generando', 'confirmacion', 'completado'].indexOf(step);
               return (
                 <div key={label} style={{ flex: 1, textAlign: 'center' }}>
                   <div style={{ height: 3, borderRadius: 2, background: i <= stepIdx ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)', transition: 'background 0.3s' }} />
@@ -416,6 +419,13 @@ export function FirmaDigitalPTA({
               </motion.div>
             )}
 
+            {step === 'guardando' && (
+              <div role="status" style={{ textAlign: 'center', padding: '28px 0', color: '#003DA5' }}>
+                <Loader2 className="animate-spin" style={{ width: 32, height: 32, margin: '0 auto 12px' }} />
+                <p>Guardando la decisión firmada…</p>
+              </div>
+            )}
+
             {/* Step 4: Completed */}
             {step === 'completado' && (
               <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
@@ -428,7 +438,7 @@ export function FirmaDigitalPTA({
                   >
                     <CheckCircle style={{ width: 38, height: 38, color: '#059669' }} />
                   </motion.div>
-                  <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#065F46', margin: '0 0 6px' }}>PTA Aprobado y Firmado</h4>
+                  <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#065F46', margin: '0 0 6px' }}>Firma registrada</h4>
                   <p style={{ fontSize: '0.85rem', color: '#059669' }}>La firma digital ha sido aplicada exitosamente</p>
                   <p style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 8 }}>
                     Certificado: <code style={{ background: '#F3F4F6', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem' }}>{firmaData?.certificado_id}</code>

@@ -16,6 +16,10 @@ async function bootstrap() {
       'Accept',
       'Origin',
       'X-Requested-With',
+      'X-Frontend-Base-Url',
+      'x-frontend-base-url',
+      'X-Frontend-Url',
+      'x-frontend-url',
     ],
     credentials: true,
     maxAge: 86400, // 24 hours

@@ -47,6 +47,7 @@ describe('TerminosService', () => {
             save: jest.fn((data: any) => Promise.resolve(data)),
             create: jest.fn((data: any) => data),
             update: jest.fn().mockResolvedValue(undefined),
+            remove: jest.fn((data: any) => Promise.resolve(data)),
             createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
             count: jest.fn(),
         };
@@ -722,6 +723,19 @@ describe('TerminosService', () => {
             );
         });
 
+        it('con estado=ELIMINADO explícito debe pedir justamente los eliminados (para la pestaña "Eliminados")', async () => {
+            await service.getSemaforoList({ estado: 'ELIMINADO' });
+
+            expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+                'termino.estado = :estado',
+                { estado: 'ELIMINADO' },
+            );
+            expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(
+                'termino.estado != :estadoEliminado',
+                expect.anything(),
+            );
+        });
+
         it('debe marcar semáforo verde cuando faltan más de 5 días', async () => {
             queryBuilder.getMany.mockResolvedValue([
                 { id: '1', estado: 'PENDIENTE', fechaVencimiento: new Date(Date.now() + 10 * DAY_MS) },
@@ -976,6 +990,16 @@ describe('TerminosService', () => {
             mockTerminoRepo.findOne.mockResolvedValue(null);
 
             await expect(service.remove('no-existe')).rejects.toThrow(NotFoundException);
+            expect(mockTerminoRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('con permanente=true debe borrar el registro de verdad (no soft delete)', async () => {
+            const termino = { id: 'term-4', estado: 'ELIMINADO' };
+            mockTerminoRepo.findOne.mockResolvedValue(termino);
+
+            await service.remove('term-4', true);
+
+            expect(mockTerminoRepo.remove).toHaveBeenCalledWith(termino);
             expect(mockTerminoRepo.save).not.toHaveBeenCalled();
         });
     });

@@ -750,6 +750,9 @@ export class EstudioPrevioService {
 
       actividad.estado = revisan ? 'EN_REVISION' : 'APROBADO';
       actividad.enviadoPor = acceso.userName;
+      // Los avisos buscan por cuenta a quien envió: con solo el nombre, la
+      // devolución de la 3.1 no le llegaba a nadie.
+      actividad.enviadoPorId = acceso.userId ?? null;
       actividad.enviadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
 

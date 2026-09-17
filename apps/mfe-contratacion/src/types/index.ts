@@ -1201,6 +1201,10 @@ export interface FilaMatriz {
   etapa: number;
   nombre: string;
   descripcion: string | null;
+  /** Días hábiles para hacerla, contados desde que le toca a alguien. */
+  plazoDias?: number | null;
+  /** Cuántos días hábiles antes del plazo empieza a avisar. */
+  alertaDiasAntes?: number | null;
   campos: number;
   celdas: CeldaMatriz[];
 }
@@ -2137,7 +2141,6 @@ export interface DatosSeguimiento {
   periodoHasta?: string;
 }
 
-
 // ----------------------- etapa 9 · tramite de pagos (9.4) ------------------
 
 export type EstadoPago = 'RADICADO' | 'AVALADO' | 'DEVUELTO' | 'TRAMITADO' | 'ANULADO';
@@ -2958,7 +2961,11 @@ export interface AlertaVencimiento {
     | 'APROBACION_PENDIENTE'
     | 'DEVUELTA_PARA_CORREGIR'
     /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
-    | 'SIN_ABOGADO';
+    | 'SIN_ABOGADO'
+    /** Una solicitud de CDP que la Financiera no ha tomado. */
+    | 'CDP_SIN_ATENDER'
+    /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
+    | 'PLAZO_ACTIVIDAD';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
@@ -3189,3 +3196,77 @@ export interface MisPermisos {
   rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
   permisos: string[];
 }
+
+// ------------------------------------------ los plazos de las alertas (EFDS-1183)
+
+/** Un plazo de las alertas, con los límites que admite. */
+export interface ParametroAlerta {
+  clave: string;
+  valor: number;
+  minimo: number;
+  maximo: number;
+  descripcion: string;
+}
+
+// ---------------------------------------------- avisos a la campana (EFDS-1183)
+
+/** Lo que puede pasar en un proceso y merece un aviso. */
+export type EventoAviso =
+  | 'HABILITADA'
+  | 'VENCE_PLAZO'
+  | 'DEVUELTA'
+  | 'ENVIADA_A_APROBACION'
+  | 'APROBADA'
+  | 'RECIBIDO_EN_CONTRATACION'
+  | 'PROCESO_RADICADO'
+  | 'DOCUMENTO_ADJUNTO';
+
+/** El papel que alguien cumple en un proceso concreto. */
+export type PapelAviso =
+  | 'QUIEN_ENVIO'
+  | 'QUIEN_APRUEBA'
+  | 'ABOGADO'
+  | 'CONTRATACION'
+  | 'RADICADOR'
+  | 'BANDEJA_CONTRATACION'
+  | 'EQUIPO_FINANCIERO'
+  | 'COMITE_EVALUADOR'
+  | 'SUPERVISOR'
+  | 'REPARTE_PROCESOS'
+  | 'DESIGNA_COMITE_Y_SUPERVISOR'
+  | 'REASIGNA_SUPERVISION'
+  | 'ARCHIVA_EXPEDIENTE';
+
+/** Un aviso de una actividad: cuándo sale, si está encendido y a quién le llega. */
+export interface AvisoEvento {
+  evento: EventoAviso;
+  nombre: string;
+  ayuda: string;
+  /** Si alguien lo cambió; si no, rige lo sugerido. */
+  personalizado: boolean;
+  activo: boolean;
+  papeles: PapelAviso[];
+  roles: { code: string; name: string }[];
+  /** Personas nombradas una a una, como en Aprobación. */
+  personas: { id: string; nombre: string }[];
+  /** Dependencias de la plataforma: el aviso llega a toda su gente. */
+  dependencias: { id: string; nombre: string }[];
+}
+
+/** Un aviso que sale siempre y no se configura, con a quién le llega. */
+export interface AvisoSiempre {
+  evento: EventoAviso;
+  nombre: string;
+  ayuda: string;
+  aQuien: string[];
+}
+
+export interface ConfiguracionAvisos {
+  papeles: { codigo: PapelAviso; nombre: string }[];
+  requiereAprobacion: boolean;
+  /** Si los avisos de la actividad llegan también al correo. */
+  porCorreo: boolean;
+  siempre: AvisoSiempre[];
+  avisos: AvisoEvento[];
+}
+

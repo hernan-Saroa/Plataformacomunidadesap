@@ -42,6 +42,7 @@ import { ModificacionesModule } from './modules/modificaciones/modificaciones.mo
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
 import { RegistroActividadModule } from './modules/registro-actividad/registro-actividad.module';
 import { AlertasModule } from './modules/alertas/alertas.module';
+import { NotificacionesModule } from './modules/notificaciones/notificaciones.module';
 import { EstadisticasModule } from './modules/estadisticas/estadisticas.module';
 import { AprobacionModule } from './modules/aprobacion/aprobacion.module';
 import { DocumentosActividadModule } from './modules/documentos-actividad/documentos-actividad.module';
@@ -194,6 +195,8 @@ import {
     SeguimientoModule,
     RegistroActividadModule,
     AlertasModule,
+    // Avisos configurables: escucha la trazabilidad, sin depender de ningún módulo del flujo.
+    NotificacionesModule,
     EstadisticasModule,
     AprobacionModule,
     DocumentosActividadModule,

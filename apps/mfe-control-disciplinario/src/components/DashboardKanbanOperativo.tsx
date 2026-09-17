@@ -109,6 +109,44 @@ function normalizeText(text: string): string {
     .toLowerCase();
 }
 
+// ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
+export const isSecretarioRadicadorUser = (): boolean => {
+  try {
+    return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
+  } catch (err) {
+    console.error('Error verificando permiso Secretario/Radicador:', err);
+    return false;
+  }
+};
+
+export const isEtapaCargos = (etapaNombre?: string): boolean => {
+  if (!etapaNombre) return false;
+  const n = etapaNombre
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  return (
+    n === 'CARGOS' ||
+    n.includes('CARGO') ||
+    n.includes('PLIEGO') ||
+    n === 'EVALUACION' ||
+    n.includes('EVALUAC')
+  );
+};
+
+export const isEtapaJuzgamiento = (etapaNombre?: string): boolean => {
+  if (!etapaNombre) return false;
+  const n = etapaNombre
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  return n === 'JUZGAMIENTO' || n.includes('JUZG');
+};
+
 
 
 /** Busca si `query` (ya normalizado) aparece en algún campo textual del item */
@@ -358,7 +396,7 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, onEliminarNoticia, onReenviar, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
-  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDelete = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -368,12 +406,12 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
-  const [hoverReenviar, setHoverReenviar] = useState(false);
-  
+  const isRadicadorNoticia = isSecretarioRadicadorUser();
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
-    item: { ...noticia, tipoItem: 'noticia' },
+    item: { ...noticia, tipo: 'noticia', tipoItem: 'noticia' },
+    canDrag: () => !isSecretarioRadicadorUser(),
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     })
@@ -387,7 +425,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   return (
     <div
       ref={dragRef}
-      className="cursor-grab active:cursor-grabbing touch-none w-full select-none"
+      className={`${isRadicadorNoticia ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} touch-none w-full select-none`}
       style={noticia.estado === 'devuelta' && esJefe ? { filter: 'grayscale(60%) brightness(0.87) opacity(0.75)', transition: 'filter 0.3s' } : undefined}
     >
       <motion.div
@@ -709,6 +747,7 @@ interface TarjetaProcesoProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  onEnviarJuridica?: (proceso: Proceso) => void; // ✅ NUEVO: Enviar a Jurídica desde Juzgamiento
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -731,6 +770,7 @@ function TarjetaProceso({
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
+  onEnviarJuridica, // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -753,16 +793,41 @@ function TarjetaProceso({
   const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+  const canSendJuridica =
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+    authService.isSuperAdmin();
+  const esProcesoEnJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
+  const isArchivado =
+    proceso.etapaActual === 'ARCHIVO' ||
+    proceso.estadoActual === 'ARCHIVADO' ||
+    proceso.etapaActual === 'INHIBITORIO' ||
+    proceso.estadoActual === 'INHIBIDO';
+
+  const isRadicador = isSecretarioRadicadorUser();
+  const esProcesoEnCargos = isEtapaCargos(proceso.etapaActual);
+  const puedeArrastrar = !isRadicador || esProcesoEnCargos;
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
-    item: { ...proceso, tipoItem: 'proceso' },
+    item: { ...proceso, tipo: 'proceso', tipoItem: 'proceso' },
+    canDrag: () => {
+      // Para Secretario/Radicador, SOLO se permite arrastrar procesos que se encuentren en la etapa Cargos
+      if (isSecretarioRadicadorUser()) {
+        return isEtapaCargos(proceso.etapaActual);
+      }
+      return true;
+    },
     collect: (monitor) => ({
       isDragging: monitor.isDragging()
     })
   });
-  const dragRef = useRef<HTMLDivElement>(null);
-  drag(dragRef);
+
+  const attachDrag = (node: HTMLDivElement | null) => {
+    if (node) {
+      drag(node);
+    }
+  };
 
   // ✅ NUEVO: Estado para expandir/colapsar sección de noticias asociadas
   const [noticiasExpanded, setNoticiasExpanded] = useState(false);
@@ -794,8 +859,8 @@ function TarjetaProceso({
 
   return (
     <div
-      ref={dragRef}
-      className="cursor-grab active:cursor-grabbing touch-none w-full select-none"
+      ref={attachDrag}
+      className={`${puedeArrastrar ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} touch-none w-full select-none`}
     >
       <motion.div
         id={`proceso-${proceso.id}`}
@@ -1113,6 +1178,18 @@ function TarjetaProceso({
                 Aprobar Documento
               </KanbanButtonSemantic>
             )}
+
+            {esProcesoEnJuzgamiento && canSendJuridica && !isArchivado && onEnviarJuridica && (
+              <KanbanButtonSemantic
+                variant="info"
+                onClick={(e) => { e.stopPropagation(); onEnviarJuridica(proceso); }}
+                icon={<Send className="w-3.5 h-3.5" />}
+                title="Enviar a Jurídica"
+                className="w-full !border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
+              >
+                Enviar a Jurídica
+              </KanbanButtonSemantic>
+            )}
           </KanbanActionSection>
         </KanbanCard>
       </motion.div>
@@ -1126,6 +1203,7 @@ interface VistaListaProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  onEnviarJuridica?: (proceso: Proceso) => void; // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -1155,6 +1233,7 @@ function VistaLista({
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
+  onEnviarJuridica, // ✅ NUEVO
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -1179,7 +1258,7 @@ function VistaLista({
   isMobile
 }: VistaListaProps) {
   // Permission and role checks for list view (same as kanban)
-  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEditNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDeleteNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -1194,6 +1273,10 @@ function VistaLista({
   const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
   const canAssociateProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
+  const canSendJuridica =
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+    authService.isSuperAdmin();
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1585,6 +1668,17 @@ function VistaLista({
                             Aprobar Documento
                           </KanbanButtonSemantic>
                         )}
+                        {isEtapaJuzgamiento(proceso!.etapaActual) && canSendJuridica && proceso!.estadoActual !== 'ARCHIVADO' && proceso!.estadoActual !== 'INHIBIDO' && onEnviarJuridica && (
+                          <KanbanButtonSemantic
+                            variant="info"
+                            onClick={() => onEnviarJuridica(proceso!)}
+                            icon={<Send className="w-3 h-3" />}
+                            title="Enviar a Jurídica"
+                            className="!border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
+                          >
+                            Enviar a Jurídica
+                          </KanbanButtonSemantic>
+                        )}
                       </>
                     )}
                   </div>
@@ -1867,6 +1961,17 @@ function VistaLista({
                                   Aprobar Documento
                                 </KanbanButtonSemantic>
                               )}
+                              {isEtapaJuzgamiento(proceso!.etapaActual) && canSendJuridica && proceso!.estadoActual !== 'ARCHIVADO' && proceso!.estadoActual !== 'INHIBIDO' && onEnviarJuridica && (
+                                <KanbanButtonSemantic
+                                  variant="info"
+                                  onClick={() => onEnviarJuridica(proceso!)}
+                                  icon={<Send className="w-3.5 h-3.5" />}
+                                  title="Enviar a Jurídica"
+                                  className="!border-[#2563EB] !bg-[#EFF6FF] !text-[#1D4ED8] hover:!bg-[#DBEAFE]"
+                                >
+                                  Enviar a Jurídica
+                                </KanbanButtonSemantic>
+                              )}
                             </>
                           )}
                         </div>
@@ -1920,6 +2025,7 @@ interface ColumnaKanbanProps {
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
+  onEnviarJuridica?: (proceso: Proceso) => void; // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos?: (proceso: Proceso) => void;
   onGestionEvidencias?: (proceso: Proceso) => void;
   onGestionOficios?: (proceso: Proceso) => void;
@@ -1962,6 +2068,7 @@ function ColumnaKanban({
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
+  onEnviarJuridica, // ✅ NUEVO: Enviar a Jurídica
   onGestionAutos,
   onGestionEvidencias,
   onGestionOficios,
@@ -1987,6 +2094,17 @@ function ColumnaKanban({
       onDrop(item, etapa);
     },
     canDrop: (item: any) => {
+      const isRadicador = isSecretarioRadicadorUser();
+      const esProceso = item?.tipoItem === 'proceso' || item?.tipo === 'proceso' || (item?.tipo !== 'noticia' && !!item?.etapaActual);
+
+      // Para Secretario/Radicador: SOLO puede soltar en Juzgamiento si el proceso proviene de Cargos
+      if (isRadicador) {
+        if (esProceso) {
+          return isEtapaCargos(item.etapaActual) && isEtapaJuzgamiento(etapa);
+        }
+        return false;
+      }
+
       // ✅ NUEVO: Validar orden de etapas desde backend config
       if (etapasConfig.length > 0) {
         // Obtener el orden de la etapa actual (donde está el item)
@@ -2338,6 +2456,7 @@ function ColumnaKanban({
               onVerDetalles={onVerDetalles}
               onAprobarBorrador={onAprobarBorrador}
               onVerExpediente={onVerExpediente}
+              onEnviarJuridica={onEnviarJuridica}
               onGestionAutos={onGestionAutos}
               onGestionEvidencias={onGestionEvidencias}
               onGestionOficios={onGestionOficios}
@@ -2585,12 +2704,11 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
                             <span
                               className="px-1.5 py-0.5 rounded text-[9px] font-bold"
                               style={{
-                                backgroundColor: item.etapaActual === 'INHIBITORIO' ? '#E5E7EB' : '#FEE2E2',
-                                color: item.etapaActual === 'INHIBITORIO' ? '#6B7280' : '#DC2626'
+                                backgroundColor: item.estadoActual === 'CERRADO' ? '#FEF3C7' : '#FEE2E2',
+                                color: item.estadoActual === 'CERRADO' ? '#92400E' : '#DC2626'
                               }}
                             >
-                              {item.etapaActual === 'INHIBITORIO' ? 'Inhibido' : 'Archivo'}
-                              
+                              {item.estadoActual === 'CERRADO' ? 'Cerrado' : 'Archivo'}
                             </span>
                           )}
                         </div>
@@ -2667,12 +2785,11 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
                       <span
                         className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold"
                         style={{
-                          backgroundColor: item.etapaActual === 'INHIBITORIO' ? '#E5E7EB' : '#FEE2E2',
-                          color: item.etapaActual === 'INHIBITORIO' ? '#6B7280' : '#DC2626'
+                          backgroundColor: item.estadoActual === 'CERRADO' ? '#FEF3C7' : '#FEE2E2',
+                          color: item.estadoActual === 'CERRADO' ? '#92400E' : '#DC2626'
                         }}
                       >
-                        {item.etapaActual === 'INHIBITORIO' ? 'Inhibido' : 'Archivo'}
-                        
+                        {item.estadoActual === 'CERRADO' ? 'Cerrado' : 'Archivo'}
                       </span>
                     )}
                     {isNoticia && <span className="text-[11px] text-gray-400">—</span>}
@@ -2706,6 +2823,251 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
                         Apelar
                       </KanbanButtonSecondary>
                     )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== COMPONENTE VISTA INHIBITORIOS — WORLD CLASS ====================
+interface VistaInhibitoriosProps {
+  items: Array<any>;
+  onDesarchivar: (item: any) => void;
+  onApelar: (item: any) => void;
+  onVerDetalles: (item: any) => void;
+  isMobile: boolean;
+}
+
+function VistaInhibitorios({ items, onDesarchivar, onApelar, onVerDetalles, isMobile }: VistaInhibitoriosProps) {
+  const [searchInhibitorio, setSearchInhibitorio] = useState('');
+  const [ordenarPor, setOrdenarPor] = useState<'reciente' | 'antiguo'>('reciente');
+
+  // Permisos para restaurar procesos
+  const canRestoreProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_RESTAURAR);
+
+  const canRestoreItem = (item: any): boolean => {
+    return canRestoreProcesos;
+  };
+
+  const itemsFiltrados = items
+    .filter(item => {
+      if (searchInhibitorio) {
+        const term = searchInhibitorio.toLowerCase();
+        const numero = (item.numero || item.numeroProceso || '').toLowerCase();
+        const denunciado = typeof item.denunciado === 'string'
+          ? item.denunciado.toLowerCase()
+          : (item.denunciado?.nombre || '').toLowerCase();
+        const hechos = (item.hechos || item.descripcionHechos || '').toLowerCase();
+        return numero.includes(term) || denunciado.includes(term) || hechos.includes(term);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const fa = new Date(a.fechaInhibitorio || a.fechaArchivo || a.fechaCreacion || 0).getTime();
+      const fb = new Date(b.fechaInhibitorio || b.fechaArchivo || b.fechaCreacion || 0).getTime();
+      return ordenarPor === 'reciente' ? fb - fa : fa - fb;
+    });
+
+  return (
+    <div className="flex-1 overflow-hidden flex flex-col px-4 pb-4">
+      {/* Header con estadísticas */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center bg-amber-50 border border-amber-200"
+            >
+              <Ban className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-gray-900">Registro de Inhibitorios</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  Art. 209 Ley 1952
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {items.length} proceso{items.length !== 1 ? 's' : ''} inhibitorio{items.length !== 1 ? 's' : ''} — Terminación por no configurarse falta disciplinaria o mérito inhibitorio
+              </p>
+            </div>
+          </div>
+
+          {/* Controles de filtro y búsqueda */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Buscador */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={searchInhibitorio}
+                onChange={(e) => setSearchInhibitorio(e.target.value)}
+                placeholder="Buscar inhibitorio..."
+                className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]/20 outline-none transition-all w-52"
+              />
+            </div>
+
+            {/* Orden */}
+            <button
+              onClick={() => setOrdenarPor(prev => prev === 'reciente' ? 'antiguo' : 'reciente')}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-all"
+              title={ordenarPor === 'reciente' ? 'Más recientes primero' : 'Más antiguos primero'}
+            >
+              <History className="w-3 h-3" />
+              {ordenarPor === 'reciente' ? 'Recientes' : 'Antiguos'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de inhibitorios */}
+      <div className="flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+        {itemsFiltrados.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4 border border-amber-100">
+              <Ban className="w-8 h-8 text-amber-600" />
+            </div>
+            <p className="text-sm font-bold text-gray-700 mb-1">
+              {items.length === 0 ? 'Sin procesos inhibitorios' : 'Sin resultados de búsqueda'}
+            </p>
+            <p className="text-xs text-gray-400 text-center max-w-sm">
+              {items.length === 0
+                ? 'Los procesos en los que se profiera Auto Inhibitorio aparecerán en este registro especializado para su control y trazabilidad.'
+                : 'Intenta con otros términos de búsqueda (radicado, disciplinable o hechos).'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {/* Cabecera de tabla */}
+            {!isMobile && (
+              <div className="grid grid-cols-[auto_1fr_150px_140px_120px_120px_170px] gap-3 px-4 py-2.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200">
+                <div className="w-8">Tipo</div>
+                <div>Identificación / Detalle</div>
+                <div>Disciplinable</div>
+                <div>Profesional</div>
+                <div>Fecha Inhibitorio</div>
+                <div>Estado</div>
+                <div className="text-center">Acciones</div>
+              </div>
+            )}
+
+            {itemsFiltrados.map((item) => {
+              const numero = item.numero || item.numeroProceso || 'Sin número';
+              const denunciado = typeof item.denunciado === 'string'
+                ? item.denunciado
+                : (item.denunciado?.nombre || 'Sin identificar');
+              const profesional = typeof item.profesionalAsignado === 'string'
+                ? item.profesionalAsignado
+                : (item.profesionalAsignado?.nombre || 'Sin asignar');
+              const fechaInh = item.fechaInhibitorio || item.fechaArchivo || item.fechaCreacion || '—';
+              const hechos = item.hechos || item.descripcionHechos || 'Sin descripción';
+
+              if (isMobile) {
+                return (
+                  <div key={item.id} className="p-3 hover:bg-gray-50/80 transition-colors border-b border-gray-100">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-100 flex-shrink-0">
+                          <Ban className="w-3.5 h-3.5 text-amber-700" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-gray-900">{numero}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">
+                              Inhibitorio
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-gray-500">{denunciado}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-gray-600 line-clamp-2 mb-2">{hechos}</p>
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[10px] text-gray-400">
+                      <span>{fechaInh} · {profesional}</span>
+                      <div className="flex items-center gap-1">
+                        <KanbanButtonTertiary compact onClick={() => onVerDetalles(item)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles" className="!flex-none !w-8" />
+                        {/* {canRestoreItem(item) && (
+                          <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!w-auto !px-2 !py-1.5" />
+                        )}
+                        {canRestoreItem(item) && (
+                          <KanbanButtonTertiary compact onClick={() => onApelar(item)} icon={<Forward className="w-3.5 h-3.5" />} title="Apelar a segunda instancia" className="!flex-none !w-8" />
+                        )} */}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-[auto_1fr_150px_140px_120px_120px_170px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
+                >
+                  {/* Tipo */}
+                  <div className="w-8">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-100 border border-amber-200">
+                      <Ban className="w-3.5 h-3.5 text-amber-700" />
+                    </div>
+                  </div>
+
+                  {/* Identificación / Detalle */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs font-bold text-gray-900 truncate">{numero}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0 bg-amber-100 text-amber-800 border border-amber-200">
+                        Inhibitorio
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 truncate">{hechos}</p>
+                  </div>
+
+                  {/* Denunciado */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <User className="w-3 h-3 text-gray-400" />
+                      </div>
+                      <span className="text-[11px] text-gray-700 truncate">{denunciado}</span>
+                    </div>
+                  </div>
+
+                  {/* Profesional */}
+                  <div className="min-w-0">
+                    <span className="text-[11px] text-gray-600 truncate block">{profesional}</span>
+                  </div>
+
+                  {/* Fecha Inhibitorio */}
+                  <div>
+                    <span className="text-[11px] text-gray-600">{fechaInh}</span>
+                  </div>
+
+                  {/* Estado */}
+                  <div className="min-w-0">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      Inhibido (art. 209)
+                    </span>
+                  </div>
+
+                  {/* Acciones */}
+                  <div className="flex items-center justify-center gap-1">
+                    <KanbanButtonSecondary onClick={() => onVerDetalles(item)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles" className="!text-[10px] !px-2 !py-1">
+                      Ver
+                    </KanbanButtonSecondary>
+                    {/* {canRestoreItem(item) && (
+                      <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!text-[10px] !px-2 !py-1">
+                        Restaurar
+                      </KanbanButtonSemantic>
+                    )}
+                    {canRestoreItem(item) && (
+                      <KanbanButtonSecondary onClick={() => onApelar(item)} icon={<Forward className="w-3.5 h-3.5" />} title="Apelar a segunda instancia" className="!text-[10px] !px-2 !py-1">
+                        Apelar
+                      </KanbanButtonSecondary>
+                    )} */}
                   </div>
                 </div>
               );
@@ -3211,7 +3573,7 @@ export function DashboardKanbanOperativo({
   const [showPanelEstados, setShowPanelEstados] = useState(false);
 
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados' | 'inhibitorios'>('kanban');
 
   // ✅ Auto-switch from kanban to lista on mobile
   useEffect(() => {
@@ -3237,6 +3599,7 @@ export function DashboardKanbanOperativo({
 
   // ✅ ESTADO PARA MODALES
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
+  const [abrirEnvioJuridicaDirecto, setAbrirEnvioJuridicaDirecto] = useState<boolean>(false);
 
   // ✅ USUARIO ACTUAL
   const currentUser = authService.getCurrentUser();
@@ -3309,6 +3672,8 @@ export function DashboardKanbanOperativo({
 
   // ✅ Archivados: inician vacíos, se llenan al archivar noticias/procesos (persistido en Supabase vía update de estado)
   const [itemsArchivados, setItemsArchivados] = useState<Array<Item & { fechaArchivo: string; motivoArchivo: string }>>([]);
+  // ✅ Inhibitorios: procesos terminados por auto inhibitorio (art. 209)
+  const [itemsInhibitorios, setItemsInhibitorios] = useState<Array<Item & { fechaInhibitorio?: string; motivoInhibitorio?: string }>>([]);
   const [vistaCompacta, setVistaCompacta] = useState(false);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
@@ -3478,7 +3843,7 @@ export function DashboardKanbanOperativo({
       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
       const hasNoticiaView = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
       const hasNoticiaViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE);
-      const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+      const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
 
       console.log('esJefe', esJefe);
       console.log('hasNoticiaView', hasNoticiaView);
@@ -3553,19 +3918,40 @@ export function DashboardKanbanOperativo({
       // Transformar procesos al formato interno
       const procesosTransformados = procesosFiltrados.map(p => toProcesoFromApi(p, etapasConfig));
 
-      // Separar procesos archivados (en etapa 'Archivo' o 'INHIBITORIO') de los activos
+      // Helper para identificar procesos inhibitorios (art. 209)
+      const isProcesoInhibitorio = (p: any): boolean => {
+        const etapa = (p.etapaActual || '').toUpperCase();
+        const estado = (p.estadoActual || p.estado || '').toUpperCase();
+        return etapa === 'INHIBITORIO' || estado === 'INHIBITORIO' || estado === 'INHIBIDO';
+      };
+
+      // Helper para identificar procesos archivados (excluyendo inhibitorios)
+      const isProcesoArchivado = (p: any): boolean => {
+        if (isProcesoInhibitorio(p)) return false;
+        const etapa = (p.etapaActual || '').toUpperCase();
+        const estado = (p.estadoActual || p.estado || '').toUpperCase();
+        return etapa === 'ARCHIVO' || estado === 'ARCHIVADO' || estado === 'CERRADO';
+      };
+
+      // Separar procesos activos, archivados e inhibitorios
       const procesosActivos = procesosTransformados.filter(p =>
-        p.etapaActual !== 'Archivo' && p.etapaActual !== 'INHIBITORIO' && p.estadoActual !== 'ARCHIVADO' && p.estadoActual !== 'CERRADO'
+        !isProcesoInhibitorio(p) && !isProcesoArchivado(p)
       );
-      const procesosArchivados = procesosTransformados.filter(p =>
-        p.etapaActual === 'Archivo' || p.etapaActual === 'INHIBITORIO' || p.estadoActual === 'ARCHIVADO' || p.estadoActual === 'CERRADO'
-      );
+      const procesosArchivados = procesosTransformados.filter(isProcesoArchivado);
+      const procesosInhibitorios = procesosTransformados.filter(isProcesoInhibitorio);
 
       // Transformar procesos archivados al formato de archivados
       const procesosArchivadosTransformados = procesosArchivados.map(p => ({
         ...p,
         fechaArchivo: (p as any).fechaCreacion || new Date().toISOString(),
         motivoArchivo: p.estadoActual === 'CERRADO' ? 'Cerrado - Enviado a Jurídica' : 'Completado - Archivo'
+      }));
+
+      // Transformar procesos inhibitorios al formato de inhibitorios
+      const procesosInhibitoriosTransformados = procesosInhibitorios.map(p => ({
+        ...p,
+        fechaInhibitorio: (p as any).fechaCreacion || new Date().toISOString(),
+        motivoInhibitorio: 'Auto Inhibitorio (art. 209)'
       }));
 
       // Combinar noticias y procesos activos
@@ -3582,9 +3968,11 @@ export function DashboardKanbanOperativo({
 
       console.log('[DashboardKanban] Total items para Kanban:', todosLosItems.length);
       console.log('[DashboardKanban] Total items archivados:', todosLosArchivados.length);
+      console.log('[DashboardKanban] Total items inhibitorios:', procesosInhibitoriosTransformados.length);
 
       setItems(todosLosItems);
       setItemsArchivados(todosLosArchivados as any);
+      setItemsInhibitorios(procesosInhibitoriosTransformados as any);
       setDatosCargados(true);
     } catch (error: any) {
       console.error('Error al cargar datos:', error);
@@ -4107,14 +4495,44 @@ export function DashboardKanbanOperativo({
 
   // ==================== HANDLERS ====================
   const handleDropItem = async (item: Item, nuevaEtapa: string) => {
-    // ✅ NUEVO: Validar permiso de movimiento en Kanban
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
-      toast.error('No tiene permiso para mover elementos en el Kanban');
-      return;
+    const isRadicador = isSecretarioRadicadorUser();
+    const esProceso = item.tipo === 'proceso' || (item as any).tipoItem === 'proceso' || (item.tipo !== 'noticia' && !!(item as any).etapaActual);
+    const etapaActualProceso = (item as any).etapaActual;
+    const esTransicionCargosAJuzgamiento =
+      esProceso &&
+      isEtapaCargos(etapaActualProceso) &&
+      isEtapaJuzgamiento(nuevaEtapa);
+    const esTransicionJuzgamientoACargos =
+      esProceso &&
+      isEtapaJuzgamiento(etapaActualProceso) &&
+      isEtapaCargos(nuevaEtapa);
+
+    // Si el usuario tiene el rol Secretario/Radicador:
+    if (isRadicador) {
+      if (esTransicionJuzgamientoACargos) {
+        toast.error('Transición no permitida', {
+          description: 'No está permitido trasladar un proceso desde Juzgamiento hacia Cargos.'
+        });
+        return;
+      }
+
+      if (!esTransicionCargosAJuzgamiento) {
+        toast.error('Acción no permitida para Secretario/Radicador', {
+          description: 'El rol Secretario/Radicador solo tiene permitido realizar el traslado manual de procesos desde la etapa Cargos hacia Juzgamiento.'
+        });
+        return;
+      }
+      // Autorizado: el Secretario/Radicador puede realizar la transición Cargos → Juzgamiento sin requerir el permiso genérico KANBAN_MOVE
+    } else {
+      // ✅ Validar permiso de movimiento en Kanban para los demás roles
+      if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
+        toast.error('No tiene permiso para mover elementos en el Kanban');
+        return;
+      }
     }
 
-    // ✅ NUEVO: Validar orden de etapas desde backend config
-    if (etapasConfig.length > 0) {
+    // ✅ NUEVO: Validar orden de etapas desde backend config (omitido para la transición autorizada Cargos -> Juzgamiento)
+    if (etapasConfig.length > 0 && !esTransicionCargosAJuzgamiento) {
       // Obtener el orden de la etapa actual del item
       let itemOrden: number = 0;
       let etapaActualItem: string = 'Recepción';
@@ -4164,7 +4582,7 @@ export function DashboardKanbanOperativo({
         });
         return;
       }
-    } else if (item.tipo === 'proceso') {
+    } else if (item.tipo === 'proceso' || (item as any).tipoItem === 'proceso' || esProceso) {
       if (item.etapaActual !== nuevaEtapa) {
         const etapaAnterior = item.etapaActual;
 
@@ -4175,25 +4593,34 @@ export function DashboardKanbanOperativo({
           return; // No continuar con el movimiento hasta que se asigne el profesional
         }
 
-        // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
-        toast.error('No es posible avanzar de etapa mediante arrastre', {
-          description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
-        });
-        return;
+        const puedeAvanzarPorArrastre = isRadicador && esTransicionCargosAJuzgamiento;
 
-        const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+        if (!puedeAvanzarPorArrastre) {
+          // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
+          toast.error('No es posible avanzar de etapa mediante arrastre', {
+            description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
+          });
+          return;
+        }
 
-        // ✅ NUEVO: Persistir cambio de etapa en la base de datos
-        const toastId = toast.loading('Cambiando etapa del proceso...');
+        const currentUser = authService.getCurrentUser?.();
+        const usuario = currentUser?.nombre || currentUser?.email || 'Secretario/Radicador';
+
+        // ✅ Persistir cambio de etapa en la base de datos
+        const toastId = toast.loading('Trasladando proceso a Juzgamiento...');
         try {
-          const backendStage = backendStageForLabel(nuevaEtapa);
-          const stageOrder = getStageOrderForLabel(nuevaEtapa);
+          const etapaJuzgamientoConfig = etapasConfig.find(e => isEtapaJuzgamiento(e.etapa || e.nombre));
+          const stageIdentifier = etapaJuzgamientoConfig?.id || backendStageForLabel(nuevaEtapa) || 'JUZGAMIENTO';
 
           // Llamar al backend para cambiar la etapa
-          await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
-          toast.success('Etapa actualizada', {
+          await disciplinaryService.cambiarEtapa(
+            item.id,
+            stageIdentifier,
+            'Traslado manual desde Cargos hacia Juzgamiento por Secretario/Radicador'
+          );
+          toast.success('Proceso trasladado a Juzgamiento', {
             id: toastId,
-            description: `${item.numeroProceso} → ${nuevaEtapa}`
+            description: `${(item as any).numeroProceso || (item as any).radicado || 'Proceso'}: Cargos → Juzgamiento exitoso.`
           });
         } catch (error: any) {
           console.error('Error al cambiar etapa en BD:', error);
@@ -4206,7 +4633,7 @@ export function DashboardKanbanOperativo({
 
         // Actualizar estado local
         setItems(prev => prev.map(i =>
-          i.id === item.id && i.tipo === 'proceso'
+          i.id === item.id && (i.tipo === 'proceso' || (i as any).tipoItem === 'proceso' || (!i.tipo && !!(i as any).etapaActual))
             ? {
               ...i,
               etapaActual: nuevaEtapa as any,
@@ -4220,7 +4647,7 @@ export function DashboardKanbanOperativo({
           id: `evt-${Date.now()}`,
           tipo: 'cambio-estado' as const,
           titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
-          descripcion: `El proceso fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante arrastrar y soltar`,
+          descripcion: `El proceso fue trasladado manualmente de "${etapaAnterior}" a "${nuevaEtapa}" por el Secretario/Radicador`,
           usuario: usuario,
           fecha: new Date(),
           procesoId: item.id,
@@ -5066,6 +5493,7 @@ export function DashboardKanbanOperativo({
         } as Proceso,
       ]);
       setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+      setItemsInhibitorios(prev => prev.filter(i => i.id !== item.id));
 
       toast.success('Proceso apelado', {
         id: toastId,
@@ -5093,7 +5521,7 @@ export function DashboardKanbanOperativo({
 
     const item = itemParaRestaurar;
     // Restaurar al flujo activo
-    const { fechaArchivo, motivoArchivo, ...itemRestaurado } = item;
+    const { fechaArchivo, motivoArchivo, fechaInhibitorio, motivoInhibitorio, ...itemRestaurado } = item;
 
     try {
       if (item.tipo === 'noticia') {
@@ -5106,6 +5534,7 @@ export function DashboardKanbanOperativo({
 
       setItems(prev => [...prev, itemRestaurado]);
       setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+      setItemsInhibitorios(prev => prev.filter(i => i.id !== item.id));
 
       toast.success('Restaurado al Flujo Activo', {
         description: `${item.numero || item.numeroProceso} ha sido restaurado y aparecerá nuevamente en el tablero.`,
@@ -5613,6 +6042,25 @@ export function DashboardKanbanOperativo({
     const enriched = { ...proceso, archivosAdjuntos: enrichedArchivos, news: rawNews || null };
     console.log('[Kanban] handleVerDetalles enriched archivosAdjuntos:', enrichedArchivos);
     setItemSeleccionado(enriched);
+    setAbrirEnvioJuridicaDirecto(false);
+    setModalActivo('ver-detalles');
+  };
+
+  // ✅ NUEVO: Handler para enviar a jurídica directamente desde la tarjeta en Juzgamiento
+  const handleEnviarJuridica = (proceso: Proceso) => {
+    const rawNews = (proceso as any).news;
+    const enrichedArchivos = proceso.archivosAdjuntos?.length
+      ? proceso.archivosAdjuntos
+      : (rawNews?.adjuntos || []).map((url: string, i: number) => ({
+          nombre: url.split('/').pop() || `evidencia-${i}`,
+          tipo: 'evidencia',
+          tamano: 0,
+          fechaSubida: new Date().toISOString(),
+          url
+        }));
+    const enriched = { ...proceso, archivosAdjuntos: enrichedArchivos, news: rawNews || null };
+    setItemSeleccionado(enriched);
+    setAbrirEnvioJuridicaDirecto(true);
     setModalActivo('ver-detalles');
   };
 
@@ -5885,6 +6333,32 @@ export function DashboardKanbanOperativo({
       return;
     }
 
+    if (backendStage === 'INHIBITORIO') {
+      const itemInhibitorio = {
+        ...proceso,
+        etapaActual: 'INHIBITORIO',
+        estadoActual: 'INHIBIDO',
+        fechaInhibitorio: new Date().toISOString(),
+        motivoInhibitorio: 'Auto Inhibitorio (art. 209)'
+      };
+      setItems(prev => prev.filter(i => i.id !== proceso.id));
+      setItemsInhibitorios(prev => [itemInhibitorio as any, ...prev]);
+      return;
+    }
+
+    if (backendStage === 'ARCHIVO') {
+      const itemArchivado = {
+        ...proceso,
+        etapaActual: 'Archivo',
+        estadoActual: 'ARCHIVADO',
+        fechaArchivo: new Date().toISOString(),
+        motivoArchivo: 'Completado - Archivo'
+      };
+      setItems(prev => prev.filter(i => i.id !== proceso.id));
+      setItemsArchivados(prev => [itemArchivado as any, ...prev]);
+      return;
+    }
+
     // Actualizar estado local
     setItems(prev => prev.map(i =>
       i.id === proceso.id && i.tipo === 'proceso'
@@ -5985,7 +6459,7 @@ export function DashboardKanbanOperativo({
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
   // ✅ HU panel/alerta: estado consolidado (Pendientes/En revisión/Aprobados/Devueltos) por proceso
-  const esJefeVista = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefeVista = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const procesoIdsVisibles = useMemo(
     () => new Set(procesos.map(p => p.id)),
     [procesos],
@@ -6021,8 +6495,11 @@ export function DashboardKanbanOperativo({
     return itemMatchesSearch(item, normalizedGlobalQuery);
   });
 
-  // ✅ También filtrar archivados por búsqueda global
+  // ✅ También filtrar archivados e inhibitorios por búsqueda global
   const itemsArchivadosFiltrados = itemsArchivados.filter(item =>
+    itemMatchesSearch(item, normalizedGlobalQuery)
+  );
+  const itemsInhibitoriosFiltrados = itemsInhibitorios.filter(item =>
     itemMatchesSearch(item, normalizedGlobalQuery)
   );
 
@@ -6039,8 +6516,8 @@ export function DashboardKanbanOperativo({
       <div className="flex flex-col items-center justify-center py-24 gap-5">
         <div className="w-12 h-12 border-[3px] rounded-full animate-spin" style={{ borderColor: '#E2E8F0', borderTopColor: '#003DA5' }} />
         <div className="text-center">
-          <p className="text-sm font-semibold text-gray-600">Cargando datos</p>
-          <p className="text-xs text-gray-400 mt-1">Conectando con Supabase...</p>
+          <p className="text-sm font-semibold text-gray-600">Cargando datos...</p>
+          {/* <p className="text-xs text-gray-400 mt-1">Conectando con Supabase...</p> */}
         </div>
       </div>
     );
@@ -6158,157 +6635,228 @@ export function DashboardKanbanOperativo({
           </motion.div>
         )}
 
-        {/* Header World Class Responsive - usa containerWidth real */}
-        <div className="w-full max-w-full bg-white rounded-xl border border-gray-200/80 px-5 py-3.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <div className="flex items-center gap-4 w-full">
-            {/* Título - ocupa espacio disponible, se trunca si es necesario */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#003DA510' }}>
-                  <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
-                </div>
-                <h2
-                  className="font-bold leading-tight truncate tracking-tight"
-                  style={{
-                    color: '#003DA5',
-                    fontSize: containerWidth < 500 ? '1rem' : containerWidth < 700 ? '1.1rem' : '1.25rem'
-                  }}
-                >
-                  Kanban
-                </h2>
-              </div>
-            </div>
-
-            {/* ✅ BÚSQUEDA GLOBAL COLAPSABLE — lupa → campo expandido con animación */}
-            <div className="flex items-center flex-shrink-0">
-              <AnimatePresence mode="wait">
-                {!showBusquedaGlobal ? (
-                  <motion.button
-                    key="search-icon"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.15 }}
-                    onClick={() => {
-                      setShowBusquedaGlobal(true);
-                      setTimeout(() => busquedaInputRef.current?.focus(), 80);
-                    }}
-                    className="rounded-lg hover:bg-blue-50 transition-colors group flex items-center justify-center"
-                    title="Buscar en todo el tablero"
-                    style={{ color: '#003DA5', width: 36, height: 36, minWidth: 36, minHeight: 36 }}
-                  >
-                    <Search style={{ width: 20, height: 20 }} className="group-hover:scale-110 transition-transform" />
-                  </motion.button>
+        {/* Header World Class - Barra de Control y Filtros Amigable */}
+        <div
+          className="w-full max-w-full bg-white rounded-2xl border border-gray-200/90 p-3.5 sm:p-4 shadow-sm overflow-hidden space-y-3"
+          style={{ boxShadow: '0 2px 8px -2px rgba(0, 61, 165, 0.05), 0 1px 4px -1px rgba(0,0,0,0.06)' }}
+        >
+          {/* Fila 1: Título de Vista contextual + Buscador de Procesos y Noticias */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full min-w-0">
+            {/* Título e Indicador de Vista */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs transition-colors"
+                style={{
+                  background: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#003DA512',
+                  border: tipoVista === 'inhibitorios' ? '1px solid #FDE68A' : '1px solid #003DA525'
+                }}
+              >
+                {tipoVista === 'archivados' ? (
+                  <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
+                ) : tipoVista === 'inhibitorios' ? (
+                  <Ban className="w-5 h-5 text-amber-700" />
+                ) : tipoVista === 'lista' ? (
+                  <List className="w-5 h-5" style={{ color: '#003DA5' }} />
                 ) : (
-                  <motion.div
-                    key="search-field"
-                    initial={{ width: 36, opacity: 0.5 }}
-                    animate={{ width: containerWidth < 500 ? 180 : containerWidth < 700 ? 220 : 280, opacity: 1 }}
-                    exit={{ width: 36, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                    className="relative flex items-center overflow-hidden"
-                  >
-                    <Search className="absolute left-2.5 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
-                    <input
-                      ref={busquedaInputRef}
-                      type="text"
-                      value={busquedaGlobal}
-                      onChange={(e) => setBusquedaGlobal(e.target.value)}
-                      // onBlur={() => {
-                      //   if (!busquedaGlobal.trim()) setShowBusquedaGlobal(false);
-                      // }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          setBusquedaGlobal('');
-                          // setShowBusquedaGlobal(false);
-                        }
-                      }}
-                      placeholder="Buscar noticias, procesos..."
-                      className="w-full pl-8 pr-8 py-2 rounded-xl border text-sm focus:outline-none transition-all focus:ring-2 focus:ring-[#003DA5]/20"
-                      style={{
-                        borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
-                        backgroundColor: '#FAFBFC',
-                      }}
-                    />
-                    {busquedaGlobal && (
-                      <button
-                        onClick={() => {
-                          setBusquedaGlobal('');
-                          busquedaInputRef.current?.focus();
-                        }}
-                        className="absolute right-2 p-0.5 rounded-full hover:bg-gray-200 transition-colors"
-                        title="Limpiar búsqueda"
-                      >
-                        <X className="w-3.5 h-3.5 text-gray-400" />
-                      </button>
-                    )}
-                  </motion.div>
+                  <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
                 )}
-              </AnimatePresence>
-              {/* Badge indicador de filtro activo */}
-              {busquedaGlobal.trim() && !showBusquedaGlobal && (
-                <span
-                  className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white"
-                  style={{ backgroundColor: '#003DA5' }}
-                >
-                  {itemsFiltrados.length + itemsArchivadosFiltrados.length}
-                </span>
-              )}
-            </div>
-
-            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + CTA */}
-            <div className="flex items-center gap-3 flex-shrink-0">
-              {/* Filtro por tipo */}
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
-                {([
-                  { value: 'todos', label: 'Todos' },
-                  { value: 'noticia', label: 'Noticias' },
-                  { value: 'proceso', label: 'Procesos' },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFiltroTipo(opt.value)}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
-                      ? 'bg-white shadow-sm text-gray-900'
-                      : 'text-gray-500 hover:bg-gray-200'
-                      }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
               </div>
 
-              <KanbanViewToggle
-                options={[
-                  ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
-                  { value: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
-                  { value: 'archivados', icon: <Archive style={{ width: 16, height: 16 }} />, label: 'Archivados', badge: itemsArchivados.length > 0 ? itemsArchivados.length : undefined },
-                ]}
-                current={tipoVista}
-                onChange={(id) => setTipoVista(id as any)}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2
+                    className="font-bold leading-tight truncate tracking-tight text-gray-900"
+                    style={{
+                      fontSize: containerWidth < 500 ? '1.05rem' : '1.2rem'
+                    }}
+                  >
+                    {tipoVista === 'archivados'
+                      ? 'Archivados'
+                      : tipoVista === 'inhibitorios'
+                        ? 'Inhibitorios (Art. 209)'
+                        : tipoVista === 'lista'
+                          ? 'Lista de Procesos'
+                          : 'Tablero Kanban'}
+                  </h2>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+                    style={{
+                      backgroundColor: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#EFF6FF',
+                      color: tipoVista === 'inhibitorios' ? '#92400E' : '#003DA5'
+                    }}
+                  >
+                    {tipoVista === 'archivados'
+                      ? `${itemsArchivadosFiltrados.length} exp.`
+                      : tipoVista === 'inhibitorios'
+                        ? `${itemsInhibitoriosFiltrados.length} exp.`
+                        : `${itemsFiltrados.length} activos`}
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 truncate hidden sm:block">
+                  {tipoVista === 'archivados'
+                    ? 'Expedientes archivados o cerrados'
+                    : tipoVista === 'inhibitorios'
+                      ? 'Procesos culminados por auto inhibitorio'
+                      : 'Control operativo de noticias y expedientes'}
+                </p>
+              </div>
+            </div>
+
+            {/* Buscador de procesos y noticias amigable */}
+            <div className="relative flex items-center w-full sm:w-72 md:w-80 flex-shrink-0 min-w-0">
+              <Search className="absolute left-3 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
+              <input
+                ref={busquedaInputRef}
+                type="text"
+                value={busquedaGlobal}
+                onChange={(e) => setBusquedaGlobal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setBusquedaGlobal('');
+                }}
+                placeholder="Buscar por proceso, radicado..."
+                className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
+                style={{
+                  borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
+                  backgroundColor: busquedaGlobal ? '#FFFFFF' : '#F8FAFC',
+                }}
               />
-
-              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
-                <KanbanToolbarCTA
-                  onClick={() => setModalActivo('crear-noticia')}
-                  icon={<Plus style={{ width: 16, height: 16 }} />}
+              {busquedaGlobal ? (
+                <button
+                  onClick={() => {
+                    setBusquedaGlobal('');
+                    busquedaInputRef.current?.focus();
+                  }}
+                  className="absolute right-2.5 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
+                  title="Limpiar búsqueda"
                 >
-                  Nueva
-                </KanbanToolbarCTA>
-              )}
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
 
-              {(authService.hasRole('SECRETARIA_RADICADOR') || authService.isSuperAdmin()) && (
-                <KanbanToolbarCTA
-                  onClick={handleExportarVencimientos}
-                  icon={
-                    exportandoVencimientos
-                      ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
-                      : <Download style={{ width: 16, height: 16 }} />
-                  }
+          {/* Fila 2: Barra de herramientas y filtros con scroll horizontal estético */}
+          <div className="w-full max-w-full overflow-x-auto toolbar-scroll-container pt-2 border-t border-gray-100">
+            <div className="flex items-center justify-between gap-2.5 min-w-max pb-1">
+              {/* Bloque Izquierdo: Filtro Tipo + Vista Toggle + Vistas Archivados e Inhibitorios */}
+              <div className="flex items-center gap-2">
+                {/* Filtro por tipo (Todos / Noticias / Procesos) */}
+                {tipoVista !== 'inhibitorios' && (
+                  <div className="flex items-center gap-0.5 p-1 rounded-xl bg-gray-100/90 border border-gray-200/60 shadow-inner">
+                    {([
+                      { value: 'todos', label: 'Todos' },
+                      { value: 'noticia', label: 'Noticias' },
+                      { value: 'proceso', label: 'Procesos' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFiltroTipo(opt.value)}
+                        className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
+                          filtroTipo === opt.value
+                            ? 'bg-white shadow-xs font-bold text-[#003DA5]'
+                            : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 font-medium'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Vistas Principales: Kanban / Lista */}
+                <KanbanViewToggle
+                  options={[
+                    ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 15, height: 15 }} />, label: 'Kanban' }]),
+                    { value: 'lista', icon: <List style={{ width: 15, height: 15 }} />, label: 'Lista' },
+                  ]}
+                  current={tipoVista === 'kanban' || tipoVista === 'lista' ? tipoVista : ''}
+                  onChange={(id) => setTipoVista(id as any)}
+                />
+
+                {/* Separador vertical */}
+                <div className="h-5 w-[1px] bg-gray-200/80 mx-0.5" />
+
+                {/* Botón Archivados */}
+                <button
+                  onClick={() => setTipoVista(tipoVista === 'archivados' ? 'kanban' : 'archivados')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                    tipoVista === 'archivados'
+                      ? 'bg-blue-50 text-[#003DA5] border-[#003DA5]/40 shadow-xs ring-1 ring-[#003DA5]/20 font-bold'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50/40 hover:text-[#003DA5] hover:border-blue-200'
+                  }`}
+                  title="Ver procesos y noticias archivadas"
                 >
-                  Exportar
-                </KanbanToolbarCTA>
-              )}
+                  <Archive className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Archivados</span>
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] leading-none ${
+                      tipoVista === 'archivados' ? 'bg-[#003DA5] text-white' : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {itemsArchivados.length}
+                  </span>
+                </button>
+
+                {/* Botón Inhibitorios */}
+                <button
+                  onClick={() => setTipoVista(tipoVista === 'inhibitorios' ? 'kanban' : 'inhibitorios')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                    tipoVista === 'inhibitorios'
+                      ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-xs ring-1 ring-amber-400/30 font-bold'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-amber-50/40 hover:text-amber-800 hover:border-amber-200'
+                  }`}
+                  title="Ver procesos inhibitorios (art. 209)"
+                >
+                  <Ban className="w-3.5 h-3.5 flex-shrink-0 text-amber-700" />
+                  <span>Inhibitorios</span>
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] leading-none ${
+                      tipoVista === 'inhibitorios' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {itemsInhibitorios.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* Bloque Derecho: Acciones de Exportar y Crear */}
+              <div className="flex items-center gap-2">
+                {/* Botón Exportar */}
+                {(authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REPORTES_EXPORTAR) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_VENCIMIENTOS_EXPORTAR) ||
+                  authService.isSuperAdmin()) && (
+                  <button
+                    onClick={handleExportarVencimientos}
+                    disabled={exportandoVencimientos}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:text-[#003DA5] shadow-xs active:scale-95 disabled:opacity-50"
+                    title="Exportar informe de vencimientos"
+                  >
+                    {exportandoVencimientos ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#003DA5]" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5 text-gray-500" />
+                    )}
+                    <span>Exportar</span>
+                  </button>
+                )}
+
+                {/* Botón Nueva Noticia */}
+                {(authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) ||
+                  authService.isSuperAdmin()) && (
+                  <button
+                    onClick={() => setModalActivo('crear-noticia')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-xs hover:shadow-md active:scale-95 hover:brightness-110"
+                    style={{ backgroundColor: '#003DA5' }}
+                    title="Registrar nueva noticia disciplinaria"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Nueva Noticia</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -6316,8 +6864,29 @@ export function DashboardKanbanOperativo({
         {/* Estadísticas - Responsive: 2 cols en estrecho, 4 cols en ancho */}
 
 
-        {/* CSS para kanban-scroll-container */}
+        {/* CSS para kanban-scroll-container y toolbar-scroll-container */}
         <style>{`
+          .toolbar-scroll-container {
+            scrollbar-width: thin;
+            scrollbar-color: #CBD5E1 transparent;
+            -webkit-overflow-scrolling: touch;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar {
+            height: 5px;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar-track {
+            background: #F8FAFC;
+            border-radius: 9999px;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+            transition: background-color 0.2s ease;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+          }
+
           .kanban-scroll-container {
             /* Scroll horizontal personalizado para contenedor de columnas kanban */
           }
@@ -6469,6 +7038,7 @@ export function DashboardKanbanOperativo({
                           onVerDetalles={handleVerDetalles}
                           onAprobarBorrador={handleAprobarBorrador}
                           onVerExpediente={handleVerExpediente}
+                          onEnviarJuridica={handleEnviarJuridica}
                           onGestionAutos={handleGestionAutos}
                           onGestionEvidencias={handleGestionEvidencias}
                           onGestionOficios={handleGestionOficios}
@@ -6531,6 +7101,7 @@ export function DashboardKanbanOperativo({
             onVerDetalles={handleVerDetalles}
             onAprobarBorrador={handleAprobarBorrador}
             onVerExpediente={handleVerExpediente}
+            onEnviarJuridica={handleEnviarJuridica}
             onGestionAutos={handleGestionAutos}
             onGestionEvidencias={handleGestionEvidencias}
             onGestionOficios={handleGestionOficios}
@@ -6567,11 +7138,21 @@ export function DashboardKanbanOperativo({
             onApelar={handleApelarArchivado}
             onVerDetalles={(item) => {
               setItemSeleccionado(item);
-              if (item.tipo === 'noticia') {
-                setModalActivo('ver-detalles');
-              } else {
-                setModalActivo('ver-detalles');
-              }
+              setModalActivo('ver-detalles');
+            }}
+            isMobile={isMobile}
+          />
+        )}
+
+        {/* ═══ Vista Inhibitorios ═══ */}
+        {tipoVista === 'inhibitorios' && (
+          <VistaInhibitorios
+            items={itemsInhibitoriosFiltrados}
+            onDesarchivar={handleDesarchivar}
+            onApelar={handleApelarArchivado}
+            onVerDetalles={(item) => {
+              setItemSeleccionado(item);
+              setModalActivo('ver-detalles');
             }}
             isMobile={isMobile}
           />
@@ -7441,7 +8022,13 @@ export function DashboardKanbanOperativo({
         {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (
           <ModalDetallesProceso
             proceso={itemSeleccionado as Proceso}
-            onClose={() => { setModalActivo(null); setItemSeleccionado(null); cargarDatos(); }}
+            abrirEnvioJuridicaDirecto={abrirEnvioJuridicaDirecto}
+            onClose={() => {
+              setModalActivo(null);
+              setItemSeleccionado(null);
+              setAbrirEnvioJuridicaDirecto(false);
+              cargarDatos();
+            }}
             onReabrir={() => {
               setModalActivo('ver-detalles');
             }}
@@ -7708,7 +8295,7 @@ export function DashboardKanbanOperativo({
                         <div className="bg-white rounded p-3 space-y-1">
                           <p className="text-sm"><strong>Tipo:</strong> {itemParaRestaurar.tipo === 'noticia' ? 'Noticia' : 'Proceso'}</p>
                           <p className="text-sm"><strong>Número:</strong> {itemParaRestaurar.numero || itemParaRestaurar.numeroProceso}</p>
-                          <p className="text-sm"><strong>Estado:</strong> Archivado</p>
+                          <p className="text-sm"><strong>Estado:</strong> {itemParaRestaurar.etapaActual === 'INHIBITORIO' || itemParaRestaurar.estadoActual === 'INHIBIDO' ? 'Inhibitorio (art. 209)' : 'Archivado'}</p>
                         </div>
                       </div>
                     </div>
