@@ -68,6 +68,12 @@ export interface Persona {
   email?: string;
 }
 
+/** Dependencia de auth.dependencias, el catálogo transversal de la ESAP. */
+export interface Dependencia {
+  id: string;
+  nombre: string;
+}
+
 /**
  * Modalidad de selección: es la columna de la matriz de flujo, así que
  * determina qué actividades aplican al proceso. Se elige al crearlo.
