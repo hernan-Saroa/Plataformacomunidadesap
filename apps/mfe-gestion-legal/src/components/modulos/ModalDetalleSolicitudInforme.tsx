@@ -72,6 +72,11 @@ interface ModalDetalleSolicitudInformeProps {
   onAgregarComentario?: (id: string, comentario: string) => void;
   onArchivar?: (id: string) => void;
   onEliminar?: (id: string) => void;
+  /**
+   * Abre el formulario de edición del informe. Solo se pasa cuando el usuario tiene el permiso
+   * `gestion-legal.terminos.edit` (ver migración 435); sin él, el botón "Editar" no se renderiza.
+   */
+  onEditar?: (solicitud: SolicitudInforme) => void;
   canModify?: boolean;
   canEnviarRecordatorio?: boolean;
 }
@@ -84,6 +89,7 @@ export function ModalDetalleSolicitudInforme({
   onAgregarComentario,
   onArchivar,
   onEliminar,
+  onEditar,
   canModify = true,
   canEnviarRecordatorio = true
 }: ModalDetalleSolicitudInformeProps) {
@@ -921,6 +927,16 @@ export function ModalDetalleSolicitudInforme({
               <X className="w-4 h-4 mr-2" />
               Cerrar
             </Button>
+            {onEditar && (
+              <Button
+                variant="outline"
+                className="text-[#003DA5] border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+                onClick={() => onEditar(solicitud)}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Editar
+              </Button>
+            )}
             {onArchivar && (
               <Button
                 variant="outline"

@@ -78,6 +78,9 @@ export enum Permissions {
   // Gestión Legal - Términos e Informaciones
   GESTION_LEGAL_TERMINOS_MANAGE = 'gestion-legal.terminos.manage',
   GESTION_LEGAL_TERMINOS_VER = 'gestion-legal.terminos.ver',
+  // Habilita el botón "Editar" del detalle de un informe/término (edición de datos,
+  // fecha de vencimiento y parametrización del plazo). Ver migración 435.
+  GESTION_LEGAL_TERMINOS_EDIT = 'gestion-legal.terminos.edit',
 
   // Gestión Legal - Órganos de Control
   GESTION_LEGAL_ORGANOS_CONTROL_MANAGE = 'gestion-legal.organos-control.manage',
