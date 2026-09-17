@@ -419,8 +419,8 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
         ? ubicacionCargo
         : observationsEncargo;
 
-    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
-    // solo usa la dependencia cuando no hay centro de costo. Misma regla y
+    // [DEPENDENCIA] prioriza la DEPENDENCIA y solo usa el centro de costo
+    // (grupo interno de trabajo) cuando no hay dependencia. Misma regla y
     // mismo orden que labor-certificate-pdf.service.ts en el backend: esta
     // vista previa se renderiza aqui, asi que si las dos copias no coinciden el
     // usuario ve una cosa en pantalla y otra en el PDF.
@@ -437,8 +437,8 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       (certificado as any)?.cost_center,
     );
     const dato7 =
-      centroCosto ||
       dependenciaHijo ||
+      centroCosto ||
       normalizarDependencia(requestData?.organization_department) ||
       '';
     const cargoDato6 = tipoVinculacion;

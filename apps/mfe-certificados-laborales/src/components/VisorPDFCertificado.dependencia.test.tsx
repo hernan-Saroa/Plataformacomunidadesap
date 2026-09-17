@@ -41,11 +41,25 @@ describe('vista previa de [DEPENDENCIA] con encargo', () => {
     expect((await screen.findAllByText('DEP:Grupo del nombramiento')).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/CARGO:Profesional Especializado.*2028.*\(E\)/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('GRUPO:Ubicacion del encargo').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('DATO7:Grupo del encargo').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('DATO7:Dependencia del encargo').length).toBeGreaterThan(0);
   });
 
   it('conserva el respaldo cuando el backend no indica otra vinculacion', async () => {
     render(<VisorPDFCertificado isOpen onClose={() => {}} certificado={certificado()} />);
+    expect((await screen.findAllByText('DEP:Dependencia del encargo')).length).toBeGreaterThan(0);
+  });
+
+  it('cae al centro de costo cuando no hay dependencia', async () => {
+    render(
+      <VisorPDFCertificado
+        isOpen
+        onClose={() => {}}
+        certificado={certificado({
+          department: '',
+          empleado: { ...certificado().empleado, dependencia: '' },
+        })}
+      />,
+    );
     expect((await screen.findAllByText('DEP:Grupo del encargo')).length).toBeGreaterThan(0);
   });
 
@@ -61,8 +75,8 @@ describe('vista previa de [DEPENDENCIA] con encargo', () => {
  * copia y `labor-certificate-pdf.service.ts` no coinciden, el usuario ve una
  * cosa en pantalla y otra en el PDF — que es el bug que originó esta prueba.
  *
- * Regla compartida para [DEPENDENCIA]: gana el CENTRO DE COSTO (grupo interno)
- * y solo se usa la dependencia cuando no hay centro de costo. Igual para filas
+ * Regla compartida para [DEPENDENCIA]: gana la DEPENDENCIA y solo se usa el
+ * CENTRO DE COSTO (grupo interno) cuando no hay dependencia. Igual para filas
  * locales y de Oracle.
  */
 describe('resolverCentroCosto — misma regla que resolveLaborInternalGroup del backend', () => {

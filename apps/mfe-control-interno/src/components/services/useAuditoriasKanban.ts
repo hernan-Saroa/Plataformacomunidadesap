@@ -389,7 +389,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
       criterio: typeof crit === 'string' ? crit : (crit.criterio || '')
     })),
     calificacionRiesgo: auditoriaBackend.calificacionRiesgo || `Riesgo ${mapearRiesgo(auditoriaBackend.nivelRiesgo)}`,
-    documentos: (auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0) + (auditoriaBackend.documentoCierre?.url ? 1 : 0),
+    // El backend ya cuenta documentos, evidencias y documento de cierre como el expediente (EFDS-1614)
+    documentos: auditoriaBackend.totalDocumentos ?? auditoriaBackend.documentosCount ?? 0,
     informes: auditoriaBackend.totalInformes || auditoriaBackend.informesCount || 0,
     tareas: auditoriaBackend.totalTareas || auditoriaBackend.tareasCount || 0,
     tipo: mapearTipo(auditoriaBackend.tipo),

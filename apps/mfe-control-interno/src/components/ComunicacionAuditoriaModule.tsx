@@ -51,6 +51,16 @@ function urlDocumento(idOrUrl: string, accion: 'preview' | 'download'): string {
   return `${base}/${encodeURIComponent(idOrUrl)}/${accion}`;
 }
 
+/** Nombre del soporte del auditado legible en los informes (corrige tildes mal codificadas). */
+function nombreSoporteLegible(nombre?: string): string | undefined {
+  if (!nombre) return undefined;
+  try {
+    return decodeURIComponent(escape(nombre));
+  } catch {
+    return nombre;
+  }
+}
+
 interface Auditoria {
   id: string;
   codigo: string;
@@ -765,6 +775,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
       estadoFinal: h.estado,
       decisionAuditor: h.decisionAuditor,
       fundamentacionTecnica: (h as any).fundamentacionTecnica,
+      respuestaAuditado: h.observacionesControversia || h.argumentosControversia,
+      soporteAuditado: nombreSoporteLegible(h.documentoControversiaNombre),
+      fechaDecision: h.fechaDecision,
     }));
     const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
     
@@ -2174,22 +2187,61 @@ const SeccionInformeFinal: React.FC<{
           <div className="space-y-2">
             {hallazgos
               .filter(h => h.estado !== 'retirado')
-              .map((hallazgo, index) => (
-                <div key={hallazgo.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center text-sm font-semibold border border-gray-300">
-                      {index + 1}
+              .map((hallazgo, index) => {
+                // Respuesta del auditado y decisión del auditor que quedan en el informe final (EFDS-1637)
+                const estadoHallazgo = hallazgo.estado || '';
+                const respuesta = (hallazgo.observacionesControversia || hallazgo.argumentosControversia || '').trim();
+                const decision = (hallazgo.decisionAuditor || estadoHallazgo).toLowerCase();
+                const tieneDecision = ['ratificado', 'modificado', 'retirado'].includes(decision);
+                const textoRespuesta = estadoHallazgo === 'aceptado'
+                  ? 'Aceptó el hallazgo'
+                  : respuesta || estadoHallazgo === 'en-controversia' || tieneDecision
+                    ? 'Presentó controversia'
+                    : 'Sin respuesta registrada';
+                return (
+                <div key={hallazgo.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center text-sm font-semibold border border-gray-300">
+                        {index + 1}
+                      </div>
+                      <span className="font-medium text-gray-900">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 50)}</span>
                     </div>
-                    <span className="font-medium text-gray-900">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 50)}</span>
+                    <BadgeSIGL variant={
+                      (hallazgo.gravedad || '').toUpperCase() === 'GRAVE' || (hallazgo.gravedad || '').toUpperCase() === 'CRITICO' ? 'danger' :
+                      (hallazgo.gravedad || '').toUpperCase() === 'MODERADO' ? 'warning' : 'info'
+                    }>
+                      {hallazgo.gravedad || 'N/A'}
+                    </BadgeSIGL>
                   </div>
-                  <BadgeSIGL variant={
-                    (hallazgo.gravedad || '').toUpperCase() === 'GRAVE' || (hallazgo.gravedad || '').toUpperCase() === 'CRITICO' ? 'danger' :
-                    (hallazgo.gravedad || '').toUpperCase() === 'MODERADO' ? 'warning' : 'info'
-                  }>
-                    {hallazgo.gravedad || 'N/A'}
-                  </BadgeSIGL>
+                  <div className="mt-3 ml-10 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div className="bg-white rounded-md border border-gray-200 p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1">Respuesta del área auditada</p>
+                      <p className="font-medium text-gray-900">{textoRespuesta}</p>
+                      {respuesta && (
+                        <p className="text-gray-600 whitespace-pre-wrap mt-1 line-clamp-4">{respuesta}</p>
+                      )}
+                      {hallazgo.documentoControversiaNombre && (
+                        <p className="text-xs text-gray-500 mt-1">Soporte: {nombreSoporteLegible(hallazgo.documentoControversiaNombre)}</p>
+                      )}
+                    </div>
+                    <div className="bg-white rounded-md border border-gray-200 p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-[#003DA5] mb-1">Análisis y decisión del auditor</p>
+                      {tieneDecision ? (
+                        <>
+                          <p className="font-medium text-gray-900 capitalize">{decision}</p>
+                          {hallazgo.fundamentacionTecnica && (
+                            <p className="text-gray-600 whitespace-pre-wrap mt-1 line-clamp-4">{hallazgo.fundamentacionTecnica}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-gray-500">{estadoHallazgo === 'aceptado' ? 'Hallazgo en firme por aceptación del área auditada' : 'Sin decisión registrada'}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
           </div>
         </div>
       </CardSIGL>
@@ -2500,6 +2552,9 @@ const SeccionInformeEjecutivo: React.FC<{
               estadoFinal: h.estado,
               decisionAuditor: h.decisionAuditor,
               fundamentacionTecnica: (h as any).fundamentacionTecnica,
+              respuestaAuditado: h.observacionesControversia || h.argumentosControversia,
+              soporteAuditado: nombreSoporteLegible(h.documentoControversiaNombre),
+              fechaDecision: h.fechaDecision,
             }));
             const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
             
@@ -3194,6 +3249,9 @@ const ModalPreviewInforme: React.FC<{
       estadoFinal: h.estado,
       decisionAuditor: h.decisionAuditor,
       fundamentacionTecnica: (h as any).fundamentacionTecnica,
+      respuestaAuditado: h.observacionesControversia || h.argumentosControversia,
+      soporteAuditado: nombreSoporteLegible(h.documentoControversiaNombre),
+      fechaDecision: h.fechaDecision,
     }));
 
     const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informe);
