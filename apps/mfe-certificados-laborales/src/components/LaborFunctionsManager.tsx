@@ -508,7 +508,16 @@ function PaginationNavigator({ page, totalPages, onPageChange, showJump = false 
   );
 }
 
-export function LaborFunctionsManager() {
+export interface LaborFunctionsManagerProps {
+  /**
+   * Permiso de escritura (`certificados-laborales.functions.manage`): crear,
+   * editar, eliminar y carga masiva. Sin el, la matriz se muestra en solo
+   * lectura y el backend rechaza igualmente cualquier escritura.
+   */
+  canManage?: boolean;
+}
+
+export function LaborFunctionsManager({ canManage = false }: LaborFunctionsManagerProps = {}) {
   const [items, setItems] = React.useState<LaborFunctionProfileApi[]>([]);
   const [stats, setStats] = React.useState({ profiles: 0, functions: 0 });
   const [search, setSearch] = React.useState('');
@@ -775,8 +784,19 @@ export function LaborFunctionsManager() {
     }
   };
 
+  /**
+   * Corta las acciones de escritura cuando el rol es de solo lectura. La UI ya
+   * las oculta; esto evita que un atajo o un estado viejo las dispare.
+   */
+  const ensureCanManage = () => {
+    if (canManage) return true;
+    toast.error('No tienes permiso para gestionar las funciones laborales.');
+    return false;
+  };
+
   /** Precarga el formulario individual con los datos exactos del empleado. */
   const createFromLookup = (item: LaborPersonLookupItemApi) => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setEditorSubmissionError('');
     setEditor({
@@ -796,6 +816,7 @@ export function LaborFunctionsManager() {
 
 
   const openCreate = () => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setEditorSubmissionError('');
     setEditor({ ...EMPTY_EDITOR });
@@ -804,6 +825,7 @@ export function LaborFunctionsManager() {
   };
 
   const openEdit = (profile: LaborFunctionProfileApi) => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setEditorSubmissionError('');
     setEditor({
@@ -826,6 +848,7 @@ export function LaborFunctionsManager() {
   };
 
   const openDelete = (profile: LaborFunctionProfileApi) => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setDeleteSubmissionError('');
     setProfileToDelete(profile);
@@ -891,6 +914,7 @@ export function LaborFunctionsManager() {
   };
 
   const openBulkDelete = () => {
+    if (!ensureCanManage()) return;
     if (!selectedCount) {
       toast.error('Selecciona al menos un registro para eliminar.');
       return;
@@ -1341,6 +1365,7 @@ export function LaborFunctionsManager() {
   };
 
   const openBulkModal = () => {
+    if (!ensureCanManage()) return;
     clearBulkFile();
     setBulkOpen(true);
   };
@@ -1455,23 +1480,31 @@ export function LaborFunctionsManager() {
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Asociación validada</span>
               </div>
               <p className="max-w-3xl text-sm leading-6 text-slate-600">
-                Administra las funciones normalizadas por código, grado, cargo y estructura organizacional. Solo una coincidencia exacta podrá incluirse en el certificado.
+                {canManage
+                  ? 'Administra las funciones normalizadas por código, grado, cargo y estructura organizacional. Solo una coincidencia exacta podrá incluirse en el certificado.'
+                  : 'Consulta las funciones normalizadas por código, grado, cargo y estructura organizacional. Solo una coincidencia exacta podrá incluirse en el certificado.'}
               </p>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
-            <button onClick={downloadTemplate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-800 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md active:translate-y-0">
-              <Download className="h-4 w-4" /> Plantilla con ejemplos
-            </button>
-            <button onClick={openBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-[#003DA5] shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md active:translate-y-0">
-              <Upload className="h-4 w-4" /> Carga masiva
-            </button>
+            {canManage && (
+              <button onClick={downloadTemplate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-800 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md active:translate-y-0">
+                <Download className="h-4 w-4" /> Plantilla con ejemplos
+              </button>
+            )}
+            {canManage && (
+              <button onClick={openBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-[#003DA5] shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md active:translate-y-0">
+                <Upload className="h-4 w-4" /> Carga masiva
+              </button>
+            )}
             <button onClick={openLookup} title="Consultar los datos laborales exactos de una persona" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-purple-50 hover:shadow-md active:translate-y-0">
               <UserSearch className="h-4 w-4" /> Consultar empleado
             </button>
-            <button onClick={openCreate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:-translate-y-0.5 hover:bg-[#002873] hover:shadow-xl active:translate-y-0">
-              <Plus className="h-4 w-4" /> Agregar individual
-            </button>
+            {canManage && (
+              <button onClick={openCreate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:-translate-y-0.5 hover:bg-[#002873] hover:shadow-xl active:translate-y-0">
+                <Plus className="h-4 w-4" /> Agregar individual
+              </button>
+            )}
           </div>
         </div>
       </motion.section>
@@ -1532,7 +1565,7 @@ export function LaborFunctionsManager() {
           <div className="flex items-center justify-between gap-3 lg:justify-end">
             <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-[#003DA5] sm:inline-flex">Más recientes primero</span>
             <span className="text-xs font-medium text-slate-500">{totalItems} {totalItems === 1 ? 'perfil encontrado' : 'perfiles encontrados'}</span>
-            {totalItems > 0 && selectedCount < totalItems && (
+            {canManage && totalItems > 0 && selectedCount < totalItems && (
               <button
                 type="button"
                 onClick={() => void selectAllProfiles()}
@@ -1551,7 +1584,7 @@ export function LaborFunctionsManager() {
         </div>
 
         <AnimatePresence initial={false}>
-          {selectedCount > 0 && (
+          {canManage && selectedCount > 0 && (
             <motion.div
               role="status"
               aria-live="polite"
@@ -1595,12 +1628,14 @@ export function LaborFunctionsManager() {
             <table className="w-full min-w-[1180px] text-left text-sm">
               <thead className="sticky top-0 z-[1] bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="w-16 px-4 py-3.5 text-center">
-                    <label className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition hover:bg-blue-100" title={allCurrentPageSelected ? 'Desmarcar esta página' : 'Seleccionar esta página'}>
-                      <input ref={selectPageCheckboxRef} type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} aria-label={allCurrentPageSelected ? 'Desmarcar todos los registros de esta página' : 'Seleccionar todos los registros de esta página'} className="h-5 w-5 cursor-pointer rounded-md border-slate-300 accent-[#003DA5]" />
-                    </label>
-                  </th>
-                  <th className="px-5 py-3.5">Código / grado</th><th className="px-5 py-3.5">Denominación</th><th className="px-5 py-3.5">Dependencia / grupo</th><th className="px-5 py-3.5 text-center">Funciones</th><th className="px-5 py-3.5 text-right">Acciones</th>
+                  {canManage && (
+                    <th className="w-16 px-4 py-3.5 text-center">
+                      <label className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition hover:bg-blue-100" title={allCurrentPageSelected ? 'Desmarcar esta página' : 'Seleccionar esta página'}>
+                        <input ref={selectPageCheckboxRef} type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} aria-label={allCurrentPageSelected ? 'Desmarcar todos los registros de esta página' : 'Seleccionar todos los registros de esta página'} className="h-5 w-5 cursor-pointer rounded-md border-slate-300 accent-[#003DA5]" />
+                      </label>
+                    </th>
+                  )}
+                  <th className="px-5 py-3.5">Código / grado</th><th className="px-5 py-3.5">Denominación</th><th className="px-5 py-3.5">Dependencia / grupo</th><th className="px-5 py-3.5 text-center">Funciones</th>{canManage && <th className="px-5 py-3.5 text-right">Acciones</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1608,16 +1643,20 @@ export function LaborFunctionsManager() {
                   const selected = selectedProfiles.has(profile.id);
                   return (
                   <motion.tr key={profile.id} aria-selected={selected} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(index * 0.025, 0.2) }} className={`group transition ${selected ? 'bg-blue-50/80 hover:bg-blue-100/70' : 'hover:bg-blue-50/35'}`}>
-                    <td className="px-4 py-4 text-center">
-                      <label className={`inline-flex cursor-pointer items-center justify-center rounded-xl border p-2 shadow-sm transition ${selected ? 'border-blue-300 bg-[#003DA5] text-white' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
-                        <input type="checkbox" checked={selected} onChange={() => toggleProfileSelection(profile)} aria-label={`${selected ? 'Desmarcar' : 'Seleccionar'} ${profile.combined_code} · ${profile.position_name}`} className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#003DA5]" />
-                      </label>
-                    </td>
+                    {canManage && (
+                      <td className="px-4 py-4 text-center">
+                        <label className={`inline-flex cursor-pointer items-center justify-center rounded-xl border p-2 shadow-sm transition ${selected ? 'border-blue-300 bg-[#003DA5] text-white' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
+                          <input type="checkbox" checked={selected} onChange={() => toggleProfileSelection(profile)} aria-label={`${selected ? 'Desmarcar' : 'Seleccionar'} ${profile.combined_code} · ${profile.position_name}`} className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#003DA5]" />
+                        </label>
+                      </td>
+                    )}
                     <td className="px-5 py-4"><p className="font-mono text-base font-bold text-[#003DA5]">{profile.combined_code}</p><p className="mt-0.5 text-xs text-slate-500">Base {profile.position_code}{profile.grade_code ? ` · Grado ${profile.grade_code}` : ' · Sin grado'}</p></td>
                     <td className="px-5 py-4"><p className="font-semibold text-slate-900">{profile.position_name}</p><p className="mt-0.5 text-xs text-slate-500">{profile.hierarchical_level || 'Nivel no informado'}</p></td>
                     <td className="max-w-xl px-5 py-4"><p className="truncate font-medium text-slate-700">{profile.department_name || 'Sin dependencia específica'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{profile.internal_group || 'Sin grupo interno'}</p></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-emerald-50 px-3 py-1.5 font-bold text-emerald-700 ring-1 ring-emerald-100">{profile.function_count}</span></td>
+                    {canManage && (
                     <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => openEdit(profile)} aria-label={`Editar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button><button onClick={() => openDelete(profile)} aria-label={`Eliminar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-red-600 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></td>
+                    )}
                   </motion.tr>
                   );
                 })}
@@ -1629,7 +1668,7 @@ export function LaborFunctionsManager() {
             <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="max-w-lg">
               <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-50 text-[#003DA5] ring-1 ring-blue-100"><BookOpenCheck className="h-10 w-10" /></span>
               <h2 className="mt-5 text-xl font-bold text-slate-900">{search ? 'No encontramos coincidencias' : 'La matriz todavía está vacía'}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{search ? 'Prueba con otro código, denominación o dependencia.' : 'Carga el Excel institucional o crea el primer perfil de manera individual. El sistema validará cada combinación antes de asociarla.'}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{search ? 'Prueba con otro código, denominación o dependencia.' : canManage ? 'Carga el Excel institucional o crea el primer perfil de manera individual. El sistema validará cada combinación antes de asociarla.' : 'Todavía no hay perfiles cargados en la matriz.'}</p>
             </motion.div>
           </div>
         )}
@@ -2016,9 +2055,11 @@ export function LaborFunctionsManager() {
                                 : `No existe ningún perfil con el cod_cargo ${item.matrix.combined_code}. Hay que crearlo desde cero.`}
                             </p>
                           )}
-                          <button type="button" onClick={() => createFromLookup(item)} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#002873]">
-                            <Plus className="h-4 w-4" /> Crear perfil con estos datos
-                          </button>
+                          {canManage && (
+                            <button type="button" onClick={() => createFromLookup(item)} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#002873]">
+                              <Plus className="h-4 w-4" /> Crear perfil con estos datos
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

@@ -23,7 +23,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('Functions catalog without aggregate associations', () => {
   it('shows saved functions and management controls without querying employees', async () => {
-    render(<LaborFunctionsManager />); await tick();
+    render(<LaborFunctionsManager canManage />); await tick();
     expect(screen.getByText('Profesional de prueba')).toBeTruthy();
     expect(screen.queryByText('Asociados')).toBeNull();
     expect(screen.queryByText('Contratos asociados')).toBeNull();
@@ -33,7 +33,7 @@ describe('Functions catalog without aggregate associations', () => {
   });
   it('distinguishes a failed catalog request from an empty catalog and retries', async () => {
     vi.mocked(api.listarFuncionesLaborales).mockRejectedValueOnce(new Error('Sin respuesta de PostgreSQL'));
-    render(<LaborFunctionsManager />); await tick();
+    render(<LaborFunctionsManager canManage />); await tick();
     expect(screen.getByRole('alert').textContent).toContain('Sin respuesta de PostgreSQL');
     expect(screen.queryByText('La matriz todavía está vacía')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' })); await tick();
@@ -42,7 +42,7 @@ describe('Functions catalog without aggregate associations', () => {
   it('ignores an old list response after changing the search', async () => {
     let resolve!: (v: any) => void;
     vi.mocked(api.listarFuncionesLaborales).mockReturnValueOnce(new Promise(r => { resolve = r; }));
-    render(<LaborFunctionsManager />); await tick();
+    render(<LaborFunctionsManager canManage />); await tick();
     fireEvent.change(screen.getByPlaceholderText(/Buscar por código/), { target: { value: 'nuevo' } });
     vi.mocked(api.listarFuncionesLaborales).mockResolvedValue(result([{ ...profile, position_name: 'Resultado nuevo' }]) as any);
     await tick();
@@ -52,7 +52,7 @@ describe('Functions catalog without aggregate associations', () => {
   });
   it('queries a person only after opening the lookup and entering a search', async () => {
     vi.mocked(api.consultarEmpleadoFuncionesLaborales).mockResolvedValue({ items: [], total: 0, sources: { local: 0, oracle: 0, oracleAvailable: true } } as any);
-    render(<LaborFunctionsManager />); await tick();
+    render(<LaborFunctionsManager canManage />); await tick();
     fireEvent.click(screen.getByRole('button', { name: /Consultar empleado/i })); await tick(450);
     expect(api.consultarEmpleadoFuncionesLaborales).not.toHaveBeenCalled();
     fireEvent.change(screen.getByPlaceholderText(/Nombre completo o número/), { target: { value: '12345678' } });

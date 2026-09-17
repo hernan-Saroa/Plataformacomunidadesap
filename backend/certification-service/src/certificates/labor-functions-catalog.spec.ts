@@ -57,10 +57,23 @@ describe('Local labor-function catalog (no aggregate employee queries)', () => {
 
   it('keeps the catalog permission check', async () => {
     const { service } = fixture();
-    const permissions = { assertRequestPermission: jest.fn().mockRejectedValue(new Error('denied')) };
+    // Consultar el catalogo exige el permiso de lectura (o el de gestion, que
+    // lo incluye): sin ninguno de los dos no se llega al servicio.
+    const permissions = {
+      assertRequestAnyPermission: jest.fn().mockRejectedValue(new Error('denied')),
+      assertRequestPermission: jest.fn().mockRejectedValue(new Error('denied')),
+    };
     const controller = new LaborFunctionsController(service, permissions as any, {} as any);
     const list = jest.spyOn(service, 'list');
     await expect(controller.list({})).rejects.toThrow('denied');
+    expect(permissions.assertRequestAnyPermission).toHaveBeenCalledWith(
+      {},
+      [
+        'certificados-laborales.functions.view',
+        'certificados-laborales.functions.manage',
+      ],
+      expect.any(String),
+    );
     expect(list).not.toHaveBeenCalled();
   });
 });

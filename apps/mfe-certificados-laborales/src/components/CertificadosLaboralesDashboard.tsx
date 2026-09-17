@@ -107,13 +107,18 @@ interface CertificadosLaboralesDashboardProps {
   canManageTemplates?: boolean;
   canEditPrima?: boolean;
   canManageFunctions?: boolean;
+  /** Acceso de solo lectura al modulo; la gestion lo implica. */
+  canViewFunctions?: boolean;
   canExportReport?: boolean;
   canDeliver?: boolean;
   canVerify?: boolean;
   canManageCorrections?: boolean;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canManageFunctions = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canManageFunctions = false, canViewFunctions = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
+  // El boton abre el modulo, asi que basta el permiso de consulta. Se mantiene
+  // el respaldo a canManageFunctions por si el router no envia el nuevo prop.
+  const puedeVerFunciones = canViewFunctions || canManageFunctions;
   const resolverTemplateType = (value?: string) => {
     const base = String(value || '').toLowerCase();
     const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -858,7 +863,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         </span>
                       </DropdownMenuItem>
                     )}
-                    {canManageFunctions && (
+                    {puedeVerFunciones && (
                       <DropdownMenuItem
                         onClick={() => onNavigate?.('funciones-laborales')}
                         className="certificates-tools-item group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
@@ -868,7 +873,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block font-semibold text-slate-800">Funciones laborales</span>
-                          <span className="block truncate text-xs font-normal text-slate-500">Carga individual y Matriz Funciones ESAP</span>
+                          <span className="block truncate text-xs font-normal text-slate-500">{canManageFunctions ? 'Carga individual y Matriz Funciones ESAP' : 'Consulta la Matriz Funciones ESAP'}</span>
                         </span>
                       </DropdownMenuItem>
                     )}
