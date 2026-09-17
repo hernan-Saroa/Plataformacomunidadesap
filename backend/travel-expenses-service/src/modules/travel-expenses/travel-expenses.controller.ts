@@ -43,6 +43,14 @@ import {
   AutorizacionExtemporaneaDto,
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
+import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
+import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
+import { IssueRpDto } from '../../dto/issue-rp.dto';
+import { CargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
+import { BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
+import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
+
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
 import { SecondLevelSodGuard, SecondLevelSodProtected } from '../../common/second-level-sod.guard';
@@ -130,15 +138,16 @@ export class TravelExpensesController {
       normalizedPermissions.includes('travel_expenses:view_assigned_requests');
 
     const isSecretario =
-      normalizedRoles.some(
+      !isAnalista &&
+      (normalizedRoles.some(
         (r) =>
           r === 'SECRETARIO' ||
           r === 'SECRETARIO_VIATICOS' ||
           r === 'SUPERVISOR',
       ) ||
-      normalizedPermissions.includes('travel_expenses:assign_analyst') ||
-      normalizedPermissions.includes('travel_expenses:set_priority') ||
-      normalizedPermissions.includes('travel_expenses:read_inbox');
+        normalizedPermissions.includes('travel_expenses:assign_analyst') ||
+        normalizedPermissions.includes('travel_expenses:set_priority') ||
+        normalizedPermissions.includes('travel_expenses:read_inbox'));
 
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
@@ -1130,4 +1139,405 @@ export class TravelExpensesController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad (Etapa 6).
+   *
+   * Permite registrar la cancelación con motivo obligatorio y responsable.
+   * Transiciona la comisión a CANCELADA y señala si requiere reintegro en Etapa 8.
+   */
+  @Post('requests/:id/cancel')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:cancel_request',
+    'travel_expenses:create_request',
+    'travel_expenses:read_inbox',
+    'travel_expenses:authorize_expense',
+  )
+  @ApiOperation({
+    summary: 'Cancelar comisión con trazabilidad (Etapa 6 — RF-AUT-003)',
+    description:
+      'Registra la cancelación de una comisión no legalizada con motivo obligatorio y responsable. Pasa el estado a CANCELADA, conserva trazabilidad y marca si queda pendiente de reintegro (Etapa 8).',
+  })
+  @ApiBody({
+    description: 'Motivo obligatorio, responsable y opción de recursos comprometidos.',
+    type: CancelarComisionDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisión cancelada exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Motivo insuficiente, comisión ya cancelada o ya legalizada.',
+  })
+  @ApiBearerAuth()
+  async cancelarComision(
+    @Param('id') id: string,
+    @Body() dto: CancelarComisionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.cancelarComision(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada a Presupuesto (Etapa 7).
+   *
+   * Criterio 1 (Gherkin):
+   *   Dada una comisión AUTORIZADA, Cuando el analista envía el paquete a Presupuesto,
+   *   Entonces aparece en la bandeja del Grupo de Presupuesto.
+   */
+  @Post('requests/:id/send-to-budget')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:send_to_budget',
+    'travel_expenses:verify_request',
+    'travel_expenses:create_request',
+    'travel_expenses:authorize_expense',
+  )
+  @ApiOperation({
+    summary: 'Enviar paquete de comisión autorizada a Presupuesto (Etapa 7 — RF-PRE-001)',
+    description:
+      'Remite la comisión autorizada a la bandeja del Grupo de Presupuesto para expedición del Registro Presupuestal en SIIF Nación. Transiciona a EN_PRESUPUESTO.',
+  })
+  @ApiBody({
+    description: 'Observaciones opcionales del envío a presupuesto.',
+    type: EnviarPresupuestoDto,
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paquete de comisión enviado a Presupuesto exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Comisión no autorizada o estado inválido.',
+  })
+  @ApiBearerAuth()
+  async enviarPaquetePresupuesto(
+    @Param('id') id: string,
+    @Body() dto: EnviarPresupuestoDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.enviarPaquetePresupuesto(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Paquete de comisión enviado exitosamente a la bandeja del Grupo de Presupuesto.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
+   *
+   * Endpoint oficial: GET /api/v1/requests/budget-inbox
+   * Alias: GET requests/budget-inbox, GET requests/budget/inbox
+   */
+  @Get(['requests/budget-inbox', 'api/v1/requests/budget-inbox', 'requests/budget/inbox'])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:read_all',
+  )
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Bandeja de comisiones para Grupo de Presupuesto (Etapa 7 — RF-PRE-001)',
+    description:
+      'Retorna comisiones pendientes de RP en estado AUTORIZADA / EN_PRESUPUESTO y comprometidas (COMPROMETIDA) con búsqueda, filtros y KPIs consolidados. Permite bypass total a SUPER_ADMIN.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de comisiones en Presupuesto y KPIs consolidados.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Permiso denegado (requiere travel_expenses:read_authorized o rol SUPER_ADMIN).',
+  })
+  @ApiBearerAuth()
+  async obtenerBandejaPresupuesto(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('estado') estado?: string,
+  ) {
+    const result = await this.service.obtenerBandejaPresupuesto(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      search,
+      estado,
+    );
+    return {
+      success: true,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/issue-rp
+   * Alias: POST requests/:id/issue-rp, POST requests/:id/register-rp
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  @Post(['requests/:id/issue-rp', 'api/v1/requests/:id/issue-rp', 'requests/:id/register-rp'])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:issue_rp', 'travel_expenses:register_rp')
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Expedir Registro Presupuestal RP en SIIF Nación (Etapa 7 — RF-PRE-001)',
+    description:
+      'Registra el RP individual con nomenclatura Fecha_RP_Número, rubro presupuestal, valor comprometido y soporte PDF. Transiciona la comisión de AUTORIZADA a COMPROMETIDA.',
+  })
+  @ApiBody({
+    description: 'Datos del RP: número, fecha, valor comprometido, rubro presupuestal y soporte opcional.',
+    type: IssueRpDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'RP expedido y registrado exitosamente. Comisión pasa a estado COMPROMETIDA.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Solicitud en estado inválido o datos requeridos incompletos.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No autorizado (requiere permiso travel_expenses:issue_rp o rol SUPER_ADMIN).',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Error de validación en la nomenclatura Fecha_RP_Número o formato de soporte.',
+  })
+  @ApiBearerAuth()
+  async expedirRp(
+    @Param('id') id: string,
+    @Body() dto: IssueRpDto | ExpedirRpDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.expedirRp(
+      id,
+      usuarioId,
+      roles,
+      dto as any,
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Registro Presupuestal expedido exitosamente en SIIF Nación. Código: ${result.codigoRp}. Estado: COMPROMETIDA.`,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de RPs en SIIF Nación (Etapa 7).
+   *
+   * Endpoint oficial: POST /api/v1/requests/bulk-issue-rp
+   * Alias: POST requests/bulk-issue-rp, POST requests/budget/batch-rp
+   *
+   * Criterio 3 (Gherkin):
+   *   Dado el registro del RP, Cuando se carga, Entonces respeta la nomenclatura
+   *   Fecha_RP_Número y admite carga masiva.
+   */
+  @Post(['requests/bulk-issue-rp', 'api/v1/requests/bulk-issue-rp', 'requests/budget/batch-rp'])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:issue_rp', 'travel_expenses:register_rp')
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Carga masiva de Registros Presupuestales RP en SIIF Nación (Etapa 7 — RF-PRE-001)',
+    description:
+      'Procesa transaccionalmente un lote de registros presupuestales verificando la nomenclatura Fecha_RP_Número y transiciona las comisiones masivamente a COMPROMETIDA.',
+  })
+  @ApiBody({
+    description: 'Plantilla de items con solicitud_consecutivo, numero_rp, fecha_rp, rubro y valor.',
+    type: BulkIssueRpDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lote de RPs procesado transaccionalmente. Retorna resumen y detalle de inconsistencias.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Listado o archivo de carga masiva vacío.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No autorizado (requiere permiso travel_expenses:issue_rp o rol SUPER_ADMIN).',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Inconsistencias en los datos o formatos del lote.',
+  })
+  @ApiBearerAuth()
+  async cargaMasivaRp(
+    @Body() dto: BulkIssueRpDto | CargaMasivaRpDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.cargaMasivaRp(
+      usuarioId,
+      roles,
+      (dto.items as any[]) || [],
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Carga masiva finalizada. ${result.exitosos} de ${result.total} comisiones comprometidas con éxito.`,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PRE-003 — Previsualizar modalidad de pago según días hábiles previos (Etapa 7).
+   *
+   * Endpoint: GET /api/v1/requests/:id/modalidad-pago
+   * Alias: GET requests/:id/modalidad-pago
+   */
+  @Get(['requests/:id/modalidad-pago', 'api/v1/requests/:id/modalidad-pago'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Previsualizar modalidad de pago (AVANCE vs. RECONOCIMIENTO_POSTERIOR) [RF-PRE-003]',
+    description:
+      'Calcula en vivo los días hábiles disponibles antes del viaje excluyendo festivos de Colombia y determina la modalidad de pago proyectada.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Modalidad de pago y días hábiles calculados.',
+  })
+  @ApiBearerAuth()
+  async previsualizarModalidadPago(
+    @Param('id') id: string,
+    @Query('fechaRp') fechaRp?: string,
+  ) {
+    const result = await this.service.previsualizarModalidadPago(id, fechaRp);
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PAG-001 — Crear obligación en SIIF Nación según modalidad de pago (Etapa 8).
+   * Actor: Analista de Viáticos.
+   *
+   * Endpoint: POST /api/v1/requests/:id/crear-obligacion
+   * Aliases: POST requests/:id/crear-obligacion, POST requests/:id/register-obligation
+   */
+  @Post([
+    'requests/:id/crear-obligacion',
+    'api/v1/requests/:id/crear-obligacion',
+    'requests/:id/register-obligation',
+    'api/v1/requests/:id/register-obligation',
+  ])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:create_obligation', 'travel_expenses:verify_request', 'travel_expenses:read_assigned')
+  @ApiTags('tesoreria')
+  @ApiOperation({
+    summary: 'Crear obligación en SIIF Nación según modalidad de pago (Etapa 8 — RF-PAG-001)',
+    description:
+      'Registra la obligación en SIIF Nación vinculada a la comisión comprometida y transiciona el estado a OBLIGADA (Lista para desembolso de Tesorería).',
+  })
+  @ApiBody({
+    description: 'Datos de la obligación en SIIF: número, fecha, valor, modalidad y soporte opcional.',
+    type: CrearObligacionDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Obligación registrada exitosamente. Comisión lista para desembolso por Tesorería.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Comisión en estado inválido o datos requeridos incompletos.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Solicitud de comisión no encontrada.',
+  })
+  @ApiBearerAuth()
+  async crearObligacion(
+    @Param('id') id: string,
+    @Body() dto: CrearObligacionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.crearObligacion(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Obligación ${result.numeroObligacion} registrada exitosamente en SIIF Nación. Comisión en estado OBLIGADA (Lista para pago).`,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
+

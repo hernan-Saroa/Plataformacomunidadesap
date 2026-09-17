@@ -211,8 +211,8 @@ export class ProcessController {
 
     const userPermissions = await this.permissionsService.getPermissionsByRoles(normalizedRoles);
     return userPermissions.some(perm =>
-      perm === 'control-disciplinario.es_jefe_ocid' ||
-      perm === 'control-disciplinario.es_radicador' ||
+      perm === 'control-disciplinario.general.es_jefe_ocid' ||
+      perm === 'control-disciplinario.general.es_radicador' ||
       perm === 'control-disciplinario.procesos.view_all' ||
       perm === 'control-disciplinario.expediente-electronico.view_all'
     );

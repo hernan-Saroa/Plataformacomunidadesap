@@ -328,6 +328,92 @@ export class AuthService {
     );
   }
 
+  /**
+   * Determina si el usuario autenticado tiene permiso para cancelar una
+   * comisión (RF-AUT-003, Etapa 6).
+   *
+   * El backend (`travel-expenses-service`) requiere cualquiera de:
+   *   - travel_expenses:cancel_request
+   *   - travel_expenses:create_request
+   *   - travel_expenses:read_inbox
+   *   - travel_expenses:authorize_expense
+   *
+   * además de los roles SUPER_ADMIN (bypass) o cualquier rol con
+   * `travel_expenses:*` / `*`.
+   */
+  canCancelarComision(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return user.permissions.some((p) =>
+      ['travel_expenses:cancel_request',
+        'travel_expenses:create_request',
+        'travel_expenses:read_inbox',
+        'travel_expenses:authorize_expense',
+        'travel_expenses:*',
+        '*'].includes(p),
+    );
+  }
+
+  /**
+   * Determina si el usuario tiene rol o permisos del Grupo de Presupuesto (Etapa 7 — RF-PRE-001).
+   */
+  isPresupuesto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    const tieneRol = user.roles.some((r) =>
+      ['PRESUPUESTO', 'GRUPO_PRESUPUESTO', 'ANALISTA_PRESUPUESTO'].includes(r) ||
+      r.includes('PRESUPUESTO'),
+    );
+    return (
+      tieneRol ||
+      this.hasPermission('travel_expenses:read_budget') ||
+      this.hasPermission('travel_expenses:register_rp')
+    );
+  }
+
+  /**
+   * Determina si el usuario puede remitir paquetes autorizados a Presupuesto.
+   */
+  canEnviarPresupuesto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isAnalista() ||
+      this.hasPermission('travel_expenses:send_to_budget') ||
+      this.hasPermission('travel_expenses:verify_request') ||
+      this.hasPermission('travel_expenses:authorize_expense')
+    );
+  }
+
+  /**
+   * Determina si el usuario puede expedir RP en SIIF Nación.
+   */
+  canExpedirRp(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return this.isPresupuesto() || this.hasPermission('travel_expenses:register_rp');
+  }
+
+  /**
+   * Determina si el usuario puede crear y registrar la obligación en SIIF Nación (Etapa 8 — RF-PAG-001).
+   * Habilitado para Analista de Viáticos, Super Admin y usuarios con permisos de obligación.
+   */
+  canCrearObligacion(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isAnalista() ||
+      this.hasPermission('travel_expenses:create_obligation') ||
+      this.hasPermission('travel_expenses:register_obligation') ||
+      this.hasPermission('travel_expenses:verify_request')
+    );
+  }
+
   private getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
