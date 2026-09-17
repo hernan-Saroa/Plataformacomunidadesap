@@ -10,10 +10,10 @@ import {
  * Entidad que almacena los días festivos nacionales oficiales de Colombia.
  * Utilizada para el cómputo de días hábiles previos en la Etapa 7 (RF-PRE-003).
  *
- * Tabla física: travel_expenses.festivos_colombia
+ * Tabla física maestra: auth.festivos_colombia
  */
-@Entity({ name: 'festivos_colombia', schema: 'travel_expenses' })
-@Index('idx_festivos_fecha', ['fecha'])
+@Entity({ name: 'festivos_colombia', schema: 'auth' })
+@Index('idx_auth_festivos_fecha', ['fecha'])
 export class FestivoColombiaEntity {
   @PrimaryGeneratedColumn()
   id: number;
