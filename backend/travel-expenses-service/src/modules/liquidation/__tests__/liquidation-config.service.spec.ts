@@ -271,14 +271,15 @@ describe('LiquidationConfigService', () => {
   });
 
   describe('obtenerParametros', () => {
-    it('debe retornar todos los parámetros', async () => {
+    it('debe retornar todos los parámetros incluyendo el SMMLV maestro de solo lectura', async () => {
       const mockParams = [
-        { id: 1, clave: 'SMMLV_2026', valor: '1423500', tipo: 'NUMBER' },
+        { id: 2, clave: 'FACTOR_CONTRATISTA', valor: '0.8', tipo: 'NUMBER' },
       ];
       mockParamRepo.find.mockResolvedValue(mockParams);
 
       const result = await service.obtenerParametros();
-      expect(result).toEqual(mockParams);
+      expect(result.some((p) => p.clave === 'SMMLV_2026')).toBe(true);
+      expect(result.some((p) => p.clave === 'FACTOR_CONTRATISTA')).toBe(true);
     });
   });
 
@@ -286,18 +287,11 @@ describe('LiquidationConfigService', () => {
     it('debe actualizar parámetros en una transacción', async () => {
       mockDataSource.transaction.mockImplementation(async (cb: any) => {
         const mockManager = {
-          findOne: jest
-            .fn()
-            .mockResolvedValueOnce({
-              id: 1,
-              clave: 'SMMLV_2026',
-              valor: '1300000',
-            })
-            .mockResolvedValueOnce({
-              id: 2,
-              clave: 'FACTOR_CONTRATISTA',
-              valor: '0.8',
-            }),
+          findOne: jest.fn().mockResolvedValueOnce({
+            id: 2,
+            clave: 'FACTOR_CONTRATISTA',
+            valor: '0.8',
+          }),
           create: jest.fn().mockReturnValue({}),
           save: jest.fn().mockResolvedValue({}),
         };
@@ -306,7 +300,6 @@ describe('LiquidationConfigService', () => {
       mockLiquidationService.recargarParametros.mockResolvedValue(undefined);
 
       const result = await service.actualizarParametrosLote({
-        smmlv: 1423500,
         factorContratista: 0.8,
       });
 

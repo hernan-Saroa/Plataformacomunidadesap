@@ -19,6 +19,31 @@ const SUPER_ADMIN_ROLES = [
 ];
 
 const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
+  ENLACE_DEPENDENCIA: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ROL_ENLACE_DEPENDENCIA: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ENLACE: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ROL_ENLACE: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ENLACE_DE_DEPENDENCIA: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
   CONTROL_VIATICOS: [
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
@@ -35,6 +60,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:verify_request',
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
+    'travel_expenses:send_to_budget',
   ],
   ROL_ANALISTA: [
     'travel_expenses:read_assigned',
@@ -42,8 +68,23 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:verify_request',
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
+    'travel_expenses:send_to_budget',
+  ],
+  ANALISTA_VIATICOS: [
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:export_siif',
+    'travel_expenses:return_assigned',
+    'travel_expenses:send_to_budget',
   ],
   SECRETARIO: [
+    'travel_expenses:read_inbox',
+    'travel_expenses:set_priority',
+    'travel_expenses:return_request',
+    'travel_expenses:assign_analyst',
+  ],
+  SECRETARIO_VIATICOS: [
     'travel_expenses:read_inbox',
     'travel_expenses:set_priority',
     'travel_expenses:return_request',
@@ -64,6 +105,30 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_budget',
     'travel_expenses:issue_rp',
     'travel_expenses:register_rp',
+  ],
+  SUBDIRECCION_GESTION_CORPORATIVA: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+  ],
+  ROL_SUBDIRECCION_GESTION_CORPORATIVA: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+  ],
+  DIRECCION_NACIONAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+  ],
+  ROL_DIRECCION_NACIONAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+  ],
+  RESPONSABLE_TIQUETES: [
+    'travel_expenses:create_request',
+    'travel_expenses:manage_tickets',
   ],
 };
 
