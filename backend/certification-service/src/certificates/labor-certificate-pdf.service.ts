@@ -868,8 +868,9 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
-    // solo usa la dependencia cuando no hay centro de costo.
+    // [DEPENDENCIA] prioriza la DEPENDENCIA de la solicitud y solo usa el
+    // centro de costo (grupo interno de trabajo) cuando la solicitud no trae
+    // dependencia.
     //
     // OJO con el cruce de datos entre fuentes: la misma informacion llega en
     // columnas distintas segun de donde venga la fila.
@@ -888,23 +889,22 @@ export class LaborCertificatePdfService {
     // fuentes y en Oracle puede traer la SUCURSAL (p. ej. "SEDE CENTRAL"), que
     // no es una dependencia.
     //
-    // Resultado: centro de costo si existe, dependencia si no, y el mismo
-    // comportamiento en local, dev, qa, pre y produccion.
+    // Resultado: dependencia de la solicitud si existe, centro de costo si no,
+    // y el mismo comportamiento en local, dev, qa, pre y produccion.
     const centroCosto = resolveLaborInternalGroup(
       requestInternalGroup,
       requestCostCenter,
     );
     // En un certificado corregido la dependencia que guardo el coordinador es
     // la fuente de verdad y va primero: el formulario de correccion muestra ese
-    // campo, asi que lo que edita tiene que ser lo que se imprime. Antes el
-    // centro de costo ganaba siempre y la edicion quedaba sin efecto.
+    // campo, asi que lo que edita tiene que ser lo que se imprime.
     // Al radicar la correccion el campo se precarga con la dependencia efectiva
     // (ver resolveEffectiveCertificateDependency), de modo que una correccion
     // que no toca la dependencia sigue imprimiendo exactamente lo mismo.
     const dato7 = preferCorrectedCertificate
       ? requestDepartment || centroCosto || ''
-      : centroCosto ||
-        requestDepartment ||
+      : requestDepartment ||
+        centroCosto ||
         certificate.department ||
         requestOrganizationDepartment ||
         '';

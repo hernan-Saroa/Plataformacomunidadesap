@@ -21,6 +21,7 @@ import {
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 import { NotificationClientService } from '../../common/notification-client.service';
+import { cargarFestivosAuth, contarDiasHabiles } from '../../common/dias-habiles.util';
 
 /**
  * Estado al que se transiciona el expediente consolidado (RF-LIQ-004).
@@ -241,11 +242,14 @@ export class ConsolidacionService {
         throw new HttpException({ success: false, errors: errores }, 422);
       }
 
-      // 4) Evaluar anticipación y transición a EXTEMPORANEA o SOLICITADO.
+      // 4) Evaluar anticipación y transición a EXTEMPORANEA o SOLICITADO (RF-EXT-001).
       const ahora = new Date();
-      const diasHabilesAnticipacion = contarDiasHabilesEntre(
+      const festivosSet = await cargarFestivosAuth(this.dataSource);
+      const diasHabilesAnticipacion = contarDiasHabiles(
         ahora,
         expediente.fechaInicio,
+        festivosSet,
+        'rango_completo',
       );
       const esExtemporanea = diasHabilesAnticipacion < 14;
 
@@ -257,6 +261,7 @@ export class ConsolidacionService {
         expediente.estadoSolicitud = EstadoSolicitud.SOLICITADO;
         expediente.extemporanea = false;
       }
+      expediente.motivoDevolucion = null;
       await manager.save(SolicitudComisionEntity, expediente);
 
       // 5) Registrar la transición en el historial de auditoría (append-only).

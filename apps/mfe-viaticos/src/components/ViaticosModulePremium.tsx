@@ -25,6 +25,8 @@ import {
   ShieldCheck,
   Award,
   UserPlus,
+  XCircle,
+  RotateCcw,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -32,6 +34,8 @@ import AnalystInbox from './AnalystInbox';
 import ControlViaticosModal from './ControlViaticosModal';
 import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
+import CancelarComisionModal from './CancelarComisionModal';
+import PresupuestoInbox from './PresupuestoInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -56,6 +60,7 @@ const Permissions = {
   VIATICOS_SOLICITUDES_RETURN: 'travel_expenses:return_request',
   VIATICOS_SOLICITUDES_ASSIGN_ANALYST: 'travel_expenses:assign_analyst',
   VIATICOS_SOLICITUDES_VIEW_ASSIGNED: 'travel_expenses:view_assigned_requests',
+  VIATICOS_SOLICITUDES_CANCEL: 'travel_expenses:cancel_request',
   VIATICOS_TIQUETES_VIEW: 'travel_expenses:tickets.view',
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
@@ -65,18 +70,20 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
-  EN_AUTORIZACION: 1,
-  SOLICITADA_SIIF: 2,
-  VERIFICADA: 3,
-  AUTORIZADA: 4,
-  DEVUELTA: 5,
-  RADICADA: 5,
-  EXTEMPORANEA: 6,
-  SOLICITADO: 7,
-  PENDIENTE: 8,
+  EN_PRESUPUESTO: 1,
+  COMPROMETIDA: 2,
+  EN_AUTORIZACION: 3,
+  SOLICITADA_SIIF: 4,
+  VERIFICADA: 5,
+  AUTORIZADA: 6,
+  DEVUELTA: 7,
+  RADICADA: 7,
+  EXTEMPORANEA: 8,
+  SOLICITADO: 9,
+  PENDIENTE: 10,
 };
 
 function prioridadEstadoTabla(estado: string): number {
@@ -103,6 +110,8 @@ export default function ViaticosModulePremium() {
   const [esControlViaticos, setEsControlViaticos] = useState(false);
   const [esSubdireccion, setEsSubdireccion] = useState(false);
   const [esDireccionNacional, setEsDireccionNacional] = useState(false);
+  const [esPresupuesto, setEsPresupuesto] = useState(false);
+  const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const [cargandoRol, setCargandoRol] = useState(() => {
     if (typeof window === 'undefined') return false;
     return Boolean(
@@ -120,6 +129,7 @@ export default function ViaticosModulePremium() {
   const [modalControlViaticosAbierta, setModalControlViaticosAbierta] = useState(false);
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
+  const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
 
   const grupos: MenuGroup[] = [
     {
@@ -173,6 +183,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Visto bueno Dirección Nacional (Etapa 6)',
           icon: <Award className="w-5 h-5" />,
           color: '#9333EA',
+        },
+        {
+          id: 'presupuesto',
+          label: 'Presupuesto y RP',
+          subtitle: 'Expedición de RP en SIIF Nación (Etapa 7)',
+          icon: <Receipt className="w-5 h-5" />,
+          color: '#059669',
         },
         {
           id: 'configuracion',
@@ -254,10 +271,14 @@ export default function ViaticosModulePremium() {
         setEsControlViaticos(authService.isControlViaticos());
         setEsSubdireccion(subdir);
         setEsDireccionNacional(dirNac);
+        const presupuesto = authService.isPresupuesto();
+        setEsPresupuesto(presupuesto);
         if (dirNac && !superAdmin && !subdir) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
+        } else if (presupuesto && !superAdmin) {
+          setSeccion('presupuesto');
         }
         setCargandoRol(false);
       }
@@ -275,13 +296,17 @@ export default function ViaticosModulePremium() {
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
       const termino = busqueda.toLowerCase();
+      const esExt = Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA');
       const cumpleBusqueda =
         !termino ||
         sol.nombreComisionado.toLowerCase().includes(termino) ||
         sol.codigo.toLowerCase().includes(termino) ||
         sol.ciudadDestino.toLowerCase().includes(termino) ||
-        sol.dependencia.toLowerCase().includes(termino);
-      const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
+        sol.dependencia.toLowerCase().includes(termino) ||
+        (esExt && ('extemporanea'.includes(termino) || 'extemporánea'.includes(termino)));
+      const cumpleEstado =
+        filtroEstado === 'TODOS' ||
+        (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
       return cumpleBusqueda && cumpleEstado;
     })
     .sort(
@@ -504,7 +529,16 @@ export default function ViaticosModulePremium() {
     esDireccionNacional ||
     authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
     authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
-    authService.hasPermission('travel_expenses:reject_extemporaneous');
+     authService.hasPermission('travel_expenses:reject_extemporaneous');
+
+  const puedeCancelarComision = authService.canCancelarComision();
+  const puedeVerPresupuesto =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esPresupuesto ||
+    authService.hasPermission('travel_expenses:read_budget') ||
+    authService.hasPermission('travel_expenses:register_rp');
+  const puedeEnviarPresupuesto = authService.canEnviarPresupuesto();
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -516,6 +550,7 @@ export default function ViaticosModulePremium() {
         if (item.id === 'resoluciones') return puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
+        if (item.id === 'presupuesto') return puedeVerPresupuesto;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
       });
@@ -530,6 +565,12 @@ export default function ViaticosModulePremium() {
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones') return -1;
           if (b.id === 'autorizaciones') return 1;
+          return 0;
+        });
+      } else if (esPresupuesto && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'presupuesto') return -1;
+          if (b.id === 'presupuesto') return 1;
           return 0;
         });
       }
@@ -693,11 +734,13 @@ export default function ViaticosModulePremium() {
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
                       { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+                      { value: 'EXTEMPORANEA', label: 'Extemporánea' },
                       { value: 'AUTORIZADA', label: 'Autorizada' },
                       { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
                       { value: 'VERIFICADA', label: 'Verificada' },
                       { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
+                      { value: 'DEVUELTA', label: 'Devuelta' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
                       { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
                       { value: 'EN_COMISION', label: 'En Comisión' },
@@ -739,8 +782,17 @@ export default function ViaticosModulePremium() {
                         solicitudesFiltradas.map((sol) => (
                           <tr key={sol.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono text-[10px] text-slate-400 tracking-wide">{sol.codigo}</span>
+                                {Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA') && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300"
+                                    title="Comisión Extemporánea (menos de 14 días hábiles de anticipación)"
+                                  >
+                                    <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                    Extemporánea
+                                  </span>
+                                )}
                                 {authService.isSuperAdmin() && sol.esCreadoPorMi && (
                                   <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
                                     <UserCheck className="w-3 h-3" />
@@ -783,6 +835,24 @@ export default function ViaticosModulePremium() {
                               <div className="flex flex-col gap-1 items-start">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {getBadgeEstado(sol.estado)}
+                                  {sol.pendienteReintegro && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                                      title="Recursos comprometidos - Requiere trámite de reintegro o liberación en Etapa 8"
+                                    >
+                                      <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
+                                      Pendiente Reintegro (Etapa 8)
+                                    </span>
+                                  )}
+                                  {Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA') && sol.estado !== 'EXTEMPORANEA' && (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                                      title="Comisión Extemporánea (conserva condición para Dirección Nacional)"
+                                    >
+                                      <Clock className="w-2.5 h-2.5 text-amber-600" />
+                                      Extemporánea
+                                    </span>
+                                  )}
                                   {sol.radicadoFueraJornada && (
                                     <span className="inline-flex items-center text-amber-600" title="Radicado fuera de jornada">
                                       <AlertCircle className="w-3.5 h-3.5" />
@@ -939,6 +1009,17 @@ export default function ViaticosModulePremium() {
                                     )}
                                   </button>
                                 )}
+                                {puedeCancelarComision && sol.estado !== 'LEGALIZADO' && sol.estado !== 'CANCELADA' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSolicitudParaCancelar(sol)}
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition-colors"
+                                    title="Cancelar Comisión (RF-AUT-003)"
+                                    aria-label="Cancelar Comisión"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1032,6 +1113,11 @@ export default function ViaticosModulePremium() {
               {seccion === 'autorizaciones-direccion' && puedeVerAutorizacionesDireccion && (
                 <AutorizacionDireccionInbox />
               )}
+
+               {/* ── BANDEJA DE PRESUPUESTO Y RP SIIF (ETAPA 7) ── */}
+               {seccion === 'presupuesto' && puedeVerPresupuesto && (
+                 <PresupuestoInbox />
+               )}
 
              {/* ── CONFIGURACIÓN ── */}
              {seccion === 'configuracion' && puedeVerConfiguracion && (
@@ -1272,6 +1358,148 @@ export default function ViaticosModulePremium() {
                        </div>
                      </div>
                    )}
+
+                    {puedeCancelarComision && solicitudSeleccionada.estado !== 'LEGALIZADO' && solicitudSeleccionada.estado !== 'CANCELADA' && (
+                      <div className="mt-4 p-3.5 bg-rose-50 rounded-xl border border-rose-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-rose-700 font-bold block">
+                            Novedades de Comisión (Etapa 6)
+                          </span>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Cancelar comisión con trazabilidad completa y registro de responsable.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSolicitudParaCancelar(solicitudSeleccionada)}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Cancelar Comisión
+                        </button>
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'CANCELADA' && (
+                      <div className="mt-4 p-3.5 bg-rose-50/50 rounded-xl border border-rose-200">
+                        <div className="flex items-center gap-1.5 text-rose-800 font-bold text-xs mb-1">
+                          <XCircle className="w-4 h-4 text-rose-600" />
+                          Comisión Cancelada (RF-AUT-003)
+                        </div>
+                        {solicitudSeleccionada.motivoCancelacion && (
+                          <p className="text-xs text-slate-800 mt-1">
+                            <span className="font-semibold text-slate-700">Motivo:</span> {solicitudSeleccionada.motivoCancelacion}
+                          </p>
+                        )}
+                        {solicitudSeleccionada.responsableCancelacion && (
+                          <p className="text-[11px] text-slate-600 mt-1">
+                            <span className="font-semibold text-slate-700">Responsable:</span> {solicitudSeleccionada.responsableCancelacion}
+                          </p>
+                        )}
+                        {solicitudSeleccionada.pendienteReintegro && (
+                          <div className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-md text-xs font-bold">
+                            <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                            Recursos comprometidos: Pendiente de reintegro o liberación presupuestal (Etapa 8)
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'AUTORIZADA' && !(solicitudSeleccionada as any).enviadoPresupuesto && puedeEnviarPresupuesto && (
+                      <div className="mt-4 p-3.5 bg-teal-50 rounded-xl border border-teal-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-teal-800 font-bold block">
+                            Paso a Presupuesto (Etapa 7)
+                          </span>
+                          <p className="text-xs text-teal-900 mt-0.5">
+                            Comisión autorizada lista para radicar en el Grupo de Presupuesto para expedición de RP en SIIF Nación.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`¿Desea enviar la comisión ${solicitudSeleccionada.codigo} al Grupo de Presupuesto?`)) return;
+                            setEnviandoPresupuestoId(solicitudSeleccionada.id);
+                            try {
+                              await viaticosService.enviarPaquetePresupuesto(solicitudSeleccionada.id);
+                              setMensajeExito(`Comisión ${solicitudSeleccionada.codigo} enviada a Presupuesto correctamente.`);
+                              cargarDatos();
+                              setSolicitudSeleccionada(null);
+                            } catch (err: any) {
+                              console.error('Error enviando a presupuesto:', err);
+                              setMensajeExito('No fue posible enviar la comisión a Presupuesto.');
+                            } finally {
+                              setEnviandoPresupuestoId(null);
+                            }
+                          }}
+                          disabled={enviandoPresupuestoId === solicitudSeleccionada.id}
+                          style={{ backgroundColor: '#0f766e', color: '#ffffff' }}
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0 ml-3 hover:opacity-90 cursor-pointer"
+                        >
+                          <Receipt className="w-3.5 h-3.5 text-white" />
+                          <span className="text-white">{enviandoPresupuestoId === solicitudSeleccionada.id ? 'Enviando...' : 'A Presupuesto'}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {(solicitudSeleccionada.estado === 'EN_PRESUPUESTO' || (solicitudSeleccionada.estado === 'AUTORIZADA' && Boolean((solicitudSeleccionada as any).enviadoPresupuesto))) && (
+                      <div className="mt-4 p-3.5 bg-teal-50/60 rounded-xl border border-teal-200 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5 text-teal-900 font-bold text-xs mb-1">
+                            <Clock className="w-4 h-4 text-teal-700" />
+                            En Bandeja de Presupuesto (Etapa 7)
+                          </div>
+                          <p className="text-xs text-teal-800">
+                            El paquete de la comisión se encuentra radicado ante el Grupo de Presupuesto para la expedición del Registro Presupuestal (RP) en SIIF Nación.
+                          </p>
+                        </div>
+                        {puedeVerPresupuesto && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSeccion('presupuesto');
+                              setSolicitudSeleccionada(null);
+                            }}
+                            style={{ backgroundColor: '#003DA5', color: '#ffffff' }}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs hover:opacity-90 inline-flex items-center gap-1.5 shrink-0 ml-3 cursor-pointer"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-white" />
+                            <span className="text-white">Ir a Presupuesto</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'COMPROMETIDA' && (
+                      <div className="mt-4 p-3.5 bg-emerald-50/80 rounded-xl border border-emerald-200">
+                        <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs mb-1">
+                          <Receipt className="w-4 h-4 text-emerald-700" />
+                          Registro Presupuestal (RP) Expedido — COMPROMETIDA (Etapa 7)
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                          <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                            <span className="text-[10px] text-slate-400 block font-semibold">Código RP:</span>
+                            <span className="font-mono font-bold text-emerald-950">{(solicitudSeleccionada as any).codigoRp || (solicitudSeleccionada as any).numeroRp || 'Registrado'}</span>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                            <span className="text-[10px] text-slate-400 block font-semibold">Fecha RP:</span>
+                            <span className="font-bold text-slate-800">{(solicitudSeleccionada as any).fechaRp ? new Date((solicitudSeleccionada as any).fechaRp).toLocaleDateString() : 'N/A'}</span>
+                          </div>
+                          {(solicitudSeleccionada as any).valorComprometido != null && (
+                            <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                              <span className="text-[10px] text-slate-400 block font-semibold">Valor Comprometido:</span>
+                              <span className="font-bold text-emerald-700">{formatearMoneda((solicitudSeleccionada as any).valorComprometido)}</span>
+                            </div>
+                          )}
+                          {(solicitudSeleccionada as any).rubroRp && (
+                            <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                              <span className="text-[10px] text-slate-400 block font-semibold">Rubro Presupuestal:</span>
+                              <span className="font-bold text-slate-800 truncate block">{(solicitudSeleccionada as any).rubroRp}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                 </div>
                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button
@@ -1312,6 +1540,21 @@ export default function ViaticosModulePremium() {
           cargarDatos();
         }}
       />
+
+      <CancelarComisionModal
+        solicitud={solicitudParaCancelar}
+        isOpen={Boolean(solicitudParaCancelar)}
+        onClose={() => setSolicitudParaCancelar(null)}
+        onSuccess={() => {
+          setMensajeExito('Comisión cancelada exitosamente con trazabilidad registrada.');
+          setSolicitudParaCancelar(null);
+          if (solicitudSeleccionada) {
+            setSolicitudSeleccionada(null);
+          }
+          cargarDatos();
+        }}
+      />
     </ModuleLayout>
   );
 }
+

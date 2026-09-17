@@ -240,7 +240,6 @@ describe('LiquidationConfigController (integration)', () => {
   describe('PUT /liquidation/config/parametros', () => {
     it('debe actualizar parámetros en lote', async () => {
       const updatedParams = [
-        { id: 1, clave: 'SMMLV_2026', valor: '1500000' },
         { id: 2, clave: 'FACTOR_CONTRATISTA', valor: '0.75' },
       ];
       jest
@@ -248,7 +247,6 @@ describe('LiquidationConfigController (integration)', () => {
         .mockResolvedValue(updatedParams);
 
       const result = await controller.actualizarParametros({
-        smmlv: 1500000,
         factorContratista: 0.75,
       });
       expect(result).toEqual(updatedParams);

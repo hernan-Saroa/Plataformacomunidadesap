@@ -69,7 +69,7 @@ BEGIN
     SET name = EXCLUDED.name,
         description = EXCLUDED.description,
         is_active = true
-  RETURNING id_profesional_perm_id;
+  RETURNING id_permission INTO v_profesional_perm_id;
 
   IF v_profesional_perm_id IS NULL THEN
     SELECT id_permission INTO v_profesional_perm_id FROM auth.permission WHERE code = 'control-disciplinario.es_profesional';

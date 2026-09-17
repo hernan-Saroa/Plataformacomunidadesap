@@ -139,39 +139,34 @@ export function calcularDiasComision(fechaInicio: string, fechaFin: string): num
   return Math.max(0, diff + 1);
 }
 
-export function esDiaHabil(fecha: Date): boolean {
-  const dia = fecha.getDay();
-  return dia !== 0 && dia !== 6;
+import {
+  esDiaHabil as esDiaHabilStd,
+  contarDiasHabiles as contarDiasHabilesStd,
+  validarAnticipacionRadicacion as validarAnticipacionRadicacionStd,
+} from './diasHabilesUtils';
+
+export * from './diasHabilesUtils';
+
+export function esDiaHabil(
+  fecha: Date | string,
+  festivos?: ReadonlySet<string> | string[],
+): boolean {
+  return esDiaHabilStd(fecha, festivos);
 }
 
-export function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
-  let count = 0;
-  const fecha = new Date(fechaInicio);
-  while (fecha <= fechaFin) {
-    if (esDiaHabil(fecha)) {
-      count++;
-    }
-    fecha.setDate(fecha.getDate() + 1);
-  }
-  return count;
+export function contarDiasHabilesEntre(
+  fechaInicio: Date | string,
+  fechaFin: Date | string,
+  festivos?: ReadonlySet<string> | string[],
+): number {
+  return contarDiasHabilesStd(fechaInicio, fechaFin, festivos, { modo: 'rango_completo' });
 }
 
-export function validarAnticipacionRadicacion(fechaInicio: string) {
-  if (!fechaInicio) return null;
-  const ahora = new Date();
-  const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-  const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-  const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
-
-  const inicio = new Date(`${fechaInicio}T00:00:00`);
-  const diasHabiles = contarDiasHabilesEntre(ahora, inicio);
-  const extemporanea = diasHabiles < 14;
-
-  return {
-    extemporanea,
-    diasHabiles,
-    radicadoFueraJornada,
-  };
+export function validarAnticipacionRadicacion(
+  fechaInicio: string,
+  festivos?: ReadonlySet<string> | string[],
+) {
+  return validarAnticipacionRadicacionStd(fechaInicio, festivos);
 }
 
 /**
@@ -310,7 +305,28 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-emerald-100',
     text: 'text-emerald-800',
   },
+  CANCELADA: {
+    label: 'Cancelada',
+    bg: 'bg-rose-100',
+    text: 'text-rose-800',
+  },
+  EN_PRESUPUESTO: {
+    label: 'En Presupuesto',
+    bg: 'bg-teal-100',
+    text: 'text-teal-800',
+  },
+  COMPROMETIDA: {
+    label: 'Comprometida (RP)',
+    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+    text: 'text-indigo-800 dark:text-indigo-300',
+  },
+  OBLIGADA: {
+    label: 'Obligada (Lista para Pago)',
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-800 dark:text-emerald-300',
+  },
 };
+
 
 export function getConfigEstado(estado: string): ConfigEstado {
   return CONFIG_ESTADOS[estado as EstadoSolicitudViatico] || {

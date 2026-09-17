@@ -120,7 +120,20 @@ export default function SolicitudesAsignadasAnalista() {
 
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-2 px-2 font-mono font-bold text-slate-800">{s.consecutivoUnico}</td>
+                    <td className="py-2 px-2 font-mono font-bold text-slate-800">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{s.consecutivoUnico}</span>
+                        {Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA') && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300"
+                            title="Comisión Extemporánea (menos de 14 días hábiles)"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-700" />
+                            Extemporánea
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-2 px-2 text-slate-700">{nombreComisionado}</td>
                     <td className="py-2 px-2 text-slate-700">
                       {s.destinoCiudad}, {s.destinoDepartamento}
@@ -129,9 +142,20 @@ export default function SolicitudesAsignadasAnalista() {
                       {new Date(s.fechaInicio).toLocaleDateString()} - {new Date(s.fechaFin).toLocaleDateString()}
                     </td>
                     <td className="py-2 px-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${estadoConfig.bg} ${estadoConfig.text}`}>
-                        {estadoConfig.label}
-                      </span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${estadoConfig.bg} ${estadoConfig.text}`}>
+                          {estadoConfig.label}
+                        </span>
+                        {Boolean(s.extemporanea || s.estadoSolicitud === 'EXTEMPORANEA') && s.estadoSolicitud !== 'EXTEMPORANEA' && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                            title="Extemporánea"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-600" />
+                            Extemporánea
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-2 text-slate-700">{s.prioridad || 'N/A'}</td>
                   </tr>

@@ -195,4 +195,87 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
     const btnAutorizar = screen.getByRole('button', { name: /Autorizar Comisión Extemporánea/i });
     expect(btnAutorizar.hasAttribute('disabled')).toBe(true);
   });
+
+  it('no renderiza contenido si isOpen es false o solicitud es null', () => {
+    const { container: c1 } = render(
+      <AutorizacionDireccionModal
+        isOpen={false}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+    expect(c1.firstChild).toBeNull();
+
+    const { container: c2 } = render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={null}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+    expect(c2.firstChild).toBeNull();
+  });
+
+  it('cancela la confirmación de rechazo al presionar Cancelar sin invocar el servicio', () => {
+    render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const btnNegar = screen.getByRole('button', { name: /Negar \/ Rechazar/i });
+    fireEvent.click(btnNegar);
+
+    expect(screen.getByText(/¿Está seguro de negar y rechazar esta comisión\?/i)).toBeDefined();
+
+    const btnCancelar = screen.getByRole('button', { name: /Cancelar/i });
+    fireEvent.click(btnCancelar);
+
+    expect(screen.queryByText(/¿Está seguro de negar y rechazar esta comisión\?/i)).toBeNull();
+    expect(viaticosService.rechazarComisionExtemporanea).not.toHaveBeenCalled();
+  });
+
+  it('actualiza el contador de caracteres de la justificación reactivamente', () => {
+    render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const textarea = screen.getByPlaceholderText(/Describa la justificación institucional/i);
+    fireEvent.change(textarea, { target: { value: 'Prueba conteo' } });
+
+    expect(screen.getByText(/13\/2000 caracteres/i)).toBeDefined();
+  });
+
+  it('muestra mensaje de error si la autorización falla en el backend', async () => {
+    (viaticosService.autorizarComisionExtemporanea as any).mockRejectedValue(
+      new Error('Fallo de conexión con el servicio de viáticos'),
+    );
+
+    render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const btnAutorizar = screen.getByRole('button', { name: /Autorizar Comisión Extemporánea/i });
+    fireEvent.click(btnAutorizar);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Fallo de conexión con el servicio de viáticos/i)).toBeDefined();
+    });
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
 });

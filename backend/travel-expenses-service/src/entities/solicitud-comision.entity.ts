@@ -218,6 +218,128 @@ export class SolicitudComisionEntity {
   @Column({ name: 'es_delegado_direccion', type: 'boolean', default: false })
   esDelegadoDireccion: boolean;
 
+  @Column({ name: 'motivo_cancelacion', type: 'text', nullable: true })
+  motivoCancelacion: string | null;
+
+  @Column({ name: 'fecha_cancelacion', type: 'timestamp', nullable: true })
+  fechaCancelacion: Date | null;
+
+  @Column({ name: 'cancelado_por_usuario_id', type: 'uuid', nullable: true })
+  canceladoPorUsuarioId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'cancelado_por_usuario_id' })
+  canceladoPorUsuario: UsuarioEntity;
+
+  @Column({ name: 'responsable_cancelacion', type: 'varchar', length: 255, nullable: true })
+  responsableCancelacion: string | null;
+
+  @Column({ name: 'pendiente_reintegro', type: 'boolean', default: false })
+  pendienteReintegro: boolean;
+
+  // ========== Etapa 7: Presupuesto y RP (RF-PRE-001) ==========
+  @Column({ name: 'enviado_presupuesto', type: 'boolean', default: false })
+  enviadoPresupuesto: boolean;
+
+  @Column({ name: 'fecha_envio_presupuesto', type: 'timestamp with time zone', nullable: true })
+  fechaEnvioPresupuesto: Date | null;
+
+  @Column({ name: 'enviado_presupuesto_por_id', type: 'uuid', nullable: true })
+  enviadoPresupuestoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'enviado_presupuesto_por_id' })
+  enviadoPresupuestoPor: UsuarioEntity;
+
+  @Column({ name: 'observaciones_envio_presupuesto', type: 'text', nullable: true })
+  observacionesEnvioPresupuesto: string | null;
+
+  @Column({ name: 'numero_rp', type: 'varchar', length: 100, nullable: true })
+  numeroRp: string | null;
+
+  @Column({ name: 'fecha_rp', type: 'date', nullable: true })
+  fechaRp: Date | null;
+
+  @Column({
+    name: 'valor_comprometido',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+  })
+  valorComprometido: number | null;
+
+  @Column({ name: 'rubro_rp', type: 'varchar', length: 100, nullable: true })
+  rubroRp: string | null;
+
+  @Column({ name: 'rubro_presupuestal_rp', type: 'varchar', length: 100, nullable: true })
+  rubroPresupuestalRp: string | null;
+
+  @Column({ name: 'soporte_rp_path', type: 'varchar', length: 255, nullable: true })
+  soporteRpPath: string | null;
+
+  @Column({ name: 'codigo_rp', type: 'varchar', length: 150, nullable: true })
+  codigoRp: string | null;
+
+  @Column({ name: 'usuario_presupuesto_id', type: 'uuid', nullable: true })
+  usuarioPresupuestoId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'usuario_presupuesto_id' })
+  usuarioPresupuesto: UsuarioEntity;
+
+  @Column({ name: 'fecha_registro_rp', type: 'timestamp with time zone', nullable: true })
+  fechaRegistroRp: Date | null;
+
+  @Column({ name: 'expedido_rp_por_id', type: 'uuid', nullable: true })
+  expedidoRpPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'expedido_rp_por_id' })
+  expedidoRpPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_expedicion_rp', type: 'timestamp with time zone', nullable: true })
+  fechaExpedicionRp: Date | null;
+
+  @Column({ name: 'observaciones_rp', type: 'text', nullable: true })
+  observacionesRp: string | null;
+
+  // ========== Etapa 7: Modalidad de Pago (RF-PRE-003) ==========
+  @Column({ name: 'modalidad_pago', type: 'varchar', length: 50, default: 'AVANCE' })
+  modalidadPago: string;
+
+  @Column({ name: 'dias_habiles_previos', type: 'int', default: 0 })
+  diasHabilesPrevios: number;
+
+  @Column({ name: 'fecha_calculo_modalidad', type: 'timestamp', nullable: true })
+  fechaCalculoModalidad: Date | null;
+
+  // ========== Etapa 8: Tesorería y Obligación SIIF (RF-PAG-001) ==========
+  @Column({ name: 'numero_obligacion', type: 'varchar', length: 100, nullable: true })
+  numeroObligacion: string | null;
+
+  @Column({ name: 'fecha_obligacion', type: 'date', nullable: true })
+  fechaObligacion: Date | null;
+
+  @Column({ name: 'valor_obligacion', type: 'numeric', precision: 12, scale: 2, nullable: true })
+  valorObligacion: number | null;
+
+  @Column({ name: 'observaciones_obligacion', type: 'text', nullable: true })
+  observacionesObligacion: string | null;
+
+  @Column({ name: 'soporte_obligacion_path', type: 'varchar', length: 255, nullable: true })
+  soporteObligacionPath: string | null;
+
+  @Column({ name: 'obligado_por_id', type: 'uuid', nullable: true })
+  obligadoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'obligado_por_id' })
+  obligadoPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_registro_obligacion', type: 'timestamp with time zone', nullable: true })
+  fechaRegistroObligacion: Date | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 
@@ -227,3 +349,4 @@ export class SolicitudComisionEntity {
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
   documentosSoporte: DocumentoSoporteEntity[];
 }
+

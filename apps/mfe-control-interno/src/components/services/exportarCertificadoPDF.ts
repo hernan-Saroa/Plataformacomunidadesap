@@ -140,7 +140,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
 
   // Logo ESAP
   try {
-    doc.addImage(LOGO_ESAP_URL, 'PNG', margen, 3, 24, 24);
+    doc.addImage(LOGO_ESAP_URL, 'PNG', 3, 3, 24, 24);
   } catch { /* logo fallback */ }
 
   doc.setTextColor(...C.blanco);
@@ -247,7 +247,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
       a.cargo || 'Aprobador PAI',
       fmtCorta(t.fecha),
       f.ip || t.ip || 'Registrada',
-      t.estado === 'APROBADA' ? '✓ Aprobada' : t.estado === 'OBSERVADA' ? '✗ Observada' : '⏳ Pendiente',
+      t.estado === 'APROBADA' ? 'Aprobada' : t.estado === 'OBSERVADA' ? 'Observada' : 'Pendiente',
       hash.length > 25 ? hash.substring(0, 22) + '...' : hash,
     ];
   });
@@ -265,7 +265,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
       2: { cellWidth: 24 },
       3: { cellWidth: 22 },
       4: { cellWidth: 18 },
-      5: { cellWidth: 17 },
+      5: { cellWidth: 17, fontStyle: 'bold'},
       6: { cellWidth: 54, fontSize: 5.5, textColor: C.gris2 as any, fontStyle: 'italic' },
     },
     margin: { left: margen, right: margen },
@@ -316,7 +316,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
     // Badge de estado
     const bx = fx + cw - qrSize - 42;
     const badgeColor = aprobada ? C.verde : observada ? C.rojo : [156, 163, 175] as [number, number, number];
-    const badgeText = aprobada ? '✓ APROBADA' : observada ? '✗ OBSERVADA' : '⏳ PENDIENTE';
+    const badgeText = aprobada ? 'APROBADA' : observada ? 'OBSERVADA' : 'PENDIENTE';
     doc.setFillColor(...badgeColor);
     doc.roundedRect(bx, fy - 3.2, 20, 4.5, 1, 1, 'F');
     doc.setTextColor(...C.blanco);

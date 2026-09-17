@@ -258,6 +258,31 @@ de login todavía es por lista de códigos de rol, no por permiso.
 
 ---
 
+## 8.1 Permiso de edición de informes en Términos e Informes
+
+Los permisos `gestion-legal.terminos.manage` / `.ver` son de **acceso** al submódulo: abren
+la entrada del menú y el listado. Editar un informe **ya creado** es una acción aparte, con
+su propio permiso:
+
+| Permiso | Código | Qué habilita |
+|---------|--------|--------------|
+| Editar Informe de Términos | `gestion-legal.terminos.edit` | El botón **Editar** del detalle de un informe y el formulario de edición (datos generales, fuente normativa, responsable, prioridad, **fecha de vencimiento** y parametrización del plazo: fecha base, unidad de días y duración). |
+
+- Migración: `db/migrations/435_add_terminos_edit_permission_gestion_legal.sql`.
+- Se otorga de entrada a `JEFE_GESTION_LEGAL` y `SECRETARIADO_GESTION_LEGAL`. Quedan fuera a
+  propósito `MONITOREO_GESTION_LEGAL` y `CONSULTA_SEGUIMIENTO_GESTION_LEGAL` (solo lectura) y
+  `RESUELVE_GESTION_LEGAL` (el abogado asignado no reescribe el plazo que se le impuso). Para
+  dárselo a otro rol basta con asignar el permiso desde la administración de roles, **sin tocar
+  código**.
+- Sin el permiso el botón **no se renderiza** (no queda deshabilitado), y además se exige no
+  tener el rol de solo monitoreo.
+- Al guardar, el formulario envía **únicamente los campos modificados**. Eso importa: el
+  backend usa la presencia de `fechaVencimiento` en el `PATCH /terminos/:id` como señal para
+  rearmar y reevaluar las alertas contra las reglas globales de `terminos_reglas_alerta`
+  (p. ej. la de 3 días), así que mandar el formulario completo reenviaría avisos ya enviados.
+
+---
+
 ## 9. Resumen de archivos clave
 
 | Archivo | Propósito |
@@ -267,6 +292,8 @@ de login todavía es por lista de códigos de rol, no por permiso.
 | `backend/auth-service/src/auth/authorization.constants.ts` | `AUTH_READ_ROLES` — roles que pueden llamar `GET /users`. |
 | `db/migrations/210_create_roles_gestion_legal.sql` | Definición de los 4 roles de GL en base de datos. |
 | `db/migrations/432_add_ver_modulo_permissions_gestion_legal.sql` | Permisos `*.ver` por submódulo + rol `CONSULTA_SEGUIMIENTO_GESTION_LEGAL`. |
+| `db/migrations/435_add_terminos_edit_permission_gestion_legal.sql` | Permiso `gestion-legal.terminos.edit` (botón Editar del detalle de un informe). |
+| `apps/mfe-gestion-legal/src/components/modulos/ModalEditarTermino.tsx` | Formulario de edición de un informe (incluida la parametrización del vencimiento). |
 | `packages/shared-types/src/permissions.ts` | Enum `Permissions` — incluye los `GESTION_LEGAL_*_VER`. |
 | `apps/mfe-gestion-legal/src/components/core/GestionLegalFull.tsx` | `VISTA_PERMISOS`, `puedeVerVista()` — control de acceso al menú del SIGL. |
 | `apps/shell/src/App.tsx` | `hasGestionLegal` — códigos de rol 100% exclusivos de Gestión Legal (modo restringido). |
