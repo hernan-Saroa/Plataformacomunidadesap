@@ -88,8 +88,12 @@ export const buildLaborOrganizationContext = <T extends LaborContextRequest>(sel
   };
   return {
     certificate_organization: organization,
-    certificate_dependency: resolveLaborInternalGroup(organization.internal_group, organization.cost_center) ||
-      String(organization.department || '').trim() || String(organization.organization_department || '').trim(),
+    // Mismo orden que [DEPENDENCIA] en el PDF: dependencia primero y el centro
+    // de costo (grupo interno) solo como respaldo. Lo que cambia aqui es la
+    // FUENTE (la vinculacion normal, no el encargo), no la precedencia.
+    certificate_dependency: String(organization.department || '').trim() ||
+      resolveLaborInternalGroup(organization.internal_group, organization.cost_center) ||
+      String(organization.organization_department || '').trim(),
   };
 };
 

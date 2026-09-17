@@ -62,7 +62,13 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
 
   const canManageTemplate = useMemo(() => hasCertPerm('template.manage'), [hasCertPerm]);
   const canEditPrima = useMemo(() => hasCertPerm('config.edit'), [hasCertPerm]);
+  // Gestionar incluye consultar: quien administra la matriz entra al modulo
+  // aunque no tenga marcado el permiso de solo lectura.
   const canManageFunctions = useMemo(() => hasCertPerm('functions.manage'), [hasCertPerm]);
+  const canViewFunctions = useMemo(
+    () => hasCertPerm('functions.view') || canManageFunctions,
+    [hasCertPerm, canManageFunctions],
+  );
   const canExportReport = useMemo(() => hasCertPerm('export.report'), [hasCertPerm]);
   const canDeliver = useMemo(() => hasCertPerm('certificate.deliver'), [hasCertPerm]);
   const canVerify = useMemo(() => hasCertPerm('certificate.verify'), [hasCertPerm]);
@@ -73,8 +79,8 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
       toast.error('No tienes permiso para aprobar solicitudes de corrección.');
       return;
     }
-    if (vista === 'funciones-laborales' && !canManageFunctions) {
-      toast.error('No tienes permiso para gestionar las funciones laborales.');
+    if (vista === 'funciones-laborales' && !canViewFunctions) {
+      toast.error('No tienes permiso para consultar las funciones laborales.');
       return;
     }
     setVistaActual(vista);
@@ -84,12 +90,12 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
     const lostCorrectionAccess =
       vistaActual === 'solicitudes-correccion' && !canManageCorrections;
     const lostFunctionsAccess =
-      vistaActual === 'funciones-laborales' && !canManageFunctions;
+      vistaActual === 'funciones-laborales' && !canViewFunctions;
 
     if (lostCorrectionAccess || lostFunctionsAccess) {
       setVistaActual('dashboard');
     }
-  }, [canManageCorrections, canManageFunctions, vistaActual]);
+  }, [canManageCorrections, canViewFunctions, vistaActual]);
 
   useEffect(() => {
     const lastPublished = localStorage.getItem('cert-template-last-published');
@@ -227,8 +233,8 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
             {vistaActual === 'solicitudes-correccion' && canManageCorrections && (
               <CertificateCorrectionRequests canResend={canDeliver} />
             )}
-            {vistaActual === 'funciones-laborales' && canManageFunctions && (
-              <LaborFunctionsManager />
+            {vistaActual === 'funciones-laborales' && canViewFunctions && (
+              <LaborFunctionsManager canManage={canManageFunctions} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -245,6 +251,7 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
       canManageTemplates={canManageTemplate}
       canEditPrima={canEditPrima}
       canManageFunctions={canManageFunctions}
+      canViewFunctions={canViewFunctions}
       canExportReport={canExportReport}
       canDeliver={canDeliver}
       canVerify={canVerify}

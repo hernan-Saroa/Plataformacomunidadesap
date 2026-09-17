@@ -2320,7 +2320,8 @@ export class CertificatesService {
    * Dependencia que realmente imprime la plantilla en `[DEPENDENCIA]`.
    *
    * Replica la precedencia de LaborCertificatePdfService: para un certificado
-   * normal manda la dependencia del certificado (centro de costo primero) y en
+   * normal manda la dependencia de la solicitud (y el centro de costo solo
+   * cuando la solicitud no trae dependencia), y en
    * uno ya corregido manda lo que dejó guardado la corrección. Se usa para
    * precargar el formulario de corrección con el valor que el coordinador ve
    * en el documento, y no con la columna cruda `department`, que puede diferir.
@@ -2341,8 +2342,8 @@ export class CertificatesService {
     }
 
     const dato7 =
-      centroCosto ||
       text(request?.department) ||
+      centroCosto ||
       certificateDepartment ||
       text(request?.organization_department);
     return text(request?.certificate_dependency) || dato7;
