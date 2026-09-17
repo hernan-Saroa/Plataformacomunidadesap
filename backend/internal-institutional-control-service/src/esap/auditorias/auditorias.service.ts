@@ -20,6 +20,7 @@ import { Documento } from '../documentos/entities/documento.entity';
 import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kanban.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
@@ -2307,6 +2308,8 @@ export class AuditoriasService {
       // ✅ 1. Evento estándar predefinido (si está activo)
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: saved.id,
+        // Los Jefes de Control Interno (permiso de activar el Plan Anual) se enteran de cada cambio de etapa (EFDS-873).
+        usuariosIds: await this.notificacionesService.obtenerUsuariosConPermiso(CIP.PLAN_ANUAL_ACTIVATE),
         auditoriaCodigo: saved.codigo,
         tituloCustom: `Auditoría movida: ${saved.codigo}`,
         mensajeCustom: `La auditoría "${saved.nombre}" ha sido movida a la etapa: ${nuevoEstadoKanban}.`,
@@ -4577,6 +4580,8 @@ export class AuditoriasService {
     try {
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: auditoria.id,
+        // Los Jefes de Control Interno (permiso de activar el Plan Anual) se enteran de cada cambio de etapa (EFDS-873).
+        usuariosIds: await this.notificacionesService.obtenerUsuariosConPermiso(CIP.PLAN_ANUAL_ACTIVATE),
         auditoriaCodigo: auditoria.codigo,
         tituloCustom: `Cambio de Estado - Auditoría ${auditoria.codigo}`,
         mensajeCustom: `El estado de la auditoría "${auditoria.nombre}" ha cambiado de "${estadoAnterior}" a "${estadoNuevo}".`,
