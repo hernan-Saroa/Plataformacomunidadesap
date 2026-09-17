@@ -65,7 +65,6 @@ describe('ParametrosLiquidacionAdmin', () => {
 
     await waitFor(() => {
       expect(viaticosService.actualizarParametrosLiquidacion).toHaveBeenCalledWith({
-        smmlv: 1423500,
         factorContratista: 0.8,
       });
     });

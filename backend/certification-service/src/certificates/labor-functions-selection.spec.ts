@@ -68,7 +68,7 @@ describe('LaborFunctionsService.listAllForSelection', () => {
     expect(result.items[0]).not.toHaveProperty('functions');
     // Pero sí los totales que muestra la confirmación de borrado.
     expect(result.items[0].function_count).toBe(2);
-    expect(result.items[0]).toHaveProperty('association_count');
+    expect(result.items[0]).not.toHaveProperty('association_count');
     expect(result.items[0]).toHaveProperty('combined_code');
   });
 

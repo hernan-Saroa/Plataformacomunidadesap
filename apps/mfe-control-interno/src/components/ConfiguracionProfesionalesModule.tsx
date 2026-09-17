@@ -511,9 +511,9 @@ function TarjetaProfesional({
               <h3 className="text-lg font-black text-gray-900 mb-1">
                 {profesional.usuario.nombre}
               </h3>
-              <p className="text-sm text-gray-600 mb-2">{profesional.usuario.email}</p>
               <div className="flex flex-wrap items-center gap-2">
                 {/* Rol OCIG (principal en este módulo) */}
+                <span className="text-sm text-gray-600">{profesional.usuario.email}</span>
                 <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
                   profesional.configuracion.rolOCIG === 'Jefe OCI' || profesional.configuracion.rolOCIG === 'Jefe OCIG' ? 'bg-red-100 text-red-700' :
                   profesional.configuracion.rolOCIG === 'Auditor Líder' || profesional.configuracion.rolOCIG === 'Auditor Sénior' ? 'bg-blue-100 text-blue-700' :
@@ -570,8 +570,8 @@ function TarjetaProfesional({
           </div>
 
           {/* Especialidades */}
-          <div className="mb-4">
-            <div className="text-xs font-bold text-gray-500 mb-2">ESPECIALIDADES:</div>
+          <div className="mb-2 flex gap-2 items-center">
+            <div className="text-xs font-bold text-gray-500">ESPECIALIDADES:</div>
             <div className="flex flex-wrap gap-2">
               {profesional.configuracion.especialidades.map((esp, idx) => (
                 <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">
@@ -602,16 +602,16 @@ function TarjetaProfesional({
         </div>
 
         {/* Estadísticas de Carga */}
-        <div className={`${colorCarga.bg} border-2 ${colorCarga.border} rounded-xl p-6 lg:w-80`}>
-          <div className="text-center mb-4">
-            <div className={`text-5xl font-black ${colorCarga.text} mb-2`}>
+        <div className={`${colorCarga.bg} border-2 ${colorCarga.border} rounded-xl px-4 py-2 lg:w-80`}>
+          <div className="text-center mb-1">
+            <div className={`text-xl font-black ${colorCarga.text} mb-1`}>
               {profesional.estadisticas.porcentajeCarga}%
             </div>
             <div className="text-sm font-bold text-gray-600">Carga Actual</div>
           </div>
 
           {/* Barra de progreso */}
-          <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden mb-4">
+          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
             <div
               className={`h-full bg-gradient-to-r ${colorCarga.bar} transition-all duration-500`}
               style={{ width: `${Math.min(profesional.estadisticas.porcentajeCarga, 100)}%` }}
@@ -620,21 +620,21 @@ function TarjetaProfesional({
 
           {/* Detalles de auditorías */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-lg p-2 text-center">
+            <div className="bg-white rounded-lg px-4 py-1 text-center" style={{borderWidth: "1px"}}>
               <div className="text-xs text-gray-500 mb-1">Como Líder</div>
-              <div className="text-xl font-black text-blue-600">
+              <div className="text-lg font-black text-blue-600">
                 {profesional.estadisticas.auditoriasComoLider}
               </div>
             </div>
-            <div className="bg-white rounded-lg p-2 text-center">
+            <div className="bg-white rounded-lg px-4 py-1 text-center" style={{borderWidth: "1px"}}>
               <div className="text-xs text-gray-500 mb-1">En Equipo</div>
-              <div className="text-xl font-black text-purple-600">
+              <div className="text-lg font-black text-purple-600">
                 {profesional.estadisticas.auditoriasComoEquipo}
               </div>
             </div>
           </div>
 
-          <div className="mt-3 bg-white rounded-lg p-2 text-center">
+          <div className="mt-1 bg-white rounded-lg p-1 text-center" style={{borderWidth: "1px"}}>
             <div className="text-xs text-gray-500 mb-1">Carga Ponderada</div>
             <div className="text-xl font-black text-gray-700">
               {profesional.estadisticas.cargaPonderada.toFixed(1)}

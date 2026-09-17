@@ -642,10 +642,12 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
                         className="flex items-center justify-center flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
                         style={{ width: '52px', height: '100%' }}
                         tabIndex={-1}
+                        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                       >
                         {showPassword
-                          ? <EyeOff style={{ width: '18px', height: '18px' }} />
-                          : <Eye style={{ width: '18px', height: '18px' }} />
+                          ? <Eye style={{ width: '18px', height: '18px' }} />
+                          : <EyeOff style={{ width: '18px', height: '18px' }} />
                         }
                       </button>
                     </div>

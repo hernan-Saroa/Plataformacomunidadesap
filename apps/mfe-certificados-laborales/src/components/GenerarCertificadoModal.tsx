@@ -38,6 +38,7 @@ interface CertificadoLaboralListado {
   qrCode?: string;
   observations?: string;
   position_location?: string;
+  is_corrected?: boolean;
   department?: string;
   certificate_dependency?: string;
   cod_cargo?: string;
@@ -304,12 +305,17 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cert.position_location ||
           cert.positionLocation ||
           '';
-        const grupoRaw =
-          cert.request?.position_location ||
-          cert.request?.positionLocation ||
-          cert.position_location ||
-          cert.positionLocation ||
-          '';
+        // En un certificado corregido manda la columna del certificado: es la
+        // que edita el coordinador y la que imprime el backend. La correccion
+        // no reescribe la solicitud, asi que leerla primero mostraria el valor
+        // viejo.
+        const grupoRaw = cert.is_corrected
+          ? cert.position_location || cert.positionLocation || ''
+          : cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation ||
+            '';
         const templateTypeRaw =
           cert.template_type ||
           cert.templateType ||
@@ -393,9 +399,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificate_dependency: cert.is_corrected
             ? undefined
             : cert.request?.certificate_dependency ?? cert.certificate_dependency,
-          // Centro de costo (grupo interno): [DEPENDENCIA] lo prioriza sobre la
-          // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
-          // previa cae al department y contradice al PDF del backend.
+          // Centro de costo (grupo interno): [DEPENDENCIA] cae a el cuando no
+          // hay dependencia, asi que tiene que llegar hasta el visor. Sin esto
+          // la vista previa se queda vacia y contradice al PDF del backend.
           internal_group: normalizarTexto(
             cert.request?.internal_group ||
             cert.request?.internalGroup ||
@@ -409,6 +415,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             '',
           ),
           position_location: normalizarTexto(grupoRaw),
+          is_corrected: Boolean(cert.is_corrected),
           department: normalizarTexto(
             cert.department ||
             cert.request?.department ||

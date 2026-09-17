@@ -208,6 +208,7 @@ describe('RF-AUT-002 — Etapa 6: Autorizar Comisiones Extemporáneas (Direcció
       notificationClientMock = {
         send: jest.fn().mockResolvedValue(true),
         sendToRole: jest.fn().mockResolvedValue(true),
+        notifyByRole: jest.fn().mockResolvedValue(true),
         sendEmail: jest.fn().mockResolvedValue(true),
       };
 
@@ -541,6 +542,261 @@ describe('RF-AUT-002 — Etapa 6: Autorizar Comisiones Extemporáneas (Direcció
           'Faltan documentos',
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe lanzar NotFoundException si la solicitud no existe al autorizar', async () => {
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      await expect(
+        serviceInstance.autorizarComisionExtemporanea('sol-inexistente', 'dir-1', ['DIRECCION_NACIONAL']),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('SoD: debe lanzar ForbiddenException si el autorizador es el creador de la solicitud', async () => {
+      const mockSolicitud = {
+        id: 'sol-sod-creador',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.AUTORIZACION_DIRECCION,
+        comisionadoId: 'otro-usuario',
+        creadoPorUsuarioId: 'dir-creador',
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(mockSolicitud),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      await expect(
+        serviceInstance.autorizarComisionExtemporanea('sol-sod-creador', 'dir-creador', ['DIRECCION_NACIONAL']),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('SoD Bypass: permite autorizar si el usuario tiene rol SUPER_ADMIN aunque sea creador', async () => {
+      const mockSolicitud = {
+        id: 'sol-sod-admin',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.AUTORIZACION_DIRECCION,
+        comisionadoId: 'admin-1',
+        creadoPorUsuarioId: 'admin-1',
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(mockSolicitud),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+          save: jest.fn().mockImplementation((val) => Promise.resolve(val)),
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      const res = await serviceInstance.autorizarComisionExtemporanea(
+        'sol-sod-admin',
+        'admin-1',
+        ['SUPER_ADMIN'],
+        { justificacion: 'Bypass administrativo por contingencia' },
+      );
+
+      expect(res.estadoSolicitud).toBe(EstadoSolicitud.EN_AUTORIZACION);
+      expect(res.decisionDireccion).toBe('AUTORIZADA');
+    });
+
+    it('debe lanzar BadRequestException si el estado no es AUTORIZACION_DIRECCION ni VERIFICADA', async () => {
+      const mockSolicitud = {
+        id: 'sol-ya-autorizada',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.AUTORIZADA,
+        comisionadoId: 'pasajero-1',
+        creadoPorUsuarioId: 'enlace-1',
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(mockSolicitud),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      await expect(
+        serviceInstance.autorizarComisionExtemporanea('sol-ya-autorizada', 'dir-1', ['DIRECCION_NACIONAL']),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        serviceInstance.rechazarComisionExtemporanea('sol-ya-autorizada', 'dir-1', ['DIRECCION_NACIONAL'], {
+          justificacion: 'Rechazo fuera de tiempo',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe despachar notificaciones al autorizar comisión extemporánea', async () => {
+      const mockSolicitud = {
+        id: 'sol-notif-1',
+        consecutivoUnico: 'COM-2026-NOTIF',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.AUTORIZACION_DIRECCION,
+        comisionadoId: 'pasajero-1',
+        creadoPorUsuarioId: 'enlace-1',
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(mockSolicitud),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+          save: jest.fn().mockImplementation((val) => Promise.resolve(val)),
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      await serviceInstance.autorizarComisionExtemporanea(
+        'sol-notif-1',
+        'dir-1',
+        ['DIRECCION_NACIONAL'],
+        { justificacion: 'Aval institucional', esDelegado: true },
+      );
+
+      expect(notificationClientMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_usuario_destinatario: 'enlace-1',
+          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_AUTORIZADA',
+        }),
+      );
+      expect(notificationClientMock.notifyByRole).toHaveBeenCalledWith(
+        'SUBDIRECCION_GESTION_CORPORATIVA',
+        expect.objectContaining({
+          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_EN_SUBDIRECCION',
+        }),
+      );
+    });
+
+    it('debe despachar notificaciones al rechazar comisión extemporánea', async () => {
+      const mockSolicitud = {
+        id: 'sol-notif-rechazo',
+        consecutivoUnico: 'COM-2026-RECH',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.AUTORIZACION_DIRECCION,
+        comisionadoId: 'pasajero-1',
+        creadoPorUsuarioId: 'enlace-1',
+      };
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(mockSolicitud),
+      };
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          createQueryBuilder: () => qbMock,
+          save: jest.fn().mockImplementation((val) => Promise.resolve(val)),
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      await serviceInstance.rechazarComisionExtemporanea(
+        'sol-notif-rechazo',
+        'dir-1',
+        ['DIRECCION_NACIONAL'],
+        { justificacion: 'No se acredita caso fortuito o urgencia' },
+      );
+
+      expect(notificationClientMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_usuario_destinatario: 'enlace-1',
+          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
+        }),
+      );
+    });
+
+    it('obtenerBandejaDireccionNacional: auto-enruta solicitudes extemporáneas en VERIFICADA a AUTORIZACION_DIRECCION', async () => {
+      const solVerificada = {
+        id: 'sol-auto-route',
+        extemporanea: true,
+        estadoSolicitud: EstadoSolicitud.VERIFICADA,
+        revisorControlId: 'rev-01',
+      };
+
+      repoMock.find.mockResolvedValue([solVerificada]);
+
+      const qbMock: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          { ...solVerificada, estadoSolicitud: EstadoSolicitud.AUTORIZACION_DIRECCION },
+        ]),
+        getCount: jest.fn().mockResolvedValue(1),
+      };
+
+      repoMock.createQueryBuilder.mockReturnValue(qbMock);
+
+      const managerMock = {
+        getRepository: jest.fn().mockImplementation(() => ({
+          save: jest.fn().mockResolvedValue(true),
+        })),
+      };
+
+      dataSourceMock.transaction.mockImplementation(async (cb: any) => cb(managerMock));
+
+      const bandeja = await serviceInstance.obtenerBandejaDireccionNacional(1, 20);
+
+      expect(repoMock.find).toHaveBeenCalledWith({
+        where: {
+          estadoSolicitud: EstadoSolicitud.VERIFICADA,
+          extemporanea: true,
+        },
+      });
+      expect(bandeja.total).toBe(1);
+      expect(bandeja.data[0].estadoSolicitud).toBe(EstadoSolicitud.AUTORIZACION_DIRECCION);
     });
   });
 });

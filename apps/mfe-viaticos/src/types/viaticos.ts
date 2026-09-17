@@ -18,7 +18,11 @@ export type EstadoSolicitudViatico =
   | 'EN_VERIFICACION'
   | 'AUTORIZACION_DIRECCION'
   | 'EN_AUTORIZACION'
-  | 'AUTORIZADA';
+  | 'AUTORIZADA'
+  | 'CANCELADA'
+  | 'EN_PRESUPUESTO'
+  | 'COMPROMETIDA'
+  | 'OBLIGADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -171,6 +175,13 @@ export interface SolicitudComisionResponse {
   observacionesSegundaRevision?: string | null;
   fechaSegundaRevision?: string | null;
   revisorControlNombre?: string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  fechaCalculoModalidad?: string | null;
   resumenPresupuestal?: {
     totalGastado: number;
     cantidadSolicitudes: number;
@@ -268,6 +279,35 @@ export interface SolicitudListaResponse {
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
+  // Etapa 7: Presupuesto y RP (RF-PRE-001 / RF-PRE-003)
+  codigoRp?: string | null;
+  numeroRp?: string | null;
+  fechaRp?: string | null;
+  valorComprometido?: number | null;
+  rubroRp?: string | null;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  // Etapa 8: Tesorería y Obligación SIIF (RF-PAG-001)
+  numeroObligacion?: string | null;
+  fechaObligacion?: string | null;
+  valorObligacion?: number | null;
+  observacionesObligacion?: string | null;
+  soporteObligacionPath?: string | null;
+  obligadoPorId?: string | null;
+  fechaRegistroObligacion?: string | null;
+}
+
+export interface CrearObligacionDto {
+  numeroObligacion: string;
+  fechaObligacion: string;
+  valorObligacion: number;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
+  observacionesObligacion?: string;
+  soporteObligacionPath?: string;
 }
 
 export interface BandejaSecretarioResponse {
@@ -325,6 +365,21 @@ export interface SolicitudViatico {
   observacionesSegundaRevision?: string | null;
   fechaSegundaRevision?: string | null;
   revisorControlId?: string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
+  enviadoPresupuesto?: boolean;
+  fechaEnvioPresupuesto?: string | null;
+  numeroRp?: string | null;
+  fechaRp?: string | null;
+  valorComprometido?: number | null;
+  rubroRp?: string | null;
+  codigoRp?: string | null;
+  fechaExpedicionRp?: string | null;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  fechaCalculoModalidad?: string | null;
 }
 
 export interface TiqueteAereo {
@@ -845,4 +900,82 @@ export interface RechazarExtemporaneaPayload {
   justificacion: string;
   esDelegado?: boolean;
 }
+
+// ============================================================================
+// Tipos e interfaces de Cancelación de Comisión (RF-AUT-003, Etapa 6)
+// ============================================================================
+
+export interface CancelarComisionPayload {
+  motivoCancelacion: string;
+  responsableCancelacion?: string;
+  recursosComprometidos?: boolean;
+}
+
+export interface CancelarComisionResponse {
+  success: boolean;
+  data: any;
+  message: string;
+  timestamp: string;
+}
+
+// ============================================================================
+// Tipos e interfaces de Presupuesto y RP (RF-PRE-001, Etapa 7)
+// ============================================================================
+
+export interface EnviarPresupuestoPayload {
+  observaciones?: string;
+}
+
+export interface ExpedirRpPayload {
+  numeroRp: string;
+  fechaRp: string;
+  valorComprometido: number;
+  rubro: string;
+  codigoRp?: string;
+  observaciones?: string;
+}
+
+export interface ItemCargaMasivaRp {
+  solicitudId?: string;
+  consecutivoUnico?: string;
+  numeroRp: string;
+  fechaRp: string;
+  valorComprometido: number;
+  rubro: string;
+  codigoRp?: string;
+  observaciones?: string;
+}
+
+export interface ResumenCargaMasivaRp {
+  total: number;
+  exitosos: number;
+  fallidos: number;
+  procesados: Array<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    codigoRp: string;
+    valorComprometido: number;
+    estado: string;
+  }>;
+  errores: Array<{
+    fila: number;
+    identificador: string;
+    error: string;
+  }>;
+}
+
+export interface BandejaPresupuestoResponse {
+  success: boolean;
+  data: any[];
+  total: number;
+  page: number;
+  limit: number;
+  kpis: {
+    pendientesRp: number;
+    comprometidas: number;
+    totalComprometido: number;
+  };
+  timestamp: string;
+}
+
 

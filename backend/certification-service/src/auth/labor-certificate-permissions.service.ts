@@ -39,6 +39,53 @@ export class LaborCertificatePermissionsService {
   }
 
   /**
+   * Igual que `assertRequestPermission`, pero basta con UNO de los permisos.
+   *
+   * Se usa cuando un permiso amplio incluye a otro mas acotado: quien puede
+   * gestionar la matriz de funciones tambien puede consultarla, sin que haya que
+   * marcarle los dos permisos en el rol.
+   */
+  async assertRequestAnyPermission(
+    req: any,
+    permissionCodes: string[],
+    deniedMessage: string,
+  ): Promise<void> {
+    const roleCodes = this.extractSignedRoleCodes(req?.user?.roles);
+    const codes = Array.from(
+      new Set(
+        (Array.isArray(permissionCodes) ? permissionCodes : [permissionCodes])
+          .map((code) => String(code || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (roleCodes.length === 0 || codes.length === 0) {
+      throw new ForbiddenException(deniedMessage);
+    }
+
+    const rows = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM auth.role role
+         INNER JOIN auth.role_permissions role_permission
+           ON role_permission.id_rol = role.id
+          AND COALESCE(role_permission.is_active, TRUE) = TRUE
+         INNER JOIN auth.permission permission
+           ON permission.id_permission = role_permission.id_permission
+          AND permission.is_active = TRUE
+         WHERE role.is_active = TRUE
+           AND role.code = ANY($1::text[])
+           AND permission.code = ANY($2::text[])
+       ) AS allowed`,
+      [roleCodes, codes],
+    );
+
+    if (!this.toBoolean(rows?.[0]?.allowed)) {
+      throw new ForbiddenException(deniedMessage);
+    }
+  }
+
+  /**
    * Devuelve los destinatarios activos que hoy tienen habilitado un permiso, a
    * través de cualquiera de sus roles activos. Se usa para avisar por correo a
    * quienes gestionan un tipo de trámite sin depender de un rol fijo: si un día

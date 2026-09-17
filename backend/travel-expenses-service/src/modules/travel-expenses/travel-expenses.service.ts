@@ -15,10 +15,13 @@ import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
+import { FestivoColombiaEntity } from '../../entities/festivo-colombia.entity';
 import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
+
+export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
@@ -29,6 +32,14 @@ import {
   AutorizacionExtemporaneaDto,
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
+import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
+import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
+import { IssueRpDto } from '../../dto/issue-rp.dto';
+import { ItemCargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
+import { ItemBulkIssueRpDto, BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
+import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
+
 import {
   sanitizeObjetoComision,
   sanitizeTextoPlano,
@@ -180,10 +191,7 @@ export class TravelExpensesService {
           estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'],
         });
       } else if (isAnalista && usuarioId) {
-        query.andWhere(
-          '(s.creadoPorUsuarioId = :usuarioId OR s.analistaAsignadoId = :usuarioId)',
-          { usuarioId },
-        );
+        query.andWhere('s.analistaAsignadoId = :usuarioId', { usuarioId });
       } else if (usuarioId) {
         query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
       }
@@ -1874,23 +1882,22 @@ export class TravelExpensesService {
       throw new BadRequestException('analistaId es obligatorio.');
     }
 
-    const esSuperAdmin = this.esSuperAdmin(rolesUsuario);
-
     const estadosActivosAnalista = [
       EstadoSolicitud.SOLICITADO,
       EstadoSolicitud.EN_VERIFICACION,
+      EstadoSolicitud.EXTEMPORANEA,
       EstadoSolicitud.VERIFICADA,
+      EstadoSolicitud.SOLICITADA_SIIF,
       EstadoSolicitud.DEVUELTA,
+      EstadoSolicitud.AUTORIZADA,
+      EstadoSolicitud.COMPROMETIDA,
+      EstadoSolicitud.OBLIGADA,
     ];
 
-    const whereCondition: any = esSuperAdmin
-      ? {
-          estadoSolicitud: In(estadosActivosAnalista),
-        }
-      : {
-          analistaAsignadoId: analistaId,
-          estadoSolicitud: In(estadosActivosAnalista),
-        };
+    const whereCondition: any = {
+      analistaAsignadoId: analistaId,
+      estadoSolicitud: In(estadosActivosAnalista),
+    };
 
     return this.solicitudRepo.find({
       where: whereCondition,
@@ -1902,7 +1909,8 @@ export class TravelExpensesService {
   /**
    * RF-REC-002 Etapa 5 — Registra el checklist de verificacion del analista.
    * Valida Segregacion de Funciones y estado de la solicitud. Almacena el
-   * resultado del checklist en el historial y actualiza el flag de consulta RUT.
+   * resultado del checklist en el historial, actualiza el flag de consulta RUT
+   * y transiciona el estado de la solicitud a VERIFICADA.
    */
   async verificarAuditoria(
     solicitudId: string,
@@ -1928,12 +1936,21 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
-      if (
-        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
-        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
-      ) {
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
         throw new BadRequestException(
-          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+          'La comisión se encuentra DEVUELTA al enlace de dependencia. No se puede verificar hasta que el enlace subsane las observaciones y radique nuevamente la corrección.',
+        );
+      }
+
+      const estadosPermitidos = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
+      ];
+
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION o EXTEMPORANEA.`,
         );
       }
 
@@ -1943,10 +1960,15 @@ export class TravelExpensesService {
         consulta_rut_facturador: dto.consultaRutFacturador ?? false,
       });
 
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      solicitud.motivoDevolucion = null;
+      solicitud.observacionesSegundaRevision = null;
+
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
-        estadoAnterior: solicitud.estadoSolicitud,
-        estadoNuevo: solicitud.estadoSolicitud,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.VERIFICADA,
         usuarioId: usuarioId,
         comentarios:
           comentarioChecklist.length > 255
@@ -2015,12 +2037,22 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
-      if (
-        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
-        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
-      ) {
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
         throw new BadRequestException(
-          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+          'La comisión ya se encuentra devuelta al enlace de dependencia.',
+        );
+      }
+
+      const estadosPermitidosDevolucion = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
+        EstadoSolicitud.VERIFICADA,
+      ];
+
+      if (!estadosPermitidosDevolucion.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, EXTEMPORANEA o VERIFICADA.`,
         );
       }
 
@@ -2080,15 +2112,30 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
+        throw new BadRequestException(
+          'La comisión se encuentra devuelta al enlace de dependencia y no puede exportarse a SIIF.',
+        );
+      }
+
       const estadosPermitidos = [
         EstadoSolicitud.SOLICITADO,
         EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
         EstadoSolicitud.VERIFICADA,
         EstadoSolicitud.SOLICITADA_SIIF,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
       ];
       if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
         throw new BadRequestException(
-          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, VERIFICADA o SOLICITADA_SIIF.`,
+          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, EXTEMPORANEA, VERIFICADA o SOLICITADA_SIIF.`,
         );
       }
 
@@ -2211,30 +2258,51 @@ export class TravelExpensesService {
       const fechaCorta = new Date().toISOString().slice(0, 10);
       const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
 
+      const estadosAvanzadosSoloLectura = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
+      const esEstadoAvanzado = estadosAvanzadosSoloLectura.includes(solicitud.estadoSolicitud);
+
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.siifExportado = true;
       solicitud.fechaExportacionSiif = new Date();
       solicitud.usuarioExportadorId = usuarioId;
-      solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+
+      if (!esEstadoAvanzado) {
+        solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
         .save(solicitud);
 
-      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior,
-        estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-        usuarioId: usuarioId,
-        comentarios:
-          estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
-            ? 'Re-exportado a SIIF Nacion'
-            : 'Exportado a SIIF Nacion',
-      });
+      if (!esEstadoAvanzado) {
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          usuarioId: usuarioId,
+          comentarios:
+            estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
+              ? 'Re-exportado a SIIF Nacion'
+              : 'Exportado a SIIF Nacion',
+        });
 
-      this.logger.log(
-        `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
-      );
+        this.logger.log(
+          `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
+        );
+      } else {
+        this.logger.log(
+          `[consulta-siif] Solicitud ${solicitud.consecutivoUnico} (${estadoAnterior}) descargada como copia CSV por usuario ${usuarioId}`,
+        );
+      }
 
       return { csvContent, fileName, solicitud: saved };
     });
@@ -4002,9 +4070,228 @@ export class TravelExpensesService {
   }
 
   /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad completa (Etapa 6).
+   *
+   * Criterios de aceptación (Gherkin):
+   * 1. Dada una comisión en curso, cuando la dependencia solicita cancelarla,
+   *    entonces el sistema permite registrar la cancelación con motivo y responsable.
+   * 2. Dada una cancelación, cuando se confirma, entonces la comisión pasa a
+   *    estado CANCELADA y se conserva toda su trazabilidad en el historial inmutable.
+   * 3. Dada una comisión con recursos ya comprometidos, cuando se cancela,
+   *    entonces el sistema señala la necesidad de reintegro/liberación (se conecta con Etapa 8).
+   *
+   * Aplicabilidad: Todas las comisiones no legalizadas.
+   */
+  async cancelarComision(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: CancelarComisionDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const motivo = (dto?.motivoCancelacion || '').trim();
+    if (motivo.length < 5) {
+      throw new BadRequestException(
+        'El motivo de cancelación es obligatorio (mínimo 5 caracteres).',
+      );
+    }
+
+    const responsable =
+      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.CANCELADA) {
+        throw new BadRequestException('La comisión ya se encuentra cancelada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.LEGALIZADO) {
+        throw new BadRequestException(
+          'No es posible cancelar una comisión que ya ha sido legalizada.',
+        );
+      }
+
+      // Estados con recursos presupuestales o pasajes ya comprometidos (Criterio 3)
+      const estadosRecursosComprometidos: EstadoSolicitud[] = [
+        EstadoSolicitud.SOLICITADA_SIIF,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+      ];
+
+      const tieneRecursosComprometidos =
+        dto.recursosComprometidos === true ||
+        solicitud.siifExportado === true ||
+        estadosRecursosComprometidos.includes(solicitud.estadoSolicitud);
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      const fechaCancelacion = new Date();
+
+      solicitud.estadoSolicitud = EstadoSolicitud.CANCELADA;
+      solicitud.motivoCancelacion = motivo.slice(0, 2000);
+      solicitud.fechaCancelacion = fechaCancelacion;
+      solicitud.canceladoPorUsuarioId = usuarioId;
+      solicitud.responsableCancelacion = responsable.slice(0, 255);
+      solicitud.pendienteReintegro = tieneRecursosComprometidos;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      const notaReintegro = tieneRecursosComprometidos
+        ? ' [RECURSOS COMPROMETIDOS: Requiere reintegro / liberación presupuestal en SIIF Nación - Etapa 8 / RF-PAG-004]'
+        : '';
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.CANCELADA,
+        usuarioId,
+        comentarios: `Cancelada por ${responsable}: ${motivo.slice(0, 140)}${notaReintegro}`.slice(0, 255),
+      });
+
+      // 1. Sin recursos comprometidos (Etapas 1 a 5 - Antes de RP/Desembolso):
+      // Libera cualquier cupo de tiquetes retenido en el tablero de saldo presupuestal.
+      if (
+        !tieneRecursosComprometidos &&
+        solicitud.requiereTiquetes &&
+        Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+        this.ticketsService?.liberarSaldo
+      ) {
+        try {
+          const depId =
+            solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+          await this.ticketsService.liberarSaldo({
+            dependenciaId: String(depId),
+            solicitudId: solicitud.id,
+            montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+          });
+          this.logger.log(
+            `[RF-AUT-003] Cupo de tiquetes liberado exitosamente en saldo presupuestal para solicitud ${solicitud.consecutivoUnico || solicitud.id} en dependencia ${depId}`,
+          );
+        } catch (err: any) {
+          this.logger.warn(
+            `[RF-AUT-003] No se pudo liberar saldo de tiquetes para solicitud ${solicitud.id}: ${err?.message}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `[RF-AUT-003] Solicitud ${solicitud.consecutivoUnico} CANCELADA por ${responsable} (usuario ${usuarioId}). Pendiente de reintegro: ${tieneRecursosComprometidos}`,
+      );
+
+      return saved;
+    });
+
+    await this.despacharNotificacionesCancelacion(
+      result,
+      motivo,
+      responsable,
+      result.pendienteReintegro,
+    );
+
+    return result;
+  }
+
+  /**
+   * Notificaciones cuando una comisión es cancelada (RF-AUT-003).
+   * - Alerta al enlace creador sobre la cancelación.
+   * - Si hay recursos comprometidos o desembolsados (Etapas 6 a 8), activa novedad
+   *   y notifica a Tesorería y Presupuesto para reintegro de viáticos y liberación de RP en SIIF Nación (RF-PAG-004).
+   */
+  private async despacharNotificacionesCancelacion(
+    solicitud: SolicitudComisionEntity,
+    motivo: string,
+    responsable: string,
+    pendienteReintegro: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+      // 1. Notificación al usuario que radicó la solicitud
+      if (solicitud.creadoPorUsuarioId) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+          tipo_notificacion: 'VIATICOS_COMISION_CANCELADA',
+          titulo: `Comisión cancelada: ${consecutivo}`,
+          mensaje: `La comisión ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}`,
+          descripcion_corta: `Cancelada · ${consecutivo}`,
+          icono: 'XCircle',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver expediente',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            motivo,
+            responsable,
+            pendienteReintegro,
+          },
+        });
+      }
+
+      // 2. Con recursos comprometidos o desembolsados (Etapas 6 a 8 - Con RP, Obligación o Pago realizado):
+      // Activa de forma automática una novedad de reintegro y liberación de recursos (RF-NOV / RF-PAG-004).
+      // Notifica a Tesorería y Presupuesto para que el comisionado reintegre los viáticos anticipados
+      // y se anule/libere el Registro Presupuestal (RP) en SIIF Nación.
+      if (pendienteReintegro) {
+        const notifNovedad = {
+          tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
+          titulo: `Novedad de reintegro y anulación RP SIIF: ${consecutivo}`,
+          mensaje: `La comisión ${consecutivo} fue cancelada con recursos comprometidos o desembolsados. Se activa novedad de reintegro de viáticos y anulación/liberación de Registro Presupuestal (RP) en SIIF Nación (RF-NOV / RF-PAG-004).`,
+          descripcion_corta: `Reintegro y RP SIIF · ${consecutivo}`,
+          icono: 'RotateCcw',
+          color: '#D97706',
+          prioridad: 'Alta' as const,
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Gestionar reintegro',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            motivo,
+            responsable,
+            pendienteReintegro: true,
+            novedad: 'RF-PAG-004',
+          },
+        };
+
+        // Notificaciones directas a Tesorería, Presupuesto y Control de Viáticos
+        await this.notificationClient.notifyByRole('TESORERIA', notifNovedad);
+        await this.notificationClient.notifyByRole('PRESUPUESTO', notifNovedad);
+        await this.notificationClient.notifyByRole('CONTROL_VIATICOS', notifNovedad);
+        await this.notificationClient.notifyByRole('SUBDIRECCION_GESTION_CORPORATIVA', notifNovedad);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en despacharNotificacionesCancelacion: ${err?.message}`);
+    }
+  }
+
+  /**
    * RF-AUT-001 — Genera el PDF oficial de Autorización Corporativa de Gasto e Itinerario.
    */
   async exportarPdfTiqueteItinerario(
+
     solicitudId: string,
     req?: any,
   ): Promise<Buffer> {
@@ -4292,4 +4579,856 @@ export class TravelExpensesService {
       doc.end();
     });
   }
+
+  /**
+   * Validador y generador de nomenclatura Fecha_RP_Número (RF-PRE-001).
+   * Admite:
+   *   YYYY-MM-DD_RP_NUMERO (ej. 2026-09-16_RP_12345)
+   *   YYYYMMDD_RP_NUMERO   (ej. 20260916_RP_12345)
+   */
+  validarYFormatearNomenclaturaRp(
+    fechaRp: string,
+    numeroRp: string,
+    codigoRpSuministrado?: string,
+  ): string {
+    const fechaLimpia = (fechaRp || '').split('T')[0].trim();
+    const numLimpio = (numeroRp || '').trim();
+
+    if (!numLimpio) {
+      throw new BadRequestException('El número de RP es obligatorio.');
+    }
+
+    if (codigoRpSuministrado && codigoRpSuministrado.trim()) {
+      const cod = codigoRpSuministrado.trim();
+      const regexNomenclatura = /^\d{4}-?\d{2}-?\d{2}_RP_[A-Za-z0-9\-_]+$/i;
+      if (!regexNomenclatura.test(cod)) {
+        throw new BadRequestException(
+          `La nomenclatura '${cod}' es inválida. Debe respetar el formato Fecha_RP_Número (ej. ${fechaLimpia}_RP_${numLimpio}).`,
+        );
+      }
+      return cod;
+    }
+
+    // Generar formato estándar Fecha_RP_Número
+    return `${fechaLimpia}_RP_${numLimpio}`;
+  }
+
+  /**
+   * RF-PRE-003: Determinar días hábiles en Colombia disponibles antes del viaje.
+   * Excluye sábados (6), domingos (0) y días festivos registrados en travel_expenses.festivos_colombia.
+   *
+   * @param fechaReferencia Fecha de expedición del RP o fecha de corte actual (excluida del cómputo).
+   * @param fechaInicioViaje Fecha de inicio de la comisión de servicios.
+   * @returns Cantidad de días hábiles completos antes del inicio del viaje (entero >= 0).
+   */
+  async calcularDiasHabilesPrevios(
+    fechaReferencia: Date | string,
+    fechaInicioViaje: Date | string,
+  ): Promise<number> {
+    if (!fechaReferencia || !fechaInicioViaje) {
+      return 0;
+    }
+
+    const parseToUtcDate = (val: Date | string): Date => {
+      if (typeof val === 'string') {
+        const clean = val.split('T')[0].trim();
+        const parts = clean.split('-');
+        if (parts.length === 3) {
+          return new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+        }
+      }
+      const d = new Date(val);
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    };
+
+    const inicio = parseToUtcDate(fechaReferencia);
+    const fin = parseToUtcDate(fechaInicioViaje);
+
+    // Si la comisión inicia en la misma fecha o ya inició en el pasado, no hay días hábiles disponibles
+    if (fin.getTime() <= inicio.getTime()) {
+      return 0;
+    }
+
+    // Obtener festivos de Colombia
+    const festivosSet = new Set<string>();
+    try {
+      const festivoRepo = this.dataSource.getRepository(FestivoColombiaEntity);
+      const festivos = await festivoRepo.find();
+      if (Array.isArray(festivos)) {
+        festivos.forEach((f) => {
+          if (f.fecha) {
+            const fStr =
+              typeof f.fecha === 'string'
+                ? f.fecha.slice(0, 10)
+                : new Date(f.fecha).toISOString().slice(0, 10);
+            festivosSet.add(fStr);
+          }
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[calcularDiasHabilesPrevios] No se pudieron consultar festivos en BD: ${err?.message}`,
+      );
+    }
+
+    let diasHabiles = 0;
+    // Cursor avanza desde el día siguiente a la fecha de referencia hasta estrictamente antes de fechaInicioViaje
+    const cursor = new Date(inicio.getTime());
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
+    while (cursor.getTime() < fin.getTime()) {
+      const dayOfWeek = cursor.getUTCDay(); // 0 = Domingo, 6 = Sábado
+      const isoDate = cursor.toISOString().slice(0, 10);
+
+      const esFinDeSemana = dayOfWeek === 0 || dayOfWeek === 6;
+      const esFestivo = festivosSet.has(isoDate);
+
+      if (!esFinDeSemana && !esFestivo) {
+        diasHabiles++;
+      }
+
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return diasHabiles;
+  }
+
+  /**
+   * RF-PRE-003: Determinar modalidad de pago según los días hábiles previos disponibles.
+   * Regla de negocio institucional ESAP:
+   *   - Si diasHabiles >= umbral (por defecto 5 días hábiles): AVANCE (pago anticipado).
+   *   - Si diasHabiles < umbral: RECONOCIMIENTO_POSTERIOR (reembolso posterior a la comisión).
+   */
+  determinarModalidadPago(
+    diasHabiles: number,
+    umbral: number = DIAS_HABILES_MINIMOS_AVANCE_DEFAULT,
+  ): 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' {
+    if (diasHabiles >= umbral) {
+      return 'AVANCE';
+    }
+    return 'RECONOCIMIENTO_POSTERIOR';
+  }
+
+  /**
+   * RF-PRE-003: Previsualizar modalidad de pago para una comisión antes de expedir el RP.
+   */
+  async previsualizarModalidadPago(
+    solicitudId: string,
+    fechaRp?: string,
+  ): Promise<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    fechaReferencia: string;
+    fechaInicioComision: string;
+    diasHabilesPrevios: number;
+    modalidadPago: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR';
+    umbralMinimoAvance: number;
+  }> {
+    const solicitud = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+    }
+
+    const fechaRef = fechaRp && fechaRp.trim() ? fechaRp.trim() : new Date().toISOString().slice(0, 10);
+    const diasHabiles = await this.calcularDiasHabilesPrevios(fechaRef, solicitud.fechaInicio);
+    const modalidad = this.determinarModalidadPago(diasHabiles);
+
+    const formatIso = (v: any) =>
+      typeof v === 'string' ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+
+    return {
+      solicitudId: solicitud.id,
+      consecutivoUnico: solicitud.consecutivoUnico,
+      fechaReferencia: typeof fechaRef === 'string' ? fechaRef.slice(0, 10) : formatIso(fechaRef),
+      fechaInicioComision: formatIso(solicitud.fechaInicio),
+      diasHabilesPrevios: diasHabiles,
+      modalidadPago: modalidad,
+      umbralMinimoAvance: DIAS_HABILES_MINIMOS_AVANCE_DEFAULT,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada al Grupo de Presupuesto (Etapa 7).
+   *
+   * Criterio 1 (Gherkin):
+   *   Dada una comisión AUTORIZADA, Cuando el analista envía el paquete a Presupuesto,
+   *   Entonces aparece en la bandeja del Grupo de Presupuesto.
+   */
+  async enviarPaquetePresupuesto(
+    solicitudId: string,
+    usuarioId: string,
+    roles: string[] = [],
+    dto?: EnviarPresupuestoDto,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+    }
+
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.AUTORIZADA) {
+      throw new BadRequestException(
+        `Solo las comisiones en estado AUTORIZADA pueden ser enviadas al Grupo de Presupuesto. Estado actual: ${solicitud.estadoSolicitud}`,
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    // Mantiene el estado oficial AUTORIZADA marcando el envío al Grupo de Presupuesto
+    solicitud.enviadoPresupuesto = true;
+    solicitud.fechaEnvioPresupuesto = new Date();
+    solicitud.enviadoPresupuestoPorId = usuarioId;
+    if (dto?.observaciones) {
+      solicitud.observacionesEnvioPresupuesto = dto.observaciones.trim();
+    }
+
+    const guardada = await this.solicitudRepo.save(solicitud);
+
+    await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: solicitud.id,
+      estadoAnterior,
+      estadoNuevo: solicitud.estadoSolicitud,
+      usuarioId,
+      motivo: `[RF-PRE-001] Paquete de comisión remitido al Grupo de Presupuesto para expedición de RP en SIIF Nación.${dto?.observaciones ? ` Observaciones: ${dto.observaciones.trim()}` : ''}`,
+    });
+
+    // Notificar al rol PRESUPUESTO
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      await this.notificationClient.notifyByRole('PRESUPUESTO', {
+        tipo_notificacion: 'VIATICOS_COMISION_EN_PRESUPUESTO',
+        titulo: `Nueva comisión para expedición de RP: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} con destino a ${destino} fue enviada a Presupuesto para expedición de Registro Presupuestal en SIIF Nación.`,
+        descripcion_corta: `En Presupuesto · ${consecutivo}`,
+        icono: 'Receipt',
+        color: '#059669',
+        prioridad: 'Media',
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Expedir RP',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error notificando a Presupuesto: ${err?.message}`);
+    }
+
+    return guardada;
+  }
+
+  /**
+   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
+   *
+   * Permite consultar comisiones autorizadas pendientes de RP (AUTORIZADA / EN_PRESUPUESTO)
+   * y comisiones comprometidas (COMPROMETIDA), con búsqueda, paginación y KPIs.
+   */
+  async obtenerBandejaPresupuesto(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+    kpis: {
+      pendientesRp: number;
+      comprometidas: number;
+      totalComprometido: number;
+    };
+  }> {
+    const qb = this.solicitudRepo
+      .createQueryBuilder('sol')
+      .leftJoinAndSelect('sol.comisionado', 'com')
+      .leftJoinAndSelect('sol.enviadoPresupuestoPor', 'envUser')
+      .leftJoinAndSelect('sol.expedidoRpPor', 'expUser');
+
+    if (estado && estado !== 'TODOS') {
+      if (estado === 'AUTORIZADA' || estado === 'EN_PRESUPUESTO' || estado === 'PENDIENTES_RP') {
+        qb.where(
+          '(sol.estadoSolicitud = :autorizada OR sol.estadoSolicitud = :enPresupuesto)',
+          {
+            autorizada: EstadoSolicitud.AUTORIZADA,
+            enPresupuesto: EstadoSolicitud.EN_PRESUPUESTO,
+          },
+        );
+      } else {
+        qb.where('sol.estadoSolicitud = :estado', { estado });
+      }
+    } else {
+      qb.where(
+        '(sol.estadoSolicitud IN (:...estados) OR (sol.estadoSolicitud = :autorizada AND sol.enviadoPresupuesto = true))',
+        {
+          estados: [EstadoSolicitud.AUTORIZADA, EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
+          autorizada: EstadoSolicitud.AUTORIZADA,
+        },
+      );
+    }
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(sol.consecutivoUnico) LIKE :term OR LOWER(com.primerNombre) LIKE :term OR LOWER(com.primerApellido) LIKE :term OR LOWER(com.numeroDocumento) LIKE :term OR LOWER(sol.destinoCiudad) LIKE :term OR LOWER(sol.numeroRp) LIKE :term OR LOWER(sol.codigoRp) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('sol.fechaEnvioPresupuesto', 'DESC')
+      .addOrderBy('sol.actualizadoEn', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    // KPIs consolidados
+    const pendientesRpCount = await this.solicitudRepo.count({
+      where: [
+        { estadoSolicitud: EstadoSolicitud.AUTORIZADA },
+        { estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO },
+      ],
+    });
+
+    const comprometidasCount = await this.solicitudRepo.count({
+      where: { estadoSolicitud: EstadoSolicitud.COMPROMETIDA },
+    });
+
+    const sumResult = await this.solicitudRepo
+      .createQueryBuilder('sol')
+      .select('SUM(sol.valorComprometido)', 'total')
+      .where('sol.estadoSolicitud = :comp', { comp: EstadoSolicitud.COMPROMETIDA })
+      .getRawOne();
+
+    const totalComprometido = Number(sumResult?.total || 0);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      kpis: {
+        pendientesRp: pendientesRpCount,
+        comprometidas: comprometidasCount,
+        totalComprometido,
+      },
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  /**
+   * RF-PRE-001 — Expedir y Registrar RP en SIIF Nación (Etapa 7).
+   *
+   * Método transaccional ACID con bloqueo pesimista SELECT ... FOR UPDATE.
+   * Transiciona la comisión de AUTORIZADA / EN_PRESUPUESTO al estado COMPROMETIDA.
+   */
+  async registrarRP(
+    solicitudId: string,
+    datosRp: IssueRpDto,
+    usuarioId: string,
+  ): Promise<SolicitudComisionEntity> {
+    return this.dataSource.transaction(async (manager) => {
+      // 1. Bloqueo Pesimista: Obtener la solicitud con SELECT ... FOR UPDATE (sin outer joins para compatibilidad total con PostgreSQL)
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .findOne({
+          where: { id: solicitudId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+      if (!solicitud) {
+        throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+      }
+
+      if (solicitud.comisionadoId) {
+        const comisionado = await manager.getRepository(ComisionadoEntity).findOne({
+          where: { id: solicitud.comisionadoId },
+        });
+        if (comisionado) {
+          solicitud.comisionado = comisionado;
+        }
+      }
+
+      // 2. Validación de Estado: Verificar que esté en AUTORIZADA o en Presupuesto
+      const esEstadoValido =
+        solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA ||
+        solicitud.estadoSolicitud === EstadoSolicitud.EN_PRESUPUESTO;
+
+      if (!esEstadoValido) {
+        throw new BadRequestException(
+          `La comisión debe estar en la bandeja de Presupuesto para expedir su RP. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      if (datosRp.valorComprometido == null || Number(datosRp.valorComprometido) <= 0) {
+        throw new BadRequestException('El valor comprometido debe ser un monto positivo mayor a 0.');
+      }
+
+      const rubroFinal = (datosRp.rubroPresupuestal || datosRp.rubro || '').trim();
+      if (!rubroFinal) {
+        throw new BadRequestException('El rubro presupuestal es obligatorio para expedir el RP.');
+      }
+
+      // 3. Validación Nomenclatura SOPORTE RP
+      if (datosRp.soporteRpPath) {
+        const regexSoporte = /^.*(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
+        if (!regexSoporte.test(datosRp.soporteRpPath.trim())) {
+          throw new BadRequestException(
+            `El archivo soporte de RP '${datosRp.soporteRpPath}' es inválido. Debe cumplir con la regla de nomenclatura Fecha_RP_Número (ejemplo: YYYYMMDD_RP_Numero.pdf o 20260916_RP_12345.pdf).`,
+          );
+        }
+      }
+
+      const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
+        datosRp.fechaRp,
+        datosRp.numeroRp,
+        datosRp.codigoRp,
+      );
+
+      // 4. Actualización de Registro
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.COMPROMETIDA;
+      solicitud.numeroRp = datosRp.numeroRp.trim();
+      solicitud.fechaRp = new Date(datosRp.fechaRp);
+      solicitud.valorComprometido = Number(datosRp.valorComprometido);
+      solicitud.rubroPresupuestalRp = rubroFinal;
+      solicitud.rubroRp = rubroFinal;
+      solicitud.soporteRpPath = datosRp.soporteRpPath ? datosRp.soporteRpPath.trim() : null;
+      solicitud.codigoRp = codigoOficialRp;
+      solicitud.usuarioPresupuestoId = usuarioId;
+      solicitud.expedidoRpPorId = usuarioId;
+      solicitud.fechaRegistroRp = new Date();
+      solicitud.fechaExpedicionRp = new Date();
+      if (datosRp.observaciones) {
+        solicitud.observacionesRp = datosRp.observaciones.trim();
+      }
+
+      // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
+      const fechaBaseModalidad = datosRp.fechaRp || new Date();
+      const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
+        fechaBaseModalidad,
+        solicitud.fechaInicio,
+      );
+      const modalidadPago = this.determinarModalidadPago(diasHabilesPrevios);
+      solicitud.modalidadPago = modalidadPago;
+      solicitud.diasHabilesPrevios = diasHabilesPrevios;
+      solicitud.fechaCalculoModalidad = new Date();
+
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.COMPROMETIDA,
+        usuarioId,
+        motivo: `[RF-PRE-001 / RF-PRE-003] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
+      });
+
+      return guardada;
+    });
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  async expedirRp(
+    solicitudId: string,
+    usuarioId: string,
+    roles: string[] = [],
+    dto: ExpedirRpDto | IssueRpDto,
+  ): Promise<SolicitudComisionEntity> {
+    const issueDto: IssueRpDto = {
+      numeroRp: dto.numeroRp,
+      fechaRp: dto.fechaRp,
+      valorComprometido: dto.valorComprometido,
+      rubroPresupuestal: (dto as any).rubroPresupuestal || (dto as any).rubro,
+      rubro: (dto as any).rubro || (dto as any).rubroPresupuestal,
+      codigoRp: dto.codigoRp,
+      soporteRpPath: (dto as any).soporteRpPath,
+      observaciones: dto.observaciones,
+    };
+
+    const guardada = await this.registrarRP(solicitudId, issueDto, usuarioId);
+
+    // Notificaciones al comisionado / enlace / analista
+    try {
+      const consecutivo = guardada.consecutivoUnico || guardada.id;
+      const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean);
+
+      for (const destId of destinatarios) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: destId!,
+          tipo_notificacion: 'VIATICOS_RP_EXPEDIDO',
+          titulo: `RP Expedido en SIIF Nación: ${consecutivo}`,
+          mensaje: `Se ha expedido el RP ${guardada.codigoRp} para la comisión ${consecutivo}. Estado: COMPROMETIDA. Recursos comprometidos: $${Number(guardada.valorComprometido).toLocaleString('es-CO')}.`,
+          descripcion_corta: `RP Expedido · ${consecutivo}`,
+          icono: 'CheckCircle2',
+          color: '#059669',
+          prioridad: 'Media',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver comisión',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: guardada.id,
+            consecutivoUnico: consecutivo,
+            codigoRp: guardada.codigoRp,
+            valorComprometido: guardada.valorComprometido,
+          },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error enviando notificaciones de RP expedido: ${err?.message}`);
+    }
+
+    return guardada;
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de Registro Presupuestal (RP) en SIIF Nación (Etapa 7).
+   *
+   * Criterio 3 (Gherkin):
+   *   Dado el registro del RP, Cuando se carga, Entonces respeta la nomenclatura
+   *   Fecha_RP_Número y admite carga masiva.
+   */
+  async cargaMasivaRp(
+    usuarioId: string,
+    roles: string[] = [],
+    items: ItemCargaMasivaRpDto[],
+  ): Promise<{
+    total: number;
+    exitosos: number;
+    fallidos: number;
+    procesados: Array<{
+      solicitudId: string;
+      consecutivoUnico: string;
+      codigoRp: string;
+      valorComprometido: number;
+      estado: string;
+    }>;
+    errores: Array<{
+      fila: number;
+      identificador: string;
+      error: string;
+    }>;
+  }> {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('El archivo o listado de carga masiva está vacío.');
+    }
+
+    const procesados: Array<any> = [];
+    const errores: Array<any> = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const fila = i + 1;
+      const identificador = item.consecutivoUnico || item.solicitudId || `Fila #${fila}`;
+
+      try {
+        let solicitud: SolicitudComisionEntity | null = null;
+
+        const consecutivoFinal =
+          item.consecutivoUnico ||
+          (item as any).solicitud_consecutivo ||
+          (item as any).consecutivo ||
+          (item as any).solicitudConsecutivo;
+        const numRpFinal = item.numeroRp || (item as any).numero_rp;
+        const fechaRpFinal = item.fechaRp || (item as any).fecha_rp;
+        const valorFinal = item.valorComprometido ?? (item as any).valor_comprometido;
+        const rubroFinal = item.rubro || (item as any).rubroPresupuestal || (item as any).rubro_presupuestal;
+        const soporteFinal = (item as any).soporteRpPath || (item as any).soporte_rp_path || null;
+
+        if (item.solicitudId) {
+          solicitud = await this.solicitudRepo.findOne({
+            where: { id: item.solicitudId },
+          });
+        } else if (consecutivoFinal) {
+          solicitud = await this.solicitudRepo.findOne({
+            where: { consecutivoUnico: consecutivoFinal.trim().toUpperCase() },
+          });
+        }
+
+        if (!solicitud) {
+          errores.push({
+            fila,
+            identificador,
+            error: `Comisión no encontrada con el identificador '${identificador}'.`,
+          });
+          continue;
+        }
+
+        const esEstadoValido =
+          solicitud.estadoSolicitud === EstadoSolicitud.EN_PRESUPUESTO ||
+          solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA;
+
+        if (!esEstadoValido) {
+          errores.push({
+            fila,
+            identificador,
+            error: `La comisión '${solicitud.consecutivoUnico}' no está en estado AUTORIZADA o en Presupuesto (estado actual: ${solicitud.estadoSolicitud}).`,
+          });
+          continue;
+        }
+
+        if (!numRpFinal || !String(numRpFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Número de RP no suministrado.',
+          });
+          continue;
+        }
+
+        if (!fechaRpFinal || !String(fechaRpFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Fecha de RP no suministrada.',
+          });
+          continue;
+        }
+
+        if (valorFinal == null || Number(valorFinal) <= 0) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Valor comprometido debe ser un número positivo mayor a 0.',
+          });
+          continue;
+        }
+
+        if (!rubroFinal || !String(rubroFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Rubro presupuestal no suministrado.',
+          });
+          continue;
+        }
+
+        // Valida y normaliza la nomenclatura Fecha_RP_Número
+        const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
+          fechaRpFinal,
+          numRpFinal,
+          item.codigoRp,
+        );
+
+        const estadoAnterior = solicitud.estadoSolicitud;
+        solicitud.estadoSolicitud = EstadoSolicitud.COMPROMETIDA;
+        solicitud.numeroRp = String(numRpFinal).trim();
+        solicitud.fechaRp = new Date(fechaRpFinal);
+        solicitud.valorComprometido = Number(valorFinal);
+        solicitud.rubroRp = String(rubroFinal).trim();
+        solicitud.rubroPresupuestalRp = String(rubroFinal).trim();
+        solicitud.soporteRpPath = soporteFinal ? String(soporteFinal).trim() : null;
+        solicitud.codigoRp = codigoOficialRp;
+        solicitud.usuarioPresupuestoId = usuarioId;
+        solicitud.expedidoRpPorId = usuarioId;
+        solicitud.fechaRegistroRp = new Date();
+        solicitud.fechaExpedicionRp = new Date();
+        if (item.observaciones) {
+          solicitud.observacionesRp = String(item.observaciones).trim();
+        }
+
+        // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
+        const fechaBaseModalidad = fechaRpFinal || new Date();
+        const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
+          fechaBaseModalidad,
+          solicitud.fechaInicio,
+        );
+        const modalidadPago = this.determinarModalidadPago(diasHabilesPrevios);
+        solicitud.modalidadPago = modalidadPago;
+        solicitud.diasHabilesPrevios = diasHabilesPrevios;
+        solicitud.fechaCalculoModalidad = new Date();
+
+        await this.solicitudRepo.save(solicitud);
+
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.COMPROMETIDA,
+          usuarioId,
+          motivo: `[RF-PRE-001 / RF-PRE-003 - Carga Masiva] RP expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor: $${Number(valorFinal).toLocaleString('es-CO')}`,
+        });
+
+        procesados.push({
+          solicitudId: solicitud.id,
+          consecutivoUnico: solicitud.consecutivoUnico,
+          codigoRp: codigoOficialRp,
+          valorComprometido: Number(valorFinal),
+          modalidadPago,
+          diasHabilesPrevios,
+          estado: EstadoSolicitud.COMPROMETIDA,
+        });
+      } catch (err: any) {
+        errores.push({
+          fila,
+          identificador,
+          error: err?.message || 'Error inesperado al procesar registro.',
+        });
+      }
+    }
+
+    return {
+      total: items.length,
+      exitosos: procesados.length,
+      fallidos: errores.length,
+      procesados,
+      errores,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Alias de Carga Masiva de RP (cargaMasivaRP)
+   */
+  async cargaMasivaRP(
+    usuarioId: string,
+    roles: string[] = [],
+    items: any[],
+  ) {
+    return this.cargaMasivaRp(usuarioId, roles, items);
+  }
+
+  /**
+   * RF-PAG-001 — Etapa 8: Crear obligación en SIIF Nación según modalidad de pago.
+   * Actor: Analista de Viáticos.
+   *
+   * Criterios de Aceptación (Gherkin):
+   * 1. Dada una comisión COMPROMETIDA con modalidad definida,
+   *    Cuando el analista crea la obligación en SIIF Nación,
+   *    Entonces queda registrada según la modalidad (avance o posterior).
+   * 2. Dada la obligación creada,
+   *    Cuando se registra,
+   *    Entonces la comisión queda lista para el desembolso por Tesorería (pasa a OBLIGADA).
+   *
+   * Detalle funcional:
+   * - Entrada: modalidad de pago (de RF-PRE-003 o confirmada), valor, RP.
+   * - Acción: crear obligación en SIIF Nación.
+   * - Resultado: comisión lista para pago (OBLIGADA).
+   */
+  async crearObligacion(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[] = [],
+    dto: CrearObligacionDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('El ID de la solicitud es obligatorio.');
+    }
+    if (!dto || !dto.numeroObligacion?.trim()) {
+      throw new BadRequestException('El número de obligación en SIIF Nación es obligatorio.');
+    }
+
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión ${solicitudId} no encontrada.`);
+    }
+
+    // Validación de estado: Debe estar en estado COMPROMETIDA
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.COMPROMETIDA) {
+      throw new BadRequestException(
+        `La solicitud no se encuentra en estado COMPROMETIDA (Estado actual: ${solicitud.estadoSolicitud}). Solo comisiones con RP expedido pueden ser obligadas.`,
+      );
+    }
+
+    // Validación de RP
+    const tieneRp = Boolean(solicitud.codigoRp || solicitud.numeroRp);
+    if (!tieneRp) {
+      throw new BadRequestException(
+        'La comisión no cuenta con Registro Presupuestal (RP) expedido en SIIF Nación.',
+      );
+    }
+
+    // Modalidad de pago (de RF-PRE-003 o del DTO si se especifica)
+    const modalidadFinal = dto.modalidadPago || solicitud.modalidadPago || 'AVANCE';
+    const valorObligacionFinal =
+      dto.valorObligacion != null && Number(dto.valorObligacion) > 0
+        ? Number(dto.valorObligacion)
+        : Number(solicitud.valorComprometido || solicitud.montoViaticos || 0);
+
+    if (valorObligacionFinal <= 0) {
+      throw new BadRequestException(
+        'El valor de la obligación debe ser un monto positivo mayor a cero.',
+      );
+    }
+
+    // Actualización de campos de la Obligación en SIIF Nación
+    const fechaObligacionFinal = dto.fechaObligacion ? new Date(dto.fechaObligacion) : new Date();
+    const estadoAnterior = solicitud.estadoSolicitud;
+
+    solicitud.estadoSolicitud = EstadoSolicitud.OBLIGADA;
+    solicitud.numeroObligacion = dto.numeroObligacion.trim();
+    solicitud.fechaObligacion = fechaObligacionFinal;
+    solicitud.valorObligacion = valorObligacionFinal;
+    solicitud.modalidadPago = modalidadFinal;
+    solicitud.observacionesObligacion = dto.observacionesObligacion?.trim() || null;
+    if (dto.soporteObligacionPath) {
+      solicitud.soporteObligacionPath = dto.soporteObligacionPath;
+    }
+    solicitud.obligadoPorId = usuarioId;
+    solicitud.fechaRegistroObligacion = new Date();
+
+    const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+    const codigoRp = solicitud.codigoRp || solicitud.numeroRp || 'RP-N/A';
+
+    return await this.dataSource.transaction(async (manager) => {
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: guardada.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.OBLIGADA,
+        usuarioId,
+        comentarios: `[RF-PAG-001] Obligación registrada en SIIF Nación: ${dto.numeroObligacion.trim()}. Modalidad: ${modalidadFinal}. RP: ${codigoRp}. Valor obligado: $${valorObligacionFinal.toLocaleString('es-CO')}. Comisión lista para desembolso de Tesorería.`.slice(0, 255),
+      });
+
+      if (this.notificationClient?.send) {
+        try {
+          const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean) as string[];
+          for (const destId of destinatarios) {
+            await this.notificationClient.send({
+              id_usuario_destinatario: destId,
+              tipo_notificacion: 'OBLIGACION_SIIF_REGISTRADA',
+              titulo: `Obligación creada en SIIF: ${consecutivo}`,
+              mensaje: `Se ha creado la obligación ${dto.numeroObligacion.trim()} para la comisión ${consecutivo} (Modalidad: ${modalidadFinal}). La comisión está lista para desembolso por Tesorería.`,
+              descripcion_corta: `Obligación SIIF · ${consecutivo}`,
+              icono: 'CheckCircle2',
+              color: '#059669',
+              prioridad: 'Media',
+              categoria: 'VIATICOS',
+              tiene_accion: false,
+            });
+          }
+        } catch (notifErr: any) {
+          this.logger.warn(`[RF-PAG-001] No se pudo enviar notificación de obligación: ${notifErr?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[RF-PAG-001] Obligación ${dto.numeroObligacion.trim()} registrada exitosamente para solicitud ${consecutivo}. Estado: OBLIGADA. Modalidad: ${modalidadFinal}.`,
+      );
+
+      return guardada;
+    });
+  }
 }
+

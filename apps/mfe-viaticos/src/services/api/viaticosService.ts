@@ -45,7 +45,16 @@ import {
   BandejaAutorizacionResponse,
   AutorizarExtemporaneaPayload,
   RechazarExtemporaneaPayload,
+  CancelarComisionPayload,
+  CancelarComisionResponse,
+  EnviarPresupuestoPayload,
+  ExpedirRpPayload,
+  ItemCargaMasivaRp,
+  ResumenCargaMasivaRp,
+  BandejaPresupuestoResponse,
+  CrearObligacionDto,
 } from '../../types/viaticos';
+
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -203,6 +212,17 @@ export class ViaticosService {
       observacionesSegundaRevision: (s as any).observacionesSegundaRevision || null,
       fechaSegundaRevision: (s as any).fechaSegundaRevision || null,
       revisorControlId: (s as any).revisorControlId || null,
+      enviadoPresupuesto: Boolean((s as any).enviadoPresupuesto),
+      fechaEnvioPresupuesto: (s as any).fechaEnvioPresupuesto || null,
+      numeroRp: (s as any).numeroRp || null,
+      fechaRp: (s as any).fechaRp || null,
+      valorComprometido: (s as any).valorComprometido != null ? Number((s as any).valorComprometido) : null,
+      rubroRp: (s as any).rubroRp || null,
+      codigoRp: (s as any).codigoRp || null,
+      fechaExpedicionRp: (s as any).fechaExpedicionRp || null,
+      modalidadPago: (s as any).modalidadPago || (s as any).modalidad_pago || null,
+      diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : ((s as any).dias_habiles_previos != null ? Number((s as any).dias_habiles_previos) : null),
+      fechaCalculoModalidad: (s as any).fechaCalculoModalidad || (s as any).fecha_calculo_modalidad || null,
     };
   }
 
@@ -1475,7 +1495,153 @@ export class ViaticosService {
       throw error;
     }
   }
+
+  /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad completa (Etapa 6).
+   * Registra motivo obligatorio, responsable e indicación de recursos comprometidos/reintegro (Etapa 8).
+   */
+  async cancelarComision(
+    solicitudId: string,
+    payload: CancelarComisionPayload,
+  ): Promise<CancelarComisionResponse> {
+    try {
+      return await apiClient.post<CancelarComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/cancel`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error cancelando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada a Presupuesto (Etapa 7).
+   */
+  async enviarPaquetePresupuesto(
+    solicitudId: string,
+    observaciones?: string,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/send-to-budget`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error enviando paquete a Presupuesto:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Consultar bandeja del Grupo de Presupuesto (Etapa 7).
+   */
+  async obtenerBandejaPresupuesto(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    estado?: string;
+  }): Promise<BandejaPresupuestoResponse> {
+    try {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.search) q.set('search', params.search);
+      if (params?.estado) q.set('estado', params.estado);
+
+      const qs = q.toString();
+      const url = `/viaticos/api/v1/requests/budget/inbox${qs ? `?${qs}` : ''}`;
+      return await apiClient.get<BandejaPresupuestoResponse>(url);
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de presupuesto:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Expedir Registro Presupuestal RP en SIIF Nación (Etapa 7).
+   */
+  async expedirRp(
+    solicitudId: string,
+    payload: ExpedirRpPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/register-rp`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error expidiendo RP en SIIF Nación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de RPs en SIIF Nación (Etapa 7).
+   */
+  async cargaMasivaRp(
+    items: ItemCargaMasivaRp[],
+  ): Promise<ResumenCargaMasivaRp> {
+    try {
+      const res = await apiClient.post<any>(
+        '/viaticos/api/v1/requests/budget/batch-rp',
+        { items },
+      );
+      return res.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error procesando carga masiva de RPs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-003 — Previsualizar modalidad de pago según días hábiles previos (Etapa 7).
+   */
+  async previsualizarModalidadPago(
+    solicitudId: string,
+    fechaRp?: string,
+  ): Promise<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    fechaReferencia: string;
+    fechaInicioComision: string;
+    diasHabilesPrevios: number;
+    modalidadPago: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR';
+    umbralMinimoAvance: number;
+  }> {
+    try {
+      const q = fechaRp ? `?fechaRp=${encodeURIComponent(fechaRp)}` : '';
+      const res = await apiClient.get<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/modalidad-pago${q}`,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error previsualizando modalidad de pago:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-001 — Etapa 8: Crear obligación en SIIF Nación según modalidad de pago.
+   * Actor: Analista de Viáticos.
+   */
+  async crearObligacion(
+    solicitudId: string,
+    dto: CrearObligacionDto,
+  ): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/crear-obligacion`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error creando obligación en SIIF Nación:', error);
+      throw error;
+    }
+  }
 }
+
 
 export const viaticosService = new ViaticosService();
 export default viaticosService;

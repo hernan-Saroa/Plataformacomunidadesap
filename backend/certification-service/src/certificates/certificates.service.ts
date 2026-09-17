@@ -2320,7 +2320,8 @@ export class CertificatesService {
    * Dependencia que realmente imprime la plantilla en `[DEPENDENCIA]`.
    *
    * Replica la precedencia de LaborCertificatePdfService: para un certificado
-   * normal manda la dependencia del certificado (centro de costo primero) y en
+   * normal manda la dependencia de la solicitud (y el centro de costo solo
+   * cuando la solicitud no trae dependencia), y en
    * uno ya corregido manda lo que dejó guardado la corrección. Se usa para
    * precargar el formulario de corrección con el valor que el coordinador ve
    * en el documento, y no con la columna cruda `department`, que puede diferir.
@@ -2341,11 +2342,44 @@ export class CertificatesService {
     }
 
     const dato7 =
-      centroCosto ||
       text(request?.department) ||
+      centroCosto ||
       certificateDepartment ||
       text(request?.organization_department);
     return text(request?.certificate_dependency) || dato7;
+  }
+
+  /**
+   * Grupo que realmente imprime la plantilla en `[GRUPO]`.
+   *
+   * Replica la precedencia de LaborCertificatePdfService: manda el grupo
+   * interno de trabajo de la solicitud y la ubicación del cargo
+   * (`position_location`) solo entra cuando no hay grupo; en un certificado ya
+   * corregido manda lo que dejó guardado la corrección. Se usa para precargar
+   * el campo "Grupo o ubicación" del formulario de corrección con el valor que
+   * el coordinador ve en el documento, y no con la columna cruda
+   * `position_location`, que puede diferir.
+   */
+  private resolveEffectiveCertificateGroup(
+    certificate?: Certificate | null,
+  ): string {
+    if (!certificate) return '';
+    const text = (value: unknown) => String(value ?? '').trim();
+    const certificatePositionLocation = text(certificate.position_location);
+    const request = certificate.request;
+    // El centro de costo no participa: [GRUPO] es el grupo interno y su único
+    // respaldo es la ubicación del cargo.
+    const grupoInterno = text(resolveLaborInternalGroup(request?.internal_group));
+
+    if ((certificate as Certificate & { is_corrected?: boolean }).is_corrected === true) {
+      return certificatePositionLocation || grupoInterno;
+    }
+
+    return (
+      grupoInterno ||
+      text(request?.position_location) ||
+      certificatePositionLocation
+    );
   }
 
   private certificateCorrectionSnapshot(certificate: Certificate) {
@@ -2359,7 +2393,9 @@ export class CertificatesService {
       career_category: certificate.career_category,
       hiring_date: certificate.hiring_date,
       position_category: certificate.position_category,
-      position_location: certificate.position_location,
+      // El grupo efectivo, no la columna cruda: es el que se compara en el
+      // "antes / después" y el que ve el coordinador en el documento.
+      position_location: this.resolveEffectiveCertificateGroup(certificate),
       monthly_salary: Number(certificate.monthly_salary || 0),
       technical_bonus: Number(certificate.technical_bonus || 0),
       include_salary: certificate.include_salary,
@@ -2723,6 +2759,7 @@ export class CertificatesService {
       certificate: {
         ...response.certificate,
         department: this.resolveEffectiveCertificateDependency(request.certificate),
+        position_location: this.resolveEffectiveCertificateGroup(request.certificate),
       },
     };
   }
@@ -5556,6 +5593,9 @@ export class CertificatesService {
           cod_grade: requestContext.cod_grade,
           department: requestContext.department,
           position_location: requestContext.position_location,
+          // [GRUPO] se resuelve con el grupo interno: la vista previa del
+          // navegador necesita el mismo dato que usa el PDF del backend.
+          internal_group: requestContext.internal_group,
           certificate_dependency: certificate.request?.certificate_dependency,
         }
       : undefined;
