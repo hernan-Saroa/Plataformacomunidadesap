@@ -6920,6 +6920,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         'AVANCE DE ACTIVIDADES POR ROL',
         'Los porcentajes de esta sección corresponden al avance de las actividades según cada rol.'
       );
+      currentY += 4;
 
       [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
         // Calcular avance promedio del rol
@@ -6928,6 +6929,12 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           0,
         );
         const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
+
+        // El título del rol no queda solo al final de la hoja: debe caber con el encabezado y la primera fila
+        if (rolIdx > 0 && currentY > pageHeight - 55) {
+          doc.addPage();
+          currentY = margin + 5;
+        }
 
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
@@ -7002,11 +7009,6 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         });
 
         currentY = (doc as any).lastAutoTable.finalY + 8;
-
-        if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
-          doc.addPage();
-          currentY = margin;
-        }
       });
 
       doc.save(`Plan-Anual-Auditoria-${vigencia}-Detallado.pdf`);
