@@ -15,6 +15,7 @@ vi.mock('../services/api/authService', () => {
   const auth = {
     canCancelarComision: vi.fn(() => true),
     canEnviarPresupuesto: vi.fn(() => true),
+    canCrearObligacion: vi.fn(() => true),
     isAnalista: vi.fn(() => true),
     getCurrentUserSync: vi.fn(() => ({
       userId: '1',
@@ -316,6 +317,38 @@ describe('AnalystInbox', () => {
       expect(screen.getByText('Verificada · Consultar')).toBeDefined();
       // No debe mostrar la observación de devolución previa porque ya está verificada
       expect(screen.queryByText(/Observación antigua ya corregida/i)).toBeNull();
+    });
+  });
+
+  it('RF-PAG-001: muestra la pestaña Comprometidas y permite abrir el modal Crear Obligación SIIF', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-comp-01',
+        consecutivoUnico: 'COM-2026-0099',
+        estadoSolicitud: 'COMPROMETIDA',
+        codigoRp: '2026-10-25_RP_48920',
+        modalidadPago: 'AVANCE',
+        valorComprometido: 850000,
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Comprometidas \(Obligación SIIF\)/i)).toBeDefined();
+    });
+
+    const tabComprometidas = screen.getByRole('button', { name: /Comprometidas \(Obligación SIIF\)/i });
+    fireEvent.click(tabComprometidas);
+
+    expect(screen.getByText('COM-2026-0099')).toBeDefined();
+    expect(screen.getByText(/Crear Obligación SIIF/i)).toBeDefined();
+
+    const botonCrearObligacion = screen.getByRole('button', { name: /Crear Obligación SIIF/i });
+    fireEvent.click(botonCrearObligacion);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Crear Obligación en SIIF Nación/i)).toBeDefined();
     });
   });
 });

@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { SolicitudViatico, ExpedirRpPayload } from '../types/viaticos';
 import { viaticosService } from '../services/api/viaticosService';
+import { useFestivos } from '../hooks/useFestivos';
+import { calcularDiasHabilesPrevios, DIAS_HABILES_UMBRAL_AVANCE_RP } from '../utils/diasHabilesUtils';
 
 interface ExpedirRpModalProps {
   solicitud: SolicitudViatico | null;
@@ -27,6 +29,7 @@ export default function ExpedirRpModal({
   onExito,
 }: ExpedirRpModalProps) {
   const hoy = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const { festivos } = useFestivos();
 
   const [numeroRp, setNumeroRp] = useState('');
   const [fechaRp, setFechaRp] = useState(hoy);
@@ -76,40 +79,17 @@ export default function ExpedirRpModal({
     return regex.test(codigoRpFinal);
   }, [codigoRpFinal]);
 
-  // Proyección de modalidad de pago (RF-PRE-003)
+  // Proyección de modalidad de pago (RF-PRE-003) con días hábiles y festivos de Auth
   const proyeccionModalidad = useMemo(() => {
     if (!solicitud?.fechaInicio || !fechaRp) {
       return null;
     }
-    const parseUtc = (str: string) => {
-      const parts = str.slice(0, 10).split('-');
-      return new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
-    };
-
-    const dInicio = parseUtc(fechaRp);
-    const dFin = parseUtc(solicitud.fechaInicio);
-
-    if (dFin.getTime() <= dInicio.getTime()) {
-      return { diasHabiles: 0, modalidad: 'RECONOCIMIENTO_POSTERIOR' };
-    }
-
-    let habiles = 0;
-    const cursor = new Date(dInicio.getTime());
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-
-    while (cursor.getTime() < dFin.getTime()) {
-      const day = cursor.getUTCDay();
-      if (day !== 0 && day !== 6) {
-        habiles++;
-      }
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-
+    const habiles = calcularDiasHabilesPrevios(fechaRp, solicitud.fechaInicio, festivos);
     return {
       diasHabiles: habiles,
-      modalidad: habiles >= 5 ? 'AVANCE' : 'RECONOCIMIENTO_POSTERIOR',
+      modalidad: habiles >= DIAS_HABILES_UMBRAL_AVANCE_RP ? 'AVANCE' : 'RECONOCIMIENTO_POSTERIOR',
     };
-  }, [solicitud?.fechaInicio, fechaRp]);
+  }, [solicitud?.fechaInicio, fechaRp, festivos]);
 
   const puedeEnviar =
     Boolean(numeroRp.trim()) &&

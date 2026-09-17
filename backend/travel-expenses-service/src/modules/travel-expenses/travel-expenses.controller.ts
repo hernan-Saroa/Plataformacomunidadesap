@@ -49,6 +49,7 @@ import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
 import { CargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
 import { BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
+import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
 
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
@@ -1469,6 +1470,72 @@ export class TravelExpensesController {
     return {
       success: true,
       data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-PAG-001 — Crear obligación en SIIF Nación según modalidad de pago (Etapa 8).
+   * Actor: Analista de Viáticos.
+   *
+   * Endpoint: POST /api/v1/requests/:id/crear-obligacion
+   * Aliases: POST requests/:id/crear-obligacion, POST requests/:id/register-obligation
+   */
+  @Post([
+    'requests/:id/crear-obligacion',
+    'api/v1/requests/:id/crear-obligacion',
+    'requests/:id/register-obligation',
+    'api/v1/requests/:id/register-obligation',
+  ])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:create_obligation', 'travel_expenses:verify_request', 'travel_expenses:read_assigned')
+  @ApiTags('tesoreria')
+  @ApiOperation({
+    summary: 'Crear obligación en SIIF Nación según modalidad de pago (Etapa 8 — RF-PAG-001)',
+    description:
+      'Registra la obligación en SIIF Nación vinculada a la comisión comprometida y transiciona el estado a OBLIGADA (Lista para desembolso de Tesorería).',
+  })
+  @ApiBody({
+    description: 'Datos de la obligación en SIIF: número, fecha, valor, modalidad y soporte opcional.',
+    type: CrearObligacionDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Obligación registrada exitosamente. Comisión lista para desembolso por Tesorería.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Comisión en estado inválido o datos requeridos incompletos.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Solicitud de comisión no encontrada.',
+  })
+  @ApiBearerAuth()
+  async crearObligacion(
+    @Param('id') id: string,
+    @Body() dto: CrearObligacionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.crearObligacion(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Obligación ${result.numeroObligacion} registrada exitosamente en SIIF Nación. Comisión en estado OBLIGADA (Lista para pago).`,
       timestamp: new Date().toISOString(),
     };
   }

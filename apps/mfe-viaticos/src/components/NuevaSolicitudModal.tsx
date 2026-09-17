@@ -42,6 +42,7 @@ import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
 import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
+import { useFestivos } from '../hooks/useFestivos';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
@@ -117,6 +118,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [habeasPendiente, setHabeasPendiente] = useState(false);
   const [habeasMarcado, setHabeasMarcado] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const { festivos } = useFestivos();
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
@@ -632,16 +634,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   useEffect(() => {
     if (paso === PASOS.length && form.fechaInicio) {
-      const validacion = validarAnticipacionRadicacion(form.fechaInicio);
+      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos);
       setAlertaAnticipacion({
-        extemporanea: false,
+        extemporanea: validacion?.extemporanea ?? false,
         diasHabiles: validacion?.diasHabiles ?? 0,
         radicadoFueraJornada: validacion?.radicadoFueraJornada ?? false,
       });
     } else {
       setAlertaAnticipacion(null);
     }
-  }, [paso, form.fechaInicio]);
+  }, [paso, form.fechaInicio, festivos]);
 
   useEffect(() => {
     if (form.fechaInicio && form.fechaFin) {

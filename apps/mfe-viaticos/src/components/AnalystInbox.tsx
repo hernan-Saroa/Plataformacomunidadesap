@@ -13,6 +13,7 @@ import {
   Zap,
   XCircle,
   Receipt,
+  Landmark,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -23,9 +24,10 @@ import {
   SolicitudComisionResponse,
   SolicitudListaResponse,
 } from '../types/viaticos';
-import { formatearNombreComisionado } from '../utils/viaticosUtils';
+import { formatearNombreComisionado, formatearMoneda } from '../utils/viaticosUtils';
 import VerificacionSIIFModal from './VerificacionSIIFModal';
 import CancelarComisionModal from './CancelarComisionModal';
+import CrearObligacionModal from './CrearObligacionModal';
 
 const PRIORIDAD_CONFIG: Record<PrioridadSolicitud, { bg: string; text: string; label: string }> = {
   ALTA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta' },
@@ -51,7 +53,8 @@ const ESTADO_CONFIG: Record<string, { bg: string; text: string; label: string }>
   CANCELADA: { bg: 'bg-rose-100', text: 'text-rose-700', label: 'Cancelada' },
   AUTORIZADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Autorizada' },
   EN_PRESUPUESTO: { bg: 'bg-teal-100', text: 'text-teal-700', label: 'En Presupuesto' },
-  COMPROMETIDA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Comprometida' },
+  COMPROMETIDA: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'Comprometida' },
+  OBLIGADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Obligada' },
 };
 
 const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
@@ -61,10 +64,9 @@ const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
   'PENDIENTE_LEGALIZACION',
   'LEGALIZADO',
   'CANCELADA',
-  'COMPROMETIDA',
 ]);
 
-export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'AUTORIZADAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
+export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'AUTORIZADAS' | 'COMPROMETIDAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
 
 export default function AnalystInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudListaResponse[]>([]);
@@ -78,13 +80,14 @@ export default function AnalystInbox() {
   const [cargandoModal, setCargandoModal] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [solicitudCancelar, setSolicitudCancelar] = useState<SolicitudListaResponse | null>(null);
+  const [solicitudObligacion, setSolicitudObligacion] = useState<SolicitudListaResponse | null>(null);
 
   const cargarSolicitudes = async () => {
     setCargando(true);
     setError(null);
     try {
       const data = await viaticosService.obtenerSolicitudesAsignadasAnalista();
-      // Excluir estados que ya superaron la fase del analista (AUTORIZADA ya cuenta con aprobaciones corporativas)
+      // Excluir estados que ya superaron la fase del analista
       const dataValida = (data || []).filter((s) => {
         const est = (s.estadoSolicitud || '').toUpperCase();
         return !ESTADOS_EXCLUIDOS_ANALISTA.has(est);
@@ -109,6 +112,7 @@ export default function AnalystInbox() {
 
   const puedeCancelarComision = useMemo(() => authService.canCancelarComision(), []);
   const puedeEnviarPresupuesto = useMemo(() => authService.canEnviarPresupuesto(), []);
+  const puedeCrearObligacion = useMemo(() => authService.canCrearObligacion(), []);
 
   useEffect(() => {
     void cargarSolicitudes();
@@ -125,11 +129,12 @@ export default function AnalystInbox() {
   }, [dependencias]);
 
   // Clasificación por categorías / tabs sin mezclar verificadas con pendientes
-  const { devueltas, pendientes, verificadas, autorizadas, extemporaneas } = useMemo(() => {
+  const { devueltas, pendientes, verificadas, autorizadas, comprometidas, extemporaneas } = useMemo(() => {
     const devList: SolicitudListaResponse[] = [];
     const pendList: SolicitudListaResponse[] = [];
     const verifList: SolicitudListaResponse[] = [];
     const autList: SolicitudListaResponse[] = [];
+    const compList: SolicitudListaResponse[] = [];
     const extList: SolicitudListaResponse[] = [];
 
     solicitudes.forEach((s) => {
@@ -153,6 +158,9 @@ export default function AnalystInbox() {
 
       if (esDevuelta) {
         devList.push(s);
+      } else if (s.estadoSolicitud === 'COMPROMETIDA' || s.estadoSolicitud === 'OBLIGADA') {
+        // Etapa 8: Comisiones con RP expedido pendientes de obligación o ya obligadas
+        compList.push(s);
       } else if (s.estadoSolicitud === 'VERIFICADA' || s.estadoSolicitud === 'SOLICITADA_SIIF') {
         // Ya completaron la revisión del analista
         verifList.push(s);
@@ -170,6 +178,7 @@ export default function AnalystInbox() {
       pendientes: pendList,
       verificadas: verifList,
       autorizadas: autList,
+      comprometidas: compList,
       extemporaneas: extList,
     };
   }, [solicitudes]);
@@ -180,11 +189,12 @@ export default function AnalystInbox() {
     );
     if (tabActual === 'DEVOLUCIONES') return devueltas;
     if (tabActual === 'EXTEMPORANEAS') return extemporaneas;
+    if (tabActual === 'COMPROMETIDAS') return comprometidas;
     if (tabActual === 'VERIFICADAS') return verificadas;
     if (tabActual === 'AUTORIZADAS') return autorizadas;
     if (tabActual === 'PENDIENTES') return pendientes;
     return base;
-  }, [tabActual, solicitudes, devueltas, pendientes, verificadas, autorizadas, extemporaneas]);
+  }, [tabActual, solicitudes, devueltas, pendientes, verificadas, autorizadas, comprometidas, extemporaneas]);
 
   const solicitudesFiltradas = useMemo(() => {
     const termino = busqueda.toLowerCase().trim();
@@ -425,6 +435,28 @@ export default function AnalystInbox() {
             }`}
           >
             {autorizadas.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTabActual('COMPROMETIDAS')}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            tabActual === 'COMPROMETIDAS'
+              ? 'border-indigo-600 text-indigo-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Landmark className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Comprometidas (Obligación SIIF)</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              tabActual === 'COMPROMETIDAS'
+                ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {comprometidas.length}
           </span>
         </button>
 
@@ -730,6 +762,27 @@ export default function AnalystInbox() {
                               Extemporánea
                             </span>
                           )}
+                          {s.estadoSolicitud === 'COMPROMETIDA' && (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              {s.codigoRp && (
+                                <span className="text-[10px] font-mono text-slate-600 font-semibold" title={s.codigoRp}>
+                                  RP: {s.codigoRp}
+                                </span>
+                              )}
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                s.modalidadPago === 'RECONOCIMIENTO_POSTERIOR'
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}>
+                                {s.modalidadPago === 'RECONOCIMIENTO_POSTERIOR' ? 'Posterior' : 'Avance'}
+                              </span>
+                            </div>
+                          )}
+                          {s.estadoSolicitud === 'OBLIGADA' && s.numeroObligacion && (
+                            <span className="text-[10px] font-mono text-emerald-700 font-semibold">
+                              Obl: {s.numeroObligacion}
+                            </span>
+                          )}
                         </div>
                         {tieneDevolucion && (
                           <span
@@ -744,7 +797,46 @@ export default function AnalystInbox() {
                     </td>
                     <td className="py-2 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {s.estadoSolicitud === 'AUTORIZADA' ? (
+                        {s.estadoSolicitud === 'COMPROMETIDA' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleIniciarAuditoria(s)}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
+                              title="Consultar expediente y soportes de la comisión comprometida"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-slate-500" />
+                              <span className="hidden sm:inline">Consultar</span>
+                            </button>
+                            {puedeCrearObligacion && (
+                              <button
+                                type="button"
+                                onClick={() => setSolicitudObligacion(s)}
+                                style={{ backgroundColor: '#059669', color: '#ffffff' }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all text-[11px] font-semibold shadow-xs hover:opacity-90 cursor-pointer"
+                                title="Crear obligación en SIIF Nación según modalidad de pago (Etapa 8 — RF-PAG-001)"
+                              >
+                                <Landmark className="w-3.5 h-3.5 text-white" />
+                                <span className="text-white whitespace-nowrap">Crear Obligación SIIF</span>
+                              </button>
+                            )}
+                          </>
+                        ) : s.estadoSolicitud === 'OBLIGADA' ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Obligada · Lista para Pago
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleIniciarAuditoria(s)}
+                              className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded"
+                              title="Consultar expediente"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : s.estadoSolicitud === 'AUTORIZADA' ? (
                           <>
                             <button
                               type="button"
@@ -837,6 +929,20 @@ export default function AnalystInbox() {
         cargando={cargandoModal}
         onCerrar={handleCerrarModal}
         onRefrescar={handleRefrescar}
+      />
+
+      {/* Modal de Creación de Obligación en SIIF Nación (Etapa 8 — RF-PAG-001) */}
+      <CrearObligacionModal
+        abierta={Boolean(solicitudObligacion)}
+        solicitud={solicitudObligacion}
+        onCerrar={() => setSolicitudObligacion(null)}
+        onExito={(actualizada) => {
+          setMensajeExito(
+            `Obligación ${actualizada.numeroObligacion || ''} creada exitosamente en SIIF Nación. Comisión lista para desembolso de Tesorería.`,
+          );
+          setSolicitudObligacion(null);
+          cargarSolicitudes();
+        }}
       />
 
       {/* Modal de Cancelación con Trazabilidad (RF-AUT-003) */}

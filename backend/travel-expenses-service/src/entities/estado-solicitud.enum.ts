@@ -38,6 +38,7 @@ export enum EstadoSolicitud {
   CANCELADA = 'CANCELADA',
   EN_PRESUPUESTO = 'EN_PRESUPUESTO',
   COMPROMETIDA = 'COMPROMETIDA',
+  OBLIGADA = 'OBLIGADA',
 }
 
 export const ESTADOS_SOLICITUD = Object.values(EstadoSolicitud);
@@ -66,6 +67,7 @@ export const ESTADOS_SOLO_LECTURA: ReadonlySet<EstadoSolicitud> = new Set([
   EstadoSolicitud.AUTORIZADA,
   EstadoSolicitud.EN_PRESUPUESTO,
   EstadoSolicitud.COMPROMETIDA,
+  EstadoSolicitud.OBLIGADA,
   EstadoSolicitud.APROBADO_JEFE,
   EstadoSolicitud.APROBADO_TALENTO_HUMANO,
   EstadoSolicitud.RESOLUCION_EMITIDA,

@@ -38,6 +38,7 @@ import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
 import { ItemCargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
 import { ItemBulkIssueRpDto, BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
+import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
 
 import {
   sanitizeObjetoComision,
@@ -1888,6 +1889,9 @@ export class TravelExpensesService {
       EstadoSolicitud.VERIFICADA,
       EstadoSolicitud.SOLICITADA_SIIF,
       EstadoSolicitud.DEVUELTA,
+      EstadoSolicitud.AUTORIZADA,
+      EstadoSolicitud.COMPROMETIDA,
+      EstadoSolicitud.OBLIGADA,
     ];
 
     const whereCondition: any = {
@@ -2120,6 +2124,14 @@ export class TravelExpensesService {
         EstadoSolicitud.EXTEMPORANEA,
         EstadoSolicitud.VERIFICADA,
         EstadoSolicitud.SOLICITADA_SIIF,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
       ];
       if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
         throw new BadRequestException(
@@ -2246,30 +2258,51 @@ export class TravelExpensesService {
       const fechaCorta = new Date().toISOString().slice(0, 10);
       const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
 
+      const estadosAvanzadosSoloLectura = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
+      const esEstadoAvanzado = estadosAvanzadosSoloLectura.includes(solicitud.estadoSolicitud);
+
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.siifExportado = true;
       solicitud.fechaExportacionSiif = new Date();
       solicitud.usuarioExportadorId = usuarioId;
-      solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+
+      if (!esEstadoAvanzado) {
+        solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
         .save(solicitud);
 
-      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior,
-        estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-        usuarioId: usuarioId,
-        comentarios:
-          estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
-            ? 'Re-exportado a SIIF Nacion'
-            : 'Exportado a SIIF Nacion',
-      });
+      if (!esEstadoAvanzado) {
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          usuarioId: usuarioId,
+          comentarios:
+            estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
+              ? 'Re-exportado a SIIF Nacion'
+              : 'Exportado a SIIF Nacion',
+        });
 
-      this.logger.log(
-        `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
-      );
+        this.logger.log(
+          `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
+        );
+      } else {
+        this.logger.log(
+          `[consulta-siif] Solicitud ${solicitud.consecutivoUnico} (${estadoAnterior}) descargada como copia CSV por usuario ${usuarioId}`,
+        );
+      }
 
       return { csvContent, fileName, solicitud: saved };
     });
@@ -5269,6 +5302,133 @@ export class TravelExpensesService {
     items: any[],
   ) {
     return this.cargaMasivaRp(usuarioId, roles, items);
+  }
+
+  /**
+   * RF-PAG-001 — Etapa 8: Crear obligación en SIIF Nación según modalidad de pago.
+   * Actor: Analista de Viáticos.
+   *
+   * Criterios de Aceptación (Gherkin):
+   * 1. Dada una comisión COMPROMETIDA con modalidad definida,
+   *    Cuando el analista crea la obligación en SIIF Nación,
+   *    Entonces queda registrada según la modalidad (avance o posterior).
+   * 2. Dada la obligación creada,
+   *    Cuando se registra,
+   *    Entonces la comisión queda lista para el desembolso por Tesorería (pasa a OBLIGADA).
+   *
+   * Detalle funcional:
+   * - Entrada: modalidad de pago (de RF-PRE-003 o confirmada), valor, RP.
+   * - Acción: crear obligación en SIIF Nación.
+   * - Resultado: comisión lista para pago (OBLIGADA).
+   */
+  async crearObligacion(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[] = [],
+    dto: CrearObligacionDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('El ID de la solicitud es obligatorio.');
+    }
+    if (!dto || !dto.numeroObligacion?.trim()) {
+      throw new BadRequestException('El número de obligación en SIIF Nación es obligatorio.');
+    }
+
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión ${solicitudId} no encontrada.`);
+    }
+
+    // Validación de estado: Debe estar en estado COMPROMETIDA
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.COMPROMETIDA) {
+      throw new BadRequestException(
+        `La solicitud no se encuentra en estado COMPROMETIDA (Estado actual: ${solicitud.estadoSolicitud}). Solo comisiones con RP expedido pueden ser obligadas.`,
+      );
+    }
+
+    // Validación de RP
+    const tieneRp = Boolean(solicitud.codigoRp || solicitud.numeroRp);
+    if (!tieneRp) {
+      throw new BadRequestException(
+        'La comisión no cuenta con Registro Presupuestal (RP) expedido en SIIF Nación.',
+      );
+    }
+
+    // Modalidad de pago (de RF-PRE-003 o del DTO si se especifica)
+    const modalidadFinal = dto.modalidadPago || solicitud.modalidadPago || 'AVANCE';
+    const valorObligacionFinal =
+      dto.valorObligacion != null && Number(dto.valorObligacion) > 0
+        ? Number(dto.valorObligacion)
+        : Number(solicitud.valorComprometido || solicitud.montoViaticos || 0);
+
+    if (valorObligacionFinal <= 0) {
+      throw new BadRequestException(
+        'El valor de la obligación debe ser un monto positivo mayor a cero.',
+      );
+    }
+
+    // Actualización de campos de la Obligación en SIIF Nación
+    const fechaObligacionFinal = dto.fechaObligacion ? new Date(dto.fechaObligacion) : new Date();
+    const estadoAnterior = solicitud.estadoSolicitud;
+
+    solicitud.estadoSolicitud = EstadoSolicitud.OBLIGADA;
+    solicitud.numeroObligacion = dto.numeroObligacion.trim();
+    solicitud.fechaObligacion = fechaObligacionFinal;
+    solicitud.valorObligacion = valorObligacionFinal;
+    solicitud.modalidadPago = modalidadFinal;
+    solicitud.observacionesObligacion = dto.observacionesObligacion?.trim() || null;
+    if (dto.soporteObligacionPath) {
+      solicitud.soporteObligacionPath = dto.soporteObligacionPath;
+    }
+    solicitud.obligadoPorId = usuarioId;
+    solicitud.fechaRegistroObligacion = new Date();
+
+    const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+    const codigoRp = solicitud.codigoRp || solicitud.numeroRp || 'RP-N/A';
+
+    return await this.dataSource.transaction(async (manager) => {
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: guardada.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.OBLIGADA,
+        usuarioId,
+        comentarios: `[RF-PAG-001] Obligación registrada en SIIF Nación: ${dto.numeroObligacion.trim()}. Modalidad: ${modalidadFinal}. RP: ${codigoRp}. Valor obligado: $${valorObligacionFinal.toLocaleString('es-CO')}. Comisión lista para desembolso de Tesorería.`.slice(0, 255),
+      });
+
+      if (this.notificationClient?.send) {
+        try {
+          const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean) as string[];
+          for (const destId of destinatarios) {
+            await this.notificationClient.send({
+              id_usuario_destinatario: destId,
+              tipo_notificacion: 'OBLIGACION_SIIF_REGISTRADA',
+              titulo: `Obligación creada en SIIF: ${consecutivo}`,
+              mensaje: `Se ha creado la obligación ${dto.numeroObligacion.trim()} para la comisión ${consecutivo} (Modalidad: ${modalidadFinal}). La comisión está lista para desembolso por Tesorería.`,
+              descripcion_corta: `Obligación SIIF · ${consecutivo}`,
+              icono: 'CheckCircle2',
+              color: '#059669',
+              prioridad: 'Media',
+              categoria: 'VIATICOS',
+              tiene_accion: false,
+            });
+          }
+        } catch (notifErr: any) {
+          this.logger.warn(`[RF-PAG-001] No se pudo enviar notificación de obligación: ${notifErr?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[RF-PAG-001] Obligación ${dto.numeroObligacion.trim()} registrada exitosamente para solicitud ${consecutivo}. Estado: OBLIGADA. Modalidad: ${modalidadFinal}.`,
+      );
+
+      return guardada;
+    });
   }
 }
 
