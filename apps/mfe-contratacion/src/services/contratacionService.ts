@@ -106,6 +106,7 @@ import {
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
+  Dependencia,
   EtapaConActividades,
   TipologiaConfigurable,
   GuardarTipologia,
@@ -2526,7 +2527,7 @@ export const contratacionService = {
     }),
 
   /** Las dependencias de la ESAP, del catálogo de la plataforma. */
-  dependencias: () => pedir<{ id: string; nombre: string }[]>('/configuracion/dependencias'),
+  dependencias: () => pedir<Dependencia[]>('/configuracion/dependencias'),
 
   /** Deshace lo cambiado en un aviso: vuelve a regir lo sugerido. */
   restablecerAvisoDeActividad: (numeral: string, evento: EventoAviso) =>
