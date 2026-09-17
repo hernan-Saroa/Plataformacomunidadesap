@@ -2307,6 +2307,8 @@ export class AuditoriasService {
       // ✅ 1. Evento estándar predefinido (si está activo)
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: saved.id,
+        // Los Jefes OCIG configurados en Profesionales OCI se enteran de cada cambio de etapa (EFDS-873).
+        usuariosIds: await this.notificacionesService.obtenerJefesOcig(),
         auditoriaCodigo: saved.codigo,
         tituloCustom: `Auditoría movida: ${saved.codigo}`,
         mensajeCustom: `La auditoría "${saved.nombre}" ha sido movida a la etapa: ${nuevoEstadoKanban}.`,
@@ -4577,6 +4579,8 @@ export class AuditoriasService {
     try {
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: auditoria.id,
+        // Los Jefes OCIG configurados en Profesionales OCI se enteran de cada cambio de etapa (EFDS-873).
+        usuariosIds: await this.notificacionesService.obtenerJefesOcig(),
         auditoriaCodigo: auditoria.codigo,
         tituloCustom: `Cambio de Estado - Auditoría ${auditoria.codigo}`,
         mensajeCustom: `El estado de la auditoría "${auditoria.nombre}" ha cambiado de "${estadoAnterior}" a "${estadoNuevo}".`,
