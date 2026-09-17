@@ -7,9 +7,10 @@ import type { PapelAviso } from './eventos';
  * del proceso siempre que el proceso ya sepa quién es —el abogado, el
  * supervisor, el comité—, porque así llega a la persona de *ese* proceso y
  * sigue siendo cierto cuando la reasignan. Solo donde todavía no hay nadie
- * asignado se usa un rol o un permiso, que es a quien le corresponde tomarla.
- * Nunca una persona con nombre: dejaría de ser cierto en cuanto cambiara de
- * cargo.
+ * asignado se avisa por permiso: a quien puede hacerla, que es el mismo permiso
+ * que protege su pantalla. Nunca un rol ni una persona con nombre: los roles y
+ * sus permisos se configuran, y el aviso dejaría de ser cierto en cuanto
+ * cambiaran.
  *
  * Sale de la Hoja 2 del formato de roles de Contratación (junio de 2026):
  *
@@ -31,11 +32,9 @@ import type { PapelAviso } from './eventos';
  */
 export interface Destino {
   papeles: PapelAviso[];
-  roles: string[];
 }
 
-const papel = (...papeles: PapelAviso[]): Destino => ({ papeles, roles: [] });
-const rol = (...roles: string[]): Destino => ({ papeles: [], roles });
+const papel = (...papeles: PapelAviso[]): Destino => ({ papeles });
 
 /** Las que no siguen la regla de su etapa. */
 const POR_ACTIVIDAD: Record<string, Destino> = {
@@ -46,22 +45,23 @@ const POR_ACTIVIDAD: Record<string, Destino> = {
   // Le toca al abogado que le asignan en la 3.3.
   '3.4': papel('ABOGADO'),
 
-  '6.2': rol('ORDENADOR_GASTO'),
+  // Aún no hay comité: le toca a quien puede designarlo.
+  '6.2': papel('DESIGNA_COMITE_Y_SUPERVISOR'),
   '6.3': papel('COMITE_EVALUADOR'),
   '6.6': papel('COMITE_EVALUADOR'),
   '6.7': papel('COMITE_EVALUADOR'),
   '6.8': papel('COMITE_EVALUADOR'),
   '7.3': papel('COMITE_EVALUADOR'),
 
-  '8.2': rol('ORDENADOR_GASTO'),
+  '8.2': papel('DESIGNA_COMITE_Y_SUPERVISOR'),
   '8.3': papel('EQUIPO_FINANCIERO'),
   '8.7': papel('SUPERVISOR'),
 
-  '9.3': rol('ORDENADOR_GASTO'),
+  '9.3': papel('REASIGNA_SUPERVISION'),
 
   '10.1': papel('SUPERVISOR'),
   '10.3': papel('EQUIPO_FINANCIERO'),
-  '10.4': rol('ARCHIVO_GESTION_DC'),
+  '10.4': papel('ARCHIVA_EXPEDIENTE'),
 };
 
 /** Lo de cada etapa, para las que no tienen excepción. */

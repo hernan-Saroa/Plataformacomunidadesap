@@ -65,15 +65,11 @@ describe('AvisosService', () => {
   });
 
   describe('los que se configuran', () => {
-    it('«se crea un proceso» llega encendido para el Director de Contratación', async () => {
+    it('«se crea un proceso» llega encendido para quien reparte los procesos, sin nombrar un rol', async () => {
       const { srv } = conFilas([]);
       const aviso = (await srv.deActividad('3.1')).avisos.find((a) => a.evento === 'PROCESO_RADICADO');
 
-      expect(aviso).toMatchObject({
-        activo: true,
-        personalizado: false,
-        roles: [{ code: 'DIRECTOR_CONTRATACION', name: 'Director de Contratación' }],
-      });
+      expect(aviso).toMatchObject({ activo: true, personalizado: false, papeles: ['REPARTE_PROCESOS'], roles: [] });
     });
 
     it('«le toca a alguien» llega configurado en cada actividad', async () => {
@@ -109,7 +105,8 @@ describe('AvisosService', () => {
     it('no deja encender uno sin nadie a quien avisar', async () => {
       const { srv, query } = conFilas([]);
 
-      await expect(srv.guardar('3.1', 'PROCESO_RADICADO', { activo: true, roles: [] }, acceso)).rejects.toThrow(
+      // Antes de que exista el proceso no hay a quién sugerir: sin elegir a nadie, no se enciende.
+      await expect(srv.guardar('1.1', 'HABILITADA', { activo: true, roles: [] }, acceso)).rejects.toThrow(
         'Elige a quién avisar antes de encenderlo',
       );
       expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT'))).toBe(false);

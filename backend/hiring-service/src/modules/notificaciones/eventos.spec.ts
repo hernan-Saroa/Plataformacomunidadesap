@@ -159,7 +159,10 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
       roles: [],
     });
     expect(avisoQueRige('HABILITADA', undefined, '9.4')).toMatchObject({ papeles: ['SUPERVISOR'] });
-    expect(avisoQueRige('HABILITADA', undefined, '6.2')).toMatchObject({ papeles: [], roles: ['ORDENADOR_GASTO'] });
+    expect(avisoQueRige('HABILITADA', undefined, '6.2')).toMatchObject({
+      papeles: ['DESIGNA_COMITE_Y_SUPERVISOR'],
+      roles: [],
+    });
   });
 
   it('lo que la Dirección cambió manda sobre lo sugerido de la actividad', () => {

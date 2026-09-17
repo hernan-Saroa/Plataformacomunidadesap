@@ -1,7 +1,14 @@
 import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import { PERMISO_PRESUPUESTO_GESTIONAR, PERMISO_PROCESO_TOMAR } from '../../auth/permisos';
+import {
+  PERMISO_DESIGNACION_ORDENAR,
+  PERMISO_EXPEDIENTE_ARCHIVAR,
+  PERMISO_PRESUPUESTO_GESTIONAR,
+  PERMISO_PROCESO_ASIGNAR,
+  PERMISO_PROCESO_TOMAR,
+  PERMISO_SUPERVISION_REASIGNAR,
+} from '../../auth/permisos';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -339,6 +346,16 @@ export class NotificadorService implements OnApplicationBootstrap {
         return this.cuentasConPermiso(PERMISO_PROCESO_TOMAR);
       case 'EQUIPO_FINANCIERO':
         return this.cuentasConPermiso(PERMISO_PRESUPUESTO_GESTIONAR);
+      // Los mismos permisos que protegen la pantalla de cada cosa: quien puede
+      // hacerla es a quien le toca.
+      case 'REPARTE_PROCESOS':
+        return this.cuentasConPermiso(PERMISO_PROCESO_ASIGNAR);
+      case 'DESIGNA_COMITE_Y_SUPERVISOR':
+        return this.cuentasConPermiso(PERMISO_DESIGNACION_ORDENAR);
+      case 'REASIGNA_SUPERVISION':
+        return this.cuentasConPermiso(PERMISO_SUPERVISION_REASIGNAR);
+      case 'ARCHIVA_EXPEDIENTE':
+        return this.cuentasConPermiso(PERMISO_EXPEDIENTE_ARCHIVAR);
       case 'COMITE_EVALUADOR': {
         // Personas del comité vigente: la campana las traduce a sus cuentas.
         const filas = await this.dataSource.query(

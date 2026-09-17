@@ -3231,7 +3231,11 @@ export type PapelAviso =
   | 'BANDEJA_CONTRATACION'
   | 'EQUIPO_FINANCIERO'
   | 'COMITE_EVALUADOR'
-  | 'SUPERVISOR';
+  | 'SUPERVISOR'
+  | 'REPARTE_PROCESOS'
+  | 'DESIGNA_COMITE_Y_SUPERVISOR'
+  | 'REASIGNA_SUPERVISION'
+  | 'ARCHIVA_EXPEDIENTE';
 
 /** Un aviso de una actividad: cuándo sale, si está encendido y a quién le llega. */
 export interface AvisoEvento {

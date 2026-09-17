@@ -172,6 +172,23 @@ describe('NotificadorService · despachar', () => {
       const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
       expect(llamada?.[1]).toEqual(['contratacion.presupuesto.gestionar']);
     });
+
+    it.each([
+      ['PROCESO_RADICADO', '3.1', 'contratacion.proceso.assign'],
+      ['HABILITADA', '6.2', 'contratacion.designacion.ordenar'],
+      ['HABILITADA', '8.2', 'contratacion.designacion.ordenar'],
+      ['HABILITADA', '9.3', 'contratacion.supervision.reasignar'],
+      ['HABILITADA', '10.4', 'contratacion.expediente.archivar'],
+    ])('%s en la %s llega a las cuentas con el permiso %s, no a un rol', async (evento, numeral, permiso) => {
+      fetchOk();
+      const { srv, query } = conBase([], { permiso: [{ id: 'u-con-permiso' }] });
+
+      await srv.despachar([{ ...adjunto, evento: evento as never, numeral }]);
+
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
+      expect(llamada?.[1]).toEqual([permiso]);
+      expect(query.mock.calls.some(([s]) => String(s).includes('FROM auth.user_roles') && !String(s).includes('perm.code'))).toBe(false);
+    });
   });
 
   describe('por correo', () => {

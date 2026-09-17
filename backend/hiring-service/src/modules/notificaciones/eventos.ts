@@ -36,13 +36,22 @@ export type PapelAviso =
   | 'BANDEJA_CONTRATACION'
   | 'EQUIPO_FINANCIERO'
   | 'COMITE_EVALUADOR'
-  | 'SUPERVISOR';
+  | 'SUPERVISOR'
+  | 'REPARTE_PROCESOS'
+  | 'DESIGNA_COMITE_Y_SUPERVISOR'
+  | 'REASIGNA_SUPERVISION'
+  | 'ARCHIVA_EXPEDIENTE';
 
-/** Lo que rige mientras nadie cambie un aviso. */
+/**
+ * Lo que rige mientras nadie cambie un aviso.
+ *
+ * Solo papeles: lo sugerido nunca nombra un rol, porque los roles y sus
+ * permisos se configuran. Donde no hay nadie del proceso, el papel se resuelve
+ * por el permiso de quien puede hacerlo.
+ */
 export interface Sugerido {
   activo: boolean;
   papeles: PapelAviso[];
-  roles?: string[];
 }
 
 export interface DefinicionEvento {
@@ -165,7 +174,7 @@ export const EVENTOS: DefinicionEvento[] = [
     nombre: 'Se crea un proceso',
     ayuda: 'Sale cuando el área crea el proceso, para que la Dirección sepa que viene uno nuevo.',
     numeral: '3.1',
-    sugerido: { activo: true, papeles: [], roles: ['DIRECTOR_CONTRATACION'] },
+    sugerido: { activo: true, papeles: ['REPARTE_PROCESOS'] },
   },
   {
     codigo: 'DOCUMENTO_ADJUNTO',
@@ -186,6 +195,10 @@ export const PAPELES: { codigo: PapelAviso; nombre: string }[] = [
   { codigo: 'EQUIPO_FINANCIERO', nombre: 'El equipo financiero' },
   { codigo: 'COMITE_EVALUADOR', nombre: 'El comité evaluador' },
   { codigo: 'SUPERVISOR', nombre: 'El supervisor del contrato' },
+  { codigo: 'REPARTE_PROCESOS', nombre: 'Quien reparte los procesos en Contratación' },
+  { codigo: 'DESIGNA_COMITE_Y_SUPERVISOR', nombre: 'Quien designa el comité y el supervisor' },
+  { codigo: 'REASIGNA_SUPERVISION', nombre: 'Quien reasigna la supervisión' },
+  { codigo: 'ARCHIVA_EXPEDIENTE', nombre: 'Quien archiva el expediente' },
 ];
 
 const CODIGOS_EVENTO = new Set(EVENTOS.map((e) => e.codigo));
@@ -269,7 +282,7 @@ export function avisoQueRige(
     personalizado: false,
     activo: definicion?.siempre ? true : sugerido.activo,
     papeles: sugerido.papeles,
-    roles: sugerido.roles ?? [],
+    roles: [],
     personas: [],
     dependencias: [],
   };
