@@ -231,6 +231,19 @@ export class ConfiguracionController {
     return this.service.rolesDelModulo();
   }
 
+  @Get('dependencias')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
+  @ApiOperation({
+    summary: 'Las dependencias de la ESAP',
+    description:
+      'Del catálogo transversal de la plataforma (auth.dependencias), no de una copia local: ' +
+      'lo que administra estructura organizacional es lo que aparece aquí.',
+  })
+  dependencias() {
+    return this.service.dependenciasDelModulo();
+  }
+
   @Post('actividades/:numeral/campos')
   @UseGuards(PermisosGuard)
   @Permisos('contratacion.config.manage')

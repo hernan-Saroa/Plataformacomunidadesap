@@ -854,6 +854,23 @@ export class ConfiguracionService {
   }
 
   /**
+   * Las dependencias de la ESAP, del catálogo transversal de la plataforma.
+   *
+   * `auth.dependencias` es la tabla maestra —la misma que usan viáticos y
+   * estructura organizacional (EFDS-2065)—, y se consulta directamente en
+   * vez de duplicarla: una copia local se desactualiza en cuanto alguien crea,
+   * renombra o inactiva una dependencia desde el módulo que sí la administra.
+   */
+  dependenciasDelModulo(): Promise<{ id: string; nombre: string }[]> {
+    return this.dataSource.query(
+      `SELECT id_dependencia::text AS id, nom_dependencia AS nombre
+       FROM auth.dependencias
+       WHERE activo = true
+       ORDER BY nom_dependencia`,
+    );
+  }
+
+  /**
    * Agrega algo que la actividad le pedira al gestor.
    *
    * El codigo se deriva del tipo y de cuantos van: es la referencia con la que
