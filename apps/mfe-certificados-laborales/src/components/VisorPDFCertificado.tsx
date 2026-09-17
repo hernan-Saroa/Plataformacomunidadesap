@@ -450,12 +450,28 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       new Date().toISOString();
     const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
 
-    const grupoVariable = normalizarDependencia(
-      requestData?.position_location ||
-      requestData?.positionLocation ||
-      certificado.position_location ||
-      '',
+    // [GRUPO] imprime el GRUPO INTERNO DE TRABAJO y solo cae a la ubicacion del
+    // cargo (`position_location`) cuando no hay grupo. Misma regla y mismo
+    // orden que labor-certificate-pdf.service.ts: esta vista previa se
+    // renderiza aqui, asi que si las dos copias no coinciden el usuario ve una
+    // cosa en pantalla y otra en el PDF. `resolverCentroCosto` descarta los
+    // "N/A" y "NO APLICA", que para esta variable cuentan como vacio.
+    // En un certificado corregido manda lo que guardo el coordinador.
+    const grupoInterno = resolverCentroCosto(
+      requestData?.internal_group,
+      requestData?.internalGroup,
+      (certificado as any)?.internal_group,
     );
+    const grupoVariable = (certificado as any)?.is_corrected
+      ? normalizarDependencia(certificado.position_location || '') ||
+        normalizarDependencia(grupoInterno)
+      : normalizarDependencia(
+          grupoInterno ||
+          requestData?.position_location ||
+          requestData?.positionLocation ||
+          certificado.position_location ||
+          '',
+        );
     const hasGrupoVariable = /\[GRUPO\]/i.test(html || '');
     const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(html || '');
     const shouldHideGrupo =

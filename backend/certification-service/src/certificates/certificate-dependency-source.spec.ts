@@ -58,7 +58,8 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
       expect(html).toContain('Profesional Especializado');
       expect(html).toContain(templateType === 'administrador' ? 'Grado 12 (E)' : 'Codigo 2028 (E)');
       expect(html).toContain('5.099.764');
-      expect(html).toContain('GRUPO:Ubicacion del encargo');
+      // [GRUPO] es el grupo interno de trabajo del encargo, no su ubicacion.
+      expect(html).toContain('GRUPO:Grupo del encargo');
       expect(html).toContain(`DATO7:${assignment.department}`);
       expect(base).not.toHaveProperty('certificate_dependency');
       expect(assignment).not.toHaveProperty('certificate_dependency');
