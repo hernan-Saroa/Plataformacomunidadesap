@@ -695,6 +695,8 @@ export const contratacionService = {
       decision: DecisionComite;
       condiciones?: string;
       observaciones?: string;
+      /** A qué actividad anterior vuelve el proceso al observar (EFDS-2068). */
+      numeralDevolucion?: string;
     },
     acta: File,
   ) =>

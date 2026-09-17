@@ -14,6 +14,7 @@ import {
 } from '../../entities/comite-contratacion.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Revision } from '../../entities/revision.entity';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { CdpModule } from '../cdp/cdp.module';
 
@@ -30,6 +31,7 @@ import { CdpModule } from '../cdp/cdp.module';
       UmbralComiteContratacion,
       ProcesoActividad,
       Trazabilidad,
+      Revision,
     ]),
     // Quién transcribe lo que decidió el comité es el abogado repartido en la 3.3.
     ParticipacionModule,

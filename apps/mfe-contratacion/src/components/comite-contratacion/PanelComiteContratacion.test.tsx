@@ -108,6 +108,82 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     expect(screen.getByRole('button', { name: /Registrar la sesión/ })).toBeDisabled();
   });
 
+  /**
+   * A qué actividad vuelve el proceso al observar (EFDS-2068).
+   *
+   * Antes, observar devolvía la 3.7 pero la 3.1 y las demás seguían
+   * aprobadas: la corrección que pidió el comité no tenía dónde aplicarse.
+   */
+  it('observar también exige decir a qué actividad vuelve el proceso', async () => {
+    pintar(estado({ puedeRegistrar: true }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'OBSERVADO');
+    await userEvent.type(
+      screen.getByLabelText(/Observaciones de fondo/),
+      'El estudio previo no sustenta la experiencia exigida',
+    );
+    await userEvent.type(screen.getByLabelText(/Fecha de la sesión/), '2026-09-01');
+
+    expect(screen.getByLabelText(/A qué actividad vuelve el proceso/)).toBeInTheDocument();
+    // Con todo lo demás lleno, sigue bloqueado hasta el acta o el numeral.
+    expect(screen.getByRole('button', { name: /Registrar la sesión/ })).toBeDisabled();
+  });
+
+  it('no pide a qué actividad vuelve si el comité aprueba o condiciona', async () => {
+    pintar(estado({ puedeRegistrar: true }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+
+    expect(screen.queryByLabelText(/A qué actividad vuelve el proceso/)).toBeNull();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/Qué decidió/),
+      'APROBADO_CON_CONDICIONES',
+    );
+    expect(screen.queryByLabelText(/A qué actividad vuelve el proceso/)).toBeNull();
+  });
+
+  it('registra la sesión con el numeral elegido cuando el comité observa', async () => {
+    const registrar = vi
+      .spyOn(contratacionService, 'registrarSesionComite')
+      .mockResolvedValue(estado({ estado: 'DEVUELTO' }) as never);
+    pintar(estado({ puedeRegistrar: true }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+    await userEvent.type(screen.getByLabelText(/Fecha de la sesión/), '2026-09-01');
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'OBSERVADO');
+    await userEvent.type(
+      screen.getByLabelText(/Observaciones de fondo/),
+      'El estudio previo no sustenta la experiencia exigida',
+    );
+    await userEvent.selectOptions(screen.getByLabelText(/A qué actividad vuelve el proceso/), '3.1');
+
+    const acta = new File(['contenido'], 'acta.pdf', { type: 'application/pdf' });
+    await userEvent.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      acta,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Registrar la sesión/ }));
+
+    expect(registrar).toHaveBeenCalledWith(
+      'p-1',
+      expect.objectContaining({
+        decision: 'OBSERVADO',
+        observaciones: 'El estudio previo no sustenta la experiencia exigida',
+        numeralDevolucion: '3.1',
+      }),
+      acta,
+    );
+  });
+
   it('la aprobación condicionada pide las condiciones', async () => {
     pintar(estado({ puedeRegistrar: true }));
 
