@@ -1169,6 +1169,51 @@ export class EstudioPrevioService {
     });
   }
 
+  /**
+   * Retira un documento adjuntado al estudio previo.
+   *
+   * Se borra la fila y no se marca como anulada: la traza ya deja constancia
+   * de que se cargó y de que se retiró, con quién y cuándo. El archivo en
+   * disco se conserva —el expediente debe poder probar qué se entregó—.
+   */
+  async retirarAdjunto(procesoId: string, documentoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const actividad = await this.obtenerActividad(em, procesoId);
+      if (actividad.estado === 'EN_REVISION') {
+        throw new ConflictException('El estudio previo ya fue enviado; no admite retirar adjuntos');
+      }
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const documento = await em.findOne(Documento, {
+        where: { id: documentoId, expedienteId: expediente.id },
+      });
+      if (!documento) throw new NotFoundException('El documento no está en este expediente');
+
+      if (documento.numeral !== NUMERAL_ESTUDIO_PREVIO) {
+        throw new BadRequestException('El documento no pertenece al estudio previo');
+      }
+
+      // El snapshot del formulario no es un adjunto que alguien pueda quitar:
+      // es la copia de lo que se envió a revisión, y sin ella la revisión no
+      // prueba nada.
+      if (documento.tipo !== 'ADJUNTO') {
+        throw new BadRequestException(
+          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+        );
+      }
+
+      await this.traza(em, procesoId, 'documento', documento.id, 'ANULAR', acceso, {
+        nombre: documento.archivoNombreOriginal ?? documento.nombre,
+      });
+
+      await em.getRepository(Documento).remove(documento);
+
+      return { retirado: true };
+    });
+  }
+
   // --------------------------------------------------------------- apoyo ---
 
   private async obtenerActividad(em: EntityManager, procesoId: string, bloquear = false) {

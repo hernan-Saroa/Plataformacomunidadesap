@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -207,6 +208,22 @@ export class EstudioPrevioController {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.registrarAdjunto(id, file, hash, getHiringAccess(req));
+  }
+
+  @Delete(':id/estudio-previo/documentos/:documentoId')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @ApiOperation({
+    summary: 'Retirar un documento del estudio previo',
+    description:
+      'Queda la traza de que se cargó y de que se retiró, con quién y cuándo. El archivo en disco se conserva: el expediente debe poder probar qué se entregó.',
+  })
+  retirarAdjunto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentoId', ParseUUIDPipe) documentoId: string,
+    @Req() req: any,
+  ) {
+    return this.service.retirarAdjunto(id, documentoId, getHiringAccess(req));
   }
 
   // ---------------------------------------------- lista de chequeo (3.1) ---

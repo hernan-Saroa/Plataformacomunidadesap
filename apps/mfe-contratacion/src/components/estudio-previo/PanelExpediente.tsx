@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FileText, Upload, ShieldCheck, Download, Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { FileText, Upload, ShieldCheck, Download, Eye, Trash2 } from 'lucide-react';
 import { contratacionService } from '../../services/contratacionService';
 import { Expediente } from '../../types';
 import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
+
+/** Numeral del estudio previo (3.1): solo sus adjuntos admiten retirarse desde aquí. */
+const NUMERAL_ESTUDIO_PREVIO = '3.1';
 
 interface Props {
   procesoId: string;
@@ -31,6 +35,7 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
+  const [retirando, setRetirando] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const cargar = async () => {
@@ -72,6 +77,26 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
       setSubiendo(false);
       if (inputRef.current) inputRef.current.value = '';
       if (subidos > 0) await cargar();
+    }
+  };
+
+  /**
+   * Retira un adjunto del estudio previo (numeral 3.1).
+   *
+   * Solo se ofrece sobre esos adjuntos: el snapshot del formulario y los
+   * documentos de otras actividades no pasan por aquí, y el propio servicio
+   * lo rechaza con 400/409 si igual se intentara.
+   */
+  const retirar = async (documentoId: string) => {
+    setRetirando(documentoId);
+    try {
+      await contratacionService.retirarAdjuntoDelEstudioPrevio(procesoId, documentoId);
+      toast.success('Documento retirado');
+      await cargar();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo retirar el documento');
+    } finally {
+      setRetirando(null);
     }
   };
 
@@ -138,6 +163,12 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
         <ul className="m-0 p-0 list-none">
           {expediente.documentos.map((doc) => {
             const esSnapshot = doc.tipo === 'SNAPSHOT_FORMULARIO';
+            // Solo los adjuntos sueltos del estudio previo admiten retirarse
+            // desde aquí: los que cubren un requisito de la lista de chequeo
+            // tienen su propio flujo de sustitución, y los de otras
+            // actividades no son de este numeral.
+            const esAdjuntoDelEstudioPrevio =
+              doc.tipo === 'ADJUNTO' && doc.numeral === NUMERAL_ESTUDIO_PREVIO && !doc.requisito;
             return (
               <li
                 key={doc.id}
@@ -192,6 +223,17 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                       <Download className="w-4 h-4" />
                     </a>
                   </>
+                )}
+                {editable && esAdjuntoDelEstudioPrevio && (
+                  <button
+                    type="button"
+                    onClick={() => retirar(doc.id)}
+                    disabled={retirando === doc.id}
+                    className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                    title={`Retirar ${doc.nombre}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 )}
                 {esSnapshot && (
                   <span className="shrink-0 text-[10px] font-bold text-[#003DA5] bg-[#E0EDFF] px-2 py-0.5 rounded-full">

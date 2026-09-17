@@ -1823,6 +1823,19 @@ export const contratacionService = {
     );
   },
 
+  /**
+   * Retira un adjunto del estudio previo (numeral 3.1).
+   *
+   * Solo aplica mientras el estudio previo sigue editable: si ya está en
+   * revisión el backend responde 409, y si el documento es el snapshot del
+   * formulario enviado (no un adjunto suelto) responde 400.
+   */
+  retirarAdjuntoDelEstudioPrevio: (procesoId: string, documentoId: string) =>
+    pedir<{ retirado: boolean }>(
+      `/procesos/${procesoId}/estudio-previo/documentos/${documentoId}`,
+      { method: 'DELETE' },
+    ),
+
   // ------------------------------------------ configuración de etapas ---
 
   /** Las 63 actividades de la matriz, agrupadas por etapa. */

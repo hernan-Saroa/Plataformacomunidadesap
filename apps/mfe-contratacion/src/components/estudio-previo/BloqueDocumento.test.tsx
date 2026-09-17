@@ -113,4 +113,33 @@ describe('BloqueDocumento', () => {
     // Verlos, en cambio, sigue estando: es justo lo que hace quien revisa.
     expect(screen.getByTitle(/Ver Estudio previo firmado/)).toBeInTheDocument();
   });
+
+  it('retira un adjunto y recarga la lista', async () => {
+    const retirar = vi
+      .spyOn(contratacionService, 'retirarAdjuntoDelEstudioPrevio')
+      .mockResolvedValue({ retirado: true });
+    const { onAdjuntado } = montar([documento()]);
+
+    await userEvent.click(screen.getByTitle(/Retirar Estudio previo firmado/));
+
+    await waitFor(() =>
+      expect(retirar).toHaveBeenCalledWith(
+        '7f1e1b8a-0000-4000-8000-000000000001',
+        expect.any(String),
+      ),
+    );
+    expect(onAdjuntado).toHaveBeenCalledTimes(1);
+  });
+
+  it('no ofrece retirar mientras el estudio está en revisión', () => {
+    montar([documento()], true);
+
+    expect(screen.queryByTitle(/Retirar Estudio previo firmado/)).toBeNull();
+  });
+
+  it('no ofrece retirar el snapshot del formulario enviado', () => {
+    montar([documento({ tipo: 'SNAPSHOT_FORMULARIO', nombre: 'Estudio previo — datos enviados' })]);
+
+    expect(screen.queryByTitle(/Retirar Estudio previo/)).toBeNull();
+  });
 });
