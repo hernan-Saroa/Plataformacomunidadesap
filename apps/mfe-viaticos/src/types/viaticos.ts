@@ -178,6 +178,9 @@ export interface SolicitudComisionResponse {
   fechaCancelacion?: string | null;
   responsableCancelacion?: string | null;
   pendienteReintegro?: boolean;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  fechaCalculoModalidad?: string | null;
   resumenPresupuestal?: {
     totalGastado: number;
     cantidadSolicitudes: number;
@@ -348,6 +351,9 @@ export interface SolicitudViatico {
   rubroRp?: string | null;
   codigoRp?: string | null;
   fechaExpedicionRp?: string | null;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  fechaCalculoModalidad?: string | null;
 }
 
 export interface TiqueteAereo {

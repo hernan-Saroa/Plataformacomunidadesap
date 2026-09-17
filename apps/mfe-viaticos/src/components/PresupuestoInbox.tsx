@@ -287,6 +287,7 @@ export default function PresupuestoInbox() {
                   <th className="px-4 py-3.5">Rubro</th>
                   <th className="px-4 py-3.5">Estado</th>
                   <th className="px-4 py-3.5">Registro Presupuestal (RP)</th>
+                  <th className="px-4 py-3.5">Modalidad de Pago</th>
                   <th className="px-4 py-3.5 text-right">Acción</th>
                 </tr>
               </thead>
@@ -365,6 +366,37 @@ export default function PresupuestoInbox() {
                           </div>
                         ) : (
                           <span className="text-[11px] text-slate-400 italic">Pendiente de expedición</span>
+                        )}
+                      </td>
+
+                      {/* Modalidad de Pago (RF-PRE-003) */}
+                      <td className="px-4 py-3">
+                        {sol.modalidadPago === 'AVANCE' ? (
+                          <div className="space-y-0.5">
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center space-x-1 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              <span>AVANCE</span>
+                            </span>
+                            {sol.diasHabilesPrevios != null && (
+                              <div className="text-[10px] text-emerald-700 font-medium pl-1">
+                                {sol.diasHabilesPrevios} días hábiles disponibles
+                              </div>
+                            )}
+                          </div>
+                        ) : sol.modalidadPago === 'RECONOCIMIENTO_POSTERIOR' ? (
+                          <div className="space-y-0.5">
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center space-x-1 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                              <span>RECONOCIMIENTO POSTERIOR</span>
+                            </span>
+                            {sol.diasHabilesPrevios != null && (
+                              <div className="text-[10px] text-amber-700 font-medium pl-1">
+                                {sol.diasHabilesPrevios} {sol.diasHabilesPrevios === 1 ? 'día hábil previo' : 'días hábiles previos'}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Por determinar al expedir</span>
                         )}
                       </td>
 

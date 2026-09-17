@@ -149,4 +149,27 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
     expect(botonConfirmar.hasAttribute('disabled')).toBe(true);
     expect(viaticosService.expedirRp).not.toHaveBeenCalled();
   });
+
+  it('RF-PRE-003: calcula y muestra en vivo la modalidad de pago proyectada según días hábiles', () => {
+    // Solicitud que inicia en 8 días hábiles
+    const solicitudConAnticipacion = {
+      ...mockSolicitudAutorizada,
+      fechaInicio: '2026-10-15',
+    };
+
+    render(
+      <RegistrarRPModal
+        abierto={true}
+        solicitud={solicitudConAnticipacion}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputFecha = screen.getByDisplayValue(/2026/);
+    fireEvent.change(inputFecha, { target: { value: '2026-10-01' } });
+
+    expect(screen.getByText(/Modalidad proyectada según días hábiles \(RF-PRE-003\)/i)).toBeDefined();
+    expect(screen.getByText(/AVANCE \(Pago Anticipado\)/i)).toBeDefined();
+  });
 });

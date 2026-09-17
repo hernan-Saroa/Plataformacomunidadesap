@@ -76,6 +76,41 @@ export default function ExpedirRpModal({
     return regex.test(codigoRpFinal);
   }, [codigoRpFinal]);
 
+  // Proyección de modalidad de pago (RF-PRE-003)
+  const proyeccionModalidad = useMemo(() => {
+    if (!solicitud?.fechaInicio || !fechaRp) {
+      return null;
+    }
+    const parseUtc = (str: string) => {
+      const parts = str.slice(0, 10).split('-');
+      return new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+    };
+
+    const dInicio = parseUtc(fechaRp);
+    const dFin = parseUtc(solicitud.fechaInicio);
+
+    if (dFin.getTime() <= dInicio.getTime()) {
+      return { diasHabiles: 0, modalidad: 'RECONOCIMIENTO_POSTERIOR' };
+    }
+
+    let habiles = 0;
+    const cursor = new Date(dInicio.getTime());
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
+    while (cursor.getTime() < dFin.getTime()) {
+      const day = cursor.getUTCDay();
+      if (day !== 0 && day !== 6) {
+        habiles++;
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return {
+      diasHabiles: habiles,
+      modalidad: habiles >= 5 ? 'AVANCE' : 'RECONOCIMIENTO_POSTERIOR',
+    };
+  }, [solicitud?.fechaInicio, fechaRp]);
+
   const puedeEnviar =
     Boolean(numeroRp.trim()) &&
     Boolean(fechaRp) &&
@@ -220,6 +255,42 @@ export default function ExpedirRpModal({
                 Fecha de expedición formal en SIIF.
               </p>
             </div>
+
+            {/* Proyección Modalidad de Pago (RF-PRE-003) */}
+            {proyeccionModalidad && (
+              <div
+                className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between transition-all ${
+                  proyeccionModalidad.modalidad === 'AVANCE'
+                    ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50/80 border-amber-200 text-amber-900'
+                }`}
+              >
+                <div className="flex items-center space-x-2.5">
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                      proyeccionModalidad.modalidad === 'AVANCE' ? 'bg-emerald-600' : 'bg-amber-600'
+                    }`}
+                  />
+                  <div>
+                    <span className="font-bold uppercase tracking-wider text-[10px] block text-slate-500">
+                      Modalidad proyectada (RF-PRE-003)
+                    </span>
+                    <span className="font-bold text-xs">
+                      {proyeccionModalidad.modalidad === 'AVANCE'
+                        ? 'AVANCE (Pago Anticipado)'
+                        : 'RECONOCIMIENTO POSTERIOR (Liquidación Posterior)'}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right font-mono text-[11px] shrink-0 pl-2">
+                  <span className="font-bold">~{proyeccionModalidad.diasHabiles}</span>{' '}
+                  {proyeccionModalidad.diasHabiles === 1 ? 'día hábil previo' : 'días hábiles previos'}
+                  <div className="text-[10px] opacity-75">
+                    {proyeccionModalidad.modalidad === 'AVANCE' ? '≥ 5 días hábiles' : '< 5 días hábiles'}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Valor Comprometido */}
             <div>

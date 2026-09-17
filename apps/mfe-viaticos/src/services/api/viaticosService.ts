@@ -219,6 +219,9 @@ export class ViaticosService {
       rubroRp: (s as any).rubroRp || null,
       codigoRp: (s as any).codigoRp || null,
       fechaExpedicionRp: (s as any).fechaExpedicionRp || null,
+      modalidadPago: (s as any).modalidadPago || (s as any).modalidad_pago || null,
+      diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : ((s as any).dias_habiles_previos != null ? Number((s as any).dias_habiles_previos) : null),
+      fechaCalculoModalidad: (s as any).fechaCalculoModalidad || (s as any).fecha_calculo_modalidad || null,
     };
   }
 
@@ -1586,6 +1589,33 @@ export class ViaticosService {
       return res.data || res;
     } catch (error) {
       console.error('[viaticos] Error procesando carga masiva de RPs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-003 — Previsualizar modalidad de pago según días hábiles previos (Etapa 7).
+   */
+  async previsualizarModalidadPago(
+    solicitudId: string,
+    fechaRp?: string,
+  ): Promise<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    fechaReferencia: string;
+    fechaInicioComision: string;
+    diasHabilesPrevios: number;
+    modalidadPago: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR';
+    umbralMinimoAvance: number;
+  }> {
+    try {
+      const q = fechaRp ? `?fechaRp=${encodeURIComponent(fechaRp)}` : '';
+      const res = await apiClient.get<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/modalidad-pago${q}`,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error previsualizando modalidad de pago:', error);
       throw error;
     }
   }

@@ -1441,5 +1441,36 @@ export class TravelExpensesController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  /**
+   * RF-PRE-003 — Previsualizar modalidad de pago según días hábiles previos (Etapa 7).
+   *
+   * Endpoint: GET /api/v1/requests/:id/modalidad-pago
+   * Alias: GET requests/:id/modalidad-pago
+   */
+  @Get(['requests/:id/modalidad-pago', 'api/v1/requests/:id/modalidad-pago'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Previsualizar modalidad de pago (AVANCE vs. RECONOCIMIENTO_POSTERIOR) [RF-PRE-003]',
+    description:
+      'Calcula en vivo los días hábiles disponibles antes del viaje excluyendo festivos de Colombia y determina la modalidad de pago proyectada.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Modalidad de pago y días hábiles calculados.',
+  })
+  @ApiBearerAuth()
+  async previsualizarModalidadPago(
+    @Param('id') id: string,
+    @Query('fechaRp') fechaRp?: string,
+  ) {
+    const result = await this.service.previsualizarModalidadPago(id, fechaRp);
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
 

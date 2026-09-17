@@ -23,6 +23,7 @@ import { SaldoTiqueteEntity } from './entities/tickets/saldo-tiquete.entity';
 import { RutaRestringidaEntity } from './entities/tickets/ruta-restringida.entity';
 import { ExcepcionTiqueteEntity } from './entities/tickets/excepcion-tiquete.entity';
 import { SolicitudHistorialEstadoEntity } from './entities/solicitud-historial-estado.entity';
+import { FestivoColombiaEntity } from './entities/festivo-colombia.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
@@ -59,6 +60,7 @@ import { CommonModule } from './common/common.module';
         RutaRestringidaEntity,
         ExcepcionTiqueteEntity,
         SolicitudHistorialEstadoEntity,
+        FestivoColombiaEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',

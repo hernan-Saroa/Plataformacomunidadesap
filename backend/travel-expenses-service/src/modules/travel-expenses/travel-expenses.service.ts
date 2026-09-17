@@ -15,10 +15,13 @@ import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
+import { FestivoColombiaEntity } from '../../entities/festivo-colombia.entity';
 import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
+
+export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
@@ -4578,6 +4581,140 @@ export class TravelExpensesService {
   }
 
   /**
+   * RF-PRE-003: Determinar días hábiles en Colombia disponibles antes del viaje.
+   * Excluye sábados (6), domingos (0) y días festivos registrados en travel_expenses.festivos_colombia.
+   *
+   * @param fechaReferencia Fecha de expedición del RP o fecha de corte actual (excluida del cómputo).
+   * @param fechaInicioViaje Fecha de inicio de la comisión de servicios.
+   * @returns Cantidad de días hábiles completos antes del inicio del viaje (entero >= 0).
+   */
+  async calcularDiasHabilesPrevios(
+    fechaReferencia: Date | string,
+    fechaInicioViaje: Date | string,
+  ): Promise<number> {
+    if (!fechaReferencia || !fechaInicioViaje) {
+      return 0;
+    }
+
+    const parseToUtcDate = (val: Date | string): Date => {
+      if (typeof val === 'string') {
+        const clean = val.split('T')[0].trim();
+        const parts = clean.split('-');
+        if (parts.length === 3) {
+          return new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+        }
+      }
+      const d = new Date(val);
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    };
+
+    const inicio = parseToUtcDate(fechaReferencia);
+    const fin = parseToUtcDate(fechaInicioViaje);
+
+    // Si la comisión inicia en la misma fecha o ya inició en el pasado, no hay días hábiles disponibles
+    if (fin.getTime() <= inicio.getTime()) {
+      return 0;
+    }
+
+    // Obtener festivos de Colombia
+    const festivosSet = new Set<string>();
+    try {
+      const festivoRepo = this.dataSource.getRepository(FestivoColombiaEntity);
+      const festivos = await festivoRepo.find();
+      if (Array.isArray(festivos)) {
+        festivos.forEach((f) => {
+          if (f.fecha) {
+            const fStr =
+              typeof f.fecha === 'string'
+                ? f.fecha.slice(0, 10)
+                : new Date(f.fecha).toISOString().slice(0, 10);
+            festivosSet.add(fStr);
+          }
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[calcularDiasHabilesPrevios] No se pudieron consultar festivos en BD: ${err?.message}`,
+      );
+    }
+
+    let diasHabiles = 0;
+    // Cursor avanza desde el día siguiente a la fecha de referencia hasta estrictamente antes de fechaInicioViaje
+    const cursor = new Date(inicio.getTime());
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
+    while (cursor.getTime() < fin.getTime()) {
+      const dayOfWeek = cursor.getUTCDay(); // 0 = Domingo, 6 = Sábado
+      const isoDate = cursor.toISOString().slice(0, 10);
+
+      const esFinDeSemana = dayOfWeek === 0 || dayOfWeek === 6;
+      const esFestivo = festivosSet.has(isoDate);
+
+      if (!esFinDeSemana && !esFestivo) {
+        diasHabiles++;
+      }
+
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return diasHabiles;
+  }
+
+  /**
+   * RF-PRE-003: Determinar modalidad de pago según los días hábiles previos disponibles.
+   * Regla de negocio institucional ESAP:
+   *   - Si diasHabiles >= umbral (por defecto 5 días hábiles): AVANCE (pago anticipado).
+   *   - Si diasHabiles < umbral: RECONOCIMIENTO_POSTERIOR (reembolso posterior a la comisión).
+   */
+  determinarModalidadPago(
+    diasHabiles: number,
+    umbral: number = DIAS_HABILES_MINIMOS_AVANCE_DEFAULT,
+  ): 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' {
+    if (diasHabiles >= umbral) {
+      return 'AVANCE';
+    }
+    return 'RECONOCIMIENTO_POSTERIOR';
+  }
+
+  /**
+   * RF-PRE-003: Previsualizar modalidad de pago para una comisión antes de expedir el RP.
+   */
+  async previsualizarModalidadPago(
+    solicitudId: string,
+    fechaRp?: string,
+  ): Promise<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    fechaReferencia: string;
+    fechaInicioComision: string;
+    diasHabilesPrevios: number;
+    modalidadPago: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR';
+    umbralMinimoAvance: number;
+  }> {
+    const solicitud = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+    }
+
+    const fechaRef = fechaRp && fechaRp.trim() ? fechaRp.trim() : new Date().toISOString().slice(0, 10);
+    const diasHabiles = await this.calcularDiasHabilesPrevios(fechaRef, solicitud.fechaInicio);
+    const modalidad = this.determinarModalidadPago(diasHabiles);
+
+    const formatIso = (v: any) =>
+      typeof v === 'string' ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+
+    return {
+      solicitudId: solicitud.id,
+      consecutivoUnico: solicitud.consecutivoUnico,
+      fechaReferencia: typeof fechaRef === 'string' ? fechaRef.slice(0, 10) : formatIso(fechaRef),
+      fechaInicioComision: formatIso(solicitud.fechaInicio),
+      diasHabilesPrevios: diasHabiles,
+      modalidadPago: modalidad,
+      umbralMinimoAvance: DIAS_HABILES_MINIMOS_AVANCE_DEFAULT,
+    };
+  }
+
+  /**
    * RF-PRE-001 — Enviar paquete de comisión autorizada al Grupo de Presupuesto (Etapa 7).
    *
    * Criterio 1 (Gherkin):
@@ -4844,6 +4981,17 @@ export class TravelExpensesService {
         solicitud.observacionesRp = datosRp.observaciones.trim();
       }
 
+      // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
+      const fechaBaseModalidad = datosRp.fechaRp || new Date();
+      const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
+        fechaBaseModalidad,
+        solicitud.fechaInicio,
+      );
+      const modalidadPago = this.determinarModalidadPago(diasHabilesPrevios);
+      solicitud.modalidadPago = modalidadPago;
+      solicitud.diasHabilesPrevios = diasHabilesPrevios;
+      solicitud.fechaCalculoModalidad = new Date();
+
       const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
 
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
@@ -4851,7 +4999,7 @@ export class TravelExpensesService {
         estadoAnterior,
         estadoNuevo: EstadoSolicitud.COMPROMETIDA,
         usuarioId,
-        motivo: `[RF-PRE-001] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
+        motivo: `[RF-PRE-001 / RF-PRE-003] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
       });
 
       return guardada;
@@ -5064,6 +5212,17 @@ export class TravelExpensesService {
           solicitud.observacionesRp = String(item.observaciones).trim();
         }
 
+        // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
+        const fechaBaseModalidad = fechaRpFinal || new Date();
+        const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
+          fechaBaseModalidad,
+          solicitud.fechaInicio,
+        );
+        const modalidadPago = this.determinarModalidadPago(diasHabilesPrevios);
+        solicitud.modalidadPago = modalidadPago;
+        solicitud.diasHabilesPrevios = diasHabilesPrevios;
+        solicitud.fechaCalculoModalidad = new Date();
+
         await this.solicitudRepo.save(solicitud);
 
         await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
@@ -5071,7 +5230,7 @@ export class TravelExpensesService {
           estadoAnterior,
           estadoNuevo: EstadoSolicitud.COMPROMETIDA,
           usuarioId,
-          motivo: `[RF-PRE-001 - Carga Masiva] RP expedido en SIIF Nación: ${codigoOficialRp}. Valor: $${Number(valorFinal).toLocaleString('es-CO')}`,
+          motivo: `[RF-PRE-001 / RF-PRE-003 - Carga Masiva] RP expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor: $${Number(valorFinal).toLocaleString('es-CO')}`,
         });
 
         procesados.push({
@@ -5079,6 +5238,8 @@ export class TravelExpensesService {
           consecutivoUnico: solicitud.consecutivoUnico,
           codigoRp: codigoOficialRp,
           valorComprometido: Number(valorFinal),
+          modalidadPago,
+          diasHabilesPrevios,
           estado: EstadoSolicitud.COMPROMETIDA,
         });
       } catch (err: any) {

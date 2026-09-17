@@ -304,6 +304,16 @@ export class SolicitudComisionEntity {
   @Column({ name: 'observaciones_rp', type: 'text', nullable: true })
   observacionesRp: string | null;
 
+  // ========== Etapa 7: Modalidad de Pago (RF-PRE-003) ==========
+  @Column({ name: 'modalidad_pago', type: 'varchar', length: 50, default: 'AVANCE' })
+  modalidadPago: string;
+
+  @Column({ name: 'dias_habiles_previos', type: 'int', default: 0 })
+  diasHabilesPrevios: number;
+
+  @Column({ name: 'fecha_calculo_modalidad', type: 'timestamp', nullable: true })
+  fechaCalculoModalidad: Date | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

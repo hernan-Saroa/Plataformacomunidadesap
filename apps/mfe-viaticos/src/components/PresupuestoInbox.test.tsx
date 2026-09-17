@@ -49,6 +49,8 @@ const mockPresupuestoData = {
       fechaRp: '2026-10-26',
       valorComprometido: 650000,
       rubroRp: 'C-01-02-03-Viáticos',
+      modalidadPago: 'AVANCE',
+      diasHabilesPrevios: 7,
       nombreComisionado: 'Carlos Martínez',
       cedulaComisionado: '79123456',
       dependencia: 'Dirección de Gestión Integral',
@@ -94,6 +96,8 @@ vi.mock('../services/api/viaticosService', () => {
       valorComprometido: s.valorComprometido,
       rubroRp: s.rubroRp,
       codigoRp: s.codigoRp,
+      modalidadPago: s.modalidadPago,
+      diasHabilesPrevios: s.diasHabilesPrevios,
     })),
   };
   return {
@@ -178,6 +182,16 @@ describe('PresupuestoInbox — [Etapa 7] RF-PRE-001', () => {
     await waitFor(() => {
       expect(screen.getByText(/Procesamiento transaccional de plantilla/i)).toBeDefined();
       expect(screen.getByText(/Descargar Plantilla CSV/i)).toBeDefined();
+    });
+  });
+
+  it('RF-PRE-003: renderiza la columna Modalidad de Pago y el badge de AVANCE con días hábiles disponibles', async () => {
+    render(<PresupuestoInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Modalidad de Pago')).toBeDefined();
+      expect(screen.getByText('AVANCE')).toBeDefined();
+      expect(screen.getByText(/7 días hábiles disponibles/i)).toBeDefined();
     });
   });
 });
