@@ -119,6 +119,48 @@ export interface Cdp {
   cubreValorEstimado?: boolean;
 }
 
+/**
+ * Una solicitud de CDP en la bandeja de la Dirección Financiera (etapa 4).
+ *
+ * Lo que la pantalla necesita para decidir a cuál entrar sin abrir el proceso:
+ * de qué es, por cuánto, desde cuándo espera y si ya la lleva alguien.
+ */
+export interface SolicitudEnBandeja {
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  modalidad: string | null;
+  valor: number | null;
+  /**
+   * El valor todavía no es el del CDP sino el estimado del proceso.
+   *
+   * Se distingue porque no es lo mismo: el estimado es contra lo que se va a
+   * verificar la disponibilidad, no una cifra ya certificada.
+   */
+  valorEsEstimado: boolean;
+  rubro: string | null;
+  estado: EstadoCdp;
+  solicitadoPor: string | null;
+  solicitadoAt: string;
+  diasEsperando: number;
+  /** Lleva parada más de lo tolerable; es lo mismo que alarma el correo diario. */
+  demorada: boolean;
+  aCargoDe: string | null;
+}
+
+/**
+ * La bandeja de la Financiera, en tres montones.
+ *
+ * No se atienden igual: `sinTomar` es lo que hay que recoger, `mias` el trabajo
+ * que ya es mío, y `deOtros` lo que lleva un compañero —que se ve para no
+ * duplicar el trabajo, no para hacerlo—.
+ */
+export interface BandejaCdp {
+  sinTomar: SolicitudEnBandeja[];
+  mias: SolicitudEnBandeja[];
+  deOtros: SolicitudEnBandeja[];
+}
+
 export interface EstadoRespaldo {
   /** False en las modalidades que no comprometen gasto. */
   aplica: boolean;
@@ -444,6 +486,95 @@ export interface EstadoModalidadProceso {
   revisiones: RevisionModalidad[];
 }
 
+// ------------------ causal de contratación · 3.6 (3.5.1 de la matriz) ------
+
+/**
+ * Por qué la 3.6 no está abierta, aparte de quién sea el que mira.
+ *
+ * - `NO_APLICA`: la matriz no marca la causal en la modalidad del proceso.
+ * - `MODALIDAD_SIN_RATIFICAR`: la 3.5 aún puede cambiar la modalidad de cuya
+ *   lista sale la causal.
+ * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya sustentó la
+ *   solicitud de CDP.
+ */
+export type MotivoNoElige = 'NO_APLICA' | 'MODALIDAD_SIN_RATIFICAR' | 'ETAPA_PASADA';
+
+/** Una causal del catálogo, ya filtrada por la modalidad del proceso. */
+export interface CausalDisponible {
+  codigo: string;
+  nombre: string;
+  referenciaNormativa: string;
+  /** Si la Dirección de Contratación ratificó la fila del catálogo. */
+  confirmada: boolean;
+}
+
+export interface EstadoCausalProceso {
+  /** Si la matriz pide causal en la modalidad del proceso. */
+  aplica: boolean;
+  estado: EstadoActividad;
+  modalidad: string | null;
+  /** El texto que la matriz escribe en la celda, cuando no dice SI. */
+  referenciaMatriz: string | null;
+  causal: { codigo: string; nombre: string; referenciaNormativa: string } | null;
+  sustento: string | null;
+  /** Lo que el área adelantó en el campo libre del estudio previo. */
+  propuestaDelArea: string | null;
+  causales: CausalDisponible[];
+  puedeElegir: boolean;
+  motivoNoElige: MotivoNoElige | null;
+  motivoNoDecide: MotivoNoDecide | null;
+  abogado: { nombre: string; usuarioNombre: string } | null;
+}
+
+// ----------------- comité de contratación · 3.7 (3.6 de la matriz) ---------
+
+/**
+ * Qué decidió el comité. Tres desenlaces, los de la matriz.
+ *
+ * No hay «no aprueba» a secas: un comité que no aprueba dice qué falta, y eso
+ * es observar. Si lo que procede es no contratar, se niega en la 3.4.
+ */
+export type DecisionComite = 'APROBADO' | 'APROBADO_CON_CONDICIONES' | 'OBSERVADO';
+
+/** Por qué el proceso no pasa por comité. */
+export type MotivoNoVa = 'MODALIDAD' | 'NO_SUPERA_EL_UMBRAL';
+
+/** Una sesión ya celebrada, tal como quedó transcrita. */
+export interface SesionComite {
+  id: string;
+  fecha: string;
+  decision: DecisionComite;
+  condiciones: string | null;
+  observaciones: string | null;
+  tieneActa: boolean;
+  registradoPor: string | null;
+  createdAt: string;
+}
+
+export interface EstadoComiteContratacion {
+  /** Si la matriz lleva esta modalidad al comité. */
+  aplica: boolean;
+  /** Si además este proceso en concreto tiene que ir. */
+  va: boolean;
+  motivoNoVa: MotivoNoVa | null;
+  estado: EstadoActividad;
+  valorEstimado: number | null;
+  /** La condición de cuantía de la modalidad, con su fundamento. */
+  umbral: {
+    valor: number;
+    unidad: 'SMMLV' | 'PESOS';
+    enPesos: number | null;
+    fundamento: string | null;
+    confirmado: boolean;
+    smmlvAplicado: { anio: number; valor: number; confirmado: boolean } | null;
+  } | null;
+  sesiones: SesionComite[];
+  puedeRegistrar: boolean;
+  puedeDejarConstancia: boolean;
+  motivoNoDecide: MotivoNoDecide | null;
+  abogado: { nombre: string; usuarioNombre: string } | null;
+}
+
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
@@ -472,7 +603,7 @@ export interface Participante {
 
 /** Uno de los que estuvieron antes, con el motivo de su salida. */
 export interface ParticipacionRelevada {
-  papel: 'CONTRATACION' | 'ABOGADO';
+  papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
   nombre: string;
   cargo: string | null;
   asignadoAt: string;
@@ -489,6 +620,16 @@ export interface EstadoParticipacion {
   puedeRepartir: boolean;
   contratacion: Participante | null;
   abogado: Participante | null;
+  /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
+  financiera: Participante | null;
+  /**
+   * Hay una solicitud de CDP sin atender y quien mira puede hacerse cargo.
+   *
+   * Lo resuelve el backend contra la bandeja y no solo contra el permiso: en un
+   * proceso que no ha pedido CDP, o que ya lo tiene expedido, no hay nada que
+   * tomar y el botón no debe aparecer.
+   */
+  puedeTomarFinanciera: boolean;
   /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
   sinAbogado: boolean;
   historial: ParticipacionRelevada[];
@@ -541,6 +682,15 @@ export interface DocumentoExpediente {
   tipo: 'ADJUNTO' | 'SNAPSHOT_FORMULARIO';
   nombre: string;
   numeral?: string;
+  /**
+   * Código del requisito que este archivo cubre, o null si es un adjunto
+   * propio de la actividad.
+   *
+   * Los documentos de la lista de chequeo se guardan con el numeral de la
+   * actividad a la que acompañan, así que sin esto el memorando de solicitud
+   * aparecería en el expediente como si fuera otro estudio previo.
+   */
+  requisito?: string | null;
   mimeType?: string;
   tamano?: number | null;
   hashSha256: string;
@@ -572,6 +722,33 @@ export interface DocumentoRequerido {
     cargadoPor: string | null;
     cargadoAt: string;
   } | null;
+}
+
+/**
+ * Un documento de la lista de chequeo con la que el área radica (3.1).
+ *
+ * Misma forma que `DocumentoRequerido` de la 5.1 —son las mismas dos tablas—
+ * más `confirmado`, que dice si el requisito sale del formato oficial o de la
+ * lectura que el equipo hizo del procedimiento.
+ */
+export interface DocumentoDeLaLista extends DocumentoRequerido {
+  confirmado: boolean;
+}
+
+/** El paquete de la radicación: qué exige la modalidad y qué ya está. */
+export interface EstadoListaChequeo {
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  /**
+   * Consecutivo de Active Document con el que se remitió el paquete.
+   *
+   * Null cuando se remitió por correo o carpeta compartida, que el
+   * procedimiento admite y no generan radicado.
+   */
+  radicadoGestionDocumental: string | null;
+  documentos: DocumentoDeLaLista[];
+  /** Los obligatorios que todavía no están; si hay alguno, no se puede enviar. */
+  faltantes: { codigo: string; nombre: string }[];
 }
 
 /** Una adenda del proceso (actividad 5.6, EFDS-1154). */
@@ -804,6 +981,14 @@ export class CamposFaltantesError extends Error {
     /** El estudio previo firmado no se ha adjuntado. */
     public readonly documentoFaltante = false,
     mensaje = 'Faltan datos obligatorios',
+    /**
+     * Lo que falta del paquete con el que se radica en la Dirección.
+     *
+     * Tercera cosa que puede faltar, junto a los campos y al estudio previo, y
+     * la única que no se ve en el formulario: sin nombrarla, el envío se
+     * rechazaría sin que el área supiera dónde mirar.
+     */
+    public readonly documentosDeLaLista: { codigo: string; nombre: string }[] = [],
   ) {
     super(mensaje);
     this.name = 'CamposFaltantesError';

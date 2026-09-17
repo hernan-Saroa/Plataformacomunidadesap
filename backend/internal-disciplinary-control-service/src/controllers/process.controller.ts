@@ -201,13 +201,31 @@ export class ProcessController {
     );
   }
 
+  private async hasFullSensitiveAccessByPermissions(req: AuthenticatedRequest): Promise<boolean> {
+    const normalizedRoles = Array.from(this.extractNormalizedRoles(req));
+    if (normalizedRoles.length === 0) return false;
+
+    if (normalizedRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))) {
+      return true;
+    }
+
+    const userPermissions = await this.permissionsService.getPermissionsByRoles(normalizedRoles);
+    return userPermissions.some(perm =>
+      perm === 'control-disciplinario.es_jefe_ocid' ||
+      perm === 'control-disciplinario.es_radicador' ||
+      perm === 'control-disciplinario.procesos.view_all' ||
+      perm === 'control-disciplinario.expediente-electronico.view_all'
+    );
+  }
+
   private async getSensitiveAccessContext(req: AuthenticatedRequest): Promise<{
     fullAccess: boolean;
     canViewAllExpedientes: boolean;
     userId?: string;
     email?: string;
   }> {
-    const legacyFullAccess = this.hasFullSensitiveAccess(req);
+    const hasFullPermission = await this.hasFullSensitiveAccessByPermissions(req);
+    const legacyFullAccess = hasFullPermission || this.hasFullSensitiveAccess(req);
     const canViewAll = legacyFullAccess || await this.hasExpedienteViewAllPermission(req);
 
     return {
