@@ -14,9 +14,15 @@ import {
   type LaborFunctionProfilePayload,
 } from './labor-functions.service';
 import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
+import { CertificatesService } from './certificates.service';
 
+// Acceso de solo lectura: ver el modulo y consultar la matriz.
+const VIEW_FUNCTIONS_PERMISSION = 'certificados-laborales.functions.view';
+// Escritura: crear, editar, eliminar y la carga masiva.
 const MANAGE_FUNCTIONS_PERMISSION =
   'certificados-laborales.functions.manage';
+const VIEW_FUNCTIONS_DENIED_MESSAGE =
+  'No tienes permiso para consultar las funciones laborales.';
 const MANAGE_FUNCTIONS_DENIED_MESSAGE =
   'No tienes permiso para gestionar las funciones laborales.';
 
@@ -25,8 +31,22 @@ export class LaborFunctionsController {
   constructor(
     private readonly laborFunctionsService: LaborFunctionsService,
     private readonly permissionsService: LaborCertificatePermissionsService,
+    private readonly certificatesService: CertificatesService,
   ) {}
 
+  /**
+   * Lectura. Quien puede gestionar la matriz tambien puede consultarla, asi que
+   * el permiso de gestion vale por si solo y no hay que marcar los dos.
+   */
+  private async assertCanView(req: any) {
+    await this.permissionsService.assertRequestAnyPermission(
+      req,
+      [VIEW_FUNCTIONS_PERMISSION, MANAGE_FUNCTIONS_PERMISSION],
+      VIEW_FUNCTIONS_DENIED_MESSAGE,
+    );
+  }
+
+  /** Escritura: creacion, edicion, borrado y carga masiva. */
   private async assertCanManage(req: any) {
     await this.permissionsService.assertRequestPermission(
       req,
@@ -52,7 +72,7 @@ export class LaborFunctionsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    await this.assertCanManage(req);
+    await this.assertCanView(req);
     return await this.laborFunctionsService.list({
       search,
       page: Number(page) || 1,
@@ -60,9 +80,39 @@ export class LaborFunctionsController {
     });
   }
 
+  // Ruta estatica declarada antes de :id para que Nest no la tome como un id.
+  @Get('selection')
+  async listAllForSelection(
+    @Req() req: any,
+    @Query('search') search?: string,
+  ) {
+    await this.assertCanView(req);
+    return await this.laborFunctionsService.listAllForSelection({ search });
+  }
+
+  // Ruta estatica declarada antes de :id para que Nest no la tome como un id.
+  @Get('person-lookup')
+  async lookupPerson(
+    @Req() req: any,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ) {
+    await this.assertCanView(req);
+    return await this.laborFunctionsService.lookupPerson(search || '', {
+      limit: Number(limit) || 25,
+      // Se reutiliza el pipeline real del certificado (seleccion + fuente
+      // salarial + merge de codigos) para mostrar una sola vinculacion por
+      // persona: exactamente la que sale impresa.
+      selectPreferred: (requests) =>
+        this.certificatesService.resolveRequestUsedForCertificate(
+          requests as any,
+        ),
+    });
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string, @Req() req: any) {
-    await this.assertCanManage(req);
+    await this.assertCanView(req);
     return await this.laborFunctionsService.findOne(id);
   }
 

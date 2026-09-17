@@ -78,6 +78,9 @@ export enum Permissions {
   // Gestión Legal - Términos e Informaciones
   GESTION_LEGAL_TERMINOS_MANAGE = 'gestion-legal.terminos.manage',
   GESTION_LEGAL_TERMINOS_VER = 'gestion-legal.terminos.ver',
+  // Habilita el botón "Editar" del detalle de un informe/término (edición de datos,
+  // fecha de vencimiento y parametrización del plazo). Ver migración 435.
+  GESTION_LEGAL_TERMINOS_EDIT = 'gestion-legal.terminos.edit',
 
   // Gestión Legal - Órganos de Control
   GESTION_LEGAL_ORGANOS_CONTROL_MANAGE = 'gestion-legal.organos-control.manage',
@@ -221,6 +224,11 @@ export enum Permissions {
 
   //Control Disciplinario - Reportes
   CONTROL_DISCIPLINARIO_REPORTES_MANAGE = 'control-disciplinario.reportes.manage',
+
+  // Control Disciplinario - Permisos Identificadores de Rol
+  CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID = 'control-disciplinario.general.es_jefe_ocid',
+  CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR = 'control-disciplinario.general.es_radicador',
+  CONTROL_DISCIPLINARIO_ROL_ES_PROFESIONAL = 'control-disciplinario.general.es_profesional',
 
   // Control Disciplinario - Nuevos Permisos (Granulares)
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL = 'control-disciplinario.procesos.view_all',

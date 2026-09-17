@@ -68,6 +68,8 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-contratacion
     frontend-mfe-viaticos
     frontend-mfe-programacion-academica
+    frontend-mfe-gestion-infraestructura
+    frontend-mfe-chatbot
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -87,6 +89,8 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-contratacion
     frontend-mfe-viaticos
     frontend-mfe-programacion-academica
+    frontend-mfe-gestion-infraestructura
+    frontend-mfe-chatbot
 )
 BACKEND_DEV_SERVICES=(
     api-gateway
@@ -103,6 +107,8 @@ BACKEND_DEV_SERVICES=(
     audit-service
     hiring-service
     academic-schedule-service
+    infrastructure-management-service
+    chatbot-service
 )
 
 compose_dev() {
@@ -291,6 +297,8 @@ cmd_rebuild_changed() {
     local changed_file service_dir service_name
     local rebuild_all_frontend=0
     local run_migrations=0
+    local separate_rund_ocr=0
+    local available_services
 
     if [ -z "$range" ]; then
         if ! range=$(get_git_change_range); then
@@ -316,6 +324,11 @@ cmd_rebuild_changed() {
                 run_migrations=1
                 ;;
             backend/*/.env.example)
+                ;;
+            backend/rund-ocr-service/*)
+                # Motor Python opcional definido en docker-compose.rund-ocr.yml.
+                # El nombre de su carpeta no es un servicio del Compose del ambiente.
+                separate_rund_ocr=1
                 ;;
             backend/*/*)
                 service_dir=$(echo "$changed_file" | cut -d/ -f2)
@@ -388,6 +401,14 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-programacion-academica"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-gestion-infraestructura/*)
+                service_name="frontend-mfe-gestion-infraestructura"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-chatbot/*)
+                service_name="frontend-mfe-chatbot"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -401,6 +422,24 @@ cmd_rebuild_changed() {
                 ;;
         esac
     done <<< "$changed_files"
+
+    if [ "$separate_rund_ocr" -eq 1 ]; then
+        echo -e "${YELLOW}OCR RUND: cambios detectados en el motor independiente. No se reconstruye con el Compose de este ambiente; requiere docker-compose.rund-ocr.yml y su configuración. La aplicación continúa su despliegue.${NC}"
+    fi
+
+    # Validar antes de limpiar o reconstruir: no asumir que toda carpeta es un servicio.
+    if [ ${#backend_services[@]} -gt 0 ]; then
+        if ! available_services=$(compose_dev config --services); then
+            echo -e "${RED}No se pudo validar el Compose del ambiente. No se inició la reconstrucción.${NC}"
+            return 1
+        fi
+        for service_name in "${backend_services[@]}"; do
+            if ! printf '%s\n' "$available_services" | grep -Fxq -- "$service_name"; then
+                echo -e "${RED}El backend '$service_name' no está declarado en el Compose del ambiente. Revise su integración antes de desplegar. No se inició la reconstrucción.${NC}"
+                return 1
+            fi
+        done
+    fi
 
     if [ $rebuild_all_frontend -eq 1 ]; then
         frontend_services=("${FRONTEND_MFE_SERVICES[@]}")
@@ -505,6 +544,12 @@ resolve_mfe_service() {
             ;;
         programacion-academica|mfe-programacion-academica|frontend-mfe-programacion-academica)
             echo "frontend-mfe-programacion-academica"
+            ;;
+        gestion-infraestructura|mfe-gestion-infraestructura|frontend-mfe-gestion-infraestructura|infraestructura)
+            echo "frontend-mfe-gestion-infraestructura"
+            ;;
+        chatbot|mfe-chatbot|frontend-mfe-chatbot)
+            echo "frontend-mfe-chatbot"
             ;;
         *)
             return 1
@@ -764,7 +809,7 @@ cmd_up_mfe() {
     fi
 
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
-    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
+    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
@@ -775,20 +820,21 @@ cmd_up_mfe() {
     echo "  Auditoría:   ${SERVER_URL_ENV}/remotes/mfe-auditoria/"
     echo "  Reportes:    ${SERVER_URL_ENV}/remotes/mfe-reportes/"
     echo "  Prog. Acad.: ${SERVER_URL_ENV}/remotes/mfe-programacion-academica/"
+    echo "  ChatBot:     ${SERVER_URL_ENV}/remotes/mfe-chatbot/"
     echo ""
 }
 
 # Comando: down-mfe
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado...${NC}"
-    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
+    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     echo -e "${GREEN}Frontend MFE detenido${NC}"
 }
 
 # Comando: restart-mfe
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado...${NC}"
-    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
+    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE reiniciado${NC}"
 }
@@ -796,7 +842,7 @@ cmd_restart_mfe() {
 # Comando: status-mfe
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado:${NC}"
-    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
+    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
 }
 
 # Comando: logs-mfe
@@ -807,14 +853,14 @@ cmd_logs_mfe() {
         local resolved_service
         if ! resolved_service=$(resolve_mfe_service "$input_service"); then
             echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
-            echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas, contratacion, programacion-academica${NC}"
+            echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas, contratacion, programacion-academica, chatbot${NC}"
             exit 1
         fi
         compose_dev_mfe logs -f "$resolved_service"
         return
     fi
 
-    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
+    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
 }
 
 # Comando: rebuild-mfe
@@ -829,12 +875,13 @@ cmd_rebuild_mfe() {
         echo -e "${YELLOW}  $0 rebuild-mfe auditoria${NC}"
         echo -e "${YELLOW}  $0 rebuild-mfe reportes${NC}"
         echo -e "${YELLOW}  $0 rebuild-mfe contratacion${NC}"
+        echo -e "${YELLOW}  $0 rebuild-mfe chatbot${NC}"
         exit 1
     fi
 
     if ! resolved_service=$(resolve_mfe_service "$input_service"); then
         echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
-        echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas, contratacion${NC}"
+        echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas, contratacion, chatbot${NC}"
         exit 1
     fi
 
@@ -871,6 +918,8 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-contratacion"
         "frontend-mfe-viaticos"
         "frontend-mfe-programacion-academica"
+        "frontend-mfe-gestion-infraestructura"
+        "frontend-mfe-chatbot"
     )
 
     echo ""

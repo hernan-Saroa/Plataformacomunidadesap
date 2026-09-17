@@ -11,7 +11,8 @@ import { AprobacionService } from './aprobacion.service';
  * sus documentos, que es justo lo que la comprobación tiene que impedir.
  */
 describe('AprobacionService · formatosPendientes', () => {
-  const servicio = () => new AprobacionService({} as never);
+  const servicio = () =>
+    new AprobacionService({} as never, { crearSolicitudSiCerroLaEtapa3: async () => null } as never);
 
   /** Llama al método privado, que nadie usa desde fuera del servicio. */
   const pendientes = (

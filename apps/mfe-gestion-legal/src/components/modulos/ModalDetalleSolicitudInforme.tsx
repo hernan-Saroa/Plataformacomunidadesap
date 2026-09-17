@@ -72,6 +72,11 @@ interface ModalDetalleSolicitudInformeProps {
   onAgregarComentario?: (id: string, comentario: string) => void;
   onArchivar?: (id: string) => void;
   onEliminar?: (id: string) => void;
+  /**
+   * Abre el formulario de edición del informe. Solo se pasa cuando el usuario tiene el permiso
+   * `gestion-legal.terminos.edit` (ver migración 435); sin él, el botón "Editar" no se renderiza.
+   */
+  onEditar?: (solicitud: SolicitudInforme) => void;
   canModify?: boolean;
   canEnviarRecordatorio?: boolean;
 }
@@ -84,6 +89,7 @@ export function ModalDetalleSolicitudInforme({
   onAgregarComentario,
   onArchivar,
   onEliminar,
+  onEditar,
   canModify = true,
   canEnviarRecordatorio = true
 }: ModalDetalleSolicitudInformeProps) {
@@ -482,8 +488,8 @@ export function ModalDetalleSolicitudInforme({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Tipo de Informe</p>
-                  <p className="text-sm font-bold text-gray-900">{solicitud.tipoInforme}</p>
+                  <p className="text-xs text-gray-500 mb-1">Nombre del Informe</p>
+                  <p className="text-sm font-bold text-gray-900">{solicitud.asunto}</p>
                 </div>
                 
                 <div className="p-3 bg-gray-50 rounded-lg">
@@ -921,6 +927,16 @@ export function ModalDetalleSolicitudInforme({
               <X className="w-4 h-4 mr-2" />
               Cerrar
             </Button>
+            {onEditar && (
+              <Button
+                variant="outline"
+                className="text-[#003DA5] border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+                onClick={() => onEditar(solicitud)}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Editar
+              </Button>
+            )}
             {onArchivar && (
               <Button
                 variant="outline"

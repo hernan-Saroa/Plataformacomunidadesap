@@ -117,6 +117,22 @@ function esCorreoValido(valor: string | null | undefined): valor is string {
   return !!valor && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
 }
 
+/**
+ * Expresa una cantidad de horas en texto exacto: "5 horas", "1 día", "2 días y 5 horas".
+ * Antes se redondeaba a días con Math.round, así que un término vencido hacía 13 horas
+ * se anunciaba como "venció hace 1 día" y uno que vencía en 60 horas como "3 días".
+ */
+function formatearDuracion(horas: number): string {
+  if (horas < 1) return 'menos de 1 hora';
+  const totalHoras = Math.floor(horas);
+  const dias = Math.floor(totalHoras / 24);
+  const restoHoras = totalHoras % 24;
+  const textoHoras = (n: number) => `${n} ${n === 1 ? 'hora' : 'horas'}`;
+  if (dias === 0) return textoHoras(totalHoras);
+  const textoDias = `${dias} ${dias === 1 ? 'día' : 'días'}`;
+  return restoHoras === 0 ? textoDias : `${textoDias} y ${textoHoras(restoHoras)}`;
+}
+
 /** Escapa caracteres HTML especiales en texto de usuario (nombreActuacion, radicado, periodicidad) antes de interpolarlo en el correo. */
 function escapeHtml(texto: string): string {
   return texto
@@ -960,7 +976,7 @@ export class LegalNotificationsService {
     const dto = {
       tipo_notificacion: params.esReasignacion ? 'TERMINO_REASIGNADO' : 'TERMINO_ASIGNADO',
       titulo: `Término ${accion} en ${meta.label}`,
-      mensaje: `Se te ${accion} el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}.`,
+      mensaje: `Se te ha ${accion} el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}.`,
       descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${accion}`,
       icono: meta.icon,
       color: meta.color,
@@ -1026,22 +1042,20 @@ export class LegalNotificationsService {
     nombreActuacion: string;
     numeroRadicado?: string | null;
     horasRestantes: number;
-    origen: 'automatica' | 'personalizada' | 'manual';
+    origen: 'automatica' | 'personalizada' | 'manual' | 'vencido' | 'recordatorio';
   }): Promise<boolean> {
     const meta = MODULE_META.TERMINOS_INFORMES;
     const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
-    const diasRestantes = Math.round(params.horasRestantes / 24);
-    const textoTiempo = params.horasRestantes < 48
-      ? `${Math.max(0, Math.round(params.horasRestantes))} hora(s)`
-      : `${diasRestantes} día(s)`;
     const textoAnticipacion = params.horasRestantes >= 0
-      ? `vence en aproximadamente ${textoTiempo}`
-      : `venció hace ${Math.abs(diasRestantes)} día(s)`;
+      ? `vence en ${formatearDuracion(params.horasRestantes)}`
+      : `venció hace ${formatearDuracion(Math.abs(params.horasRestantes))}`;
 
     const titulos: Record<typeof params.origen, string> = {
       automatica: 'Alerta de vencimiento de término',
       personalizada: 'Alerta personalizada de vencimiento',
       manual: 'Recordatorio programado de vencimiento',
+      vencido: 'Término VENCIDO',
+      recordatorio: 'Recordatorio de término pendiente',
     };
 
     this.logger.log(
@@ -1055,7 +1069,7 @@ export class LegalNotificationsService {
       mensaje,
       descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${textoAnticipacion}`,
       icono: meta.icon,
-      color: params.horasRestantes < 0 ? '#DC2626' : meta.color,
+      color: '#DC2626',
       prioridad: (params.horasRestantes < 24 ? 'Alta' : 'Media') as 'Alta' | 'Media',
       categoria: meta.categoria,
       tiene_accion: true,

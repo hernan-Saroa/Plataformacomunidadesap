@@ -990,6 +990,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         pta={selectedPta}
         onClose={() => setVista('v01_dashboard')}
         userPersonId={userPersonId}
+        userDocumento={docentePerfil?.documento_identidad || ''}
         userName={userName}
         componentesAprobacion={componentApprovalsByPta[selectedPtaId] || []}
         aprobacionTerritorial={aprobacionTerritorialReporte}
@@ -1485,9 +1486,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       </div>
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-gray-100 text-[9.5px] text-gray-400 leading-normal">
-                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
-                    </div>
                   </div>
                 );
 
@@ -1549,9 +1547,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       </div>
                     </div>
 
-                    <div className="mt-3 px-2.5 py-1.5 rounded-lg bg-blue-50/60 border border-blue-100/60 text-[0.55rem] sm:text-[0.6rem] text-blue-700">
-                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
-                    </div>
                   </div>
                 );
               })()}

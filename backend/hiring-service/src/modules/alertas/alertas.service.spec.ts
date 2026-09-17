@@ -101,7 +101,7 @@ describe('AlertasService · notificar', () => {
    */
   const servicioCon = (pendientesSinLeer: any[] = []) => {
     const query = jest.fn().mockResolvedValue(pendientesSinLeer);
-    const srv = new AlertasService({ query } as never);
+    const srv = new AlertasService({ query } as never, { financieros: async () => [] } as never);
 
     jest.spyOn(srv, 'listar').mockResolvedValue([
       {
@@ -182,7 +182,7 @@ describe('AlertasService · notificar', () => {
     global.fetch = fetchSimulado as never;
 
     const query = jest.fn().mockRejectedValue(new Error('sin conexión'));
-    const srv = new AlertasService({ query } as never);
+    const srv = new AlertasService({ query } as never, { financieros: async () => [] } as never);
     jest.spyOn(srv, 'listar').mockResolvedValue([
       {
         tipo: 'APROBACION_PENDIENTE',
@@ -212,5 +212,99 @@ describe('AlertasService · notificar', () => {
 
     expect(resultado.notificadas).toBe(0);
     expect(resultado.error).toBe('no se pudo notificar');
+  });
+
+  /**
+   * La solicitud de CDP que nadie ha tomado.
+   *
+   * Es la excepción a «sin destinatario no se avisa»: el resto de las alertas
+   * sin responsable se descartan porque no hay a quién reclamarle, y aquí es al
+   * revés —que no sea de nadie es justamente el problema que hay que avisar—.
+   */
+  const CDP_EN_BANDEJA = {
+    tipo: 'CDP_SIN_ATENDER',
+    procesoId: 'p9',
+    radicado: 'CTO-2026-0033',
+    contrato: null,
+    descripcion: '4.1 · la solicitud de CDP espera a la Dirección Financiera',
+    vence: '2026-09-12',
+    diasRestantes: 1,
+    estado: 'POR_VENCER',
+    responsable: null,
+    responsableEmail: null,
+    responsableId: null,
+  };
+
+  const LA_FINANCIERA = [
+    {
+      usuarioId: 'f1111111-1111-4111-8111-111111111111',
+      usuarioNombre: 'tesoreria@esap.edu.co',
+      personaId: null,
+      nombre: 'Marta Ruiz',
+      cargo: null,
+      email: 'tesoreria@esap.edu.co',
+    },
+    {
+      usuarioId: 'f2222222-2222-4222-8222-222222222222',
+      usuarioNombre: 'presupuesto@esap.edu.co',
+      personaId: null,
+      nombre: 'Jorge Peña',
+      cargo: null,
+      email: 'presupuesto@esap.edu.co',
+    },
+  ];
+
+  const servicioConSolicitud = (alerta: any, financieros: jest.Mock) => {
+    const query = jest.fn().mockResolvedValue([]);
+    const srv = new AlertasService({ query } as never, { financieros } as never);
+    jest.spyOn(srv, 'listar').mockResolvedValue([alerta] as never);
+    return srv;
+  };
+
+  it('la solicitud que nadie ha tomado se le avisa a toda la Financiera', async () => {
+    // Sin esto la alerta existía en pantalla y no la recibía nadie, que es como
+    // se acumulan: `notificar` descarta lo que no tiene responsable.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const financieros = jest.fn().mockResolvedValue(LA_FINANCIERA);
+    const resultado = await servicioConSolicitud(CDP_EN_BANDEJA, financieros).notificar(
+      30,
+      ACCESO as never,
+    );
+
+    expect(resultado.notificadas).toBe(2);
+
+    const avisos = cuerpoDe(fetchSimulado).notifications;
+    expect(avisos.map((a: any) => a.id_usuario_destinatario)).toEqual(
+      LA_FINANCIERA.map((c) => c.usuarioId),
+    );
+    expect(avisos[0].tipo_notificacion).toBe('contratacion_cdp_por_expedir');
+  });
+
+  it('una vez tomada, el aviso es solo de quien la tomó', async () => {
+    // Deja de sonarle al resto del equipo: para eso sirve tomarla.
+    const fetchSimulado = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchSimulado as never;
+
+    const financieros = jest.fn().mockResolvedValue(LA_FINANCIERA);
+    const tomada = {
+      ...CDP_EN_BANDEJA,
+      responsable: 'Marta Ruiz',
+      responsableEmail: 'tesoreria@esap.edu.co',
+      responsableId: LA_FINANCIERA[0].usuarioId,
+    };
+
+    const resultado = await servicioConSolicitud(tomada, financieros).notificar(
+      30,
+      ACCESO as never,
+    );
+
+    expect(resultado.notificadas).toBe(1);
+    // Ni siquiera se pregunta quiénes son: ya hay responsable.
+    expect(financieros).not.toHaveBeenCalled();
+
+    const [aviso] = cuerpoDe(fetchSimulado).notifications;
+    expect(aviso.id_usuario_destinatario).toBe(LA_FINANCIERA[0].usuarioId);
   });
 });

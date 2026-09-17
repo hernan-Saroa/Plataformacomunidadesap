@@ -53,4 +53,67 @@ describe('LaborCertificatePermissionsService', () => {
 
     expect(query).not.toHaveBeenCalled();
   });
+
+  describe('findActiveRecipientsWithPermission', () => {
+    it('deduplica por correo cuando el usuario tiene el permiso por varios roles', async () => {
+      query.mockResolvedValue([
+        { email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' },
+        { email: 'COORDINADOR@esap.edu.co', name: null },
+        { email: 'revisor@esap.edu.co', name: 'Revisor Dos' },
+      ]);
+
+      await expect(
+        service.findActiveRecipientsWithPermission(
+          'certificados-laborales.correction.manage',
+        ),
+      ).resolves.toEqual([
+        { email: 'coordinador@esap.edu.co', name: 'Coordinador Uno' },
+        { email: 'revisor@esap.edu.co', name: 'Revisor Dos' },
+      ]);
+
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('permission.code = $1'), [
+        'certificados-laborales.correction.manage',
+      ]);
+    });
+
+    it('descarta los usuarios sin un correo con formato válido', async () => {
+      query.mockResolvedValue([
+        { email: null, name: 'Sin correo' },
+        { email: '   ', name: 'Solo espacios' },
+        { email: 'usuario.sin.arroba', name: 'Username no es correo' },
+        { email: ' valido@esap.edu.co ', name: ' Persona Válida ' },
+      ]);
+
+      await expect(
+        service.findActiveRecipientsWithPermission(
+          'certificados-laborales.correction.manage',
+        ),
+      ).resolves.toEqual([{ email: 'valido@esap.edu.co', name: 'Persona Válida' }]);
+    });
+
+    it('completa el nombre cuando la primera fila del mismo correo viene vacía', async () => {
+      query.mockResolvedValue([
+        { email: 'revisor@esap.edu.co', name: null },
+        { email: 'revisor@esap.edu.co', name: 'Revisor Con Nombre' },
+      ]);
+
+      await expect(
+        service.findActiveRecipientsWithPermission(
+          'certificados-laborales.correction.manage',
+        ),
+      ).resolves.toEqual([
+        { email: 'revisor@esap.edu.co', name: 'Revisor Con Nombre' },
+      ]);
+    });
+
+    it('devuelve una lista vacía cuando nadie tiene el permiso', async () => {
+      query.mockResolvedValue([]);
+
+      await expect(
+        service.findActiveRecipientsWithPermission(
+          'certificados-laborales.correction.manage',
+        ),
+      ).resolves.toEqual([]);
+    });
+  });
 });

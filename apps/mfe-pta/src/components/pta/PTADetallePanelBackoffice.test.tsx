@@ -370,3 +370,52 @@ describe('autorización vigente del servidor', () => {
     expect(requestPTAFirmaAprobadorCode).toHaveBeenCalledTimes(2);
   });
 });
+
+// EFDS-1353 dejó 'gestion_profesoral' como ámbito por defecto de las actividades
+// complementarias del catálogo, pero el detalle seguía renderizando UNA sola
+// tarjeta con la clave fija 'complementarias' (el catch-all). Resultado: las
+// horas vivían en otro componente, la tarjeta visible quedaba en 0h ("No aplica")
+// y el componente real no aparecía en ninguna parte — sin forma de revisarlo ni
+// aprobarlo.
+describe('PTADetallePanelBackoffice — ámbitos de Complementarias', () => {
+  const ptaConGestionProfesoral = () => basePta({
+    complementarias: [
+      { nombre: 'Tutoría de trabajos de grado', horas: 43, seccion: 'complementarias_docencia',
+        componente_complementaria: 'complementarias_gestion_profesoral' },
+    ],
+    complementarias_por_componente: {
+      complementarias: 0, complementarias_pregrado: 0, complementarias_posgrado: 0,
+      complementarias_territorial: 0, complementarias_gestion_profesoral: 43,
+    },
+  });
+
+  it('renderiza la tarjeta del ámbito que tiene las horas, no la del catch-all vacío', async () => {
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: ptaConGestionProfesoral() })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+
+    const tarjeta = await screen.findByText('Actividades Complementarias — Gestión Profesoral');
+    expect(tarjeta).toBeTruthy();
+    // El catch-all no tiene horas: su tarjeta ya no se renderiza (era la única
+    // que se mostraba antes, siempre vacía y en "No aplica"). Queda solo el
+    // acordeón de detalle, que siempre lista todas las actividades.
+    expect(screen.getByText(/Contenido: 1 actividad\(es\) \(43h\)/)).toBeTruthy();
+    expect(screen.queryByText(/Contenido: 0 actividad\(es\) \(0h\)/)).toBeNull();
+  });
+
+  it('habilita la revisión de la subsección sobre el componente real', async () => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: ['complementarias_gestion_profesoral'],
+      allowedReviewSubsecciones: ['complementarias_gestion_profesoral:docencia'],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } });
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: true, data: [
+      { componente: 'complementarias_gestion_profesoral', subseccion: 'docencia', estado: 'pendiente' },
+    ] });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: ptaConGestionProfesoral() })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+
+    await screen.findByText('Actividades Complementarias — Gestión Profesoral');
+    await waitFor(() => expect(screen.getAllByText('Revisión previa (pendiente)').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: 'Revisar' })).toBeTruthy();
+  });
+});

@@ -362,6 +362,165 @@ describe('LaborCertificatePdfService', () => {
     },
   );
 
+  // ── [DEPENDENCIA]: dependencia primero, centro de costo de respaldo ──
+  // La misma informacion llega en columnas distintas segun la fuente, asi que
+  // se prueba con las dos formas reales de los datos.
+
+  it.each(['docente', 'administrador'] as const)(
+    'prioriza la dependencia sobre el centro de costo con datos LOCALES en la plantilla %s',
+    (templateType) => {
+      // Forma local (medida en certification.certificate_requests):
+      //   department = dependencia, internal_group = grupo, cost_center vacio.
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: 'Direccion de Talento Humano',
+          position_location:
+            'Grupo de Administracion de Personal y de Carrera Administrativa',
+          request: {
+            department: 'Direccion de Talento Humano',
+            organization_department: 'Direccion de Talento Humano',
+            position_location:
+              'Grupo de Administracion de Personal y de Carrera Administrativa',
+            internal_group:
+              'Grupo de Administracion de Personal y de Carrera Administrativa',
+            cost_center: null,
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+      });
+
+      expect(result).toContain('InicioDireccion de Talento HumanoFin');
+      expect(result).not.toContain(
+        'Grupo de Administracion de Personal y de Carrera Administrativa',
+      );
+    },
+  );
+
+  it.each(['docente', 'administrador'] as const)(
+    'usa la dependencia de la solicitud con datos de ORACLE en la plantilla %s',
+    (templateType) => {
+      // Forma Oracle: cost_center = CENTROCOSTO y position_location = DEPENDENCIA.
+      // Aqui department ya trae el CENTROCOSTO, asi que ambos coinciden.
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: 'Grupo de Seguridad y Salud en el Trabajo',
+          position_location: 'Subdireccion Nacional de Gestion Corporativa',
+          request: {
+            department: 'Grupo de Seguridad y Salud en el Trabajo',
+            organization_department: 'Subdireccion Nacional de Gestion Corporativa',
+            position_location: 'Subdireccion Nacional de Gestion Corporativa',
+            internal_group: null,
+            cost_center: 'Grupo de Seguridad y Salud en el Trabajo',
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+      });
+
+      expect(result).toContain('Grupo de Seguridad y Salud en el Trabajo');
+      expect(result).not.toContain('Subdireccion Nacional de Gestion Corporativa');
+    },
+  );
+
+  it.each(['docente', 'administrador'] as const)(
+    'usa la dependencia cuando no hay centro de costo en la plantilla %s',
+    (templateType) => {
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: 'Oficina de Control Interno',
+          position_location: 'Oficina de Control Interno',
+          request: {
+            department: 'Oficina de Control Interno',
+            organization_department: 'Oficina de Control Interno',
+            position_location: 'Oficina de Control Interno',
+            internal_group: null,
+            cost_center: null,
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+      });
+
+      expect(result).toContain('Oficina de Control Interno');
+    },
+  );
+
+  it.each(['docente', 'administrador'] as const)(
+    'cae al centro de costo cuando la solicitud no trae dependencia en la plantilla %s',
+    (templateType) => {
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: null,
+          request: {
+            department: null,
+            organization_department: 'Subdireccion Nacional de Gestion Corporativa',
+            internal_group: 'Grupo de Seguridad y Salud en el Trabajo',
+            cost_center: null,
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+      });
+
+      expect(result).toContain('InicioGrupo de Seguridad y Salud en el TrabajoFin');
+    },
+  );
+
+  it('ignora un centro de costo marcado como N/A y cae a la dependencia', () => {
+    const result = service['buildCertificateContent']({
+      certificate: {
+        department: 'Direccion Territorial',
+        request: {
+          department: null,
+          internal_group: 'N/A',
+          cost_center: 'No Aplica',
+        },
+      } as any,
+      templateType: 'administrador',
+      includeSalary: true,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+    });
+
+    expect(result).toContain('Direccion Territorial');
+    expect(result).not.toContain('N/A');
+    expect(result).not.toContain('No Aplica');
+  });
+
+  it('nunca usa la SUCURSAL como dependencia aunque haya centro de costo vacio', () => {
+    // position_location puede traer "SEDE CENTRAL" desde Oracle: es una sede,
+    // no una dependencia, y no debe filtrarse a [DEPENDENCIA].
+    const result = service['buildCertificateContent']({
+      certificate: {
+        department: null,
+        position_location: 'SEDE CENTRAL',
+        request: {
+          department: null,
+          organization_department: null,
+          position_location: 'SEDE CENTRAL',
+          internal_group: null,
+          cost_center: null,
+        },
+      } as any,
+      templateType: 'administrador',
+      includeSalary: true,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+    });
+
+    expect(result).toContain('InicioFin');
+    expect(result).not.toContain('SEDE CENTRAL');
+  });
+
   it('renderiza varias primas tecnicas en el orden configurado', () => {
     const certificate = {
       technical_bonuses: [

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
@@ -87,6 +87,15 @@ export class NotificationsService {
       url_accion: dto.url_accion,
       datos_adicionales: dto.datos_adicionales,
     });
+    if (dto.clave_idempotencia) {
+      notification.id_notificacion = dto.clave_idempotencia;
+      await this.repo.createQueryBuilder().insert().into(Notification).values(notification)
+        .onConflict('("id_notificacion") DO NOTHING').execute();
+      const saved = await this.repo.findOneByOrFail({id_notificacion:dto.clave_idempotencia});
+      if (saved.id_usuario_destinatario !== dto.id_usuario_destinatario || saved.tipo_notificacion !== dto.tipo_notificacion)
+        throw new ConflictException('La clave de notificación ya pertenece a otro evento.');
+      return saved;
+    }
     return this.repo.save(notification);
   }
 

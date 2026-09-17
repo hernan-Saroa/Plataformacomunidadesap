@@ -6684,7 +6684,24 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text(`PLAN ANUAL DE AUDITORÍA - VIGENCIA ${vigencia}`, pageWidth / 2, currentY, { align: 'center' });
-      currentY += 10;
+      currentY += 8;
+
+      // Cada sección lleva su título para no confundir el avance general con el avance por rol (EFDS-1629).
+      const dibujarTituloSeccion = (titulo: string, descripcion: string) => {
+        doc.setFillColor(232, 240, 252);
+        doc.rect(margin, currentY, pageWidth - margin * 2, 9, 'F');
+        doc.setFillColor(0, 61, 165);
+        doc.rect(margin, currentY, 2, 9, 'F');
+        doc.setTextColor(0, 61, 165);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(titulo, margin + 5, currentY + 6);
+        doc.setTextColor(90, 90, 90);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(descripcion, margin, currentY + 14);
+        currentY += 18;
+      };
 
       const formatearFechaExportacion = (valor: unknown): string => {
         if (!valor || typeof valor !== 'string') return '-';
@@ -6769,17 +6786,16 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         'Fin',
         'Responsable',
         'Control',
-        'Est.',
+        'Avance actividad',
         'Resp. Tarea',
         'Seguimiento y evaluación tareas',
         'Fecha de seguimiento',
-        'Eval.'
+        'Avance tarea'
       ]];
 
       const tableBody: any[] = [];
       let totalActividadesCount = 0;
       let totalAvanceSuma = 0;
-      let sumaAvanceTotal = 0;
 
       // Procesar datos para la tabla plana
       [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol) => {
@@ -6835,6 +6851,11 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         });
       });
 
+      dibujarTituloSeccion(
+        'AVANCE DE ACTIVIDADES Y TAREAS',
+        'Avance general del Plan Anual: actividades, tareas, responsables, fechas y porcentajes.'
+      );
+
       // Generar tabla principal
       autoTable(doc, {
         startY: currentY,
@@ -6861,11 +6882,11 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           3: { cellWidth: 15, halign: 'center' }, // Fin
           4: { cellWidth: 22 }, // Responsable
           5: { cellWidth: 20 }, // Control
-          6: { cellWidth: 10, halign: 'center' }, // Est.
+          6: { cellWidth: 14, halign: 'center' }, // Avance actividad
           7: { cellWidth: 18 }, // Resp. Tarea
           8: { cellWidth: 42 }, // Seguimiento tareas
           9: { cellWidth: 15, halign: 'center' }, // Fecha
-          10: { cellWidth: 10, halign: 'center' } // Eval.
+          10: { cellWidth: 14, halign: 'center' } // Avance tarea
         },
         margin: { left: margin, right: margin, top: alturaEncabezado + 20 },
         pageBreak: 'auto',
@@ -6876,15 +6897,32 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         }
       });
 
-      currentY = (doc as any).lastAutoTable.finalY + 10;
-      
-      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0, 61, 165);
-        doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
-        currentY += 7;
+      currentY = (doc as any).lastAutoTable.finalY + 6;
 
+      // El avance global cierra la sección general; cada actividad se cuenta una sola vez.
+      const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
+
+      if (currentY > pageHeight - 30) {
+        doc.addPage();
+        currentY = margin + 20;
+      }
+
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, currentY, pageWidth - (margin * 2), 12, 'F');
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`AVANCE GLOBAL DEL PLAN: ${promedioGral}%  (Total Actividades: ${totalActividadesCount})`, margin + 5, currentY + 8);
+
+      doc.addPage();
+      currentY = margin + 5;
+      dibujarTituloSeccion(
+        'AVANCE DE ACTIVIDADES POR ROL',
+        'Los porcentajes de esta sección corresponden al avance de las actividades según cada rol.'
+      );
+      currentY += 4;
+
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
         // Calcular avance promedio del rol
         const sumaAvanceRol = rol.actividades.reduce(
           (s, a) => s + calcularAvanceActividad(a).porcentaje,
@@ -6892,8 +6930,19 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         );
         const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
 
-        sumaAvanceTotal += sumaAvanceRol;
-        totalActividadesCount += rol.actividades.length;
+        // El título del rol no queda solo al final de la hoja: debe caber con el encabezado y la primera fila
+        if (rolIdx > 0 && currentY > pageHeight - 55) {
+          doc.addPage();
+          currentY = margin + 5;
+        }
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 61, 165);
+        doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
+        doc.setFontSize(9);
+        doc.text(`Avance del rol: ${promedioRol}%`, pageWidth - margin, currentY, { align: 'right' });
+        currentY += 7;
 
         const actividadesData = rol.actividades.map((act, idx) => {
           const pctFinal = calcularAvanceActividad(act).porcentaje;
@@ -6922,13 +6971,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           '',
           `SUBTOTAL ROL (${rol.actividades.length} actividades)`,
           '',
-          'PROMEDIO:',
+          'AVANCE DEL ROL:',
           `${promedioRol}%`
         ]);
 
         autoTable(doc, {
           startY: currentY,
-          head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance']],
+          head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance de la actividad']],
           body: actividadesData,
           theme: 'striped',
           headStyles: {
@@ -6943,9 +6992,12 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             1: { cellWidth: 'auto' },
             2: { cellWidth: 40 },
             3: { cellWidth: 30, halign: 'center' },
-            4: { cellWidth: 20, halign: 'center' }
+            4: { cellWidth: 26, halign: 'center' }
           },
-          margin: { left: margin, right: margin },
+          margin: { left: margin, right: margin, bottom: 20 },
+          didDrawPage: () => {
+            dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
+          },
           didParseCell: function(data) {
             // Destacar la fila de subtotal
             if (data.row.index === actividadesData.length - 1) {
@@ -6957,28 +7009,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         });
 
         currentY = (doc as any).lastAutoTable.finalY + 8;
-
-        if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
-          doc.addPage();
-          currentY = margin;
-        }
       });
-      
-      // Total general del plan
-      // Resumen final
-      const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
-      
-      if (currentY > pageHeight - 30) {
-        doc.addPage();
-        currentY = margin + 20;
-      }
-
-      doc.setFillColor(240, 240, 240);
-      doc.rect(margin, currentY, pageWidth - (margin * 2), 12, 'F');
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`AVANCE GLOBAL DEL PLAN: ${promedioGral}%  (Total Actividades: ${totalActividadesCount})`, margin + 5, currentY + 8);
 
       doc.save(`Plan-Anual-Auditoria-${vigencia}-Detallado.pdf`);
       toast.success('PDF detallado generado', { description: 'Incluye todas las tareas de seguimiento y evaluación.' });
@@ -9466,9 +9497,10 @@ function SeccionGestionYSeguimiento({
                               </div>
                               <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
                               <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-                                <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
+                                {/* Fecha local (T00:00:00), igual que el corte: leída en UTC mostraba un día menos. */}
+                                <span>📅 Inicio: {new Date(String(actividad.fechaInicio).split('T')[0] + 'T00:00:00').toLocaleDateString('es-CO')}</span>
                                 {actividad.fechaFin && (
-                                  <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
+                                  <span>📅 Fin: {new Date(String(actividad.fechaFin).split('T')[0] + 'T00:00:00').toLocaleDateString('es-CO')}</span>
                                 )}
                                 {actividad.fecha_corte && (
                                   <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
@@ -10020,7 +10052,8 @@ function SeccionGestionYSeguimiento({
                               <div className="space-y-1.5">
                                 {tareasVisibles.map((tarea) => {
                                   const fechaTarea = tarea.fechaEntrega || (tarea as any).fechaLimite || null;
-                                  const fechaLimite = fechaTarea ? new Date(fechaTarea) : null;
+                                  // Fecha local: leída en UTC mostraba el día anterior como límite.
+                                  const fechaLimite = fechaTarea ? new Date(String(fechaTarea).split('T')[0] + 'T00:00:00') : null;
                                   const hoy = new Date();
                                   const diasRestantes = fechaLimite ? Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
                                   const estaVencida = diasRestantes !== null && diasRestantes < 0 && !tarea.completada;

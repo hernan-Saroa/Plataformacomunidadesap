@@ -12,12 +12,23 @@ vi.mock('sonner', () => ({
 vi.mock('../../../../services/api/legal.service', () => ({
   legalService: {
     getTerminosListado: vi.fn(),
+    getTerminosCalendario: vi.fn(),
     eliminarTermino: vi.fn(),
     updateTermino: vi.fn(),
+    // Los usa ModalEditarTermino, que solo se monta con el permiso gestion-legal.terminos.edit.
+    getTerminoDetalle: vi.fn(),
+    getAbogados: vi.fn(),
+    listarReglasAlertaTerminos: vi.fn(),
+    getDocumentosTermino: vi.fn(),
+    getNotasTermino: vi.fn(),
   },
 }));
 vi.mock('../../../../services/api/authService', () => ({
-  authService: { hasRole: vi.fn(() => false), getCurrentUser: vi.fn(() => null) },
+  authService: {
+    hasRole: vi.fn(() => false),
+    getCurrentUser: vi.fn(() => null),
+    hasPermission: vi.fn(() => false),
+  },
 }));
 
 import { VistaLista, VistaTimeline, VistaCalendario, ModuloTerminosInformesV3, formatearFuenteInformativa } from './ModuloTerminosInformesV3';
@@ -25,6 +36,8 @@ import { SolicitudInforme } from '../core/types';
 import { PermisosProvider } from '../config/PermisosContext';
 import { ConfiguracionesSIGLProvider } from '../config/ConfiguracionesSIGLContext';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { toast } from 'sonner';
 import ExcelJS from 'exceljs';
 
@@ -340,6 +353,10 @@ describe('ModuloTerminosInformesV3 · Eliminar término desde el Timeline de Ven
     vi.mocked(legalService.getTerminosListado).mockReset();
     vi.mocked(legalService.eliminarTermino).mockReset();
     vi.mocked(legalService.updateTermino).mockReset();
+    // Por defecto el backend aplica bien el filtro de eliminados, así que el respaldo vía
+    // calendario no entrega nada (cada test que lo necesite lo configura aparte).
+    vi.mocked(legalService.getTerminosCalendario).mockReset();
+    vi.mocked(legalService.getTerminosCalendario).mockResolvedValue([]);
   });
 
   it('al confirmar la eliminación, el registro desaparece del Timeline y "Mostrando X de Y" se recalcula', async () => {
@@ -516,6 +533,28 @@ describe('ModuloTerminosInformesV3 · Eliminar término desde el Timeline de Ven
     await waitFor(() => expect(legalService.eliminarTermino).toHaveBeenCalledWith('uuid-eliminado', true));
     await waitFor(() => expect(screen.queryByText('PD-2024-046')).not.toBeInTheDocument());
   });
+
+  it('si el backend ignora el filtro estado=ELIMINADO, los eliminados se recuperan por el calendario (no se muestran activos como eliminados)', async () => {
+    const user = userEvent.setup();
+    const activo = crearTerminoBackend({ id: 'uuid-activo', numeroRadicado: 'PD-2024-900', estado: 'PENDIENTE' });
+
+    // Backend desactualizado: devuelve el listado activo aunque se pida estado=ELIMINADO.
+    vi.mocked(legalService.getTerminosListado).mockResolvedValue([activo]);
+    // El calendario nunca filtró por estado, así que sí trae el término eliminado.
+    vi.mocked(legalService.getTerminosCalendario).mockResolvedValue([
+      { id: 'uuid-borrado', title: 'PD-2024-046 - Auto de avocamiento', start: '2026-09-10T00:00:00.000Z', extendedProps: { estado: 'ELIMINADO', origen: 'MANUAL' } },
+      { id: 'uuid-activo', title: 'PD-2024-900 - Actuación de prueba', start: '2026-09-10T00:00:00.000Z', extendedProps: { estado: 'PENDIENTE', origen: 'MANUAL' } },
+    ] as any);
+
+    await montarYEsperarCarga();
+    await user.click(screen.getByText('Archivados'));
+
+    // El eliminado real aparece...
+    await waitFor(() => expect(screen.getByText('PD-2024-046')).toBeInTheDocument());
+    expect(screen.getByText('Eliminado')).toBeInTheDocument();
+    // ...y el activo NO se cuela como si estuviera eliminado.
+    expect(screen.queryByText('PD-2024-900')).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -549,8 +588,11 @@ describe('ModuloTerminosInformesV3 · Exportar a Excel', () => {
 
     await montarYEsperarCarga();
 
+    // El modal de exportación pide primero el formato y luego confirma: la opción se rotula
+    // "Hoja de cálculo Excel" y el botón de confirmación "Exportar Excel".
     await user.click(screen.getAllByText('Exportar')[0]);
-    await user.click(await screen.findByText('Excel'));
+    await user.click(await screen.findByRole('button', { name: /Hoja de cálculo Excel/i }));
+    await user.click(await screen.findByRole('button', { name: /^Exportar Excel$/i }));
 
     await waitFor(() => expect(excelBufferCapturado).not.toBeNull());
 
@@ -561,5 +603,120 @@ describe('ModuloTerminosInformesV3 · Exportar a Excel', () => {
     expect(worksheet.getCell(1, 1).value).toBe('CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES');
     expect(worksheet.getCell(2, 1).value).toBe('ID');
     expect(worksheet.getCell(3, 1).value).toBe('PD-2024-100');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Botón "Editar" del detalle de un informe.
+//
+// La edición de un informe ya creado (datos, responsable y —sobre todo— fecha de vencimiento y
+// parametrización del plazo) está detrás del permiso dedicado `gestion-legal.terminos.edit`
+// (migración 435): no basta con tener acceso al submódulo. Estos tests cubren las dos mitades
+// del requisito: que sin el permiso el botón NO exista (no que esté deshabilitado y se pueda
+// forzar), y que con él abra realmente el formulario de edición.
+// ---------------------------------------------------------------------------------------------
+describe('ModuloTerminosInformesV3 · permiso para editar un informe', () => {
+  const abrirDetalleDelPrimerTermino = async (user: ReturnType<typeof userEvent.setup>) => {
+    await montarYEsperarCarga();
+    await waitFor(() => expect(screen.getByText('PD-2024-100')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /Ver Detalle/i }));
+    // El modal de detalle rotula el término dos veces (título accesible + encabezado visible),
+    // así que se espera por el pie de acciones, que es único y solo existe con el modal abierto.
+    await screen.findByRole('button', { name: /Imprimir/i });
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(legalService.getTerminosListado).mockResolvedValue([
+      crearTerminoBackend({ id: 'uuid-editable', numeroRadicado: 'PD-2024-100' }),
+    ]);
+    vi.mocked(legalService.getDocumentosTermino).mockResolvedValue([]);
+    vi.mocked(legalService.getNotasTermino).mockResolvedValue([]);
+    vi.mocked(legalService.getAbogados).mockResolvedValue([]);
+    vi.mocked(legalService.listarReglasAlertaTerminos).mockResolvedValue([]);
+    vi.mocked(legalService.getTerminoDetalle).mockResolvedValue(
+      crearTerminoBackend({ id: 'uuid-editable', numeroRadicado: 'PD-2024-100' }),
+    );
+    vi.mocked(authService.hasRole).mockReturnValue(false);
+  });
+
+  it('sin el permiso gestion-legal.terminos.edit, el detalle no muestra el botón Editar', async () => {
+    vi.mocked(authService.hasPermission).mockReturnValue(false);
+
+    await abrirDetalleDelPrimerTermino(userEvent.setup());
+
+    expect(screen.queryByRole('button', { name: /^Editar$/i })).not.toBeInTheDocument();
+    // Las demás acciones del detalle siguen disponibles: el permiso acota la edición, no el resto.
+    expect(screen.getByRole('button', { name: /Archivar/i })).toBeInTheDocument();
+  });
+
+  it('con el permiso, el detalle muestra el botón Editar y abre el formulario de edición', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authService.hasPermission).mockImplementation(
+      (permiso: string) => permiso === Permissions.GESTION_LEGAL_TERMINOS_EDIT,
+    );
+
+    await abrirDetalleDelPrimerTermino(user);
+
+    const botonEditar = screen.getByRole('button', { name: /^Editar$/i });
+    await user.click(botonEditar);
+
+    // El formulario pide el detalle real al backend: el listado no trae tipoDias, prioridad,
+    // responsableId ni fechaBase, que son justamente campos editables aquí.
+    await waitFor(() => expect(legalService.getTerminoDetalle).toHaveBeenCalledWith('uuid-editable'));
+    // "Editar Informe" aparece dos veces (título accesible del diálogo + encabezado visible).
+    expect(await screen.findAllByText('Editar Informe')).not.toHaveLength(0);
+    expect(await screen.findByLabelText(/Fecha de Vencimiento/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/Duración del plazo/i)).toBeInTheDocument();
+  });
+
+  it('flujo completo: detalle → Editar → mover el vencimiento → guardar → el listado se recarga', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authService.hasPermission).mockImplementation(
+      (permiso: string) => permiso === Permissions.GESTION_LEGAL_TERMINOS_EDIT,
+    );
+    vi.mocked(legalService.getTerminoDetalle).mockResolvedValue({
+      ...crearTerminoBackend({ id: 'uuid-editable', numeroRadicado: 'PD-2024-100' }),
+      fechaBase: '2026-08-01T05:00:00.000Z',
+      fechaVencimiento: '2026-09-11T04:59:59.999Z', // 10/09 en Bogotá
+      tipoDias: 'CALENDARIO',
+      prioridad: 'MEDIA',
+      responsableId: null,
+      horasAnticipacionAlertaPersonalizada: null,
+    });
+    vi.mocked(legalService.updateTermino).mockResolvedValue({} as any);
+
+    await abrirDetalleDelPrimerTermino(user);
+    await user.click(screen.getByRole('button', { name: /^Editar$/i }));
+
+    const fecha = await screen.findByLabelText(/Fecha de Vencimiento/i);
+    expect(fecha).toHaveValue('2026-09-10');
+    await user.clear(fecha);
+    await user.type(fecha, '2026-09-30');
+
+    // Dos llamadas a getTerminosListado por carga (activos + eliminados): las de la carga inicial.
+    const llamadasAntesDeGuardar = vi.mocked(legalService.getTerminosListado).mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: /Guardar Cambios/i }));
+
+    await waitFor(() => expect(legalService.updateTermino).toHaveBeenCalled());
+    const [id, payload] = vi.mocked(legalService.updateTermino).mock.calls[0];
+    expect(id).toBe('uuid-editable');
+    expect((payload as any).fechaVencimiento).toBe('2026-09-30');
+
+    // El módulo refresca el listado tras guardar, para que el semáforo y los contadores
+    // reflejen el plazo nuevo sin recargar la página.
+    await waitFor(() =>
+      expect(vi.mocked(legalService.getTerminosListado).mock.calls.length).toBeGreaterThan(llamadasAntesDeGuardar),
+    );
+  });
+
+  it('con el rol de solo monitoreo, el botón Editar no aparece aunque el permiso esté presente', async () => {
+    vi.mocked(authService.hasPermission).mockReturnValue(true);
+    vi.mocked(authService.hasRole).mockImplementation((rol: string) => rol === 'MONITOREO_GESTION_LEGAL');
+
+    await abrirDetalleDelPrimerTermino(userEvent.setup());
+
+    expect(screen.queryByRole('button', { name: /^Editar$/i })).not.toBeInTheDocument();
   });
 });

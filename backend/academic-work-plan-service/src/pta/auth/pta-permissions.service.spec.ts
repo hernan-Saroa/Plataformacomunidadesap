@@ -35,13 +35,14 @@ describe('permisos vigentes de las decisiones PTA', () => {
   it('el guard usa la identidad firmada y los roles actuales, no un rol antiguo del token', async () => {
     const permissions = {
       resolveForUser: jest.fn().mockResolvedValue({ roles: ['ROL_ACTUAL'], isSuperUser: false, allowedComponents: [] }),
-      resolveTerritorialIdsForUser: jest.fn().mockResolvedValue(['900014']),
+      resolvePersonalScopeForUser: jest.fn().mockResolvedValue({ territorialIds: ['900014'], cetapIds: ['169', 'Granada'] }),
     };
     const jwt = { verify: jest.fn().mockReturnValue({ sub: 'user-1', roles: ['SUPER_ADMIN'] }) };
     const guard = new PtaAuthGuard(jwt as any, permissions as any);
     const req: any = { headers: { authorization: 'Bearer signed-token' } };
     await guard.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
     expect(permissions.resolveForUser).toHaveBeenCalledWith('user-1');
-    expect(req.ptaAuth).toMatchObject({ roles: ['ROL_ACTUAL'], isSuperUser: false, territorialIds: ['900014'] });
+    expect(permissions.resolvePersonalScopeForUser).toHaveBeenCalledWith('user-1');
+    expect(req.ptaAuth).toMatchObject({ roles: ['ROL_ACTUAL'], isSuperUser: false, territorialIds: ['900014'], cetapIds: ['169', 'Granada'] });
   });
 });

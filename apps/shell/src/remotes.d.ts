@@ -111,3 +111,22 @@ declare module 'viaticos/Module' {
   export { Module as ViaticosModulePremium };
   export default Module;
 }
+
+declare module 'programacion_academica/Module' {
+  const Module: React.ComponentType;
+  export { Module as ProgramacionAcademicaModule };
+  export default Module;
+}
+
+declare module 'gestion_infraestructura/Module' {
+  const Module: React.ComponentType;
+  export { Module as GestionInfraestructuraModule };
+  export default Module;
+}
+
+declare module 'chatbot/Module' {
+  const Module: React.ComponentType;
+  export { Module as ChatbotModule };
+  export default Module;
+}
+

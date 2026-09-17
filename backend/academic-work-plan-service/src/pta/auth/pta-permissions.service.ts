@@ -18,6 +18,7 @@ import {
   PTANivelDocencia,
   TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT,
 } from './pta-permissions.constants';
 
 const NIVELES_DOCENCIA: PTANivelDocencia[] = ['pregrado', 'posgrado'];
@@ -25,6 +26,7 @@ const NIVELES_DOCENCIA: PTANivelDocencia[] = ['pregrado', 'posgrado'];
 export interface PtaAuthContext {
   /** Alcance del rol que concede cada permiso territorial, separado por etapa y nivel. */
   territorialDecisionGrants?: PtaTerritorialDecisionGrants;
+  territorialDecisionGrantsByComponent?: Record<string, PtaTerritorialDecisionGrants>;
   /** Superusuario del sistema (rol SUPER_ADMIN): aprueba todo. */
   isSuperUser: boolean;
   /**
@@ -97,7 +99,10 @@ export class PtaPermissionsService {
       const roles = [...new Set(rows.map(row => row.role_code).filter(Boolean))];
       const permissions = new Set(rows.map(row => row.permission_code).filter((code): code is string => Boolean(code)));
       return { ...this.buildContext(roles.some(code => SUPER_ADMIN_ROLE_CODES.includes(code)), permissions),
-        roles, territorialDecisionGrants: territorialGrantsFromRoles(rows) };
+        roles, territorialDecisionGrants: territorialGrantsFromRoles(rows),
+        territorialDecisionGrantsByComponent: Object.fromEntries(Object.keys(TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT)
+          .map(componente => [componente, territorialGrantsFromRoles(rows, componente)])),
+      };
     } catch (error: any) {
       this.logger.error(`No se pudieron verificar los permisos vigentes del usuario: ${error?.message}`);
       throw new ForbiddenException('No fue posible verificar sus permisos. Intente nuevamente.');
@@ -228,31 +233,35 @@ export class PtaPermissionsService {
   }
 
   /**
-   * Territoriales (auth.seccionales.id_seccional) a las que pertenece el usuario.
-   *
-   * Respaldo para roles sin alcance administrativo explícito y roles históricos
-   * JEFATURA_TERRITORIAL basados en la seccional de la persona. Los alcances
-   * Global/Filtrado se resuelven por separado desde el rol que concede el permiso.
-   *
-   * Devuelve [] si no se puede resolver; quien lo consuma decide (los llamadores
-   * tratan el vacío como "sin alcance territorial", que es fail-closed para el
-   * componente territorial).
+   * Asignacion vigente de Personas, incluyendo equivalencias Sede/CETAP.
+   * Una asignacion vacia es valida; un fallo al consultarla nunca amplia acceso.
    */
-  async resolveTerritorialIdsForUser(userId: string | null | undefined): Promise<string[]> {
-    if (!userId) return [];
+  async resolvePersonalScopeForUser(userId: string): Promise<{ territorialIds: string[]; cetapIds: string[] }> {
     try {
-      const rows: Array<{ id_seccional: string }> = await this.dataSource.query(
-        `SELECT p.id_seccional::text AS id_seccional
+      const rows = await this.dataSource.query(
+        `SELECT COALESCE(p.id_seccional, s.id_seccional)::text AS id_seccional,
+                p.id_sede::text AS id_sede, s.cod_sede::text AS codigo_sede,
+                s.nom_sede AS nombre_sede, c.id::text AS id_cetap,
+                c.codigo AS codigo_cetap, c.nombre AS nombre_cetap
            FROM auth."user" u
            INNER JOIN auth.personas p ON p.id_person = u.id_person
-          WHERE u.id_user::text = $1
-            AND p.id_seccional IS NOT NULL`,
-        [String(userId)],
+           LEFT JOIN auth.sedes s ON s.id_sede = p.id_sede
+           LEFT JOIN auth.sede_cetap_mapping m ON m.id_sede = s.id_sede
+           LEFT JOIN academic_work_plan.cetap c ON c.id = m.id_cetap
+          WHERE u.id_user::text = $1 AND COALESCE(u.is_active, true) = true`,
+        [userId],
       );
-      return Array.from(new Set((rows || []).map((r) => String(r.id_seccional)).filter(Boolean)));
+      if (!rows.length) throw new Error('Cuenta sin persona vinculada');
+      const values = (keys: string[]): string[] => [...new Set<string>(rows.flatMap(row =>
+        keys.map(key => row[key] == null ? '' : String(row[key]).trim()).filter(Boolean),
+      ))];
+      return {
+        territorialIds: values(['id_seccional']),
+        cetapIds: values(['id_sede', 'codigo_sede', 'nombre_sede', 'id_cetap', 'codigo_cetap', 'nombre_cetap']),
+      };
     } catch (error: any) {
-      this.logger.error(`No se pudo resolver la territorial del usuario ${userId}: ${error?.message}`);
-      return [];
+      this.logger.error(`No se pudo resolver el alcance de Personas del usuario ${userId}: ${error?.message}`);
+      throw new ForbiddenException('No fue posible verificar su territorial y sede en Personas. Intente nuevamente.');
     }
   }
 

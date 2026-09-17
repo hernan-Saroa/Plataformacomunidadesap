@@ -5,6 +5,7 @@ import * as QRCode from 'qrcode';
 import puppeteer from 'puppeteer';
 import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
+import { resolveLaborInternalGroup } from './labor-functions.utils';
 
 type TemplateType = 'docente' | 'administrador';
 type TechnicalBonusCategory = string;
@@ -783,6 +784,21 @@ export class LaborCertificatePdfService {
       :
       (certificate as Certificate & { request?: { position_location?: string } }).request
         ?.position_location || '';
+    // El centro de costo se lee SIEMPRE de la solicitud, incluso en
+    // certificados corregidos: la correccion edita dependencia y ubicacion, no
+    // el grupo interno, y la entidad Certificate no tiene columnas donde
+    // guardarlo. Asi la regla "centro de costo primero" vale tambien ahi.
+    const requestInternalGroup =
+      (certificate as Certificate & { request?: { internal_group?: string } }).request
+        ?.internal_group || '';
+    const requestCostCenter =
+      (certificate as Certificate & { request?: { cost_center?: string } }).request
+        ?.cost_center || '';
+    const requestOrganizationDepartment = preferCorrectedCertificate
+      ? ''
+      :
+      (certificate as Certificate & { request?: { organization_department?: string } })
+        .request?.organization_department || '';
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
@@ -852,14 +868,55 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    const dato7 =
-      requestDepartment ||
-      certificate.department ||
-      '';
+    // [DEPENDENCIA] prioriza la DEPENDENCIA de la solicitud y solo usa el
+    // centro de costo (grupo interno de trabajo) cuando la solicitud no trae
+    // dependencia.
+    //
+    // OJO con el cruce de datos entre fuentes: la misma informacion llega en
+    // columnas distintas segun de donde venga la fila.
+    //
+    //   Campo                   | Filas locales        | Filas de Oracle FNC
+    //   ------------------------|----------------------|--------------------------
+    //   internal_group          | grupo                | GRUPO_INTERNO, si no CC
+    //   cost_center             | vacio                | CENTROCOSTO
+    //   department              | dependencia          | CENTROCOSTO, si no DEPEND.
+    //   organization_department | dependencia          | DEPENDENCIA
+    //   position_location       | grupo, si no depend. | DEPENDENCIA, si no SUCURSAL
+    //
+    // `internal_group` y `organization_department` significan lo mismo en las
+    // dos fuentes, asi que son los anclajes fiables. `position_location` NO se
+    // usa a proposito: es el unico campo cuyo significado se invierte entre
+    // fuentes y en Oracle puede traer la SUCURSAL (p. ej. "SEDE CENTRAL"), que
+    // no es una dependencia.
+    //
+    // Resultado: dependencia de la solicitud si existe, centro de costo si no,
+    // y el mismo comportamiento en local, dev, qa, pre y produccion.
+    const centroCosto = resolveLaborInternalGroup(
+      requestInternalGroup,
+      requestCostCenter,
+    );
+    // En un certificado corregido la dependencia que guardo el coordinador es
+    // la fuente de verdad y va primero: el formulario de correccion muestra ese
+    // campo, asi que lo que edita tiene que ser lo que se imprime.
+    // Al radicar la correccion el campo se precarga con la dependencia efectiva
+    // (ver resolveEffectiveCertificateDependency), de modo que una correccion
+    // que no toca la dependencia sigue imprimiendo exactamente lo mismo.
+    const dato7 = preferCorrectedCertificate
+      ? requestDepartment || centroCosto || ''
+      : requestDepartment ||
+        centroCosto ||
+        certificate.department ||
+        requestOrganizationDepartment ||
+        '';
     const grupoVariable =
       requestPositionLocation ||
       certificate.position_location ||
       '';
+    // El servicio resuelve la vinculacion normal vigente sin reemplazar los
+    // datos del encargo. Las correcciones conservan su precedencia actual.
+    const dependenciaVariable = preferCorrectedCertificate
+      ? dato7
+      : certificate.request?.certificate_dependency ?? dato7;
     const cargoDato6 = tipoVinculacion;
 
     const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
@@ -898,7 +955,7 @@ export class LaborCertificatePdfService {
       '[SEDE]': certificate.campus || '',
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA]': dependenciaVariable,
       '[DEPENDENCIA_PADRE]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',

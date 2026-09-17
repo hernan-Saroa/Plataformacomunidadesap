@@ -32,10 +32,12 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
 import { ModalNuevoTermino } from './ModalNuevoTermino';
+import { ModalEditarTermino } from './ModalEditarTermino';
 import { ModalDetalleTermino } from './ModalDetalleTermino';
 import { ModalDocumentosTermino } from './ModalDocumentosTermino';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Tipos necesarios
 type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
@@ -120,6 +122,46 @@ function mapTerminoASolicitud(t: any): SolicitudInforme {
   } as SolicitudInforme;
 }
 
+/**
+ * Mapea un evento del endpoint de calendario a SolicitudInforme.
+ *
+ * Se usa solo como respaldo para la pestaña "Eliminados": a diferencia del listado, el calendario
+ * nunca ha filtrado por estado, así que devuelve también los términos con soft delete incluso en
+ * versiones del backend que no soportan `?estado=ELIMINADO`. Trae menos campos (el título viene
+ * como "RADICADO - Actuación"), pero sí el UUID real, que es lo que necesitan Restaurar y
+ * Eliminar Permanentemente.
+ */
+function mapEventoCalendarioASolicitud(evento: any): SolicitudInforme {
+  const titulo = String(evento.title || '');
+  const separador = titulo.indexOf(' - ');
+  const radicado = separador > 0 ? titulo.slice(0, separador).trim() : '';
+  const actuacion = separador > 0 ? titulo.slice(separador + 3).trim() : titulo.trim();
+  const origen = evento.extendedProps?.origen;
+
+  return {
+    id: radicado || String(evento.id).substring(0, 8),
+    etapa: evento.extendedProps?.estado as any,
+    tipoInforme: origen,
+    moduloOrigen: origen,
+    enteSolicitante: origen === 'MANUAL' ? 'Usuario' : 'Sistema',
+    destinatario: '',
+    fundamentoNormativo: [],
+    radicadoExterno: radicado || 'N/A',
+    asunto: actuacion || 'Sin título',
+    descripcion: '',
+    responsable: 'Sin asignar',
+    responsableId: null,
+    fechaSolicitud: new Date(evento.start),
+    fechaVencimiento: new Date(evento.start),
+    diasTotales: 0,
+    diasRestantes: 0,
+    datosRequeridos: [],
+    horasAnticipacionAlertaPersonalizada: null,
+    recordatorioManualHorasAnticipacion: null,
+    metadata: { uuid: evento.id },
+  } as SolicitudInforme;
+}
+
 /** Agrupa solicitudes por período (mes-año de vencimiento) para "VistaLista". */
 function agruparPorPeriodo(solicitudes: SolicitudInforme[]): Array<{ clave: string; etiqueta: string; items: SolicitudInforme[] }> {
   const grupos: Record<string, SolicitudInforme[]> = {};
@@ -147,6 +189,11 @@ export function ModuloTerminosInformesV3() {
   const esResuelveGestionLegal = authService.hasRole('RESUELVE_GESTION_LEGAL');
   const canModifyTerminos = !esMonitoreoGestionLegal;
   const canEnviarRecordatorio = !esMonitoreoGestionLegal && !esResuelveGestionLegal;
+  // Editar un informe ya creado (incluida su fecha de vencimiento y la parametrización del
+  // plazo) es una acción aparte de "poder gestionar el módulo": la habilita el permiso
+  // dedicado `gestion-legal.terminos.edit` (migración 435), que se otorga por rol desde la
+  // administración de roles. Sin él, el botón "Editar" del detalle ni siquiera se renderiza.
+  const canEditarTermino = canModifyTerminos && authService.hasPermission(Permissions.GESTION_LEGAL_TERMINOS_EDIT);
 
   // ========== ESTADO ==========
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
@@ -165,6 +212,10 @@ export function ModuloTerminosInformesV3() {
   const [modalNuevaSolicitudOpen, setModalNuevaSolicitudOpen] = useState(false);
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudInforme | null>(null);
+
+  // Estado para Modal de Editar
+  const [modalEditarOpen, setModalEditarOpen] = useState(false);
+  const [solicitudAEditar, setSolicitudAEditar] = useState<SolicitudInforme | null>(null);
 
   // Estados para Modal de Eliminar
   const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
@@ -341,10 +392,42 @@ export function ModuloTerminosInformesV3() {
   const fetchEliminados = async () => {
     try {
       const data = await legalService.getTerminosListado(undefined, 'ELIMINADO');
-      setTerminosEliminados(data.map(mapTerminoASolicitud));
+      // Salvaguarda: no confiar ciegamente en que el backend haya aplicado el filtro
+      // `estado=ELIMINADO` (p. ej. una versión desplegada desactualizada que lo ignore y
+      // devuelva el listado activo completo) — de lo contrario, términos activos/recién
+      // creados aparecerían de inmediato en "Eliminados", y "Eliminar Permanentemente"
+      // desde ahí borraría términos que en realidad seguían vigentes.
+      const soloEliminados = data.filter((t: any) => t.estado === 'ELIMINADO');
+
+      // Si el listado trajo términos pero ninguno eliminado, el backend ignoró el filtro (versión
+      // sin soporte para `?estado=`). En ese caso no se puede confiar en esa respuesta —serían
+      // términos activos— y se recuperan los eliminados por el calendario, que nunca ha filtrado
+      // por estado y por tanto sí los devuelve en cualquier versión del servicio.
+      if (soloEliminados.length === 0 && data.length > 0) {
+        console.warn(
+          `[Términos] El servicio ignoró el filtro estado=ELIMINADO (devolvió ${data.length} términos, ninguno eliminado). ` +
+          'Recuperando los eliminados desde el calendario.',
+        );
+        setTerminosEliminados(await fetchEliminadosDesdeCalendario());
+        return;
+      }
+
+      setTerminosEliminados(soloEliminados.map(mapTerminoASolicitud));
     } catch (error) {
       console.error('Error fetching términos eliminados:', error);
+      toast.error('Error al cargar los términos eliminados', {
+        description: (error as any)?.message || 'Intente nuevamente.',
+      });
     }
+  };
+
+  /** Respaldo de `fetchEliminados` vía calendario (ver mapEventoCalendarioASolicitud). */
+  const fetchEliminadosDesdeCalendario = async (): Promise<SolicitudInforme[]> => {
+    // Rango amplio a propósito: interesa todo el histórico, no una ventana de fechas.
+    const eventos = await legalService.getTerminosCalendario('1900-01-01', '2999-12-31');
+    return eventos
+      .filter((e: any) => e.extendedProps?.estado === 'ELIMINADO')
+      .map(mapEventoCalendarioASolicitud);
   };
 
 
@@ -472,6 +555,17 @@ export function ModuloTerminosInformesV3() {
     } catch (e) {
       toast.error('Error al archivar el término');
     }
+  };
+
+  /**
+   * Abre el formulario de edición del informe. Se cierra el detalle para no encimar dos
+   * diálogos; al guardar se recarga el listado y el usuario vuelve a la vista con los datos ya
+   * actualizados (incluida la nueva fecha de vencimiento y su semáforo).
+   */
+  const handleEditar = (solicitud: SolicitudInforme) => {
+    setSolicitudAEditar(solicitud);
+    setModalDetalleOpen(false);
+    setModalEditarOpen(true);
   };
 
   // `id` ya es el UUID real de backend (ver VistaTimeline/VistaLista/ModalDetalleSolicitudInforme).
@@ -829,9 +923,20 @@ export function ModuloTerminosInformesV3() {
         onCambiarEtapa={canModifyTerminos ? handleCambiarEtapa : undefined}
         onArchivar={canModifyTerminos ? handleArchivar : undefined}
         onEliminar={canModifyTerminos ? handleEliminar : undefined}
+        onEditar={canEditarTermino ? handleEditar : undefined}
         canModify={canModifyTerminos}
         canEnviarRecordatorio={canEnviarRecordatorio}
       />
+
+      {/* Modal Editar Informe — solo con permiso gestion-legal.terminos.edit */}
+      {canEditarTermino && (
+        <ModalEditarTermino
+          open={modalEditarOpen}
+          onOpenChange={setModalEditarOpen}
+          solicitud={solicitudAEditar}
+          onSuccess={fetchData}
+        />
+      )}
 
       {/* Modal Confirmar Eliminar */}
       {modalEliminarOpen && (

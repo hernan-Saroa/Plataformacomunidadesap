@@ -22,13 +22,18 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
-  Users,
+  Copy,
+  IdCard,
+  UserRound,
+  UserSearch,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import {
   certificadosService,
+  type LaborPersonLookupItemApi,
+  type LaborPersonLookupResponseApi,
   type LaborFunctionProfileApi,
   type LaborFunctionProfilePayloadApi,
 } from '../../services/api/certificados.service';
@@ -219,50 +224,6 @@ const splitFunctions = (value: unknown): string[] => {
   });
 };
 
-type DuplicateFunctionDetail = {
-  duplicateOrdinal: number;
-  originalOrdinal: number;
-  description: string;
-};
-
-const findDuplicateFunctions = (value: unknown): DuplicateFunctionDetail[] => {
-  const seen = new Map<string, number>();
-  const duplicates: DuplicateFunctionDetail[] = [];
-
-  extractFunctionItems(value).forEach((description, index) => {
-    const key = normalizeMatchText(description);
-    if (!key) return;
-
-    const originalOrdinal = seen.get(key);
-    if (originalOrdinal !== undefined) {
-      duplicates.push({
-        duplicateOrdinal: index + 1,
-        originalOrdinal,
-        description,
-      });
-      return;
-    }
-
-    seen.set(key, index + 1);
-  });
-
-  return duplicates;
-};
-
-const duplicateFunctionsMessage = (duplicates: DuplicateFunctionDetail[]): string => {
-  const visibleDuplicates = duplicates.slice(0, 5);
-  const details = visibleDuplicates.map(({ duplicateOrdinal, originalOrdinal, description }) => {
-    const preview = description.length > 120 ? `${description.slice(0, 117).trimEnd()}...` : description;
-    return `la función ${duplicateOrdinal} repite la función ${originalOrdinal}: «${preview}»`;
-  });
-  const hiddenCount = duplicates.length - visibleDuplicates.length;
-  const hiddenDetail = hiddenCount > 0
-    ? ` Además, hay ${hiddenCount} repetición${hiddenCount === 1 ? '' : 'es'} más.`
-    : '';
-
-  return `Hay funciones duplicadas: ${details.join('; ')}.${hiddenDetail} Elimina las repetidas antes de guardar.`;
-};
-
 const functionPreviewCount = (value: unknown) => extractFunctionItems(value).length;
 
 const splitBulkRequestRows = (
@@ -330,7 +291,6 @@ const validateEditor = (value: EditorState): EditorErrors => {
   const positionName = value.positionName.trim();
   const department = value.departmentName.trim();
   const functions = splitFunctions(value.functions);
-  const duplicateFunctions = findDuplicateFunctions(value.functions);
 
   if (!level) errors.hierarchicalLevel = 'Selecciona o escribe el nivel jerárquico.';
   else if (level.length > 100) errors.hierarchicalLevel = 'Máximo 100 caracteres.';
@@ -340,7 +300,9 @@ const validateEditor = (value: EditorState): EditorErrors => {
   else if (department.length > 500) errors.departmentName = 'Máximo 500 caracteres.';
   if (value.internalGroup.trim().length > 500) errors.internalGroup = 'Máximo 500 caracteres.';
   if (!functions.length) errors.functions = 'Agrega al menos una función numerada o una función por línea.';
-  else if (duplicateFunctions.length) errors.functions = duplicateFunctionsMessage(duplicateFunctions);
+  // Las funciones repetidas dentro del mismo perfil ya no son un error: se
+  // guardan deduplicadas. Solo la duplicidad de fila contra fila (misma
+  // identidad institucional) sigue rechazando el registro.
   else if (functions.length > 500) errors.functions = 'Se permiten máximo 500 funciones por perfil.';
   else if (functions.some((item) => item.length < 8)) errors.functions = 'Cada función debe tener al menos 8 caracteres.';
   else if (functions.some((item) => item.length > 5000)) errors.functions = 'Cada función debe tener máximo 5.000 caracteres.';
@@ -395,6 +357,40 @@ const validateBulkRows = (rows: LaborFunctionProfilePayloadApi[]): BulkError[] =
   });
   return errors;
 };
+
+const ASSOCIATION_STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  PENDING: { label: 'Pendiente', className: 'border-amber-200 bg-amber-50 text-amber-800' },
+  IN_REVIEW: { label: 'En revisión', className: 'border-blue-200 bg-blue-50 text-blue-800' },
+  APPROVED: { label: 'Aprobada', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  ISSUED: { label: 'Emitida', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  COMPLETED: { label: 'Completada', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+  REJECTED: { label: 'Rechazada', className: 'border-red-200 bg-red-50 text-red-700' },
+  CANCELLED: { label: 'Anulada', className: 'border-slate-200 bg-slate-100 text-slate-600' },
+};
+
+export function formatAssociationDate(value?: string | null) {
+  if (!value) return '—';
+
+  const soloFecha = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsed = soloFecha
+    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12)
+    : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return '—';
+
+  // Timestamps exactos a medianoche representan un día, no un instante.
+  if (
+    !soloFecha &&
+    parsed.getUTCHours() === 0 &&
+    parsed.getUTCMinutes() === 0 &&
+    parsed.getUTCSeconds() === 0 &&
+    parsed.getUTCMilliseconds() === 0
+  ) {
+    parsed.setUTCHours(12, 0, 0, 0);
+  }
+
+  return parsed.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
 type ModalShellProps = {
   open: boolean;
@@ -512,15 +508,32 @@ function PaginationNavigator({ page, totalPages, onPageChange, showJump = false 
   );
 }
 
-export function LaborFunctionsManager() {
+export interface LaborFunctionsManagerProps {
+  /**
+   * Permiso de escritura (`certificados-laborales.functions.manage`): crear,
+   * editar, eliminar y carga masiva. Sin el, la matriz se muestra en solo
+   * lectura y el backend rechaza igualmente cualquier escritura.
+   */
+  canManage?: boolean;
+}
+
+export function LaborFunctionsManager({ canManage = false }: LaborFunctionsManagerProps = {}) {
   const [items, setItems] = React.useState<LaborFunctionProfileApi[]>([]);
-  const [stats, setStats] = React.useState({ profiles: 0, functions: 0, associatedRequests: 0 });
+  const [stats, setStats] = React.useState({ profiles: 0, functions: 0 });
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
   const [totalPages, setTotalPages] = React.useState(1);
   const [totalItems, setTotalItems] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [loadError, setLoadError] = React.useState('');
+  const loadRevision = React.useRef(0);
+  const [lookupOpen, setLookupOpen] = React.useState(false);
+  const [lookupSearch, setLookupSearch] = React.useState('');
+  const [lookupData, setLookupData] = React.useState<LaborPersonLookupResponseApi | null>(null);
+  const [lookupLoading, setLookupLoading] = React.useState(false);
+  const [lookupError, setLookupError] = React.useState('');
+  const lookupRevision = React.useRef(0);
   const [editor, setEditor] = React.useState<EditorState | null>(null);
   const [editorTouched, setEditorTouched] = React.useState<Set<EditorField>>(new Set());
   const [editorAttempted, setEditorAttempted] = React.useState(false);
@@ -545,6 +558,7 @@ export function LaborFunctionsManager() {
   const [bulkPreviewPage, setBulkPreviewPage] = React.useState(1);
   const [dragActive, setDragActive] = React.useState(false);
   const [selectedProfiles, setSelectedProfiles] = React.useState<Map<string, LaborFunctionProfileApi>>(new Map());
+  const [selectingAll, setSelectingAll] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
   const [bulkDeleteSubmissionError, setBulkDeleteSubmissionError] = React.useState('');
   const [deletingSelected, setDeletingSelected] = React.useState(false);
@@ -561,10 +575,6 @@ export function LaborFunctionsManager() {
   const selectedCount = selectedProfiles.size;
   const selectedFunctionCount = React.useMemo(
     () => selectedProfilesList.reduce((total, profile) => total + profile.function_count, 0),
-    [selectedProfilesList],
-  );
-  const selectedAssociationCount = React.useMemo(
-    () => selectedProfilesList.reduce((total, profile) => total + profile.association_count, 0),
     [selectedProfilesList],
   );
   const currentPageSelectedCount = React.useMemo(
@@ -627,6 +637,8 @@ export function LaborFunctionsManager() {
   ) => {
     const requestedPage = overrides?.page ?? page;
     const requestedSearch = overrides?.search ?? search;
+    const revision = ++loadRevision.current;
+    setLoadError('');
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     try {
@@ -635,6 +647,7 @@ export function LaborFunctionsManager() {
         page: requestedPage,
         limit: 15,
       });
+      if (revision !== loadRevision.current) return;
       const resolvedTotalPages = Math.max(1, response.totalPages || 1);
       const resolvedPage = Math.min(resolvedTotalPages, Math.max(1, response.page || requestedPage));
       setItems(response.items || []);
@@ -652,18 +665,24 @@ export function LaborFunctionsManager() {
       setTotalItems(response.total || 0);
       setTotalPages(resolvedTotalPages);
       if (resolvedPage !== page) setPage(resolvedPage);
-      setStats(response.stats || { profiles: 0, functions: 0, associatedRequests: 0 });
+      setStats(response.stats || { profiles: 0, functions: 0 });
     } catch (error: any) {
-      toast.error(error?.message || 'No se pudo cargar la matriz de funciones.');
+      if (revision !== loadRevision.current) return;
+      setLoadError(error?.message || 'No se pudo cargar la matriz de funciones.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (revision === loadRevision.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [page, search]);
 
   React.useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 250);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      loadRevision.current += 1;
+    };
   }, [load]);
 
   React.useEffect(() => setPage(1), [search]);
@@ -683,7 +702,7 @@ export function LaborFunctionsManager() {
     return () => window.cancelAnimationFrame(frame);
   }, [operationSuccessNotice]);
 
-  const anyModalOpen = Boolean(editor || bulkOpen || bulkDeleteOpen || profileToDelete);
+  const anyModalOpen = Boolean(editor || bulkOpen || bulkDeleteOpen || profileToDelete || lookupOpen);
   React.useEffect(() => {
     if (!anyModalOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -694,6 +713,7 @@ export function LaborFunctionsManager() {
       setBulkOpen(false);
       setBulkDeleteOpen(false);
       setProfileToDelete(null);
+      setLookupOpen(false);
     };
     window.addEventListener('keydown', handleEscape);
     return () => {
@@ -702,7 +722,101 @@ export function LaborFunctionsManager() {
     };
   }, [anyModalOpen, saving, bulkLoading, bulkReading, bulkValidating, deleting, deletingSelected]);
 
+  const runLookup = React.useCallback(async (term: string) => {
+    const revision = ++lookupRevision.current;
+    const clean = term.trim();
+    if (clean.length < 3) {
+      setLookupData(null);
+      setLookupError('');
+      setLookupLoading(false);
+      return;
+    }
+    setLookupLoading(true);
+    setLookupError('');
+    try {
+      const response = await certificadosService.laborales.consultarEmpleadoFuncionesLaborales(clean);
+      if (revision !== lookupRevision.current) return;
+      setLookupData(response);
+    } catch (error: any) {
+      if (revision !== lookupRevision.current) return;
+      setLookupData(null);
+      setLookupError(error?.message || 'No se pudo consultar al empleado.');
+    } finally {
+      if (revision === lookupRevision.current) setLookupLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!lookupOpen) return undefined;
+    const timeout = window.setTimeout(() => void runLookup(lookupSearch), 400);
+    return () => {
+      window.clearTimeout(timeout);
+      lookupRevision.current += 1;
+    };
+  }, [lookupOpen, lookupSearch, runLookup]);
+
+  const openLookup = () => {
+    setLookupOpen(true);
+    setLookupSearch('');
+    setLookupData(null);
+    setLookupError('');
+  };
+
+  const closeLookup = () => {
+    setLookupOpen(false);
+    setLookupSearch('');
+    setLookupData(null);
+    setLookupError('');
+  };
+
+  /** Copia al portapapeles el valor exacto de un campo de la matriz. */
+  const copyLookupValue = async (label: string, value?: string | null) => {
+    const text = String(value ?? '').trim();
+    if (!text) {
+      toast.info(`${label} viene vacío en la fuente laboral.`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copiado.`);
+    } catch {
+      toast.error('El navegador no permitió copiar al portapapeles.');
+    }
+  };
+
+  /**
+   * Corta las acciones de escritura cuando el rol es de solo lectura. La UI ya
+   * las oculta; esto evita que un atajo o un estado viejo las dispare.
+   */
+  const ensureCanManage = () => {
+    if (canManage) return true;
+    toast.error('No tienes permiso para gestionar las funciones laborales.');
+    return false;
+  };
+
+  /** Precarga el formulario individual con los datos exactos del empleado. */
+  const createFromLookup = (item: LaborPersonLookupItemApi) => {
+    if (!ensureCanManage()) return;
+    setOperationSuccessNotice(null);
+    setEditorSubmissionError('');
+    setEditor({
+      ...EMPTY_EDITOR,
+      positionCode: item.matrix.position_code || '',
+      gradeCode: item.matrix.grade_code || '',
+      combinedCode: item.matrix.combined_code || '',
+      hierarchicalLevel: item.matrix.hierarchical_level || '',
+      positionName: item.matrix.position_name || '',
+      departmentName: item.matrix.department_name || '',
+      internalGroup: item.matrix.internal_group || '',
+    });
+    setEditorTouched(new Set());
+    setEditorAttempted(false);
+    closeLookup();
+  };
+
+
   const openCreate = () => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setEditorSubmissionError('');
     setEditor({ ...EMPTY_EDITOR });
@@ -711,6 +825,7 @@ export function LaborFunctionsManager() {
   };
 
   const openEdit = (profile: LaborFunctionProfileApi) => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setEditorSubmissionError('');
     setEditor({
@@ -733,6 +848,7 @@ export function LaborFunctionsManager() {
   };
 
   const openDelete = (profile: LaborFunctionProfileApi) => {
+    if (!ensureCanManage()) return;
     setOperationSuccessNotice(null);
     setDeleteSubmissionError('');
     setProfileToDelete(profile);
@@ -764,7 +880,41 @@ export function LaborFunctionsManager() {
 
   const clearSelectedProfiles = () => setSelectedProfiles(new Map());
 
+  /**
+   * Marca TODOS los registros que coinciden con la búsqueda actual, no solo los
+   * de la página visible. Los ids llegan del endpoint `selection`, que aplica
+   * exactamente el mismo filtro que la tabla.
+   */
+  const selectAllProfiles = async () => {
+    if (selectingAll) return;
+    setSelectingAll(true);
+    try {
+      const response = await certificadosService.laborales.listarSeleccionFuncionesLaborales(
+        { search: search.trim() || undefined },
+      );
+      const next = new Map<string, LaborFunctionProfileApi>();
+      (response.items || []).forEach((profile) => {
+        // Se conserva el registro completo si ya estaba en pantalla; el compacto
+        // basta para los totales de la confirmación de borrado.
+        next.set(profile.id, (selectedProfiles.get(profile.id)
+          || items.find((item) => item.id === profile.id)
+          || profile) as LaborFunctionProfileApi);
+      });
+      setSelectedProfiles(next);
+      toast.success(
+        next.size === 1
+          ? '1 registro seleccionado.'
+          : `${next.size} registros seleccionados de todas las páginas.`,
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'No se pudieron seleccionar todos los registros.');
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
   const openBulkDelete = () => {
+    if (!ensureCanManage()) return;
     if (!selectedCount) {
       toast.error('Selecciona al menos un registro para eliminar.');
       return;
@@ -831,7 +981,7 @@ export function LaborFunctionsManager() {
         toast.success('Funciones actualizadas correctamente.');
       } else {
         savedProfile = await certificadosService.laborales.crearFuncionesLaborales(payload);
-        toast.success('Perfil y funciones asociados correctamente.');
+        toast.success('Perfil y funciones guardados correctamente.');
       }
       const functionCount = savedProfile.function_count || editorFunctionCount;
       setSelectedProfiles((current) => {
@@ -1215,6 +1365,7 @@ export function LaborFunctionsManager() {
   };
 
   const openBulkModal = () => {
+    if (!ensureCanManage()) return;
     clearBulkFile();
     setBulkOpen(true);
   };
@@ -1329,20 +1480,31 @@ export function LaborFunctionsManager() {
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Asociación validada</span>
               </div>
               <p className="max-w-3xl text-sm leading-6 text-slate-600">
-                Administra las funciones normalizadas por código, grado, cargo y estructura organizacional. Solo una coincidencia exacta podrá incluirse en el certificado.
+                {canManage
+                  ? 'Administra las funciones normalizadas por código, grado, cargo y estructura organizacional. Solo una coincidencia exacta podrá incluirse en el certificado.'
+                  : 'Consulta las funciones normalizadas por código, grado, cargo y estructura organizacional. Solo una coincidencia exacta podrá incluirse en el certificado.'}
               </p>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
-            <button onClick={downloadTemplate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-800 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md active:translate-y-0">
-              <Download className="h-4 w-4" /> Plantilla con ejemplos
+            {canManage && (
+              <button onClick={downloadTemplate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-800 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md active:translate-y-0">
+                <Download className="h-4 w-4" /> Plantilla con ejemplos
+              </button>
+            )}
+            {canManage && (
+              <button onClick={openBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-[#003DA5] shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md active:translate-y-0">
+                <Upload className="h-4 w-4" /> Carga masiva
+              </button>
+            )}
+            <button onClick={openLookup} title="Consultar los datos laborales exactos de una persona" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-purple-50 hover:shadow-md active:translate-y-0">
+              <UserSearch className="h-4 w-4" /> Consultar empleado
             </button>
-            <button onClick={openBulkModal} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-[#003DA5] shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md active:translate-y-0">
-              <Upload className="h-4 w-4" /> Carga masiva
-            </button>
-            <button onClick={openCreate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:-translate-y-0.5 hover:bg-[#002873] hover:shadow-xl active:translate-y-0">
-              <Plus className="h-4 w-4" /> Agregar individual
-            </button>
+            {canManage && (
+              <button onClick={openCreate} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:-translate-y-0.5 hover:bg-[#002873] hover:shadow-xl active:translate-y-0">
+                <Plus className="h-4 w-4" /> Agregar individual
+              </button>
+            )}
           </div>
         </div>
       </motion.section>
@@ -1372,11 +1534,10 @@ export function LaborFunctionsManager() {
         )}
       </AnimatePresence>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         {[
           { label: 'Perfiles de cargo', value: stats.profiles, detail: 'Combinaciones institucionales', icon: Layers3, tone: 'blue' },
           { label: 'Funciones normalizadas', value: stats.functions, detail: 'Funciones individuales y ordenadas', icon: CheckCircle2, tone: 'emerald' },
-          { label: 'Contratos asociados', value: stats.associatedRequests, detail: 'Coincidencias exactas disponibles', icon: Users, tone: 'violet' },
         ].map((stat, index) => {
           const tone = stat.tone === 'emerald'
             ? 'bg-emerald-50 text-emerald-700 ring-emerald-100'
@@ -1404,6 +1565,18 @@ export function LaborFunctionsManager() {
           <div className="flex items-center justify-between gap-3 lg:justify-end">
             <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-[#003DA5] sm:inline-flex">Más recientes primero</span>
             <span className="text-xs font-medium text-slate-500">{totalItems} {totalItems === 1 ? 'perfil encontrado' : 'perfiles encontrados'}</span>
+            {canManage && totalItems > 0 && selectedCount < totalItems && (
+              <button
+                type="button"
+                onClick={() => void selectAllProfiles()}
+                disabled={selectingAll || loading}
+                title={search ? `Marcar los ${totalItems} registros que coinciden con la búsqueda` : `Marcar los ${totalItems} registros de todas las páginas`}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-[#003DA5] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {selectingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {selectingAll ? 'Seleccionando…' : `Seleccionar todos (${totalItems})`}
+              </button>
+            )}
             <button onClick={() => void load(true)} disabled={refreshing} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#003DA5] disabled:opacity-60">
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Actualizar
             </button>
@@ -1411,7 +1584,7 @@ export function LaborFunctionsManager() {
         </div>
 
         <AnimatePresence initial={false}>
-          {selectedCount > 0 && (
+          {canManage && selectedCount > 0 && (
             <motion.div
               role="status"
               aria-live="polite"
@@ -1425,7 +1598,10 @@ export function LaborFunctionsManager() {
                   <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl bg-[#003DA5] px-2.5 text-sm font-bold text-white shadow-sm">{selectedCount}</span>
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-blue-950">{selectedCount === 1 ? '1 registro seleccionado' : `${selectedCount} registros seleccionados`}</p>
-                    <p className="text-xs text-blue-700">{currentPageSelectedCount} en esta página · La selección se conserva al navegar o buscar.</p>
+                    <p className="text-xs text-blue-700">
+                      {currentPageSelectedCount} en esta página · La selección se conserva al navegar o buscar.
+                      {selectedCount === totalItems && totalItems > 0 ? ' Están seleccionados todos los registros.' : ''}
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -1437,7 +1613,13 @@ export function LaborFunctionsManager() {
           )}
         </AnimatePresence>
 
-        {loading ? (
+        {loadError ? (
+          <div role="alert" className="p-8 text-center text-red-700">
+            <p className="font-semibold">No se pudo cargar el catálogo de funciones.</p>
+            <p className="mt-2 text-sm">{loadError}</p>
+            <button type="button" onClick={() => void load(true)} className="mt-4 rounded-xl border border-red-300 px-4 py-2">Reintentar</button>
+          </div>
+        ) : loading ? (
           <div className="flex flex-1 items-center justify-center p-10">
             <div className="text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-[#003DA5]" /><p className="mt-3 text-sm font-medium text-slate-500">Consultando la matriz…</p></div>
           </div>
@@ -1446,12 +1628,14 @@ export function LaborFunctionsManager() {
             <table className="w-full min-w-[1180px] text-left text-sm">
               <thead className="sticky top-0 z-[1] bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="w-16 px-4 py-3.5 text-center">
-                    <label className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition hover:bg-blue-100" title={allCurrentPageSelected ? 'Desmarcar esta página' : 'Seleccionar esta página'}>
-                      <input ref={selectPageCheckboxRef} type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} aria-label={allCurrentPageSelected ? 'Desmarcar todos los registros de esta página' : 'Seleccionar todos los registros de esta página'} className="h-5 w-5 cursor-pointer rounded-md border-slate-300 accent-[#003DA5]" />
-                    </label>
-                  </th>
-                  <th className="px-5 py-3.5">Código / grado</th><th className="px-5 py-3.5">Denominación</th><th className="px-5 py-3.5">Dependencia / grupo</th><th className="px-5 py-3.5 text-center">Funciones</th><th className="px-5 py-3.5 text-center">Asociados</th><th className="px-5 py-3.5 text-right">Acciones</th>
+                  {canManage && (
+                    <th className="w-16 px-4 py-3.5 text-center">
+                      <label className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition hover:bg-blue-100" title={allCurrentPageSelected ? 'Desmarcar esta página' : 'Seleccionar esta página'}>
+                        <input ref={selectPageCheckboxRef} type="checkbox" checked={allCurrentPageSelected} onChange={toggleCurrentPageSelection} aria-label={allCurrentPageSelected ? 'Desmarcar todos los registros de esta página' : 'Seleccionar todos los registros de esta página'} className="h-5 w-5 cursor-pointer rounded-md border-slate-300 accent-[#003DA5]" />
+                      </label>
+                    </th>
+                  )}
+                  <th className="px-5 py-3.5">Código / grado</th><th className="px-5 py-3.5">Denominación</th><th className="px-5 py-3.5">Dependencia / grupo</th><th className="px-5 py-3.5 text-center">Funciones</th>{canManage && <th className="px-5 py-3.5 text-right">Acciones</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1459,17 +1643,20 @@ export function LaborFunctionsManager() {
                   const selected = selectedProfiles.has(profile.id);
                   return (
                   <motion.tr key={profile.id} aria-selected={selected} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(index * 0.025, 0.2) }} className={`group transition ${selected ? 'bg-blue-50/80 hover:bg-blue-100/70' : 'hover:bg-blue-50/35'}`}>
-                    <td className="px-4 py-4 text-center">
-                      <label className={`inline-flex cursor-pointer items-center justify-center rounded-xl border p-2 shadow-sm transition ${selected ? 'border-blue-300 bg-[#003DA5] text-white' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
-                        <input type="checkbox" checked={selected} onChange={() => toggleProfileSelection(profile)} aria-label={`${selected ? 'Desmarcar' : 'Seleccionar'} ${profile.combined_code} · ${profile.position_name}`} className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#003DA5]" />
-                      </label>
-                    </td>
+                    {canManage && (
+                      <td className="px-4 py-4 text-center">
+                        <label className={`inline-flex cursor-pointer items-center justify-center rounded-xl border p-2 shadow-sm transition ${selected ? 'border-blue-300 bg-[#003DA5] text-white' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}`}>
+                          <input type="checkbox" checked={selected} onChange={() => toggleProfileSelection(profile)} aria-label={`${selected ? 'Desmarcar' : 'Seleccionar'} ${profile.combined_code} · ${profile.position_name}`} className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#003DA5]" />
+                        </label>
+                      </td>
+                    )}
                     <td className="px-5 py-4"><p className="font-mono text-base font-bold text-[#003DA5]">{profile.combined_code}</p><p className="mt-0.5 text-xs text-slate-500">Base {profile.position_code}{profile.grade_code ? ` · Grado ${profile.grade_code}` : ' · Sin grado'}</p></td>
                     <td className="px-5 py-4"><p className="font-semibold text-slate-900">{profile.position_name}</p><p className="mt-0.5 text-xs text-slate-500">{profile.hierarchical_level || 'Nivel no informado'}</p></td>
                     <td className="max-w-xl px-5 py-4"><p className="truncate font-medium text-slate-700">{profile.department_name || 'Sin dependencia específica'}</p><p className="mt-0.5 truncate text-xs text-slate-500">{profile.internal_group || 'Sin grupo interno'}</p></td>
                     <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-emerald-50 px-3 py-1.5 font-bold text-emerald-700 ring-1 ring-emerald-100">{profile.function_count}</span></td>
-                    <td className="px-5 py-4 text-center"><span className="inline-flex min-w-9 justify-center rounded-full bg-blue-50 px-3 py-1.5 font-bold text-[#003DA5] ring-1 ring-blue-100">{profile.association_count}</span></td>
+                    {canManage && (
                     <td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => openEdit(profile)} aria-label={`Editar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></button><button onClick={() => openDelete(profile)} aria-label={`Eliminar ${profile.position_name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-red-600 shadow-sm transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></td>
+                    )}
                   </motion.tr>
                   );
                 })}
@@ -1481,7 +1668,7 @@ export function LaborFunctionsManager() {
             <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="max-w-lg">
               <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-50 text-[#003DA5] ring-1 ring-blue-100"><BookOpenCheck className="h-10 w-10" /></span>
               <h2 className="mt-5 text-xl font-bold text-slate-900">{search ? 'No encontramos coincidencias' : 'La matriz todavía está vacía'}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{search ? 'Prueba con otro código, denominación o dependencia.' : 'Carga el Excel institucional o crea el primer perfil de manera individual. El sistema validará cada combinación antes de asociarla.'}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{search ? 'Prueba con otro código, denominación o dependencia.' : canManage ? 'Carga el Excel institucional o crea el primer perfil de manera individual. El sistema validará cada combinación antes de asociarla.' : 'Todavía no hay perfiles cargados en la matriz.'}</p>
             </motion.div>
           </div>
         )}
@@ -1686,10 +1873,9 @@ export function LaborFunctionsManager() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:gap-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center"><p className="text-xl font-bold text-slate-950">{selectedCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Perfiles</p></div>
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center"><p className="text-xl font-bold text-red-700">{selectedFunctionCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-red-600">Funciones</p></div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center"><p className="text-xl font-bold text-amber-700">{selectedAssociationCount}</p><p className="text-[10px] font-bold uppercase tracking-wide text-amber-600">Asociados</p></div>
             </div>
 
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
@@ -1724,6 +1910,174 @@ export function LaborFunctionsManager() {
 
       <ModalShell open={Boolean(profileToDelete)} titleId="labor-functions-delete-title" onClose={closeDelete} busy={deleting} widthClass="max-w-lg">
         {profileToDelete && <div className="p-6 sm:p-7"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100"><Trash2 className="h-6 w-6" /></span><h2 id="labor-functions-delete-title" className="mt-5 text-xl font-bold text-slate-950">¿Eliminar este perfil de funciones?</h2><p className="mt-2 text-sm leading-6 text-slate-600">Se eliminarán <strong>{profileToDelete.function_count} funciones</strong> asociadas a <strong>{profileToDelete.combined_code} · {profileToDelete.position_name}</strong>. Los certificados ya emitidos conservarán su snapshot histórico.</p><div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800"><strong>Importante:</strong> las nuevas solicitudes dejarán de encontrar estas funciones.</div>{deleteSubmissionError && <div role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800"><p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se pudo eliminar el registro</p><p className="mt-1 break-words text-xs leading-5">{deleteSubmissionError}</p><p className="mt-1 text-xs text-red-700">El registro permanece en la matriz y puedes volver a intentarlo.</p></div>}<div className="mt-6 flex justify-end gap-2"><button disabled={deleting} onClick={closeDelete} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancelar</button><button disabled={deleting} onClick={() => void removeProfile()} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-900/10 hover:bg-red-700 disabled:opacity-60">{deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button></div></div>}
+      </ModalShell>
+
+      <ModalShell open={lookupOpen} titleId="labor-functions-lookup-title" onClose={closeLookup} widthClass="max-w-5xl">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-violet-50 px-5 py-4">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-md"><UserSearch className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-widest text-violet-700">Consulta informativa</p>
+              <h2 id="labor-functions-lookup-title" className="mt-0.5 text-xl font-bold text-slate-900">Datos laborales de una persona</h2>
+              <p className="mt-1 text-sm text-slate-500">Busca por nombre o documento y obtén los valores exactos con los que debes crear su perfil de funciones.</p>
+            </div>
+          </div>
+          <button onClick={closeLookup} aria-label="Cerrar" className="rounded-xl p-2 text-slate-500 transition hover:bg-white hover:text-slate-900"><X className="h-5 w-5" /></button>
+        </header>
+
+        <div className="shrink-0 border-b border-slate-200 px-5 py-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              value={lookupSearch}
+              onChange={(event) => setLookupSearch(event.target.value)}
+              placeholder="Nombre completo o número de documento (mínimo 3 caracteres)…"
+              aria-label="Buscar empleado por nombre o documento"
+              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm text-slate-800 outline-none transition focus:border-purple-600 focus:ring-2 focus:ring-blue-100"
+            />
+            {lookupSearch && (
+              <button type="button" onClick={() => setLookupSearch('')} aria-label="Limpiar búsqueda" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"><X className="h-4 w-4" /></button>
+            )}
+          </div>
+          <p className="mt-2 flex items-start gap-2 text-xs text-slate-500" style={{ lineHeight: 1.5 }}>
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" />
+            <span>Solo lectura. Se muestra <strong>la vinculación que el certificado usa</strong> para cada persona, con los valores exactos que el sistema compara para decidir si recibe las funciones de un perfil.</span>
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {lookupError ? (
+            <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+              <p className="flex items-center gap-2 font-bold text-red-900"><AlertCircle className="h-4 w-4 shrink-0" /> No se pudo consultar</p>
+              <p className="mt-1 break-words text-xs" style={{ lineHeight: 1.5 }}>{lookupError}</p>
+            </div>
+          ) : lookupLoading ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-violet-700" /><p className="mt-3 text-sm font-medium text-slate-500">Consultando fuente laboral…</p></div>
+            </div>
+          ) : !lookupData ? (
+            <div className="flex items-center justify-center px-6 py-12 text-center">
+              <div className="max-w-md">
+                <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 text-slate-400"><IdCard className="h-8 w-8" /></span>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">Escribe un nombre o un documento</h3>
+                <p className="mt-2 text-sm text-slate-500" style={{ lineHeight: 1.6 }}>Te mostraré el código, grado, nivel, denominación, dependencia y grupo interno exactos de esa persona, y te diré si ya existe un perfil que le aplique.</p>
+              </div>
+            </div>
+          ) : !lookupData.items.length ? (
+            <div className="flex items-center justify-center px-6 py-12 text-center">
+              <div className="max-w-md">
+                <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 text-slate-400"><UserSearch className="h-8 w-8" /></span>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">Sin resultados</h3>
+                <p className="mt-2 text-sm text-slate-500" style={{ lineHeight: 1.6 }}>No hay vinculaciones para «{lookupData.search}». Verifica el documento o prueba con parte del nombre.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {lookupData.total > lookupData.items.length && (
+                <p className="text-xs font-medium text-slate-500">Mostrando {lookupData.items.length} de {lookupData.total} vinculaciones. Afina la búsqueda si no ves la que necesitas.</p>
+              )}
+
+              {lookupData.items.map((item, index) => {
+                const campos = [
+                  { label: 'Código base', value: item.matrix.position_code, mono: true },
+                  { label: 'Grado', value: item.matrix.grade_code, mono: true },
+                  { label: 'cod_cargo', value: item.matrix.combined_code, mono: true },
+                  { label: 'Nivel jerárquico', value: item.matrix.hierarchical_level },
+                  { label: 'Denominación exacta del empleo', value: item.matrix.position_name },
+                  { label: 'Dependencia / Área', value: item.matrix.department_name },
+                  { label: 'Grupo interno', value: item.matrix.internal_group },
+                ];
+                return (
+                  <motion.div key={`${item.id_number}-${item.matrix.combined_code}-${index}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.04, 0.2) }} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700"><UserRound className="h-4 w-4" /></span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900">{item.full_name || 'Sin nombre registrado'}</p>
+                          <p className="mt-0.5 font-mono text-xs text-slate-500">{item.document_type ? `${item.document_type} ` : ''}{item.id_number}{item.email ? ` · ${item.email}` : ''}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">{item.position_category || 'Vinculación sin tipo'}{item.hiring_date ? ` · desde ${formatAssociationDate(item.hiring_date)}` : ''}</p>
+                          {item.total_vinculaciones > 1 && (
+                            <p className="mt-0.5 text-xs text-slate-400">Tiene {item.total_vinculaciones} vinculaciones; esta es la que usa el certificado.</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`inline-flex shrink-0 self-start whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold ${item.origen === 'oracle' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-blue-200 bg-blue-50 text-[#003DA5]'}`}>
+                        {item.origen === 'oracle' ? 'Oracle FNC' : 'Registro local'}
+                      </span>
+                    </div>
+
+                    <div className="px-4 py-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Datos para crear el perfil</p>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {campos.map((campo) => (
+                          <div key={campo.label} className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{campo.label}</p>
+                              <p className={`mt-0.5 break-words text-sm font-semibold text-slate-900 ${campo.mono ? 'font-mono' : ''}`}>{campo.value || <span className="font-normal text-slate-400">Sin dato</span>}</p>
+                            </div>
+                            {campo.value && (
+                              <button type="button" onClick={() => void copyLookupValue(campo.label, campo.value)} aria-label={`Copiar ${campo.label}`} title={`Copiar ${campo.label}`} className="shrink-0 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:border-blue-300 hover:bg-purple-50 hover:text-blue-700"><Copy className="h-3.5 w-3.5" /></button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {item.matched_profile ? (
+                        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                          <p className="flex items-center gap-2 text-sm font-bold text-emerald-800"><CheckCircle2 className="h-4 w-4 shrink-0" /> Ya existe un perfil que le aplica</p>
+                          <p className="mt-1 text-xs text-emerald-800" style={{ lineHeight: 1.5 }}>
+                            <span className="font-mono font-bold">{item.matched_profile.combined_code}</span> · {item.matched_profile.position_name} · {item.matched_profile.department_name || 'Sin dependencia'}{item.matched_profile.internal_group ? ` · ${item.matched_profile.internal_group}` : ''} — <strong>{item.matched_profile.function_count} funciones</strong>.
+                          </p>
+                          <p className="mt-1 text-xs text-emerald-700">No necesitas crear nada: esta persona ya recibe esas funciones en su certificado.</p>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <p className="flex items-center gap-2 text-sm font-bold text-amber-800"><AlertCircle className="h-4 w-4 shrink-0" /> No hay ningún perfil que le aplique</p>
+                          {item.near_matches.length ? (
+                            <>
+                              <p className="mt-1 text-xs text-amber-800" style={{ lineHeight: 1.5 }}>
+                                Hay {item.near_matches.length === 1 ? 'un perfil que queda' : `${item.near_matches.length} perfiles que quedan`} a un solo dato de coincidir:
+                              </p>
+                              <div className="mt-2 space-y-1.5">
+                                {item.near_matches.map((candidate) => (
+                                  <div key={candidate.id} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs text-slate-700">
+                                    <p className="font-semibold text-slate-900">{candidate.position_name} · {candidate.department_name || 'Sin dependencia'}</p>
+                                    <p className="mt-0.5 text-slate-500">Difiere en <strong className="text-amber-800">{candidate.differing_fields.join(', ')}</strong>: tiene «{candidate.internal_group || candidate.department_name || '—'}».</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="mt-1 text-xs text-amber-800" style={{ lineHeight: 1.5 }}>
+                              {item.profiles_same_code
+                                ? `Existen ${item.profiles_same_code} perfiles con este cod_cargo, pero ninguno se acerca: todos difieren en más de un dato.`
+                                : `No existe ningún perfil con el cod_cargo ${item.matrix.combined_code}. Hay que crearlo desde cero.`}
+                            </p>
+                          )}
+                          {canManage && (
+                            <button type="button" onClick={() => createFromLookup(item)} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#002873]">
+                              <Plus className="h-4 w-4" /> Crear perfil con estos datos
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <footer className="flex shrink-0 flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 text-sm sm:flex-row">
+          <span className="text-xs font-medium text-slate-500">
+            {lookupData
+              ? `${lookupData.total} ${lookupData.total === 1 ? 'persona encontrada' : 'personas encontradas'}${lookupData.sources.oracle ? ` · ${lookupData.sources.oracle} desde Oracle FNC` : ''}`
+              : 'Consulta de solo lectura'}
+          </span>
+          <button type="button" onClick={closeLookup} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Cerrar</button>
+        </footer>
       </ModalShell>
     </div>
   );

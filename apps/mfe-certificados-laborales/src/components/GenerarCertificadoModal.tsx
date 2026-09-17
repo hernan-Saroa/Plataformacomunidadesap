@@ -39,6 +39,7 @@ interface CertificadoLaboralListado {
   observations?: string;
   position_location?: string;
   department?: string;
+  certificate_dependency?: string;
   cod_cargo?: string;
   cod_grade?: string;
   campus?: string;
@@ -389,6 +390,24 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificateHash: cert.verification_code,
           qrCode: cert.verification_code,
           observations: cert.observations || cert.request?.observations,
+          certificate_dependency: cert.is_corrected
+            ? undefined
+            : cert.request?.certificate_dependency ?? cert.certificate_dependency,
+          // Centro de costo (grupo interno): [DEPENDENCIA] cae a el cuando no
+          // hay dependencia, asi que tiene que llegar hasta el visor. Sin esto
+          // la vista previa se queda vacia y contradice al PDF del backend.
+          internal_group: normalizarTexto(
+            cert.request?.internal_group ||
+            cert.request?.internalGroup ||
+            cert.internal_group ||
+            '',
+          ),
+          cost_center: normalizarTexto(
+            cert.request?.cost_center ||
+            cert.request?.costCenter ||
+            cert.cost_center ||
+            '',
+          ),
           position_location: normalizarTexto(grupoRaw),
           department: normalizarTexto(
             cert.department ||

@@ -204,6 +204,7 @@ export function SolicitarCertificado() {
       qrCode: cert.verification_code,
       observations: cert.request?.observations || cert.observations,
       request: cert.request,
+      certificate_dependency: cert.is_corrected ? undefined : cert.request?.certificate_dependency,
       templateSnapshot,
       templateType,
       incluyeSalario,

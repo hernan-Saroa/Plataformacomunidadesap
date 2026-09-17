@@ -105,9 +105,12 @@ const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
 const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
+const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestructura/Module'), ['GestionInfraestructuraModule']);
+const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
 const AjustesGeneralesPage = lazy(() => import('./AjustesGeneralesPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
+import { ChatbotFloatingButton } from './ChatbotFloatingButton';
 
 // ✅ Loading Spinner Component
 function ModuleLoader() {
@@ -162,6 +165,8 @@ type ModuleView =
   | 'contratacion'
   | 'viaticos'
   | 'programacion-academica'
+  | 'gestion-infraestructura'
+  | 'chatbot'
   | 'modules'
   | 'dependencias'
   | 'ajustes-generales';
@@ -240,6 +245,10 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'viaticos': 'viaticos',
   'programacion-academica': 'programacion-academica',
   'academic-schedule': 'programacion-academica',
+  'gestion-infraestructura': 'gestion-infraestructura',
+  'infraestructura': 'gestion-infraestructura',
+  'chatbot': 'chatbot',
+  'asistente-virtual': 'chatbot',
   'banco-docentes-pta': 'banco-docentes-pta',
   'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
@@ -264,12 +273,14 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'graduates-certificates',
   'pta',
   'programacion-academica',
+  'gestion-infraestructura',
   'certificados-laborales',
   'control-interno',
   'control-disciplinario',
   'gestion-legal',
   'contratacion',
   'viaticos',
+  'chatbot',
 ];
 
 const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
@@ -293,6 +304,7 @@ const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   'gestion-passwords': 'gestion-passwords',
   pta: 'pta',
   'programacion-academica': 'programacion-academica',
+  'gestion-infraestructura': 'gestion-infraestructura',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-profesoral': 'gestion-profesoral',
 };
@@ -866,6 +878,24 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           </Suspense>
         );
 
+      case 'gestion-infraestructura':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <GestionInfraestructuraModule />
+          </Suspense>
+        );
+
+      case 'chatbot':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ChatbotModule
+              userEmail={currentUser.email}
+              userId={currentUser.personId}
+              userName={currentUser.name}
+            />
+          </Suspense>
+        );
+
       case 'modules':
         return (
           <Suspense fallback={<ModuleLoader />}>
@@ -1003,6 +1033,19 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               onLogout={handleLogout}
             />
           )}
+
+          {/* Botón Flotante ChatBot Asistente Virtual */}
+          <ChatbotFloatingButton
+            isActive={activeModules.length === 0 || activeModules.some((m) => m.code === 'chatbot')}
+            userEmail={currentUser.email}
+            userId={currentUser.personId}
+            userName={currentUser.name}
+            currentModule={currentModule}
+            onOpenFullModule={() => {
+              setCurrentSidebarModule('chatbot');
+              setCurrentModule('chatbot');
+            }}
+          />
         </div>
       </TourProvider>
     </NotificationsProvider>

@@ -69,6 +69,25 @@ export class RevisarDto {
   observaciones?: string;
 }
 
+/**
+ * El consecutivo con el que el área remitió el paquete a la Dirección.
+ *
+ * Opcional, y no por descuido: el procedimiento admite remitir «por correo
+ * electrónico o mediante carpeta compartida», y solo una de esas vías genera
+ * radicado en Active Document. Mandarlo vacío lo borra, para poder corregir
+ * un número anotado por equivocación.
+ */
+export class AnotarRadicadoDto {
+  @ApiPropertyOptional({
+    description: 'Consecutivo de Active Document; vacío si no hubo',
+    example: '2026-EE-004512',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  radicado?: string;
+}
+
 /** Campo que falta al intentar enviar (criterio 2 del HU). */
 export class CampoFaltanteDto {
   @ApiProperty() codigo: string;

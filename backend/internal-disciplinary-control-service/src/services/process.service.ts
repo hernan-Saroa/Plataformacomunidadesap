@@ -2192,12 +2192,12 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
         `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
          FROM auth.user u
          JOIN auth.user_roles ur ON ur.id_user = u.id_user
-         JOIN auth.role r ON r.id = ur.id_rol
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.is_active = true
-           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
-                OR UPPER(r.code) LIKE '%RADICADOR%'
-                OR UPPER(r.name) LIKE '%RADICADOR%')`,
+           AND perm.code = $1`,
+        ['control-disciplinario.es_radicador'],
       );
 
       const radicadores = (radicadoresRows || []).map((r) => ({
