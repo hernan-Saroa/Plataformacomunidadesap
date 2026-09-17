@@ -88,6 +88,7 @@ import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionApertura
 import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
+import { SeccionResultadosAuditoria } from './SeccionResultadosAuditoria';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 
 // Servicio API
@@ -3460,6 +3461,13 @@ function TabEjecucion({
           )}
         </div>
       </div>
+
+      {/* 4. RESULTADOS DE LA AUDITORÍA (EFDS-1636) */}
+      <SeccionResultadosAuditoria
+        auditoriaId={auditoria.id}
+        hallazgos={hallazgosPrecargados as any}
+        readOnly={readOnly}
+      />
 
       {/* 5. DOCUMENTOS DE EJECUCIÓN */}
       <SeccionDocumentosPorEtapa
