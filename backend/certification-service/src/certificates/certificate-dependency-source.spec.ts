@@ -158,7 +158,7 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     expect(withNormal).toBe(withoutNormal.replace('DEP:Grupo del encargo', `DEP:${normal().internal_group}`));
   });
 
-  it.each(['local', 'oracle', 'mixto'] as const)('el contador y los asociados resuelven la normal de otro codigo (%s)', async source => {
+  it.each(['local', 'oracle', 'mixto'] as const)('el certificado conserva el contexto de la normal sin un cruce masivo (%s)', async source => {
     const profile = {
       id: 'perfil', combined_code: '202812', position_code: '2028', grade_code: '12',
       is_active: true, position_name: 'Profesional Especializado', hierarchical_level: 'Profesional',
@@ -177,16 +177,17 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
       {} as any, { find: jest.fn().mockResolvedValue(localRows) } as any, {} as any, oracle as any,
     );
     const list = await functions.list();
-    const associated = await functions.listAssociations('perfil');
-    expect(list.items[0].association_count).toBe(1);
-    expect(associated.total).toBe(1);
-    expect(associated.items[0]).toMatchObject({
-      combined_code: '202812', internal_group: normal().internal_group,
-      department_name: normal().organization_department,
-    });
-    if (source !== 'local') {
-      expect(oracle.findSuggestedRequestsByPositionCodes).toHaveBeenCalledWith(['202812'], 10000, true);
-    }
+    expect(list.items[0]).not.toHaveProperty('association_count');
+    expect(oracle.findSuggestedRequestsByPositionCodes).not.toHaveBeenCalled();
+    // Public issuance selects persisted requests after per-document Oracle sync.
+    const selected = service.resolveRequestUsedForCertificate([
+      ...localRows, ...oracleRows.map((row, index) => ({ ...row, id: `synced-${index}` })),
+    ]);
+    const resolution = await functions.resolveForRequest(selected!);
+    expect(resolution.available).toBe(true);
+    expect(resolution.profile?.id).toBe('perfil');
+    expect(resolution.profile?.department_name).toBe(normal().organization_department);
+    expect(resolution.profile?.internal_group).toBe(normal().internal_group);
   });
 
   it('nunca usa el contrato normal de otra persona', () => {

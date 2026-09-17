@@ -92,22 +92,6 @@ export class LaborFunctionsController {
     });
   }
 
-  @Get(':id/associations')
-  async listAssociations(
-    @Param('id') id: string,
-    @Req() req: any,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    await this.assertCanManage(req);
-    return await this.laborFunctionsService.listAssociations(id, {
-      search,
-      page: Number(page) || 1,
-      limit: Number(limit) || 25,
-    });
-  }
-
   @Get(':id')
   async findOne(@Param('id') id: string, @Req() req: any) {
     await this.assertCanManage(req);
