@@ -320,9 +320,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       certificate_dependency: cert.is_corrected
         ? undefined
         : cert.request?.certificate_dependency ?? cert.certificate_dependency,
-      // Centro de costo (grupo interno): [DEPENDENCIA] lo prioriza sobre la
+      // Centro de costo (grupo interno): [DEPENDENCIA] cae a el cuando no hay
       // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
-      // previa cae al department y contradice al PDF del backend.
+      // previa se queda vacia y contradice al PDF del backend.
       internal_group:
         cert.request?.internal_group ||
         cert.request?.internalGroup ||
