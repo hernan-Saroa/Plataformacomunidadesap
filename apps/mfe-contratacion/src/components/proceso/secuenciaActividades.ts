@@ -52,6 +52,39 @@ const ATIENDEN_LA_REVISION = new Set(['3.3', '3.4']);
 const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
 
 /**
+ * Las que no esperan a que termine la actividad que la matriz numera justo
+ * antes, porque lo que resuelven no depende de eso (reunión de validación
+ * del modelo, 17 sep).
+ *
+ * La 5.4 (límite a MiPyme) se decide con el valor del proceso y la
+ * modalidad, no con lo que traigan las observaciones al proyecto de pliego
+ * (5.3): nada de lo que la 5.3 produce alimenta esa decisión. La 5.5
+ * (audiencia de riesgos) discute el proyecto de pliego (5.2) y tampoco
+ * necesita que el plazo de observaciones haya corrido. El propio backend ya
+ * las trata así: ni `mipyme.service.ts` ni `riesgos.service.ts` exigen la
+ * 5.3 aprobada para escribir.
+ *
+ * Que se habiliten antes no las exime de bloquear lo que sigue si quedan sin
+ * terminar: la 5.6 y la 5.7 las siguen necesitando, igual que necesitan la
+ * 5.3 — cada numeral aquí declara de qué depende de verdad, no de qué lo
+ * antecede en la matriz.
+ */
+const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
+  '5.4': ['5.2'],
+  '5.5': ['5.2'],
+};
+
+/** Si una dependencia declarada ya no le hace falta a quien la exige. */
+function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {
+  const paso = flujo.find((p) => p.numeral === numeral);
+  // La que no está en el flujo, no aplica o no tiene panel nunca podrá
+  // terminarse: exigirla trancaría para siempre a quien depende de ella,
+  // igual que ya pasa con la cadena por defecto.
+  if (!paso || !paso.aplica || !paso.construida) return true;
+  return estaTerminada(paso);
+}
+
+/**
  * Hasta dónde puede llegar el gestor: la secuencia del flujo.
  *
  * Devuelve los numerales que se pueden **trabajar**. La matriz es una secuencia
@@ -101,14 +134,24 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
       continue;
     }
 
-    if (alcanzado) disponibles.add(paso.numeral);
+    // Lo normal es depender de que se llegó hasta aquí en la cadena; las
+    // declaradas en DEPENDE_DE mandan a buscar lo que de verdad necesitan, en
+    // vez de la actividad que la matriz numera justo antes.
+    const dependencias = DEPENDE_DE[paso.numeral];
+    const disponible = dependencias
+      ? dependencias.every((dep) => dependenciaSatisfecha(dep, flujo))
+      : alcanzado;
+
+    if (disponible) disponibles.add(paso.numeral);
 
     if (estaTerminada(paso)) continue;
 
     // Una actividad enviada y a la espera no cierra el paso: abre el tramo de
     // las que existen para resolver esa espera. Cualquier otra sin terminar sí
     // lo cierra a todas las siguientes; se sigue recorriendo para no marcar
-    // disponible nada que venga después.
+    // disponible nada que venga después. Esto corre para todas, también para
+    // las de DEPENDE_DE: que se hayan habilitado antes no las exime de seguir
+    // bloqueando lo que viene después si se quedan sin terminar.
     if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
       esperandoDecision = true;
     } else {
@@ -124,6 +167,15 @@ export function motivoDelBloqueo(
   numeral: string,
   flujo: PasoDelFlujo[],
 ): string | null {
+  // Con dependencia declarada, el motivo es esa dependencia y no la actividad
+  // que la matriz numera justo antes: decir «termina la 5.3» cuando la 5.4 no
+  // necesita la 5.3 mandaría a esperar algo que no la destraba.
+  const dependencias = DEPENDE_DE[numeral];
+  if (dependencias) {
+    const faltante = dependencias.find((dep) => !dependenciaSatisfecha(dep, flujo));
+    return faltante ? `Antes hay que terminar ${faltante}` : null;
+  }
+
   const indice = flujo.findIndex((p) => p.numeral === numeral);
   if (indice < 0) return null;
 
