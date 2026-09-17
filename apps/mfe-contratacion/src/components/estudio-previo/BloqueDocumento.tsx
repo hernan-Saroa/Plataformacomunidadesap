@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Upload, CheckCircle2, AlertTriangle, FileText, Download, Eye, Trash2 } from 'lucide-react';
+import { Upload, CheckCircle2, AlertTriangle, FileText, Download, Eye, Trash2, RefreshCw } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { DocumentoExpediente } from '../../types';
@@ -27,7 +27,12 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
   const [error, setError] = useState<string | null>(null);
   const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   const [retirando, setRetirando] = useState<string | null>(null);
+  const [reemplazando, setReemplazando] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputReemplazoRef = useRef<HTMLInputElement>(null);
+  // Qué documento reemplaza el próximo archivo elegido: un solo input oculto
+  // sirve a todas las filas, en vez de uno por documento.
+  const objetivoReemplazo = useRef<string | null>(null);
 
   const adjuntos = documentos.filter((d) => d.tipo === 'ADJUNTO');
   const tieneEstudio = adjuntos.length > 0;
@@ -85,6 +90,27 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
       toast.error(err.message ?? 'No se pudo retirar el documento');
     } finally {
       setRetirando(null);
+    }
+  };
+
+  /**
+   * Reemplaza un adjunto suelto por otro archivo (EFDS-2067).
+   *
+   * Hasta ahora corregir un documento equivocado eran dos pasos sueltos
+   * —retirar y volver a adjuntar— y el motivo de por qué el segundo llegó no
+   * quedaba dicho en ningún lado. Con un solo botón el backend deja una traza
+   * que enlaza el que salió con el que entró.
+   */
+  const reemplazar = async (documentoId: string, archivo: File) => {
+    setReemplazando(documentoId);
+    try {
+      await contratacionService.reemplazarAdjuntoDelEstudioPrevio(procesoId, documentoId, archivo);
+      toast.success('Documento reemplazado');
+      onAdjuntado();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo reemplazar el documento');
+    } finally {
+      setReemplazando(null);
     }
   };
 
@@ -158,6 +184,26 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
         )}
       </div>
 
+      {/* Un solo input oculto sirve a todos los botones «Reemplazar» de la
+          lista: el archivo elegido va al documento guardado en el ref. Solo
+          existe si hay un botón que pueda abrirlo: bloqueado no ofrece
+          ninguno, igual que el input de «Adjuntar». */}
+      {!bloqueado && (
+        <input
+          ref={inputReemplazoRef}
+          type="file"
+          data-testid="input-reemplazar-documento"
+          className="hidden"
+          accept={MIME_ACEPTADOS}
+          onChange={(e) => {
+            const archivo = e.target.files?.[0];
+            const documentoId = objetivoReemplazo.current;
+            if (archivo && documentoId) reemplazar(documentoId, archivo);
+            e.target.value = '';
+          }}
+        />
+      )}
+
       {/* Documentos ya cargados */}
       {documentos.length > 0 && (
         <ul className="m-0 p-0 list-none space-y-1.5">
@@ -210,9 +256,24 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
                     </a>
                   </>
                 )}
-                {/* Retirar solo aplica a adjuntos reales y mientras el
-                    estudio sigue editable: el snapshot no se puede quitar
-                    porque es la copia de lo que ya se envió a revisión. */}
+                {/* Reemplazar y retirar solo aplican a adjuntos reales y
+                    mientras el estudio sigue editable: el snapshot no se
+                    puede tocar porque es la copia de lo que ya se envió a
+                    revisión. */}
+                {!esSnapshot && !bloqueado && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      objetivoReemplazo.current = doc.id;
+                      inputReemplazoRef.current?.click();
+                    }}
+                    disabled={reemplazando === doc.id}
+                    className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-[#003DA5] hover:bg-gray-50 disabled:opacity-50"
+                    title={`Reemplazar ${doc.nombre}`}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {!esSnapshot && !bloqueado && (
                   <button
                     type="button"

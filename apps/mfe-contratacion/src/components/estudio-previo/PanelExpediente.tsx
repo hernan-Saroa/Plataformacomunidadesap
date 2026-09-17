@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { FileText, Upload, ShieldCheck, Download, Eye, Trash2 } from 'lucide-react';
+import { FileText, Upload, ShieldCheck, Download, Eye, Trash2, RefreshCw } from 'lucide-react';
 import { contratacionService } from '../../services/contratacionService';
 import { Expediente } from '../../types';
 import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
@@ -36,7 +36,12 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
   const [subiendo, setSubiendo] = useState(false);
   const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   const [retirando, setRetirando] = useState<string | null>(null);
+  const [reemplazando, setReemplazando] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputReemplazoRef = useRef<HTMLInputElement>(null);
+  // Qué documento reemplaza el próximo archivo elegido: un solo input oculto
+  // sirve a todas las filas, en vez de uno por documento.
+  const objetivoReemplazo = useRef<string | null>(null);
 
   const cargar = async () => {
     try {
@@ -100,6 +105,25 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
     }
   };
 
+  /**
+   * Reemplaza un adjunto del estudio previo por otro archivo (EFDS-2067).
+   *
+   * Mismo alcance que `retirar`: solo adjuntos sueltos del numeral 3.1, y el
+   * servicio lo rechaza con 400/409 si igual se intentara sobre otra cosa.
+   */
+  const reemplazar = async (documentoId: string, archivo: File) => {
+    setReemplazando(documentoId);
+    try {
+      await contratacionService.reemplazarAdjuntoDelEstudioPrevio(procesoId, documentoId, archivo);
+      toast.success('Documento reemplazado');
+      await cargar();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo reemplazar el documento');
+    } finally {
+      setReemplazando(null);
+    }
+  };
+
   if (!expediente) {
     return (
       <div className="p-4 text-sm text-slate-500">
@@ -141,6 +165,21 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
               <Upload className="w-3.5 h-3.5" />
               {subiendo ? 'Subiendo…' : 'Adjuntar'}
             </button>
+            {/* Un solo input oculto sirve a todos los botones «Reemplazar» de
+                la lista: el archivo elegido va al documento del ref. */}
+            <input
+              ref={inputReemplazoRef}
+              type="file"
+              data-testid="input-reemplazar-documento"
+              className="hidden"
+              accept=".pdf,.doc,.docx,.xls,.xlsx"
+              onChange={(e) => {
+                const archivo = e.target.files?.[0];
+                const documentoId = objetivoReemplazo.current;
+                if (archivo && documentoId) reemplazar(documentoId, archivo);
+                e.target.value = '';
+              }}
+            />
           </>
         )}
       </div>
@@ -223,6 +262,20 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                       <Download className="w-4 h-4" />
                     </a>
                   </>
+                )}
+                {editable && esAdjuntoDelEstudioPrevio && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      objetivoReemplazo.current = doc.id;
+                      inputReemplazoRef.current?.click();
+                    }}
+                    disabled={reemplazando === doc.id}
+                    className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50 disabled:opacity-50"
+                    title={`Reemplazar ${doc.nombre}`}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
                 )}
                 {editable && esAdjuntoDelEstudioPrevio && (
                   <button
