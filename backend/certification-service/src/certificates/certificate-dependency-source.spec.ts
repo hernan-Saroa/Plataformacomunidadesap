@@ -51,25 +51,25 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
         department: assignment.department,
         organization_department: assignment.organization_department,
         internal_group: assignment.internal_group, cost_center: assignment.cost_center,
-        certificate_dependency: base.internal_group,
+        certificate_dependency: base.department,
       });
       const html = render(result, templateType);
-      expect(html).toContain(`DEP:${base.internal_group}`);
+      expect(html).toContain(`DEP:${base.department}`);
       expect(html).toContain('Profesional Especializado');
       expect(html).toContain(templateType === 'administrador' ? 'Grado 12 (E)' : 'Codigo 2028 (E)');
       expect(html).toContain('5.099.764');
       expect(html).toContain('GRUPO:Ubicacion del encargo');
-      expect(html).toContain('DATO7:Grupo del encargo');
+      expect(html).toContain(`DATO7:${assignment.department}`);
       expect(base).not.toHaveProperty('certificate_dependency');
       expect(assignment).not.toHaveProperty('certificate_dependency');
     },
   );
 
   it.each([
-    { internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Grupo local' },
-    { internal_group: 'N/A', cost_center: 'Centro Oracle', expected: 'Centro Oracle' },
-    { internal_group: null, cost_center: null, expected: 'Direccion de Talento Humano' },
-    { internal_group: null, cost_center: null, department: null, expected: 'Direccion de Talento Humano' },
+    { internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Direccion de Talento Humano' },
+    { department: null, internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Grupo local' },
+    { department: null, internal_group: 'N/A', cost_center: 'Centro Oracle', expected: 'Centro Oracle' },
+    { department: null, internal_group: null, cost_center: null, expected: 'Direccion de Talento Humano' },
     { internal_group: null, cost_center: null, department: null, organization_department: null, expected: '' },
   ])('resuelve las fuentes locales y Oracle sin completar con datos del encargo: $expected', ({ expected, ...fields }) => {
     const result = service.resolveRequestUsedForCertificate([encargo(), normal(fields)])!;
@@ -79,9 +79,9 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
 
   it('descarta normales inactivas y elige la normal vigente mas reciente', () => {
     const requests = [
-      encargo(), normal({ id: 'antigua', request_date: '2024-01-01', internal_group: 'Antiguo' }),
-      normal({ id: 'inactiva', status: 'I', request_date: '2027-01-01', internal_group: 'Inactivo' }),
-      normal({ id: 'vigente', request_date: '2026-04-01', internal_group: 'Vigente' }),
+      encargo(), normal({ id: 'antigua', request_date: '2024-01-01', department: 'Antiguo' }),
+      normal({ id: 'inactiva', status: 'I', request_date: '2027-01-01', department: 'Inactivo' }),
+      normal({ id: 'vigente', request_date: '2026-04-01', department: 'Vigente' }),
     ];
     expect(service.resolveRequestUsedForCertificate(requests)?.certificate_dependency).toBe('Vigente');
     expect(service.resolveRequestUsedForCertificate([...requests].reverse())?.certificate_dependency).toBe('Vigente');
@@ -89,9 +89,9 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
 
   it('conserva la prioridad del nombramiento principal de carrera administrativa', () => {
     const result = service.resolveRequestUsedForCertificate([
-      encargo(), normal(), normal({ id: 'otra', position_category: 'Provisional', request_date: '2027-01-01', internal_group: 'Otro' }),
+      encargo(), normal(), normal({ id: 'otra', position_category: 'Provisional', request_date: '2027-01-01', department: 'Otro' }),
     ])!;
-    expect(result.certificate_dependency).toBe(normal().internal_group);
+    expect(result.certificate_dependency).toBe(normal().department);
   });
 
   it('sin encargo sigue usando el contrato normal seleccionado', () => {
@@ -100,20 +100,20 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     ])!;
     expect(result.id).toBe('normal');
     expect(result.certificate_dependency).toBeUndefined();
-    expect(render(result)).toContain(`DEP:${normal().internal_group}`);
+    expect(render(result)).toContain(`DEP:${normal().department}`);
     expect(result.monthly_salary).toBe(4772636);
   });
 
   it('sin normal vigente conserva el respaldo del encargo', () => {
     const result = service.resolveRequestUsedForCertificate([encargo(), normal({ status: 'I' })])!;
     expect(result.certificate_dependency).toBeUndefined();
-    expect(render(result)).toContain('DEP:Grupo del encargo');
+    expect(render(result)).toContain(`DEP:${encargo().department}`);
   });
 
   it('los encargos empatados conservan la misma dependencia normal', () => {
     const requests = [encargo({ id: 'e1', internal_group: null, cost_center: null }), encargo({ id: 'e2' }), normal()];
     for (const rows of [requests, [...requests].reverse()]) {
-      expect(service.resolveRequestUsedForCertificate(rows)?.certificate_dependency).toBe(normal().internal_group);
+      expect(service.resolveRequestUsedForCertificate(rows)?.certificate_dependency).toBe(normal().department);
     }
   });
 
@@ -121,7 +121,7 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     const assignment = encargo();
     const certificate = { request_id: assignment.id, request: assignment } as Certificate;
     service['applyRequestContextToCertificate'](certificate, [assignment, normal()]);
-    expect(certificate.request.certificate_dependency).toBe(normal().internal_group);
+    expect(certificate.request.certificate_dependency).toBe(normal().department);
     expect(assignment).not.toHaveProperty('certificate_dependency');
   });
 
@@ -140,7 +140,7 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     const result = await functions.lookupPerson('123', {
       selectPreferred: rows => service.resolveRequestUsedForCertificate(rows),
     });
-    expect(result.items[0].certificate_dependency).toBe(normal().internal_group);
+    expect(result.items[0].certificate_dependency).toBe(normal().department);
     expect(result.items[0].matrix).toMatchObject({
       combined_code: '202812', grade_code: '12',
       department_name: normal().organization_department,
@@ -155,10 +155,12 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     const result = service.resolveRequestUsedForCertificate([normal(), encargo()])!;
     const withNormal = render(result, templateType);
     const withoutNormal = render({ ...result, certificate_dependency: undefined }, templateType);
-    expect(withNormal).toBe(withoutNormal.replace('DEP:Grupo del encargo', `DEP:${normal().internal_group}`));
+    expect(withNormal).toBe(
+      withoutNormal.replace(`DEP:${encargo().department}`, `DEP:${normal().department}`),
+    );
   });
 
-  it.each(['local', 'oracle', 'mixto'] as const)('el contador y los asociados resuelven la normal de otro codigo (%s)', async source => {
+  it.each(['local', 'oracle', 'mixto'] as const)('el certificado conserva el contexto de la normal sin un cruce masivo (%s)', async source => {
     const profile = {
       id: 'perfil', combined_code: '202812', position_code: '2028', grade_code: '12',
       is_active: true, position_name: 'Profesional Especializado', hierarchical_level: 'Profesional',
@@ -177,16 +179,17 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
       {} as any, { find: jest.fn().mockResolvedValue(localRows) } as any, {} as any, oracle as any,
     );
     const list = await functions.list();
-    const associated = await functions.listAssociations('perfil');
-    expect(list.items[0].association_count).toBe(1);
-    expect(associated.total).toBe(1);
-    expect(associated.items[0]).toMatchObject({
-      combined_code: '202812', internal_group: normal().internal_group,
-      department_name: normal().organization_department,
-    });
-    if (source !== 'local') {
-      expect(oracle.findSuggestedRequestsByPositionCodes).toHaveBeenCalledWith(['202812'], 10000, true);
-    }
+    expect(list.items[0]).not.toHaveProperty('association_count');
+    expect(oracle.findSuggestedRequestsByPositionCodes).not.toHaveBeenCalled();
+    // Public issuance selects persisted requests after per-document Oracle sync.
+    const selected = service.resolveRequestUsedForCertificate([
+      ...localRows, ...oracleRows.map((row, index) => ({ ...row, id: `synced-${index}` })),
+    ]);
+    const resolution = await functions.resolveForRequest(selected!);
+    expect(resolution.available).toBe(true);
+    expect(resolution.profile?.id).toBe('perfil');
+    expect(resolution.profile?.department_name).toBe(normal().organization_department);
+    expect(resolution.profile?.internal_group).toBe(normal().internal_group);
   });
 
   it('nunca usa el contrato normal de otra persona', () => {
@@ -278,10 +281,11 @@ describe('[DEPENDENCIA] en certificados corregidos', () => {
     );
   });
 
-  it('no altera el certificado sin corregir: sigue mandando el centro de costo', () => {
+  it('el certificado sin corregir imprime la dependencia de la solicitud', () => {
     const html = render(certificado({ is_corrected: false }));
 
-    expect(html).toContain(
+    expect(html).toContain('DEP:Dirección de Talento Humano');
+    expect(html).not.toContain(
       'DEP:Grupo de Administración de Personal y de Carrera Administrativa',
     );
   });
@@ -290,7 +294,7 @@ describe('[DEPENDENCIA] en certificados corregidos', () => {
     // Sin corregir: el formulario debe arrancar con lo que imprime el PDF.
     expect(
       service['resolveEffectiveCertificateDependency'](certificado()),
-    ).toBe('Grupo de Administración de Personal y de Carrera Administrativa');
+    ).toBe('Dirección de Talento Humano');
 
     // Ya corregido: manda lo que quedó guardado en la corrección.
     expect(
@@ -317,8 +321,6 @@ describe('[DEPENDENCIA] en certificados corregidos', () => {
   it('el snapshot de la corrección expone la dependencia efectiva', () => {
     const snapshot = service['certificateCorrectionSnapshot'](certificado());
 
-    expect(snapshot.department).toBe(
-      'Grupo de Administración de Personal y de Carrera Administrativa',
-    );
+    expect(snapshot.department).toBe('Dirección de Talento Humano');
   });
 });
