@@ -23,6 +23,10 @@ export interface AvisoCampana {
  *   dos copias idénticas.
  * - **Un fallo no rompe nada.** El proceso ya quedó guardado cuando se avisa; si
  *   notifications-service está caído se pierde el aviso, no el trabajo.
+ *
+ * El correo sale por el mismo notifications-service que usa el resto de la
+ * plataforma (`/api/v1/emails/send`, como PTA y certificados): la campana no lo
+ * manda sola, aunque su DTO tenga un `enviar_email` que nadie lee.
  */
 export class Campana {
   constructor(
@@ -59,8 +63,17 @@ export class Campana {
     }
   }
 
-  /** Envía los avisos que no estén ya sin leer en la campana de su destinatario. */
-  async enviar(avisos: AvisoCampana[]): Promise<{ enviados: number; repetidos: number; error?: string }> {
+  /**
+   * Envía los avisos que no estén ya sin leer en la campana de su destinatario.
+   *
+   * Con `porCorreo`, cada aviso nuevo sale también al correo de su destinatario.
+   * Solo los nuevos: un aviso repetido que la campana descarta no debe llegar
+   * al correo como si fuera otro.
+   */
+  async enviar(
+    avisos: AvisoCampana[],
+    opciones: { porCorreo?: boolean } = {},
+  ): Promise<{ enviados: number; repetidos: number; correos?: number; error?: string }> {
     if (!avisos.length) return { enviados: 0, repetidos: 0 };
 
     const nuevos = await this.sinAvisarYa(avisos);
@@ -84,7 +97,58 @@ export class Campana {
       return { enviados: 0, repetidos, error: 'no se pudo notificar' };
     }
 
-    return { enviados: nuevos.length, repetidos };
+    const correos = opciones.porCorreo ? await this.porCorreo(nuevos) : 0;
+    return { enviados: nuevos.length, repetidos, correos };
+  }
+
+  /**
+   * El mismo aviso, al correo de cada destinatario.
+   *
+   * El correo es el de la persona y, si no lo tiene, el usuario cuando es un
+   * correo: las cuentas institucionales entran con él. Cada envío es
+   * independiente: que falle uno no detiene a los demás.
+   */
+  private async porCorreo(avisos: AvisoCampana[]): Promise<number> {
+    let correos: Map<string, string>;
+    try {
+      const filas: { id: string; correo: string | null }[] = await this.dataSource.query(
+        `SELECT u.id_user::text AS id,
+                COALESCE(NULLIF(TRIM(p.dir_email), ''),
+                         CASE WHEN u.username LIKE '%@%' THEN u.username END) AS correo
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user::text = ANY($1::text[])`,
+        [[...new Set(avisos.map((a) => a.id_usuario_destinatario))]],
+      );
+      correos = new Map(filas.filter((f) => f.correo).map((f) => [f.id, f.correo as string]));
+    } catch (error: any) {
+      this.logger.warn(`No se pudieron leer los correos: ${error.message}`);
+      return 0;
+    }
+
+    const url = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:3009';
+    let enviados = 0;
+    for (const aviso of avisos) {
+      const para = correos.get(aviso.id_usuario_destinatario);
+      if (!para) continue;
+      try {
+        const respuesta = await fetch(`${url}/api/v1/emails/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: para,
+            subject: `Contratación · ${aviso.titulo}`,
+            text: `${aviso.mensaje}\n\nEste aviso también está en la campana de la plataforma.`,
+            html: htmlDelAviso(aviso),
+          }),
+        });
+        if (respuesta.ok) enviados++;
+        else this.logger.warn(`El correo a ${para} no salió: ${respuesta.status}`);
+      } catch (error: any) {
+        this.logger.warn(`El correo a ${para} no salió: ${error.message}`);
+      }
+    }
+    return enviados;
   }
 
   /** Descarta los avisos idénticos que el destinatario todavía no ha leído. */
@@ -114,4 +178,29 @@ export class Campana {
       return avisos;
     }
   }
+}
+
+/** Lo que escribió un usuario —unas observaciones— no puede volverse HTML. */
+function escapar(texto: string): string {
+  return texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** El aviso con el aspecto del módulo: título, mensaje y el enlace a la plataforma. */
+export function htmlDelAviso(aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>): string {
+  const portal = process.env.FRONTEND_URL;
+  const enlace = portal
+    ? `<p style="margin:20px 0 0"><a href="${escapar(portal)}" style="background:#003DA5;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;font-size:14px">Abrir la plataforma</a></p>`
+    : '';
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1e293b">
+  <div style="background:#003DA5;color:#ffffff;padding:14px 20px;border-radius:8px 8px 0 0;font-weight:700;font-size:15px">Contratación · ESAP</div>
+  <div style="border:1px solid #e2e8f0;border-top:0;padding:20px;border-radius:0 0 8px 8px">
+    <p style="font-size:16px;font-weight:700;margin:0 0 8px">${escapar(aviso.titulo)}</p>
+    <p style="font-size:14px;line-height:1.5;margin:0">${escapar(aviso.mensaje)}</p>${enlace}
+    <p style="font-size:12px;color:#64748b;margin:20px 0 0">Este aviso también está en la campana de la plataforma.</p>
+  </div>
+</div>`;
 }

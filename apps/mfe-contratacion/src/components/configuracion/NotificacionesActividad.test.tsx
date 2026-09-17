@@ -41,6 +41,7 @@ const configuracion = (
 ): ConfiguracionAvisos => ({
   papeles: PAPELES,
   requiereAprobacion: cambios.requiereAprobacion ?? true,
+  porCorreo: true,
   siempre:
     cambios.requiereAprobacion === false
       ? []
@@ -82,6 +83,30 @@ describe('NotificacionesActividad', () => {
       { id: '7', nombre: 'Dirección Financiera' },
       { id: '9', nombre: 'Oficina de TI' },
     ]);
+  });
+
+  describe('el correo', () => {
+    it('dice que los avisos llegan también al correo', async () => {
+      render(<NotificacionesActividad numeral="3.2" />);
+
+      expect(await screen.findByRole('switch', { name: 'Avisar también por correo' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+      expect(screen.getByText(/al correo institucional de quien lo recibe/)).toBeInTheDocument();
+    });
+
+    it('se apaga para toda la actividad, al momento', async () => {
+      const guardar = vi
+        .spyOn(contratacionService, 'guardarCorreoDeActividad')
+        .mockResolvedValue({ ...configuracion(), porCorreo: false });
+      render(<NotificacionesActividad numeral="3.2" />);
+
+      await userEvent.click(await screen.findByRole('switch', { name: 'Avisar también por correo' }));
+
+      expect(guardar).toHaveBeenCalledWith('3.2', false);
+      expect(await screen.findByText(/solo llegan a la campana/)).toBeInTheDocument();
+    });
   });
 
   describe('lo que se avisa siempre', () => {

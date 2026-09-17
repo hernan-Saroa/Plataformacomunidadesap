@@ -116,6 +116,31 @@ export function NotificacionesActividad({ numeral }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Arriba porque rige para todos los avisos de abajo: repetirlo en cada
+          uno obligaba a decidir lo mismo seis veces. */}
+      <div className="flex items-start gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+        <Interruptor
+          encendido={datos.porCorreo}
+          deshabilitado={!puedeEditar || guardando === 'correo'}
+          etiqueta="Avisar también por correo"
+          onCambio={(v) =>
+            ejecutar(
+              'correo',
+              () => contratacionService.guardarCorreoDeActividad(numeral, v),
+              v ? 'Los avisos saldrán también por correo' : 'Los avisos solo llegarán a la campana',
+            )
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-slate-800 m-0">Avisar también por correo</p>
+          <p className="text-[11px] text-slate-500 m-0 mt-0.5">
+            {datos.porCorreo
+              ? 'Cada aviso de esta actividad llega a la campana y al correo institucional de quien lo recibe.'
+              : 'Los avisos de esta actividad solo llegan a la campana de la plataforma.'}
+          </p>
+        </div>
+      </div>
+
       {/* Sin avisos fijos no hay título que ponerles: solo la nota de dónde
           aparecen, para que nadie los busque aquí. */}
       <section className="space-y-2">

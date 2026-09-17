@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 
 import { HiringAccess } from '../../auth/hiring-access';
 import { AlertasService } from './alertas.service';
+import { NotificadorService } from '../notificaciones/notificador.service';
 import { ParametrosAlertaService } from './parametros-alerta.service';
 
 /**
@@ -26,6 +27,7 @@ export class AlertasCron {
   constructor(
     private readonly alertas: AlertasService,
     private readonly parametros: ParametrosAlertaService,
+    @Optional() private readonly notificador?: NotificadorService,
   ) {}
 
   /**
@@ -84,11 +86,39 @@ export class AlertasCron {
             : '') +
           (resultado.error ? ` — ${resultado.error}` : ''),
       );
+
+      await this.avisarPlazos();
     } catch (error: any) {
       // Se traga el fallo a propósito: si el aviso de hoy no sale, mañana vuelve
       // a intentarlo, y las alertas se siguen consultando en pantalla. Dejar
       // caer la excepción tumbaría el planificador y con él los avisos futuros.
       this.logger.error(`No se pudieron avisar los vencimientos: ${error.message}`);
     }
+  }
+
+  /**
+   * «Se vence el plazo», a quien le toca cada actividad.
+   *
+   * Va por el motor de avisos y no como las demás alertas: así llega a quien se
+   * configuró en la ficha de la actividad, y por correo si la actividad lo
+   * pide. No se repite cada día: la campana descarta el aviso igual que el
+   * destinatario aún no ha leído, y cambia cuando el plazo pasa a vencido.
+   */
+  async avisarPlazos(): Promise<number> {
+    if (!this.notificador) return 0;
+    const plazos = await this.alertas.plazosDeActividades();
+    const enviados = await this.notificador.despachar(
+      plazos.map((p) => ({
+        evento: 'VENCE_PLAZO' as const,
+        numeral: p.numeral,
+        procesoId: p.procesoId,
+        actorId: null,
+        actorNombre: null,
+        observaciones: null,
+        plazo: { vence: p.vence, vencido: p.estado === 'VENCIDO' },
+      })),
+    );
+    this.logger.log(`Plazos de actividades: ${plazos.length} por vencer o vencidos, ${enviados} avisos`);
+    return enviados;
   }
 }

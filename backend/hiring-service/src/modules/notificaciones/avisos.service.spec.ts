@@ -142,6 +142,29 @@ describe('AvisosService', () => {
     });
   });
 
+  describe('el correo de la actividad', () => {
+    it('viene encendido si nadie lo cambió', async () => {
+      const { srv } = conFilas([]);
+
+      expect((await srv.deActividad('3.2')).porCorreo).toBe(true);
+    });
+
+    it('se apaga por actividad', async () => {
+      const query = jest.fn(async (sql: string, _params?: unknown[]) => {
+        if (sql.includes('UPDATE hiring.actividades')) return [{ numeral: '3.2' }];
+        if (sql.includes('SELECT avisos_por_correo')) return [{ avisos_por_correo: false }];
+        return [];
+      });
+      const srv = new AvisosService({ query } as never);
+
+      const resultado = await srv.guardarCorreo('3.2', false);
+
+      const update = query.mock.calls.find(([sql]) => String(sql).includes('UPDATE hiring.actividades'));
+      expect(update?.[1]).toEqual(['3.2', false]);
+      expect(resultado.porCorreo).toBe(false);
+    });
+  });
+
   it('sin la tabla no se cae: rige lo sugerido', async () => {
     const srv = new AvisosService({ query: jest.fn().mockRejectedValue(new Error('no existe')) } as never);
 

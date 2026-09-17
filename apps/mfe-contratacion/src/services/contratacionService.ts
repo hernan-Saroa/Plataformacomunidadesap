@@ -2505,6 +2505,13 @@ export const contratacionService = {
       body: JSON.stringify(cambios),
     }),
 
+  /** Enciende o apaga el correo de los avisos de una actividad. */
+  guardarCorreoDeActividad: (numeral: string, porCorreo: boolean) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/correo`, {
+      method: 'PUT',
+      body: JSON.stringify({ porCorreo }),
+    }),
+
   /** Las dependencias de la ESAP, del catálogo de la plataforma. */
   dependencias: () => pedir<{ id: string; nombre: string }[]>('/configuracion/dependencias'),
 

@@ -95,6 +95,10 @@ export class NotificadorService implements OnApplicationBootstrap {
       proceso.radicado ?? null,
     );
 
+    // El correo lo decide la actividad, no el aviso: se acordó así para que
+    // quien configura no tenga que repetirlo en cada uno.
+    const porCorreo = await this.avisos.porCorreo(ocurrido.numeral);
+
     const resultado = await this.campana.enviar(
       destinatarios.map((id) => ({
         id_usuario_destinatario: id,
@@ -110,6 +114,7 @@ export class NotificadorService implements OnApplicationBootstrap {
           evento: ocurrido.evento,
         },
       })),
+      { porCorreo },
     );
     return resultado.enviados;
   }

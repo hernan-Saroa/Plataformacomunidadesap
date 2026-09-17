@@ -53,6 +53,34 @@ const pintar = (f: FilaMatriz, onCambioFila = vi.fn()) =>
   );
 
 /** La ficha de la actividad en una sola página, diciendo lo que de verdad pasa (EFDS-1183). */
+describe('DetalleActividad · plazo', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('guarda el plazo en días hábiles al salir del campo', async () => {
+    const actualizar = vi.spyOn(contratacionService, 'actualizarActividad').mockResolvedValue({} as never);
+    const onCambioFila = vi.fn();
+    pintar(fila('3.2'), onCambioFila);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Plazo en días hábiles' }), '5');
+    await userEvent.tab();
+
+    expect(actualizar).toHaveBeenCalledWith('3.2', { nombre: 'Actividad de prueba', plazoDias: 5, alertaDiasAntes: null });
+    expect(onCambioFila).toHaveBeenCalledWith(expect.objectContaining({ plazoDias: 5 }));
+  });
+
+  it('no guarda un plazo que no es un número de días', async () => {
+    const actualizar = vi.spyOn(contratacionService, 'actualizarActividad').mockResolvedValue({} as never);
+    pintar(fila('3.2'));
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Plazo en días hábiles' }), 'tres');
+    await userEvent.tab();
+
+    expect(actualizar).not.toHaveBeenCalled();
+  });
+});
+
 describe('DetalleActividad', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

@@ -169,6 +169,31 @@ describe('eventosDeActividad · «le toca a alguien»', () => {
 });
 
 describe('mensajeDeAviso', () => {
+  it('«se vence el plazo» dice la fecha, y sube de prioridad cuando ya se venció', () => {
+    const porVencer = mensajeDeAviso(
+      { evento: 'VENCE_PLAZO', numeral: '4.1', actorNombre: null, observaciones: null, plazo: { vence: '2026-09-17', vencido: false } },
+      'Solicitud de CDP',
+      'CTO-1',
+    );
+    expect(porVencer).toEqual({
+      titulo: 'Se acerca el plazo de una actividad',
+      mensaje: '4.1 · Solicitud de CDP del proceso CTO-1 vence el 17 de septiembre de 2026.',
+      prioridad: 'Media',
+    });
+
+    const vencido = mensajeDeAviso(
+      { evento: 'VENCE_PLAZO', numeral: '4.1', actorNombre: null, observaciones: null, plazo: { vence: '2026-09-17', vencido: true } },
+      'Solicitud de CDP',
+      'CTO-1',
+    );
+    expect(vencido.titulo).toBe('Se venció el plazo de una actividad');
+    expect(vencido.prioridad).toBe('Alta');
+  });
+
+  it('«se vence el plazo» va a quien le toca la actividad', () => {
+    expect(avisoQueRige('VENCE_PLAZO', undefined, '4.1')).toMatchObject({ activo: true, papeles: ['EQUIPO_FINANCIERO'] });
+  });
+
   it('«te toca» dice qué actividad y de qué proceso', () => {
     const m = mensajeDeAviso(
       { evento: 'HABILITADA', numeral: '4.1', actorNombre: 'Ana', observaciones: null },

@@ -6,6 +6,7 @@ import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
 import { Campana } from '../notificaciones/campana';
 import { ParticipacionService } from '../participacion/participacion.service';
+import { plazoDeActividad } from './plazos-actividad';
 import {
   ClaveParametroAlerta,
   PARAMETROS_POR_DEFECTO,
@@ -96,7 +97,26 @@ export type TipoAlerta =
    * `notificar` la expande a una por cada cuenta que pueda resolverla, en vez
    * de descartarla como al resto de lo que llega sin destinatario.
    */
-  | 'CDP_SIN_ATENDER';
+  | 'CDP_SIN_ATENDER'
+  /**
+   * Una actividad con plazo que está por vencer o ya se venció (EFDS-1183).
+   *
+   * Sus días se cuentan hábiles, no calendario como los demás: así se acordó
+   * para los plazos de las actividades.
+   */
+  | 'PLAZO_ACTIVIDAD';
+
+/** Una actividad cuyo plazo aprieta o ya pasó. */
+export interface PlazoDeActividad {
+  procesoId: string;
+  radicado: string | null;
+  numeral: string;
+  nombre: string;
+  vence: string;
+  /** Días hábiles; negativo cuando ya se venció. */
+  restantes: number;
+  estado: 'VENCIDO' | 'POR_VENCER';
+}
 
 /**
  * Días que faltan para la fecha. Negativo si ya pasó.
@@ -224,6 +244,7 @@ export class AlertasService {
       devueltas,
       sinAbogado,
       cdpSinAtender,
+      plazosActividad,
     ] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
@@ -232,7 +253,22 @@ export class AlertasService {
       this.devueltasParaCorregir(acceso),
       this.procesosSinAbogado(hoy, plazos.tolerancia_sin_abogado, acceso),
       this.solicitudesDeCdpSinAtender(hoy),
+      this.plazosDeActividades(acceso),
     ]);
+
+    const conPlazo: Alerta[] = plazosActividad.map((p) => ({
+      tipo: 'PLAZO_ACTIVIDAD' as const,
+      procesoId: p.procesoId,
+      radicado: p.radicado,
+      contrato: null,
+      descripcion: `${p.numeral} · ${p.nombre}`,
+      vence: p.vence,
+      diasRestantes: p.restantes,
+      estado: p.estado,
+      responsable: null,
+      responsableEmail: null,
+      responsableId: null,
+    }));
 
     const vencimientos = [...amparos, ...presupuestales, ...liquidaciones]
       .map((fila) => {
@@ -251,7 +287,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinAbogado, ...cdpSinAtender, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinAbogado, ...cdpSinAtender, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -420,6 +456,68 @@ export class AlertasService {
    * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
    * adición tiene su propio trámite y no es este.
    */
+  /**
+   * Las actividades con plazo que están por vencer o ya se vencieron.
+   *
+   * El plazo corre desde que la actividad se habilitó —cuando le tocó a
+   * alguien— y solo mientras nadie la ha entregado: en borrador o devuelta.
+   * Enviada a aprobación ya se entregó, y lo que tarde quien aprueba no es
+   * plazo de quien la hizo.
+   *
+   * Cada usuario ve las de los procesos donde participa; quien ve todos los
+   * procesos, todas. Sin usuario —el aviso diario— se traen todas, porque cada
+   * aviso sale después a quien corresponde.
+   */
+  async plazosDeActividades(acceso?: HiringAccess): Promise<PlazoDeActividad[]> {
+    const hoy = this.hoy();
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+
+    let filas: any[];
+    try {
+      filas = await this.dataSource.query(
+        `SELECT h.proceso_id::text AS "procesoId",
+                p.radicado,
+                a.numeral,
+                a.nombre,
+                a.plazo_dias AS "plazoDias",
+                a.alerta_dias_antes AS "avisarAntes",
+                to_char(h.avisado_at AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD') AS desde
+           FROM hiring.avisos_habilitacion h
+           JOIN hiring.actividades a ON a.numeral = h.numeral AND a.plazo_dias > 0
+           JOIN hiring.procesos p ON p.id = h.proceso_id AND p.estado = 'EN_CURSO'
+           LEFT JOIN hiring.proceso_actividades pa
+                  ON pa.proceso_id = h.proceso_id AND pa.numeral = h.numeral
+          WHERE COALESCE(pa.estado, 'BORRADOR') IN ('BORRADOR', 'DEVUELTO')
+            AND ($1 = true OR EXISTS (
+                  SELECT 1 FROM hiring.participaciones_proceso pp
+                   WHERE pp.proceso_id = p.id
+                     AND pp.estado = 'VIGENTE'
+                     AND pp.usuario_id::text = $2))`,
+        [todos, acceso?.userId ?? ''],
+      );
+    } catch (error: any) {
+      // Sin la tabla de habilitaciones no hay desde cuándo contar: la lista
+      // sigue sin los plazos, en vez de caerse entera.
+      this.logger.warn(`Plazos de actividades no disponibles: ${error.message}`);
+      return [];
+    }
+
+    return filas
+      .map((f) => ({
+        procesoId: f.procesoId,
+        radicado: f.radicado ?? null,
+        numeral: f.numeral,
+        nombre: f.nombre,
+        ...plazoDeActividad(
+          f.desde,
+          Number(f.plazoDias),
+          f.avisarAntes === null || f.avisarAntes === undefined ? null : Number(f.avisarAntes),
+          hoy,
+        ),
+      }))
+      .filter((p): p is PlazoDeActividad => p.estado !== 'VIGENTE');
+  }
+
   private async solicitudesDeCdpSinAtender(hoy: string): Promise<Alerta[]> {
     const filas = await this.dataSource.query(
       `SELECT p.id            AS proceso_id,
@@ -739,7 +837,9 @@ export class AlertasService {
    * correo.
    */
   async notificar(anticipacion: number | null, acceso: HiringAccess) {
-    const brutas = await this.listar(anticipacion, acceso);
+    // Los plazos de actividad avisan por el motor de avisos, que sabe a quién le
+    // toca cada una y si va por correo; aquí saldrían sin destinatario.
+    const brutas = (await this.listar(anticipacion, acceso)).filter((a) => a.tipo !== 'PLAZO_ACTIVIDAD');
 
     /**
      * La solicitud que nadie ha tomado se le avisa a todo el equipo.

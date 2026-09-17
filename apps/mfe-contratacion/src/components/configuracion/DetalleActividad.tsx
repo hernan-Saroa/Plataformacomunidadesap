@@ -81,6 +81,7 @@ export function DetalleActividad({
           recorrer una página larga buscando una sola cosa. */}
       <Seccion primera titulo="Qué es">
         <TextoActividad fila={fila} onCambio={onCambioFila} />
+        <PlazoActividad fila={fila} onCambio={onCambioFila} />
       </Seccion>
 
       <Seccion
@@ -229,6 +230,97 @@ function TextoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
         aria-label="Descripción de la actividad"
         className={`${clase} text-xs leading-relaxed text-slate-600 resize-none`}
       />
+    </div>
+  );
+}
+
+/**
+ * El plazo de la actividad, en días hábiles (EFDS-1183).
+ *
+ * Se acordó en la reunión de validación: por actividad, sin fines de semana ni
+ * festivos. Cuenta desde que le toca a alguien, y con él la actividad aparece
+ * en Alertas cuando está por vencer o vencida, y sale el aviso de «se vence el
+ * plazo». Vacío, la actividad no tiene plazo.
+ */
+function PlazoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila: FilaMatriz) => void }) {
+  const [plazo, setPlazo] = useState(fila.plazoDias?.toString() ?? '');
+  const [antes, setAntes] = useState(fila.alertaDiasAntes?.toString() ?? '');
+
+  useEffect(() => {
+    setPlazo(fila.plazoDias?.toString() ?? '');
+    setAntes(fila.alertaDiasAntes?.toString() ?? '');
+  }, [fila.numeral, fila.plazoDias, fila.alertaDiasAntes]);
+
+  /** Entero dentro del rango, o null si está vacío; undefined si no es válido. */
+  const leer = (texto: string, minimo: number, maximo: number): number | null | undefined => {
+    const limpio = texto.trim();
+    if (!limpio) return null;
+    if (!/^\d+$/.test(limpio)) return undefined;
+    const n = Number(limpio);
+    return n >= minimo && n <= maximo ? n : undefined;
+  };
+
+  const guardar = async () => {
+    const plazoDias = leer(plazo, 1, 999);
+    const alertaDiasAntes = leer(antes, 0, 365);
+    if (plazoDias === undefined || alertaDiasAntes === undefined) {
+      toast.error('El plazo va de 1 a 999 días hábiles, y el aviso de 0 a 365');
+      setPlazo(fila.plazoDias?.toString() ?? '');
+      setAntes(fila.alertaDiasAntes?.toString() ?? '');
+      return;
+    }
+    if (plazoDias === (fila.plazoDias ?? null) && alertaDiasAntes === (fila.alertaDiasAntes ?? null)) return;
+
+    try {
+      await contratacionService.actualizarActividad(fila.numeral, { nombre: fila.nombre, plazoDias, alertaDiasAntes });
+      onCambio({ ...fila, plazoDias, alertaDiasAntes });
+      toast.success(plazoDias === null ? 'La actividad quedó sin plazo' : 'Plazo guardado');
+    } catch (err: any) {
+      setPlazo(fila.plazoDias?.toString() ?? '');
+      setAntes(fila.alertaDiasAntes?.toString() ?? '');
+      toast.error(err.message ?? 'No se pudo guardar el plazo');
+    }
+  };
+
+  const numero =
+    'w-14 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-center text-slate-800 hover:border-gray-300 focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none';
+  const alSalir = {
+    onBlur: guardar,
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') e.currentTarget.blur();
+    },
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+      <span className="font-bold text-slate-700">Plazo</span>
+      <input
+        value={plazo}
+        onChange={(e) => setPlazo(e.target.value)}
+        inputMode="numeric"
+        placeholder="—"
+        aria-label="Plazo en días hábiles"
+        className={numero}
+        {...alSalir}
+      />
+      <span>días hábiles desde que le toca a alguien</span>
+      {plazo.trim() && (
+        <>
+          <span className="text-slate-400">·</span>
+          <span>avisar</span>
+          <input
+            value={antes}
+            onChange={(e) => setAntes(e.target.value)}
+            inputMode="numeric"
+            placeholder="2"
+            aria-label="Días hábiles antes del plazo para avisar"
+            className={numero}
+            {...alSalir}
+          />
+          <span>días antes</span>
+        </>
+      )}
+      {!plazo.trim() && <span className="text-slate-400">· vacío, la actividad no tiene plazo</span>}
     </div>
   );
 }

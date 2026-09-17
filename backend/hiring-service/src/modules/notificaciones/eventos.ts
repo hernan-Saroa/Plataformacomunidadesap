@@ -12,6 +12,7 @@ import { SE_HABILITA_AL_ASIGNAR_ABOGADO, SIN_PANEL } from './secuencia';
 /** Lo que puede pasar en un proceso y merece un aviso. */
 export type EventoAviso =
   | 'HABILITADA'
+  | 'VENCE_PLAZO'
   | 'DEVUELTA'
   | 'ENVIADA_A_APROBACION'
   | 'APROBADA'
@@ -86,6 +87,19 @@ export interface DefinicionEvento {
   ayudaEn?: (numeral: string) => string;
 }
 
+/**
+ * A quién le toca cada actividad, encendido donde se trabaja en la plataforma.
+ *
+ * Donde no hay pantalla viene apagado: le diría a alguien que empiece algo que
+ * no puede hacer aquí, y lo enciende quien sepa que sirve.
+ */
+function aQuienLeToca(numeral: string): Sugerido {
+  const destino = quienLaHace(numeral);
+  if (!destino) return { activo: false, papeles: [] };
+  const sinPantalla = SIN_PANEL.has(numeral) && numeral !== SE_HABILITA_AL_ASIGNAR_ABOGADO;
+  return { activo: !sinPantalla, ...destino };
+}
+
 /** En el orden en que importan: primero lo que para el trabajo de alguien. */
 export const EVENTOS: DefinicionEvento[] = [
   {
@@ -97,20 +111,23 @@ export const EVENTOS: DefinicionEvento[] = [
     sugerido: { activo: false, papeles: [] },
     // Encendido, a quien hace cada actividad: es el aviso que más trabajo
     // destraba, y apagado hasta que alguien configurara las 63 no avisaba nada.
-    // Donde no hay pantalla viene apagado: le diría a alguien que empiece algo
-    // que no puede hacer en la plataforma, y lo enciende quien sepa que sirve.
-    sugeridoEn: (numeral) => {
-      const destino = quienLaHace(numeral);
-      if (!destino) return { activo: false, papeles: [] };
-      const sinPantalla = SIN_PANEL.has(numeral) && numeral !== SE_HABILITA_AL_ASIGNAR_ABOGADO;
-      return { activo: !sinPantalla, ...destino };
-    },
+    sugeridoEn: aQuienLeToca,
     ayudaEn: (numeral) =>
       numeral === SE_HABILITA_AL_ASIGNAR_ABOGADO
         ? 'Sale cuando, en la 3.3, la Dirección se hace cargo del proceso y elige al abogado: ahí le toca revisarlo.'
         : SIN_PANEL.has(numeral)
           ? 'Sale cuando el proceso llega a esta actividad. Se hace fuera de la plataforma, así que no detiene a las siguientes.'
           : 'Sale cuando se termina lo que venía antes y esta actividad ya se puede trabajar, para que quien la hace sepa que es su turno.',
+  },
+  {
+    codigo: 'VENCE_PLAZO',
+    nombre: 'Se vence el plazo',
+    ayuda:
+      'Sale cuando faltan pocos días hábiles para el plazo de la actividad, y otra vez si se vence. Solo en las actividades con plazo.',
+    numeral: null,
+    sugerido: { activo: false, papeles: [] },
+    // A los mismos que les tocó hacerla: son quienes pueden entregarla a tiempo.
+    sugeridoEn: aQuienLeToca,
   },
   {
     codigo: 'DEVUELTA',
@@ -278,6 +295,8 @@ export interface EventoOcurrido {
   actorNombre: string | null;
   /** Lo que el aviso necesita contar, como las observaciones de una devolución. */
   observaciones: string | null;
+  /** Solo en «se vence el plazo»: hasta cuándo, y si ya pasó. */
+  plazo?: { vence: string; vencido: boolean };
 }
 
 /**
@@ -386,7 +405,7 @@ export function destinatariosFinales(
 
 /** El texto del aviso, dicho para quien lo recibe. */
 export function mensajeDeAviso(
-  ocurrido: Pick<EventoOcurrido, 'evento' | 'numeral' | 'actorNombre' | 'observaciones'>,
+  ocurrido: Pick<EventoOcurrido, 'evento' | 'numeral' | 'actorNombre' | 'observaciones' | 'plazo'>,
   actividad: string | null,
   radicado: string | null,
 ): { titulo: string; mensaje: string; prioridad: 'Media' | 'Alta' } {
@@ -409,6 +428,20 @@ export function mensajeDeAviso(
         mensaje: `${que}${proceso} ya se puede trabajar: se terminó lo que venía antes.`,
         prioridad: 'Media',
       };
+    case 'VENCE_PLAZO': {
+      const fecha = ocurrido.plazo ? fechaLarga(ocurrido.plazo.vence) : 'su fecha';
+      return ocurrido.plazo?.vencido
+        ? {
+            titulo: 'Se venció el plazo de una actividad',
+            mensaje: `${que}${proceso} tenía plazo hasta el ${fecha} y sigue sin entregarse.`,
+            prioridad: 'Alta',
+          }
+        : {
+            titulo: 'Se acerca el plazo de una actividad',
+            mensaje: `${que}${proceso} vence el ${fecha}.`,
+            prioridad: 'Media',
+          };
+    }
     case 'DEVUELTA':
       return {
         titulo: 'Te devolvieron una actividad',
@@ -449,4 +482,14 @@ export function mensajeDeAviso(
         prioridad: 'Media',
       };
   }
+}
+
+/** «17 de septiembre de 2026»: la fecha como se lee en un aviso. */
+function fechaLarga(ymd: string): string {
+  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString('es-CO', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }

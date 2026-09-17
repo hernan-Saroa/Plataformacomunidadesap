@@ -1201,6 +1201,10 @@ export interface FilaMatriz {
   etapa: number;
   nombre: string;
   descripcion: string | null;
+  /** Días hábiles para hacerla, contados desde que le toca a alguien. */
+  plazoDias?: number | null;
+  /** Cuántos días hábiles antes del plazo empieza a avisar. */
+  alertaDiasAntes?: number | null;
   campos: number;
   celdas: CeldaMatriz[];
 }
@@ -2957,7 +2961,11 @@ export interface AlertaVencimiento {
     | 'APROBACION_PENDIENTE'
     | 'DEVUELTA_PARA_CORREGIR'
     /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
-    | 'SIN_ABOGADO';
+    | 'SIN_ABOGADO'
+    /** Una solicitud de CDP que la Financiera no ha tomado. */
+    | 'CDP_SIN_ATENDER'
+    /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
+    | 'PLAZO_ACTIVIDAD';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
@@ -3205,6 +3213,7 @@ export interface ParametroAlerta {
 /** Lo que puede pasar en un proceso y merece un aviso. */
 export type EventoAviso =
   | 'HABILITADA'
+  | 'VENCE_PLAZO'
   | 'DEVUELTA'
   | 'ENVIADA_A_APROBACION'
   | 'APROBADA'
@@ -3251,6 +3260,8 @@ export interface AvisoSiempre {
 export interface ConfiguracionAvisos {
   papeles: { codigo: PapelAviso; nombre: string }[];
   requiereAprobacion: boolean;
+  /** Si los avisos de la actividad llegan también al correo. */
+  porCorreo: boolean;
   siempre: AvisoSiempre[];
   avisos: AvisoEvento[];
 }

@@ -36,6 +36,11 @@ const RASGOS: Record<
   // Mismo ámbar y por lo mismo: nada ha vencido, pero el proceso está parado
   // porque no hay quien resuelva su revisión.
   SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
+  // Sin rasgo propio la fila se rompía: la alerta llegaba y la pantalla no la
+  // sabía dibujar.
+  CDP_SIN_ATENDER: { etiqueta: 'CDP sin atender', icono: Landmark, color: '#D97706' },
+  // Rojo como un vencimiento, porque lo es: el de una actividad del proceso.
+  PLAZO_ACTIVIDAD: { etiqueta: 'Plazo', icono: Timer, color: '#DC2626' },
 };
 
 /**
@@ -224,13 +229,18 @@ function Fila({
    * tercera avisa de un proceso que nadie ha tomado a su cargo.
    */
   const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_ABOGADO';
+  /** El plazo de una actividad: se cuenta en días hábiles y lleva a la actividad. */
+  const esPlazoActividad = a.tipo === 'PLAZO_ACTIVIDAD';
 
   // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
   // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
   // La devolución la trae igual, y llevar a quien corrige hasta la actividad
   // —no hasta el proceso— es justamente lo que le ahorra buscarla. «Sin
   // abogado» abre con la 3.4, que es la actividad que está trancada.
-  const numeral = sinPlazo ? a.descripcion.split('·')[0].trim() : undefined;
+  const numeral = sinPlazo || esPlazoActividad ? a.descripcion.split('·')[0].trim() : undefined;
+  /** «1 día hábil», «3 días hábiles»: en el plazo se dice el número bien dicho. */
+  const dias = (n: number) =>
+    esPlazoActividad ? (Math.abs(n) === 1 ? 'día hábil' : 'días hábiles') : 'días';
 
   return (
     <li
@@ -265,9 +275,11 @@ function Fila({
           {/* En la devuelta el nombre es de quien la devolvió, no de un
               responsable: decir «sin responsable asignado» sobre una actividad
               que es tuya no significaría nada. */}
+          {/* El plazo de una actividad no tiene «responsable» en la alerta: le
+              llega a quien le toca, configurado en la ficha. */}
           {a.responsable
             ? ` · ${esDevolucion ? `la devolvió ${a.responsable}` : a.responsable}`
-            : esDevolucion
+            : esDevolucion || esPlazoActividad
               ? ''
               : ' · sin responsable asignado'}
         </p>
@@ -298,10 +310,10 @@ function Fila({
               ? 'Esperando desde hoy'
               : `Esperando ${Math.abs(a.diasRestantes)} días`
             : vencido
-              ? `Venció hace ${Math.abs(a.diasRestantes)} días`
+              ? `Venció hace ${Math.abs(a.diasRestantes)} ${dias(a.diasRestantes)}`
               : a.diasRestantes === 0
                 ? 'Vence hoy'
-                : `En ${a.diasRestantes} días`}
+                : `En ${a.diasRestantes} ${dias(a.diasRestantes)}`}
         </span>
         <span className="block text-[10.5px] text-slate-400 tabular-nums">
           {fechaLarga(a.vence.slice(0, 10))}

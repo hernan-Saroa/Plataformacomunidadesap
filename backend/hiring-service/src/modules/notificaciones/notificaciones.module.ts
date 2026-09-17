@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { AvisosController, DependenciasController } from './avisos.controller';
+import { AvisosController, CorreoAvisosController, DependenciasController } from './avisos.controller';
 import { AvisosService } from './avisos.service';
 import { NotificacionesSubscriber } from './notificaciones.subscriber';
 import { NotificadorService } from './notificador.service';
@@ -13,7 +13,7 @@ import { NotificadorService } from './notificador.service';
  * más.
  */
 @Module({
-  controllers: [AvisosController, DependenciasController],
+  controllers: [AvisosController, CorreoAvisosController, DependenciasController],
   providers: [AvisosService, NotificadorService, NotificacionesSubscriber],
   exports: [NotificadorService],
 })

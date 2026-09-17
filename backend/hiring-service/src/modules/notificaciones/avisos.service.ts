@@ -59,6 +59,34 @@ export class AvisosService {
     return avisoQueRige(evento, (await this.cambiados(numeral)).get(evento), numeral);
   }
 
+  /**
+   * Si los avisos de la actividad salen también por correo.
+   *
+   * Encendido si no se sabe: se acordó como estándar, y una consulta que falla
+   * no debería callar el correo de toda una actividad.
+   */
+  async porCorreo(numeral: string): Promise<boolean> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT avisos_por_correo FROM hiring.actividades WHERE numeral = $1`,
+        [numeral],
+      );
+      return fila?.avisos_por_correo !== false;
+    } catch {
+      return true;
+    }
+  }
+
+  /** Enciende o apaga el correo de los avisos de la actividad. */
+  async guardarCorreo(numeral: string, porCorreo: boolean) {
+    const filas = await this.dataSource.query(
+      `UPDATE hiring.actividades SET avisos_por_correo = $2 WHERE numeral = $1 RETURNING numeral`,
+      [numeral, porCorreo === true],
+    );
+    if (!filas.length) throw new BadRequestException(`La actividad ${numeral} no existe`);
+    return this.deActividad(numeral);
+  }
+
   /** Si la actividad exige aprobación en alguna modalidad, con alguien que la dé. */
   private async requiereAprobacion(numeral: string): Promise<boolean> {
     try {
@@ -112,9 +140,10 @@ export class AvisosService {
 
   /** Los avisos de la actividad, con nombres legibles, para la ficha. */
   async deActividad(numeral: string) {
-    const [cambiados, requiere] = await Promise.all([
+    const [cambiados, requiere, porCorreo] = await Promise.all([
       this.cambiados(numeral),
       this.requiereAprobacion(numeral),
+      this.porCorreo(numeral),
     ]);
     const nombrePapel = (codigo: PapelAviso) => PAPELES.find((p) => p.codigo === codigo)?.nombre ?? codigo;
 
@@ -160,6 +189,7 @@ export class AvisosService {
     return {
       papeles: PAPELES,
       requiereAprobacion: requiere,
+      porCorreo,
       siempre,
       avisos: configurables.map(({ definicion, aviso }) => ({
         evento: definicion.codigo,

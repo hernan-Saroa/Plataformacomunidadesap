@@ -22,6 +22,8 @@ describe('NotificadorService · despachar', () => {
   /** Responde cada consulta por su contenido. `avisos` es lo configurado. */
   const conBase = (avisos: any[], extra: Record<string, any[]> = {}) => {
     const query = jest.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('avisos_por_correo')) return extra.porCorreo ?? [];
+      if (sql.includes('dir_email')) return extra.correos ?? [];
       if (sql.includes('FROM hiring.avisos')) return avisos;
       if (sql.includes('FROM hiring.procesos WHERE id')) return [{ modalidad: 'LICITACION', radicado: 'CTO-1' }];
       if (sql.includes('FROM hiring.proceso_actividades')) return extra.envio ?? [];
@@ -169,6 +171,48 @@ describe('NotificadorService · despachar', () => {
 
       const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
       expect(llamada?.[1]).toEqual(['contratacion.presupuesto.gestionar']);
+    });
+  });
+
+  describe('por correo', () => {
+    const llamadasA = (f: jest.Mock, ruta: string) => f.mock.calls.filter(([url]) => String(url).endsWith(ruta));
+
+    it('con el correo de la actividad encendido, el aviso llega también al correo', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([], {
+        envio: [{ id: 'u-ana' }],
+        correos: [{ id: 'u-ana', correo: 'ana@esap.edu.co' }],
+      });
+
+      await srv.despachar([devuelta]);
+
+      const [correo] = llamadasA(f, '/api/v1/emails/send');
+      const cuerpoCorreo = JSON.parse(correo[1].body);
+      expect(cuerpoCorreo.to).toBe('ana@esap.edu.co');
+      expect(cuerpoCorreo.subject).toBe('Contratación · Te devolvieron una actividad');
+      expect(cuerpoCorreo.text).toContain('«Falta el CDP»');
+    });
+
+    it('con el correo apagado, solo la campana', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([], {
+        envio: [{ id: 'u-ana' }],
+        porCorreo: [{ avisos_por_correo: false }],
+        correos: [{ id: 'u-ana', correo: 'ana@esap.edu.co' }],
+      });
+
+      await srv.despachar([devuelta]);
+
+      expect(llamadasA(f, '/notifications/bulk')).toHaveLength(1);
+      expect(llamadasA(f, '/api/v1/emails/send')).toHaveLength(0);
+    });
+
+    it('quien no tiene correo recibe la campana igual', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([], { envio: [{ id: 'u-ana' }], correos: [] });
+
+      expect(await srv.despachar([devuelta])).toBe(1);
+      expect(llamadasA(f, '/api/v1/emails/send')).toHaveLength(0);
     });
   });
 

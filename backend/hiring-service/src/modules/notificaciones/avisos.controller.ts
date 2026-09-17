@@ -47,6 +47,21 @@ export class AvisosController {
   }
 }
 
+/** Si los avisos de la actividad salen también por correo. */
+@ApiTags('Configuración · Notificaciones')
+@Controller('configuracion/actividades/:numeral/correo')
+export class CorreoAvisosController {
+  constructor(private readonly avisos: AvisosService) {}
+
+  @Put()
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_CONFIG_ADMINISTRAR)
+  @ApiOperation({ summary: 'Encender o apagar el correo de los avisos de la actividad' })
+  guardar(@Param('numeral') numeral: string, @Body('porCorreo') porCorreo: boolean) {
+    return this.avisos.guardarCorreo(numeral, porCorreo);
+  }
+}
+
 /** Las dependencias de la plataforma, para elegir a quién avisar. */
 @ApiTags('Configuración · Notificaciones')
 @Controller('configuracion/dependencias')
