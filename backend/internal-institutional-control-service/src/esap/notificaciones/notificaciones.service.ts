@@ -5,6 +5,7 @@ import { Notificacion, EstadoNotificacion, TipoNotificacion, CanalNotificacion, 
 import { PreferenciaNotificacion } from './entities/preferencia-notificacion.entity';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
+import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
 @Injectable()
 export class NotificacionesService implements OnModuleInit {
@@ -265,24 +266,23 @@ export class NotificacionesService implements OnModuleInit {
   }
 
   /**
-   * id_user de los usuarios activos cuyo rol tiene el permiso indicado.
-   * Los destinatarios se administran desde Roles y Permisos, sin códigos de rol en el código.
+   * id_user de los Jefes OCIG: los profesionales activos que la oficina tiene configurados con
+   * ese rol en Configuración de Profesionales OCI. El permiso de activar el plan no sirve para
+   * distinguirlos porque lo comparten todos los roles operativos de la OCI.
    */
-  async obtenerUsuariosConPermiso(codigoPermiso: string): Promise<string[]> {
+  async obtenerJefesOcig(): Promise<string[]> {
     try {
       const rows = await this.dataSource.query(
         `SELECT DISTINCT u.id_user::text AS id_user
-         FROM auth."user" u
-         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
-         INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol AND rp.is_active = true
-         INNER JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
-         WHERE LOWER(p.code) = LOWER($1)
-           AND u.is_active = true`,
-        [codigoPermiso],
+         FROM control_interno.configuracion_profesionales_ocig c
+         INNER JOIN auth."user" u ON u.id_person::text = c.id_tercero::text AND u.is_active = true
+         WHERE c.activo = true
+           AND c.rol_ocig = ANY($1::text[])`,
+        [variantesRolOcigOperativo(ROL_OCIG_JEFE)],
       );
       return (rows || []).map((r: { id_user: string }) => String(r.id_user));
     } catch (error) {
-      this.logger.error(`[obtenerUsuariosConPermiso] ${codigoPermiso}: ${(error as Error).message}`);
+      this.logger.error(`[obtenerJefesOcig] ${(error as Error).message}`);
       return [];
     }
   }

@@ -15,7 +15,6 @@ import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
-import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -1302,7 +1301,7 @@ export class PlanAnual5RolesService {
    * - borrador desde en-revision con observaciones: devolución, al responsable y a los Jefes
    * - aprobado: al responsable y a los Jefes, que deben activarlo
    * - en-ejecucion: a los Jefes y al responsable
-   * Los Jefes son los usuarios con el permiso de activar el Plan Anual.
+   * Los Jefes son los profesionales configurados como Jefe OCIG en Profesionales OCI.
    */
   private async notificarCambioEstadoPlan(
     plan: PlanAnual5Roles,
@@ -1752,11 +1751,10 @@ export class PlanAnual5RolesService {
   }
 
   /**
-   * id_user de los Jefes de Control Interno: quienes tienen el permiso de activar el Plan Anual.
-   * Se define desde Roles y Permisos, no por código de rol.
+   * id_user de los Jefes OCIG configurados en Configuración de Profesionales OCI.
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
-    return this.notificacionesService.obtenerUsuariosConPermiso(CIP.PLAN_ANUAL_ACTIVATE);
+    return this.notificacionesService.obtenerJefesOcig();
   }
 
   /**
