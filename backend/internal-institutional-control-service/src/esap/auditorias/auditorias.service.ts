@@ -941,6 +941,9 @@ export class AuditoriasService {
       }
     }
 
+    // Mismo conteo de documentos que el expediente (EFDS-1614)
+    await this.aplicarConteoDocumentosExpediente(auditorias);
+
     // Serializar fechas e inyectar nombres y datos de procesos
     return auditorias.map(aud => {
       const serialized = this.serializeAuditoria(aud, namesMap);
@@ -1116,10 +1119,11 @@ export class AuditoriasService {
         );
         const conteosById = new Map<string, any>();
         for (const c of conteos) conteosById.set(String(c.id), c);
+        const conteoDocumentos = await this.contarDocumentosExpediente(ids);
         for (const a of serializadas) {
           const c = conteosById.get(a.id);
           if (c) {
-            a.totalDocumentos = c.total_documentos;
+            a.totalDocumentos = conteoDocumentos.get(a.id) ?? c.total_documentos;
             a.totalHallazgos = c.total_hallazgos;
           }
         }
@@ -2709,6 +2713,7 @@ export class AuditoriasService {
       }
 
       await this.resolveAuditoriasResponsables(auditorias);
+      await this.aplicarConteoDocumentosExpediente(auditorias);
 
       // Si no hay auditorías, retornar array vacío
       if (!auditorias || auditorias.length === 0) {
@@ -2992,6 +2997,7 @@ export class AuditoriasService {
     });
 
     await this.resolveAuditoriasResponsables(auditorias);
+    await this.aplicarConteoDocumentosExpediente(auditorias);
 
     // Obtener información de personas desde auth.personas usando query raw
     const auditoriasConPersonas = await Promise.all(
@@ -3227,6 +3233,45 @@ export class AuditoriasService {
     if (total <= 0) return 100;
     const porcentaje = Math.round((transcurrido / total) * 100);
     return Math.max(0, Math.min(100, porcentaje));
+  }
+
+  /**
+   * Cantidad de documentos del expediente por auditoría con el mismo criterio de
+   * Expediente → Documentación: documentos + evidencias (sin duplicar) + documento de cierre (EFDS-1614).
+   */
+  async contarDocumentosExpediente(ids: string[]): Promise<Map<string, number>> {
+    const conteo = new Map<string, number>();
+    const idsValidos = (ids || []).filter(Boolean).map(String);
+    if (idsValidos.length === 0) return conteo;
+    try {
+      const filas = await this.auditoriaRepository.query(
+        `SELECT a.id::text AS id,
+                (SELECT COUNT(*) FROM control_interno.documento d WHERE d.auditoria_id = a.id)
+              + (SELECT COUNT(*)
+                   FROM control_interno.evidencia_documento e
+                   LEFT JOIN control_interno.hallazgo h ON h.id = e.hallazgo_id
+                  WHERE (e.auditoria_id = a.id OR h.auditoria_id = a.id)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM control_interno.documento d2 WHERE d2.id = e.id AND d2.auditoria_id = a.id
+                    ))
+              + CASE WHEN COALESCE(a.documento_cierre->>'url', '') <> '' THEN 1 ELSE 0 END AS total
+           FROM control_interno.auditoria a
+          WHERE a.id = ANY($1::uuid[])`,
+        [idsValidos],
+      );
+      for (const fila of filas) conteo.set(String(fila.id), Number(fila.total) || 0);
+    } catch (error) {
+      console.warn('[AuditoriasService.contarDocumentosExpediente] No se pudo contar documentos:', error);
+    }
+    return conteo;
+  }
+
+  private async aplicarConteoDocumentosExpediente(auditorias: Auditoria[]): Promise<void> {
+    const conteo = await this.contarDocumentosExpediente((auditorias || []).map((a) => a.id));
+    for (const auditoria of auditorias || []) {
+      const total = conteo.get(String(auditoria.id));
+      if (total !== undefined) auditoria.totalDocumentos = total;
+    }
   }
 
   /**
