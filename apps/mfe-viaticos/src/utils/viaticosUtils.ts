@@ -315,6 +315,16 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-rose-100',
     text: 'text-rose-800',
   },
+  EN_PRESUPUESTO: {
+    label: 'En Presupuesto',
+    bg: 'bg-teal-100',
+    text: 'text-teal-800',
+  },
+  COMPROMETIDA: {
+    label: 'Comprometida (RP)',
+    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+    text: 'text-indigo-800 dark:text-indigo-300',
+  },
 };
 
 

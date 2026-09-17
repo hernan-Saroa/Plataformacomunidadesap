@@ -19,7 +19,9 @@ export type EstadoSolicitudViatico =
   | 'AUTORIZACION_DIRECCION'
   | 'EN_AUTORIZACION'
   | 'AUTORIZADA'
-  | 'CANCELADA';
+  | 'CANCELADA'
+  | 'EN_PRESUPUESTO'
+  | 'COMPROMETIDA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -338,6 +340,14 @@ export interface SolicitudViatico {
   fechaCancelacion?: string | null;
   responsableCancelacion?: string | null;
   pendienteReintegro?: boolean;
+  enviadoPresupuesto?: boolean;
+  fechaEnvioPresupuesto?: string | null;
+  numeroRp?: string | null;
+  fechaRp?: string | null;
+  valorComprometido?: number | null;
+  rubroRp?: string | null;
+  codigoRp?: string | null;
+  fechaExpedicionRp?: string | null;
 }
 
 export interface TiqueteAereo {
@@ -875,4 +885,65 @@ export interface CancelarComisionResponse {
   message: string;
   timestamp: string;
 }
+
+// ============================================================================
+// Tipos e interfaces de Presupuesto y RP (RF-PRE-001, Etapa 7)
+// ============================================================================
+
+export interface EnviarPresupuestoPayload {
+  observaciones?: string;
+}
+
+export interface ExpedirRpPayload {
+  numeroRp: string;
+  fechaRp: string;
+  valorComprometido: number;
+  rubro: string;
+  codigoRp?: string;
+  observaciones?: string;
+}
+
+export interface ItemCargaMasivaRp {
+  solicitudId?: string;
+  consecutivoUnico?: string;
+  numeroRp: string;
+  fechaRp: string;
+  valorComprometido: number;
+  rubro: string;
+  codigoRp?: string;
+  observaciones?: string;
+}
+
+export interface ResumenCargaMasivaRp {
+  total: number;
+  exitosos: number;
+  fallidos: number;
+  procesados: Array<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    codigoRp: string;
+    valorComprometido: number;
+    estado: string;
+  }>;
+  errores: Array<{
+    fila: number;
+    identificador: string;
+    error: string;
+  }>;
+}
+
+export interface BandejaPresupuestoResponse {
+  success: boolean;
+  data: any[];
+  total: number;
+  page: number;
+  limit: number;
+  kpis: {
+    pendientesRp: number;
+    comprometidas: number;
+    totalComprometido: number;
+  };
+  timestamp: string;
+}
+
 

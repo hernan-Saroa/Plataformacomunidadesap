@@ -47,6 +47,11 @@ import {
   RechazarExtemporaneaPayload,
   CancelarComisionPayload,
   CancelarComisionResponse,
+  EnviarPresupuestoPayload,
+  ExpedirRpPayload,
+  ItemCargaMasivaRp,
+  ResumenCargaMasivaRp,
+  BandejaPresupuestoResponse,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
@@ -206,6 +211,14 @@ export class ViaticosService {
       observacionesSegundaRevision: (s as any).observacionesSegundaRevision || null,
       fechaSegundaRevision: (s as any).fechaSegundaRevision || null,
       revisorControlId: (s as any).revisorControlId || null,
+      enviadoPresupuesto: Boolean((s as any).enviadoPresupuesto),
+      fechaEnvioPresupuesto: (s as any).fechaEnvioPresupuesto || null,
+      numeroRp: (s as any).numeroRp || null,
+      fechaRp: (s as any).fechaRp || null,
+      valorComprometido: (s as any).valorComprometido != null ? Number((s as any).valorComprometido) : null,
+      rubroRp: (s as any).rubroRp || null,
+      codigoRp: (s as any).codigoRp || null,
+      fechaExpedicionRp: (s as any).fechaExpedicionRp || null,
     };
   }
 
@@ -1494,6 +1507,85 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('[viaticos] Error cancelando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada a Presupuesto (Etapa 7).
+   */
+  async enviarPaquetePresupuesto(
+    solicitudId: string,
+    observaciones?: string,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/send-to-budget`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error enviando paquete a Presupuesto:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Consultar bandeja del Grupo de Presupuesto (Etapa 7).
+   */
+  async obtenerBandejaPresupuesto(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    estado?: string;
+  }): Promise<BandejaPresupuestoResponse> {
+    try {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.search) q.set('search', params.search);
+      if (params?.estado) q.set('estado', params.estado);
+
+      const qs = q.toString();
+      const url = `/viaticos/api/v1/requests/budget/inbox${qs ? `?${qs}` : ''}`;
+      return await apiClient.get<BandejaPresupuestoResponse>(url);
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de presupuesto:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Expedir Registro Presupuestal RP en SIIF Nación (Etapa 7).
+   */
+  async expedirRp(
+    solicitudId: string,
+    payload: ExpedirRpPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/register-rp`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error expidiendo RP en SIIF Nación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de RPs en SIIF Nación (Etapa 7).
+   */
+  async cargaMasivaRp(
+    items: ItemCargaMasivaRp[],
+  ): Promise<ResumenCargaMasivaRp> {
+    try {
+      const res = await apiClient.post<any>(
+        '/viaticos/api/v1/requests/budget/batch-rp',
+        { items },
+      );
+      return res.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error procesando carga masiva de RPs:', error);
       throw error;
     }
   }

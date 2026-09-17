@@ -7,8 +7,28 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerSolicitudesAsignadasAnalista: vi.fn(),
     obtenerDependencias: vi.fn(),
     obtenerSolicitudCompleta: vi.fn(),
+    enviarPaquetePresupuesto: vi.fn(),
   },
 }));
+
+vi.mock('../services/api/authService', () => {
+  const auth = {
+    canCancelarComision: vi.fn(() => true),
+    canEnviarPresupuesto: vi.fn(() => true),
+    isAnalista: vi.fn(() => true),
+    getCurrentUserSync: vi.fn(() => ({
+      userId: '1',
+      username: 'analista_test',
+      roles: ['ANALISTA'],
+      permissions: [],
+      esAdmin: false,
+    })),
+  };
+  return {
+    default: auth,
+    authService: auth,
+  };
+});
 
 import viaticosService from '../services/api/viaticosService';
 
@@ -231,7 +251,7 @@ describe('AnalystInbox', () => {
     });
   });
 
-  it('no muestra comisiones en estado AUTORIZADA en el perfil de analista', async () => {
+  it('muestra comisiones en estado AUTORIZADA con acción "A Presupuesto" (Etapa 7)', async () => {
     (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
       solMock({
         id: 'sol-aut-1',
@@ -249,7 +269,8 @@ describe('AnalystInbox', () => {
 
     await waitFor(() => {
       expect(screen.getByText('COM-2026-SOL1')).toBeDefined();
-      expect(screen.queryByText('COM-2026-AUT1')).toBeNull();
+      expect(screen.getByText('COM-2026-AUT1')).toBeDefined();
+      expect(screen.getByText('A Presupuesto')).toBeDefined();
     });
   });
 

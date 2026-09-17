@@ -53,6 +53,18 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:create_request',
     'travel_expenses:read_my_requests',
   ],
+  PRESUPUESTO: [
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:issue_rp',
+    'travel_expenses:register_rp',
+  ],
+  GRUPO_PRESUPUESTO: [
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:issue_rp',
+    'travel_expenses:register_rp',
+  ],
 };
 
 @Injectable()

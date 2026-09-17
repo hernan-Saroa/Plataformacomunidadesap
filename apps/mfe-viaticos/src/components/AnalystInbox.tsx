@@ -12,6 +12,7 @@ import {
   UserCheck,
   Zap,
   XCircle,
+  Receipt,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -26,7 +27,7 @@ import { formatearNombreComisionado } from '../utils/viaticosUtils';
 import VerificacionSIIFModal from './VerificacionSIIFModal';
 import CancelarComisionModal from './CancelarComisionModal';
 
-const PRIORIDAD_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
+const PRIORIDAD_CONFIG: Record<PrioridadSolicitud, { bg: string; text: string; label: string }> = {
   ALTA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta' },
   MEDIA: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Media' },
   BAJA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Baja' },
@@ -48,19 +49,22 @@ const ESTADO_CONFIG: Record<string, { bg: string; text: string; label: string }>
   SOLICITADA_SIIF: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', label: 'Solicitada SIIF' },
   VERIFICADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Verificada' },
   CANCELADA: { bg: 'bg-rose-100', text: 'text-rose-700', label: 'Cancelada' },
+  AUTORIZADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Autorizada' },
+  EN_PRESUPUESTO: { bg: 'bg-teal-100', text: 'text-teal-700', label: 'En Presupuesto' },
+  COMPROMETIDA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Comprometida' },
 };
 
 const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
-  'AUTORIZADA',
   'RESOLUCION_EMITIDA',
   'TIQUETES_COMPRADOS',
   'EN_COMISION',
   'PENDIENTE_LEGALIZACION',
   'LEGALIZADO',
   'CANCELADA',
+  'COMPROMETIDA',
 ]);
 
-export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
+export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'AUTORIZADAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
 
 export default function AnalystInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudListaResponse[]>([]);
@@ -104,6 +108,7 @@ export default function AnalystInbox() {
   };
 
   const puedeCancelarComision = useMemo(() => authService.canCancelarComision(), []);
+  const puedeEnviarPresupuesto = useMemo(() => authService.canEnviarPresupuesto(), []);
 
   useEffect(() => {
     void cargarSolicitudes();
@@ -120,10 +125,11 @@ export default function AnalystInbox() {
   }, [dependencias]);
 
   // Clasificación por categorías / tabs sin mezclar verificadas con pendientes
-  const { devueltas, pendientes, verificadas, extemporaneas } = useMemo(() => {
+  const { devueltas, pendientes, verificadas, autorizadas, extemporaneas } = useMemo(() => {
     const devList: SolicitudListaResponse[] = [];
     const pendList: SolicitudListaResponse[] = [];
     const verifList: SolicitudListaResponse[] = [];
+    const autList: SolicitudListaResponse[] = [];
     const extList: SolicitudListaResponse[] = [];
 
     solicitudes.forEach((s) => {
@@ -150,6 +156,9 @@ export default function AnalystInbox() {
       } else if (s.estadoSolicitud === 'VERIFICADA' || s.estadoSolicitud === 'SOLICITADA_SIIF') {
         // Ya completaron la revisión del analista
         verifList.push(s);
+      } else if (s.estadoSolicitud === 'AUTORIZADA') {
+        // Autorizadas pendientes de enviar a Presupuesto
+        autList.push(s);
       } else if (['SOLICITADO', 'EXTEMPORANEA', 'EN_VERIFICACION'].includes(s.estadoSolicitud)) {
         // Realmente pendientes de verificar por el analista
         pendList.push(s);
@@ -160,6 +169,7 @@ export default function AnalystInbox() {
       devueltas: devList,
       pendientes: pendList,
       verificadas: verifList,
+      autorizadas: autList,
       extemporaneas: extList,
     };
   }, [solicitudes]);
@@ -171,9 +181,10 @@ export default function AnalystInbox() {
     if (tabActual === 'DEVOLUCIONES') return devueltas;
     if (tabActual === 'EXTEMPORANEAS') return extemporaneas;
     if (tabActual === 'VERIFICADAS') return verificadas;
+    if (tabActual === 'AUTORIZADAS') return autorizadas;
     if (tabActual === 'PENDIENTES') return pendientes;
     return base;
-  }, [tabActual, solicitudes, devueltas, pendientes, verificadas, extemporaneas]);
+  }, [tabActual, solicitudes, devueltas, pendientes, verificadas, autorizadas, extemporaneas]);
 
   const solicitudesFiltradas = useMemo(() => {
     const termino = busqueda.toLowerCase().trim();
@@ -263,6 +274,32 @@ export default function AnalystInbox() {
     void cargarSolicitudes();
     setMensajeExito('Expediente actualizado y sincronizado correctamente.');
     setTimeout(() => setMensajeExito(null), 4000);
+  };
+
+  const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
+
+  const handleEnviarPresupuesto = async (s: SolicitudListaResponse) => {
+    const confirmar = window.confirm(
+      `¿Desea enviar el paquete de la comisión ${s.consecutivoUnico} al Grupo de Presupuesto para expedición de Registro Presupuestal (RP) en SIIF Nación?`,
+    );
+    if (!confirmar) return;
+
+    setEnviandoPresupuestoId(s.id);
+    try {
+      await viaticosService.enviarPaquetePresupuesto(s.id);
+      setMensajeExito(
+        `Comisión ${s.consecutivoUnico} enviada exitosamente a la bandeja del Grupo de Presupuesto (Etapa 7).`,
+      );
+      setTimeout(() => setMensajeExito(null), 5000);
+      await cargarSolicitudes();
+    } catch (err: any) {
+      console.error('Error enviando a presupuesto:', err);
+      const msg =
+        err?.response?.data?.message || err?.message || 'Error al enviar a Presupuesto.';
+      setError(Array.isArray(msg) ? msg.join(', ') : String(msg));
+    } finally {
+      setEnviandoPresupuestoId(null);
+    }
   };
 
   return (
@@ -366,6 +403,28 @@ export default function AnalystInbox() {
             }`}
           >
             {verificadas.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTabActual('AUTORIZADAS')}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            tabActual === 'AUTORIZADAS'
+              ? 'border-teal-600 text-teal-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5 text-teal-600" />
+          <span>Autorizadas / A Presupuesto</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              tabActual === 'AUTORIZADAS'
+                ? 'bg-teal-100 text-teal-800 border border-teal-200'
+                : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {autorizadas.length}
           </span>
         </button>
 
@@ -685,7 +744,33 @@ export default function AnalystInbox() {
                     </td>
                     <td className="py-2 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {s.estadoSolicitud === 'DEVUELTA' ? (
+                        {s.estadoSolicitud === 'AUTORIZADA' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleIniciarAuditoria(s)}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors text-[11px] font-semibold"
+                              title="Comisión autorizada. Consultar expediente y soportes."
+                            >
+                              <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="hidden sm:inline">Consultar</span>
+                            </button>
+                            {puedeEnviarPresupuesto && (
+                              <button
+                                type="button"
+                                onClick={() => handleEnviarPresupuesto(s)}
+                                disabled={enviandoPresupuestoId === s.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors text-[11px] font-semibold shadow-xs disabled:opacity-50"
+                                title="Enviar paquete al Grupo de Presupuesto para expedición de RP en SIIF Nación (Etapa 7)"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">
+                                  {enviandoPresupuestoId === s.id ? 'Enviando...' : 'A Presupuesto'}
+                                </span>
+                              </button>
+                            )}
+                          </>
+                        ) : s.estadoSolicitud === 'DEVUELTA' ? (
                           <button
                             type="button"
                             onClick={() => handleIniciarAuditoria(s)}

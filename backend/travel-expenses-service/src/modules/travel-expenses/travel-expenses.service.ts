@@ -30,6 +30,11 @@ import {
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
 import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
+import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
+import { IssueRpDto } from '../../dto/issue-rp.dto';
+import { ItemCargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
+import { ItemBulkIssueRpDto, BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
 
 import {
   sanitizeObjetoComision,
@@ -4538,4 +4543,553 @@ export class TravelExpensesService {
       doc.end();
     });
   }
+
+  /**
+   * Validador y generador de nomenclatura Fecha_RP_Número (RF-PRE-001).
+   * Admite:
+   *   YYYY-MM-DD_RP_NUMERO (ej. 2026-09-16_RP_12345)
+   *   YYYYMMDD_RP_NUMERO   (ej. 20260916_RP_12345)
+   */
+  validarYFormatearNomenclaturaRp(
+    fechaRp: string,
+    numeroRp: string,
+    codigoRpSuministrado?: string,
+  ): string {
+    const fechaLimpia = (fechaRp || '').split('T')[0].trim();
+    const numLimpio = (numeroRp || '').trim();
+
+    if (!numLimpio) {
+      throw new BadRequestException('El número de RP es obligatorio.');
+    }
+
+    if (codigoRpSuministrado && codigoRpSuministrado.trim()) {
+      const cod = codigoRpSuministrado.trim();
+      const regexNomenclatura = /^\d{4}-?\d{2}-?\d{2}_RP_[A-Za-z0-9\-_]+$/i;
+      if (!regexNomenclatura.test(cod)) {
+        throw new BadRequestException(
+          `La nomenclatura '${cod}' es inválida. Debe respetar el formato Fecha_RP_Número (ej. ${fechaLimpia}_RP_${numLimpio}).`,
+        );
+      }
+      return cod;
+    }
+
+    // Generar formato estándar Fecha_RP_Número
+    return `${fechaLimpia}_RP_${numLimpio}`;
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada al Grupo de Presupuesto (Etapa 7).
+   *
+   * Criterio 1 (Gherkin):
+   *   Dada una comisión AUTORIZADA, Cuando el analista envía el paquete a Presupuesto,
+   *   Entonces aparece en la bandeja del Grupo de Presupuesto.
+   */
+  async enviarPaquetePresupuesto(
+    solicitudId: string,
+    usuarioId: string,
+    roles: string[] = [],
+    dto?: EnviarPresupuestoDto,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+    }
+
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.AUTORIZADA) {
+      throw new BadRequestException(
+        `Solo las comisiones en estado AUTORIZADA pueden ser enviadas al Grupo de Presupuesto. Estado actual: ${solicitud.estadoSolicitud}`,
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    solicitud.estadoSolicitud = EstadoSolicitud.EN_PRESUPUESTO;
+    solicitud.enviadoPresupuesto = true;
+    solicitud.fechaEnvioPresupuesto = new Date();
+    solicitud.enviadoPresupuestoPorId = usuarioId;
+    if (dto?.observaciones) {
+      solicitud.observacionesEnvioPresupuesto = dto.observaciones.trim();
+    }
+
+    const guardada = await this.solicitudRepo.save(solicitud);
+
+    await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: solicitud.id,
+      estadoAnterior,
+      estadoNuevo: EstadoSolicitud.EN_PRESUPUESTO,
+      usuarioId,
+      motivo: `[RF-PRE-001] Paquete de comisión enviado a Grupo de Presupuesto para expedición de RP en SIIF Nación.${dto?.observaciones ? ` Observaciones: ${dto.observaciones.trim()}` : ''}`,
+    });
+
+    // Notificar al rol PRESUPUESTO
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      await this.notificationClient.notifyByRole('PRESUPUESTO', {
+        tipo_notificacion: 'VIATICOS_COMISION_EN_PRESUPUESTO',
+        titulo: `Nueva comisión para expedición de RP: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} con destino a ${destino} fue enviada a Presupuesto para expedición de Registro Presupuestal en SIIF Nación.`,
+        descripcion_corta: `En Presupuesto · ${consecutivo}`,
+        icono: 'Receipt',
+        color: '#059669',
+        prioridad: 'Media',
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Expedir RP',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error notificando a Presupuesto: ${err?.message}`);
+    }
+
+    return guardada;
+  }
+
+  /**
+   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
+   *
+   * Permite consultar comisiones enviadas a presupuesto (EN_PRESUPUESTO)
+   * y comisiones comprometidas (COMPROMETIDA), con búsqueda, paginación y KPIs.
+   */
+  async obtenerBandejaPresupuesto(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+    kpis: {
+      pendientesRp: number;
+      comprometidas: number;
+      totalComprometido: number;
+    };
+  }> {
+    const qb = this.solicitudRepo
+      .createQueryBuilder('sol')
+      .leftJoinAndSelect('sol.comisionado', 'com')
+      .leftJoinAndSelect('sol.enviadoPresupuestoPor', 'envUser')
+      .leftJoinAndSelect('sol.expedidoRpPor', 'expUser');
+
+    if (estado && estado !== 'TODOS') {
+      qb.where('sol.estadoSolicitud = :estado', { estado });
+    } else {
+      qb.where(
+        '(sol.estadoSolicitud IN (:...estados) OR (sol.estadoSolicitud = :autorizada AND sol.enviadoPresupuesto = true))',
+        {
+          estados: [EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
+          autorizada: EstadoSolicitud.AUTORIZADA,
+        },
+      );
+    }
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(sol.consecutivoUnico) LIKE :term OR LOWER(com.primerNombre) LIKE :term OR LOWER(com.primerApellido) LIKE :term OR LOWER(com.numeroDocumento) LIKE :term OR LOWER(sol.destinoCiudad) LIKE :term OR LOWER(sol.numeroRp) LIKE :term OR LOWER(sol.codigoRp) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('sol.fechaEnvioPresupuesto', 'DESC')
+      .addOrderBy('sol.actualizadoEn', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    // KPIs consolidados
+    const pendientesRpCount = await this.solicitudRepo.count({
+      where: [
+        { estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO },
+        { estadoSolicitud: EstadoSolicitud.AUTORIZADA, enviadoPresupuesto: true },
+      ],
+    });
+
+    const comprometidasCount = await this.solicitudRepo.count({
+      where: { estadoSolicitud: EstadoSolicitud.COMPROMETIDA },
+    });
+
+    const sumResult = await this.solicitudRepo
+      .createQueryBuilder('sol')
+      .select('SUM(sol.valorComprometido)', 'total')
+      .where('sol.estadoSolicitud = :comp', { comp: EstadoSolicitud.COMPROMETIDA })
+      .getRawOne();
+
+    const totalComprometido = Number(sumResult?.total || 0);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      kpis: {
+        pendientesRp: pendientesRpCount,
+        comprometidas: comprometidasCount,
+        totalComprometido,
+      },
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  /**
+   * RF-PRE-001 — Expedir y Registrar RP en SIIF Nación (Etapa 7).
+   *
+   * Método transaccional ACID con bloqueo pesimista SELECT ... FOR UPDATE.
+   * Transiciona la comisión de AUTORIZADA / EN_PRESUPUESTO al estado COMPROMETIDA.
+   */
+  async registrarRP(
+    solicitudId: string,
+    datosRp: IssueRpDto,
+    usuarioId: string,
+  ): Promise<SolicitudComisionEntity> {
+    return this.dataSource.transaction(async (manager) => {
+      // 1. Bloqueo Pesimista: Obtener la solicitud con SELECT ... FOR UPDATE
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .findOne({
+          where: { id: solicitudId },
+          relations: ['comisionado'],
+          lock: { mode: 'pessimistic_write' },
+        });
+
+      if (!solicitud) {
+        throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+      }
+
+      // 2. Validación de Estado: Verificar que esté en AUTORIZADA o en Presupuesto
+      const esEstadoValido =
+        solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA ||
+        solicitud.estadoSolicitud === EstadoSolicitud.EN_PRESUPUESTO;
+
+      if (!esEstadoValido) {
+        throw new BadRequestException(
+          `La comisión debe estar en la bandeja de Presupuesto para expedir su RP. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      if (datosRp.valorComprometido == null || Number(datosRp.valorComprometido) <= 0) {
+        throw new BadRequestException('El valor comprometido debe ser un monto positivo mayor a 0.');
+      }
+
+      const rubroFinal = (datosRp.rubroPresupuestal || datosRp.rubro || '').trim();
+      if (!rubroFinal) {
+        throw new BadRequestException('El rubro presupuestal es obligatorio para expedir el RP.');
+      }
+
+      // 3. Validación Nomenclatura SOPORTE RP
+      if (datosRp.soporteRpPath) {
+        const regexSoporte = /^.*(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
+        if (!regexSoporte.test(datosRp.soporteRpPath.trim())) {
+          throw new BadRequestException(
+            `El archivo soporte de RP '${datosRp.soporteRpPath}' es inválido. Debe cumplir con la regla de nomenclatura Fecha_RP_Número (ejemplo: YYYYMMDD_RP_Numero.pdf o 20260916_RP_12345.pdf).`,
+          );
+        }
+      }
+
+      const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
+        datosRp.fechaRp,
+        datosRp.numeroRp,
+        datosRp.codigoRp,
+      );
+
+      // 4. Actualización de Registro
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.COMPROMETIDA;
+      solicitud.numeroRp = datosRp.numeroRp.trim();
+      solicitud.fechaRp = new Date(datosRp.fechaRp);
+      solicitud.valorComprometido = Number(datosRp.valorComprometido);
+      solicitud.rubroPresupuestalRp = rubroFinal;
+      solicitud.rubroRp = rubroFinal;
+      solicitud.soporteRpPath = datosRp.soporteRpPath ? datosRp.soporteRpPath.trim() : null;
+      solicitud.codigoRp = codigoOficialRp;
+      solicitud.usuarioPresupuestoId = usuarioId;
+      solicitud.expedidoRpPorId = usuarioId;
+      solicitud.fechaRegistroRp = new Date();
+      solicitud.fechaExpedicionRp = new Date();
+      if (datosRp.observaciones) {
+        solicitud.observacionesRp = datosRp.observaciones.trim();
+      }
+
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.COMPROMETIDA,
+        usuarioId,
+        motivo: `[RF-PRE-001] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
+      });
+
+      return guardada;
+    });
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  async expedirRp(
+    solicitudId: string,
+    usuarioId: string,
+    roles: string[] = [],
+    dto: ExpedirRpDto | IssueRpDto,
+  ): Promise<SolicitudComisionEntity> {
+    const issueDto: IssueRpDto = {
+      numeroRp: dto.numeroRp,
+      fechaRp: dto.fechaRp,
+      valorComprometido: dto.valorComprometido,
+      rubroPresupuestal: (dto as any).rubroPresupuestal || (dto as any).rubro,
+      rubro: (dto as any).rubro || (dto as any).rubroPresupuestal,
+      codigoRp: dto.codigoRp,
+      soporteRpPath: (dto as any).soporteRpPath,
+      observaciones: dto.observaciones,
+    };
+
+    const guardada = await this.registrarRP(solicitudId, issueDto, usuarioId);
+
+    // Notificaciones al comisionado / enlace / analista
+    try {
+      const consecutivo = guardada.consecutivoUnico || guardada.id;
+      const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean);
+
+      for (const destId of destinatarios) {
+        await this.notificationClient.send({
+          id_usuario_destinatario: destId!,
+          tipo_notificacion: 'VIATICOS_RP_EXPEDIDO',
+          titulo: `RP Expedido en SIIF Nación: ${consecutivo}`,
+          mensaje: `Se ha expedido el RP ${guardada.codigoRp} para la comisión ${consecutivo}. Estado: COMPROMETIDA. Recursos comprometidos: $${Number(guardada.valorComprometido).toLocaleString('es-CO')}.`,
+          descripcion_corta: `RP Expedido · ${consecutivo}`,
+          icono: 'CheckCircle2',
+          color: '#059669',
+          prioridad: 'Media',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver comisión',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: guardada.id,
+            consecutivoUnico: consecutivo,
+            codigoRp: guardada.codigoRp,
+            valorComprometido: guardada.valorComprometido,
+          },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error enviando notificaciones de RP expedido: ${err?.message}`);
+    }
+
+    return guardada;
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de Registro Presupuestal (RP) en SIIF Nación (Etapa 7).
+   *
+   * Criterio 3 (Gherkin):
+   *   Dado el registro del RP, Cuando se carga, Entonces respeta la nomenclatura
+   *   Fecha_RP_Número y admite carga masiva.
+   */
+  async cargaMasivaRp(
+    usuarioId: string,
+    roles: string[] = [],
+    items: ItemCargaMasivaRpDto[],
+  ): Promise<{
+    total: number;
+    exitosos: number;
+    fallidos: number;
+    procesados: Array<{
+      solicitudId: string;
+      consecutivoUnico: string;
+      codigoRp: string;
+      valorComprometido: number;
+      estado: string;
+    }>;
+    errores: Array<{
+      fila: number;
+      identificador: string;
+      error: string;
+    }>;
+  }> {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('El archivo o listado de carga masiva está vacío.');
+    }
+
+    const procesados: Array<any> = [];
+    const errores: Array<any> = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const fila = i + 1;
+      const identificador = item.consecutivoUnico || item.solicitudId || `Fila #${fila}`;
+
+      try {
+        let solicitud: SolicitudComisionEntity | null = null;
+
+        const consecutivoFinal =
+          item.consecutivoUnico ||
+          (item as any).solicitud_consecutivo ||
+          (item as any).consecutivo ||
+          (item as any).solicitudConsecutivo;
+        const numRpFinal = item.numeroRp || (item as any).numero_rp;
+        const fechaRpFinal = item.fechaRp || (item as any).fecha_rp;
+        const valorFinal = item.valorComprometido ?? (item as any).valor_comprometido;
+        const rubroFinal = item.rubro || (item as any).rubroPresupuestal || (item as any).rubro_presupuestal;
+        const soporteFinal = (item as any).soporteRpPath || (item as any).soporte_rp_path || null;
+
+        if (item.solicitudId) {
+          solicitud = await this.solicitudRepo.findOne({
+            where: { id: item.solicitudId },
+          });
+        } else if (consecutivoFinal) {
+          solicitud = await this.solicitudRepo.findOne({
+            where: { consecutivoUnico: consecutivoFinal.trim().toUpperCase() },
+          });
+        }
+
+        if (!solicitud) {
+          errores.push({
+            fila,
+            identificador,
+            error: `Comisión no encontrada con el identificador '${identificador}'.`,
+          });
+          continue;
+        }
+
+        const esEstadoValido =
+          solicitud.estadoSolicitud === EstadoSolicitud.EN_PRESUPUESTO ||
+          solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA;
+
+        if (!esEstadoValido) {
+          errores.push({
+            fila,
+            identificador,
+            error: `La comisión '${solicitud.consecutivoUnico}' no está en estado AUTORIZADA o en Presupuesto (estado actual: ${solicitud.estadoSolicitud}).`,
+          });
+          continue;
+        }
+
+        if (!numRpFinal || !String(numRpFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Número de RP no suministrado.',
+          });
+          continue;
+        }
+
+        if (!fechaRpFinal || !String(fechaRpFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Fecha de RP no suministrada.',
+          });
+          continue;
+        }
+
+        if (valorFinal == null || Number(valorFinal) <= 0) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Valor comprometido debe ser un número positivo mayor a 0.',
+          });
+          continue;
+        }
+
+        if (!rubroFinal || !String(rubroFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Rubro presupuestal no suministrado.',
+          });
+          continue;
+        }
+
+        // Valida y normaliza la nomenclatura Fecha_RP_Número
+        const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
+          fechaRpFinal,
+          numRpFinal,
+          item.codigoRp,
+        );
+
+        const estadoAnterior = solicitud.estadoSolicitud;
+        solicitud.estadoSolicitud = EstadoSolicitud.COMPROMETIDA;
+        solicitud.numeroRp = String(numRpFinal).trim();
+        solicitud.fechaRp = new Date(fechaRpFinal);
+        solicitud.valorComprometido = Number(valorFinal);
+        solicitud.rubroRp = String(rubroFinal).trim();
+        solicitud.rubroPresupuestalRp = String(rubroFinal).trim();
+        solicitud.soporteRpPath = soporteFinal ? String(soporteFinal).trim() : null;
+        solicitud.codigoRp = codigoOficialRp;
+        solicitud.usuarioPresupuestoId = usuarioId;
+        solicitud.expedidoRpPorId = usuarioId;
+        solicitud.fechaRegistroRp = new Date();
+        solicitud.fechaExpedicionRp = new Date();
+        if (item.observaciones) {
+          solicitud.observacionesRp = String(item.observaciones).trim();
+        }
+
+        await this.solicitudRepo.save(solicitud);
+
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.COMPROMETIDA,
+          usuarioId,
+          motivo: `[RF-PRE-001 - Carga Masiva] RP expedido en SIIF Nación: ${codigoOficialRp}. Valor: $${Number(valorFinal).toLocaleString('es-CO')}`,
+        });
+
+        procesados.push({
+          solicitudId: solicitud.id,
+          consecutivoUnico: solicitud.consecutivoUnico,
+          codigoRp: codigoOficialRp,
+          valorComprometido: Number(valorFinal),
+          estado: EstadoSolicitud.COMPROMETIDA,
+        });
+      } catch (err: any) {
+        errores.push({
+          fila,
+          identificador,
+          error: err?.message || 'Error inesperado al procesar registro.',
+        });
+      }
+    }
+
+    return {
+      total: items.length,
+      exitosos: procesados.length,
+      fallidos: errores.length,
+      procesados,
+      errores,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Alias de Carga Masiva de RP (cargaMasivaRP)
+   */
+  async cargaMasivaRP(
+    usuarioId: string,
+    roles: string[] = [],
+    items: any[],
+  ) {
+    return this.cargaMasivaRp(usuarioId, roles, items);
+  }
 }
+

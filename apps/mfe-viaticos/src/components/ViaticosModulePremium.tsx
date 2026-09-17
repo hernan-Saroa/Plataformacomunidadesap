@@ -35,6 +35,7 @@ import ControlViaticosModal from './ControlViaticosModal';
 import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
+import PresupuestoInbox from './PresupuestoInbox';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -69,18 +70,20 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
-  EN_AUTORIZACION: 1,
-  SOLICITADA_SIIF: 2,
-  VERIFICADA: 3,
-  AUTORIZADA: 4,
-  DEVUELTA: 5,
-  RADICADA: 5,
-  EXTEMPORANEA: 6,
-  SOLICITADO: 7,
-  PENDIENTE: 8,
+  EN_PRESUPUESTO: 1,
+  COMPROMETIDA: 2,
+  EN_AUTORIZACION: 3,
+  SOLICITADA_SIIF: 4,
+  VERIFICADA: 5,
+  AUTORIZADA: 6,
+  DEVUELTA: 7,
+  RADICADA: 7,
+  EXTEMPORANEA: 8,
+  SOLICITADO: 9,
+  PENDIENTE: 10,
 };
 
 function prioridadEstadoTabla(estado: string): number {
@@ -107,6 +110,8 @@ export default function ViaticosModulePremium() {
   const [esControlViaticos, setEsControlViaticos] = useState(false);
   const [esSubdireccion, setEsSubdireccion] = useState(false);
   const [esDireccionNacional, setEsDireccionNacional] = useState(false);
+  const [esPresupuesto, setEsPresupuesto] = useState(false);
+  const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const [cargandoRol, setCargandoRol] = useState(() => {
     if (typeof window === 'undefined') return false;
     return Boolean(
@@ -178,6 +183,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Visto bueno Dirección Nacional (Etapa 6)',
           icon: <Award className="w-5 h-5" />,
           color: '#9333EA',
+        },
+        {
+          id: 'presupuesto',
+          label: 'Presupuesto y RP',
+          subtitle: 'Expedición de RP en SIIF Nación (Etapa 7)',
+          icon: <Receipt className="w-5 h-5" />,
+          color: '#059669',
         },
         {
           id: 'configuracion',
@@ -259,10 +271,14 @@ export default function ViaticosModulePremium() {
         setEsControlViaticos(authService.isControlViaticos());
         setEsSubdireccion(subdir);
         setEsDireccionNacional(dirNac);
+        const presupuesto = authService.isPresupuesto();
+        setEsPresupuesto(presupuesto);
         if (dirNac && !superAdmin && !subdir) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
+        } else if (presupuesto && !superAdmin) {
+          setSeccion('presupuesto');
         }
         setCargandoRol(false);
       }
@@ -516,6 +532,13 @@ export default function ViaticosModulePremium() {
      authService.hasPermission('travel_expenses:reject_extemporaneous');
 
   const puedeCancelarComision = authService.canCancelarComision();
+  const puedeVerPresupuesto =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esPresupuesto ||
+    authService.hasPermission('travel_expenses:read_budget') ||
+    authService.hasPermission('travel_expenses:register_rp');
+  const puedeEnviarPresupuesto = authService.canEnviarPresupuesto();
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -527,6 +550,7 @@ export default function ViaticosModulePremium() {
         if (item.id === 'resoluciones') return puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
+        if (item.id === 'presupuesto') return puedeVerPresupuesto;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
       });
@@ -541,6 +565,12 @@ export default function ViaticosModulePremium() {
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones') return -1;
           if (b.id === 'autorizaciones') return 1;
+          return 0;
+        });
+      } else if (esPresupuesto && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'presupuesto') return -1;
+          if (b.id === 'presupuesto') return 1;
           return 0;
         });
       }
@@ -1084,6 +1114,11 @@ export default function ViaticosModulePremium() {
                 <AutorizacionDireccionInbox />
               )}
 
+               {/* ── BANDEJA DE PRESUPUESTO Y RP SIIF (ETAPA 7) ── */}
+               {seccion === 'presupuesto' && puedeVerPresupuesto && (
+                 <PresupuestoInbox />
+               )}
+
              {/* ── CONFIGURACIÓN ── */}
              {seccion === 'configuracion' && puedeVerConfiguracion && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
@@ -1367,6 +1402,85 @@ export default function ViaticosModulePremium() {
                             Recursos comprometidos: Pendiente de reintegro o liberación presupuestal (Etapa 8)
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'AUTORIZADA' && puedeEnviarPresupuesto && (
+                      <div className="mt-4 p-3.5 bg-teal-50 rounded-xl border border-teal-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-teal-800 font-bold block">
+                            Paso a Presupuesto (Etapa 7)
+                          </span>
+                          <p className="text-xs text-teal-900 mt-0.5">
+                            Comisión autorizada lista para radicar en el Grupo de Presupuesto para expedición de RP en SIIF Nación.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`¿Desea enviar la comisión ${solicitudSeleccionada.codigo} al Grupo de Presupuesto?`)) return;
+                            setEnviandoPresupuestoId(solicitudSeleccionada.id);
+                            try {
+                              await viaticosService.enviarPaquetePresupuesto(solicitudSeleccionada.id);
+                              setMensajeExito(`Comisión ${solicitudSeleccionada.codigo} enviada a Presupuesto correctamente.`);
+                              cargarDatos();
+                              setSolicitudSeleccionada(null);
+                            } catch (err: any) {
+                              console.error('Error enviando a presupuesto:', err);
+                              setMensajeExito('No fue posible enviar la comisión a Presupuesto.');
+                            } finally {
+                              setEnviandoPresupuestoId(null);
+                            }
+                          }}
+                          disabled={enviandoPresupuestoId === solicitudSeleccionada.id}
+                          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0 ml-3"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                          {enviandoPresupuestoId === solicitudSeleccionada.id ? 'Enviando...' : 'A Presupuesto'}
+                        </button>
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'EN_PRESUPUESTO' && (
+                      <div className="mt-4 p-3.5 bg-teal-50/60 rounded-xl border border-teal-200">
+                        <div className="flex items-center gap-1.5 text-teal-900 font-bold text-xs mb-1">
+                          <Clock className="w-4 h-4 text-teal-700" />
+                          En Bandeja de Presupuesto (Etapa 7)
+                        </div>
+                        <p className="text-xs text-teal-800">
+                          El paquete de la comisión se encuentra radicado ante el Grupo de Presupuesto para la expedición del Registro Presupuestal (RP) en SIIF Nación.
+                        </p>
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'COMPROMETIDA' && (
+                      <div className="mt-4 p-3.5 bg-emerald-50/80 rounded-xl border border-emerald-200">
+                        <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs mb-1">
+                          <Receipt className="w-4 h-4 text-emerald-700" />
+                          Registro Presupuestal (RP) Expedido — COMPROMETIDA (Etapa 7)
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                          <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                            <span className="text-[10px] text-slate-400 block font-semibold">Código RP:</span>
+                            <span className="font-mono font-bold text-emerald-950">{(solicitudSeleccionada as any).codigoRp || (solicitudSeleccionada as any).numeroRp || 'Registrado'}</span>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                            <span className="text-[10px] text-slate-400 block font-semibold">Fecha RP:</span>
+                            <span className="font-bold text-slate-800">{(solicitudSeleccionada as any).fechaRp ? new Date((solicitudSeleccionada as any).fechaRp).toLocaleDateString() : 'N/A'}</span>
+                          </div>
+                          {(solicitudSeleccionada as any).valorComprometido != null && (
+                            <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                              <span className="text-[10px] text-slate-400 block font-semibold">Valor Comprometido:</span>
+                              <span className="font-bold text-emerald-700">{formatearMoneda((solicitudSeleccionada as any).valorComprometido)}</span>
+                            </div>
+                          )}
+                          {(solicitudSeleccionada as any).rubroRp && (
+                            <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                              <span className="text-[10px] text-slate-400 block font-semibold">Rubro Presupuestal:</span>
+                              <span className="font-bold text-slate-800 truncate block">{(solicitudSeleccionada as any).rubroRp}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                 </div>

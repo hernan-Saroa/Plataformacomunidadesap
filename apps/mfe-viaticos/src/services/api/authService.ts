@@ -355,6 +355,49 @@ export class AuthService {
     );
   }
 
+  /**
+   * Determina si el usuario tiene rol o permisos del Grupo de Presupuesto (Etapa 7 — RF-PRE-001).
+   */
+  isPresupuesto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    const tieneRol = user.roles.some((r) =>
+      ['PRESUPUESTO', 'GRUPO_PRESUPUESTO', 'ANALISTA_PRESUPUESTO'].includes(r) ||
+      r.includes('PRESUPUESTO'),
+    );
+    return (
+      tieneRol ||
+      this.hasPermission('travel_expenses:read_budget') ||
+      this.hasPermission('travel_expenses:register_rp')
+    );
+  }
+
+  /**
+   * Determina si el usuario puede remitir paquetes autorizados a Presupuesto.
+   */
+  canEnviarPresupuesto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isAnalista() ||
+      this.hasPermission('travel_expenses:send_to_budget') ||
+      this.hasPermission('travel_expenses:verify_request') ||
+      this.hasPermission('travel_expenses:authorize_expense')
+    );
+  }
+
+  /**
+   * Determina si el usuario puede expedir RP en SIIF Nación.
+   */
+  canExpedirRp(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return this.isPresupuesto() || this.hasPermission('travel_expenses:register_rp');
+  }
+
   private getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
