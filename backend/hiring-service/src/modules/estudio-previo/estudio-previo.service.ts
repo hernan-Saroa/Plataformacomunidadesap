@@ -1217,6 +1217,74 @@ export class EstudioPrevioService {
     });
   }
 
+  /**
+   * Reemplaza un documento adjuntado al estudio previo por otro.
+   *
+   * Es retirar y volver a adjuntar en una sola operación, no dos sueltas: dos
+   * filas de traza (ANULAR y ADJUNTAR) no dicen que fueron la misma acción, y
+   * quien revisa el expediente después tiene que adivinar que uno reemplazó
+   * al otro. Aquí queda una sola fila, con el documento que salió y el que
+   * entró en su lugar. El archivo retirado se conserva en disco, igual que en
+   * `retirarAdjunto`: el expediente debe poder probar qué se entregó antes.
+   */
+  async reemplazarAdjunto(
+    procesoId: string,
+    documentoId: string,
+    archivo: { filename: string; originalname: string; mimetype: string; size: number; buffer?: Buffer; path?: string },
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const actividad = await this.obtenerActividad(em, procesoId);
+      if (actividad.estado === 'EN_REVISION') {
+        throw new ConflictException('El estudio previo ya fue enviado; no admite reemplazar adjuntos');
+      }
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const anterior = await em.findOne(Documento, {
+        where: { id: documentoId, expedienteId: expediente.id },
+      });
+      if (!anterior) throw new NotFoundException('El documento no está en este expediente');
+
+      if (anterior.numeral !== NUMERAL_ESTUDIO_PREVIO) {
+        throw new BadRequestException('El documento no pertenece al estudio previo');
+      }
+
+      // El snapshot del formulario no es un adjunto que alguien pueda
+      // reemplazar: es la copia de lo que se envió a revisión.
+      if (anterior.tipo !== 'ADJUNTO') {
+        throw new BadRequestException(
+          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+        );
+      }
+
+      const nuevo = await em.save(Documento, {
+        expedienteId: expediente.id,
+        numeral: NUMERAL_ESTUDIO_PREVIO,
+        tipo: 'ADJUNTO',
+        nombre: archivo.originalname,
+        archivoUrl: `hiring/files/${archivo.filename}`,
+        archivoNombreOriginal: archivo.originalname,
+        archivoMimeType: archivo.mimetype,
+        archivoTamano: archivo.size,
+        hashSha256: hash,
+        subidoPor: acceso.userName,
+      } as Partial<Documento>);
+
+      await this.traza(em, procesoId, 'documento', nuevo.id, 'REEMPLAZAR', acceso, {
+        nombre: archivo.originalname,
+        reemplaza: anterior.id,
+        nombreAnterior: anterior.archivoNombreOriginal ?? anterior.nombre,
+      });
+
+      await em.getRepository(Documento).remove(anterior);
+
+      return nuevo;
+    });
+  }
+
   // --------------------------------------------------------------- apoyo ---
 
   private async obtenerActividad(em: EntityManager, procesoId: string, bloquear = false) {

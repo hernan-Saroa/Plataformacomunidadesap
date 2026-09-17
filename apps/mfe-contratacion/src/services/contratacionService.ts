@@ -1840,6 +1840,22 @@ export const contratacionService = {
       { method: 'DELETE' },
     ),
 
+  /**
+   * Reemplaza un adjunto del estudio previo por otro (numeral 3.1, EFDS-2067).
+   *
+   * Retira el anterior y adjunta el nuevo en una sola llamada: mismas
+   * condiciones que `retirarAdjuntoDelEstudioPrevio`, y además el archivo
+   * debe pasar el mismo filtro de tipo que `adjuntarDocumento`.
+   */
+  reemplazarAdjuntoDelEstudioPrevio: (procesoId: string, documentoId: string, archivo: File) => {
+    const form = new FormData();
+    form.append('file', archivo);
+    return pedir<{ id: string; nombre: string }>(
+      `/procesos/${procesoId}/estudio-previo/documentos/${documentoId}`,
+      { method: 'PUT', body: form },
+    );
+  },
+
   // ------------------------------------------ configuración de etapas ---
 
   /** Las 63 actividades de la matriz, agrupadas por etapa. */
