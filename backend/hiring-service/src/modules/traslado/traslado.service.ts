@@ -29,6 +29,21 @@ import { AnularInformeDto, GenerarInformeDto, TrasladarInformeDto } from './dto/
 /** Actividad 6.4 de la matriz: publicación y traslado del informe preliminar. */
 export const NUMERAL_TRASLADO = '6.4';
 
+/**
+ * Parámetro de solo pruebas para saltar los plazos de espera (EFDS-2064).
+ *
+ * El término de subsanaciones y observaciones blinda un derecho del oferente
+ * y en producción se cuenta completo. Pero esperar los días hábiles reales
+ * hace imposible correr el flujo de punta a punta en una sesión de QA. Esta
+ * bandera no toca el cálculo del plazo —`venceEl` se sigue fijando igual—,
+ * solo hace que el sistema se comporte como si ya hubiera vencido.
+ *
+ * Exige la variable de entorno Y que NODE_ENV no sea 'production', para que
+ * un despliegue mal configurado no la deje encendida por accidente.
+ */
+export const saltarPlazosDePrueba = () =>
+  process.env.CONTRATACION_SALTAR_PLAZOS === 'true' && process.env.NODE_ENV !== 'production';
+
 export interface ArchivoCargado {
   filename: string;
   originalname: string;
@@ -525,6 +540,17 @@ export class TrasladoService {
    */
   protected hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
+
+  /**
+   * Si un término ya venció, real o saltado por el parámetro de pruebas.
+   *
+   * Sin fecha de vencimiento no hay término que dar por vencido: eso lo
+   * decide quien llama, no esta función.
+   */
+  protected estaVencido(venceEl: string | null): boolean {
+    if (!venceEl) return false;
+    return this.hoy() > venceEl || saltarPlazosDePrueba();
   }
 
   protected async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {

@@ -10,7 +10,7 @@ import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { ArchivoCargado, TrasladoService } from './traslado.service';
+import { ArchivoCargado, saltarPlazosDePrueba, TrasladoService } from './traslado.service';
 import {
   CerrarTrasladoDto,
   RegistrarSubsanacionDto,
@@ -68,6 +68,7 @@ export class SubsanacionesService extends TrasladoService {
         venceEl: null,
         enTermino: false,
         puedeRegistrar: false,
+        plazosSaltados: saltarPlazosDePrueba(),
         subsanaciones: [],
       };
     }
@@ -92,18 +93,20 @@ export class SubsanacionesService extends TrasladoService {
       venceEl: informe.venceEl,
       // Si el término sigue corriendo. Lo que llegue después se registra igual,
       // marcado como extemporáneo: la entidad decide si lo acepta.
-      enTermino: trasladado && !!informe.venceEl && this.hoy() <= informe.venceEl,
+      enTermino: trasladado && !!informe.venceEl && !this.estaVencido(informe.venceEl),
       puedeRegistrar: !excluida && trasladado,
       pendientesDeRespuesta: presentadas.filter((s) => !s.respondidaAt).length,
+      // Si el parámetro de pruebas está saltando el plazo: la pantalla lo avisa
+      // para que nadie confunda un cierre de prueba con uno real.
+      plazosSaltados: saltarPlazosDePrueba(),
       // Cerrar antes de que venza el término le quitaría al oferente el plazo
       // que se le notificó, y cerrar con algo sin responder dejaría el traslado
       // a medias: las dos condiciones se dicen aquí para que la pantalla
       // explique cuál falta en vez de deshabilitar un botón sin motivo.
-      terminoVencido: trasladado && !!informe.venceEl && this.hoy() > informe.venceEl,
+      terminoVencido: trasladado && this.estaVencido(informe.venceEl),
       puedeCerrar:
         trasladado &&
-        !!informe.venceEl &&
-        this.hoy() > informe.venceEl &&
+        this.estaVencido(informe.venceEl) &&
         presentadas.every((s) => !!s.respondidaAt),
       // Una subsanación aceptada puede cambiar la habilitación, y entonces el
       // comité tiene que rectificar su resultado (6.3). La plataforma no lo
@@ -303,7 +306,7 @@ export class SubsanacionesService extends TrasladoService {
         throw new ConflictException('El traslado de este informe ya está cerrado');
       }
 
-      if (!informe.venceEl || this.hoy() <= informe.venceEl) {
+      if (!informe.venceEl || !this.estaVencido(informe.venceEl)) {
         throw new ConflictException(
           `El término sigue corriendo hasta el ${informe.venceEl}: cerrarlo ahora le quitaría al oferente el plazo que se le notificó`,
         );

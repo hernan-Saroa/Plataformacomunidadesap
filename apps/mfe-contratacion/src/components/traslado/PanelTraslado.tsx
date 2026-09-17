@@ -622,6 +622,13 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
           {/* ------------------------------------------------- el cierre --- */}
 
+          {escritos.plazosSaltados && (
+            <Aviso tono="aviso" titulo="Parámetro de pruebas activo">
+              El sistema está saltando el plazo de espera. Esto no puede estar activo en
+              producción.
+            </Aviso>
+          )}
+
           {escritos.puedeCerrar ? (
             <Boton icono={<CheckCircle2 className="w-3.5 h-3.5" />} onClick={cerrar} disabled={guardando}>
               Cerrar el traslado

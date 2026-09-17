@@ -1492,6 +1492,8 @@ export interface EstadoSubsanaciones {
   pendientesDeRespuesta?: number;
   terminoVencido?: boolean;
   puedeCerrar?: boolean;
+  /** Si el parámetro de solo pruebas está saltando el plazo de espera (EFDS-2064). */
+  plazosSaltados?: boolean;
   /** Una subsanación aceptada puede obligar al comité a rectificar (6.3). */
   requiereRectificacion?: boolean;
   subsanaciones: Subsanacion[];
