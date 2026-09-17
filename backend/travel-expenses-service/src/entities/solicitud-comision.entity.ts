@@ -314,6 +314,32 @@ export class SolicitudComisionEntity {
   @Column({ name: 'fecha_calculo_modalidad', type: 'timestamp', nullable: true })
   fechaCalculoModalidad: Date | null;
 
+  // ========== Etapa 8: Tesorería y Obligación SIIF (RF-PAG-001) ==========
+  @Column({ name: 'numero_obligacion', type: 'varchar', length: 100, nullable: true })
+  numeroObligacion: string | null;
+
+  @Column({ name: 'fecha_obligacion', type: 'date', nullable: true })
+  fechaObligacion: Date | null;
+
+  @Column({ name: 'valor_obligacion', type: 'numeric', precision: 12, scale: 2, nullable: true })
+  valorObligacion: number | null;
+
+  @Column({ name: 'observaciones_obligacion', type: 'text', nullable: true })
+  observacionesObligacion: string | null;
+
+  @Column({ name: 'soporte_obligacion_path', type: 'varchar', length: 255, nullable: true })
+  soporteObligacionPath: string | null;
+
+  @Column({ name: 'obligado_por_id', type: 'uuid', nullable: true })
+  obligadoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'obligado_por_id' })
+  obligadoPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_registro_obligacion', type: 'timestamp with time zone', nullable: true })
+  fechaRegistroObligacion: Date | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

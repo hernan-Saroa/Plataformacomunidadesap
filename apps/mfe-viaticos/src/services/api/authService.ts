@@ -398,6 +398,22 @@ export class AuthService {
     return this.isPresupuesto() || this.hasPermission('travel_expenses:register_rp');
   }
 
+  /**
+   * Determina si el usuario puede crear y registrar la obligación en SIIF Nación (Etapa 8 — RF-PAG-001).
+   * Habilitado para Analista de Viáticos, Super Admin y usuarios con permisos de obligación.
+   */
+  canCrearObligacion(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isAnalista() ||
+      this.hasPermission('travel_expenses:create_obligation') ||
+      this.hasPermission('travel_expenses:register_obligation') ||
+      this.hasPermission('travel_expenses:verify_request')
+    );
+  }
+
   private getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =

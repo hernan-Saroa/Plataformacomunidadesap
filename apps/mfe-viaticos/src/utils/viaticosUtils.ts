@@ -320,6 +320,11 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-indigo-100 dark:bg-indigo-900/30',
     text: 'text-indigo-800 dark:text-indigo-300',
   },
+  OBLIGADA: {
+    label: 'Obligada (Lista para Pago)',
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-800 dark:text-emerald-300',
+  },
 };
 
 

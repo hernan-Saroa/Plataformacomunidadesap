@@ -52,6 +52,7 @@ import {
   ItemCargaMasivaRp,
   ResumenCargaMasivaRp,
   BandejaPresupuestoResponse,
+  CrearObligacionDto,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
@@ -1616,6 +1617,26 @@ export class ViaticosService {
       return res?.data || res;
     } catch (error) {
       console.error('[viaticos] Error previsualizando modalidad de pago:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-001 — Etapa 8: Crear obligación en SIIF Nación según modalidad de pago.
+   * Actor: Analista de Viáticos.
+   */
+  async crearObligacion(
+    solicitudId: string,
+    dto: CrearObligacionDto,
+  ): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/crear-obligacion`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error creando obligación en SIIF Nación:', error);
       throw error;
     }
   }

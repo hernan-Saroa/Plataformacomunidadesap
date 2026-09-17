@@ -21,7 +21,8 @@ export type EstadoSolicitudViatico =
   | 'AUTORIZADA'
   | 'CANCELADA'
   | 'EN_PRESUPUESTO'
-  | 'COMPROMETIDA';
+  | 'COMPROMETIDA'
+  | 'OBLIGADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -282,6 +283,31 @@ export interface SolicitudListaResponse {
   fechaCancelacion?: string | null;
   responsableCancelacion?: string | null;
   pendienteReintegro?: boolean;
+  // Etapa 7: Presupuesto y RP (RF-PRE-001 / RF-PRE-003)
+  codigoRp?: string | null;
+  numeroRp?: string | null;
+  fechaRp?: string | null;
+  valorComprometido?: number | null;
+  rubroRp?: string | null;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  // Etapa 8: Tesorería y Obligación SIIF (RF-PAG-001)
+  numeroObligacion?: string | null;
+  fechaObligacion?: string | null;
+  valorObligacion?: number | null;
+  observacionesObligacion?: string | null;
+  soporteObligacionPath?: string | null;
+  obligadoPorId?: string | null;
+  fechaRegistroObligacion?: string | null;
+}
+
+export interface CrearObligacionDto {
+  numeroObligacion: string;
+  fechaObligacion: string;
+  valorObligacion: number;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
+  observacionesObligacion?: string;
+  soporteObligacionPath?: string;
 }
 
 export interface BandejaSecretarioResponse {
