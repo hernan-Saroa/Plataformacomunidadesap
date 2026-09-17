@@ -1634,7 +1634,12 @@ const SeccionInformePreliminar: React.FC<{
       </CardSIGL>
 
       {/* Riesgos Identificados del Proceso */}
-      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+      {((auditoria as any).riesgosIdentificados?.length > 0
+        || (auditoria as any).objetivo
+        // Resultados registrados en Ejecución (EFDS-1636)
+        || (auditoria as any).fortalezas?.length > 0
+        || (auditoria as any).recomendacionesPorCategoria?.length > 0
+        || (auditoria as any).conclusiones) && (
         <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
           <div className={embedded ? 'p-4' : 'p-6'}>
             <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1702,6 +1707,13 @@ const SeccionInformePreliminar: React.FC<{
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(auditoria as any).conclusiones && (
+              <div className="mt-4">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Conclusiones registradas en Ejecución</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">{(auditoria as any).conclusiones}</p>
               </div>
             )}
           </div>

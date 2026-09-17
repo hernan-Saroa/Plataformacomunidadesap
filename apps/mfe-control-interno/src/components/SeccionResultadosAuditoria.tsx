@@ -68,9 +68,9 @@ function ListaEditable({
               ) : (
                 <textarea
                   value={item}
-                  rows={Math.min(4, Math.max(1, Math.ceil(item.length / 90)))}
+                  rows={Math.min(6, Math.max(1, Math.ceil(item.length / 55)))}
                   onChange={(e) => onChange(items.map((it, i) => (i === idx ? e.target.value : it)))}
-                  className="flex-1 bg-transparent resize-y text-xs focus:outline-none"
+                  className="flex-1 bg-transparent resize-none text-xs leading-snug focus:outline-none"
                   aria-label={`${titulo} ${idx + 1}`}
                 />
               )}
