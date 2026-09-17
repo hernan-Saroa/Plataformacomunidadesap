@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Upload, CheckCircle2, AlertTriangle, FileText, Download, Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { Upload, CheckCircle2, AlertTriangle, FileText, Download, Eye, Trash2 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { DocumentoExpediente } from '../../types';
@@ -25,6 +26,7 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
+  const [retirando, setRetirando] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const adjuntos = documentos.filter((d) => d.tipo === 'ADJUNTO');
@@ -63,6 +65,26 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
       setSubiendo(false);
       if (inputRef.current) inputRef.current.value = '';
       if (subidos > 0) onAdjuntado();
+    }
+  };
+
+  /**
+   * Retira un adjunto suelto del estudio previo (numeral 3.1).
+   *
+   * El botón solo se ofrece sobre adjuntos reales, nunca sobre el snapshot
+   * del formulario enviado: el servicio lo rechazaría con 400 porque ese
+   * registro no es un adjunto, es la copia de lo que ya se envió a revisión.
+   */
+  const retirar = async (documentoId: string) => {
+    setRetirando(documentoId);
+    try {
+      await contratacionService.retirarAdjuntoDelEstudioPrevio(procesoId, documentoId);
+      toast.success('Documento retirado');
+      onAdjuntado();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo retirar el documento');
+    } finally {
+      setRetirando(null);
     }
   };
 
@@ -187,6 +209,20 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
                       <Download className="w-3.5 h-3.5" />
                     </a>
                   </>
+                )}
+                {/* Retirar solo aplica a adjuntos reales y mientras el
+                    estudio sigue editable: el snapshot no se puede quitar
+                    porque es la copia de lo que ya se envió a revisión. */}
+                {!esSnapshot && !bloqueado && (
+                  <button
+                    type="button"
+                    onClick={() => retirar(doc.id)}
+                    disabled={retirando === doc.id}
+                    className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                    title={`Retirar ${doc.nombre}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </li>
             );
