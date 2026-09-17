@@ -52,6 +52,7 @@ interface CertificadoLaboral {
   certificateHash: string;
   qrCode: string;
   position_location?: string;
+  is_corrected?: boolean;
   observations?: string;
   department?: string;
   certificate_dependency?: string;
@@ -264,12 +265,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cert.positionLocation ||
       '',
     );
+    // En un certificado corregido manda la columna del certificado: es la que
+    // edita el coordinador y la que imprime el backend. La correccion no
+    // reescribe la solicitud, asi que leerla primero mostraria el valor viejo.
     const grupoRaw = normalizarDependencia(
-      cert.request?.position_location ||
-      cert.request?.positionLocation ||
-      cert.position_location ||
-      cert.positionLocation ||
-      '',
+      cert.is_corrected
+        ? cert.position_location || cert.positionLocation || ''
+        : cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '',
     );
     const incluyeSalario = normalizarBoolean(
       cert.include_salary ??
@@ -320,6 +326,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
       position_location: grupoRaw,
+      is_corrected: Boolean(cert.is_corrected),
       observations: cert.observations || cert.request?.observations,
       department: ubicacionRaw,
       certificate_dependency: cert.is_corrected
