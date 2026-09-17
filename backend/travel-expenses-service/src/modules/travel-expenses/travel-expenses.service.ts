@@ -4606,7 +4606,7 @@ export class TravelExpensesService {
     }
 
     const estadoAnterior = solicitud.estadoSolicitud;
-    solicitud.estadoSolicitud = EstadoSolicitud.EN_PRESUPUESTO;
+    // Mantiene el estado oficial AUTORIZADA marcando el envío al Grupo de Presupuesto
     solicitud.enviadoPresupuesto = true;
     solicitud.fechaEnvioPresupuesto = new Date();
     solicitud.enviadoPresupuestoPorId = usuarioId;
@@ -4619,9 +4619,9 @@ export class TravelExpensesService {
     await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
       solicitudId: solicitud.id,
       estadoAnterior,
-      estadoNuevo: EstadoSolicitud.EN_PRESUPUESTO,
+      estadoNuevo: solicitud.estadoSolicitud,
       usuarioId,
-      motivo: `[RF-PRE-001] Paquete de comisión enviado a Grupo de Presupuesto para expedición de RP en SIIF Nación.${dto?.observaciones ? ` Observaciones: ${dto.observaciones.trim()}` : ''}`,
+      motivo: `[RF-PRE-001] Paquete de comisión remitido al Grupo de Presupuesto para expedición de RP en SIIF Nación.${dto?.observaciones ? ` Observaciones: ${dto.observaciones.trim()}` : ''}`,
     });
 
     // Notificar al rol PRESUPUESTO
@@ -4655,7 +4655,7 @@ export class TravelExpensesService {
   /**
    * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
    *
-   * Permite consultar comisiones enviadas a presupuesto (EN_PRESUPUESTO)
+   * Permite consultar comisiones autorizadas pendientes de RP (AUTORIZADA / EN_PRESUPUESTO)
    * y comisiones comprometidas (COMPROMETIDA), con búsqueda, paginación y KPIs.
    */
   async obtenerBandejaPresupuesto(
@@ -4681,12 +4681,22 @@ export class TravelExpensesService {
       .leftJoinAndSelect('sol.expedidoRpPor', 'expUser');
 
     if (estado && estado !== 'TODOS') {
-      qb.where('sol.estadoSolicitud = :estado', { estado });
+      if (estado === 'AUTORIZADA' || estado === 'EN_PRESUPUESTO' || estado === 'PENDIENTES_RP') {
+        qb.where(
+          '(sol.estadoSolicitud = :autorizada OR sol.estadoSolicitud = :enPresupuesto)',
+          {
+            autorizada: EstadoSolicitud.AUTORIZADA,
+            enPresupuesto: EstadoSolicitud.EN_PRESUPUESTO,
+          },
+        );
+      } else {
+        qb.where('sol.estadoSolicitud = :estado', { estado });
+      }
     } else {
       qb.where(
         '(sol.estadoSolicitud IN (:...estados) OR (sol.estadoSolicitud = :autorizada AND sol.enviadoPresupuesto = true))',
         {
-          estados: [EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
+          estados: [EstadoSolicitud.AUTORIZADA, EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
           autorizada: EstadoSolicitud.AUTORIZADA,
         },
       );
@@ -4710,8 +4720,8 @@ export class TravelExpensesService {
     // KPIs consolidados
     const pendientesRpCount = await this.solicitudRepo.count({
       where: [
+        { estadoSolicitud: EstadoSolicitud.AUTORIZADA },
         { estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO },
-        { estadoSolicitud: EstadoSolicitud.AUTORIZADA, enviadoPresupuesto: true },
       ],
     });
 
@@ -4759,17 +4769,25 @@ export class TravelExpensesService {
     usuarioId: string,
   ): Promise<SolicitudComisionEntity> {
     return this.dataSource.transaction(async (manager) => {
-      // 1. Bloqueo Pesimista: Obtener la solicitud con SELECT ... FOR UPDATE
+      // 1. Bloqueo Pesimista: Obtener la solicitud con SELECT ... FOR UPDATE (sin outer joins para compatibilidad total con PostgreSQL)
       const solicitud = await manager
         .getRepository(SolicitudComisionEntity)
         .findOne({
           where: { id: solicitudId },
-          relations: ['comisionado'],
           lock: { mode: 'pessimistic_write' },
         });
 
       if (!solicitud) {
         throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+      }
+
+      if (solicitud.comisionadoId) {
+        const comisionado = await manager.getRepository(ComisionadoEntity).findOne({
+          where: { id: solicitud.comisionadoId },
+        });
+        if (comisionado) {
+          solicitud.comisionado = comisionado;
+        }
       }
 
       // 2. Validación de Estado: Verificar que esté en AUTORIZADA o en Presupuesto
@@ -4828,7 +4846,7 @@ export class TravelExpensesService {
 
       const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
 
-      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
         estadoAnterior,
         estadoNuevo: EstadoSolicitud.COMPROMETIDA,

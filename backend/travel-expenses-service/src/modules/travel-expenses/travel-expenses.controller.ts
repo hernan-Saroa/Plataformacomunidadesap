@@ -1432,7 +1432,7 @@ export class TravelExpensesController {
     const result = await this.service.cargaMasivaRp(
       usuarioId,
       roles,
-      dto.items || [],
+      (dto.items as any[]) || [],
     );
     return {
       success: true,

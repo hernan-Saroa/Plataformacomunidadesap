@@ -1405,7 +1405,7 @@ export default function ViaticosModulePremium() {
                       </div>
                     )}
 
-                    {solicitudSeleccionada.estado === 'AUTORIZADA' && puedeEnviarPresupuesto && (
+                    {solicitudSeleccionada.estado === 'AUTORIZADA' && !(solicitudSeleccionada as any).enviadoPresupuesto && puedeEnviarPresupuesto && (
                       <div className="mt-4 p-3.5 bg-teal-50 rounded-xl border border-teal-200 flex items-center justify-between">
                         <div>
                           <span className="text-[10px] uppercase tracking-wider text-teal-800 font-bold block">
@@ -1433,23 +1433,40 @@ export default function ViaticosModulePremium() {
                             }
                           }}
                           disabled={enviandoPresupuestoId === solicitudSeleccionada.id}
-                          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0 ml-3"
+                          style={{ backgroundColor: '#0f766e', color: '#ffffff' }}
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 disabled:opacity-50 shrink-0 ml-3 hover:opacity-90 cursor-pointer"
                         >
-                          <Receipt className="w-3.5 h-3.5" />
-                          {enviandoPresupuestoId === solicitudSeleccionada.id ? 'Enviando...' : 'A Presupuesto'}
+                          <Receipt className="w-3.5 h-3.5 text-white" />
+                          <span className="text-white">{enviandoPresupuestoId === solicitudSeleccionada.id ? 'Enviando...' : 'A Presupuesto'}</span>
                         </button>
                       </div>
                     )}
 
-                    {solicitudSeleccionada.estado === 'EN_PRESUPUESTO' && (
-                      <div className="mt-4 p-3.5 bg-teal-50/60 rounded-xl border border-teal-200">
-                        <div className="flex items-center gap-1.5 text-teal-900 font-bold text-xs mb-1">
-                          <Clock className="w-4 h-4 text-teal-700" />
-                          En Bandeja de Presupuesto (Etapa 7)
+                    {(solicitudSeleccionada.estado === 'EN_PRESUPUESTO' || (solicitudSeleccionada.estado === 'AUTORIZADA' && Boolean((solicitudSeleccionada as any).enviadoPresupuesto))) && (
+                      <div className="mt-4 p-3.5 bg-teal-50/60 rounded-xl border border-teal-200 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5 text-teal-900 font-bold text-xs mb-1">
+                            <Clock className="w-4 h-4 text-teal-700" />
+                            En Bandeja de Presupuesto (Etapa 7)
+                          </div>
+                          <p className="text-xs text-teal-800">
+                            El paquete de la comisión se encuentra radicado ante el Grupo de Presupuesto para la expedición del Registro Presupuestal (RP) en SIIF Nación.
+                          </p>
                         </div>
-                        <p className="text-xs text-teal-800">
-                          El paquete de la comisión se encuentra radicado ante el Grupo de Presupuesto para la expedición del Registro Presupuestal (RP) en SIIF Nación.
-                        </p>
+                        {puedeVerPresupuesto && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSeccion('presupuesto');
+                              setSolicitudSeleccionada(null);
+                            }}
+                            style={{ backgroundColor: '#003DA5', color: '#ffffff' }}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs hover:opacity-90 inline-flex items-center gap-1.5 shrink-0 ml-3 cursor-pointer"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-white" />
+                            <span className="text-white">Ir a Presupuesto</span>
+                          </button>
+                        )}
                       </div>
                     )}
 

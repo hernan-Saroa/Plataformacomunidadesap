@@ -252,20 +252,29 @@ export default function RegistrarRPModal({
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center space-x-1.5">
                 <DollarSign className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Valor Comprometido ($) *</span>
+                <span>Valor Comprometido ($ COP) *</span>
               </label>
-              <input
-                type="number"
-                required
-                min="1"
-                step="1"
-                value={valorComprometido || ''}
-                onChange={(e) => setValorComprometido(Number(e.target.value))}
-                placeholder="Ej. 1850000"
-                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono font-bold text-slate-900 transition-all"
-              />
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-xs">
+                  $
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  value={valorComprometido ? new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(valorComprometido) : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setValorComprometido(raw ? parseInt(raw, 10) : 0);
+                  }}
+                  placeholder="0"
+                  className="w-full pl-8 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono font-bold text-slate-900 transition-all placeholder:text-slate-400"
+                />
+              </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Formato COP: ${Number(valorComprometido || 0).toLocaleString('es-CO')}
+                {valorComprometido > 0
+                  ? `Monto oficial: $ ${new Intl.NumberFormat('es-CO').format(valorComprometido)} COP`
+                  : 'Ingrese el valor monetario oficial amparado en el Registro Presupuestal.'}
               </p>
             </div>
 
@@ -390,10 +399,15 @@ export default function RegistrarRPModal({
               type="button"
               onClick={handleSubmit}
               disabled={!puedeEnviar}
-              className="px-5 py-2.5 bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-800 hover:from-indigo-800 hover:to-indigo-900 text-white font-bold text-xs rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              style={
+                !puedeEnviar
+                  ? { backgroundColor: '#94a3b8', color: '#ffffff' }
+                  : { backgroundColor: '#003DA5', color: '#ffffff' }
+              }
+              className="px-5 py-2.5 font-bold text-xs rounded-xl shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{guardando ? 'Registrando RP...' : 'Confirmar y Comprometer'}</span>
+              <CheckCircle2 className="w-4 h-4 text-white" />
+              <span className="text-white">{guardando ? 'Registrando RP...' : 'Confirmar y Comprometer'}</span>
             </button>
           </div>
         </div>

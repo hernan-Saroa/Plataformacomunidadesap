@@ -227,21 +227,27 @@ export default function ExpedirRpModal({
                 Valor Comprometido ($ COP) <span className="text-rose-600">*</span>
               </label>
               <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-xs">
+                  $
+                </span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   required
-                  min={1}
-                  step="any"
                   placeholder="0"
-                  value={valorComprometido || ''}
-                  onChange={(e) => setValorComprometido(Number(e.target.value))}
+                  value={valorComprometido ? new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(valorComprometido) : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setValorComprometido(raw ? parseInt(raw, 10) : 0);
+                  }}
                   disabled={guardando}
-                  className="w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-300 text-sm font-semibold font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  className="w-full px-3.5 py-2 pl-8 rounded-xl border border-slate-300 text-sm font-semibold font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all placeholder:text-slate-400"
                 />
-                <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Monto oficial amparado en el Registro Presupuestal.
+                {valorComprometido > 0
+                  ? `Monto oficial: $ ${new Intl.NumberFormat('es-CO').format(valorComprometido)} COP`
+                  : 'Monto oficial amparado en el Registro Presupuestal.'}
               </p>
             </div>
 
@@ -353,17 +359,22 @@ export default function ExpedirRpModal({
             <button
               type="submit"
               disabled={!puedeEnviar}
-              className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center space-x-2"
+              style={
+                !puedeEnviar
+                  ? { backgroundColor: '#94a3b8', color: '#ffffff' }
+                  : { backgroundColor: '#047857', color: '#ffffff' }
+              }
+              className="px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center space-x-2 cursor-pointer"
             >
               {guardando ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Expidiendo en SIIF...</span>
+                  <span className="text-white">Expidiendo en SIIF...</span>
                 </>
               ) : (
                 <>
-                  <Receipt className="w-4 h-4" />
-                  <span>Expedir RP (COMPROMETIDA)</span>
+                  <Receipt className="w-4 h-4 text-white" />
+                  <span className="text-white">Expedir RP (COMPROMETIDA)</span>
                 </>
               )}
             </button>

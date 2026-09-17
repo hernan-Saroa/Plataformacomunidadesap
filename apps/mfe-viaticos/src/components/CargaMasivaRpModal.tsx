@@ -453,10 +453,15 @@ export default function CargaMasivaRPModal({
               type="button"
               onClick={handleProcesar}
               disabled={filasValidas.length === 0 || procesando}
-              className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              style={
+                filasValidas.length === 0 || procesando
+                  ? { backgroundColor: '#94a3b8', color: '#ffffff' }
+                  : { backgroundColor: '#047857', color: '#ffffff' }
+              }
+              className="px-5 py-2.5 font-bold text-xs rounded-xl shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{procesando ? 'Procesando Lote...' : 'Procesar Carga Masiva'}</span>
+              <CheckCircle2 className="w-4 h-4 text-white" />
+              <span className="text-white">{procesando ? 'Procesando Lote...' : 'Procesar Carga Masiva'}</span>
             </button>
           </div>
         </div>

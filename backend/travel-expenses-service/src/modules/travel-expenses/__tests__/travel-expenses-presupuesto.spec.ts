@@ -55,7 +55,14 @@ describe('RF-PRE-001 — Etapa 7: Expedir RP en SIIF Nación (COMPROMETIDA)', ()
         if (entity === SolicitudHistorialEstadoEntity) return mockHistorialRepo;
         return mockSolicitudRepo;
       }),
-      transaction: jest.fn((cb) => cb({ getRepository: () => mockSolicitudRepo })),
+      transaction: jest.fn((cb) =>
+        cb({
+          getRepository: jest.fn().mockImplementation((entity) => {
+            if (entity === SolicitudHistorialEstadoEntity) return mockHistorialRepo;
+            return mockSolicitudRepo;
+          }),
+        }),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -241,7 +248,7 @@ describe('RF-PRE-001 — Etapa 7: Expedir RP en SIIF Nación (COMPROMETIDA)', ()
         { observaciones: 'Expediente verificado y autorizaciones en firme.' },
       );
 
-      expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.EN_PRESUPUESTO);
+      expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
       expect(resultado.enviadoPresupuesto).toBe(true);
       expect(resultado.enviadoPresupuestoPorId).toBe('analista-1');
       expect(resultado.fechaEnvioPresupuesto).toBeInstanceOf(Date);
@@ -254,9 +261,9 @@ describe('RF-PRE-001 — Etapa 7: Expedir RP en SIIF Nación (COMPROMETIDA)', ()
         expect.objectContaining({
           solicitudId: 'sol-aut-1',
           estadoAnterior: EstadoSolicitud.AUTORIZADA,
-          estadoNuevo: EstadoSolicitud.EN_PRESUPUESTO,
+          estadoNuevo: EstadoSolicitud.AUTORIZADA,
           usuarioId: 'analista-1',
-          motivo: expect.stringContaining('[RF-PRE-001] Paquete de comisión enviado a Grupo de Presupuesto'),
+          motivo: expect.stringContaining('[RF-PRE-001] Paquete de comisión remitido al Grupo de Presupuesto'),
         }),
       );
 

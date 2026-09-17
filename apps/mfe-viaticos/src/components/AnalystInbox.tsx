@@ -755,19 +755,26 @@ export default function AnalystInbox() {
                               <Eye className="w-3.5 h-3.5 text-emerald-600" />
                               <span className="hidden sm:inline">Consultar</span>
                             </button>
-                            {puedeEnviarPresupuesto && (
+                            {puedeEnviarPresupuesto && !s.enviadoPresupuesto && (
                               <button
                                 type="button"
                                 onClick={() => handleEnviarPresupuesto(s)}
                                 disabled={enviandoPresupuestoId === s.id}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors text-[11px] font-semibold shadow-xs disabled:opacity-50"
+                                style={{ backgroundColor: '#0f766e', color: '#ffffff' }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all text-[11px] font-semibold shadow-xs hover:opacity-90 disabled:opacity-50 cursor-pointer"
                                 title="Enviar paquete al Grupo de Presupuesto para expedición de RP en SIIF Nación (Etapa 7)"
                               >
-                                <Receipt className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">
+                                <Receipt className="w-3.5 h-3.5 text-white" />
+                                <span className="hidden sm:inline text-white">
                                   {enviandoPresupuestoId === s.id ? 'Enviando...' : 'A Presupuesto'}
                                 </span>
                               </button>
+                            )}
+                            {s.enviadoPresupuesto && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                                <Clock className="w-2.5 h-2.5" />
+                                En Presupuesto
+                              </span>
                             )}
                           </>
                         ) : s.estadoSolicitud === 'DEVUELTA' ? (
