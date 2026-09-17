@@ -34,6 +34,21 @@ const ROTULO: Record<DecisionComite, string> = {
 };
 
 /**
+ * A qué actividad anterior puede volver el proceso al observar (EFDS-2068).
+ *
+ * Solo las que guardan contenido propio y ya están cerradas para cuando el
+ * comité sesiona: la 3.3 y la 3.4 no están aquí porque no tienen pantalla
+ * propia —son el ciclo de revisión de la 3.1—, y devolver a la 3.1 ya las
+ * vuelve a abrir.
+ */
+const NUMERALES_DEVOLUCION: { numeral: string; etiqueta: string }[] = [
+  { numeral: '3.1', etiqueta: '3.1 · Estudio previo' },
+  { numeral: '3.2', etiqueta: '3.2 · Análisis del sector' },
+  { numeral: '3.5', etiqueta: '3.5 · Modalidad de contratación' },
+  { numeral: '3.6', etiqueta: '3.6 · Causal de contratación' },
+];
+
+/**
  * Actividad 3.7 · Comité de contratación (la 3.6 de la matriz, RF-DOC-05).
  *
  * No es el comité **evaluador** de la 6.2: aquel evalúa las ofertas recibidas;
@@ -56,6 +71,7 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
   const [fecha, setFecha] = useState('');
   const [decision, setDecision] = useState<DecisionComite>('APROBADO');
   const [texto, setTexto] = useState('');
+  const [numeralDevolucion, setNumeralDevolucion] = useState('');
   const [acta, setActa] = useState<File | null>(null);
 
   const cargar = () => {
@@ -79,6 +95,7 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
       setEstado(r);
       setRegistrando(false);
       setTexto('');
+      setNumeralDevolucion('');
       setActa(null);
       toast.success(exito);
       onCambio?.();
@@ -126,7 +143,14 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
   // El texto que pide cada desenlace. Aprobar sin más no pide ninguno, y por
   // eso el campo desaparece en vez de quedarse vacío y opcional.
   const pideTexto = decision !== 'APROBADO';
-  const completo = !!fecha && !!acta && (!pideTexto || texto.trim().length >= 10);
+  // Solo observar pide a qué actividad vuelve el proceso: es el único
+  // desenlace que deja algo por corregir (EFDS-2068).
+  const pideNumeral = decision === 'OBSERVADO';
+  const completo =
+    !!fecha &&
+    !!acta &&
+    (!pideTexto || texto.trim().length >= 10) &&
+    (!pideNumeral || !!numeralDevolucion);
 
   return (
     <Marco>
@@ -308,6 +332,33 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
             </>
           )}
 
+          {pideNumeral && (
+            <>
+              <label htmlFor="comite-numeral" className="block text-xs font-bold text-gray-600">
+                A qué actividad vuelve el proceso <span className="text-red-600">*</span>
+              </label>
+              <select
+                id="comite-numeral"
+                value={numeralDevolucion}
+                disabled={guardando}
+                onChange={(e) => setNumeralDevolucion(e.target.value)}
+                className={campo}
+              >
+                <option value="">Seleccione…</option>
+                {NUMERALES_DEVOLUCION.map((n) => (
+                  <option key={n.numeral} value={n.numeral}>
+                    {n.etiqueta}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 m-0">
+                Esa actividad se reabre para que quien la trabajó la corrija y la vuelva a enviar.
+                Sin esto, las observaciones no tendrían dónde aplicarse: la actividad ya estaba
+                aprobada.
+              </p>
+            </>
+          )}
+
           <SelectorArchivo
             id="comite-acta"
             etiqueta="Acta de la sesión"
@@ -331,7 +382,9 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
                         ...(decision === 'APROBADO_CON_CONDICIONES'
                           ? { condiciones: texto.trim() }
                           : {}),
-                        ...(decision === 'OBSERVADO' ? { observaciones: texto.trim() } : {}),
+                        ...(decision === 'OBSERVADO'
+                          ? { observaciones: texto.trim(), numeralDevolucion }
+                          : {}),
                       },
                       acta as File,
                     ),

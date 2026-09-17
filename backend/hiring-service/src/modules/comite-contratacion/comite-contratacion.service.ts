@@ -18,6 +18,7 @@ import {
 } from '../../entities/comite-contratacion.entity';
 import { EstadoActividad, ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Revision } from '../../entities/revision.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
@@ -256,6 +257,14 @@ export class ComiteContratacionService {
           'Escribe las observaciones de fondo: sin ellas el proceso queda devuelto sin saber qué corregir',
         );
       }
+      // A qué actividad vuelve el proceso (EFDS-2068). Sin esto, observar
+      // devolvía la 3.7 pero la 3.1 y las demás seguían APROBADO: la
+      // corrección que pidió el comité no tenía dónde aplicarse.
+      if (dto.decision === 'OBSERVADO' && !dto.numeralDevolucion) {
+        throw new BadRequestException(
+          'Di a qué actividad vuelve el proceso: sin eso la corrección no tiene dónde aplicarse',
+        );
+      }
 
       const acta = await this.guardarActa(em, procesoId, archivo, hash, acceso);
 
@@ -277,6 +286,19 @@ export class ComiteContratacionService {
 
       const estado = estadoTrasLaSesion(dto.decision);
       await this.marcar(em, procesoId, estado, acceso);
+
+      // Observar deja la 3.7 devuelta, pero eso no reabre por sí solo lo que
+      // el comité señaló: sin esto, corregir «lo que hay que cambiar» no
+      // tenía ninguna actividad editable donde hacerlo.
+      if (dto.decision === 'OBSERVADO') {
+        await this.reabrirActividad(
+          em,
+          procesoId,
+          dto.numeralDevolucion!,
+          observaciones!,
+          acceso,
+        );
+      }
 
       await this.traza(
         em,
@@ -512,6 +534,58 @@ export class ComiteContratacionService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(ProcesoActividad, actividad);
+  }
+
+  /**
+   * Devuelve a corrección una actividad anterior ya cerrada (EFDS-2068).
+   *
+   * `proceso_actividades` y `revisiones` son las mismas tablas que ya usan el
+   * estudio previo y la aprobación configurable: no hace falta un mecanismo
+   * nuevo por actividad, solo escribir en el sitio que cada pantalla ya lee.
+   * Al numeral se le exige estar APROBADO —si sigue en curso o ya fue devuelto
+   * por otro camino, no es el comité quien tiene algo que reabrir ahí—.
+   */
+  private async reabrirActividad(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    observaciones: string,
+    acceso: HiringAccess,
+  ) {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral } });
+
+    if (!actividad) {
+      throw new NotFoundException(`El proceso no tiene la actividad ${numeral} para devolver`);
+    }
+    if (actividad.estado !== 'APROBADO') {
+      throw new ConflictException(
+        `La actividad ${numeral} no está aprobada: no hay nada ahí que el comité pueda devolver`,
+      );
+    }
+
+    actividad.estado = 'DEVUELTO';
+    actividad.revisadoPor = acceso.userName;
+    actividad.revisadoAt = new Date();
+    await em.save(ProcesoActividad, actividad);
+
+    await em.save(
+      em.create(Revision, {
+        procesoActividadId: actividad.id,
+        decision: 'DEVUELTO',
+        observaciones,
+        versionRevisada: actividad.version,
+        revisadoPor: acceso.userName,
+        revisadoPorId: acceso.userId,
+      } as Partial<Revision>),
+    );
+
+    await this.traza(em, procesoId, actividad.id, 'DEVOLVER', acceso, {
+      numeral,
+      observaciones,
+      origen: 'comite_contratacion',
+    });
   }
 
   private traza(
