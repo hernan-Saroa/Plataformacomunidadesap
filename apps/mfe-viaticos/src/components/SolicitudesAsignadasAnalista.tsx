@@ -52,7 +52,8 @@ export default function SolicitudesAsignadasAnalista() {
       s.comisionado?.primerNombre?.toLowerCase().includes(termino) ||
       s.comisionado?.primerApellido?.toLowerCase().includes(termino) ||
       s.destinoCiudad.toLowerCase().includes(termino) ||
-      s.estadoSolicitud.toLowerCase().includes(termino)
+      s.estadoSolicitud.toLowerCase().includes(termino) ||
+      viaticosService.resolverNombreDependencia(s).toLowerCase().includes(termino)
     );
   });
 
@@ -65,33 +66,34 @@ export default function SolicitudesAsignadasAnalista() {
             Mis Solicitudes Asignadas
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Solicitudes pendientes de revisión asignadas a usted.
+            Comisiones asignadas directamente para su validación documental y verificación.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={cargarSolicitudes}
-          className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
-        >
-          Actualizar
-        </button>
-      </div>
-
-      <div className="mt-4 relative">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-        <input
-          type="text"
-          placeholder="Buscar por consecutivo, comisionado, ciudad o estado..."
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-        />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+            <input
+              type="text"
+              placeholder="Buscar por radicado, comisionado, dependencia..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={cargarSolicitudes}
+            className="text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap px-2 py-2"
+          >
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {cargando ? (
-        <div className="py-8 text-center text-xs text-slate-400">Cargando solicitudes...</div>
+        <div className="py-8 text-center text-xs text-slate-400">Cargando solicitudes asignadas...</div>
       ) : error ? (
-        <div className="py-8 text-center text-xs text-red-500">{error}</div>
+        <div className="py-8 text-center text-xs text-rose-500">{error}</div>
       ) : solicitudesFiltradas.length === 0 ? (
         <div className="py-8 text-center text-xs text-slate-400">No tienes solicitudes asignadas.</div>
       ) : (
@@ -101,6 +103,7 @@ export default function SolicitudesAsignadasAnalista() {
               <tr className="border-b border-slate-200">
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Consecutivo</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Comisionado</th>
+                <th className="text-left py-2 px-2 font-bold text-slate-500">Dependencia</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Destino</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Fechas</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Estado</th>
@@ -117,6 +120,7 @@ export default function SolicitudesAsignadasAnalista() {
                 const nombreComisionado = s.comisionado
                   ? `${s.comisionado.primerNombre} ${s.comisionado.primerApellido}`
                   : 'N/A';
+                const dependenciaNom = viaticosService.resolverNombreDependencia(s);
 
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -135,6 +139,11 @@ export default function SolicitudesAsignadasAnalista() {
                       </div>
                     </td>
                     <td className="py-2 px-2 text-slate-700">{nombreComisionado}</td>
+                    <td className="py-2 px-2 text-slate-700">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 font-semibold text-slate-700 text-[10px]" title="Dependencia">
+                        {dependenciaNom}
+                      </span>
+                    </td>
                     <td className="py-2 px-2 text-slate-700">
                       {s.destinoCiudad}, {s.destinoDepartamento}
                     </td>

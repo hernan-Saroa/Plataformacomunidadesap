@@ -250,6 +250,8 @@ export interface SolicitudListaResponse {
   > | null;
   destinoCiudad: string;
   destinoDepartamento: string;
+  ciudadOrigen?: string;
+  sedeOrigen?: string;
   fechaInicio: string;
   fechaFin: string;
   objetoComision: string;
@@ -279,6 +281,8 @@ export interface SolicitudListaResponse {
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  dependencia?: string;
+  nombreDependencia?: string;
   motivoCancelacion?: string | null;
   fechaCancelacion?: string | null;
   responsableCancelacion?: string | null;
@@ -357,6 +361,7 @@ export interface SolicitudViatico {
   cargoComisionado: string;
   dependencia: string;
   sedeOrigen: string;
+  ciudadOrigen?: string;
   ciudadDestino: string;
   departamentoDestino: string;
   fechaInicio: string;
@@ -784,6 +789,8 @@ export interface SolicitudControlViaticosResponse {
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  dependencia?: string;
+  nombreDependencia?: string;
   /** Analista que realizó la verificación de 1er nivel (auditoría). */
   analistaVerificadorId?: string | null;
   /** Nombre completo del analista verificador de 1er nivel. */
@@ -903,6 +910,8 @@ export interface SolicitudAutorizacion {
   } | null;
   destinoCiudad: string;
   destinoDepartamento: string;
+  dependencia?: string;
+  idDependencia?: number | string | null;
   fechaInicio: string;
   fechaFin: string;
   diasComision: number;
