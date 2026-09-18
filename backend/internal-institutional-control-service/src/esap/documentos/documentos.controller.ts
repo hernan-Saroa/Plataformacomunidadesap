@@ -14,6 +14,7 @@ import {
   HttpStatus,
   BadRequestException,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -50,13 +51,17 @@ const safeHeaderFilename = (filename?: string | null): string => {
 };
 
 import { DocumentosService } from './documentos.service';
+import { OnlyOfficeService } from '../common/onlyoffice.service';
 import { CreateDocumentoDto } from './dto/create-documento.dto';
 import { UpdateDocumentoDto } from './dto/update-documento.dto';
 import { EtapaDocumento } from './entities/documento.entity';
 
 @Controller('documentos')
 export class DocumentosController {
-  constructor(private readonly documentosService: DocumentosService) {}
+  constructor(
+    private readonly documentosService: DocumentosService,
+    private readonly onlyOfficeService: OnlyOfficeService,
+  ) {}
 
   /**
    * GET /documentos
@@ -288,6 +293,38 @@ export class DocumentosController {
     res.setHeader('Content-Length', documento.tamanioBytes.toString());
 
     return res.sendFile(path.resolve(documento.rutaArchivo));
+  }
+
+  /**
+   * GET /documentos/:id/onlyoffice-config
+   * Configuración del visor de OnlyOffice para ver el documento en pantalla (EFDS-1080)
+   */
+  @Get(':id/onlyoffice-config')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.DOCUMENTO_VIEW)
+  async onlyOfficeConfig(@Param('id') id: string, @Req() req: any) {
+    const documento = await this.documentosService.findOne(id);
+
+    if (!existsSync(documento.rutaArchivo)) {
+      throw new BadRequestException('El archivo no existe en el servidor');
+    }
+
+    const nombre = documento.nombreArchivo;
+    if (!this.onlyOfficeService.puedePrevisualizar(nombre)) {
+      throw new BadRequestException(
+        `Este tipo de archivo no se puede previsualizar: ${nombre}`,
+      );
+    }
+
+    return this.onlyOfficeService.generarConfigVista(
+      `/documentos/${id}/download`,
+      `doc${id}v${documento.tamanioBytes}`,
+      nombre,
+      {
+        id: req.user?.userId || 'anonimo',
+        nombre: req.user?.username || 'Usuario',
+      },
+    );
   }
 
   /**
