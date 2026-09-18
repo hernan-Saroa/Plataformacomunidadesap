@@ -167,6 +167,166 @@ export class MantenimientoController {
     return this.mantenimientoService.eliminarCategoriaServicio(idCatalogo);
   }
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Parámetros globales UMI (tiempo respuesta)
+  // ---------------------------------------------------------------------------
+  @Get('parametros/tiempo-respuesta')
+  @ApiOperation({
+    summary:
+      'EFDS-1733 AC-03: Consultar el parámetro global de tiempo máximo respuesta en días naturales (rango 1..3 = 24..72h).',
+  })
+  obtenerParametroTiempoRespuesta() {
+    return this.mantenimientoService.obtenerParametroTiempoRespuesta();
+  }
+
+  @Patch('parametros/tiempo-respuesta')
+  @ApiOperation({
+    summary:
+      'EFDS-1733 AC-03: Actualizar el parámetro global de tiempo máximo respuesta. Valor entero de 1 a 3 días. Restringe: <1 o >3 lanza BadRequest 400.',
+  })
+  actualizarParametroTiempoRespuesta(@Body() body: { dias: number }) {
+    return this.mantenimientoService.actualizarParametroTiempoRespuesta(Number(body?.dias));
+  }
+
+  @Get('parametros/reglas-escalamiento')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Listar las 2 reglas de escalamiento oficiales (001 eléctrica especialista / 002 equidad carga menor resto 7 categorías).',
+  })
+  listarReglasEscalamiento() {
+    return this.mantenimientoService.listarReglasEscalamiento();
+  }
+
+  @Patch('parametros/reglas-escalamiento/:idRegla')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Actualizar una regla de escalamiento. Principal uso: ligar un técnico al regla_001 eléctrica. body.tecnicoCodigo = string o null para desligar.',
+  })
+  actualizarReglaEscalamiento(
+    @Param('idRegla', ParseIntPipe) idRegla: number,
+    @Body()
+    body: {
+      tecnicoCodigo?: string | null;
+      isActivo?: boolean;
+      metadata?: Record<string, any>;
+    },
+  ) {
+    return this.mantenimientoService.actualizarReglaEscalamiento(idRegla, body);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Técnicos mantenimiento
+  // ---------------------------------------------------------------------------
+  @Get('tecnicos')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Listar técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO). Por defecto solo activos; use ?soloActivos=false para todos.',
+  })
+  listarTecnicos(@Query('soloActivos') soloActivos?: string) {
+    const activos =
+      soloActivos === undefined
+        ? true
+        : String(soloActivos).toLowerCase() === 'true';
+    return this.mantenimientoService.listarTecnicos(activos);
+  }
+
+  @Get('tecnicos/con-carga-vigente')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Listar técnicos activos con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI).',
+  })
+  listarTecnicosConCargaVigente() {
+    return this.mantenimientoService.listarTecnicosConCargaVigente();
+  }
+
+  @Get('tecnicos/:idTecnico/carga-vigente')
+  @ApiOperation({
+    summary: 'EFDS-1733: Carga vigente puntual de un técnico por ID catalogo_item.',
+  })
+  async getCargaVigenteTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
+    const tecnico = await this.mantenimientoService['catalogoRepo'].findOne({
+      // fallback usando el service method usando codigo. Buscamos por pk y usamos service method con codigo.
+      where: {
+        catalogo: 'TECNICO_MANTENIMIENTO',
+        idCatalogo: idTecnico,
+      },
+    } as any);
+    if (!tecnico) {
+      throw new NotFoundException(`Técnico #${idTecnico} no existe.`);
+    }
+    const carga = await this.mantenimientoService.calcularCargaVigenteTecnico(tecnico.codigo);
+    return { idTecnico, codigo: tecnico.codigo, nombre: tecnico.nombre, cargaVigente: carga };
+  }
+
+  @Post('tecnicos')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Crear un técnico mantenimiento (catálogo TECNICO_MANTENIMIENTO). Validaciones: codigo min 4, nombre min 4, dup código 409.',
+  })
+  crearTecnico(
+    @Body()
+    body: {
+      codigo: string;
+      nombre: string;
+      email?: string;
+      telefono?: string;
+      especialidades?: string[];
+      orden?: number;
+      isActivo?: boolean;
+    },
+  ) {
+    return this.mantenimientoService.crearTecnico(body);
+  }
+
+  @Patch('tecnicos/:idTecnico')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Actualizar técnico mantenimiento por id (codigo, nombre, email, telefono, especialidades, orden, isActivo).',
+  })
+  actualizarTecnico(
+    @Param('idTecnico', ParseIntPipe) idTecnico: number,
+    @Body()
+    body: {
+      codigo?: string;
+      nombre?: string;
+      email?: string;
+      telefono?: string;
+      especialidades?: string[];
+      orden?: number;
+      isActivo?: boolean;
+    },
+  ) {
+    return this.mantenimientoService.actualizarTecnico(idTecnico, body);
+  }
+
+  @Patch('tecnicos/:idTecnico/toggle')
+  @ApiOperation({
+    summary: 'EFDS-1733: Toggle rápido activo/inactivo de un técnico mantenimiento.',
+  })
+  toggleTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
+    return this.mantenimientoService.toggleTecnico(idTecnico);
+  }
+
+  @Delete('tecnicos/:idTecnico')
+  @ApiOperation({
+    summary: 'EFDS-1733: Eliminar un técnico de mantenimiento por id (eliminación lógica de catalogo_item pk).',
+  })
+  eliminarTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
+    return this.mantenimientoService.eliminarTecnico(idTecnico);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Motor sugerir asignación
+  // ---------------------------------------------------------------------------
+  @Post(':idSolicitud/sugerir-asignacion')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Sugerir técnico para una solicitud. Si eléctricas (idCategoria=48) regla ESPECIALIZACION obligatoria. Resto categorías: EQUIDAD menor carga vigente.',
+  })
+  sugerirAsignacion(@Param('idSolicitud') idSolicitud: string) {
+    return this.mantenimientoService.sugerirAsignacion(idSolicitud);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Radicación oficial de una solicitud de mantenimiento (EFDS-1730)' })
   @ApiResponse({ status: 201, description: 'Solicitud radicada con consecutivo y estado RECIBIDA' })

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In } from 'typeorm';
+import { Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
 import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto } from './dto/create-mantenimiento.dto.js';
 import { Sede } from '../sedes/sede.entity.js';
@@ -19,9 +19,6 @@ const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
 }
-/** Retorna userId si es UUID válido; de lo contrario null. Usado para no romper
- *  columnas tipo uuid en el entity cuando auth service usa BIGINT (ej: userId = 746).
- *  Los campos VARCHAR (solicitanteNombre / Email) siguen poblandose igual. */
 function userIdUuidOrNull(userId: unknown): string | null {
   return isUuid(userId) ? userId : null;
 }
@@ -48,6 +45,13 @@ function nuevoItemRemision(args: {
     estado_remision: args.estadoRemision ?? 'PENDIENTE_CONFIRMACION_TI',
   };
 }
+
+const ESTADOS_CARGA_VIGENTE: readonly string[] = ['RECIBIDA','ASIGNADA','EN_PROGRESO','EN_ANALISIS'] as const;
+
+const TECNICO_MANTENIMIENTO = 'TECNICO_MANTENIMIENTO';
+const REGLA_ESCALAMIENTO = 'REGLA_ESCALAMIENTO';
+const PARAMETRO_UMI = 'PARAMETRO_UMI';
+const COD_TIEMPO = 'TIEMPO_RESPUESTA_DIAS';
 
 @Injectable()
 export class MantenimientoService {
@@ -194,6 +198,8 @@ export class MantenimientoService {
       consecutivo: consecutivo,
       estado: 'RECIBIDA',
       fechaRadicacion: ahora,
+      fechaLimiteAtencion: this.aplicarFechaLimite(ahora),
+      asignaciones: [],
       usuarioSolicitanteId: userIdUuidOrNull(user.userId) ?? undefined,
       usuarioSolicitanteEmail: user.email,
       solicitanteNombre: user.username ?? dto.nombreAreaSolicitante,
@@ -416,6 +422,309 @@ export class MantenimientoService {
     if (!it) throw new NotFoundException(`Categoría #${idCatalogo} no existe.`);
     await this.catalogoRepo.delete({ idCatalogo });
     return { idCatalogo, eliminado: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Parametros UMI (tiempo respuesta 1..3 días)
+  // ---------------------------------------------------------------------------
+  private clampDias(d: number): number {
+    if (!Number.isFinite(d)) return 2;
+    return Math.max(1, Math.min(3, Math.trunc(d)));
+  }
+
+  async obtenerParametroTiempoRespuesta(): Promise<CatalogoItem> {
+    const row = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_TIEMPO },
+    });
+    if (!row) {
+      const seed = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: COD_TIEMPO,
+        nombre: 'Tiempo máximo respuesta (días naturales)',
+        orden: 1,
+        isActivo: true,
+        metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
+      });
+      return this.catalogoRepo.save(seed);
+    }
+    return row;
+  }
+
+  async actualizarParametroTiempoRespuesta(dias: number): Promise<CatalogoItem> {
+    if (!Number.isInteger(dias)) {
+      throw new BadRequestException('Los días del tiempo de respuesta deben ser un número entero.');
+    }
+    if (dias < 1 || dias > 3) {
+      throw new BadRequestException('Tiempo de respuesta: valor fuera de rango. Rango permitido: 1 a 3 días naturales.');
+    }
+    const row = await this.obtenerParametroTiempoRespuesta();
+    if (!row.metadata || typeof row.metadata !== 'object') row.metadata = {};
+    (row.metadata as any).actual = dias;
+    (row.metadata as any).fechaModificacion = new Date().toISOString();
+    return this.catalogoRepo.save(row);
+  }
+
+  aplicarFechaLimite(fechaRadicacion: Date | null | undefined): Date | undefined {
+    if (!fechaRadicacion) return undefined;
+    const dias = this.clampDias(this.parametroCache || 2);
+    const f = new Date(fechaRadicacion.getTime());
+    f.setDate(f.getDate() + dias);
+    return f;
+  }
+
+  private parametroCache: number | null = null;
+  async cargarParametroCache(): Promise<void> {
+    try {
+      const p = await this.obtenerParametroTiempoRespuesta();
+      const actual = Number((p.metadata as any)?.actual);
+      this.parametroCache = this.clampDias(actual);
+    } catch {
+      this.parametroCache = 2;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO)
+  // ---------------------------------------------------------------------------
+  async listarTecnicos(soloActivos: boolean = true): Promise<CatalogoItem[]> {
+    const where: any = { catalogo: TECNICO_MANTENIMIENTO };
+    if (soloActivos) where.isActivo = true;
+    return this.catalogoRepo.find({ where, order: { orden: 'ASC', idCatalogo: 'ASC' } });
+  }
+
+  async calcularCargaVigenteTecnico(
+    tecnicoCodigo: string,
+    fechaReferencia: Date = new Date(),
+  ): Promise<number> {
+    if (!tecnicoCodigo) return 0;
+    const likePat = '%' + tecnicoCodigo + '%';
+    const count = await this.mantenimientoRepo
+      .createQueryBuilder('s')
+      .where('s.responsable_asignado LIKE :pat', { pat: likePat })
+      .andWhere('s.estado IN (:...estados)', { estados: ESTADOS_CARGA_VIGENTE as any })
+      .andWhere("s.area_responsable_actual IN ('UMI','PENDIENTE_CLASIFICACION')")
+      .andWhere(
+        "(s.fecha_programada IS NULL OR DATE(s.fecha_programada) >= DATE(:ref) OR s.estado IN ('RECIBIDA','ASIGNADA','EN_ANALISIS'))",
+        { ref: fechaReferencia.toISOString() },
+      )
+      .getCount();
+    return count;
+  }
+
+  async listarTecnicosConCargaVigente(): Promise<Array<CatalogoItem & { cargaVigente: number }>> {
+    const tecnicos = await this.listarTecnicos(true);
+    const out = [] as Array<CatalogoItem & { cargaVigente: number }>;
+    for (const t of tecnicos) {
+      const carga = await this.calcularCargaVigenteTecnico(t.codigo);
+      out.push({ ...t, cargaVigente: carga });
+    }
+    return out;
+  }
+
+  async crearTecnico(data: {
+    codigo: string;
+    nombre: string;
+    email?: string;
+    telefono?: string;
+    especialidades?: string[];
+    orden?: number;
+    isActivo?: boolean;
+  }): Promise<CatalogoItem> {
+    const cod = (data.codigo || '').trim();
+    const nom = (data.nombre || '').trim();
+    if (cod.length < 4) throw new BadRequestException('Código técnico debe tener mínimo 4 caracteres.');
+    if (nom.length < 4) throw new BadRequestException('Nombre técnico debe tener mínimo 4 caracteres.');
+    const dup = await this.catalogoRepo.findOne({ where: { catalogo: TECNICO_MANTENIMIENTO, codigo: cod } });
+    if (dup) throw new ConflictException(`Código técnico ${cod} ya existe.`);
+
+    const maxRow = await this.catalogoRepo
+      .createQueryBuilder('c')
+      .where('c.catalogo = :cat', { cat: TECNICO_MANTENIMIENTO })
+      .select('COALESCE(MAX(c.orden),0)', 'm')
+      .getRawOne<{ m: string }>();
+    const orden = Number.isInteger(data.orden as any) && (data.orden as any) > 0
+      ? (data.orden as any)
+      : (Number(maxRow?.m || 0) + 1);
+    const esp = Array.isArray(data.especialidades)
+      ? data.especialidades.map((e) => String(e).trim()).filter((e) => e.length > 0)
+      : [];
+    const meta: Record<string, any> = {};
+    if (data.email) meta.email = data.email.trim();
+    if (data.telefono) meta.telefono = data.telefono.trim();
+    if (esp.length) meta.especialidades = esp;
+
+    const it = this.catalogoRepo.create({
+      catalogo: TECNICO_MANTENIMIENTO,
+      codigo: cod,
+      nombre: nom,
+      orden,
+      isActivo: data.isActivo ?? true,
+      metadata: meta,
+    });
+    return this.catalogoRepo.save(it);
+  }
+
+  async actualizarTecnico(
+    idCatalogo: number,
+    data: {
+      codigo?: string;
+      nombre?: string;
+      email?: string;
+      telefono?: string;
+      especialidades?: string[];
+      orden?: number;
+      isActivo?: boolean;
+    },
+  ): Promise<CatalogoItem> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: TECNICO_MANTENIMIENTO } });
+    if (!it) throw new NotFoundException(`Técnico #${idCatalogo} no existe.`);
+    if (data.codigo !== undefined) {
+      const cod = data.codigo.trim();
+      if (cod.length < 4) throw new BadRequestException('Código mínimo 4 caracteres.');
+      const dup = await this.catalogoRepo.findOne({ where: { catalogo: TECNICO_MANTENIMIENTO, codigo: cod } });
+      if (dup && dup.idCatalogo !== idCatalogo) throw new ConflictException(`Código ${cod} duplicado.`);
+      it.codigo = cod;
+    }
+    if (data.nombre !== undefined) {
+      const n = data.nombre.trim();
+      if (n.length < 4) throw new BadRequestException('Nombre mínimo 4 caracteres.');
+      it.nombre = n;
+    }
+    if (data.orden !== undefined) it.orden = Number(data.orden);
+    if (data.isActivo !== undefined) it.isActivo = !!data.isActivo;
+    if (!it.metadata || typeof it.metadata !== 'object') it.metadata = {};
+    if (data.email !== undefined) (it.metadata as any).email = data.email?.trim() ?? null;
+    if (data.telefono !== undefined) (it.metadata as any).telefono = data.telefono?.trim() ?? null;
+    if (data.especialidades !== undefined) {
+      const esp = Array.isArray(data.especialidades)
+        ? data.especialidades.map((e) => String(e).trim()).filter(Boolean)
+        : [];
+      (it.metadata as any).especialidades = esp;
+    }
+    return this.catalogoRepo.save(it);
+  }
+
+  async toggleTecnico(idCatalogo: number): Promise<CatalogoItem> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: TECNICO_MANTENIMIENTO } });
+    if (!it) throw new NotFoundException(`Técnico #${idCatalogo} no existe.`);
+    it.isActivo = !it.isActivo;
+    return this.catalogoRepo.save(it);
+  }
+
+  async eliminarTecnico(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: TECNICO_MANTENIMIENTO } });
+    if (!it) throw new NotFoundException(`Técnico #${idCatalogo} no existe.`);
+    await this.catalogoRepo.delete({ idCatalogo });
+    return { idCatalogo, eliminado: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Reglas escalamiento
+  // ---------------------------------------------------------------------------
+  async listarReglasEscalamiento(): Promise<CatalogoItem[]> {
+    return this.catalogoRepo.find({
+      where: { catalogo: REGLA_ESCALAMIENTO },
+      order: { orden: 'ASC', idCatalogo: 'ASC' },
+    });
+  }
+
+  async actualizarReglaEscalamiento(
+    idCatalogo: number,
+    data: { tecnicoCodigo?: string | null; isActivo?: boolean; metadata?: Record<string, any> },
+  ): Promise<CatalogoItem> {
+    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: REGLA_ESCALAMIENTO } });
+    if (!it) throw new NotFoundException(`Regla #${idCatalogo} no existe.`);
+    if (!it.metadata || typeof it.metadata !== 'object') it.metadata = {};
+    if (data.tecnicoCodigo !== undefined) {
+      if (data.tecnicoCodigo === null || data.tecnicoCodigo === '') {
+        (it.metadata as any).tecnicoCodigo = null;
+        (it.metadata as any).tecnicoNombreDisplay = null;
+      } else {
+        const tec = await this.catalogoRepo.findOne({
+          where: { catalogo: TECNICO_MANTENIMIENTO, codigo: data.tecnicoCodigo },
+        });
+        if (!tec) throw new BadRequestException(`Técnico ${data.tecnicoCodigo} no existe.`);
+        (it.metadata as any).tecnicoCodigo = tec.codigo;
+        (it.metadata as any).tecnicoNombreDisplay = tec.nombre;
+      }
+    }
+    if (data.metadata !== undefined && typeof data.metadata === 'object') {
+      it.metadata = { ...(it.metadata as any), ...(data.metadata as any) };
+    }
+    if (data.isActivo !== undefined) it.isActivo = !!data.isActivo;
+    (it.metadata as any).fechaModificacion = new Date().toISOString();
+    return this.catalogoRepo.save(it);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Motor sugerir asignación
+  //   AC-01 Eléctricas (48) => regla ESPECIALIZACION obligatoria
+  //   AC-02 Resto 7 categorías => EQUIDAD_DISPONIBILIDAD_CARGA_MENOR
+  // ---------------------------------------------------------------------------
+  async sugerirAsignacion(
+    idSolicitud: string,
+  ): Promise<{
+    regla: 'ESPECIALIZACION' | 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR' | 'SIN_REGLA';
+    idCategoria: number | null;
+    sugerido: (CatalogoItem & { cargaVigente: number }) | null;
+    obligatorio: boolean;
+    opciones: Array<CatalogoItem & { cargaVigente: number }>;
+    advertencia?: string;
+  }> {
+    const solicitud = await this.findById(idSolicitud);
+    const idCategoria = solicitud.idCategoria ?? null;
+    let regla: 'ESPECIALIZACION' | 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR' | 'SIN_REGLA' = 'SIN_REGLA';
+    let sugerido: (CatalogoItem & { cargaVigente: number }) | null = null;
+    let obligatorio = false;
+    let advertencia: string | undefined = undefined;
+
+    const opciones = await this.listarTecnicosConCargaVigente();
+
+    if (solicitud.areaResponsableActual === 'TI') {
+      return {
+        regla: 'SIN_REGLA',
+        idCategoria,
+        sugerido: null,
+        obligatorio: false,
+        opciones: [],
+        advertencia: 'Las solicitudes de responsabilidad TI se gestionan por remisión a Coordinación TIC, no por este motor de asignación UMI.',
+      };
+    }
+
+    if (idCategoria === 48) {
+      // CS_002 Eléctricas y Electrónicas → regla 001 ESPECIALIZACION OBLIGATORIA
+      regla = 'ESPECIALIZACION';
+      obligatorio = true;
+      const regla001 = await this.catalogoRepo.findOne({
+        where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+      });
+      const codigoTec = regla001 && regla001.metadata ? (regla001.metadata as any).tecnicoCodigo : null;
+      if (!codigoTec) {
+        advertencia = 'Regla eléctricas activa pero el técnico especialista aún no está configurado. Asigna uno desde Panel > Parámetros UMI > Reglas.';
+      } else {
+        const encontrado = opciones.find((t) => t.codigo === codigoTec);
+        if (encontrado) {
+          sugerido = encontrado;
+        } else {
+          advertencia = `Técnico especialista configurado (${codigoTec}) no existe o está inactivo.`;
+        }
+      }
+      return { regla, idCategoria, sugerido, obligatorio, opciones, advertencia };
+    }
+
+    // AC-02 Resto 7 categorías o idCategoria sin configurar: EQUIDAD
+    regla = 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR';
+    obligatorio = false;
+    if (opciones.length === 0) {
+      advertencia = 'No hay técnicos activos en el catálogo. Da de alta al menos uno desde Parámetros UMI > Técnicos.';
+    } else {
+      const sorted = [...opciones].sort((a, b) => {
+        if (a.cargaVigente !== b.cargaVigente) return a.cargaVigente - b.cargaVigente;
+        return (a.nombre || '').localeCompare(b.nombre || '');
+      });
+      sugerido = sorted[0] || null;
+    }
+    return { regla, idCategoria, sugerido, obligatorio, opciones, advertencia };
   }
 
   // ---------------------------------------------------------------------------
