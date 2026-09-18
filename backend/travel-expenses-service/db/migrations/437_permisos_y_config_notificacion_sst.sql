@@ -24,34 +24,7 @@ INSERT INTO travel_expenses.configuraciones_globales (clave, valor, descripcion)
 VALUES ('CORREO_DESTINO_SST', 'sst@esap.edu.co', 'Dirección de correo institucional del área de Seguridad y Salud en el Trabajo')
 ON CONFLICT (clave) DO NOTHING;
 
--- 2. Esquema travel_expenses: Permisos y Roles (si existen las tablas)
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'travel_expenses' AND table_name = 'roles') THEN
-        INSERT INTO travel_expenses.roles (codigo, nombre, descripcion)
-        VALUES ('SST', 'Seguridad y Salud en el Trabajo', 'Área institucional de SST')
-        ON CONFLICT (codigo) DO NOTHING;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'travel_expenses' AND table_name = 'permisos') THEN
-        INSERT INTO travel_expenses.permisos (codigo, nombre, descripcion)
-        VALUES 
-          ('travel_expenses:read_sst_logs', 'Ver Registros de Notificación SST', 'Permite consultar el historial de notificaciones enviadas a SST'),
-          ('travel_expenses:resend_sst_notification', 'Reenviar Notificación SST', 'Permite forzar el reintento manual de notificación a SST')
-        ON CONFLICT (codigo) DO NOTHING;
-
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'travel_expenses' AND table_name = 'roles_permisos') THEN
-            INSERT INTO travel_expenses.roles_permisos (rol_id, permiso_id)
-            SELECT r.id, p.id
-            FROM travel_expenses.roles r, travel_expenses.permisos p
-            WHERE r.codigo IN ('SUPER_ADMIN', 'GRUPO_PRESUPUESTO', 'PRESUPUESTO', 'TESORERIA', 'ANALISTA_VIATICOS', 'ANALISTA', 'SST')
-              AND p.codigo IN ('travel_expenses:read_sst_logs', 'travel_expenses:resend_sst_notification')
-            ON CONFLICT DO NOTHING;
-        END IF;
-    END IF;
-END $$;
-
--- 3. Esquema auth: Permisos y Roles (si existe el esquema auth)
+-- 2. Esquema auth: Permisos y Roles (si existe el esquema auth)
 DO $$
 DECLARE
     v_module_id UUID;

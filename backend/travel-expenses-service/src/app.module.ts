@@ -13,7 +13,6 @@ import { ComisionadoEntity } from './entities/comisionado.entity';
 import { SolicitudComisionEntity } from './entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from './entities/documento-soporte.entity';
 import { UsuarioEntity } from './entities/usuario.entity';
-import { NotificacionSstLogEntity } from './entities/notificacion-sst-log.entity';
 import { CampoFormularioEntity } from './entities/config/campo-formulario.entity';
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
@@ -67,7 +66,6 @@ import { CommonModule } from './common/common.module';
         SolicitudHistorialEstadoEntity,
         FestivoColombiaEntity,
         AuthSystemSettingEntity,
-        NotificacionSstLogEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',

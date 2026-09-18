@@ -330,7 +330,7 @@ export class SstNotificationService {
         solicitudId: solicitud.id,
         estadoAnterior: solicitud.estadoSolicitud,
         estadoNuevo: solicitud.estadoSolicitud,
-        usuarioId: usuarioId || null,
+        usuarioId: usuarioId || solicitud.creadoPorUsuarioId || '00000000-0000-0000-0000-000000000000',
         comentarios: comentarioAudit.slice(0, 255),
       });
     });

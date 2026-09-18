@@ -50,35 +50,7 @@ BEGIN
     END IF;
 END $$;
 
--- 2. Semillar rol y permisos RBAC para Presupuesto
--- Si existe esquema travel_expenses.roles
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'travel_expenses' AND table_name = 'roles') THEN
-        INSERT INTO travel_expenses.roles (codigo, nombre, descripcion)
-        VALUES ('GRUPO_PRESUPUESTO', 'Grupo de Presupuesto', 'Rol encargado de expedir y registrar el Registro Presupuestal (RP)')
-        ON CONFLICT (codigo) DO NOTHING;
-
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'travel_expenses' AND table_name = 'permisos') THEN
-            INSERT INTO travel_expenses.permisos (codigo, nombre, descripcion)
-            VALUES 
-              ('travel_expenses:read_authorized', 'Ver Comisiones Autorizadas', 'Permite consultar la bandeja de comisiones pendientes de RP'),
-              ('travel_expenses:issue_rp', 'Expedir y Registrar RP', 'Permite cargar e ingresar los datos del RP individual o masivamente')
-            ON CONFLICT (codigo) DO NOTHING;
-
-            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'travel_expenses' AND table_name = 'roles_permisos') THEN
-                INSERT INTO travel_expenses.roles_permisos (rol_id, permiso_id)
-                SELECT r.id, p.id
-                FROM travel_expenses.roles r, travel_expenses.permisos p
-                WHERE r.codigo = 'GRUPO_PRESUPUESTO'
-                  AND p.codigo IN ('travel_expenses:read_authorized', 'travel_expenses:issue_rp')
-                ON CONFLICT DO NOTHING;
-            END IF;
-        END IF;
-    END IF;
-END $$;
-
--- Semillar en esquema auth (esquema activo de seguridad del ecosistema)
+-- 2. Semillar rol y permisos RBAC para Presupuesto en esquema auth
 DO $$
 DECLARE
     v_role_id UUID;

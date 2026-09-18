@@ -47,8 +47,13 @@ export class SstNotificationController {
   ])
   @Permissions(
     'travel_expenses:read_sst_logs',
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
     'travel_expenses:read_authorized',
     'travel_expenses:read_obligations',
+    'travel_expenses:read_inbox',
+    'travel_expenses:read_assigned',
     'travel_expenses:read_all',
   )
   @ApiOperation({

@@ -299,6 +299,14 @@ export interface SolicitudListaResponse {
   soporteObligacionPath?: string | null;
   obligadoPorId?: string | null;
   fechaRegistroObligacion?: string | null;
+  // Etapa 8: Tesorería y Desembolso / Pago (RF-PAG-003)
+  fechaPago?: string | null;
+  valorPagado?: number | null;
+  soportePagoPath?: string | null;
+  numeroOrdenPago?: string | null;
+  observacionesPago?: string | null;
+  pagadoPorId?: string | null;
+  fechaRegistroPago?: string | null;
 }
 
 export interface CrearObligacionDto {
@@ -308,6 +316,17 @@ export interface CrearObligacionDto {
   modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
   observacionesObligacion?: string;
   soporteObligacionPath?: string;
+}
+
+export interface ProcesarPagoDto {
+  fechaPago: string;
+  valorPagado: number;
+  soportePagoPath?: string;
+  soporteDesembolsoPath?: string;
+  numeroOrdenPago?: string;
+  comprobantePago?: string;
+  observacionesPago?: string;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
 }
 
 export interface BandejaSecretarioResponse {
@@ -381,6 +400,15 @@ export interface SolicitudViatico {
   diasHabilesPrevios?: number | null;
   fechaCalculoModalidad?: string | null;
   notificadoSst?: boolean;
+  numeroObligacion?: string | null;
+  fechaObligacion?: string | null;
+  valorObligacion?: number | null;
+  fechaPago?: string | null;
+  valorPagado?: number | null;
+  soportePagoPath?: string | null;
+  numeroOrdenPago?: string | null;
+  observacionesPago?: string | null;
+  pagadoPorId?: string | null;
 }
 
 /** Registro de notificación formal enviada al área de SST (RF-PAG-002) */

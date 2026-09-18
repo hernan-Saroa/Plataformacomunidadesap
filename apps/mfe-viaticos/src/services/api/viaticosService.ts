@@ -53,6 +53,7 @@ import {
   ResumenCargaMasivaRp,
   BandejaPresupuestoResponse,
   CrearObligacionDto,
+  ProcesarPagoDto,
   NotificacionSstLog,
 } from '../../types/viaticos';
 
@@ -224,6 +225,15 @@ export class ViaticosService {
       modalidadPago: (s as any).modalidadPago || (s as any).modalidad_pago || null,
       diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : ((s as any).dias_habiles_previos != null ? Number((s as any).dias_habiles_previos) : null),
       fechaCalculoModalidad: (s as any).fechaCalculoModalidad || (s as any).fecha_calculo_modalidad || null,
+      numeroObligacion: (s as any).numeroObligacion || (s as any).numero_obligacion || null,
+      fechaObligacion: (s as any).fechaObligacion || (s as any).fecha_obligacion || null,
+      valorObligacion: (s as any).valorObligacion != null ? Number((s as any).valorObligacion) : ((s as any).valor_obligacion != null ? Number((s as any).valor_obligacion) : null),
+      numeroOrdenPago: (s as any).numeroOrdenPago || (s as any).numero_orden_pago || null,
+      fechaPago: (s as any).fechaPago || (s as any).fecha_pago || null,
+      valorPagado: (s as any).valorPagado != null ? Number((s as any).valorPagado) : ((s as any).valor_pagado != null ? Number((s as any).valor_pagado) : null),
+      soportePagoPath: (s as any).soportePagoPath || (s as any).soporte_pago_path || null,
+      observacionesPago: (s as any).observacionesPago || (s as any).observaciones_pago || null,
+      pagadoPorId: (s as any).pagadoPorId || (s as any).pagado_por_id || null,
     };
   }
 
@@ -1638,6 +1648,27 @@ export class ViaticosService {
       return res?.data || res;
     } catch (error) {
       console.error('[viaticos] Error creando obligación en SIIF Nación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-003 — Etapa 8: Procesar desembolso y pago de comisión.
+   * Actor: Tesorería / Pagador.
+   * Transiciona la comisión al estado final PAGADA.
+   */
+  async procesarPago(
+    solicitudId: string,
+    dto: ProcesarPagoDto,
+  ): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/procesar-pago`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error procesando desembolso en Tesorería:', error);
       throw error;
     }
   }

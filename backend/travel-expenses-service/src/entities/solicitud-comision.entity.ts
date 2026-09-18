@@ -340,6 +340,32 @@ export class SolicitudComisionEntity {
   @Column({ name: 'fecha_registro_obligacion', type: 'timestamp with time zone', nullable: true })
   fechaRegistroObligacion: Date | null;
 
+  // ========== Etapa 8: Tesorería y Desembolso / Pago (RF-PAG-003) ==========
+  @Column({ name: 'fecha_pago', type: 'date', nullable: true })
+  fechaPago: Date | null;
+
+  @Column({ name: 'valor_pagado', type: 'numeric', precision: 12, scale: 2, nullable: true })
+  valorPagado: number | null;
+
+  @Column({ name: 'soporte_pago_path', type: 'varchar', length: 255, nullable: true })
+  soportePagoPath: string | null;
+
+  @Column({ name: 'numero_orden_pago', type: 'varchar', length: 100, nullable: true })
+  numeroOrdenPago: string | null;
+
+  @Column({ name: 'observaciones_pago', type: 'text', nullable: true })
+  observacionesPago: string | null;
+
+  @Column({ name: 'pagado_por_id', type: 'uuid', nullable: true })
+  pagadoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'pagado_por_id' })
+  pagadoPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_registro_pago', type: 'timestamp with time zone', nullable: true })
+  fechaRegistroPago: Date | null;
+
   // ========== Etapa 8: Notificación Automática a SST (RF-PAG-002) ==========
   @Column({ name: 'notificado_sst', type: 'boolean', default: false })
   notificadoSst: boolean;

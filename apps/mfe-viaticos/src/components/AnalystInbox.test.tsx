@@ -16,6 +16,8 @@ vi.mock('../services/api/authService', () => {
     canCancelarComision: vi.fn(() => true),
     canEnviarPresupuesto: vi.fn(() => true),
     canCrearObligacion: vi.fn(() => true),
+    canProcesarPago: vi.fn(() => true),
+    isTesoreria: vi.fn(() => true),
     isAnalista: vi.fn(() => true),
     getCurrentUserSync: vi.fn(() => ({
       userId: '1',
@@ -349,6 +351,34 @@ describe('AnalystInbox', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Crear Obligación en SIIF Nación/i)).toBeDefined();
+    });
+  });
+
+  it('RF-PAG-003: muestra botón Procesar Pago para solicitudes en estado OBLIGADA y abre modal', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: '15',
+        consecutivoUnico: 'COM-2026-0100',
+        estadoSolicitud: 'OBLIGADA',
+        codigoRp: '2026-10-25_RP_48920',
+        numeroObligacion: 'OBL-2026-00481',
+        modalidadPago: 'AVANCE',
+        valorObligacion: 850000,
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0100')).toBeDefined();
+    });
+
+    const botonProcesarPago = screen.getByRole('button', { name: /Procesar Pago/i });
+    expect(botonProcesarPago).toBeDefined();
+    fireEvent.click(botonProcesarPago);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Procesar Desembolso y Pago de Comisión/i)).toBeDefined();
     });
   });
 });

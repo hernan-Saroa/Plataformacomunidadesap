@@ -50,6 +50,7 @@ import { IssueRpDto } from '../../dto/issue-rp.dto';
 import { CargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
 import { BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
 import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
+import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
 
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
@@ -149,6 +150,35 @@ export class TravelExpensesController {
         normalizedPermissions.includes('travel_expenses:set_priority') ||
         normalizedPermissions.includes('travel_expenses:read_inbox'));
 
+    const isTesoreria =
+      normalizedRoles.some(
+        (r) =>
+          r === 'TESORERIA' ||
+          r === 'GRUPO_TESORERIA' ||
+          r === 'ANALISTA_TESORERIA' ||
+          r === 'PAGADOR' ||
+          r.includes('TESORERIA') ||
+          r.includes('PAGADOR'),
+      ) ||
+      normalizedPermissions.includes('travel_expenses:process_payment') ||
+      normalizedPermissions.includes('travel_expenses:read_payments') ||
+      normalizedPermissions.includes('travel_expenses:register_payment');
+
+    const isSst =
+      normalizedRoles.some(
+        (r) =>
+          r === 'SST' ||
+          r === 'SEGURIDAD_SALUD_TRABAJO' ||
+          r === 'SEGURIDAD_Y_SALUD_EN_EL_TRABAJO' ||
+          r === 'GRUPO_SST' ||
+          r === 'ANALISTA_SST' ||
+          r.includes('SST') ||
+          (r.includes('SEGURIDAD') && r.includes('TRABAJO')),
+      ) ||
+      normalizedPermissions.includes('travel_expenses:read_sst_logs') ||
+      normalizedPermissions.includes('travel_expenses:read_sst_requests') ||
+      normalizedPermissions.includes('travel_expenses:resend_sst_notification');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerSolicitudes(
@@ -159,6 +189,8 @@ export class TravelExpensesController {
       isControlViaticos,
       isAnalista,
       isSecretario,
+      isTesoreria,
+      isSst,
     );
     return {
       data: result.data,
@@ -166,6 +198,51 @@ export class TravelExpensesController {
       page: result.page,
       limit: result.limit,
       esSuperAdmin: superAdmin,
+    };
+  }
+
+  /**
+   * RF-PAG-003 — Bandeja de Solicitudes para Tesorería (Etapa 8).
+   * Lista comisiones OBLIGADAS listas para pago y comisiones PAGADAS.
+   */
+  @Get(['requests/treasury-inbox', 'api/v1/requests/treasury-inbox'])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
+    'travel_expenses:read_all',
+  )
+  @ApiTags('tesoreria')
+  @ApiOperation({
+    summary: 'Bandeja de comisiones para Tesorería y Desembolso (Etapa 8 — RF-PAG-003)',
+    description: 'Retorna comisiones OBLIGADA listas para pago y comisiones PAGADAS.',
+  })
+  async obtenerBandejaTesoreria(
+    @Req() req: AuthenticatedRequest,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const usuarioId = req.user?.userId;
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const result = await this.service.obtenerSolicitudes(
+      usuarioId,
+      false,
+      pageNum,
+      limitNum,
+      false,
+      false,
+      false,
+      true, // isTesoreria
+      false,
+    );
+    return {
+      success: true,
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -286,6 +363,17 @@ export class TravelExpensesController {
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:read_authorized',
+    'travel_expenses:issue_rp',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_requests',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
@@ -442,6 +530,14 @@ export class TravelExpensesController {
     'travel_expenses:read_authorizations',
     'travel_expenses:authorize_expense',
     'travel_expenses:return_authorization',
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_requests',
   )
   async exportarFormato023(
     @Param('id') id: string,
@@ -1539,5 +1635,65 @@ export class TravelExpensesController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  @Post([
+    'requests/:id/procesar-pago',
+    'api/v1/requests/:id/procesar-pago',
+    'requests/:id/desembolso',
+    'api/v1/requests/:id/desembolso',
+  ])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:process_payment', 'travel_expenses:register_payment', 'travel_expenses:create_obligation', 'travel_expenses:verify_request')
+  @ApiTags('tesoreria')
+  @ApiOperation({
+    summary: 'Procesar desembolso y pago de comisión (Etapa 8 — RF-PAG-003)',
+    description:
+      'Registra el desembolso formal del pago al comisionado en SIIF Nación y transiciona el estado de la comisión a PAGADA.',
+  })
+  @ApiBody({
+    description: 'Datos del pago y desembolso: fecha de pago, valor pagado, orden de pago SIIF y soporte.',
+    type: ProcesarPagoDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pago registrado exitosamente. Comisión transicionada a estado PAGADA.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Comisión en estado inválido (no OBLIGADA) o montos/fechas incorrectas.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Solicitud de comisión no encontrada.',
+  })
+  @ApiBearerAuth()
+  async procesarPago(
+    @Param('id') id: string,
+    @Body() dto: ProcesarPagoDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.procesarPago(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Desembolso procesado exitosamente por Tesorería. Comisión transicionada a estado PAGADA.`,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
+
 
