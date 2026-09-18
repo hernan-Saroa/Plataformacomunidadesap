@@ -172,7 +172,19 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
             response?.position_category,
             response?.positionCategory
           ),
-          dependencia: getVal(response?.department, response?.dependencia, response?.departmentName, response?.position_location, response?.positionLocation)
+          // Mismo orden que imprime el certificado: la dependencia ya resuelta
+          // por el backend y `organization_department` antes que `department`,
+          // que en las filas de Oracle guarda el CENTROCOSTO (el grupo).
+          dependencia: getVal(
+            response?.is_corrected ? undefined : response?.certificate_dependency,
+            response?.is_corrected ? undefined : response?.request?.certificate_dependency,
+            response?.is_corrected ? undefined : response?.request?.organization_department,
+            response?.department,
+            response?.dependencia,
+            response?.departmentName,
+            response?.position_location,
+            response?.positionLocation,
+          )
         },
         fechaEmision: fechaEmisionValida,
         fechaVigencia: parseDateString(response?.expiration_date),
