@@ -168,24 +168,37 @@ export class MantenimientoController {
   }
 
   // ---------------------------------------------------------------------------
-  // EFDS-1733: Parámetros globales UMI (tiempo respuesta)
+  // EFDS-1733-bis HUECO 1: Parámetros tiempo respuesta POR CATEGORÍA
+  // (RF-INF-004 L104 TD-FO: "El tiempo POR CATEGORÍA parametriza 1..3 días").
+  // listarParametrosTiempoPorCategoria devuelve array 8 filas (47..54).
+  // GET por idCategoria → path opcional query ?idCategoria=48.
+  // PATCH obligatorio idCategoria.
   // ---------------------------------------------------------------------------
   @Get('parametros/tiempo-respuesta')
   @ApiOperation({
     summary:
-      'EFDS-1733 AC-03: Consultar el parámetro global de tiempo máximo respuesta en días naturales (rango 1..3 = 24..72h).',
+      'EFDS-1733-bis: Listar los 8 parámetros tiempo-respuesta POR CATEGORÍA (47..54). Si envía ?idCategoria=48 devuelve 1 sola; si no, array 8.',
   })
-  obtenerParametroTiempoRespuesta() {
-    return this.mantenimientoService.obtenerParametroTiempoRespuesta();
+  obtenerParametroTiempoRespuesta(@Query('idCategoria') idCategoria?: string) {
+    const parsed = (idCategoria && String(idCategoria).trim() !== '' && Number.isInteger(+idCategoria))
+      ? Number(idCategoria)
+      : undefined;
+    if (parsed !== undefined) {
+      return this.mantenimientoService.obtenerParametroTiempoRespuesta(parsed);
+    }
+    return this.mantenimientoService.listarParametrosTiempoPorCategoria();
   }
 
   @Patch('parametros/tiempo-respuesta')
   @ApiOperation({
     summary:
-      'EFDS-1733 AC-03: Actualizar el parámetro global de tiempo máximo respuesta. Valor entero de 1 a 3 días. Restringe: <1 o >3 lanza BadRequest 400.',
+      'EFDS-1733-bis: Actualizar parámetro tiempo-respuesta POR CATEGORÍA. Body requiere {idCategoria (47..54), dias (1..3)}. Fuera rango BadRequest 400.',
   })
-  actualizarParametroTiempoRespuesta(@Body() body: { dias: number }) {
-    return this.mantenimientoService.actualizarParametroTiempoRespuesta(Number(body?.dias));
+  actualizarParametroTiempoRespuesta(@Body() body: { idCategoria: number; dias: number }) {
+    return this.mantenimientoService.actualizarParametroTiempoRespuesta(
+      Number(body?.idCategoria),
+      Number(body?.dias),
+    );
   }
 
   @Get('parametros/reglas-escalamiento')
@@ -233,10 +246,11 @@ export class MantenimientoController {
   @Get('tecnicos/con-carga-vigente')
   @ApiOperation({
     summary:
-      'EFDS-1733: Listar técnicos activos con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI).',
+      'EFDS-1733: Listar técnicos mantenimiento con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI). Por defecto solo activos; use ?incluirInactivos=true para también listar inactivos (cargaVigente=0, soft-delete visual Admin).',
   })
-  listarTecnicosConCargaVigente() {
-    return this.mantenimientoService.listarTecnicosConCargaVigente();
+  listarTecnicosConCargaVigente(@Query('incluirInactivos') incluirInactivos?: string) {
+    const todos = String(incluirInactivos || '').toLowerCase() === 'true';
+    return this.mantenimientoService.listarTecnicosConCargaVigente(todos);
   }
 
   @Get('tecnicos/:idTecnico/carga-vigente')
@@ -325,6 +339,72 @@ export class MantenimientoController {
   })
   sugerirAsignacion(@Param('idSolicitud') idSolicitud: string) {
     return this.mantenimientoService.sugerirAsignacion(idSolicitud);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1734 RF-INF-005: 3 acciones análisis (aprobar-asignar / rechazar / redistribuir)
+  // Guard clause por roles dentro del service (SUPER_ADMIN | GESTOR_MANTENIMIENTO).
+  // Declarados ANTES de POST() radicar y ANTES de GET :id wildcard para evitar routing conflict.
+  // ---------------------------------------------------------------------------
+  @Post(':idSolicitud/aprobar-asignar')
+  @ApiOperation({
+    summary:
+      'EFDS-1734 RF-INF-005 AC-01: Aprobar y asignar una solicitud RECIBIDA. Pasa estado a ASIGNADA, setea responsableAsignado, limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud aprobada y asignada. Histórico auditoría actualizado.' })
+  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  aprobarYAsignar(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body()
+    body: {
+      tecnicoCodigo: string;
+      observaciones?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/rechazar')
+  @ApiOperation({
+    summary:
+      'EFDS-1734 RF-INF-005 AC-02: Rechazar una solicitud. Estado pasa a RECHAZADA, motivoRechazo (≥10 chars obligatorio) visible por el solicitante en findById/listado, responsableAsignado se limpia. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud rechazada. Motivo persistido y visible al solicitante.' })
+  @ApiResponse({ status: 400, description: 'Motivo de rechazo vacío o longitud menor a 10 caracteres.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  rechazar(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body()
+    body: {
+      motivo: string;
+      observaciones?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.rechazar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/redistribuir')
+  @ApiOperation({
+    summary:
+      'EFDS-1734 RF-INF-005 AC-01: Redistribuir asignación (cambio de técnico o reactivación desde RECIBIDA/RECHAZADA). Si estado=RECIBIDA/RECHAZADA pasa automáticamente a ASIGNADA; si ASIGNADA/EN_ANALISIS/EN_PROGRESO mantiene estado. Motivo redistribución opcional. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Técnico redistribuido. Histórico auditoría actualizado.' })
+  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  redistribuir(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body()
+    body: {
+      tecnicoCodigo: string;
+      motivoRedistribucion?: string | null;
+      observaciones?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.redistribuir(idSolicitud, body, req?.user);
   }
 
   @Post()

@@ -483,7 +483,7 @@ export const AdminCategoriasServicioMini: React.FC = () => {
                 type="button"
                 onClick={guardar}
                 disabled={guardando}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
               >
                 <Save className="w-4 h-4" />
                 {guardando ? 'Guardando…' : modo === 'crear' ? 'Crear categoría' : 'Guardar cambios'}

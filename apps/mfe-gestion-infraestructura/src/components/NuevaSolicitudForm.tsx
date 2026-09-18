@@ -427,8 +427,36 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const labelClase = 'block text-xs font-semibold text-slate-700 mb-1.5 tracking-wide';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 sm:p-6">
-      <div className="w-full max-w-3xl max-h-[92vh] overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200">
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        background: 'rgba(15, 23, 42, 0.5)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !enviando && !subeFiles) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Radicar Solicitud de Mantenimiento"
+    >
+      <div
+        style={{
+          position: 'fixed',
+          top: 128,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '95vw',
+          maxWidth: 960,
+          height: 'calc(100vh - 160px)',
+          overflow: 'hidden',
+        }}
+      >
+        <div className="flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-200 h-full">
+
         <div className="flex items-start justify-between gap-4 p-6 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-white">
           <div className="flex items-start gap-3">
             <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shadow-sm">
@@ -1090,6 +1118,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 };

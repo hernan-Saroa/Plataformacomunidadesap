@@ -104,10 +104,25 @@ export interface SolicitudMantenimiento {
   createdAt: string;
   areaResponsableActual?: 'UMI' | 'TI' | 'PENDIENTE_CLASIFICACION';
   remisiones?: Array<Record<string, any>>;
-  asignaciones?: Array<Record<string, any>>;
+  asignaciones?: HistoricoAsignacionEntry[];
+  motivoRechazo?: string | null;
+  __meta?: { warning?: string };
   sede?: Sede;
   espacio?: EspacioFisico;
   evidencias?: SolicitudEvidencia[];
+}
+
+export interface HistoricoAsignacionEntry {
+  id: string;
+  fecha: string;
+  accion: 'APROBADA_Y_ASIGNADA' | 'RECHAZADA' | 'REDISTRIBUIDA';
+  tecnico_codigo: string | null;
+  tecnico_nombre_display: string | null;
+  motivo: string | null;
+  observaciones: string | null;
+  usuario_id: string | null;
+  usuario_email: string | null;
+  usuario_roles: string | null;
 }
 
 export interface CreateMantenimientoPayload {
@@ -160,6 +175,22 @@ export interface SugerenciaAsignacion {
   obligatorio: boolean;
   opciones: Array<CatalogoItem & { cargaVigente?: number }>;
   advertencia?: string;
+}
+
+export interface AprobarAsignarPayload {
+  tecnicoCodigo: string;
+  observaciones?: string | null;
+}
+
+export interface RechazarPayload {
+  motivo: string;
+  observaciones?: string | null;
+}
+
+export interface RedistribuirPayload {
+  tecnicoCodigo: string;
+  motivoRedistribucion?: string | null;
+  observaciones?: string | null;
 }
 
 export interface EstadisticasInfraestructura {
@@ -481,6 +512,175 @@ export const infraestructuraService = {
     );
   },
 
+  async crearSede(payload: Partial<Sede> & { codigo: string; nombre: string; departamento: string; municipio: string; direccion: string }): Promise<Sede> {
+    const res = await fetch(`${API_BASE_URL}/sedes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando la sede';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarSede(idSede: string, payload: Partial<Sede>): Promise<Sede> {
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando la sede';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleSedeActiva(idSede: string): Promise<Sede> {
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Activar/desactivar sede falló');
+    return await res.json();
+  },
+
+  async eliminarSede(idSede: string): Promise<{ idSede: string; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error eliminando la sede';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async crearEspacio(payload: Partial<EspacioFisico> & { idBloque: string; codigo: string; nombre: string; tipo: string }): Promise<EspacioFisico> {
+    const res = await fetch(`${API_BASE_URL}/espacios`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando el espacio físico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarEspacio(idEspacio: string, payload: Partial<EspacioFisico>): Promise<EspacioFisico> {
+    const res = await fetch(`${API_BASE_URL}/espacios/${encodeURIComponent(idEspacio)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando el espacio físico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleEspacioActivo(idEspacio: string): Promise<EspacioFisico> {
+    const res = await fetch(`${API_BASE_URL}/espacios/${encodeURIComponent(idEspacio)}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Activar/desactivar espacio falló');
+    return await res.json();
+  },
+
+  async eliminarEspacio(idEspacio: string): Promise<{ idEspacio: string; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/espacios/${encodeURIComponent(idEspacio)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error eliminando el espacio';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // Bloques / Edificios por sede (EFDS 1732)
+  // ---------------------------------------------------------------------------
+  async getBloquesPorSede(idSede: string, soloActivos: boolean = true): Promise<BloqueEdificio[]> {
+    const qs = new URLSearchParams();
+    if (!soloActivos) qs.set('soloActivos', 'false');
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}/bloques?${qs.toString()}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Error cargando bloques de la sede');
+    return await res.json();
+  },
+
+  async crearBloque(payload: Partial<BloqueEdificio> & { idSede: string; codigo: string; nombre: string }): Promise<BloqueEdificio> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando el bloque';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarBloque(idBloque: string, payload: Partial<BloqueEdificio>): Promise<BloqueEdificio> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques/${encodeURIComponent(idBloque)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando el bloque';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleBloqueActivo(idBloque: string): Promise<BloqueEdificio> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques/${encodeURIComponent(idBloque)}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Activar/desactivar bloque falló');
+    return await res.json();
+  },
+
+  async eliminarBloque(idBloque: string): Promise<{ idBloque: string; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques/${encodeURIComponent(idBloque)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error eliminando el bloque';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
   // ---------------------------------------------------------------------------
   // EFDS-1733: Parámetros UMI / Reglas / Técnicos / Sugerir asignación
   // ---------------------------------------------------------------------------
@@ -553,9 +753,12 @@ export const infraestructuraService = {
     }
   },
 
-  async getTecnicosConCargaVigente(): Promise<Array<CatalogoItem & { cargaVigente?: number }>> {
+  async getTecnicosConCargaVigente(opts?: { incluirInactivos?: boolean }): Promise<Array<CatalogoItem & { cargaVigente?: number }>> {
     try {
-      const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/con-carga-vigente`, { credentials: 'include' });
+      const qs = new URLSearchParams();
+      if (opts?.incluirInactivos) qs.set('incluirInactivos', 'true');
+      const q = qs.toString();
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/con-carga-vigente${q ? `?${q}` : ''}`, { credentials: 'include' });
       if (!res.ok) throw new Error(`GET técnicos carga ${res.status}`);
       return await res.json();
     } catch (err) {
@@ -623,5 +826,100 @@ export const infraestructuraService = {
       console.warn(`[infra] sugerirAsignacion ${idSolicitud}:`, err);
       return null;
     }
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733 bis HUECO 1 (RF-INF-004 L104): Tiempo POR CATEGORÍA (47..54)
+  // ---------------------------------------------------------------------------
+  async listarParametrosTiempoPorCategoria(opts?: { idCategoria?: number }): Promise<CatalogoItem[] | CatalogoItem | null> {
+    try {
+      const q = new URLSearchParams();
+      if (Number.isInteger(opts?.idCategoria)) q.append('idCategoria', String(opts?.idCategoria));
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta${qs}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`GET param tiempo por categoría ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] listarParametrosTiempoPorCategoria fail:', err);
+      return Number.isInteger(opts?.idCategoria) ? null : [];
+    }
+  },
+
+  async actualizarParametroTiempoRespuestaPorCategoria(
+    idCategoria: number,
+    dias: number,
+  ): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idCategoria: Number(idCategoria), dias: Number(dias) }),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando parámetro días respuesta por categoría';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1734 RF-INF-005: 3 acciones análisis (aprobar-asignar / rechazar / redistribuir)
+  // Requieren rol SUPER_ADMIN o GESTOR_MANTENIMIENTO; de lo contrario 403 Forbidden.
+  // ---------------------------------------------------------------------------
+  async aprobarYAsignar(
+    idSolicitud: string,
+    payload: AprobarAsignarPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/aprobar-asignar`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al aprobar y asignar la solicitud';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async rechazarSolicitud(
+    idSolicitud: string,
+    payload: RechazarPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/rechazar`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al rechazar la solicitud';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async redistribuirAsignacion(
+    idSolicitud: string,
+    payload: RedistribuirPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/redistribuir`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al redistribuir la asignación';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
   },
 };

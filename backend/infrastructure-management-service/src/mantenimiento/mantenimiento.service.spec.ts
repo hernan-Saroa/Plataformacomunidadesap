@@ -854,50 +854,85 @@ describe('[EFDS-1732] AC-03 Mini CRUD Categoría Servicio: toggleCategoriaServic
 
 // ---------------------------------------------------------------------------
 // EFDS-1733 AC-03 Tiempo respuesta parametrizable [1..3] días (clamp + BadRequest)
+// NOTA 2026-01 EFDS-1733-bis HUECO 1: actualizarParametroTiempoRespuesta ahora requiere (idCategoria, dias) en vez de solo (dias).
 // ---------------------------------------------------------------------------
 describe('[EFDS-1733] AC-03 Parametrización tiempo respuesta (rango 1..3 días)', () => {
-  it('actualizar 2 días entero dentro rango → metadata.actual = 2 SIN lanzar error', async () => {
+  it('actualizar 2 días entero dentro rango idCategoria=50 (Plomería) → metadata.actual = 2 SIN lanzar error', async () => {
     const rowBase = {
-      idCatalogo: 1, catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESPUESTA',
-      metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
+      idCatalogo: 1, catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESP_DIAS_CAT_50',
+      idCategoria: 50,
+      metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES', idCategoria: 50, codCategoriaCS: 'CS_004' },
     };
     const save = jest.fn((d) => d);
     const s = servicio({
       catalogoRepo: {
         findOne: jest.fn().mockResolvedValue(rowBase),
         save,
+        find: jest.fn().mockResolvedValue([rowBase]),
+        create: jest.fn((d) => d),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ max: '8' }),
+        })),
       } as any,
     });
-    const r = await s.actualizarParametroTiempoRespuesta(2);
-    expect((r.metadata as any).actual).toBe(2);
+    const r: any = await s.actualizarParametroTiempoRespuesta(50, 2);
+    expect(Number(r.metadata?.actual)).toBe(2);
     expect(save).toHaveBeenCalledTimes(1);
   });
 
-  it('actualizar 3 días (máximo permitido) → metadata.actual = 3 OK', async () => {
+  it('actualizar 3 días (máximo permitido) idCategoria=47 (Cerrajería) → metadata.actual = 3 OK', async () => {
     const rowBase = {
-      idCatalogo: 1, catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESPUESTA',
-      metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
+      idCatalogo: 2, catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESP_DIAS_CAT_47',
+      idCategoria: 47,
+      metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES', idCategoria: 47, codCategoriaCS: 'CS_001' },
     };
     const s = servicio({
       catalogoRepo: {
         findOne: jest.fn().mockResolvedValue(rowBase),
         save: jest.fn((d) => d),
+        find: jest.fn().mockResolvedValue([rowBase]),
+        create: jest.fn((d) => d),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ max: '8' }),
+        })),
       } as any,
     });
-    const r = await s.actualizarParametroTiempoRespuesta(3);
-    expect((r.metadata as any).actual).toBe(3);
+    const r: any = await s.actualizarParametroTiempoRespuesta(47, 3);
+    expect(Number(r.metadata?.actual)).toBe(3);
   });
 
-  it('actualizar 4 días (fuera rango max) → BadRequestException fuera de rango', async () => {
-    const s = servicio({ catalogoRepo: { findOne: jest.fn().mockResolvedValue({ metadata: {} }) } as any });
-    await expect(s.actualizarParametroTiempoRespuesta(4)).rejects.toThrow(
+  it('actualizar 4 días (fuera rango max) idCategoria=50 → BadRequestException fuera de rango 1 a 3 días', async () => {
+    const s = servicio({
+      catalogoRepo: {
+        findOne: jest.fn().mockResolvedValue({ metadata: {} }),
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn((d) => d),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ max: '8' }),
+        })),
+      } as any,
+    });
+    await expect(s.actualizarParametroTiempoRespuesta(50, 4)).rejects.toThrow(
       /fuera de rango.*1 a 3 días/,
     );
   });
 
-  it('actualizar 0 días (fuera rango min) → BadRequestException fuera de rango', async () => {
-    const s = servicio({ catalogoRepo: { findOne: jest.fn().mockResolvedValue({ metadata: {} }) } as any });
-    await expect(s.actualizarParametroTiempoRespuesta(0)).rejects.toThrow(BadRequestException);
+  it('actualizar 0 días (fuera rango min) idCategoria=48 → BadRequestException fuera de rango', async () => {
+    const s = servicio({
+      catalogoRepo: {
+        findOne: jest.fn().mockResolvedValue({ metadata: {} }),
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn((d) => d),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ max: '8' }),
+        })),
+      } as any,
+    });
+    await expect(s.actualizarParametroTiempoRespuesta(48, 0)).rejects.toThrow(BadRequestException);
   });
 
   it('create() pobla fechaLimiteAtencion y asignaciones=[], NO auto-asigna responsable', async () => {
@@ -1171,5 +1206,568 @@ describe('[EFDS-1733] cálculo cargaVigente: excluye TI + estados COMPLETADA/REC
     });
     const carga = await s.calcularCargaVigenteTecnico('TEC-VACIO');
     expect(carga).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [FIX_TEC_INACT] listarTecnicosConCargaVigente(incluirInactivos=true):
+// Patrón 1732 soft-delete — inactivos NO se borran físicamente, solo se excluyen
+// del motor de asignación (soloActivos=true). Vista Admin debe ver TODOS.
+// ---------------------------------------------------------------------------
+describe('[EFDS-1733 + 1732 patrón] listarTecnicosConCargaVigente: inactivos visibles con flag incluirInactivos=true, cargaVigente=0 (baja lógica)', () => {
+  const catalogoRepoInactivos = (overrides: any = {}) => {
+    const rowsDB = [
+      { idCatalogo: 1, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-ACT-001', nombre: 'Técnico Activo', orden: 1, isActivo: true, metadata: { email: 'a@e.co' } },
+      { idCatalogo: 2, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-INA-002', nombre: 'Técnico Inactivo', orden: 2, isActivo: false, metadata: { email: 'b@e.co' } },
+      { idCatalogo: 3, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-ACT-003', nombre: 'Técnico Activo 2', orden: 3, isActivo: true, metadata: {} },
+    ] as CatalogoItem[];
+    return {
+      find: jest.fn(async (w: any) => {
+        const act = w?.where?.isActivo;
+        if (act === true) return Promise.resolve(rowsDB.filter((x) => x.isActivo));
+        return Promise.resolve([...rowsDB]);
+      }),
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn().mockImplementation((x) => Promise.resolve(x)),
+      create: jest.fn().mockImplementation((d) => d),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([...rowsDB]),
+        getRawOne: jest.fn().mockResolvedValue({ max: '3' }),
+      })),
+      ...overrides,
+    } as any;
+  };
+
+  it('por defecto (sin flag) = solo activos, length = 2 y todos isActivo=true', async () => {
+    const s = servicio({
+      catalogoRepo: catalogoRepoInactivos(),
+      mantenimientoRepo: {
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+        })),
+      } as any,
+    });
+    const rows = await s.listarTecnicosConCargaVigente();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.isActivo === true)).toBe(true);
+    expect(rows.find((r) => r.codigo === 'TEC-INA-002')).toBeUndefined();
+    expect(rows[0].cargaVigente).toBeGreaterThanOrEqual(0);
+  });
+
+  it('incluirInactivos=true devuelve 3 filas (activos + inactivo); inactivo TIENE isActivo=false y cargaVigente EXACTAMENTE 0 (no consulta COUNT)', async () => {
+    const getCountMock = jest.fn().mockResolvedValue(5);
+    const s = servicio({
+      catalogoRepo: catalogoRepoInactivos(),
+      mantenimientoRepo: {
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: getCountMock,
+        })),
+      } as any,
+    });
+    const rows = await s.listarTecnicosConCargaVigente(true);
+    expect(rows).toHaveLength(3);
+    const inactivo = rows.find((r) => r.codigo === 'TEC-INA-002');
+    expect(inactivo).toBeDefined();
+    expect(inactivo!.isActivo).toBe(false);
+    expect(inactivo!.cargaVigente).toBe(0);
+    const activo1 = rows.find((r) => r.codigo === 'TEC-ACT-001')!;
+    expect(activo1.isActivo).toBe(true);
+    expect(activo1.cargaVigente).toBe(5);
+    expect(getCountMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1733 bis: Tiempo de respuesta POR CATEGORÍA (RF-INF-004)
+// Parche HUECO 1: antes era global único, ahora 8 parámetros 1xcat (47..54).
+// ---------------------------------------------------------------------------
+describe('[EFDS-1733-bis] RF-INF-004 parámetro tiempo POR CATEGORÍA 47..54 clamp 1..3 días', () => {
+  const userSuper = {
+    userId: 'a7a1d550-5d4e-4e4f-8c1d-5a1f8b3c9d0e',
+    username: 'Super Admin',
+    email: 'superadmin@esap.edu.co',
+    roles: ['SUPER_ADMIN'],
+  };
+  const catRepoFull = (overrides: any = {}) => {
+    const rowsDB: CatalogoItem[] = [];
+    return {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockImplementation((w: any) => {
+        const cod = w?.where?.codigo;
+        if (!cod) return Promise.resolve(null);
+        return Promise.resolve(rowsDB.find((r) => r.codigo === cod) || null);
+      }),
+      save: jest.fn().mockImplementation((arg: any) => {
+        const arr = Array.isArray(arg) ? arg : [arg];
+        for (const it of arr) {
+          const idx = rowsDB.findIndex((r) => r.codigo === it.codigo);
+          if (idx >= 0) rowsDB[idx] = { ...rowsDB[idx], ...it };
+          else rowsDB.push({ ...it });
+        }
+        return Promise.resolve(Array.isArray(arg) ? arr : arr[0]);
+      }),
+      create: jest.fn().mockImplementation((d: any) => d),
+      createQueryBuilder: jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([...rowsDB]),
+        getRawOne: jest.fn().mockResolvedValue({ max: '8' }),
+      })),
+      ...overrides,
+    } as any;
+  };
+  it('listarParametrosTiempoPorCategoria sin seed previo → crea 8 on-the-fly con metadata default (min1/max3/default2/actual2)', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    const res = await s.listarParametrosTiempoPorCategoria();
+    expect(Array.isArray(res)).toBe(true);
+    expect(res).toHaveLength(8);
+    const ids = res.map((r: any) => Number(r.metadata?.idCategoria)).sort((a, b) => a - b);
+    expect(ids).toEqual([47, 48, 49, 50, 51, 52, 53, 54]);
+    for (const fila of res) {
+      const md = (fila as any).metadata || {};
+      expect(Number(md.min)).toBe(1);
+      expect(Number(md.max)).toBe(3);
+      expect(Number(md.default)).toBe(2);
+      expect(Number(md.actual)).toBe(2);
+      expect(String(md.unidad)).toBe('DIAS_NATURALES');
+    }
+  });
+  it('listarParametrosTiempoPorCategoria retorna códigos CS_001 (47) a CS_008 (54) en metadata', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    const res = await s.listarParametrosTiempoPorCategoria();
+    const mapaCod = new Map(res.map((r: any) => [
+      Number(r.metadata?.idCategoria),
+      String(r.metadata?.codCategoriaCS || ''),
+    ]));
+    expect(mapaCod.get(47)).toBe('CS_001');
+    expect(mapaCod.get(48)).toBe('CS_002');
+    expect(mapaCod.get(49)).toBe('CS_003');
+    expect(mapaCod.get(50)).toBe('CS_004');
+    expect(mapaCod.get(51)).toBe('CS_005');
+    expect(mapaCod.get(52)).toBe('CS_006');
+    expect(mapaCod.get(53)).toBe('CS_007');
+    expect(mapaCod.get(54)).toBe('CS_008');
+  });
+  it('obtenerParametroTiempoRespuesta(48) Eléctricas → retorna metadata.idCategoria=48 actual=2 default cuando seed está vacío', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    const r: any = await s.obtenerParametroTiempoRespuesta(48);
+    expect(Number(r.metadata?.idCategoria)).toBe(48);
+    expect(Number(r.metadata?.actual)).toBe(2);
+  });
+  it('listarParametrosTiempoPorCategoria (equivalente a obtenerParametroTiempoRespuesta sin idCategoria) → retorna array 8 filas', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    const r = await s.listarParametrosTiempoPorCategoria();
+    expect(Array.isArray(r)).toBe(true);
+    expect(r).toHaveLength(8);
+  });
+  it('actualizarParametroTiempoRespuesta idCategoria=46 (fuera rango 47..54) → BadRequest', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    await expect(s.actualizarParametroTiempoRespuesta(46, 2)).rejects.toThrow(BadRequestException);
+  });
+  it('actualizarParametroTiempoRespuesta idCategoria=55 (fuera rango 47..54) → BadRequest', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    await expect(s.actualizarParametroTiempoRespuesta(55, 2)).rejects.toThrow(BadRequestException);
+  });
+  it('actualizarParametroTiempoRespuesta idCategoria=48 dias=4 (fuera rango 1..3) → BadRequest clamp', async () => {
+    const s = servicio({
+      catalogoRepo: catRepoFull(),
+    });
+    await expect(s.actualizarParametroTiempoRespuesta(48, 4)).rejects.toThrow(BadRequestException);
+  });
+  it('actualizarParametroTiempoRespuesta idCategoria=50 dias=1 (válido) → actualiza metadata.actual=1 y retorna la fila actualizada metadata.idCategoria=50', async () => {
+    const repo = catRepoFull();
+    const s = servicio({
+      catalogoRepo: repo,
+    });
+    const r: any = await s.actualizarParametroTiempoRespuesta(50, 1);
+    expect(Number(r.metadata?.idCategoria)).toBe(50);
+    expect(Number(r.metadata?.actual)).toBe(1);
+    expect(repo.save).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1734: Asignación (Aprobar / Rechazar / Redistribuir) + Roles guard
+// AC-01 3 acciones, AC-02 motivo rechazo ≥10 visible, AC-03 histórico JSONB push.
+// ---------------------------------------------------------------------------
+describe('[EFDS-1734] RF-INF-005 validación roles guard clause SUPER_ADMIN | GESTOR_MANTENIMIENTO → Forbidden 403', () => {
+  it('aprobarYAsignar con rol SOLICITANTE → ForbiddenException (Solo SUPER|GESTOR)', async () => {
+    const userSoli = { ...userValido, roles: ['SOLICITANTE'] };
+    const s = servicio({});
+    await expect(
+      s.aprobarYAsignar('SOL-1', { tecnicoCodigo: 'TEC-1' }, userSoli),
+    ).rejects.toThrow(ForbiddenException);
+  });
+  it('rechazar con user sin roles array (no autenticado) → ForbiddenException', async () => {
+    const s = servicio({});
+    await expect(
+      s.rechazar('SOL-1', { motivo: 'motivo largo suficiente' }, undefined as any),
+    ).rejects.toThrow(ForbiddenException);
+  });
+  it('redistribuir con rol ANALISTA (no en ROLES_ASIGNADOR_PERMITIDOS) → ForbiddenException', async () => {
+    const userIncorrecto = { ...userValido, roles: ['ANALISTA_UMI'] };
+    const s = servicio({});
+    await expect(
+      s.redistribuir('SOL-1', { tecnicoCodigo: 'TEC-1' }, userIncorrecto),
+    ).rejects.toThrow(ForbiddenException);
+  });
+  it('aprobarYAsignar con rol GESTOR_MANTENIMIENTO → PASA el guard (no lanza Forbidden; si lanza BadRequest x técnico no existe significa que el guard pasó ok)', async () => {
+    const userGestor = { ...userValido, roles: ['GESTOR_MANTENIMIENTO'] };
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({ idSolicitud: 'SOL-GES-1', asignaciones: [] }),
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockResolvedValue(null), // técnico no existe => BadRequest (no Forbidden)
+      } as any,
+    });
+    await expect(
+      s.aprobarYAsignar('SOL-GES-1', { tecnicoCodigo: 'TEC-NO-EXISTE' }, userGestor),
+    ).rejects.toThrow(BadRequestException); // BadRequest implica que el guard de roles pasó OK
+  });
+  it('rechazar con rol SUPER_ADMIN → PASA el guard; validación motivo menor a 10 lanza BadRequest (no Forbidden)', async () => {
+    const userSuper = { ...userValido, roles: ['SUPER_ADMIN'] };
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({ idSolicitud: 'SOL-REC-1' }),
+      } as any,
+    });
+    await expect(
+      s.rechazar('SOL-REC-1', { motivo: 'corto' }, userSuper), // length 5 < 10
+    ).rejects.toThrow(BadRequestException); // BadRequest implica guard OK
+  });
+});
+
+describe('[EFDS-1734] RF-INF-005 AC-01 / AC-02 Aprobar y Asignar', () => {
+  const userGestor = { ...userValido, roles: ['GESTOR_MANTENIMIENTO'] };
+  const tecElectrico = {
+    idCatalogo: 80, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-ELC-001',
+    nombre: 'Carlos Ramírez', isActivo: true,
+  };
+  it('aprobarYAsignar solicitud RECIBIDA → estado=ASIGNADA + responsableAsignado="codigo · nombre" D3 + asignaciones.length=1 push entry', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-APR-1', estado: 'RECIBIDA', idCategoria: 47, asignaciones: [],
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecElectrico;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.aprobarYAsignar('SOL-APR-1', { tecnicoCodigo: 'TEC-ELC-001' }, userGestor);
+    expect(r.estado).toBe('ASIGNADA');
+    expect(String(r.responsableAsignado)).toBe('TEC-ELC-001 · Carlos Ramírez');
+    expect(Array.isArray(r.asignaciones)).toBe(true);
+    expect(r.asignaciones).toHaveLength(1);
+    expect(String(r.asignaciones[0].accion)).toBe('APROBADA_Y_ASIGNADA');
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+  it('aprobarYAsignar solicitud previamente RECHAZADA → limpia motivoRechazo = undefined D7', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-APR-RECH-1', estado: 'RECHAZADA', idCategoria: 47,
+          motivoRechazo: 'Motivo anterior rechazo suficiente', asignaciones: [],
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecElectrico;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.aprobarYAsignar('SOL-APR-RECH-1', { tecnicoCodigo: 'TEC-ELC-001', observaciones: 'se re-aprueba' }, userGestor);
+    expect(r.estado).toBe('ASIGNADA');
+    expect(r.motivoRechazo).toBeUndefined();
+  });
+  it('aprobarYAsignar idCategoria=48 (Eléctricas) con técnico distinto a REG_001 → retorna __meta.warning sin bloquear (warning suave)', async () => {
+    const tecNoElectrico = {
+      idCatalogo: 81, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-GEN-001',
+      nombre: 'Técnico Genérico', isActivo: true,
+    };
+    const regla001 = {
+      idCatalogo: 70, catalogo: 'REGLA_ESCALAMIENTO', codigo: 'REG_001_CATEGORIA_48_ELECTRICAS',
+      metadata: { tecnicoCodigo: 'TEC-ELC-001' }, isActivo: true,
+    };
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-APR-WARN-1', estado: 'RECIBIDA', idCategoria: 48, asignaciones: [],
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecNoElectrico;
+          if (w?.where?.catalogo === 'REGLA_ESCALAMIENTO') return regla001;
+          return null;
+        }),
+      } as any,
+    });
+    const r: any = await s.aprobarYAsignar('SOL-APR-WARN-1', { tecnicoCodigo: 'TEC-GEN-001' }, userGestor);
+    expect(r.estado).toBe('ASIGNADA'); // NO bloquea, asigna igual
+    expect(typeof r.__meta?.warning).toBe('string');
+    expect(r.__meta.warning.length).toBeGreaterThan(10);
+    expect(r.__meta.warning).toContain('TEC-GEN-001');
+  });
+});
+
+describe('[EFDS-1734] RF-INF-005 AC-02 Rechazar + motivo longitud ≥10 D1 visible solicitante', () => {
+  const userSuper = { ...userValido, roles: ['SUPER_ADMIN'] };
+  it('rechazar motivo="" trim longitud 0 → BadRequestException', async () => {
+    const s = servicio({});
+    await expect(
+      s.rechazar('SOL-REC-1', { motivo: '    ' }, userSuper),
+    ).rejects.toThrow(BadRequestException);
+  });
+  it('rechazar motivo="123456789" length=9 → BadRequest (menor a 10 chars)', async () => {
+    const s = servicio({});
+    await expect(
+      s.rechazar('SOL-REC-1', { motivo: '123456789' }, userSuper),
+    ).rejects.toThrow(BadRequestException);
+  });
+  it('rechazar motivo="solicitud rechazada por x motivo valido" length ≥10 → estado=RECHAZADA D3 + motivoRechazo guardado + responsableAsignado=undefined D9 + historial 1 entry', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-REC-OK-1', estado: 'RECIBIDA', idCategoria: 50,
+          responsableAsignado: 'TEC-ELC-001 · Carlos', asignaciones: [],
+        }),
+        save,
+      } as any,
+    });
+    const motivo = 'solicitud rechazada por documentación incompleta y sede inactiva 12345';
+    const r = await s.rechazar('SOL-REC-OK-1', { motivo, observaciones: 'Gestor revisó y rechazó' }, userSuper);
+    expect(r.estado).toBe('RECHAZADA');
+    expect(String(r.motivoRechazo)).toBe(motivo.trim());
+    expect(r.responsableAsignado).toBeUndefined();
+    expect(Array.isArray(r.asignaciones)).toBe(true);
+    expect(r.asignaciones).toHaveLength(1);
+    expect(String(r.asignaciones[0].accion)).toBe('RECHAZADA');
+    expect(String(r.asignaciones[0].motivo)).toBe(motivo.trim());
+  });
+});
+
+describe('[EFDS-1734] RF-INF-005 AC-01 Redistribuir + estados D10 + limpieza motivo', () => {
+  const userGestor = { ...userValido, roles: ['GESTOR_MANTENIMIENTO'] };
+  const tecFuente = {
+    idCatalogo: 82, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-FTE-001',
+    nombre: 'Técnico Fuente', isActivo: true,
+  };
+  const tecDestino = {
+    idCatalogo: 83, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-DST-001',
+    nombre: 'Técnico Destino', isActivo: true,
+  };
+  it('redistribuir solicitud RECIBIDA (sin asignar) → estado pasa automáticamente a ASIGNADA D10', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-RED-REC-1', estado: 'RECIBIDA', idCategoria: 47, asignaciones: [],
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.codigo === 'TEC-DST-001') return tecDestino;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.redistribuir(
+      'SOL-RED-REC-1',
+      { tecnicoCodigo: 'TEC-DST-001', motivoRedistribucion: 'Técnico fuente en vacaciones' },
+      userGestor,
+    );
+    expect(r.estado).toBe('ASIGNADA');
+    expect(String(r.responsableAsignado)).toBe('TEC-DST-001 · Técnico Destino');
+  });
+  it('redistribuir solicitud ASIGNADA → mantiene estado ASIGNADA (NO cambia a otro) D10', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-RED-ASI-1', estado: 'ASIGNADA', idCategoria: 47,
+          responsableAsignado: `${tecFuente.codigo} · ${tecFuente.nombre}`, asignaciones: [],
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.codigo === 'TEC-DST-001') return tecDestino;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.redistribuir('SOL-RED-ASI-1', { tecnicoCodigo: 'TEC-DST-001' }, userGestor);
+    expect(r.estado).toBe('ASIGNADA'); // no cambia
+    expect(String(r.responsableAsignado)).toBe('TEC-DST-001 · Técnico Destino');
+  });
+  it('redistribuir solicitud EN_ANALISIS (estado abierto) → mantiene estado EN_ANALISIS D10; si no es RECHAZADA limpia motivoRechazo', async () => {
+    const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-RED-ANAL-1', estado: 'EN_ANALISIS', idCategoria: 51,
+          motivoRechazo: '[placeholder anterior]', asignaciones: [],
+        }),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.codigo === 'TEC-DST-001') return tecDestino;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.redistribuir('SOL-RED-ANAL-1', { tecnicoCodigo: 'TEC-DST-001' }, userGestor);
+    expect(r.estado).toBe('EN_ANALISIS');
+    expect(r.motivoRechazo).toBeUndefined();
+  });
+});
+
+describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entries inmutable snake_case ids únicos', () => {
+  const userSuper = { ...userValido, roles: ['SUPER_ADMIN'] };
+  const tec1 = {
+    idCatalogo: 88, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-HIST-1',
+    nombre: 'Histórico 1', isActivo: true,
+  };
+  const tec2 = {
+    idCatalogo: 89, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-HIST-2',
+    nombre: 'Histórico 2', isActivo: true,
+  };
+  it('3 acciones consecutivas (aprobar → rechazar → redistribuir) → asignaciones.length=3 entries, orden cronológico ASC push al final (sin sobreescribir)', async () => {
+    let memoria: any = {
+      idSolicitud: 'SOL-HIST-1', estado: 'RECIBIDA', idCategoria: 47, asignaciones: [],
+    };
+    const save = jest.fn().mockImplementation((d) => {
+      memoria = { ...d };
+      return Promise.resolve({ ...memoria, updatedAt: new Date() });
+    });
+    const findOne = jest.fn().mockImplementation(() => ({ ...memoria }));
+    const catalogoFindOne = jest.fn().mockImplementation((w: any) => {
+      if (w?.where?.codigo === 'TEC-HIST-1') return tec1;
+      if (w?.where?.codigo === 'TEC-HIST-2') return tec2;
+      return null;
+    });
+    const s = servicio({
+      mantenimientoRepo: { findOne, save } as any,
+      catalogoRepo: { findOne: catalogoFindOne } as any,
+    });
+    await s.aprobarYAsignar('SOL-HIST-1', { tecnicoCodigo: 'TEC-HIST-1', observaciones: 'aprobación inicial' }, userSuper);
+    await s.rechazar('SOL-HIST-1', { motivo: 'rechazo auditoria con motivo suficiente 123', observaciones: 'se rechaza' }, userSuper);
+    const final = await s.redistribuir(
+      'SOL-HIST-1',
+      { tecnicoCodigo: 'TEC-HIST-2', motivoRedistribucion: 'reasignado a técnico 2' },
+      userSuper,
+    );
+    expect(Array.isArray(final.asignaciones)).toBe(true);
+    expect(final.asignaciones).toHaveLength(3);
+    expect(String(final.asignaciones[0].accion)).toBe('APROBADA_Y_ASIGNADA');
+    expect(String(final.asignaciones[1].accion)).toBe('RECHAZADA');
+    expect(String(final.asignaciones[2].accion)).toBe('REDISTRIBUIDA');
+  });
+  it('entry JSONB historial usa snake_case exact keys: id, fecha, accion, tecnico_codigo, tecnico_nombre_display, motivo, observaciones, usuario_id, usuario_email, usuario_roles (NO camelCase)', async () => {
+    let memoria: any = {
+      idSolicitud: 'SOL-HIST-SNAKE-1', estado: 'RECIBIDA', idCategoria: 47, asignaciones: [],
+    };
+    const save = jest.fn().mockImplementation((d) => {
+      memoria = { ...d };
+      return Promise.resolve({ ...memoria });
+    });
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockImplementation(() => ({ ...memoria })),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tec1;
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.aprobarYAsignar(
+      'SOL-HIST-SNAKE-1',
+      { tecnicoCodigo: 'TEC-HIST-1', observaciones: 'observaciones de prueba' },
+      userSuper,
+    );
+    const entry = r.asignaciones[0];
+    const keys = Object.keys(entry).sort();
+    expect(keys).toEqual([
+      'accion', 'fecha', 'id', 'motivo',
+      'observaciones', 'tecnico_codigo', 'tecnico_nombre_display',
+      'usuario_email', 'usuario_id', 'usuario_roles',
+    ]);
+    expect(String(entry.tecnico_codigo)).toBe('TEC-HIST-1');
+    expect(String(entry.tecnico_nombre_display)).toBe('Histórico 1');
+    expect(String(entry.usuario_email)).toBe(userSuper.email);
+    expect(String(entry.usuario_roles)).toBe(userSuper.roles.join(','));
+  });
+  it('ids entries historial son UUID-like o únicos (2 acciones consecutivas tienen ids distintos)', async () => {
+    let memoria: any = {
+      idSolicitud: 'SOL-HIST-IDS-1', estado: 'RECIBIDA', idCategoria: 50, asignaciones: [],
+    };
+    const save = jest.fn().mockImplementation((d) => {
+      memoria = { ...d };
+      return Promise.resolve({ ...memoria });
+    });
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockImplementation(() => ({ ...memoria })),
+        save,
+      } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tec1;
+          return null;
+        }),
+      } as any,
+    });
+    await s.aprobarYAsignar('SOL-HIST-IDS-1', { tecnicoCodigo: 'TEC-HIST-1' }, userSuper);
+    const r2 = await s.redistribuir(
+      'SOL-HIST-IDS-1',
+      { tecnicoCodigo: 'TEC-HIST-1', motivoRedistribucion: 'redistribución con mismo técnico' },
+      userSuper,
+    );
+    expect(r2.asignaciones).toHaveLength(2);
+    const id0 = String(r2.asignaciones[0].id);
+    const id1 = String(r2.asignaciones[1].id);
+    expect(id0).not.toBe(id1);
+    expect(id0.length).toBeGreaterThan(5);
+    expect(id1.length).toBeGreaterThan(5);
   });
 });

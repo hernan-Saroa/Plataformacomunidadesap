@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, Min, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateSedeDto {
@@ -41,11 +41,21 @@ export class CreateSedeDto {
   @IsString()
   @IsOptional()
   emailContacto?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActivo?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsBoolean()
+  @IsOptional()
+  alcanceUmi?: boolean;
 }
 
 export class CreateBloqueDto {
   @ApiProperty({ example: 'id-sede-uuid' })
-  @IsString()
+  @IsUUID('4')
   @IsNotEmpty()
   idSede: string;
 
@@ -60,6 +70,8 @@ export class CreateBloqueDto {
   nombre: string;
 
   @ApiPropertyOptional({ example: 4 })
+  @IsInt()
+  @Min(1)
   @IsOptional()
   pisos?: number;
 
@@ -67,4 +79,11 @@ export class CreateBloqueDto {
   @IsString()
   @IsOptional()
   descripcion?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActivo?: boolean;
 }
+
+export type UpdateBloqueDto = Partial<CreateBloqueDto>;

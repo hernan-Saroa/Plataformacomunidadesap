@@ -98,6 +98,9 @@ export class SolicitudMantenimiento {
   @Column({ type: 'simple-json', default: () => "'[]'", name: 'asignaciones' })
   asignaciones?: Array<Record<string, any>>;
 
+  @Column({ type: 'text', nullable: true, name: 'motivo_rechazo' })
+  motivoRechazo?: string;
+
   @Column({ type: 'uuid', nullable: true, name: 'usuario_solicitante_id' })
   usuarioSolicitanteId: string;
 
