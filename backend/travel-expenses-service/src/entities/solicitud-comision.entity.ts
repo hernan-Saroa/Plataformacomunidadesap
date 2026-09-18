@@ -340,6 +340,10 @@ export class SolicitudComisionEntity {
   @Column({ name: 'fecha_registro_obligacion', type: 'timestamp with time zone', nullable: true })
   fechaRegistroObligacion: Date | null;
 
+  // ========== Etapa 8: Notificación Automática a SST (RF-PAG-002) ==========
+  @Column({ name: 'notificado_sst', type: 'boolean', default: false })
+  notificadoSst: boolean;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

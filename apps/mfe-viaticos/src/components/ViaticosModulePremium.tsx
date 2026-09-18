@@ -27,6 +27,10 @@ import {
   UserPlus,
   XCircle,
   RotateCcw,
+  HeartPulse,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -45,6 +49,7 @@ import {
   SolicitudControlViaticosResponse,
   DocumentoSoporte,
   ResultadoConsolidacion,
+  NotificacionSstLog,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -53,6 +58,8 @@ import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
 const Permissions = {
+  VIATICOS_SST_READ_LOGS: 'travel_expenses:read_sst_logs',
+  VIATICOS_SST_RESEND: 'travel_expenses:resend_sst_notification',
   VIATICOS_SOLICITUDES_READ_OWN: 'travel_expenses:view_own_requests',
   VIATICOS_SOLICITUDES_CREATE: 'travel_expenses:create_request',
   VIATICOS_SOLICITUDES_READ_INBOX: 'travel_expenses:read_inbox',
@@ -130,6 +137,13 @@ export default function ViaticosModulePremium() {
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
   const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
+
+  // Estados Notificación SST (RF-PAG-002)
+  const [logsSst, setLogsSst] = useState<NotificacionSstLog[]>([]);
+  const [cargandoLogsSst, setCargandoLogsSst] = useState(false);
+  const [expandirSst, setExpandirSst] = useState(false);
+  const [reenviandoSst, setReenviandoSst] = useState(false);
+  const [mensajeSst, setMensajeSst] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
 
   const grupos: MenuGroup[] = [
     {
@@ -356,6 +370,18 @@ export default function ViaticosModulePremium() {
     setMotivoDevolucion('');
     setCargandoDocumentos(true);
     setDocumentosSoporte([]);
+
+    // Cargar logs de notificación formal a SST (RF-PAG-002)
+    setLogsSst([]);
+    setExpandirSst(false);
+    setMensajeSst(null);
+    setCargandoLogsSst(true);
+    viaticosService
+      .obtenerLogsSst(sol.id)
+      .then((logs) => setLogsSst(logs))
+      .catch(() => setLogsSst([]))
+      .finally(() => setCargandoLogsSst(false));
+
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
       setDocumentosSoporte(completa.documentosSoporte || []);
@@ -370,6 +396,28 @@ export default function ViaticosModulePremium() {
       setMensajeExito('No fue posible cargar los documentos de soporte de esta solicitud.');
     } finally {
       setCargandoDocumentos(false);
+    }
+  };
+
+  const handleReenviarSst = async () => {
+    if (!solicitudSeleccionada) return;
+    setReenviandoSst(true);
+    setMensajeSst(null);
+    try {
+      const res = await viaticosService.reenviarNotificacionSst(solicitudSeleccionada.id);
+      setMensajeSst({
+        tipo: res.success ? 'exito' : 'error',
+        texto: res.message || 'Notificación formal despachada a SST exitosamente.',
+      });
+      const nuevosLogs = await viaticosService.obtenerLogsSst(solicitudSeleccionada.id);
+      setLogsSst(nuevosLogs);
+    } catch (err: any) {
+      setMensajeSst({
+        tipo: 'error',
+        texto: err?.response?.data?.message || err?.message || 'Error reenviando notificación a SST.',
+      });
+    } finally {
+      setReenviandoSst(false);
     }
   };
 
@@ -539,6 +587,11 @@ export default function ViaticosModulePremium() {
     authService.hasPermission('travel_expenses:read_budget') ||
     authService.hasPermission('travel_expenses:register_rp');
   const puedeEnviarPresupuesto = authService.canEnviarPresupuesto();
+  const puedeReenviarSst =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esPresupuesto ||
+    authService.hasPermission(Permissions.VIATICOS_SST_RESEND);
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -1500,6 +1553,124 @@ export default function ViaticosModulePremium() {
                         </div>
                       </div>
                     )}
+
+                    {/* ========================================================================= */}
+                    {/* HITO GRÁFICO SST (RF-PAG-002 — Etapa 8: Notificación Automática a SST)    */}
+                    {/* ========================================================================= */}
+                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(solicitudSeleccionada.estado)) && (() => {
+                      const ultimoLogSst = logsSst[0];
+                      const payloadSst = (ultimoLogSst?.payloadNotificado as any) || {
+                        nombre_completo_comisionado: solicitudSeleccionada.nombreComisionado,
+                        documento_identidad: solicitudSeleccionada.cedulaComisionado,
+                        ciudad_destino: `${solicitudSeleccionada.ciudadDestino} (${solicitudSeleccionada.departamentoDestino})`,
+                        fecha_inicio_viaje: solicitudSeleccionada.fechaInicio,
+                        fecha_fin_viaje: solicitudSeleccionada.fechaFin,
+                        objeto_comision: solicitudSeleccionada.justificacion,
+                        consecutivo_comision: solicitudSeleccionada.codigo,
+                      };
+
+                      return (
+                        <div className="mt-4 p-3.5 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                              <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
+                                <HeartPulse className="w-4 h-4 text-emerald-700" />
+                              </span>
+                              <div>
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
+                                  <span>✅ Notificación automática enviada a SST (Seguridad y Salud en el Trabajo)</span>
+                                </div>
+                                <span className="text-[11px] font-medium text-emerald-800">
+                                  {ultimoLogSst?.fechaEnvio
+                                    ? `Despachado: ${new Date(ultimoLogSst.fechaEnvio).toLocaleString('es-CO')}`
+                                    : 'Despacho formalizado en compromiso financiero'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {puedeReenviarSst && (
+                                <button
+                                  type="button"
+                                  onClick={handleReenviarSst}
+                                  disabled={reenviandoSst}
+                                  title="Forzar reenvío formal a SST"
+                                  className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <RefreshCw className={`w-3 h-3 ${reenviandoSst ? 'animate-spin' : ''}`} />
+                                  <span>{reenviandoSst ? 'Reenviando...' : 'Reenviar'}</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setExpandirSst(!expandirSst)}
+                                className="p-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 transition-colors cursor-pointer"
+                                title={expandirSst ? 'Ocultar datos notificados' : 'Previsualizar datos notificados a SST'}
+                                aria-expanded={expandirSst}
+                              >
+                                {expandirSst ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {mensajeSst && (
+                            <div className={`mt-2 p-2 rounded-lg text-xs font-medium ${mensajeSst.tipo === 'exito' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                              {mensajeSst.texto}
+                            </div>
+                          )}
+
+                          {/* Panel colapsable de datos notificados */}
+                          {expandirSst && (
+                            <div className="mt-3 pt-3 border-t border-emerald-200 text-xs space-y-2">
+                              <div className="flex items-center justify-between text-[11px] text-emerald-800 font-semibold mb-1">
+                                <span>Expediente de Desplazamiento Formalizado ante SST</span>
+                                <span className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200 text-emerald-950">
+                                  Canal: Bandeja In-App & Correo · Destino: Rol SST ({ultimoLogSst?.destinatario || 'sst@esap.edu.co'})
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Comisionado</span>
+                                  <span className="font-bold text-slate-800 block truncate">
+                                    {payloadSst.nombre_completo_comisionado || 'Servidor Comisionado'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    C.C. {payloadSst.documento_identidad || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Destino</span>
+                                  <span className="font-bold text-slate-800 block truncate">
+                                    {payloadSst.ciudad_destino || 'Destino Oficial'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">
+                                    Itinerario Autorizado
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 col-span-2 sm:col-span-1">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Fechas de Desplazamiento</span>
+                                  <span className="font-semibold text-slate-800 block">
+                                    {payloadSst.fecha_inicio_viaje} → {payloadSst.fecha_fin_viaje}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 col-span-2 sm:col-span-1">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Estado Notificado</span>
+                                  <span className="font-bold text-emerald-700 block">
+                                    {ultimoLogSst?.estadoEnvio || 'ENVIADO'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="bg-white p-2.5 rounded-lg border border-emerald-100">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Objeto del Viaje</span>
+                                <p className="text-slate-700 italic leading-relaxed text-[11px]">
+                                  "{payloadSst.objeto_comision || 'Comisión oficial de servicios institucionales'}"
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                 </div>
                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button

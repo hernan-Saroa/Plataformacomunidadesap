@@ -414,7 +414,7 @@ export class AuthService {
     );
   }
 
-  private getCurrentUserSync(): UsuarioActual | null {
+  getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
         typeof window !== 'undefined' ? (window as any).__esap_auth_cache : null;

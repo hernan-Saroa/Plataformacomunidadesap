@@ -380,6 +380,32 @@ export interface SolicitudViatico {
   modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
   diasHabilesPrevios?: number | null;
   fechaCalculoModalidad?: string | null;
+  notificadoSst?: boolean;
+}
+
+/** Registro de notificación formal enviada al área de SST (RF-PAG-002) */
+export interface NotificacionSstLog {
+  id: string;
+  solicitudId: string;
+  comisionadoId: string;
+  fechaEnvio: string;
+  canalEnvio: 'EMAIL' | 'INTERNAL_MODULE' | 'WEBHOOK' | string;
+  estadoEnvio: 'ENVIADO' | 'FALLIDO' | 'PENDIENTE' | string;
+  destinatario: string;
+  payloadNotificado: {
+    nombre_completo_comisionado?: string;
+    documento_identidad?: string;
+    ciudad_destino?: string;
+    fecha_inicio_viaje?: string;
+    fecha_fin_viaje?: string;
+    objeto_comision?: string;
+    consecutivo_comision?: string;
+    estado_actual?: string;
+    monto_viaticos?: number;
+    [key: string]: any;
+  };
+  errorMensaje?: string | null;
+  creadoEn: string;
 }
 
 export interface TiqueteAereo {

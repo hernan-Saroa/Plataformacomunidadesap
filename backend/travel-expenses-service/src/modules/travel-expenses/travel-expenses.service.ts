@@ -20,6 +20,7 @@ import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
@@ -133,7 +134,29 @@ export class TravelExpensesService {
     private readonly liquidationService?: LiquidationService,
     @Optional()
     private readonly ticketsService?: TicketsService,
+    @Optional()
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
+
+  /**
+   * Emite el evento asíncrono 'commission.disbursement_ready' para que el listener
+   * de SST despache automáticamente la notificación formal de desplazamiento [RF-PAG-002].
+   */
+  private emitirDisbursementReady(solicitudId: string, estadoNuevo: string, usuarioId?: string) {
+    if (this.eventEmitter) {
+      try {
+        this.eventEmitter.emit('commission.disbursement_ready', {
+          solicitudId,
+          estadoNuevo,
+          usuarioId,
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `[RF-PAG-002] No se pudo emitir evento commission.disbursement_ready para ${solicitudId}: ${err?.message}`,
+        );
+      }
+    }
+  }
 
   private readonly SUPER_ADMIN_ROLES = [
     'ADMIN',
@@ -5035,6 +5058,7 @@ export class TravelExpensesService {
         motivo: `[RF-PRE-001 / RF-PRE-003] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
       });
 
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
       return guardada;
     });
   }
@@ -5275,6 +5299,8 @@ export class TravelExpensesService {
           diasHabilesPrevios,
           estado: EstadoSolicitud.COMPROMETIDA,
         });
+
+        this.emitirDisbursementReady(solicitud.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
       } catch (err: any) {
         errores.push({
           fila,
@@ -5427,6 +5453,7 @@ export class TravelExpensesService {
         `[RF-PAG-001] Obligación ${dto.numeroObligacion.trim()} registrada exitosamente para solicitud ${consecutivo}. Estado: OBLIGADA. Modalidad: ${modalidadFinal}.`,
       );
 
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.OBLIGADA, usuarioId);
       return guardada;
     });
   }

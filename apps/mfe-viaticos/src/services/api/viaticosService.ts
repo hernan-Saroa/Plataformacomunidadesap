@@ -53,6 +53,7 @@ import {
   ResumenCargaMasivaRp,
   BandejaPresupuestoResponse,
   CrearObligacionDto,
+  NotificacionSstLog,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
@@ -1637,6 +1638,38 @@ export class ViaticosService {
       return res?.data || res;
     } catch (error) {
       console.error('[viaticos] Error creando obligación en SIIF Nación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-002 — Consultar bitácora de notificaciones a SST (Etapa 8).
+   */
+  async obtenerLogsSst(solicitudId: string): Promise<NotificacionSstLog[]> {
+    try {
+      const res = await apiClient.get<any>(
+        `/viaticos/api/v1/notifications/sst/${solicitudId}/log`,
+      );
+      const data = res?.data?.data || res?.data || res;
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('[viaticos] Error consultando logs de SST:', error);
+      return [];
+    }
+  }
+
+  /**
+   * RF-PAG-002 — Forzar reenvío manual de notificación a SST (Etapa 8).
+   */
+  async reenviarNotificacionSst(solicitudId: string): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/notifications/sst/${solicitudId}/resend`,
+        {},
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error reenviando notificación a SST:', error);
       throw error;
     }
   }

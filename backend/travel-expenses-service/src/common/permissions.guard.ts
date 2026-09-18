@@ -99,12 +99,26 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_budget',
     'travel_expenses:issue_rp',
     'travel_expenses:register_rp',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
   ],
   GRUPO_PRESUPUESTO: [
     'travel_expenses:read_authorized',
     'travel_expenses:read_budget',
     'travel_expenses:issue_rp',
     'travel_expenses:register_rp',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+  ],
+  TESORERIA: [
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+  ],
+  ROL_TESORERIA: [
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
   ],
   SUBDIRECCION_GESTION_CORPORATIVA: [
     'travel_expenses:authorize_expense',
