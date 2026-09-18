@@ -76,6 +76,21 @@ describe('TravelExpensesService', () => {
         deleteNotificacionesPorSolicitud: jest
           .fn()
           .mockResolvedValue(undefined),
+        send: jest.fn().mockResolvedValue(undefined),
+        notifyByRole: jest.fn().mockResolvedValue(undefined),
+        sendEmail: jest.fn().mockResolvedValue(undefined),
+        notifyByPermission: jest.fn().mockImplementation((perm, dto, email, fallbackRole) => {
+          if (fallbackRole && notificationClient?.notifyByRole) {
+            notificationClient.notifyByRole(fallbackRole, dto, email);
+          }
+          return Promise.resolve(undefined);
+        }),
+        notifyUser: jest.fn().mockImplementation((userId, dto, email) => {
+          if (notificationClient?.send) {
+            notificationClient.send({ ...dto, id_usuario_destinatario: userId });
+          }
+          return Promise.resolve(undefined);
+        }),
       },
     } = overrides;
 
@@ -610,8 +625,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: 'Comisión de gestión',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -686,8 +701,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: '',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -755,8 +770,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: '',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -797,8 +812,8 @@ describe('TravelExpensesService', () => {
           comisionadoId: 'com-001',
           destinoCiudad: 'Bogotá',
           destinoDepartamento: 'Cundinamarca',
-          fechaInicio: '2026-09-15',
-          fechaFin: '2026-09-20',
+          fechaInicio: '2026-10-15',
+          fechaFin: '2026-10-20',
           objetoComision: 'Comisión de gestión',
           prioridad: 'ALTA',
           rubroPresupuestal: 'Rubro 01',
@@ -811,8 +826,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: 'Comisión de gestión',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -883,8 +898,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: 'Comisión de gestión institucional',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -1441,8 +1456,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: 'Comisión de gestión',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -1495,8 +1510,8 @@ describe('TravelExpensesService', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Bogotá',
         destinoDepartamento: 'Cundinamarca',
-        fechaInicio: '2026-09-15',
-        fechaFin: '2026-09-20',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-20',
         objetoComision: 'Comisión internacional',
         prioridad: 'ALTA',
         rubroPresupuestal: 'Rubro 01',
@@ -1568,6 +1583,18 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         send: jest.fn().mockResolvedValue(undefined),
         notifyByRole: jest.fn().mockResolvedValue(undefined),
         sendEmail: jest.fn().mockResolvedValue(undefined),
+        notifyByPermission: jest.fn().mockImplementation((perm, dto, email, fallbackRole) => {
+          if (fallbackRole && notificationClient?.notifyByRole) {
+            notificationClient.notifyByRole(fallbackRole, dto, email);
+          }
+          return Promise.resolve(undefined);
+        }),
+        notifyUser: jest.fn().mockImplementation((userId, dto, email) => {
+          if (notificationClient?.send) {
+            notificationClient.send({ ...dto, id_usuario_destinatario: userId });
+          }
+          return Promise.resolve(undefined);
+        }),
       },
     } = overrides;
 
@@ -4071,6 +4098,18 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           send: jest.fn().mockResolvedValue(undefined),
           notifyByRole: jest.fn().mockResolvedValue(undefined),
           sendEmail: jest.fn().mockResolvedValue(undefined),
+          notifyByPermission: jest.fn().mockImplementation((perm, dto, email, fallbackRole) => {
+            if (fallbackRole && notificationClient?.notifyByRole) {
+              notificationClient.notifyByRole(fallbackRole, dto);
+            }
+            return Promise.resolve(undefined);
+          }),
+          notifyUser: jest.fn().mockImplementation((userId, dto, email) => {
+            if (notificationClient?.send) {
+              notificationClient.send({ ...dto, id_usuario_destinatario: userId });
+            }
+            return Promise.resolve(undefined);
+          }),
         };
 
         const module = await createMockModuleEtapa5({
@@ -4238,6 +4277,18 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           send: jest.fn().mockResolvedValue(undefined),
           notifyByRole: jest.fn().mockResolvedValue(undefined),
           sendEmail: jest.fn().mockResolvedValue(undefined),
+          notifyByPermission: jest.fn().mockImplementation((perm, dto, email, fallbackRole) => {
+            if (fallbackRole && notificationClient?.notifyByRole) {
+              notificationClient.notifyByRole(fallbackRole, dto, email);
+            }
+            return Promise.resolve(undefined);
+          }),
+          notifyUser: jest.fn().mockImplementation((userId, dto, email) => {
+            if (notificationClient?.send) {
+              notificationClient.send({ ...dto, id_usuario_destinatario: userId });
+            }
+            return Promise.resolve(undefined);
+          }),
         };
 
         const module = await createMockModuleEtapa5({
