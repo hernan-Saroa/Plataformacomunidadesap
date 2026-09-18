@@ -1390,7 +1390,7 @@ export class AutoService {
          JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
          WHERE u.is_active = true
            AND p.code = $1`,
-        ['control-disciplinario.es_radicador'],
+        ['control-disciplinario.general.es_radicador'],
       );
       for (const r of permUsers) {
         if (r.id_user) radicadoresIds.add(r.id_user);
@@ -2053,7 +2053,7 @@ export class AutoService {
        JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
        JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
        WHERE p.code = $1`,
-      ['control-disciplinario.es_radicador'],
+      ['control-disciplinario.general.es_radicador'],
     );
 
     const ids = radicadoresRows.map((r) => r.id_user).filter(Boolean);

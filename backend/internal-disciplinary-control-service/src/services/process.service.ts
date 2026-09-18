@@ -2197,7 +2197,7 @@ const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.is_active = true
            AND perm.code = $1`,
-        ['control-disciplinario.es_radicador'],
+        ['control-disciplinario.general.es_radicador'],
       );
 
       const radicadores = (radicadoresRows || []).map((r) => ({
