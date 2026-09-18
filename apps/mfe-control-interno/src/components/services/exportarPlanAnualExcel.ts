@@ -1,5 +1,6 @@
 import * as ExcelJS from 'exceljs';
 import logoBase64 from '../../assets/esap-logo-institucional.b64?raw';
+import { fechaSeguimientoTarea } from './fechaSeguimientoTarea';
 
 /**
  * Columnas del informe en el orden en que se escriben. Es la única fuente: alimenta
@@ -165,18 +166,6 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
       }
     };
 
-    /** Fecha del corte de seguimiento: la del punto de control de la tarea y, si no, la de la actividad. */
-    const fechaCorte = (act: any, tarea?: any) => {
-      const puntos = act.puntosControl || act.puntos_control || [];
-      const puntoId = tarea?.puntoControlId || tarea?.punto_control_id;
-      const punto = puntoId ? puntos.find((p: any) => p?.id === puntoId) : undefined;
-      return (
-        punto?.fechaSeguimiento || punto?.fechaProgramada ||
-        tarea?.fechaEntrega || tarea?.fechaLimite || tarea?.fecha_limite || tarea?.fechaSeguimiento ||
-        act.fechaCorte || act.fecha_corte || ''
-      );
-    };
-
     const fixEncoding = (str: string) => {
       if (!str) return '';
       try {
@@ -208,7 +197,7 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
         case 'control': return act.control || 'Se hace seguimiento';
         case 'estado': return act.estado === 'COMPLETADA' ? 100 : pct;
         case 'seguimiento': return tarea ? (tarea.nombre || tarea.descripcion || '') : 'Sin tareas';
-        case 'fecha': return formatearFecha(fechaCorte(act, tarea));
+        case 'fecha': return formatearFecha(fechaSeguimientoTarea(act, tarea));
         case 'evaluacion_tarea': return tarea ? (tarea.estado === 'Completada' ? 100 : (tarea.avance || 0)) : 0;
         case 'evidencias': return tarea ? (tarea.evidencia || 'Sin evidencia') : 'Sin evidencia';
         default: return '';
