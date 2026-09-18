@@ -92,6 +92,12 @@ export class SolicitudMantenimiento {
   @Column({ type: 'timestamptz', nullable: true, name: 'fecha_radicacion' })
   fechaRadicacion: Date;
 
+  @Column({ type: 'timestamptz', nullable: true, name: 'fecha_limite_atencion' })
+  fechaLimiteAtencion?: Date;
+
+  @Column({ type: 'simple-json', default: () => "'[]'", name: 'asignaciones' })
+  asignaciones?: Array<Record<string, any>>;
+
   @Column({ type: 'uuid', nullable: true, name: 'usuario_solicitante_id' })
   usuarioSolicitanteId: string;
 

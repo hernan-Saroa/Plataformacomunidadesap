@@ -8,6 +8,7 @@ import {
   AlertCircle,
   X,
   FolderKanban,
+  Settings,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -24,8 +25,9 @@ import { SolicitudesMantenimientoView } from './SolicitudesMantenimiento';
 import { NuevaSolicitudForm } from './NuevaSolicitudForm';
 import { DetalleSolicitudModal } from './DetalleSolicitudModal';
 import { AdminCategoriasServicioMini } from './AdminCategoriasServicioMini';
+import { AdminParametrosUMI } from './AdminParametrosUMI';
 
-type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias';
+type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias' | 'parametros';
 type VistaMantenimiento = 'todas' | 'remitidasTI';
 
 interface Toast {
@@ -265,6 +267,19 @@ export const GestionInfraestructuraModule: React.FC = () => {
           <FolderKanban className="w-4 h-4" />
           Categorías Servicio ({catalogoCS.length})
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('parametros')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+            activeTab === 'parametros'
+              ? 'border-emerald-600 text-emerald-600 bg-white shadow-sm'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          Parámetros UMI
+        </button>
       </div>
 
       {/* Vista de Contenido Activo */}
@@ -285,6 +300,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
           />
         )}
         {activeTab === 'categorias' && <AdminCategoriasServicioMini />}
+        {activeTab === 'parametros' && <AdminParametrosUMI />}
       </div>
     </div>
   );

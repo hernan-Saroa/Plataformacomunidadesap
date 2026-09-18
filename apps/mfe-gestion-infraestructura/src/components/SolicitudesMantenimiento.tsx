@@ -5,12 +5,14 @@ import {
   Package, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
+  User,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
   SolicitudEvidencia,
   CatalogoItem,
   infraestructuraService,
+  clasificarSLA,
 } from '../services/infraestructuraService';
 
 interface SolicitudesMantenimientoProps {
@@ -402,7 +404,48 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 self-end md:self-center w-full md:w-auto justify-end">
+                <div className="flex items-center gap-3 self-end md:self-center w-full md:w-auto justify-end flex-wrap">
+                  {(() => {
+                    const sla = clasificarSLA(m.fechaLimiteAtencion);
+                    const coloresSLA: Record<string, string> = {
+                      vencido: 'bg-rose-100 text-rose-800 border-rose-200',
+                      alerta: 'bg-amber-100 text-amber-800 border-amber-200',
+                      ok: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                      sin: 'bg-slate-100 text-slate-600 border-slate-200',
+                    };
+                    return (
+                      <span
+                        title={`SLA: ${sla.texto}${sla.horasRestantes !== null ? ` · ${sla.horasRestantes.toFixed(1)} h restantes` : ''}`}
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${coloresSLA[sla.clase] || coloresSLA.sin}`}
+                      >
+                        <Clock className="w-2.5 h-2.5" />
+                        {sla.clase === 'vencido' ? 'Vencido' : sla.clase === 'alerta' ? 'Alerta' : sla.clase === 'ok' ? 'En plazo' : 'SLA s/dato'}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    const resp = m.responsableAsignado;
+                    if (!resp) {
+                      return (
+                        <span
+                          title="No hay técnico asignado aún"
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-slate-100 text-slate-500 border-slate-200"
+                        >
+                          <User className="w-2.5 h-2.5" />
+                          Sin asignar
+                        </span>
+                      );
+                    }
+                    return (
+                      <span
+                        title={`Asignado a: ${resp}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-indigo-50 text-indigo-700 border-indigo-200 max-w-[200px]"
+                      >
+                        <User className="w-2.5 h-2.5 flex-shrink-0" />
+                        <span className="truncate">{resp}</span>
+                      </span>
+                    );
+                  })()}
                   <span
                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${claseEstado(m.estado)}`}
                   >

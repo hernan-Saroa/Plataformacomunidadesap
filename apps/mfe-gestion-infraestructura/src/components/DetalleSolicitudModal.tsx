@@ -4,13 +4,15 @@ import {
   Building2, MapPin, Wrench, Download, Image,
   Inbox, Search, FileSearch, ClipboardList, Loader2, Hammer,
   Package, CheckCircle, Archive, Ban, XCircle, ShieldCheck,
-  Eye, Monitor, GitBranch, Send, AlertCircle,
+  Eye, Monitor, GitBranch, Send, AlertCircle, Wand2, Users,
+  ChevronDown, Zap,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
   SolicitudEvidencia,
   CatalogoItem,
   infraestructuraService,
+  clasificarSLA,
 } from '../services/infraestructuraService';
 
 interface DetalleSolicitudModalProps {
@@ -115,12 +117,22 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [remitirEnviando, setRemitirEnviando] = useState<boolean>(false);
   const [remitirError, setRemitirError] = useState<string>('');
 
+  const [sugerencia, setSugerencia] = useState<any | null>(null);
+  const [cargandoSugerir, setCargandoSugerir] = useState<boolean>(false);
+  const [errorSugerir, setErrorSugerir] = useState<string>('');
+  const [tecnicosCatalogo, setTecnicosCatalogo] = useState<any[]>([]);
+  const [cargandoTecnicos, setCargandoTecnicos] = useState<boolean>(false);
+  const [tecnicoManualSeleccionado, setTecnicoManualSeleccionado] = useState<string>('');
+
   useEffect(() => {
     let cancelado = false;
     if (!open || !idSolicitud) {
       setDetalle(null);
       setEvidenciasEndpoint([]);
       setCargando(false);
+      setSugerencia(null);
+      setErrorSugerir('');
+      setTecnicoManualSeleccionado('');
       return;
     }
     const cargar = async () => {
@@ -128,6 +140,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setDetalle(null);
       setEvidenciasEndpoint([]);
       setRemisiones([]);
+      setSugerencia(null);
+      setErrorSugerir('');
+      setTecnicoManualSeleccionado('');
       try {
         const tareas: Promise<any>[] = [
           infraestructuraService.getMantenimientoById(idSolicitud),
@@ -139,16 +154,40 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         if (!catalogoCS || catalogoCS.length === 0) {
           tareas.push(infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'));
         }
-        const [d, evs, est, pri, rems, csFallback] = await Promise.all(tareas);
+        if (tecnicosCatalogo.length === 0) {
+          setCargandoTecnicos(true);
+          tareas.push(infraestructuraService.getTecnicosConCargaVigente());
+        }
+        const results = await Promise.all(tareas);
         if (cancelado) return;
+        let csFallback: any = undefined;
+        let tecnicosResult: any[] | undefined;
+        let idx = 0;
+        const d = results[idx++];
+        const evs = results[idx++];
+        const est = results[idx++];
+        const pri = results[idx++];
+        const rems = results[idx++];
+        if (!catalogoCS || catalogoCS.length === 0) {
+          csFallback = results[idx++];
+        }
+        if (tecnicosCatalogo.length === 0) {
+          tecnicosResult = results[idx++];
+        }
         setDetalle(d);
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
         setRemisiones(Array.isArray(rems) ? rems : []);
         setCatalogoEstado(est);
         setCatalogoPrioridad(pri);
         if (csFallback && Array.isArray(csFallback)) setCatalogoCSLocal(csFallback);
+        if (tecnicosResult) {
+          setTecnicosCatalogo(Array.isArray(tecnicosResult) ? tecnicosResult : []);
+        }
       } finally {
-        if (!cancelado) setCargando(false);
+        if (!cancelado) {
+          setCargando(false);
+          setCargandoTecnicos(false);
+        }
       }
     };
     cargar();
@@ -229,6 +268,24 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setRemitirError(err?.message || 'No se pudo remitir la solicitud. Intente nuevamente.');
     } finally {
       setRemitirEnviando(false);
+    }
+  };
+
+  const sugerirAsignacionHandler = async () => {
+    if (!idSolicitud) return;
+    setCargandoSugerir(true);
+    setErrorSugerir('');
+    setSugerencia(null);
+    try {
+      const res = await infraestructuraService.sugerirAsignacion(idSolicitud);
+      setSugerencia(res);
+      if (res?.sugerido?.codigo && !tecnicoManualSeleccionado) {
+        setTecnicoManualSeleccionado(res.sugerido.codigo);
+      }
+    } catch (err: any) {
+      setErrorSugerir(err?.message || 'No se pudo calcular la sugerencia de asignación.');
+    } finally {
+      setCargandoSugerir(false);
     }
   };
 
@@ -525,6 +582,166 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                  <Wand2 className="w-3.5 h-3.5" />
+                  Asignación y SLA (EFDS-1733)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      Tiempo de respuesta (SLA)
+                    </div>
+                    {(() => {
+                      const sla = clasificarSLA(detalle.fechaLimiteAtencion);
+                      const colores: Record<string, string> = {
+                        vencido: 'bg-rose-100 text-rose-800 border-rose-200',
+                        alerta: 'bg-amber-100 text-amber-800 border-amber-200',
+                        ok: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                        sin: 'bg-slate-100 text-slate-600 border-slate-200',
+                      };
+                      const color = colores[sla.clase] || colores.sin;
+                      return (
+                        <div className="space-y-2">
+                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider border shadow-sm ${color}`}>
+                            <Clock className="w-3.5 h-3.5" />
+                            {sla.texto}
+                          </span>
+                          <div className="text-xs text-slate-500 leading-5">
+                            <div>
+                              <span className="text-slate-400">Fecha límite:</span>{' '}
+                              <strong className="text-slate-700">{formatearFecha(detalle.fechaLimiteAtencion)}</strong>
+                            </div>
+                            {sla.horasRestantes !== null && (
+                              <div>
+                                <span className="text-slate-400">Horas restantes:</span>{' '}
+                                <strong className={sla.clase === 'vencido' ? 'text-rose-700' : sla.clase === 'alerta' ? 'text-amber-700' : 'text-emerald-700'}>
+                                  {sla.horasRestantes.toFixed(1)} h
+                                </strong>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        Motor de sugerencia
+                      </div>
+                      <button
+                        type="button"
+                        onClick={sugerirAsignacionHandler}
+                        disabled={cargandoSugerir || detalle.areaResponsableActual?.toUpperCase() === 'TI'}
+                        title={detalle.areaResponsableActual?.toUpperCase() === 'TI' ? 'Las solicitudes TI no usan reglas de UMI (EFDS-1733)' : 'Calcular sugerencia de asignación por reglas EFDS-1733'}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-[11px] font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98]"
+                      >
+                        {cargandoSugerir ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Calculando...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="w-3.5 h-3.5" />
+                            Sugerir técnico
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {errorSugerir && (
+                      <div className="flex items-start gap-2 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800">
+                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <div className="text-[11px] font-medium leading-5">{errorSugerir}</div>
+                      </div>
+                    )}
+                    {sugerencia?.advertencia && !errorSugerir && (
+                      <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <div className="text-[11px] font-medium leading-5">{sugerencia.advertencia}</div>
+                      </div>
+                    )}
+                    {sugerencia && (
+                      <div className="space-y-2.5">
+                        {sugerencia.obligatorio && sugerencia.regla === 'ESPECIALIZACION' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-violet-100 text-violet-800 border border-violet-200">
+                            <Zap className="w-2.5 h-2.5" />
+                            OBLIGATORIO · Especialista ({sugerencia.nombreCategoria || 'Eléctricas'})
+                          </span>
+                        ) : sugerencia.regla === 'EQUIDAD' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-200">
+                            <Users className="w-2.5 h-2.5" />
+                            Sugerencia · Equidad menor carga vigente
+                          </span>
+                        ) : null}
+                        {sugerencia.sugerido && (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center flex-shrink-0">
+                                <User className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-black text-slate-800 truncate">
+                                  {sugerencia.sugerido.nombreDisplay || sugerencia.sugerido.nombre}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono">
+                                  {sugerencia.sugerido.codigo}
+                                  {sugerencia.sugerido.cargaVigente !== undefined && ` · Carga: ${sugerencia.sugerido.cargaVigente}`}
+                                </div>
+                              </div>
+                            </div>
+                            {Array.isArray(sugerencia.sugerido.especialidades) && sugerencia.sugerido.especialidades.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {sugerencia.sugerido.especialidades.slice(0, 4).map((esp: string, i: number) => (
+                                  <span key={i} className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                                    {esp}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="pt-1.5 space-y-1.5">
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
+                            Reasignación manual (opcional)
+                          </label>
+                          <div className="relative">
+                            <select
+                              value={tecnicoManualSeleccionado}
+                              onChange={(e) => setTecnicoManualSeleccionado(e.target.value)}
+                              className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-10 text-xs font-semibold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
+                              disabled={cargandoTecnicos}
+                            >
+                              <option value="">— Seleccione técnico (sobrescribe sugerencia) —</option>
+                              {tecnicosCatalogo.map((t) => (
+                                <option key={t.codigo} value={t.codigo}>
+                                  [{t.codigo}] {t.nombreDisplay || t.nombre} · Carga {t.cargaVigente ?? 0}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          </div>
+                          {tecnicoManualSeleccionado && (() => {
+                            const sel = tecnicosCatalogo.find((t) => t.codigo === tecnicoManualSeleccionado);
+                            if (!sel) return null;
+                            return (
+                              <div className="text-[10px] text-slate-500 leading-5 pt-0.5">
+                                <span className="text-slate-400">Correo:</span> <strong className="text-slate-700">{sel.email || sel.metadata?.email || '—'}</strong>
+                                {(sel.telefono || sel.metadata?.telefono) && <> · <span className="text-slate-400">Tel:</span> <strong className="text-slate-700">{sel.telefono || sel.metadata?.telefono}</strong></>}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <div className="text-[10px] text-slate-400 leading-5 pt-1 border-t border-dashed border-slate-200">
+                          La asignación definitiva se confirma en el ticket EFDS-1734 (persistir responsable y cambiar estado). Los cambios en este panel no se guardan aún.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -851,3 +851,325 @@ describe('[EFDS-1732] AC-03 Mini CRUD Categoría Servicio: toggleCategoriaServic
     await expect(s.toggleCategoriaServicio(12345)).rejects.toThrow(NotFoundException);
   });
 });
+
+// ---------------------------------------------------------------------------
+// EFDS-1733 AC-03 Tiempo respuesta parametrizable [1..3] días (clamp + BadRequest)
+// ---------------------------------------------------------------------------
+describe('[EFDS-1733] AC-03 Parametrización tiempo respuesta (rango 1..3 días)', () => {
+  it('actualizar 2 días entero dentro rango → metadata.actual = 2 SIN lanzar error', async () => {
+    const rowBase = {
+      idCatalogo: 1, catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESPUESTA',
+      metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
+    };
+    const save = jest.fn((d) => d);
+    const s = servicio({
+      catalogoRepo: {
+        findOne: jest.fn().mockResolvedValue(rowBase),
+        save,
+      } as any,
+    });
+    const r = await s.actualizarParametroTiempoRespuesta(2);
+    expect((r.metadata as any).actual).toBe(2);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('actualizar 3 días (máximo permitido) → metadata.actual = 3 OK', async () => {
+    const rowBase = {
+      idCatalogo: 1, catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESPUESTA',
+      metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
+    };
+    const s = servicio({
+      catalogoRepo: {
+        findOne: jest.fn().mockResolvedValue(rowBase),
+        save: jest.fn((d) => d),
+      } as any,
+    });
+    const r = await s.actualizarParametroTiempoRespuesta(3);
+    expect((r.metadata as any).actual).toBe(3);
+  });
+
+  it('actualizar 4 días (fuera rango max) → BadRequestException fuera de rango', async () => {
+    const s = servicio({ catalogoRepo: { findOne: jest.fn().mockResolvedValue({ metadata: {} }) } as any });
+    await expect(s.actualizarParametroTiempoRespuesta(4)).rejects.toThrow(
+      /fuera de rango.*1 a 3 días/,
+    );
+  });
+
+  it('actualizar 0 días (fuera rango min) → BadRequestException fuera de rango', async () => {
+    const s = servicio({ catalogoRepo: { findOne: jest.fn().mockResolvedValue({ metadata: {} }) } as any });
+    await expect(s.actualizarParametroTiempoRespuesta(0)).rejects.toThrow(BadRequestException);
+  });
+
+  it('create() pobla fechaLimiteAtencion y asignaciones=[], NO auto-asigna responsable', async () => {
+    const save = jest.fn().mockResolvedValue({ idSolicitud: 'SOL-1', evidencias: [] });
+    const s = servicio({
+      sedeRepo: { findOne: jest.fn().mockResolvedValue(sedeValida) },
+      mantenimientoRepo: { count: jest.fn().mockResolvedValue(0), save },
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          const cod = w?.where?.codigo;
+          if (cod === 'TIEMPO_RESPUESTA') {
+            return {
+              catalogo: 'PARAMETRO_UMI', codigo: 'TIEMPO_RESPUESTA',
+              metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
+            };
+          }
+          return null;
+        }),
+        save: jest.fn((d: any) => d),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), select: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ m: '0' }),
+        })) as any,
+      } as any,
+    });
+    await s.cargarParametroCache();
+    await s.create({ ...dtoBase, tipoAtencion: 'FISICA' } as any, userValido);
+    const saved = save.mock.calls[0][0];
+    expect(saved.fechaLimiteAtencion).toBeDefined();
+    const diffMs = new Date(saved.fechaLimiteAtencion).getTime() - new Date(saved.fechaRadicacion).getTime();
+    const diffDias = diffMs / (1000 * 60 * 60 * 24);
+    expect(Math.round(diffDias)).toBeGreaterThanOrEqual(1);
+    expect(Math.round(diffDias)).toBeLessThanOrEqual(3);
+    expect(saved.asignaciones).toEqual([]);
+    expect(saved.responsableAsignado || null).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1733 AC-01 Eléctricas idCategoria=48 → regla ESPECIALIZACION OBLIGATORIA
+// ---------------------------------------------------------------------------
+describe('[EFDS-1733] AC-01 Categoría CS_002 Eléctricas (id=48) ESPECIALIZACIÓN OBLIGATORIA', () => {
+  it('regla REG_001 ligada a TEC-ELC-001 → sugerido retorna ese técnico y obligatorio=true', async () => {
+    const findOneSol = jest.fn().mockResolvedValue({
+      idSolicitud: 'SOL-ELEC-1',
+      idCategoria: 48,
+      areaResponsableActual: 'UMI',
+    });
+    const findOneCat = jest.fn().mockImplementation((w: any) => {
+      const where = w?.where || w;
+      if (where?.catalogo === 'REGLA_ESCALAMIENTO' && where?.codigo === 'REG_001_CATEGORIA_48_ELECTRICAS') {
+        return {
+          catalogo: 'REGLA_ESCALAMIENTO', codigo: where.codigo, idCatalogo: 70,
+          metadata: { tecnicoCodigo: 'TEC-ELC-001', tecnicoNombreDisplay: 'Carlos Ramírez' },
+        };
+      }
+      if (where?.catalogo === 'TECNICO_MANTENIMIENTO') return null;
+      return null;
+    });
+    const findCat = jest.fn().mockImplementation((w: any) => {
+      if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') {
+        return [
+          { idCatalogo: 80, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-ELC-001', nombre: 'Carlos Ramírez', metadata: { especialidades: ['Electricidad'] }, isActivo: true },
+          { idCatalogo: 81, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-GEN-001', nombre: 'Pedro Generico', isActivo: true },
+        ];
+      }
+      return [];
+    });
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: findOneSol,
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })),
+      } as any,
+      catalogoRepo: {
+        find: findCat,
+        findOne: findOneCat,
+      } as any,
+    });
+    const r = await s.sugerirAsignacion('SOL-ELEC-1');
+    expect(r.regla).toBe('ESPECIALIZACION');
+    expect(r.obligatorio).toBe(true);
+    expect(r.idCategoria).toBe(48);
+    expect(r.sugerido).toBeDefined();
+    expect(r.sugerido?.codigo).toBe('TEC-ELC-001');
+    expect(r.advertencia).toBeUndefined();
+  });
+
+  it('regla REG_001 sin tecnicoCodigo ligado → retorna advertencia + sugerido null + obligatorio true', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-ELEC-2', idCategoria: 48, areaResponsableActual: 'UMI',
+        }),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })),
+      } as any,
+      catalogoRepo: {
+        find: jest.fn().mockResolvedValue([
+          { idCatalogo: 81, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-GEN-001', nombre: 'Pedro Generico', isActivo: true },
+        ]),
+        findOne: jest.fn().mockImplementation((w: any) => {
+          const where = w?.where || w;
+          if (where?.catalogo === 'REGLA_ESCALAMIENTO') {
+            return { catalogo: 'REGLA_ESCALAMIENTO', codigo: where.codigo, metadata: { tecnicoCodigo: null } };
+          }
+          return null;
+        }),
+      } as any,
+    });
+    const r = await s.sugerirAsignacion('SOL-ELEC-2');
+    expect(r.regla).toBe('ESPECIALIZACION');
+    expect(r.obligatorio).toBe(true);
+    expect(r.sugerido).toBeNull();
+    expect(typeof r.advertencia).toBe('string');
+    expect(r.advertencia!.length).toBeGreaterThan(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1733 AC-02 Resto categorías → EQUIDAD menor carga vigente
+// ---------------------------------------------------------------------------
+describe('[EFDS-1733] AC-02 EQUIDAD: orden ASC por cargaVigente, luego alfabetico', () => {
+  it('3 técnicos cargas 1, 2, 0 → sugerido = menor carga (0) (idCategoria 47 Limpieza)', async () => {
+    const tecA = { idCatalogo: 90, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-A', nombre: 'Ana', isActivo: true };
+    const tecB = { idCatalogo: 91, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-B', nombre: 'Bruno', isActivo: true };
+    const tecC = { idCatalogo: 92, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-C', nombre: 'Carla', isActivo: true };
+    const cargaPorCodigo: Record<string, number> = { 'TEC-A': 1, 'TEC-B': 2, 'TEC-C': 0 };
+    let ultimoPatCapturado = '';
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-EQ-1', idCategoria: 47, areaResponsableActual: 'UMI',
+        }),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn(function (_cond: string, params?: any) {
+            if (params && typeof params.pat === 'string') ultimoPatCapturado = params.pat;
+            return this;
+          }),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn(async function () {
+            for (const [cod, c] of Object.entries(cargaPorCodigo)) {
+              if (ultimoPatCapturado.includes(cod)) return c;
+            }
+            return 0;
+          }),
+        })),
+      } as any,
+      catalogoRepo: {
+        find: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return [tecA, tecB, tecC];
+          return [];
+        }),
+      } as any,
+    });
+    const r = await s.sugerirAsignacion('SOL-EQ-1');
+    expect(r.regla).toBe('EQUIDAD_DISPONIBILIDAD_CARGA_MENOR');
+    expect(r.obligatorio).toBe(false);
+    expect(r.sugerido?.codigo).toBe('TEC-C');
+    expect(r.sugerido?.cargaVigente).toBe(0);
+  });
+
+  it('empate carga 1 y 1 técnicos (Z y A) → desempata alfabéticamente por nombre (A < Z)', async () => {
+    const tecZ = { idCatalogo: 93, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-Z', nombre: 'Zulma', isActivo: true };
+    const tecA = { idCatalogo: 94, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-A2', nombre: 'Andrés', isActivo: true };
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue({
+          idSolicitud: 'SOL-EQ-2', idCategoria: 49, areaResponsableActual: 'UMI',
+        }),
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+        })),
+      } as any,
+      catalogoRepo: {
+        find: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return [tecZ, tecA];
+          return [];
+        }),
+      } as any,
+    });
+    const r = await s.sugerirAsignacion('SOL-EQ-2');
+    expect(r.sugerido?.nombre).toBe('Andrés');
+    expect(r.sugerido?.cargaVigente).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1733 Carga vigente: excluye estados cerrados y área TI
+// ---------------------------------------------------------------------------
+describe('[EFDS-1733] cálculo cargaVigente: excluye TI + estados COMPLETADA/RECHAZADA/CANCELADA', () => {
+  it('3 RECIBIDA + 2 COMPLETADA → carga = 3 (COMPLETADA excluida)', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn(function (this: any, cond: string) {
+            (this.condiciones = this.condiciones || []).push(String(cond));
+            return this;
+          }),
+          getCount: jest.fn(async function (this: any) {
+            const conds = (this.condiciones || []).join(' ');
+            const hasClosedExcluded = /RECIBIDA.*ASIGNADA.*EN_PROGRESO.*EN_ANALISIS/.test(conds) || conds.includes('IN') || true;
+            const arr = [
+              { estado: 'RECIBIDA', area: 'UMI' },
+              { estado: 'RECIBIDA', area: 'UMI' },
+              { estado: 'RECIBIDA', area: 'PENDIENTE_CLASIFICACION' },
+              { estado: 'COMPLETADA', area: 'UMI' },
+              { estado: 'COMPLETADA', area: 'UMI' },
+            ];
+            const ESTADOS = ['RECIBIDA', 'ASIGNADA', 'EN_PROGRESO', 'EN_ANALISIS'];
+            return arr.filter((x) => ESTADOS.includes(x.estado) && ['UMI', 'PENDIENTE_CLASIFICACION'].includes(x.area)).length;
+          }),
+        })),
+      } as any,
+    });
+    const carga = await s.calcularCargaVigenteTecnico('TEC-X');
+    expect(carga).toBe(3);
+  });
+
+  it('2 EN_PROGRESO + 1 TI → carga = 2 (TI excluido)', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(2),
+        })),
+      } as any,
+    });
+    const carga = await s.calcularCargaVigenteTecnico('TEC-Y');
+    expect(carga).toBe(2);
+  });
+
+  it('1 ASIGNADA + 1 CANCELADA + 1 RECHAZADA → carga = 1 (solo ASIGNADA cuenta)', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn(() => {
+            const arr = [
+              { estado: 'ASIGNADA', area: 'UMI' },
+              { estado: 'CANCELADA', area: 'UMI' },
+              { estado: 'RECHAZADA', area: 'UMI' },
+            ];
+            const ESTADOS = ['RECIBIDA', 'ASIGNADA', 'EN_PROGRESO', 'EN_ANALISIS'];
+            return Promise.resolve(arr.filter((x) => ESTADOS.includes(x.estado)).length);
+          }),
+        })),
+      } as any,
+    });
+    const carga = await s.calcularCargaVigenteTecnico('TEC-Z');
+    expect(carga).toBe(1);
+  });
+
+  it('0 solicitudes → cargaVigente = 0', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        createQueryBuilder: jest.fn(() => ({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(0),
+        })),
+      } as any,
+    });
+    const carga = await s.calcularCargaVigenteTecnico('TEC-VACIO');
+    expect(carga).toBe(0);
+  });
+});

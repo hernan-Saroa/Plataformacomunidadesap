@@ -97,12 +97,14 @@ export interface SolicitudMantenimiento {
   idCategoria?: number;
   idSubcategoria?: number;
   fechaRadicacion?: string;
+  fechaLimiteAtencion?: string;
   usuarioSolicitanteId?: string;
   usuarioSolicitanteEmail?: string;
   evidenciaInicialUrl?: string;
   createdAt: string;
   areaResponsableActual?: 'UMI' | 'TI' | 'PENDIENTE_CLASIFICACION';
   remisiones?: Array<Record<string, any>>;
+  asignaciones?: Array<Record<string, any>>;
   sede?: Sede;
   espacio?: EspacioFisico;
   evidencias?: SolicitudEvidencia[];
@@ -141,12 +143,47 @@ export interface CategoriaServicioPayload {
   color?: string;
 }
 
+export interface TecnicoMantenimientoPayload {
+  codigo: string;
+  nombre: string;
+  email?: string;
+  telefono?: string;
+  especialidades?: string[];
+  orden?: number;
+  isActivo?: boolean;
+}
+
+export interface SugerenciaAsignacion {
+  regla: 'ESPECIALIZACION' | 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR' | 'SIN_REGLA';
+  idCategoria: number | null;
+  sugerido: (CatalogoItem & { cargaVigente?: number }) | null;
+  obligatorio: boolean;
+  opciones: Array<CatalogoItem & { cargaVigente?: number }>;
+  advertencia?: string;
+}
+
 export interface EstadisticasInfraestructura {
   total: number;
   disponibles: number;
   enMantenimiento: number;
   reservadas: number;
   porcentajeOcupacion: number;
+}
+
+export function clasificarSLA(fechaLimiteISO?: string | number | Date | null):
+  | { clase: 'vencido' | 'alerta' | 'ok' | 'sin'; horasRestantes: number | null; texto: string } {
+  if (!fechaLimiteISO) return { clase: 'sin', horasRestantes: null, texto: 'Sin fecha límite' };
+  const ms = new Date(fechaLimiteISO as any).getTime();
+  if (!isFinite(ms)) return { clase: 'sin', horasRestantes: null, texto: 'Fecha inválida' };
+  const diff = ms - Date.now();
+  const horas = diff / (1000 * 60 * 60);
+  if (horas < 0) {
+    const h = Math.round(-1 * horas);
+    return { clase: 'vencido', horasRestantes: Math.round(horas), texto: `Vencida · ${h} h` };
+  }
+  if (horas <= 24) return { clase: 'alerta', horasRestantes: Math.round(horas), texto: `Urgente · ≤24 h (${Math.round(horas)} h)` };
+  if (horas <= 48) return { clase: 'alerta', horasRestantes: Math.round(horas), texto: `Próximo · ≤48 h (${Math.round(horas)} h)` };
+  return { clase: 'ok', horasRestantes: Math.round(horas), texto: `Dentro plazo · ${Math.round(horas)} h` };
 }
 
 const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
@@ -435,14 +472,156 @@ export const infraestructuraService = {
 
   async getSedesAlcanceUMI(): Promise<Sede[]> {
     const todas = await this.getSedes();
-    // Preferencia 1: columna nueva sede.alcanceUmi (migración 004)
     const conBandera = todas.filter((s) => s.isActivo && s.alcanceUmi === true);
     if (conBandera.length > 0) {
       return conBandera;
     }
-    // Fallback: strings quemados (backward compat si la migración aún no se aplicó)
     return todas.filter(
       (s) => s.isActivo && (s.tipo === 'SEDE_CENTRAL' || s.tipo === 'SEDE_ALTERNA'),
     );
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Parámetros UMI / Reglas / Técnicos / Sugerir asignación
+  // ---------------------------------------------------------------------------
+  async getParametroTiempoRespuesta(): Promise<CatalogoItem | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET param tiempo ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getParametroTiempoRespuesta fail:', err);
+      return null;
+    }
+  },
+
+  async setParametroTiempoRespuesta(dias: number): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dias }),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando parámetro días respuesta';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async getReglasEscalamiento(): Promise<CatalogoItem[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/reglas-escalamiento`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET reglas ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] reglas falló:', err);
+      return [];
+    }
+  },
+
+  async actualizarReglaEscalamiento(
+    idRegla: number,
+    body: { tecnicoCodigo?: string | null; isActivo?: boolean; metadata?: Record<string, any> },
+  ): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/reglas-escalamiento/${encodeURIComponent(String(idRegla))}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando regla escalamiento';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async getTecnicos(soloActivos: boolean = true): Promise<CatalogoItem[]> {
+    try {
+      const q = new URLSearchParams();
+      if (!soloActivos) q.append('soloActivos', 'false');
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos${qs}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET técnicos ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getTecnicos falló:', err);
+      return [];
+    }
+  },
+
+  async getTecnicosConCargaVigente(): Promise<Array<CatalogoItem & { cargaVigente?: number }>> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/con-carga-vigente`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET técnicos carga ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] técnicos carga falló:', err);
+      return [];
+    }
+  },
+
+  async crearTecnico(payload: TecnicoMantenimientoPayload): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarTecnico(idCatalogo: number, payload: Partial<TecnicoMantenimientoPayload>): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleTecnico(idCatalogo: number): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/${encodeURIComponent(String(idCatalogo))}/toggle`, {
+      method: 'PATCH', credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Toggle técnico falló');
+    return await res.json();
+  },
+
+  async eliminarTecnico(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'DELETE', credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Eliminar técnico falló');
+    return await res.json();
+  },
+
+  async sugerirAsignacion(idSolicitud: string): Promise<SugerenciaAsignacion | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/sugerir-asignacion`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`sugerir-asignacion ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infra] sugerirAsignacion ${idSolicitud}:`, err);
+      return null;
+    }
   },
 };
