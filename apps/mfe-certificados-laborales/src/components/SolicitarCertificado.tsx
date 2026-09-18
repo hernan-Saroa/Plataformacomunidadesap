@@ -209,6 +209,7 @@ export function SolicitarCertificado() {
       // certificado, no las de la solicitud.
       is_corrected: Boolean(cert.is_corrected),
       certificate_dependency: cert.is_corrected ? undefined : cert.request?.certificate_dependency,
+      certificate_group: cert.is_corrected ? undefined : cert.request?.certificate_group,
       templateSnapshot,
       templateType,
       incluyeSalario,
@@ -235,7 +236,14 @@ export function SolicitarCertificado() {
         fechaVinculacion: cert.hiring_date,
         cargo: cargoFormateado,
         grado: cert.department || cert.position_location || 'N/A',
-        dependencia: cert.department || 'No especificado',
+        // Misma dependencia que imprime el certificado: en las filas de Oracle
+        // `department` guarda el CENTROCOSTO (el grupo).
+        dependencia: (cert.is_corrected
+          ? ''
+          : cert.request?.organization_department ||
+            cert.request?.organizationDepartment ||
+            '') ||
+        cert.department || 'No especificado',
         salario: normalizarMonto(cert.monthly_salary),
         salarioTexto: cert.salary_text,
       },
@@ -248,7 +256,14 @@ export function SolicitarCertificado() {
         dependencia: cert.signer_department || 'Dependencia no disponible',
       },
       position_location: cert.position_location,
-      department: cert.department,
+      // Misma dependencia que imprime el certificado: en las filas de Oracle
+      // `department` guarda el CENTROCOSTO (el grupo).
+      department: (cert.is_corrected
+        ? ''
+        : cert.request?.organization_department ||
+          cert.request?.organizationDepartment ||
+          '') ||
+      cert.department,
       campus: cert.campus,
       signer_name: cert.signer_name,
       signer_position: cert.signer_position,

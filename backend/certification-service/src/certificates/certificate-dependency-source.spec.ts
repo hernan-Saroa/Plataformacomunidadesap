@@ -58,8 +58,11 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
       expect(html).toContain('Profesional Especializado');
       expect(html).toContain(templateType === 'administrador' ? 'Grado 12 (E)' : 'Codigo 2028 (E)');
       expect(html).toContain('5.099.764');
-      // [GRUPO] es el grupo interno de trabajo del encargo, no su ubicacion.
-      expect(html).toContain('GRUPO:Grupo del encargo');
+      // [GRUPO] sale de la MISMA vinculacion que [DEPENDENCIA] (la normal
+      // vigente): las dos variables describen un solo lugar, no uno el del
+      // nombramiento normal y otro el del encargo.
+      expect(html).toContain(`GRUPO:${base.internal_group}`);
+      expect(html).not.toContain('GRUPO:Grupo del encargo');
       expect(html).toContain(`DATO7:${assignment.department}`);
       expect(base).not.toHaveProperty('certificate_dependency');
       expect(assignment).not.toHaveProperty('certificate_dependency');
@@ -68,8 +71,12 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
 
   it.each([
     { internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Direccion de Talento Humano' },
-    { department: null, internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Grupo local' },
-    { department: null, internal_group: 'N/A', cost_center: 'Centro Oracle', expected: 'Centro Oracle' },
+    // Forma Oracle: `department` guarda el CENTROCOSTO y la dependencia real
+    // vive en `organization_department`; se imprime la dependencia, no el grupo.
+    { department: 'Centro Oracle', internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Direccion de Talento Humano' },
+    // El grupo solo entra cuando no hay ninguna dependencia.
+    { department: null, organization_department: null, internal_group: 'Grupo local', cost_center: 'Centro Oracle', expected: 'Grupo local' },
+    { department: null, organization_department: null, internal_group: 'N/A', cost_center: 'Centro Oracle', expected: 'Centro Oracle' },
     { department: null, internal_group: null, cost_center: null, expected: 'Direccion de Talento Humano' },
     { internal_group: null, cost_center: null, department: null, organization_department: null, expected: '' },
   ])('resuelve las fuentes locales y Oracle sin completar con datos del encargo: $expected', ({ expected, ...fields }) => {
@@ -79,10 +86,13 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
   });
 
   it('descarta normales inactivas y elige la normal vigente mas reciente', () => {
+    // Las dos columnas de dependencia se mueven juntas: lo que se prueba aqui es
+    // QUE FILA se elige, no de que columna sale el texto.
     const requests = [
-      encargo(), normal({ id: 'antigua', request_date: '2024-01-01', department: 'Antiguo' }),
-      normal({ id: 'inactiva', status: 'I', request_date: '2027-01-01', department: 'Inactivo' }),
-      normal({ id: 'vigente', request_date: '2026-04-01', department: 'Vigente' }),
+      encargo(),
+      normal({ id: 'antigua', request_date: '2024-01-01', department: 'Antiguo', organization_department: 'Antiguo' }),
+      normal({ id: 'inactiva', status: 'I', request_date: '2027-01-01', department: 'Inactivo', organization_department: 'Inactivo' }),
+      normal({ id: 'vigente', request_date: '2026-04-01', department: 'Vigente', organization_department: 'Vigente' }),
     ];
     expect(service.resolveRequestUsedForCertificate(requests)?.certificate_dependency).toBe('Vigente');
     expect(service.resolveRequestUsedForCertificate([...requests].reverse())?.certificate_dependency).toBe('Vigente');

@@ -67,6 +67,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // destinatario externo, sin sesion en la plataforma => sin JWT)
     /^\/legal\/api\/v\d+\/correos\/track\/open\/.+/i,
     /^\/legal\/api\/v\d+\/correos\/track\/download\/.+/i,
+    // EFDS-1732 MINI CRUD público: administración llana categorías de servicio.
+    // Rutas: GET list / POST crear / PATCH :id / PATCH :id/toggle / DELETE :id.
+    // Sin JWT a nivel gateway (la propia autorización queda al servicio si quiere,
+    // pero el mini crud es @Public en ambos lados por simplicidad "no tan denso").
+    /^\/infraestructura\/api\/v\d+\/mantenimiento\/categorias-servicio(?:\/.*)?(?:\?.*)?$/i,
+    // EFDS-1730 + 1732: upload de evidencias antes/durante radicación. También
+    // @Public() en el controller para evitar 401 por validación JWT prematura
+    // del gateway antes de que el request llegue al servicio (multipart). El
+    // servicio mismo tiene el user de req si JWT válido y lo ignora si no; solo
+    // valida mime/20MB y dueño de la solicitud al ligar evidencias por idSolicitud.
+    /^\/infraestructura\/api\/v\d+\/mantenimiento\/evidencias\/upload(?:\?.*)?$/i,
   ];
 
   private readonly publicByMethodPatterns: Array<{ method: RegExp; path: RegExp }> = [

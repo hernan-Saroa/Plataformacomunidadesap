@@ -94,17 +94,35 @@ export interface SolicitudMantenimiento {
   salon?: string;
   ubicacionDetalle?: string;
   tipoAtencion: string;
-  idCategoria?: string;
+  idCategoria?: number;
+  idSubcategoria?: number;
   fechaRadicacion?: string;
+  fechaLimiteAtencion?: string;
   usuarioSolicitanteId?: string;
   usuarioSolicitanteEmail?: string;
   evidenciaInicialUrl?: string;
   createdAt: string;
   areaResponsableActual?: 'UMI' | 'TI' | 'PENDIENTE_CLASIFICACION';
   remisiones?: Array<Record<string, any>>;
+  asignaciones?: HistoricoAsignacionEntry[];
+  motivoRechazo?: string | null;
+  __meta?: { warning?: string };
   sede?: Sede;
   espacio?: EspacioFisico;
   evidencias?: SolicitudEvidencia[];
+}
+
+export interface HistoricoAsignacionEntry {
+  id: string;
+  fecha: string;
+  accion: 'APROBADA_Y_ASIGNADA' | 'RECHAZADA' | 'REDISTRIBUIDA';
+  tecnico_codigo: string | null;
+  tecnico_nombre_display: string | null;
+  motivo: string | null;
+  observaciones: string | null;
+  usuario_id: string | null;
+  usuario_email: string | null;
+  usuario_roles: string | null;
 }
 
 export interface CreateMantenimientoPayload {
@@ -121,12 +139,58 @@ export interface CreateMantenimientoPayload {
   uploadedEvidenciaIds?: string[];
   prioridad?: string;
   tipoAtencion: 'FISICA' | 'TECNOLOGICA';
+  idCategoria?: number;
+  idSubcategoria?: number;
 }
 
 export interface RemitirATIPayload {
   motivo: string;
   consecutivoCruzadoTi?: string;
   canalRemision?: 'EMAIL_SIN_INTEGRAR' | 'MANUAL';
+}
+
+export interface CategoriaServicioPayload {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+  isActivo?: boolean;
+  color?: string;
+}
+
+export interface TecnicoMantenimientoPayload {
+  codigo: string;
+  nombre: string;
+  email?: string;
+  telefono?: string;
+  especialidades?: string[];
+  orden?: number;
+  isActivo?: boolean;
+}
+
+export interface SugerenciaAsignacion {
+  regla: 'ESPECIALIZACION' | 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR' | 'SIN_REGLA';
+  idCategoria: number | null;
+  sugerido: (CatalogoItem & { cargaVigente?: number }) | null;
+  obligatorio: boolean;
+  opciones: Array<CatalogoItem & { cargaVigente?: number }>;
+  advertencia?: string;
+}
+
+export interface AprobarAsignarPayload {
+  tecnicoCodigo: string;
+  observaciones?: string | null;
+}
+
+export interface RechazarPayload {
+  motivo: string;
+  observaciones?: string | null;
+}
+
+export interface RedistribuirPayload {
+  tecnicoCodigo: string;
+  motivoRedistribucion?: string | null;
+  observaciones?: string | null;
 }
 
 export interface EstadisticasInfraestructura {
@@ -137,13 +201,29 @@ export interface EstadisticasInfraestructura {
   porcentajeOcupacion: number;
 }
 
+export function clasificarSLA(fechaLimiteISO?: string | number | Date | null):
+  | { clase: 'vencido' | 'alerta' | 'ok' | 'sin'; horasRestantes: number | null; texto: string } {
+  if (!fechaLimiteISO) return { clase: 'sin', horasRestantes: null, texto: 'Sin fecha límite' };
+  const ms = new Date(fechaLimiteISO as any).getTime();
+  if (!isFinite(ms)) return { clase: 'sin', horasRestantes: null, texto: 'Fecha inválida' };
+  const diff = ms - Date.now();
+  const horas = diff / (1000 * 60 * 60);
+  if (horas < 0) {
+    const h = Math.round(-1 * horas);
+    return { clase: 'vencido', horasRestantes: Math.round(horas), texto: `Vencida · ${h} h` };
+  }
+  if (horas <= 24) return { clase: 'alerta', horasRestantes: Math.round(horas), texto: `Urgente · ≤24 h (${Math.round(horas)} h)` };
+  if (horas <= 48) return { clase: 'alerta', horasRestantes: Math.round(horas), texto: `Próximo · ≤48 h (${Math.round(horas)} h)` };
+  return { clase: 'ok', horasRestantes: Math.round(horas), texto: `Dentro plazo · ${Math.round(horas)} h` };
+}
+
 const GATEWAY_BASE: string = (typeof window !== 'undefined' && (window as any).__ESAP_CONFIG__?.API_URL)
   ? (window as any).__ESAP_CONFIG__.API_URL.replace(/\/$/, '')
   : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:4000' : '/services');
 
 const API_BASE_URL = `${GATEWAY_BASE}/infraestructura/api/v1`;
 
-export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD';
+export type NombreCatalogo = 'TIPO_MANTENIMIENTO' | 'PRIORIDAD' | 'TIPO_ATENCION' | 'ESTADO_SOLICITUD' | 'CATEGORIA_SERVICIO';
 
 export const infraestructuraService = {
   async getCatalogo(nombre: NombreCatalogo): Promise<CatalogoItem[]> {
@@ -168,9 +248,14 @@ export const infraestructuraService = {
     }
   },
 
-  async getEspacios(): Promise<EspacioFisico[]> {
+  async getEspacios(params?: { idBloque?: string; tipo?: string; estado?: string }): Promise<EspacioFisico[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/espacios`, { credentials: 'include' });
+      const q = new URLSearchParams();
+      if (params?.idBloque) q.append('idBloque', params.idBloque);
+      if (params?.tipo) q.append('tipo', params.tipo);
+      if (params?.estado) q.append('estado', params.estado);
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/espacios${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error(`Error al obtener espacios (${res.status})`);
       return await res.json();
     } catch (err) {
@@ -196,12 +281,13 @@ export const infraestructuraService = {
     }
   },
 
-  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string }): Promise<SolicitudMantenimiento[]> {
+  async getMantenimientos(params?: { incluirTI?: boolean; estado?: string; prioridad?: string; idCategoria?: number }): Promise<SolicitudMantenimiento[]> {
     try {
       const q = new URLSearchParams();
       if (params?.incluirTI === true) q.append('incluirTI', 'true');
       if (params?.estado) q.append('estado', params.estado);
       if (params?.prioridad) q.append('prioridad', params.prioridad);
+      if (Number.isInteger(params?.idCategoria)) q.append('idCategoria', String(params?.idCategoria));
       const qs = q.toString() ? ('?' + q.toString()) : '';
       const res = await fetch(`${API_BASE_URL}/mantenimiento${qs}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error al obtener mantenimientos');
@@ -353,16 +439,487 @@ export const infraestructuraService = {
     }
   },
 
+  async getCategoriasServicio(opts?: { soloActivos?: boolean }): Promise<CatalogoItem[]> {
+    try {
+      const q = new URLSearchParams();
+      if (opts?.soloActivos === true) q.append('soloActivos', 'true');
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio${qs}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Listar categorías ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[getCategoriasServicio] falló:', err);
+      return [];
+    }
+  },
+
+  async crearCategoriaServicio(payload: CategoriaServicioPayload): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando categoría';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarCategoriaServicio(idCatalogo: number, payload: Partial<CategoriaServicioPayload>): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando categoría';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleCategoriaServicio(idCatalogo: number): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio/${encodeURIComponent(String(idCatalogo))}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Toggle categoría falló');
+    return await res.json();
+  },
+
+  async eliminarCategoriaServicio(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/categorias-servicio/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Eliminar categoría falló');
+    return await res.json();
+  },
+
   async getSedesAlcanceUMI(): Promise<Sede[]> {
     const todas = await this.getSedes();
-    // Preferencia 1: columna nueva sede.alcanceUmi (migración 004)
     const conBandera = todas.filter((s) => s.isActivo && s.alcanceUmi === true);
     if (conBandera.length > 0) {
       return conBandera;
     }
-    // Fallback: strings quemados (backward compat si la migración aún no se aplicó)
     return todas.filter(
       (s) => s.isActivo && (s.tipo === 'SEDE_CENTRAL' || s.tipo === 'SEDE_ALTERNA'),
     );
+  },
+
+  async crearSede(payload: Partial<Sede> & { codigo: string; nombre: string; departamento: string; municipio: string; direccion: string }): Promise<Sede> {
+    const res = await fetch(`${API_BASE_URL}/sedes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando la sede';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarSede(idSede: string, payload: Partial<Sede>): Promise<Sede> {
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando la sede';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleSedeActiva(idSede: string): Promise<Sede> {
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Activar/desactivar sede falló');
+    return await res.json();
+  },
+
+  async eliminarSede(idSede: string): Promise<{ idSede: string; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error eliminando la sede';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async crearEspacio(payload: Partial<EspacioFisico> & { idBloque: string; codigo: string; nombre: string; tipo: string }): Promise<EspacioFisico> {
+    const res = await fetch(`${API_BASE_URL}/espacios`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando el espacio físico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarEspacio(idEspacio: string, payload: Partial<EspacioFisico>): Promise<EspacioFisico> {
+    const res = await fetch(`${API_BASE_URL}/espacios/${encodeURIComponent(idEspacio)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando el espacio físico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleEspacioActivo(idEspacio: string): Promise<EspacioFisico> {
+    const res = await fetch(`${API_BASE_URL}/espacios/${encodeURIComponent(idEspacio)}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Activar/desactivar espacio falló');
+    return await res.json();
+  },
+
+  async eliminarEspacio(idEspacio: string): Promise<{ idEspacio: string; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/espacios/${encodeURIComponent(idEspacio)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error eliminando el espacio';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // Bloques / Edificios por sede (EFDS 1732)
+  // ---------------------------------------------------------------------------
+  async getBloquesPorSede(idSede: string, soloActivos: boolean = true): Promise<BloqueEdificio[]> {
+    const qs = new URLSearchParams();
+    if (!soloActivos) qs.set('soloActivos', 'false');
+    const res = await fetch(`${API_BASE_URL}/sedes/${encodeURIComponent(idSede)}/bloques?${qs.toString()}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Error cargando bloques de la sede');
+    return await res.json();
+  },
+
+  async crearBloque(payload: Partial<BloqueEdificio> & { idSede: string; codigo: string; nombre: string }): Promise<BloqueEdificio> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando el bloque';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarBloque(idBloque: string, payload: Partial<BloqueEdificio>): Promise<BloqueEdificio> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques/${encodeURIComponent(idBloque)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando el bloque';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleBloqueActivo(idBloque: string): Promise<BloqueEdificio> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques/${encodeURIComponent(idBloque)}/toggle`, {
+      method: 'PATCH',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Activar/desactivar bloque falló');
+    return await res.json();
+  },
+
+  async eliminarBloque(idBloque: string): Promise<{ idBloque: string; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/sedes/bloques/${encodeURIComponent(idBloque)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let m = 'Error eliminando el bloque';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Parámetros UMI / Reglas / Técnicos / Sugerir asignación
+  // ---------------------------------------------------------------------------
+  async getParametroTiempoRespuesta(): Promise<CatalogoItem | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET param tiempo ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getParametroTiempoRespuesta fail:', err);
+      return null;
+    }
+  },
+
+  async setParametroTiempoRespuesta(dias: number): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dias }),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando parámetro días respuesta';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async getReglasEscalamiento(): Promise<CatalogoItem[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/reglas-escalamiento`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET reglas ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] reglas falló:', err);
+      return [];
+    }
+  },
+
+  async actualizarReglaEscalamiento(
+    idRegla: number,
+    body: { tecnicoCodigo?: string | null; isActivo?: boolean; metadata?: Record<string, any> },
+  ): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/reglas-escalamiento/${encodeURIComponent(String(idRegla))}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando regla escalamiento';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async getTecnicos(soloActivos: boolean = true): Promise<CatalogoItem[]> {
+    try {
+      const q = new URLSearchParams();
+      if (!soloActivos) q.append('soloActivos', 'false');
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos${qs}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET técnicos ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] getTecnicos falló:', err);
+      return [];
+    }
+  },
+
+  async getTecnicosConCargaVigente(opts?: { incluirInactivos?: boolean }): Promise<Array<CatalogoItem & { cargaVigente?: number }>> {
+    try {
+      const qs = new URLSearchParams();
+      if (opts?.incluirInactivos) qs.set('incluirInactivos', 'true');
+      const q = qs.toString();
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/con-carga-vigente${q ? `?${q}` : ''}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`GET técnicos carga ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] técnicos carga falló:', err);
+      return [];
+    }
+  },
+
+  async crearTecnico(payload: TecnicoMantenimientoPayload): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error creando técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async actualizarTecnico(idCatalogo: number, payload: Partial<TecnicoMantenimientoPayload>): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async toggleTecnico(idCatalogo: number): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/${encodeURIComponent(String(idCatalogo))}/toggle`, {
+      method: 'PATCH', credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Toggle técnico falló');
+    return await res.json();
+  },
+
+  async eliminarTecnico(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/tecnicos/${encodeURIComponent(String(idCatalogo))}`, {
+      method: 'DELETE', credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Eliminar técnico falló');
+    return await res.json();
+  },
+
+  async sugerirAsignacion(idSolicitud: string): Promise<SugerenciaAsignacion | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/sugerir-asignacion`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`sugerir-asignacion ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn(`[infra] sugerirAsignacion ${idSolicitud}:`, err);
+      return null;
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733 bis HUECO 1 (RF-INF-004 L104): Tiempo POR CATEGORÍA (47..54)
+  // ---------------------------------------------------------------------------
+  async listarParametrosTiempoPorCategoria(opts?: { idCategoria?: number }): Promise<CatalogoItem[] | CatalogoItem | null> {
+    try {
+      const q = new URLSearchParams();
+      if (Number.isInteger(opts?.idCategoria)) q.append('idCategoria', String(opts?.idCategoria));
+      const qs = q.toString() ? ('?' + q.toString()) : '';
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta${qs}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`GET param tiempo por categoría ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('[infra] listarParametrosTiempoPorCategoria fail:', err);
+      return Number.isInteger(opts?.idCategoria) ? null : [];
+    }
+  },
+
+  async actualizarParametroTiempoRespuestaPorCategoria(
+    idCategoria: number,
+    dias: number,
+  ): Promise<CatalogoItem> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/parametros/tiempo-respuesta`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idCategoria: Number(idCategoria), dias: Number(dias) }),
+    });
+    if (!res.ok) {
+      let m = 'Error actualizando parámetro días respuesta por categoría';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1734 RF-INF-005: 3 acciones análisis (aprobar-asignar / rechazar / redistribuir)
+  // Requieren rol SUPER_ADMIN o GESTOR_MANTENIMIENTO; de lo contrario 403 Forbidden.
+  // ---------------------------------------------------------------------------
+  async aprobarYAsignar(
+    idSolicitud: string,
+    payload: AprobarAsignarPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/aprobar-asignar`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al aprobar y asignar la solicitud';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async rechazarSolicitud(
+    idSolicitud: string,
+    payload: RechazarPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/rechazar`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al rechazar la solicitud';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async redistribuirAsignacion(
+    idSolicitud: string,
+    payload: RedistribuirPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(`${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/redistribuir`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let m = 'Error al redistribuir la asignación';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
   },
 };

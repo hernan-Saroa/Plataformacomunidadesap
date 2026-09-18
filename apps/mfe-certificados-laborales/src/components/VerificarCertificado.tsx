@@ -207,7 +207,17 @@ export function VerificarCertificado() {
       })
     : '';
   const tipoVinculacion = certificado?.position_category || certificado?.positionCategory || certificado?.tipo_vinculacion || '';
+  // Mismo orden que imprime el certificado: la dependencia que ya resolvio el
+  // backend, luego `organization_department` (en las filas de Oracle
+  // `department` guarda el CENTROCOSTO) y solo despues las columnas crudas.
   const dependenciaMostrar =
+    (certificado?.is_corrected
+      ? ''
+      : certificado?.request?.certificate_dependency ||
+        certificado?.certificate_dependency ||
+        certificado?.request?.organization_department ||
+        certificado?.request?.organizationDepartment ||
+        '') ||
     certificado?.department ||
     certificado?.request?.department ||
     certificado?.request?.departmentName ||
