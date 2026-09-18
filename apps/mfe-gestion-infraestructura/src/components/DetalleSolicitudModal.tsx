@@ -140,6 +140,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [errorRedist, setErrorRedist] = useState<string>('');
 
   const [ejecutandoAprobar, setEjecutandoAprobar] = useState<boolean>(false);
+  const [aprobacionObservaciones, setAprobacionObservaciones] = useState<string>('');
   const [historicoAbierto, setHistoricoAbierto] = useState<boolean>(true);
   const [toastModal, setToastModal] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
 
@@ -152,6 +153,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setSugerencia(null);
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
+      setAprobacionObservaciones('');
       return;
     }
     const cargar = async () => {
@@ -162,6 +164,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setSugerencia(null);
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
+      setAprobacionObservaciones('');
       try {
         const tareas: Promise<any>[] = [
           infraestructuraService.getMantenimientoById(idSolicitud),
@@ -336,7 +339,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     try {
       const payload: any = {
         tecnicoCodigo: areaTI ? undefined : codTec,
-        observaciones: rechazoObservaciones.trim() || undefined,
+        observaciones: aprobacionObservaciones.trim() || undefined,
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
       if (res?.__meta?.warning) {
@@ -351,6 +354,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       }
       setTecnicoManualSeleccionado('');
       setSugerencia(null);
+      setAprobacionObservaciones('');
       await recargarDetalle();
     } catch (err: any) {
       setToastModal({ tipo: 'err', texto: err?.message || 'No se pudo aprobar la solicitud. Verifica permisos.' });
@@ -380,7 +384,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         motivo,
         observaciones: rechazoObservaciones.trim() || undefined,
       });
-      setToastModal({ tipo: 'ok', texto: 'Solicitud RECHAZADA. El motivo es visible para el solicitante.' });
+      const areaTI = (detalle?.areaResponsableActual || '').toUpperCase() === 'TI';
+      if (areaTI) {
+        setToastModal({ tipo: 'ok', texto: 'Remisión TI RECHAZADA. La solicitud retorna a la bandeja UMI para correcciones. El motivo queda registrado.' });
+      } else {
+        setToastModal({ tipo: 'ok', texto: 'Solicitud RECHAZADA. El motivo es visible para el solicitante.' });
+      }
       setMostrarModalRechazar(false);
       await recargarDetalle();
     } catch (err: any) {
@@ -1213,6 +1222,21 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
             </>
           )}
         </div>
+
+        {detalle && ((detalle.areaResponsableActual || '').toUpperCase() === 'TI') && (
+          <div className="px-5 pb-4 -mt-3 bg-white">
+            <label className="block text-xs font-bold text-slate-700 tracking-tight mb-1.5">
+              Observaciones de confirmación de recepción (opcional)
+            </label>
+            <textarea
+              value={aprobacionObservaciones}
+              onChange={(e) => setAprobacionObservaciones(e.target.value)}
+              rows={2}
+              placeholder="Ej: Recepción confirmada. Derivado a mesa de servicios TIC, ticket consecutivo TIC-2026-..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all resize-none placeholder:text-slate-400"
+            />
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-t border-slate-200 bg-white">
           <div className="flex flex-wrap items-center gap-3">

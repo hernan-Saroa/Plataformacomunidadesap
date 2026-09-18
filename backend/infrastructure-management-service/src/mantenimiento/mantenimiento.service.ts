@@ -1015,7 +1015,7 @@ export class MantenimientoService implements OnModuleInit {
   private pushAsignacion(
     solicitud: SolicitudMantenimiento,
     args: {
-      accion: 'APROBADA_Y_ASIGNADA' | 'RECHAZADA' | 'REDISTRIBUIDA';
+      accion: 'APROBADA_Y_ASIGNADA' | 'APROBADA_REMISION_TI' | 'RECHAZADA' | 'REDISTRIBUIDA';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       motivo?: string | null;
@@ -1063,43 +1063,75 @@ export class MantenimientoService implements OnModuleInit {
 
   async aprobarYAsignar(
     idSolicitud: string,
-    args: { tecnicoCodigo: string; observaciones?: string | null },
+    args: { tecnicoCodigo?: string | null; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
     const vr = this.validarRolesAsignador(user);
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     const solicitud = await this.findById(idSolicitud);
-    const tec = await this.resolverTecnicoActivo(args.tecnicoCodigo);
-    solicitud.estado = 'ASIGNADA';
-    solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
-    solicitud.motivoRechazo = undefined; // D7: limpiar motivo anterior si fue rechazada y luego se re-aprueba.
+    const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+    const codTec = (args.tecnicoCodigo || '').trim();
 
-    let warning: string | undefined = undefined;
-    if (Number(solicitud.idCategoria) === 48) {
-      const regla001 = await this.catalogoRepo.findOne({
-        where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
-      });
-      const esperadoCodigo =
-        regla001?.metadata && typeof regla001.metadata === 'object' ? (regla001.metadata as any).tecnicoCodigo : null;
-      if (esperadoCodigo && String(esperadoCodigo).trim() !== '' && String(esperadoCodigo).trim() !== tec.codigo) {
-        warning =
-          '⚠️ Aprobación manual: la solicitud pertenece a categoría Eléctricas (CS_002). Regla ESPECIALIZACIÓN sugiere: ' +
-          String(esperadoCodigo).trim() +
-          '. Usted asignó: ' +
-          tec.codigo +
-          '. Queda registrada en historial para auditoría.';
-      }
+    if (!esTI && !codTec) {
+      throw new BadRequestException('Código técnico es obligatorio para asignar / redistribuir solicitudes UMI físicas.');
     }
 
-    this.pushAsignacion(solicitud, {
-      accion: 'APROBADA_Y_ASIGNADA',
-      tecnicoCodigo: tec.codigo,
-      tecnicoNombreDisplay: tec.nombre,
-      motivo: null,
-      observaciones: args.observaciones ?? null,
-      user: user as AuthUser,
-    });
+    let warning: string | undefined = undefined;
+    let tec: CatalogoItem | null = null;
+
+    if (esTI) {
+      solicitud.estado = 'REMITIDA_TI';
+      solicitud.responsableAsignado = 'Oficina de Tecnologías de la Información (TI)';
+      solicitud.motivoRechazo = undefined;
+      if (Array.isArray(solicitud.remisiones) && solicitud.remisiones.length > 0) {
+        const ultima = solicitud.remisiones[solicitud.remisiones.length - 1];
+        if (ultima && typeof ultima === 'object') {
+          ultima.estado_remision = 'CONFIRMADA_RECEPCION_TI';
+          ultima.fecha_confirmacion_recepcion = new Date().toISOString();
+          ultima.usuario_confirma_recepcion_id = (user as AuthUser)?.userId ?? null;
+          ultima.usuario_confirma_recepcion_email = (user as AuthUser)?.email ?? null;
+        }
+      }
+      this.pushAsignacion(solicitud, {
+        accion: 'APROBADA_REMISION_TI',
+        tecnicoCodigo: null,
+        tecnicoNombreDisplay: null,
+        motivo: 'Confirmación de recepción de la remisión por la Oficina TI. Flujo interno TIC a partir de este punto.',
+        observaciones: args.observaciones ?? null,
+        user: user as AuthUser,
+      });
+    } else {
+      tec = await this.resolverTecnicoActivo(codTec);
+      solicitud.estado = 'ASIGNADA';
+      solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
+      solicitud.motivoRechazo = undefined;
+
+      if (Number(solicitud.idCategoria) === 48) {
+        const regla001 = await this.catalogoRepo.findOne({
+          where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+        });
+        const esperadoCodigo =
+          regla001?.metadata && typeof regla001.metadata === 'object' ? (regla001.metadata as any).tecnicoCodigo : null;
+        if (esperadoCodigo && String(esperadoCodigo).trim() !== '' && String(esperadoCodigo).trim() !== tec.codigo) {
+          warning =
+            '⚠️ Aprobación manual: la solicitud pertenece a categoría Eléctricas (CS_002). Regla ESPECIALIZACIÓN sugiere: ' +
+            String(esperadoCodigo).trim() +
+            '. Usted asignó: ' +
+            tec.codigo +
+            '. Queda registrada en historial para auditoría.';
+        }
+      }
+
+      this.pushAsignacion(solicitud, {
+        accion: 'APROBADA_Y_ASIGNADA',
+        tecnicoCodigo: tec.codigo,
+        tecnicoNombreDisplay: tec.nombre,
+        motivo: null,
+        observaciones: args.observaciones ?? null,
+        user: user as AuthUser,
+      });
+    }
 
     const saved = await this.mantenimientoRepo.save(solicitud);
     if (warning) (saved as any).__meta = { warning };
@@ -1123,9 +1155,24 @@ export class MantenimientoService implements OnModuleInit {
     }
 
     const solicitud = await this.findById(idSolicitud);
+    const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
     solicitud.estado = 'RECHAZADA';
     solicitud.motivoRechazo = motivo;
     solicitud.responsableAsignado = null as any;
+
+    if (esTI) {
+      solicitud.areaResponsableActual = 'UMI';
+      solicitud.tipoAtencion = 'FISICA';
+      if (Array.isArray(solicitud.remisiones) && solicitud.remisiones.length > 0) {
+        const ultima = solicitud.remisiones[solicitud.remisiones.length - 1];
+        if (ultima && typeof ultima === 'object') {
+          ultima.estado_remision = 'RECHAZADA_POR_UMI';
+          ultima.fecha_rechazo_recepcion = new Date().toISOString();
+          ultima.usuario_rechaza_recepcion_id = (user as AuthUser)?.userId ?? null;
+          ultima.usuario_rechaza_recepcion_email = (user as AuthUser)?.email ?? null;
+        }
+      }
+    }
 
     this.pushAsignacion(solicitud, {
       accion: 'RECHAZADA',

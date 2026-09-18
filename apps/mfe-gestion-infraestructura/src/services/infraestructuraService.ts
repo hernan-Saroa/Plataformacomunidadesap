@@ -178,7 +178,7 @@ export interface SugerenciaAsignacion {
 }
 
 export interface AprobarAsignarPayload {
-  tecnicoCodigo: string;
+  tecnicoCodigo?: string | null;
   observaciones?: string | null;
 }
 

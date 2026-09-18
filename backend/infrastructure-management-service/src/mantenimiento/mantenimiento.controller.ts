@@ -349,16 +349,16 @@ export class MantenimientoController {
   @Post(':idSolicitud/aprobar-asignar')
   @ApiOperation({
     summary:
-      'EFDS-1734 RF-INF-005 AC-01: Aprobar y asignar una solicitud RECIBIDA. Pasa estado a ASIGNADA, setea responsableAsignado, limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+      'EFDS-1734 RF-INF-005 AC-01: Aprobar una solicitud. Si areaResponsableActual = TI: confirma recepción remisión a Oficina TI (tecnicoCodigo OPCIONAL). Si UMI: asigna técnico obligatorio y pasa estado ASIGNADA. Limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
   })
-  @ApiResponse({ status: 200, description: 'Solicitud aprobada y asignada. Histórico auditoría actualizado.' })
-  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente.' })
+  @ApiResponse({ status: 200, description: 'Solicitud aprobada. Histórico auditoría actualizado.' })
+  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente o faltante en flujo UMI físico.' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
   aprobarYAsignar(
     @Param('idSolicitud') idSolicitud: string,
     @Body()
     body: {
-      tecnicoCodigo: string;
+      tecnicoCodigo?: string | null;
       observaciones?: string | null;
     },
     @Req() req: any,
