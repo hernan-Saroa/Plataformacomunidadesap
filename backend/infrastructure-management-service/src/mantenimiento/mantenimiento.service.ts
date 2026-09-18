@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
@@ -51,10 +51,12 @@ const ESTADOS_CARGA_VIGENTE: readonly string[] = ['RECIBIDA','ASIGNADA','EN_PROG
 const TECNICO_MANTENIMIENTO = 'TECNICO_MANTENIMIENTO';
 const REGLA_ESCALAMIENTO = 'REGLA_ESCALAMIENTO';
 const PARAMETRO_UMI = 'PARAMETRO_UMI';
-const COD_TIEMPO = 'TIEMPO_RESPUESTA_DIAS';
+const COD_TIEMPO_GLOBAL = 'TIEMPO_RESPUESTA_DIAS';
+const PREFIX_TIEMPO_CAT = 'TIEMPO_RESP_DIAS_CAT_';
+const ROLES_ASIGNADOR_PERMITIDOS: readonly string[] = ['SUPER_ADMIN', 'GESTOR_MANTENIMIENTO'] as const;
 
 @Injectable()
-export class MantenimientoService {
+export class MantenimientoService implements OnModuleInit {
   constructor(
     @InjectRepository(SolicitudMantenimiento)
     private readonly mantenimientoRepo: Repository<SolicitudMantenimiento>,
@@ -66,6 +68,45 @@ export class MantenimientoService {
     private readonly evidenciaRepo: Repository<SolicitudEvidencia>,
     private readonly storage: StorageService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.asegurarSeedTiemposPorCategoria();
+      await this.cargarParametroCache();
+    } catch {}
+  }
+
+  private async asegurarSeedTiemposPorCategoria(): Promise<void> {
+    const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
+      { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
+      { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
+      { id_cat: 49, cod_cs: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3 },
+      { id_cat: 50, cod_cs: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4 },
+      { id_cat: 51, cod_cs: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores', orden: 5 },
+      { id_cat: 52, cod_cs: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería', orden: 6 },
+      { id_cat: 53, cod_cs: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7 },
+      { id_cat: 54, cod_cs: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos', orden: 8 },
+    ];
+    for (const c of catalogo8) {
+      const cod = this.codigoParamTiempoCat(c.id_cat);
+      const exists = await this.catalogoRepo.findOne({
+        where: { catalogo: PARAMETRO_UMI, codigo: cod },
+      });
+      if (exists) continue;
+      try {
+        const seed = this.catalogoRepo.create({
+          catalogo: PARAMETRO_UMI,
+          codigo: cod,
+          nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
+          descripcion: 'Seed automático módulo init EFDS-1733-bis RF-INF-004. Modificable desde panel parámetros UMI.',
+          orden: 100 + c.orden,
+          isActivo: true,
+          metadata: this.metadataTiempoDefaults(c.id_cat),
+        });
+        await this.catalogoRepo.save(seed as any);
+      } catch {}
+    }
+  }
 
   private usuarioTieneRolUMI(user?: AuthUser | null): boolean {
     if (!user || !Array.isArray(user.roles)) return false;
@@ -198,7 +239,7 @@ export class MantenimientoService {
       consecutivo: consecutivo,
       estado: 'RECIBIDA',
       fechaRadicacion: ahora,
-      fechaLimiteAtencion: this.aplicarFechaLimite(ahora),
+      fechaLimiteAtencion: this.aplicarFechaLimite(ahora, dto.idCategoria ?? null),
       asignaciones: [],
       usuarioSolicitanteId: userIdUuidOrNull(user.userId) ?? undefined,
       usuarioSolicitanteEmail: user.email,
@@ -425,61 +466,267 @@ export class MantenimientoService {
   }
 
   // ---------------------------------------------------------------------------
-  // EFDS-1733: Parametros UMI (tiempo respuesta 1..3 días)
+  // EFDS-1733 BIS (HUECO 1 RF-INF-004): Tiempo de respuesta POR CATEGORÍA
+  // Antes: 1 global único. Ahora: 8 filas TIEMPO_RESP_DIAS_CAT_47..CAT_54.
   // ---------------------------------------------------------------------------
   private clampDias(d: number): number {
     if (!Number.isFinite(d)) return 2;
     return Math.max(1, Math.min(3, Math.trunc(d)));
   }
 
-  async obtenerParametroTiempoRespuesta(): Promise<CatalogoItem> {
-    const row = await this.catalogoRepo.findOne({
-      where: { catalogo: PARAMETRO_UMI, codigo: COD_TIEMPO },
-    });
-    if (!row) {
-      const seed = this.catalogoRepo.create({
-        catalogo: PARAMETRO_UMI,
-        codigo: COD_TIEMPO,
-        nombre: 'Tiempo máximo respuesta (días naturales)',
-        orden: 1,
-        isActivo: true,
-        metadata: { min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES' },
-      });
-      return this.catalogoRepo.save(seed);
-    }
-    return row;
+  private codigoParamTiempoCat(idCategoria: number | null | undefined): string {
+    if (!Number.isInteger(idCategoria as any)) return '';
+    return PREFIX_TIEMPO_CAT + String(Math.trunc(Number(idCategoria))).padStart(2, '0');
   }
 
-  async actualizarParametroTiempoRespuesta(dias: number): Promise<CatalogoItem> {
+  private metadataTiempoDefaults(idCategoria: number): Record<string, any> {
+    const MAPA_CS: Record<number, { cod: string; nombre: string }> = {
+      47: { cod: 'CS_001', nombre: 'Cerrajería y Carpintería' },
+      48: { cod: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
+      49: { cod: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos' },
+      50: { cod: 'CS_004', nombre: 'Plomería y Fontanería' },
+      51: { cod: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores' },
+      52: { cod: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería' },
+      53: { cod: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes' },
+      54: { cod: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos' },
+    };
+    const info = MAPA_CS[idCategoria] || { cod: 'CS_' + String(idCategoria).padStart(3, '0'), nombre: 'Categoría ' + idCategoria };
+    return {
+      idCategoria: Math.trunc(Number(idCategoria)),
+      codCategoriaCS: info.cod,
+      nombreCategoriaCS: info.nombre,
+      min: 1,
+      max: 3,
+      default: 2,
+      actual: 2,
+      unidad: 'DIAS_NATURALES',
+      modificadoPor: 'FALLBACK_SERVICE_EFDS_1733_BIS',
+      fechaModificacion: new Date().toISOString(),
+    };
+  }
+
+  private paramCacheTiempoPorCategoria = new Map<number, number>();
+  private paramCacheGlobalFallback: number = 2;
+
+  private aplicarCacheConDefaults(row: CatalogoItem | undefined | null, idCategoria: number): number {
+    let actual = 2;
+    if (row && row.metadata && typeof row.metadata === 'object') {
+      const metaActual = Number((row.metadata as any).actual);
+      actual = this.clampDias(isFinite(metaActual) ? metaActual : 2);
+    }
+    this.paramCacheTiempoPorCategoria.set(Math.trunc(Number(idCategoria)), actual);
+    return actual;
+  }
+
+  async listarParametrosTiempoPorCategoria(): Promise<CatalogoItem[]> {
+    const rows = await this.catalogoRepo
+      .createQueryBuilder('c')
+      .where('c.catalogo = :cat', { cat: PARAMETRO_UMI })
+      .andWhere('c.codigo LIKE :pref', { pref: PREFIX_TIEMPO_CAT + '%' })
+      .orderBy('c.orden', 'ASC')
+      .addOrderBy('c.idCatalogo', 'ASC')
+      .getMany();
+
+    if (rows && rows.length > 0) {
+      for (const r of rows) {
+        const idCat = Number(r.metadata && typeof r.metadata === 'object' ? (r.metadata as any).idCategoria : null);
+        if (Number.isInteger(idCat)) this.aplicarCacheConDefaults(r, idCat);
+      }
+      return rows;
+    }
+    // Fallback: si la migración 010_02 NO se ejecutó (no hay data), creamos los 8 on-the-fly
+    const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
+      { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
+      { id_cat: 48, cod_cs: 'CS_002', nombre: 'Eléctricas y Electrónicas', orden: 2 },
+      { id_cat: 49, cod_cs: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos', orden: 3 },
+      { id_cat: 50, cod_cs: 'CS_004', nombre: 'Plomería y Fontanería', orden: 4 },
+      { id_cat: 51, cod_cs: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores', orden: 5 },
+      { id_cat: 52, cod_cs: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería', orden: 6 },
+      { id_cat: 53, cod_cs: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes', orden: 7 },
+      { id_cat: 54, cod_cs: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos', orden: 8 },
+    ];
+    const creados: CatalogoItem[] = [];
+    for (const c of catalogo8) {
+      const seed = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: this.codigoParamTiempoCat(c.id_cat),
+        nombre: `Tiempo respuesta ${c.nombre} (días naturales 1..3)`,
+        orden: 100 + c.orden,
+        isActivo: true,
+        metadata: this.metadataTiempoDefaults(c.id_cat),
+      });
+      try {
+        const saved = await this.catalogoRepo.save(seed as any);
+        creados.push(saved as CatalogoItem);
+        this.aplicarCacheConDefaults(saved as any, c.id_cat);
+      } catch {
+        // ignore dup (race)
+        const found = await this.catalogoRepo.findOne({
+          where: { catalogo: PARAMETRO_UMI, codigo: this.codigoParamTiempoCat(c.id_cat) },
+        });
+        if (found) {
+          creados.push(found as CatalogoItem);
+          this.aplicarCacheConDefaults(found as any, c.id_cat);
+        }
+      }
+    }
+    // Fallback doble: si creados.length < 8 (por save fallo / restriccion / race no dup), hacemos REFRESH find de nuevo,
+    // y si sigue <8 generamos 8 IN-MEMORY sin persistir para garantizar al UI 8 categorías renderizadas.
+    // El usuario al Guardar una categoría (PATCH) SÍ persiste correctamente el item individual (obtenerParametroTiempo sí crea OK).
+    if (creados.length < 8) {
+      const refrescados = await this.catalogoRepo
+        .createQueryBuilder('c')
+        .where('c.catalogo = :cat', { cat: PARAMETRO_UMI })
+        .andWhere('c.codigo LIKE :pref', { pref: PREFIX_TIEMPO_CAT + '%' })
+        .orderBy('c.orden', 'ASC')
+        .addOrderBy('c.idCatalogo', 'ASC')
+        .getMany();
+      if (refrescados && refrescados.length >= 8) return refrescados;
+      const creadosMap = new Map<string, CatalogoItem>();
+      for (const x of [...(refrescados || []), ...creados]) {
+        if (x?.codigo) creadosMap.set(String(x.codigo), x);
+      }
+      for (const c of catalogo8) {
+        const cod = this.codigoParamTiempoCat(c.id_cat);
+        if (!creadosMap.has(cod)) {
+          const temp = this.catalogoRepo.create({
+            catalogo: PARAMETRO_UMI,
+            codigo: cod,
+            nombre: `Tiempo respuesta ${c.nombre} (días 1..3) · IN-MEMORY FALLBACK ejecutar migración 010_02`,
+            descripcion: 'Generado on-the-fly IN-MEMORY (fallback) por EFDS-1733-bis. Al dar GUARDAR se persiste; se recomienda ejecutar la migración 010_02 para el seed permanente.',
+            orden: 100 + c.orden,
+            isActivo: true,
+            metadata: { ...this.metadataTiempoDefaults(c.id_cat), __flag: 'FALLBACK_MEM_PENDING_MIG_010_02' },
+          });
+          creadosMap.set(cod, temp as CatalogoItem);
+          creados.push(temp as CatalogoItem);
+          this.aplicarCacheConDefaults(temp as any, c.id_cat);
+        }
+      }
+    }
+    creados.sort((a, b) => {
+      const ia = Number((a.metadata as any)?.idCategoria ?? 99);
+      const ib = Number((b.metadata as any)?.idCategoria ?? 99);
+      return ia - ib;
+    });
+    return creados;
+  }
+
+  async obtenerParametroTiempoRespuesta(idCategoria?: number): Promise<CatalogoItem> {
+    const idCat = Number(idCategoria);
+    const tieneIdCatValido = Number.isInteger(idCat) && idCat >= 47 && idCat <= 54;
+    if (tieneIdCatValido) {
+      const cod = this.codigoParamTiempoCat(idCat);
+      let row = await this.catalogoRepo.findOne({ where: { catalogo: PARAMETRO_UMI, codigo: cod } });
+      if (!row) {
+        const seed = this.catalogoRepo.create({
+          catalogo: PARAMETRO_UMI,
+          codigo: cod,
+          nombre: `Tiempo respuesta (CATEGORÍA ${idCat})`,
+          descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733-bis).',
+          orden: 100 + (idCat - 46),
+          isActivo: true,
+          metadata: this.metadataTiempoDefaults(idCat),
+        });
+        row = await this.catalogoRepo.save(seed);
+      }
+      this.aplicarCacheConDefaults(row as any, idCat);
+      return row;
+    }
+    // Fallback si NO se envía idCategoria (legacy): leemos el param global
+    // TIEMPO_RESPUESTA_DIAS si existe, sino retornamos un objeto IN-MEMORY
+    // (NO persistimos desde aquí para no confundir con params por categoría).
+    const globalRow = await this.catalogoRepo.findOne({
+      where: { catalogo: PARAMETRO_UMI, codigo: COD_TIEMPO_GLOBAL },
+    });
+    if (globalRow) return globalRow;
+    const temp = this.catalogoRepo.create({
+      catalogo: PARAMETRO_UMI,
+      codigo: COD_TIEMPO_GLOBAL,
+      nombre: 'Tiempo máximo respuesta (días naturales) · FALLBACK GLOBAL LEGACY',
+      orden: 99,
+      isActivo: true,
+      metadata: {
+        tipo: 'FALLBACK_LEGACY',
+        nota: 'Use listarParametrosTiempoPorCategoria para consultar los 8 parámetros por categoría (RF-INF-004 L104 EFDS-1733-bis).',
+        min: 1, max: 3, default: 2, actual: this.paramCacheGlobalFallback, unidad: 'DIAS_NATURALES',
+      },
+    });
+    return temp;
+  }
+
+  async actualizarParametroTiempoRespuesta(idCategoria: number | undefined, dias: number): Promise<CatalogoItem> {
+    const idCat = Math.trunc(Number(idCategoria));
+    if (!Number.isInteger(idCat) || idCat < 47 || idCat > 54) {
+      throw new BadRequestException(
+        'Parámetro tiempo-respuesta ahora POR CATEGORÍA (EFDS-1733-bis HUECO 1). Indique idCategoria en rango [47..54].',
+      );
+    }
     if (!Number.isInteger(dias)) {
       throw new BadRequestException('Los días del tiempo de respuesta deben ser un número entero.');
     }
     if (dias < 1 || dias > 3) {
-      throw new BadRequestException('Tiempo de respuesta: valor fuera de rango. Rango permitido: 1 a 3 días naturales.');
+      throw new BadRequestException('Tiempo de respuesta: fuera de rango. Rango permitido 1 a 3 días naturales.');
     }
-    const row = await this.obtenerParametroTiempoRespuesta();
-    if (!row.metadata || typeof row.metadata !== 'object') row.metadata = {};
-    (row.metadata as any).actual = dias;
-    (row.metadata as any).fechaModificacion = new Date().toISOString();
-    return this.catalogoRepo.save(row);
+    const cod = this.codigoParamTiempoCat(idCat);
+    let row = await this.catalogoRepo.findOne({ where: { catalogo: PARAMETRO_UMI, codigo: cod } });
+    if (!row) {
+      const seed = this.catalogoRepo.create({
+        catalogo: PARAMETRO_UMI,
+        codigo: cod,
+        nombre: `Tiempo respuesta (CATEGORÍA ${idCat})`,
+        descripcion: 'Creado on-demand por PATCH actualizarParametroTiempoRespuesta (EFDS-1733-bis).',
+        orden: 100 + (idCat - 46),
+        isActivo: true,
+        metadata: this.metadataTiempoDefaults(idCat),
+      });
+      row = await this.catalogoRepo.save(seed);
+    }
+    row.metadata = {
+      ...((row.metadata && typeof row.metadata === 'object') ? row.metadata : {}),
+      actual: Math.trunc(Number(dias)),
+      fechaModificacion: new Date().toISOString(),
+      modificadoPor: 'PATCH_PANEL_ADMIN_PARAMETROS_UMI',
+      marcaAgua: 'EFDS_1733_BIS__FIX_CAP1_OK__CODIGO_NUEVO_CARGADO__V2_' + Date.now(),
+    };
+    const saved = await this.catalogoRepo.save(row);
+    this.aplicarCacheConDefaults(saved, idCat);
+    console.log('\n==============================================================');
+    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] idCategoria=', idCat, 'dias=', dias);
+    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] row.codigo=', saved.codigo, 'idCatalogo=', saved.idCatalogo);
+    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] metadata.actual=', (saved.metadata as any)?.actual, 'modificadoPor=', (saved.metadata as any)?.modificadoPor);
+    console.log('[FIX_CAP1_PATCH_TIEMPO_OK] SI VES ESTE LOG EN TERMINAL => NEST CARGO EL NUEVO CODIGO (NO idCatalogo 80)');
+    console.log('==============================================================\n');
+    return saved;
   }
 
-  aplicarFechaLimite(fechaRadicacion: Date | null | undefined): Date | undefined {
+  private obtenerDiasPorCategoria(idCategoria: number | null | undefined): number {
+    if (Number.isInteger(idCategoria as any)) {
+      const idCat = Math.trunc(Number(idCategoria));
+      const cached = this.paramCacheTiempoPorCategoria.get(idCat);
+      if (Number.isInteger(cached as any)) return this.clampDias(Number(cached));
+    }
+    return this.clampDias(this.paramCacheGlobalFallback);
+  }
+
+  aplicarFechaLimite(fechaRadicacion: Date | null | undefined, idCategoria?: number | null): Date | undefined {
     if (!fechaRadicacion) return undefined;
-    const dias = this.clampDias(this.parametroCache || 2);
+    const dias = this.obtenerDiasPorCategoria(idCategoria ?? null);
     const f = new Date(fechaRadicacion.getTime());
     f.setDate(f.getDate() + dias);
     return f;
   }
 
-  private parametroCache: number | null = null;
   async cargarParametroCache(): Promise<void> {
     try {
-      const p = await this.obtenerParametroTiempoRespuesta();
-      const actual = Number((p.metadata as any)?.actual);
-      this.parametroCache = this.clampDias(actual);
+      const lista = await this.listarParametrosTiempoPorCategoria();
+      for (const p of lista) {
+        const idCat = Number(p.metadata && typeof p.metadata === 'object' ? (p.metadata as any).idCategoria : null);
+        if (Number.isInteger(idCat)) this.aplicarCacheConDefaults(p, idCat);
+      }
     } catch {
-      this.parametroCache = 2;
+      this.paramCacheTiempoPorCategoria.clear();
+      this.paramCacheGlobalFallback = 2;
     }
   }
 
@@ -487,9 +734,24 @@ export class MantenimientoService {
   // EFDS-1733: Técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO)
   // ---------------------------------------------------------------------------
   async listarTecnicos(soloActivos: boolean = true): Promise<CatalogoItem[]> {
-    const where: any = { catalogo: TECNICO_MANTENIMIENTO };
-    if (soloActivos) where.isActivo = true;
-    return this.catalogoRepo.find({ where, order: { orden: 'ASC', idCatalogo: 'ASC' } });
+    // Modo SOLO activos (motor asignación, sugerencia, reglas): where estricto catalogo = TECNICO_MANTENIMIENTO
+    if (soloActivos) {
+      return this.catalogoRepo.find({
+        where: { catalogo: TECNICO_MANTENIMIENTO, isActivo: true },
+        order: { orden: 'ASC', idCatalogo: 'ASC' },
+      });
+    }
+    // Modo TODOS (Admin CRUD): filtro flexible catalogo = TECNICO_MANTENIMIENTO OR catalogo LIKE %TECNICO% para incluir seeds legacy
+    // (soluciona CAP2/CAP3: técnicos creados con catalogo distinto al canonical se veían en PG pero NO en listado Admin)
+    const qb = this.catalogoRepo
+      .createQueryBuilder('c')
+      .where('(c.catalogo = :catExacto OR upper(c.catalogo) LIKE :catFlex)', {
+        catExacto: TECNICO_MANTENIMIENTO,
+        catFlex: '%TECNICO%',
+      })
+      .orderBy('c.orden', 'ASC')
+      .addOrderBy('c.idCatalogo', 'ASC');
+    return qb.getMany();
   }
 
   async calcularCargaVigenteTecnico(
@@ -511,11 +773,13 @@ export class MantenimientoService {
     return count;
   }
 
-  async listarTecnicosConCargaVigente(): Promise<Array<CatalogoItem & { cargaVigente: number }>> {
-    const tecnicos = await this.listarTecnicos(true);
+  async listarTecnicosConCargaVigente(incluirInactivos: boolean = false): Promise<Array<CatalogoItem & { cargaVigente: number }>> {
+    const tecnicos = await this.listarTecnicos(!incluirInactivos);
     const out = [] as Array<CatalogoItem & { cargaVigente: number }>;
     for (const t of tecnicos) {
-      const carga = await this.calcularCargaVigenteTecnico(t.codigo);
+      const carga = t.isActivo
+        ? await this.calcularCargaVigenteTecnico(t.codigo)
+        : 0;
       out.push({ ...t, cargaVigente: carga });
     }
     return out;
@@ -725,6 +989,183 @@ export class MantenimientoService {
       sugerido = sorted[0] || null;
     }
     return { regla, idCategoria, sugerido, obligatorio, opciones, advertencia };
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1734 RF-INF-005: Asignación (aprobar / rechazar / redistribuir)
+  // Guard clause D6: solo SUPER_ADMIN o GESTOR_MANTENIMIENTO pueden ejecutar.
+  // Histórico: pushAsignacion añade entry al JSONB asignaciones[] sin overw.
+  // ---------------------------------------------------------------------------
+  private validarRolesAsignador(user: AuthUser | null | undefined): { permitido: boolean; errorMsg?: string } {
+    if (!user || !Array.isArray(user.roles) || user.roles.length === 0) {
+      return { permitido: false, errorMsg: 'Usuario autenticado requerido para aprobar/rechazar/redistribuir solicitudes UMI.' };
+    }
+    const rolesNorm = user.roles.map((r) => String(r).toUpperCase().trim());
+    const permitido = rolesNorm.some((r) => (ROLES_ASIGNADOR_PERMITIDOS as readonly string[]).includes(r));
+    if (!permitido) {
+      return {
+        permitido: false,
+        errorMsg:
+          'Rol insuficiente. Solo usuarios SUPER_ADMIN o GESTOR_MANTENIMIENTO pueden aprobar, rechazar o redistribuir solicitudes UMI.',
+      };
+    }
+    return { permitido: true };
+  }
+
+  private pushAsignacion(
+    solicitud: SolicitudMantenimiento,
+    args: {
+      accion: 'APROBADA_Y_ASIGNADA' | 'RECHAZADA' | 'REDISTRIBUIDA';
+      tecnicoCodigo?: string | null;
+      tecnicoNombreDisplay?: string | null;
+      motivo?: string | null;
+      observaciones?: string | null;
+      user: AuthUser;
+    },
+  ): void {
+    const historial = Array.isArray(solicitud.asignaciones) ? solicitud.asignaciones : [];
+    historial.push({
+      id:
+        typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+          ? (crypto as any).randomUUID()
+          : 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10),
+      fecha: new Date().toISOString(),
+      accion: args.accion,
+      tecnico_codigo: args.tecnicoCodigo ?? null,
+      tecnico_nombre_display: args.tecnicoNombreDisplay ?? null,
+      motivo: args.motivo ?? null,
+      observaciones: args.observaciones ?? null,
+      usuario_id: args.user.userId ?? null,
+      usuario_email: args.user.email ?? null,
+      usuario_roles: Array.isArray(args.user.roles) ? args.user.roles.join(',') : null,
+    });
+    solicitud.asignaciones = historial;
+  }
+
+  private async resolverTecnicoActivo(
+    tecnicoCodigo: string,
+  ): Promise<CatalogoItem> {
+    const cod = (tecnicoCodigo || '').trim();
+    if (!cod) {
+      throw new BadRequestException('Código técnico es obligatorio para asignar / redistribuir.');
+    }
+    const tec = await this.catalogoRepo.findOne({
+      where: { catalogo: TECNICO_MANTENIMIENTO, codigo: cod },
+    });
+    if (!tec) {
+      throw new BadRequestException(`Técnico código ${cod} no existe en el catálogo TECNICO_MANTENIMIENTO.`);
+    }
+    if (!tec.isActivo) {
+      throw new BadRequestException(`Técnico ${cod} está inactivo. No se puede asignar o redistribuir a un técnico inactivo.`);
+    }
+    return tec;
+  }
+
+  async aprobarYAsignar(
+    idSolicitud: string,
+    args: { tecnicoCodigo: string; observaciones?: string | null },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const solicitud = await this.findById(idSolicitud);
+    const tec = await this.resolverTecnicoActivo(args.tecnicoCodigo);
+    solicitud.estado = 'ASIGNADA';
+    solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
+    solicitud.motivoRechazo = undefined; // D7: limpiar motivo anterior si fue rechazada y luego se re-aprueba.
+
+    let warning: string | undefined = undefined;
+    if (Number(solicitud.idCategoria) === 48) {
+      const regla001 = await this.catalogoRepo.findOne({
+        where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+      });
+      const esperadoCodigo =
+        regla001?.metadata && typeof regla001.metadata === 'object' ? (regla001.metadata as any).tecnicoCodigo : null;
+      if (esperadoCodigo && String(esperadoCodigo).trim() !== '' && String(esperadoCodigo).trim() !== tec.codigo) {
+        warning =
+          '⚠️ Aprobación manual: la solicitud pertenece a categoría Eléctricas (CS_002). Regla ESPECIALIZACIÓN sugiere: ' +
+          String(esperadoCodigo).trim() +
+          '. Usted asignó: ' +
+          tec.codigo +
+          '. Queda registrada en historial para auditoría.';
+      }
+    }
+
+    this.pushAsignacion(solicitud, {
+      accion: 'APROBADA_Y_ASIGNADA',
+      tecnicoCodigo: tec.codigo,
+      tecnicoNombreDisplay: tec.nombre,
+      motivo: null,
+      observaciones: args.observaciones ?? null,
+      user: user as AuthUser,
+    });
+
+    const saved = await this.mantenimientoRepo.save(solicitud);
+    if (warning) (saved as any).__meta = { warning };
+    return saved as any;
+  }
+
+  async rechazar(
+    idSolicitud: string,
+    args: { motivo: string; observaciones?: string | null },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const motivo = (args.motivo || '').trim();
+    if (motivo.length === 0) {
+      throw new BadRequestException('Motivo de rechazo es obligatorio y no puede estar vacío.');
+    }
+    if (motivo.length < 10) {
+      throw new BadRequestException('Motivo de rechazo requiere al menos 10 caracteres.');
+    }
+
+    const solicitud = await this.findById(idSolicitud);
+    solicitud.estado = 'RECHAZADA';
+    solicitud.motivoRechazo = motivo;
+    solicitud.responsableAsignado = null as any;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'RECHAZADA',
+      tecnicoCodigo: null,
+      tecnicoNombreDisplay: null,
+      motivo: motivo,
+      observaciones: args.observaciones ?? null,
+      user: user as AuthUser,
+    });
+
+    return this.mantenimientoRepo.save(solicitud);
+  }
+
+  async redistribuir(
+    idSolicitud: string,
+    args: { tecnicoCodigo: string; motivoRedistribucion?: string | null; observaciones?: string | null },
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+
+    const solicitud = await this.findById(idSolicitud);
+    const tec = await this.resolverTecnicoActivo(args.tecnicoCodigo);
+    // D10: si estaba RECIBIDA pasa a ASIGNADA. Si ASIGNADA/EN_ANALISIS/EN_PROGRESO se mantiene el estado actual.
+    if (solicitud.estado === 'RECIBIDA' || !solicitud.estado || solicitud.estado === 'RECHAZADA') {
+      solicitud.estado = 'ASIGNADA';
+    }
+    solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
+    if (solicitud.estado !== 'RECHAZADA') solicitud.motivoRechazo = undefined;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'REDISTRIBUIDA',
+      tecnicoCodigo: tec.codigo,
+      tecnicoNombreDisplay: tec.nombre,
+      motivo: (args.motivoRedistribucion || '').trim() || null,
+      observaciones: args.observaciones ?? null,
+      user: user as AuthUser,
+    });
+
+    return this.mantenimientoRepo.save(solicitud);
   }
 
   // ---------------------------------------------------------------------------

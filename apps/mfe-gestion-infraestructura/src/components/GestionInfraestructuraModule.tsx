@@ -17,6 +17,7 @@ import {
   SolicitudMantenimiento,
   EstadisticasInfraestructura,
   CatalogoItem,
+  BloqueEdificio,
 } from '../services/infraestructuraService';
 import { MetricasInfraestructura } from './MetricasInfraestructura';
 import { GestionSedes } from './GestionSedes';
@@ -172,7 +173,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
       {/* Encabezado Principal */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-300 shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/30 ring-2 ring-blue-100">
+          <div className="w-14 h-14 rounded-2xl bg-blue-400 bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/30 ring-2 ring-blue-100">
             <Building2 className="w-7 h-7" />
           </div>
           <div>
@@ -284,8 +285,82 @@ export const GestionInfraestructuraModule: React.FC = () => {
 
       {/* Vista de Contenido Activo */}
       <div className="transition-all duration-300">
-        {activeTab === 'espacios' && <GestionEspacios espacios={espacios} />}
-        {activeTab === 'sedes' && <GestionSedes sedes={sedes} />}
+        {activeTab === 'espacios' && (
+          <GestionEspacios
+            espacios={espacios}
+            sedes={sedes}
+            onEspacioCreada={(nuevoEspacio) => {
+              setEspacios((prev) => {
+                const existe = prev.some((e) => e.idEspacio === nuevoEspacio.idEspacio);
+                if (existe) return prev.map((e) => (e.idEspacio === nuevoEspacio.idEspacio ? nuevoEspacio : e));
+                const merged = [...prev, nuevoEspacio];
+                merged.sort((a, b) => {
+                  const sedeA = a.bloque?.sede?.nombre ?? '';
+                  const sedeB = b.bloque?.sede?.nombre ?? '';
+                  if (sedeA !== sedeB) return sedeA.localeCompare(sedeB);
+                  const blqA = a.bloque?.codigo ?? '';
+                  const blqB = b.bloque?.codigo ?? '';
+                  if (blqA !== blqB) return blqA.localeCompare(blqB);
+                  return (a.codigo || '').localeCompare(b.codigo || '');
+                });
+                return merged;
+              });
+            }}
+            onEspacioActualizada={(actualizado) => {
+              setEspacios((prev) => prev.map((e) => (e.idEspacio === actualizado.idEspacio ? actualizado : e)));
+            }}
+          />
+        )}
+        {activeTab === 'sedes' && (
+          <GestionSedes
+            sedes={sedes}
+            onSedeCreada={(nuevaSede) => {
+              setSedes((prev) => {
+                const existe = prev.some((s) => s.idSede === nuevaSede.idSede);
+                if (existe) return prev.map((s) => (s.idSede === nuevaSede.idSede ? nuevaSede : s));
+                const merged = [...prev, nuevaSede];
+                merged.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+                return merged;
+              });
+            }}
+            onSedeActualizada={(sedeEditada) => {
+              setSedes((prev) => prev.map((s) => (s.idSede === sedeEditada.idSede ? sedeEditada : s)));
+            }}
+            onBloqueCreado={(bloque, sede) => {
+              setSedes((prev) =>
+                prev.map((s) => {
+                  if (s.idSede !== sede.idSede) return s;
+                  const base = [...(s.bloques ?? []).filter((b) => b.idBloque !== bloque.idBloque), bloque];
+                  base.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+                  return { ...s, bloques: base };
+                }),
+              );
+            }}
+            onBloqueActualizado={(bloque, sede) => {
+              setSedes((prev) =>
+                prev.map((s) => {
+                  if (s.idSede !== sede.idSede) return s;
+                  const base = (s.bloques ?? [])
+                    .map((b) => (b.idBloque === bloque.idBloque ? bloque : b))
+                    .slice();
+                  base.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+                  return { ...s, bloques: base };
+                }),
+              );
+            }}
+            onBloqueEliminado={(idBloque, sede) => {
+              setSedes((prev) =>
+                prev.map((s) => {
+                  if (s.idSede !== sede.idSede) return s;
+                  return {
+                    ...s,
+                    bloques: (s.bloques ?? []).filter((b) => b.idBloque !== idBloque),
+                  };
+                }),
+              );
+            }}
+          />
+        )}
         {activeTab === 'mantenimiento' && (
           <SolicitudesMantenimientoView
             mantenimientos={mantenimientos}

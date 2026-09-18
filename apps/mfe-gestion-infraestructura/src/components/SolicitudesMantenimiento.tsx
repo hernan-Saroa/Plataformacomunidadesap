@@ -5,7 +5,7 @@ import {
   Package, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
-  User,
+  User, ThumbsDown,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -306,10 +306,15 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         {lista.map((m) => {
           const numEvidencias = (m.evidencias && m.evidencias.length) || 0;
           const expandido = !!expandidos[m.idSolicitud];
+          const estadoRechazada = String(m.estado || '').toUpperCase() === 'RECHAZADA';
           return (
             <div
               key={m.idSolicitud}
-              className="p-5 rounded-xl border border-slate-200/80 bg-slate-50/40 hover:bg-white hover:border-slate-300 transition-all flex flex-col gap-4"
+              className={`p-5 rounded-xl border transition-all flex flex-col gap-4 ${
+                estadoRechazada
+                  ? 'bg-rose-50/80 border-rose-200 hover:bg-rose-50 hover:border-rose-300'
+                  : 'bg-slate-50/40 border-slate-200/80 hover:bg-white hover:border-slate-300'
+              }`}
             >
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                 <div className="space-y-1.5 flex-1 w-full">
@@ -369,9 +374,22 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       </button>
                     )}
                   </div>
-                  <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                  <h4 className={`text-sm font-bold leading-snug ${
+                    estadoRechazada
+                      ? 'text-slate-500 line-through decoration-rose-400 decoration-2 decoration-slice'
+                      : 'text-slate-900'
+                  }`}>
                     {m.descripcion}
                   </h4>
+                  {estadoRechazada && m.motivoRechazo && (
+                    <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-rose-200 bg-white/70 px-2.5 py-1.5 text-[11px] text-rose-700 font-semibold leading-snug">
+                      <ThumbsDown className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-500" />
+                      <span className="line-through-none decoration-none no-underline">
+                        Motivo rechazo: <strong className="font-black">{String(m.motivoRechazo).slice(0, 120)}</strong>
+                        {String(m.motivoRechazo).length > 120 && '… (ver detalle)'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 pt-1">
                     <span className="inline-flex items-center gap-1">
                       <strong className="text-slate-700">{m.solicitanteNombre}</strong>

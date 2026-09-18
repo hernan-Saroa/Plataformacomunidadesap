@@ -60,9 +60,9 @@ export const AdminParametrosUMI: React.FC = () => {
 
   // Tab Tiempo
   const [cargandoParam, setCargandoParam] = useState(true);
-  const [paramTiempo, setParamTiempo] = useState<CatalogoItem | null>(null);
-  const [diasSlider, setDiasSlider] = useState(2);
-  const [guardandoTiempo, setGuardandoTiempo] = useState(false);
+  const [paramsTiempo, setParamsTiempo] = useState<CatalogoItem[]>([]);
+  const [diasPorCategoria, setDiasPorCategoria] = useState<Record<number, number>>({});
+  const [guardandoTiempoIds, setGuardandoTiempoIds] = useState<Set<number>>(new Set());
 
   // Tab Reglas
   const [reglas, setReglas] = useState<CatalogoItem[]>([]);
@@ -74,6 +74,7 @@ export const AdminParametrosUMI: React.FC = () => {
   // Tab Técnicos
   const [tecnicos, setTecnicos] = useState<Array<CatalogoItem & { cargaVigente?: number }>>([]);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(true);
+  const [mostrarInactivos, setMostrarInactivos] = useState(true);
 
   const [modoTec, setModoTec] = useState<ModalModoTecnico>(null);
   const [idTecEdit, setIdTecEdit] = useState<number | null>(null);
@@ -95,32 +96,93 @@ export const AdminParametrosUMI: React.FC = () => {
   }, [toast]);
 
   // ---------------- Tab Tiempo cargar ----------------
+  const MAPA_CS_DEFAULT: Record<number, { cod: string; nombre: string }> = {
+    47: { cod: 'CS_001', nombre: 'Cerrajería y Carpintería' },
+    48: { cod: 'CS_002', nombre: 'Eléctricas y Electrónicas' },
+    49: { cod: 'CS_003', nombre: 'Adecuación de Espacios y Apoyo a Eventos' },
+    50: { cod: 'CS_004', nombre: 'Plomería y Fontanería' },
+    51: { cod: 'CS_005', nombre: 'Mantenimiento Infraestructura Física y Obras Menores' },
+    52: { cod: 'CS_006', nombre: 'Mantenimiento Zonas Exteriores y Jardinería' },
+    53: { cod: 'CS_007', nombre: 'Traslados de Mobiliario y Bienes' },
+    54: { cod: 'CS_008', nombre: 'Revisión y Mantenimiento Preventivo Equipos Críticos' },
+  };
   const cargarTiempo = async () => {
     setCargandoParam(true);
     try {
-      const p = await infraestructuraService.getParametroTiempoRespuesta();
-      setParamTiempo(p);
-      const actual = Number(p?.metadata?.actual ?? 2);
-      const dias = Math.max(1, Math.min(3, Number.isFinite(actual) ? actual : 2));
-      setDiasSlider(dias);
+      const filas = await infraestructuraService.listarParametrosTiempoPorCategoria();
+      const arrRaw = Array.isArray(filas) ? filas : [];
+      const mapaRecibidos = new Map<number, CatalogoItem>();
+      arrRaw.forEach((p) => {
+        const idCat = Number((p.metadata as any)?.idCategoria ?? 0);
+        if (idCat >= 47 && idCat <= 54) mapaRecibidos.set(idCat, p);
+      });
+      const final: CatalogoItem[] = [];
+      const mapaDias: Record<number, number> = {};
+      for (let idCat = 47; idCat <= 54; idCat++) {
+        if (mapaRecibidos.has(idCat)) {
+          const p = mapaRecibidos.get(idCat)!;
+          final.push(p);
+          const meta = (p.metadata ?? {}) as any;
+          const actual = Number(meta.actual ?? 2);
+          mapaDias[idCat] = Math.max(1, Math.min(3, Number.isFinite(actual) ? actual : 2));
+        } else {
+          const info = MAPA_CS_DEFAULT[idCat] || { cod: `CS_${String(idCat).padStart(3, '0')}`, nombre: `Categoría ${idCat}` };
+          const temp = {
+            idCatalogo: -idCat,
+            catalogo: 'PARAMETRO_UMI',
+            codigo: `TIEMPO_RESP_DIAS_CAT_${String(idCat).padStart(2, '0')}`,
+            nombre: `Tiempo respuesta ${info.nombre} (días 1..3) · Fallback local (ejecutar mig 010_02)`,
+            descripcion: 'Fallback local IN-MEMORY: backend no devolvió este parámetro. Al guardar se crea en DB.',
+            orden: 100 + (idCat - 46),
+            isActivo: true,
+            metadata: {
+              idCategoria: idCat,
+              codCategoriaCS: info.cod,
+              nombreCategoriaCS: info.nombre,
+              min: 1, max: 3, default: 2, actual: 2, unidad: 'DIAS_NATURALES',
+              __flag: 'FALLBACK_FE_MIG_010_02_PENDIENTE',
+            },
+          } as CatalogoItem;
+          final.push(temp);
+          mapaDias[idCat] = 2;
+        }
+      }
+      setParamsTiempo(final);
+      setDiasPorCategoria(mapaDias);
     } catch (err) {
-      setToast({ tipo: 'err', texto: 'No se pudo cargar parámetro tiempo respuesta.' });
+      setToast({ tipo: 'err', texto: 'No se pudo cargar parámetros tiempo respuesta por categoría.' });
     } finally {
       setCargandoParam(false);
     }
   };
 
-  const guardarTiempo = async () => {
-    setGuardandoTiempo(true);
+  const guardarTiempoPorCategoria = async (idCategoria: number) => {
+    if (guardandoTiempoIds.has(idCategoria)) return;
+    const dias = Math.max(1, Math.min(3, Math.trunc(diasPorCategoria[idCategoria] ?? 2)));
+    const nextSet = new Set(guardandoTiempoIds);
+    nextSet.add(idCategoria);
+    setGuardandoTiempoIds(nextSet);
     try {
-      const d = Math.max(1, Math.min(3, Math.trunc(diasSlider)));
-      await infraestructuraService.setParametroTiempoRespuesta(d);
-      setToast({ tipo: 'ok', texto: `Tiempo respuesta actualizado a ${d} día${d === 1 ? '' : 's'}.` });
+      const result = await infraestructuraService.actualizarParametroTiempoRespuestaPorCategoria(idCategoria, dias);
+      const idCat = Math.trunc(Number(idCategoria));
+      const metaSaved = ((result as any)?.metadata ?? {}) as any;
+      const actualSaved = Number(metaSaved.actual ?? dias);
+      setParamsTiempo((prev) => {
+        const next = [...prev];
+        const idx = next.findIndex((x) => Number(((x as any).metadata ?? {}).idCategoria) === idCat);
+        if (idx >= 0) next[idx] = result as CatalogoItem;
+        return next;
+      });
+      setDiasPorCategoria((prev) => ({ ...prev, [idCat]: Math.max(1, Math.min(3, actualSaved)) }));
+      const cat = (result as any)?.metadata?.nombreCategoriaCS || `Categoría ${idCategoria}`;
+      setToast({ tipo: 'ok', texto: `${cat}: tiempo respuesta actualizado a ${dias} día${dias === 1 ? '' : 's'}.` });
       await cargarTiempo();
     } catch (err: any) {
-      setToast({ tipo: 'err', texto: err?.message || 'Error guardando parámetro.' });
+      setToast({ tipo: 'err', texto: err?.message || 'Error guardando parámetro categoría.' });
     } finally {
-      setGuardandoTiempo(false);
+      const limpio = new Set(guardandoTiempoIds);
+      limpio.delete(idCategoria);
+      setGuardandoTiempoIds(limpio);
     }
   };
 
@@ -159,18 +221,33 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   // ---------------- Tab Técnicos cargar ----------------
-  const cargarTecnicos = async () => {
+  const parseBooleanoRobusto = (v: any): boolean => {
+    if (v === true || v === false) return v;
+    if (v === null || v === undefined) return true;
+    if (typeof v === 'number') return v !== 0;
+    const s = String(v).trim().toLowerCase();
+    if (s === 'false' || s === 'f' || s === 'no' || s === '0' || s === 'n' || s === '') return false;
+    return true;
+  };
+  const cargarTecnicos = async (opts?: { incluirInactivos?: boolean }) => {
     setCargandoTecnicos(true);
     try {
-      const rows = await infraestructuraService.getTecnicosConCargaVigente();
-      setTecnicos(Array.isArray(rows) ? rows : []);
+      const rows = await infraestructuraService.getTecnicosConCargaVigente({
+        incluirInactivos: opts?.incluirInactivos ?? true,
+      });
+      const normalizados = (Array.isArray(rows) ? rows : []).map((r) => ({
+        ...r,
+        isActivo: parseBooleanoRobusto((r as any).isActivo),
+        cargaVigente: Number((r as any).cargaVigente ?? 0),
+      }));
+      setTecnicos(normalizados);
     } catch {
       setToast({ tipo: 'err', texto: 'No se pudo cargar listado de técnicos.' });
     } finally {
       setCargandoTecnicos(false);
     }
   };
-  useEffect(() => { if (tab === 'tecnicos') cargarTecnicos(); }, [tab]);
+  useEffect(() => { if (tab === 'tecnicos') cargarTecnicos({ incluirInactivos: true }); }, [tab]);
 
   const abrirCrearTec = () => {
     setModoTec('crear');
@@ -281,10 +358,11 @@ export const AdminParametrosUMI: React.FC = () => {
   };
 
   // ---------------- Derivados ----------------
-  const slaPreview = useMemo(() => {
-    const fechaFutura = new Date(Date.now() + (diasSlider || 2) * 24 * 3600 * 1000);
+  const slaPreviewPorDias = (dias: number) => {
+    const d = Math.max(1, Math.min(3, Number.isFinite(+dias) ? +dias : 2));
+    const fechaFutura = new Date(Date.now() + d * 24 * 3600 * 1000);
     return clasificarSLA(fechaFutura);
-  }, [diasSlider]);
+  };
 
   const ToastGlobal = toast ? (
     <div className={`fixed top-4 right-4 z-[95] max-w-sm px-4 py-2.5 rounded-xl text-sm font-black border shadow-lg animate-in slide-in-from-top fade-in ${toast.tipo === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-pink-50 border-pink-300 text-pink-700'}`}>
@@ -294,9 +372,9 @@ export const AdminParametrosUMI: React.FC = () => {
   ) : null;
 
   const tabs: Array<{ k: TabActiva; label: string; icono: any; desc: string }> = [
-    { k: 'tiempo', label: 'Tiempo respuesta', icono: Clock, desc: 'Parámetro global 1..3 días (24..72h). Control SLA.' },
-    { k: 'reglas', label: 'Reglas escalamiento', icono: Wand2, desc: 'ESPECIALIZACIÓN (eléctricas) vs EQUIDAD (resto 7 categorías).' },
-    { k: 'tecnicos', label: 'Técnicos', icono: Users, desc: 'Catálogo UMI, carga vigente, altas/bajas y especialidades.' },
+    { k: 'tiempo', label: 'Tiempo respuesta', icono: Clock, desc: 'Configurar parametros por categoría' },
+    { k: 'reglas', label: 'Reglas escalamiento', icono: Wand2, desc: 'Configurar reglas de escalamiento' },
+    { k: 'tecnicos', label: 'Técnicos', icono: Users, desc: 'Configurar tecnicos' },
   ];
 
   return (
@@ -309,7 +387,7 @@ export const AdminParametrosUMI: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900 tracking-tight">
-              Parámetros UMI · EFDS-1733
+              Parámetros UMI
             </h2>
             <p className="text-xs text-slate-600 font-medium mt-0.5">
               Tiempo SLA, reglas de asignación y personal técnico mantenimiento.
@@ -331,7 +409,7 @@ export const AdminParametrosUMI: React.FC = () => {
               title={t.desc}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                 activo
-                  ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500'
+                  ? 'bg-gray-100 shadow-sm text-slate-700  ring-1 '
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
             >
@@ -345,89 +423,167 @@ export const AdminParametrosUMI: React.FC = () => {
       {/* TAB TIEMPO */}
       {tab === 'tiempo' && (
         <div className="space-y-5 pt-2">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 space-y-4">
+          <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-slate-50 p-4 md:p-5 space-y-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 shrink-0 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+              <div className="w-10 h-10 shrink-0 rounded-xl bg-yellow-400 text-white flex items-center justify-center shadow-md ring-2 ring-indigo-100">
                 <Zap className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-black text-slate-900">
+                <h3 className="font-black text-slate-900 tracking-tight">
                   Tiempo máximo de atención SLA
                 </h3>
                 <p className="text-[13px] mt-1 text-slate-600 leading-relaxed">
-                  RF-INF-004. Define la cantidad de días naturales que tiene UMI para atender una solicitud desde su radicación, antes de que quede marcada como <span className="font-bold text-slate-900">vencida</span>. Rango permitido: 1, 2 o 3 días (24, 48 o 72 horas).
+                  <span className="font-bold text-indigo-700">RF-INF-004 L104 · EFDS-1733-bis (HUECO1):</span> Define días naturales independientes POR CATEGORÍA (47..54 · CS_001..CS_008) para el SLA de atención UMI desde radicación. Rango permitido por categoría: <span className="font-mono font-bold">1, 2 ó 3 días</span> (24, 48 ó 72 h).
                 </p>
               </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-4 items-center">
-              <div className="md:col-span-2 space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
-                  <span className="font-mono">1 día (24h)</span>
-                  <span className="font-mono">2 días (48h)</span>
-                  <span className="font-mono">3 días (72h)</span>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={3}
-                  step={1}
-                  value={diasSlider}
-                  onChange={(e) => setDiasSlider(Math.max(1, Math.min(3, Math.trunc(+e.target.value))))}
-                  className="w-full accent-indigo-600"
-                  disabled={cargandoParam || guardandoTiempo}
-                />
-                <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
-                  <span>Selecciona el valor (enteros)</span>
-                  <span className="font-mono">{diasSlider} día{diasSlider === 1 ? '' : 's'} · {diasSlider * 24} h</span>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <div className="text-xs font-bold text-slate-500">Preview SLA</div>
-                <div className={`inline-block px-3 py-1.5 rounded-lg text-xs font-bold ${cssBadgeSLA(slaPreview.clase)}`}>
-                  {slaPreview.texto}
-                </div>
-                <div className="text-[11px] text-slate-500 leading-relaxed">
-                  Si radicas hoy, la fecha límite sería <span className="font-bold text-slate-800 font-mono">{new Date(Date.now() + (diasSlider * 24 * 3600 * 1000)).toLocaleString()}</span>.
-                </div>
-              </div>
-            </div>
-
-            {(paramTiempo?.metadata) && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                {[
-                  ['Valor actual', `${(paramTiempo.metadata as any).actual ?? '—'} día(s)`],
-                  ['Por defecto seed', `${(paramTiempo.metadata as any).default ?? '—'}`],
-                  ['Rango permitido', `${(paramTiempo.metadata as any).min ?? 1}..${(paramTiempo.metadata as any).max ?? 3}`],
-                  ['Unidad', String((paramTiempo.metadata as any).unidad ?? 'DIAS_NATURALES')],
-                ].map(([k, v]) => (
-                  <div key={k} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <div className="text-slate-500 font-semibold">{k}</div>
-                    <div className="text-slate-800 font-mono mt-0.5">{v}</div>
-                  </div>
-                ))}
+            {cargandoParam && (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-400 text-xs font-semibold">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+                Cargando 8 parámetros por categoría CS_001..CS_008…
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            {!cargandoParam && paramsTiempo.length === 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs font-bold flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  No se cargaron parámetros de tiempo por categoría. Asegúrate de ejecutar la migración 010_02 (EFDS-1733-bis) en la base de datos.
+                </span>
+              </div>
+            )}
+
+            {!cargandoParam && paramsTiempo.length > 0 && (
+              <div className="space-y-3">
+                {paramsTiempo
+                  .slice()
+                  .sort((a, b) => {
+                    const ia = Number((a.metadata as any)?.idCategoria ?? 99);
+                    const ib = Number((b.metadata as any)?.idCategoria ?? 99);
+                    return ia - ib;
+                  })
+                  .map((p) => {
+                    const meta = (p.metadata ?? {}) as any;
+                    const idCat = Number(meta.idCategoria ?? 0);
+                    const codCS = String(meta.codCategoriaCS ?? `CS_${String(idCat).padStart(3, '0')}`);
+                    const nombreCS = String(meta.nombreCategoriaCS ?? `Categoría ${idCat}`);
+                    const dias = Number(diasPorCategoria[idCat] ?? meta.actual ?? 2);
+                    const esElectrica = idCat === 48;
+                    const guardando = guardandoTiempoIds.has(idCat);
+                    const preview = slaPreviewPorDias(dias);
+                    return (
+                      <div
+                        key={`cat-${idCat}`}
+                        className={`rounded-xl border bg-white p-4 md:p-5 space-y-3 ${
+                          esElectrica ? 'border-purple-300 ring-1 ring-purple-100 bg-gradient-to-r from-purple-50/40 to-white' : 'border-slate-200'
+                        }`}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center font-black text-xs ${
+                              esElectrica
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
+                              {idCat}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-bold">
+                                  {codCS}
+                                </span>
+                                {esElectrica && (
+                                  <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 font-bold">
+                                    ⚡ REGLA ESPECIALIZACIÓN OBLIGATORIA
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-black text-slate-900 mt-1 text-sm md:text-base">
+                                {nombreCS}
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5 font-semibold">
+                                Default seed: <span className="font-mono">{String(meta.default ?? 2)} día(s)</span> · Rango permitido: <span className="font-mono">{String(meta.min ?? 1)}..{String(meta.max ?? 3)}</span> · Unidad: <span className="font-mono">{String(meta.unidad ?? 'DIAS_NATURALES')}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${cssBadgeSLA(preview.clase)}`}>
+                            <Clock className="w-3.5 h-3.5" />
+                            SLA: {preview.texto}
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-[1fr_auto] gap-4 items-center">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-[11px] text-slate-600 font-bold">
+                              <span className="font-mono">1 día · 24h</span>
+                              <span className="font-mono">2 días · 48h</span>
+                              <span className="font-mono">3 días · 72h</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={1}
+                              max={3}
+                              step={1}
+                              value={dias}
+                              onChange={(e) => {
+                                const v = Math.max(1, Math.min(3, Math.trunc(+e.target.value)));
+                                setDiasPorCategoria({ ...diasPorCategoria, [idCat]: v });
+                              }}
+                              className={`w-full ${esElectrica ? 'accent-purple-600' : 'accent-indigo-600'}`}
+                              disabled={guardando}
+                            />
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
+                              <span>Valor actual en BD: <span className="font-mono font-bold text-slate-800">{String(meta.actual ?? '—')} día(s)</span></span>
+                              <span className="font-mono font-bold">
+                                {dias} día{dias === 1 ? '' : 's'} · {dias * 24} h
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 justify-end md:flex-col md:items-stretch">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600 min-w-[200px]">
+                              <div>Fecha límite si radicas hoy:</div>
+                              <div className="font-mono font-bold text-slate-900 mt-0.5">
+                                {new Date(Date.now() + dias * 24 * 3600 * 1000).toLocaleDateString('es-CO', {
+                                  weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+                                })}{' · '}
+                                {new Date(Date.now() + dias * 24 * 3600 * 1000).toLocaleTimeString('es-CO', {
+                                  hour: '2-digit', minute: '2-digit',
+                                })}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => guardarTiempoPorCategoria(idCat)}
+                              disabled={guardando}
+                              className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm transition-all disabled:opacity-60 ${
+                                esElectrica
+                                  ? 'bg-purple-600 hover:bg-purple-700 text-white ring-1 ring-purple-500'
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white ring-1 ring-blue-500'
+                              }`}
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              {guardando ? 'Guardando…' : 'Guardar'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
               <button
                 type="button"
                 onClick={cargarTiempo}
-                disabled={cargandoParam || guardandoTiempo}
+                disabled={cargandoParam}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-sm font-bold transition-all disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${cargandoParam ? 'animate-spin' : ''}`} />
-                Recargar
-              </button>
-              <button
-                type="button"
-                onClick={guardarTiempo}
-                disabled={cargandoParam || guardandoTiempo}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md ring-1 ring-blue-500 transition-all disabled:opacity-60"
-              >
-                <Save className="w-4 h-4" />
-                {guardandoTiempo ? 'Guardando…' : 'Guardar valor'}
+                Recargar 8 categorías
               </button>
             </div>
           </div>
@@ -596,14 +752,35 @@ export const AdminParametrosUMI: React.FC = () => {
       {/* TAB TÉCNICOS */}
       {tab === 'tecnicos' && (
         <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-600">
-              Catálogo técnico mantenimiento. La columna <span className="font-bold text-slate-800">Carga vigente</span> cuenta solicitudes UMI activas (RECIBIDA / ASIGNADA / EN_PROGRESO / EN_ANÁLISIS).
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <p className="text-sm text-slate-600">
+                Catálogo técnico mantenimiento. La columna <span className="font-bold text-slate-800">Carga vigente</span> cuenta solicitudes UMI activas (RECIBIDA / ASIGNADA / EN_PROGRESO / EN_ANÁLISIS).
+              </p>
+              <div className="inline-flex items-center gap-2 text-xs font-bold">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                  Activos: {tecnicos.filter((x) => x.isActivo).length}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />
+                  Inactivos: {tecnicos.filter((x) => !x.isActivo).length}
+                </span>
+              </div>
+              <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-colors select-none">
+                <input
+                  type="checkbox"
+                  className="w-3.5 h-3.5 rounded border-slate-400 text-blue-600 focus:ring-blue-500"
+                  checked={mostrarInactivos}
+                  onChange={(e) => setMostrarInactivos(e.target.checked)}
+                />
+                Mostrar inactivos
+              </label>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={cargarTecnicos}
+                onClick={() => cargarTecnicos({ incluirInactivos: true })}
                 disabled={cargandoTecnicos}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-sm font-bold disabled:opacity-50"
               >
@@ -630,7 +807,7 @@ export const AdminParametrosUMI: React.FC = () => {
                   <th className="px-4 py-3 text-left font-semibold">Nombre</th>
                   <th className="px-4 py-3 text-left font-semibold w-28 hidden md:table-cell">Contacto</th>
                   <th className="px-4 py-3 text-left font-semibold w-56 hidden md:table-cell">Especialidades</th>
-                  <th className="px-4 py-3 text-left font-semibold w-28">Carga vigente</th>
+                  <th className="px-4 py-3 text-left font-semibold w-64">Carga vigente</th>
                   <th className="px-4 py-3 text-left font-semibold w-20">Activo</th>
                   <th className="px-4 py-3 text-right font-semibold w-32">Acciones</th>
                 </tr>
@@ -650,60 +827,137 @@ export const AdminParametrosUMI: React.FC = () => {
                     </td>
                   </tr>
                 )}
-                {!cargandoTecnicos && tecnicos.map((t) => {
+                {!cargandoTecnicos && tecnicos
+                  .filter((t) => (mostrarInactivos ? true : !!t.isActivo))
+                  .map((t) => {
                   const esp = Array.isArray(t.metadata?.especialidades)
                     ? (t.metadata.especialidades as string[])
                     : [];
                   const carga = Number(t.cargaVigente ?? 0);
                   const nivelCarga = carga === 0 ? 'OK' : carga <= 3 ? 'MEDIA' : 'ALTA';
+                  const inactivo = !t.isActivo;
                   return (
-                    <tr key={t.idCatalogo} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-500 font-mono text-xs">{t.orden}</td>
-                      <td className="px-4 py-3 font-mono text-slate-900 font-bold text-xs">{t.codigo}</td>
-                      <td className="px-4 py-3 text-slate-900 font-semibold">
+                    <tr key={t.idCatalogo} className={`${inactivo ? 'bg-slate-50/80 hover:bg-slate-100 opacity-80' : 'hover:bg-slate-50'} transition-colors`}>
+                      <td className={`px-4 py-3 font-mono text-xs ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>{t.orden}</td>
+                      <td className={`px-4 py-3 font-mono font-bold text-xs ${inactivo ? 'text-slate-500 line-through decoration-slate-400 decoration-1' : 'text-slate-900'}`}>{t.codigo}</td>
+                      <td className={`px-4 py-3 font-semibold ${inactivo ? 'text-slate-500' : 'text-slate-900'}`}>
                         {t.nombre}
-                        <div className="md:hidden mt-0.5 text-[11px] text-slate-500 font-normal">
+                        {inactivo && (
+                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 border border-slate-400 align-middle">
+                            INACTIVO
+                          </span>
+                        )}
+                        <div className={`md:hidden mt-0.5 text-[11px] font-normal ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>
                           {t.metadata?.email as string}
                           {t.metadata?.telefono ? <span className="ml-2">· {t.metadata.telefono as string}</span> : null}
                         </div>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-xs text-slate-700">{(t.metadata?.email as string) || '—'}</div>
-                        <div className="text-[11px] text-slate-500">{(t.metadata?.telefono as string) || '—'}</div>
+                      <td className={`px-4 py-3 hidden md:table-cell ${inactivo ? 'opacity-70' : ''}`}>
+                        <div className={`text-xs ${inactivo ? 'text-slate-500' : 'text-slate-700'}`}>{(t.metadata?.email as string) || '—'}</div>
+                        <div className={`text-[11px] ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>{(t.metadata?.telefono as string) || '—'}</div>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
+                      <td className={`px-4 py-3 hidden md:table-cell ${inactivo ? 'opacity-60' : ''}`}>
                         {esp.length === 0 ? (
-                          <span className="text-slate-400 text-xs italic">Sin especialidades declaradas</span>
+                          <span className={`text-xs italic ${inactivo ? 'text-slate-400' : 'text-slate-400'}`}>Sin especialidades declaradas</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {esp.map((e) => (
-                              <span key={e} className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                              <span key={e} className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${
+                                inactivo
+                                  ? 'bg-slate-100 text-slate-500 border-slate-200'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}>
                                 {e}
                               </span>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
-                          nivelCarga === 'OK'
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            : nivelCarga === 'MEDIA'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                            : 'bg-red-100 text-red-800 border border-red-200'
-                        }`}>
-                          <Users className="w-3.5 h-3.5" />
-                          {carga} solicitud{carga === 1 ? '' : 'es'} · {nivelCarga}
+                      <td className={`px-4 py-3 align-top ${inactivo ? 'opacity-75' : ''}`}>
+                        <div className="space-y-2 w-48">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <div className="flex items-baseline gap-1.5">
+                              <Users className={`w-4 h-4 ${
+                                inactivo ? 'text-slate-400'
+                                  : nivelCarga === 'OK' ? 'text-emerald-600'
+                                  : nivelCarga === 'MEDIA' ? 'text-amber-600'
+                                  : 'text-rose-600'
+                              }`} />
+                              <span className={`text-2xl font-black tracking-tight leading-none ${
+                                inactivo ? 'text-slate-500'
+                                  : nivelCarga === 'OK' ? 'text-emerald-700'
+                                  : nivelCarga === 'MEDIA' ? 'text-amber-800'
+                                  : 'text-rose-700'
+                              }`}>
+                                {carga}
+                              </span>
+                              <span className={`text-xs font-semibold leading-none ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>
+                                solicitud{carga === 1 ? '' : 'es'}
+                                {inactivo ? ' · baja' : ''}
+                              </span>
+                            </div>
+                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border whitespace-nowrap ${
+                              inactivo
+                                ? 'bg-slate-200 text-slate-600 border-slate-400'
+                                : nivelCarga === 'OK'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : nivelCarga === 'MEDIA'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-rose-100 text-rose-800 border-rose-300'
+                            }`}>
+                              {inactivo ? 'SUSPENDIDO' : nivelCarga}
+                            </span>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden shadow-inner">
+                            {(() => {
+                              const LIMITE_BAJA = 1;
+                              const LIMITE_MEDIA = 3;
+                              const LIMITE_ALTA = 6;
+                              const pctTotal = inactivo ? 0 : Math.min(100, Math.round((carga / LIMITE_ALTA) * 100));
+                              const colorBar = inactivo
+                                ? 'bg-slate-400'
+                                : nivelCarga === 'OK'
+                                ? 'bg-gradient-to-r from-emerald-400 to-emerald-600'
+                                : nivelCarga === 'MEDIA'
+                                ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                : 'bg-gradient-to-r from-rose-500 to-rose-700';
+                              return (
+                                <div
+                                  role="progressbar"
+                                  aria-valuenow={inactivo ? 0 : carga}
+                                  aria-valuemin={0}
+                                  aria-valuemax={LIMITE_ALTA}
+                                  className={`h-full ${colorBar} transition-all duration-500 ease-out`}
+                                  style={{ width: `${pctTotal}%` }}
+                                />
+                              );
+                            })()}
+                          </div>
+                          <div className={`flex items-center justify-between text-[10px] font-semibold leading-none px-0.5 ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <span className="inline-flex items-center gap-1">
+                              <span className={`inline-block w-2 h-2 rounded-full ${inactivo ? 'bg-slate-400' : 'bg-emerald-500'}`} />
+                              Baja ≤1
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className={`inline-block w-2 h-2 rounded-full ${inactivo ? 'bg-slate-400' : 'bg-amber-500'}`} />
+                              Media 2-3
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className={`inline-block w-2 h-2 rounded-full ${inactivo ? 'bg-slate-400' : 'bg-red-500'}`} />
+                              Alta ≥4
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <button
                           type="button"
                           onClick={() => toggleTec(t)}
+                          title={t.isActivo ? 'Desactivar técnico (baja lógica, se excluye del motor de asignación)' : 'Reactivar técnico (incluir en motor de asignación nuevamente)'}
                           className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
                             t.isActivo
-                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
+                              : 'bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-400'
                           }`}
                         >
                           {t.isActivo ? (<><ToggleRight className="w-4 h-4" /> Sí</>) : (<><ToggleLeft className="w-4 h-4" /> No</>)}
@@ -714,7 +968,7 @@ export const AdminParametrosUMI: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => abrirEditarTec(t)}
-                            className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-700 transition-colors"
+                            className={`p-2 rounded-lg transition-colors ${inactivo ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-indigo-50 text-indigo-700'}`}
                             aria-label="editar"
                           >
                             <Pencil className="w-4 h-4" />
@@ -722,7 +976,7 @@ export const AdminParametrosUMI: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setConfirmElimTec(t)}
-                            className="p-2 rounded-lg hover:bg-red-50 text-red-600 transition-colors"
+                            className={`p-2 rounded-lg transition-colors ${inactivo ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-red-50 text-red-600'}`}
                             aria-label="eliminar"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -866,7 +1120,7 @@ export const AdminParametrosUMI: React.FC = () => {
                 type="button"
                 onClick={guardarTec}
                 disabled={guardandoTec}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-60"
               >
                 <Save className="w-4 h-4" />
                 {guardandoTec ? 'Guardando…' : modoTec === 'crear' ? 'Crear técnico' : 'Guardar cambios'}
