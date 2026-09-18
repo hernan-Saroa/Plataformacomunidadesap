@@ -595,7 +595,7 @@ const descripcionVariables: Record<string, string> = {
   '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
   '[DOCUMENTO]': 'Número de documento',
   '[CARGO]': 'Cargo calculado (categoría + palabra Código + código + grado)',
-  '[GRUPO]': 'Grupo (position_location de la solicitud)',
+  '[GRUPO]': 'Grupo interno de trabajo de la solicitud (si no hay, la ubicación del cargo)',
   '[TIPO_DATO]': 'Tipo de vinculación',
   '[DEPENDENCIA]': 'Dependencia',
   '[DATO1]': 'Dato 1 (nombre empleado)',

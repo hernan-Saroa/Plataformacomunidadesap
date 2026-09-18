@@ -20,6 +20,7 @@ import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
@@ -39,6 +40,7 @@ import { IssueRpDto } from '../../dto/issue-rp.dto';
 import { ItemCargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
 import { ItemBulkIssueRpDto, BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
 import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
+import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
 
 import {
   sanitizeObjetoComision,
@@ -133,7 +135,29 @@ export class TravelExpensesService {
     private readonly liquidationService?: LiquidationService,
     @Optional()
     private readonly ticketsService?: TicketsService,
+    @Optional()
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
+
+  /**
+   * Emite el evento asíncrono 'commission.disbursement_ready' para que el listener
+   * de SST despache automáticamente la notificación formal de desplazamiento [RF-PAG-002].
+   */
+  private emitirDisbursementReady(solicitudId: string, estadoNuevo: string, usuarioId?: string) {
+    if (this.eventEmitter) {
+      try {
+        this.eventEmitter.emit('commission.disbursement_ready', {
+          solicitudId,
+          estadoNuevo,
+          usuarioId,
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `[RF-PAG-002] No se pudo emitir evento commission.disbursement_ready para ${solicitudId}: ${err?.message}`,
+        );
+      }
+    }
+  }
 
   private readonly SUPER_ADMIN_ROLES = [
     'ADMIN',
@@ -164,6 +188,8 @@ export class TravelExpensesService {
     isControlViaticos = false,
     isAnalista = false,
     isSecretario = false,
+    isTesoreria = false,
+    isSst = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -176,6 +202,10 @@ export class TravelExpensesService {
       isAnalista,
       'isSecretario=',
       isSecretario,
+      'isTesoreria=',
+      isTesoreria,
+      'isSst=',
+      isSst,
       'page=',
       page,
       'limit=',
@@ -186,7 +216,15 @@ export class TravelExpensesService {
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
     if (!isSuperAdmin && !isSecretario) {
-      if (isControlViaticos) {
+      if (isTesoreria) {
+        query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
+          estadosTesoreria: ['OBLIGADA', 'PAGADA'],
+        });
+      } else if (isSst) {
+        query.andWhere('s.estado_solicitud IN (:...estadosSst)', {
+          estadosSst: ['OBLIGADA', 'PAGADA'],
+        });
+      } else if (isControlViaticos) {
         query.andWhere('s.estado_solicitud IN (:...estadosControl)', {
           estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'],
         });
@@ -197,19 +235,21 @@ export class TravelExpensesService {
       }
     }
 
-    // Orden por prioridad de estado (vista general): Solicitadas SIIF → Verificadas →
-    // Radicadas → Extemporáneas → Solicitadas (en revisión) → Pendientes → resto.
-    // Dentro del mismo estado se ordena por fecha de creación (más reciente primero).
+    // Orden por prioridad de estado: OBLIGADA primero (prioridad operativa Tesorería),
+    // luego Solicitadas SIIF → Verificadas → Radicadas → Extemporáneas → Solicitadas →
+    // Pendientes → Pagadas → resto.
     query
       .orderBy(
         `CASE s.estado_solicitud
-           WHEN 'SOLICITADA_SIIF' THEN 1
-           WHEN 'VERIFICADA' THEN 2
-           WHEN 'RADICADA' THEN 3
-           WHEN 'EXTEMPORANEA' THEN 4
-           WHEN 'SOLICITADO' THEN 5
-           WHEN 'PENDIENTE' THEN 6
-           ELSE 7
+           WHEN 'OBLIGADA' THEN 1
+           WHEN 'SOLICITADA_SIIF' THEN 2
+           WHEN 'VERIFICADA' THEN 3
+           WHEN 'RADICADA' THEN 4
+           WHEN 'EXTEMPORANEA' THEN 5
+           WHEN 'SOLICITADO' THEN 6
+           WHEN 'PENDIENTE' THEN 7
+           WHEN 'PAGADA' THEN 8
+           ELSE 9
          END`,
         'ASC',
       )
@@ -248,8 +288,8 @@ export class TravelExpensesService {
         : null,
       destinoCiudad: s.destinoCiudad,
       destinoDepartamento: s.destinoDepartamento,
-      fechaInicio: s.fechaInicio.toISOString(),
-      fechaFin: s.fechaFin.toISOString(),
+      fechaInicio: s.fechaInicio instanceof Date ? s.fechaInicio.toISOString() : (s.fechaInicio || null),
+      fechaFin: s.fechaFin instanceof Date ? s.fechaFin.toISOString() : (s.fechaFin || null),
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
@@ -260,14 +300,39 @@ export class TravelExpensesService {
       estadoSolicitud: s.estadoSolicitud,
       radicadoFueraJornada: s.radicadoFueraJornada,
       extemporanea: s.extemporanea,
-      creadoEn: s.creadoEn.toISOString(),
-      actualizadoEn: s.actualizadoEn.toISOString(),
+      creadoEn: s.creadoEn instanceof Date ? s.creadoEn.toISOString() : (s.creadoEn || null),
+      actualizadoEn: s.actualizadoEn instanceof Date ? s.actualizadoEn.toISOString() : (s.actualizadoEn || null),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
       motivoDevolucion: s.motivoDevolucion || s.observacionesSegundaRevision || null,
       observacionesSegundaRevision: s.observacionesSegundaRevision || null,
       fechaSegundaRevision: s.fechaSegundaRevision?.toISOString() ?? null,
       revisorControlId: s.revisorControlId || null,
+      // Etapa 7: Presupuesto & RP
+      enviadoPresupuesto: Boolean((s as any).enviadoPresupuesto),
+      fechaEnvioPresupuesto: (s as any).fechaEnvioPresupuesto?.toISOString?.() ?? (s as any).fechaEnvioPresupuesto ?? null,
+      numeroRp: (s as any).numeroRp ?? null,
+      fechaRp: (s as any).fechaRp?.toISOString?.() ?? (s as any).fechaRp ?? null,
+      valorComprometido: (s as any).valorComprometido != null ? Number((s as any).valorComprometido) : null,
+      rubroRp: (s as any).rubroRp ?? null,
+      codigoRp: (s as any).codigoRp ?? null,
+      fechaExpedicionRp: (s as any).fechaExpedicionRp?.toISOString?.() ?? (s as any).fechaExpedicionRp ?? null,
+      // Etapa 7: Modalidad de Pago
+      modalidadPago: (s as any).modalidadPago ?? null,
+      diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : null,
+      fechaCalculoModalidad: (s as any).fechaCalculoModalidad?.toISOString?.() ?? (s as any).fechaCalculoModalidad ?? null,
+      // Etapa 8: Obligación SIIF
+      numeroObligacion: (s as any).numeroObligacion ?? null,
+      fechaObligacion: (s as any).fechaObligacion?.toISOString?.() ?? (s as any).fechaObligacion ?? null,
+      valorObligacion: (s as any).valorObligacion != null ? Number((s as any).valorObligacion) : null,
+      // Etapa 8: Pago & Desembolso Tesorería
+      numeroOrdenPago: (s as any).numeroOrdenPago ?? null,
+      fechaPago: (s as any).fechaPago ? (s.fechaPago instanceof Date ? s.fechaPago.toISOString().split('T')[0] : String(s.fechaPago)) : null,
+      valorPagado: (s as any).valorPagado != null ? Number((s as any).valorPagado) : null,
+      soportePagoPath: (s as any).soportePagoPath ?? null,
+      observacionesPago: (s as any).observacionesPago ?? null,
+      pagadoPorId: (s as any).pagadoPorId ?? null,
+      fechaRegistroPago: (s as any).fechaRegistroPago?.toISOString?.() ?? (s as any).fechaRegistroPago ?? null,
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
@@ -1623,10 +1688,80 @@ export class TravelExpensesService {
     return { camposFaltantes };
   }
 
+  /**
+   * Limpia y normaliza texto para renderizado correcto en PDFKit sin problemas de codificación.
+   */
+  sanitizarTextoPdf(texto: string | null | undefined): string {
+    if (!texto) return '';
+    return String(texto)
+      .replace(/Ã¡/g, 'á')
+      .replace(/Ã©/g, 'é')
+      .replace(/Ã­/g, 'í')
+      .replace(/Ã³/g, 'ó')
+      .replace(/Ãº/g, 'ú')
+      .replace(/Ã±/g, 'ñ')
+      .replace(/Ã‘/g, 'Ñ')
+      .replace(/Ã\u0081/g, 'Á')
+      .replace(/Ã\u0089/g, 'É')
+      .replace(/Ã\u008D/g, 'Í')
+      .replace(/Ã\u0093/g, 'Ó')
+      .replace(/Ã\u009A/g, 'Ú')
+      .replace(/Ã\u0091/g, 'Ñ')
+      .replace(/Ã-/g, 'í')
+      .replace(/Ã\u00ad/g, 'í')
+      .replace(/Â/g, '')
+      .trim();
+  }
+
+  /**
+   * Resuelve el nombre y apellidos de un usuario a partir de su ID consultando
+   * auth."user" y auth.personas. Si no se encuentra, retorna fallbackNombre.
+   */
+  async resolverNombreUsuario(
+    usuarioId?: string | null,
+    fallbackNombre: string = '',
+  ): Promise<string> {
+    if (!usuarioId) return fallbackNombre;
+    if (typeof this.dataSource?.query === 'function') {
+      try {
+        const rows: any[] = await this.dataSource.query(
+          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.id_user = $1
+           LIMIT 1`,
+          [usuarioId],
+        );
+        if (Array.isArray(rows) && rows[0]) {
+          const r = rows[0];
+          const nombre =
+            r.nom_largo ||
+            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
+            r.username;
+          if (nombre) return String(nombre).trim();
+        }
+      } catch (e) {
+        this.logger.warn(`Error resolviendo nombre de usuario ${usuarioId}: ${e}`);
+      }
+    }
+    return fallbackNombre;
+  }
+
   async exportarFormato023(solicitudId: string, req?: any): Promise<Buffer> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
-      relations: ['comisionado', 'documentosSoporte'],
+      relations: [
+        'comisionado',
+        'documentosSoporte',
+        'analistaAsignado',
+        'revisorControl',
+        'autorizador',
+        'autorizadorDireccion',
+        'expedidoRpPor',
+        'usuarioPresupuesto',
+        'obligadoPor',
+        'pagadoPor',
+      ],
     });
 
     if (!solicitud) {
@@ -1635,6 +1770,44 @@ export class TravelExpensesService {
 
     const comisionado = solicitud.comisionado;
     const PDFDocument = require('pdfkit');
+
+    const nombreComisionado = this.sanitizarTextoPdf(
+      [
+        comisionado?.primerNombre,
+        comisionado?.segundoNombre,
+        comisionado?.primerApellido,
+        comisionado?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+
+    const solicitanteNombre = await this.resolverNombreUsuario(
+      solicitud.creadoPorUsuarioId,
+      nombreComisionado || 'Solicitante / Comisionado',
+    );
+
+    const revisorNombre = await this.resolverNombreUsuario(
+      solicitud.revisorControlId || solicitud.analistaAsignadoId,
+      'Grupo de Gestión de Viáticos',
+    );
+
+    const autorizadorNombre = await this.resolverNombreUsuario(
+      solicitud.autorizadorId || solicitud.autorizadorDireccionId,
+      'Subdirección de Gestión Corporativa',
+    );
+
+    const presupuestoNombre = await this.resolverNombreUsuario(
+      solicitud.expedidoRpPorId ||
+        solicitud.usuarioPresupuestoId ||
+        solicitud.enviadoPresupuestoPorId,
+      'Grupo de Presupuesto',
+    );
+
+    const tesoreriaNombre = await this.resolverNombreUsuario(
+      solicitud.pagadoPorId || solicitud.obligadoPorId,
+      'Grupo de Tesorería',
+    );
 
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'letter' });
@@ -1699,7 +1872,7 @@ export class TravelExpensesService {
         doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
         doc.text(`${label}: `, { continued: true });
         doc.font('Helvetica').fillColor('#000000');
-        doc.text(value || 'N/A');
+        doc.text(this.sanitizarTextoPdf(value) || 'N/A');
       };
 
       const drawMultiLineField = (label: string, value: string) => {
@@ -1707,18 +1880,23 @@ export class TravelExpensesService {
         doc.text(`${label}:`);
         doc.moveDown(0.3);
         doc.font('Helvetica').fillColor('#000000');
-        doc.text(value || 'N/A', {
+        doc.text(this.sanitizarTextoPdf(value) || 'N/A', {
           width: 512,
           align: 'justify',
         });
         doc.moveDown(0.3);
       };
 
-      const formatDate = (date: Date | string): string => {
-        const d = new Date(date);
+      const formatDate = (
+        date: Date | string | null | undefined,
+        estiloMes: 'long' | 'short' = 'long',
+      ): string => {
+        if (!date) return 'N/A';
+        const d = typeof date === 'string' ? new Date(date) : date;
+        if (isNaN(d.getTime())) return 'N/A';
         return d.toLocaleDateString('es-CO', {
           year: 'numeric',
-          month: 'long',
+          month: estiloMes,
           day: 'numeric',
         });
       };
@@ -1731,14 +1909,7 @@ export class TravelExpensesService {
         }).format(amount || 0);
       };
 
-      const nombreCompleto = [
-        comisionado?.primerNombre,
-        comisionado?.segundoNombre,
-        comisionado?.primerApellido,
-        comisionado?.segundoApellido,
-      ]
-        .filter(Boolean)
-        .join(' ');
+      const nombreCompleto = nombreComisionado;
 
       const tipoTransporte = solicitud.requiereTiquetes
         ? 'Aéreo / Terrestre'
@@ -1826,28 +1997,246 @@ export class TravelExpensesService {
       }
       doc.moveDown(0.5);
 
+      // Verificamos si queda espacio suficiente para las firmas (~180pt). Si no, nueva página con header limpio.
+      if (doc.y > 510) {
+        doc.addPage();
+        drawHeader();
+      }
+
       drawSectionTitle('7. FIRMAS Y APROBACIONES');
-      doc.moveDown(1);
+      doc.moveDown(0.5);
 
-      const firmaY = doc.y;
-      doc.strokeColor('#333333').lineWidth(0.5);
-      doc.moveTo(80, firmaY).lineTo(250, firmaY).stroke();
-      doc.moveTo(350, firmaY).lineTo(520, firmaY).stroke();
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(8).fillColor('#333333');
-      doc.text('Firma del Solicitante', 80, firmaY + 5);
-      doc.text('Firma del Jefe Inmediato / Aprobación', 350, firmaY + 5);
+      // Estados de avance del flujo para activar los sellos visuales de aprobación
+      const estadosRevisionAprobada = [
+        EstadoSolicitud.VERIFICADA,
+        EstadoSolicitud.APROBADO_JEFE,
+        EstadoSolicitud.APROBADO_TALENTO_HUMANO,
+        EstadoSolicitud.AUTORIZACION_DIRECCION,
+        EstadoSolicitud.EN_AUTORIZACION,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.PAGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
 
-      doc.moveDown(3);
+      const estadosAutorizacionAprobada = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.PAGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
 
-      const fechaY = doc.y;
-      doc.strokeColor('#333333').lineWidth(0.5);
-      doc.moveTo(200, fechaY).lineTo(400, fechaY).stroke();
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(8).fillColor('#333333');
-      doc.text('Firma Subdirector / Director', 220, fechaY + 5);
+      const estadosPresupuestoAprobado = [
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.PAGADA,
+      ];
 
-      doc.moveDown(3);
+      const estadosPagoAprobado = [EstadoSolicitud.PAGADA];
+
+      const solicitanteAprobado = true; // Radicado y solicitado formalmente en el sistema
+      const revisorAprobado =
+        estadosRevisionAprobada.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaRevision) ||
+        Boolean(solicitud.fechaSegundaRevision) ||
+        Boolean(solicitud.revisorControlId);
+      const autorizadorAprobado =
+        estadosAutorizacionAprobada.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaAutorizacion) ||
+        Boolean(solicitud.autorizadorId);
+      const tienePresupuesto =
+        estadosPresupuestoAprobado.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.numeroRp) ||
+        Boolean(solicitud.fechaRp);
+      const tienePago =
+        estadosPagoAprobado.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaPago) ||
+        Boolean(solicitud.numeroOrdenPago);
+
+      const drawSelloOFirma = (
+        x: number,
+        y: number,
+        width: number,
+        aprobado: boolean,
+        nombre: string,
+        detalle: string,
+        etiquetaFirma: string,
+      ) => {
+        const boxHeight = 44;
+        if (aprobado) {
+          // Sello visual digital APROBADO (diseño corporativo ESAP idéntico al visto bueno de tiquete)
+          doc
+            .roundedRect(x, y, width, boxHeight, 4)
+            .lineWidth(1)
+            .strokeColor('#15803D')
+            .fillAndStroke('#F0FDF4', '#15803D');
+
+          doc.fontSize(8).font('Helvetica-Bold').fillColor('#15803D');
+          doc.text('ESTADO: APROBADO', x, y + 5, {
+            width,
+            align: 'center',
+          });
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#14532D');
+          doc.text(
+            this.sanitizarTextoPdf(`Aprobado por: ${nombre}`),
+            x,
+            y + 17,
+            {
+              width,
+              align: 'center',
+            },
+          );
+          doc.fontSize(6.5).font('Helvetica').fillColor('#166534');
+          doc.text(this.sanitizarTextoPdf(detalle), x, y + 29, {
+            width,
+            align: 'center',
+          });
+
+          // Etiqueta del rol formal debajo del sello
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(etiquetaFirma, x, y + boxHeight + 4, {
+            width,
+            align: 'center',
+          });
+        } else {
+          // Línea clásica para firma física pendiente
+          const lineY = y + 26;
+          doc
+            .strokeColor('#94a3b8')
+            .lineWidth(0.8)
+            .moveTo(x + 10, lineY)
+            .lineTo(x + width - 10, lineY)
+            .stroke();
+
+          doc.fontSize(7.5).font('Helvetica').fillColor('#475569');
+          doc.text(etiquetaFirma, x, lineY + 5, {
+            width,
+            align: 'center',
+          });
+          doc.fontSize(6.5).font('Helvetica-Oblique').fillColor('#94a3b8');
+          doc.text('Pendiente de firma / aprobación', x, lineY + 16, {
+            width,
+            align: 'center',
+          });
+        }
+      };
+
+      const anchoColumna = 215;
+      const xCol1 = 60;
+      const xCol2 = 337;
+      let curY = doc.y;
+
+      // Fila 1: Solicitante (izq) y Jefe Inmediato / Revisión (der)
+      drawSelloOFirma(
+        xCol1,
+        curY,
+        anchoColumna,
+        solicitanteAprobado,
+        solicitanteNombre,
+        `Radicación Digital · ${formatDate(solicitud.creadoEn, 'short')}`,
+        'Firma del Solicitante / Comisionado',
+      );
+
+      drawSelloOFirma(
+        xCol2,
+        curY,
+        anchoColumna,
+        revisorAprobado,
+        revisorNombre,
+        `Revisión y Control · ${formatDate(
+          solicitud.fechaSegundaRevision ||
+            solicitud.fechaRevision ||
+            solicitud.actualizadoEn,
+          'short',
+        )}`,
+        'Firma del Jefe Inmediato / Aprobación',
+      );
+
+      curY += 66;
+
+      // Fila 2: Subdirector / Director (izq o centro) y Presupuesto (der si aplica)
+      if (tienePresupuesto) {
+        drawSelloOFirma(
+          xCol1,
+          curY,
+          anchoColumna,
+          autorizadorAprobado,
+          autorizadorNombre,
+          `Autorización Institucional · ${formatDate(
+            solicitud.fechaAutorizacion || solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Subdirector / Director',
+        );
+
+        drawSelloOFirma(
+          xCol2,
+          curY,
+          anchoColumna,
+          true,
+          presupuestoNombre,
+          `Presupuesto · RP No. ${solicitud.numeroRp || 'S/N'} · ${formatDate(
+            solicitud.fechaRp ||
+              solicitud.fechaExpedicionRp ||
+              solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Presupuesto (RP Expedido)',
+        );
+
+        curY += 66;
+      } else {
+        const xCentro = 198;
+        drawSelloOFirma(
+          xCentro,
+          curY,
+          anchoColumna,
+          autorizadorAprobado,
+          autorizadorNombre,
+          `Autorización Institucional · ${formatDate(
+            solicitud.fechaAutorizacion || solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Subdirector / Director',
+        );
+
+        curY += 66;
+      }
+
+      // Fila 3: Si ya tiene Desembolso / Pago en Tesorería
+      if (tienePago) {
+        const xCentro = 198;
+        drawSelloOFirma(
+          xCentro,
+          curY,
+          anchoColumna,
+          true,
+          tesoreriaNombre,
+          `Tesorería · OP No. ${solicitud.numeroOrdenPago || 'SIIF'} · ${formatDate(
+            solicitud.fechaPago ||
+              solicitud.fechaRegistroPago ||
+              solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Tesorería (Desembolso y Pago)',
+        );
+
+        curY += 66;
+      }
+
+      doc.y = curY + 6;
 
       doc.fontSize(8).font('Helvetica').fillColor('#999999');
       doc.text('─'.repeat(80), { align: 'center' });
@@ -4313,31 +4702,10 @@ export class TravelExpensesService {
     const comisionado = solicitud.comisionado;
     const PDFDocument = require('pdfkit');
 
-    let autorizadorNombre = 'Subdirección de Gestión Corporativa';
-    if (solicitud.autorizadorId && typeof this.dataSource?.query === 'function') {
-      try {
-        const rowsAut: any[] = await this.dataSource.query(
-          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
-           FROM auth."user" u
-           LEFT JOIN auth.personas p ON p.id_person = u.id_person
-           WHERE u.id_user = $1
-           LIMIT 1`,
-          [solicitud.autorizadorId],
-        );
-        if (Array.isArray(rowsAut) && rowsAut[0]) {
-          const r = rowsAut[0];
-          autorizadorNombre =
-            r.nom_largo ||
-            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
-            r.username ||
-            'Subdirección de Gestión Corporativa';
-        }
-      } catch (e) {
-        this.logger.warn(`Error resolviendo autorizador en PDF: ${e}`);
-      }
-    } else if (solicitud.autorizador?.username) {
-      autorizadorNombre = solicitud.autorizador.username;
-    }
+    const autorizadorNombre = await this.resolverNombreUsuario(
+      solicitud.autorizadorId,
+      solicitud.autorizador?.username || 'Subdirección de Gestión Corporativa',
+    );
 
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'letter' });
@@ -4373,25 +4741,7 @@ export class TravelExpensesService {
       };
 
       const sanitizarTexto = (texto: string | null | undefined): string => {
-        if (!texto) return '';
-        return String(texto)
-          .replace(/Ã¡/g, 'á')
-          .replace(/Ã©/g, 'é')
-          .replace(/Ã­/g, 'í')
-          .replace(/Ã³/g, 'ó')
-          .replace(/Ãº/g, 'ú')
-          .replace(/Ã±/g, 'ñ')
-          .replace(/Ã‘/g, 'Ñ')
-          .replace(/Ã\u0081/g, 'Á')
-          .replace(/Ã\u0089/g, 'É')
-          .replace(/Ã\u008D/g, 'Í')
-          .replace(/Ã\u0093/g, 'Ó')
-          .replace(/Ã\u009A/g, 'Ú')
-          .replace(/Ã\u0091/g, 'Ñ')
-          .replace(/Ã-/g, 'í')
-          .replace(/Ã\u00ad/g, 'í')
-          .replace(/Â/g, '')
-          .trim();
+        return this.sanitizarTextoPdf(texto);
       };
 
       const drawSectionTitle = (title: string) => {
@@ -4439,6 +4789,21 @@ export class TravelExpensesService {
           .join(' '),
       );
 
+      const esAprobadaItinerario =
+        [
+          EstadoSolicitud.AUTORIZADA,
+          EstadoSolicitud.EN_PRESUPUESTO,
+          EstadoSolicitud.COMPROMETIDA,
+          EstadoSolicitud.OBLIGADA,
+          EstadoSolicitud.PAGADA,
+          EstadoSolicitud.RESOLUCION_EMITIDA,
+          EstadoSolicitud.TIQUETES_COMPRADOS,
+          EstadoSolicitud.EN_COMISION,
+          EstadoSolicitud.PENDIENTE_LEGALIZACION,
+          EstadoSolicitud.LEGALIZADO,
+        ].includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaAutorizacion);
+
       drawHeader();
 
       doc.fontSize(14).font('Helvetica-Bold');
@@ -4448,7 +4813,7 @@ export class TravelExpensesService {
       });
       doc.fontSize(10).font('Helvetica-Bold');
       doc.fillColor(
-        solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA
+        esAprobadaItinerario
           ? '#15803D'
           : '#B45309',
       );
@@ -4502,7 +4867,7 @@ export class TravelExpensesService {
       const stampHeight = 44;
       const yFirmas = yStampTop + stampHeight + 20;
 
-      if (solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA) {
+      if (esAprobadaItinerario) {
         // Sello visual digital APROBADO para la Subdirección
         doc
           .roundedRect(60, yStampTop, 180, stampHeight, 4)
@@ -4516,7 +4881,7 @@ export class TravelExpensesService {
           align: 'center',
         });
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#14532D');
-        doc.text(sanitizarTexto(autorizadorNombre), 60, yStampTop + 18, {
+        doc.text(sanitizarTexto(`Aprobado por: ${autorizadorNombre}`), 60, yStampTop + 18, {
           width: 180,
           align: 'center',
         });
@@ -5035,6 +5400,7 @@ export class TravelExpensesService {
         motivo: `[RF-PRE-001 / RF-PRE-003] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
       });
 
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
       return guardada;
     });
   }
@@ -5275,6 +5641,8 @@ export class TravelExpensesService {
           diasHabilesPrevios,
           estado: EstadoSolicitud.COMPROMETIDA,
         });
+
+        this.emitirDisbursementReady(solicitud.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
       } catch (err: any) {
         errores.push({
           fila,
@@ -5427,8 +5795,133 @@ export class TravelExpensesService {
         `[RF-PAG-001] Obligación ${dto.numeroObligacion.trim()} registrada exitosamente para solicitud ${consecutivo}. Estado: OBLIGADA. Modalidad: ${modalidadFinal}.`,
       );
 
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.OBLIGADA, usuarioId);
+      return guardada;
+    });
+  }
+
+  /**
+   * [RF-PAG-003] Etapa 8 — Tesorería y desembolso: Procesar pago de comisión.
+   *
+   * Criterios de aceptación (Gherkin):
+   * 1. Dada una comisión con obligación creada (estado OBLIGADA),
+   *    Cuando Tesorería procesa el pago,
+   *    Entonces la comisión pasa a estado PAGADA.
+   * 2. Dado el pago realizado,
+   *    Cuando se registra,
+   *    Entonces queda con su soporte y fecha en la trazabilidad (solicitudes_historial_estados).
+   *
+   * Detalle funcional y validaciones:
+   * - Estado previo requerido: OBLIGADA.
+   * - Estado resultante: PAGADA.
+   * - Campos registrados: fecha de pago, valor pagado, soporte de desembolso, orden de pago SIIF, observaciones.
+   * - Respeta la modalidad presupuestal (AVANCE / RECONOCIMIENTO_POSTERIOR).
+   * - Aplicabilidad: Todas las comisiones con obligación creada.
+   */
+  async procesarPago(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[] = [],
+    dto: ProcesarPagoDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('El ID de la solicitud es obligatorio.');
+    }
+    if (!dto) {
+      throw new BadRequestException('Los datos del pago y desembolso son requeridos.');
+    }
+    if (!dto.fechaPago) {
+      throw new BadRequestException('La fecha de pago es obligatoria.');
+    }
+    if (dto.valorPagado == null || Number(dto.valorPagado) <= 0) {
+      throw new BadRequestException('El valor pagado debe ser un monto positivo mayor a cero.');
+    }
+
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión ${solicitudId} no encontrada.`);
+    }
+
+    // Validación de estado: Debe estar en estado OBLIGADA
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.OBLIGADA) {
+      throw new BadRequestException(
+        `La solicitud no se encuentra en estado OBLIGADA (Estado actual: ${solicitud.estadoSolicitud}). Solo comisiones con obligación creada en SIIF Nación pueden ser desembolsadas por Tesorería.`,
+      );
+    }
+
+    // Validación de número de obligación
+    if (!solicitud.numeroObligacion) {
+      throw new BadRequestException(
+        'La comisión no cuenta con número de obligación registrado en SIIF Nación.',
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    const fechaPagoFinal = new Date(dto.fechaPago);
+    const valorPagadoFinal = Number(dto.valorPagado);
+    const soporteFinal = dto.soportePagoPath?.trim() || dto.soporteDesembolsoPath?.trim() || null;
+    const ordenPagoFinal = dto.numeroOrdenPago?.trim() || dto.comprobantePago?.trim() || null;
+    const modalidadFinal = dto.modalidadPago || solicitud.modalidadPago || 'AVANCE';
+
+    solicitud.estadoSolicitud = EstadoSolicitud.PAGADA;
+    solicitud.fechaPago = fechaPagoFinal;
+    solicitud.valorPagado = valorPagadoFinal;
+    solicitud.soportePagoPath = soporteFinal;
+    solicitud.numeroOrdenPago = ordenPagoFinal;
+    solicitud.observacionesPago = dto.observacionesPago?.trim() || null;
+    solicitud.pagadoPorId = usuarioId;
+    solicitud.fechaRegistroPago = new Date();
+
+    const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+    const numObligacion = solicitud.numeroObligacion;
+
+    return await this.dataSource.transaction(async (manager) => {
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      const comentariosTrazabilidad = `[RF-PAG-003] Pago procesado por Tesorería. Estado: PAGADA. Valor desembolsado: $${valorPagadoFinal.toLocaleString('es-CO')}. Modalidad: ${modalidadFinal}. Obligación SIIF: ${numObligacion}${ordenPagoFinal ? `. Orden Pago: ${ordenPagoFinal}` : ''}${soporteFinal ? `. Soporte: ${soporteFinal}` : ''}.`;
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: guardada.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.PAGADA,
+        usuarioId,
+        comentarios: comentariosTrazabilidad.slice(0, 255),
+      });
+
+      if (this.notificationClient?.send) {
+        try {
+          const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean) as string[];
+          for (const destId of destinatarios) {
+            await this.notificationClient.send({
+              id_usuario_destinatario: destId,
+              tipo_notificacion: 'COMISION_PAGADA',
+              titulo: `Comisión Pagada: ${consecutivo}`,
+              mensaje: `Tesorería ha desembolsado el pago de la comisión ${consecutivo} por un valor de $${valorPagadoFinal.toLocaleString('es-CO')} (Modalidad: ${modalidadFinal}). La comisión se encuentra PAGADA.`,
+              descripcion_corta: `Desembolso Tesorería · ${consecutivo}`,
+              icono: 'BadgeDollarSign',
+              color: '#059669',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: false,
+            });
+          }
+        } catch (notifErr: any) {
+          this.logger.warn(`[RF-PAG-003] No se pudo enviar notificación de pago: ${notifErr?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[RF-PAG-003] Pago procesado exitosamente para solicitud ${consecutivo}. Estado: PAGADA. Valor: $${valorPagadoFinal}. Modalidad: ${modalidadFinal}.`,
+      );
+
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.PAGADA, usuarioId);
       return guardada;
     });
   }
 }
+
 

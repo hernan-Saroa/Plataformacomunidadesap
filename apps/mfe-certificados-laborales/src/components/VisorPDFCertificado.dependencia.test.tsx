@@ -40,7 +40,8 @@ describe('vista previa de [DEPENDENCIA] con encargo', () => {
     render(<VisorPDFCertificado isOpen onClose={() => {}} certificado={certificado(extra)} />);
     expect((await screen.findAllByText('DEP:Grupo del nombramiento')).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/CARGO:Profesional Especializado.*2028.*\(E\)/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('GRUPO:Ubicacion del encargo').length).toBeGreaterThan(0);
+    // [GRUPO] es el grupo interno de trabajo, no la ubicacion del cargo.
+    expect(screen.getAllByText('GRUPO:Grupo del encargo').length).toBeGreaterThan(0);
     expect(screen.getAllByText('DATO7:Dependencia del encargo').length).toBeGreaterThan(0);
   });
 

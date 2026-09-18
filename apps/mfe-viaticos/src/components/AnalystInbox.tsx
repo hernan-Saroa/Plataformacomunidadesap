@@ -14,6 +14,7 @@ import {
   XCircle,
   Receipt,
   Landmark,
+  BadgeDollarSign,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -28,6 +29,7 @@ import { formatearNombreComisionado, formatearMoneda } from '../utils/viaticosUt
 import VerificacionSIIFModal from './VerificacionSIIFModal';
 import CancelarComisionModal from './CancelarComisionModal';
 import CrearObligacionModal from './CrearObligacionModal';
+import ProcesarPagoModal from './ProcesarPagoModal';
 
 const PRIORIDAD_CONFIG: Record<PrioridadSolicitud, { bg: string; text: string; label: string }> = {
   ALTA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta' },
@@ -55,6 +57,7 @@ const ESTADO_CONFIG: Record<string, { bg: string; text: string; label: string }>
   EN_PRESUPUESTO: { bg: 'bg-teal-100', text: 'text-teal-700', label: 'En Presupuesto' },
   COMPROMETIDA: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'Comprometida' },
   OBLIGADA: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Obligada' },
+  PAGADA: { bg: 'bg-green-100', text: 'text-green-800', label: 'Pagada' },
 };
 
 const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
@@ -81,6 +84,7 @@ export default function AnalystInbox() {
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [solicitudCancelar, setSolicitudCancelar] = useState<SolicitudListaResponse | null>(null);
   const [solicitudObligacion, setSolicitudObligacion] = useState<SolicitudListaResponse | null>(null);
+  const [solicitudPago, setSolicitudPago] = useState<SolicitudListaResponse | null>(null);
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -113,6 +117,7 @@ export default function AnalystInbox() {
   const puedeCancelarComision = useMemo(() => authService.canCancelarComision(), []);
   const puedeEnviarPresupuesto = useMemo(() => authService.canEnviarPresupuesto(), []);
   const puedeCrearObligacion = useMemo(() => authService.canCrearObligacion(), []);
+  const puedeProcesarPago = useMemo(() => authService.canProcesarPago(), []);
 
   useEffect(() => {
     void cargarSolicitudes();
@@ -158,8 +163,8 @@ export default function AnalystInbox() {
 
       if (esDevuelta) {
         devList.push(s);
-      } else if (s.estadoSolicitud === 'COMPROMETIDA' || s.estadoSolicitud === 'OBLIGADA') {
-        // Etapa 8: Comisiones con RP expedido pendientes de obligación o ya obligadas
+      } else if (s.estadoSolicitud === 'COMPROMETIDA' || s.estadoSolicitud === 'OBLIGADA' || s.estadoSolicitud === 'PAGADA') {
+        // Etapa 8: Comisiones con RP expedido pendientes de obligación, obligadas o ya pagadas
         compList.push(s);
       } else if (s.estadoSolicitud === 'VERIFICADA' || s.estadoSolicitud === 'SOLICITADA_SIIF') {
         // Ya completaron la revisión del analista
@@ -783,6 +788,20 @@ export default function AnalystInbox() {
                               Obl: {s.numeroObligacion}
                             </span>
                           )}
+                          {s.estadoSolicitud === 'PAGADA' && (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              {s.numeroOrdenPago && (
+                                <span className="text-[10px] font-mono text-green-700 font-semibold">
+                                  OP: {s.numeroOrdenPago}
+                                </span>
+                              )}
+                              {s.valorPagado != null && (
+                                <span className="text-[10px] font-bold text-slate-700">
+                                  {formatearMoneda(Number(s.valorPagado))}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {tieneDevolucion && (
                           <span
@@ -822,16 +841,40 @@ export default function AnalystInbox() {
                             )}
                           </>
                         ) : s.estadoSolicitud === 'OBLIGADA' ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Obligada · Lista para Pago
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleIniciarAuditoria(s)}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors text-[11px] font-semibold"
+                              title="Consultar expediente y obligación registrada"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-slate-500" />
+                              <span className="hidden sm:inline">Consultar</span>
+                            </button>
+                            {puedeProcesarPago && (
+                              <button
+                                type="button"
+                                onClick={() => setSolicitudPago(s)}
+                                style={{ backgroundColor: '#059669', color: '#ffffff' }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all text-[11px] font-semibold shadow-xs hover:opacity-90 cursor-pointer"
+                                title="Procesar desembolso y pago en SIIF Nación (Etapa 8 — RF-PAG-003)"
+                              >
+                                <BadgeDollarSign className="w-3.5 h-3.5 text-white" />
+                                <span className="text-white whitespace-nowrap">Procesar Pago</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : s.estadoSolicitud === 'PAGADA' ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 border border-green-300">
+                              <CheckCircle2 className="w-3 h-3 text-green-600" />
+                              Pagada · Desembolsada
                             </span>
                             <button
                               type="button"
                               onClick={() => handleIniciarAuditoria(s)}
                               className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded"
-                              title="Consultar expediente"
+                              title="Consultar expediente pagado"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
@@ -941,6 +984,20 @@ export default function AnalystInbox() {
             `Obligación ${actualizada.numeroObligacion || ''} creada exitosamente en SIIF Nación. Comisión lista para desembolso de Tesorería.`,
           );
           setSolicitudObligacion(null);
+          cargarSolicitudes();
+        }}
+      />
+
+      {/* Modal de Procesamiento de Pago y Desembolso (Etapa 8 — RF-PAG-003) */}
+      <ProcesarPagoModal
+        abierta={Boolean(solicitudPago)}
+        solicitud={solicitudPago}
+        onCerrar={() => setSolicitudPago(null)}
+        onExito={(actualizada) => {
+          setMensajeExito(
+            `Desembolso procesado exitosamente en Tesorería para comisión ${actualizada.consecutivoUnico || actualizada.id}. Estado resultante: PAGADA.`,
+          );
+          setSolicitudPago(null);
           cargarSolicitudes();
         }}
       />

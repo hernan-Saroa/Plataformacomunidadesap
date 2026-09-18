@@ -276,6 +276,7 @@ export default function VerificacionSIIFModal({
   const esExtemporanea = Boolean(solicitud?.extemporanea || estadoUpper === 'EXTEMPORANEA');
   const estaComprometida = estadoUpper === 'COMPROMETIDA';
   const estaObligada = estadoUpper === 'OBLIGADA';
+  const estaPagada = estadoUpper === 'PAGADA';
   const estaAutorizada = [
     'AUTORIZADA',
     'RESOLUCION_EMITIDA',
@@ -285,6 +286,7 @@ export default function VerificacionSIIFModal({
     'LEGALIZADO',
     'COMPROMETIDA',
     'OBLIGADA',
+    'PAGADA',
   ].includes(estadoUpper);
   const esSoloLectura =
     estaEnControlViaticos ||
@@ -292,6 +294,7 @@ export default function VerificacionSIIFModal({
     estaAutorizada ||
     estaComprometida ||
     estaObligada ||
+    estaPagada ||
     esDevuelta;
 
   const todosCheckMandatory =
@@ -613,8 +616,42 @@ export default function VerificacionSIIFModal({
                 </div>
               )}
 
+              {/* ==================== Banner Pagada ==================== */}
+              {estaPagada && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-green-100 rounded-xl text-green-700 shrink-0 mt-0.5">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-green-700 text-white">
+                          Comisión Pagada y Desembolsada
+                        </span>
+                        {solicitud?.numeroOrdenPago && (
+                          <span className="text-[10px] text-green-800 font-bold font-mono">
+                            OP SIIF: {solicitud.numeroOrdenPago}
+                          </span>
+                        )}
+                        {solicitud?.fechaPago && (
+                          <span className="text-[10px] text-green-800 font-medium">
+                            Fecha: {String(solicitud.fechaPago).split('T')[0]}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-green-950 mt-1">
+                        Desembolso Financiero Ejecutado por Tesorería
+                      </h4>
+                      <p className="text-xs text-green-900 mt-1 leading-relaxed">
+                        El pago ha sido desembolsado exitosamente al comisionado conforme a la modalidad presupuestal. El expediente se encuentra formalmente en estado PAGADA.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ==================== Banner Autorizada ==================== */}
-              {estaAutorizada && !estaComprometida && !estaObligada && (
+              {estaAutorizada && !estaComprometida && !estaObligada && !estaPagada && (
                 <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-2xl shadow-xs">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-purple-100 rounded-xl text-purple-700 shrink-0 mt-0.5">
@@ -1083,8 +1120,8 @@ export default function VerificacionSIIFModal({
                 </section>
               )}
 
-              {/* ==================== Section 5: Observaciones y Trazabilidad (COMPROMETIDA / OBLIGADA) ó Checklist (Etapa 5) ==================== */}
-              {estaComprometida || estaObligada ? (
+              {/* ==================== Section 5: Observaciones y Trazabilidad (COMPROMETIDA / OBLIGADA / PAGADA) ó Checklist (Etapa 5) ==================== */}
+              {estaComprometida || estaObligada || estaPagada ? (
                 <section className="mb-6 border-t border-slate-200 pt-4 bg-slate-50/50 -mx-6 px-6 pb-2 rounded-b-2xl">
                   <div className="mb-3">
                     <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
