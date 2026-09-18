@@ -53,9 +53,11 @@ interface CertificadoLaboral {
   qrCode: string;
   position_location?: string;
   is_corrected?: boolean;
+  organization_department?: string;
   observations?: string;
   department?: string;
   certificate_dependency?: string;
+  certificate_group?: string;
   cod_cargo?: string;
   cod_grade?: string;
   campus?: string;
@@ -255,7 +257,16 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         : cert.status === 'EXPIRED'
           ? 'expirado'
           : employmentEstado;
+    // `organization_department` primero: en las filas sincronizadas desde
+    // Oracle, `department` guarda el CENTROCOSTO (el grupo) y no la dependencia.
+    // En un certificado corregido manda lo que guardo el coordinador.
+    const dependenciaOrganizacional = cert.is_corrected
+      ? ''
+      : cert.request?.organization_department ||
+        cert.request?.organizationDepartment ||
+        '';
     const ubicacionRaw = normalizarDependencia(
+      dependenciaOrganizacional ||
       cert.department ||
       cert.request?.department ||
       cert.request?.departmentName ||
@@ -327,11 +338,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       qrCode: cert.verification_code,
       position_location: grupoRaw,
       is_corrected: Boolean(cert.is_corrected),
+      organization_department: dependenciaOrganizacional,
       observations: cert.observations || cert.request?.observations,
       department: ubicacionRaw,
       certificate_dependency: cert.is_corrected
         ? undefined
         : cert.request?.certificate_dependency ?? cert.certificate_dependency,
+      // [GRUPO] sale de la misma vinculacion que [DEPENDENCIA]: el visor lo
+      // necesita para no contradecir al PDF del backend.
+      certificate_group: cert.is_corrected
+        ? undefined
+        : cert.request?.certificate_group ?? cert.certificate_group,
       // Centro de costo (grupo interno): [DEPENDENCIA] cae a el cuando no hay
       // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
       // previa se queda vacia y contradice al PDF del backend.

@@ -4,8 +4,9 @@ import { CertificatesService } from './certificates.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 
 /**
- * [GRUPO] imprime el grupo interno de trabajo (`internal_group`) y solo cae a
- * la ubicacion del cargo (`position_location`) cuando la solicitud no trae
+ * [GRUPO] imprime el grupo interno de trabajo (`internal_group` y, si no hay,
+ * `cost_center`: en las filas de Oracle el CENTROCOSTO ES el grupo) y solo cae
+ * a la ubicacion del cargo (`position_location`) cuando la solicitud no trae
  * grupo. La regla vale para las dos plantillas y para los certificados
  * corregidos, donde manda lo que guardo el coordinador.
  */
@@ -154,4 +155,182 @@ describe('[GRUPO] toma el grupo interno de trabajo', () => {
     expect(html).toContain('GRUPO:</p>');
     expect(html).toContain('DEP:Grupo de Administracion de Personal');
   });
+});
+
+/**
+ * Caso real reportado en preproduccion (certificado de una persona sincronizada
+ * desde Oracle, con encargo): la plantilla decia
+ * "ubicado en [DEPENDENCIA]. [GRUPO]" y salio el GRUPO en las dos variables,
+ * porque `department` guarda el CENTROCOSTO en las filas de Oracle y
+ * [DEPENDENCIA] lo leia primero; al coincidir con [GRUPO], la regla de no
+ * duplicar dejaba [GRUPO] vacio.
+ *
+ * El modal de "Consulta informativa" mostraba lo correcto porque resuelve la
+ * dependencia con `organization_department` primero.
+ */
+describe('[DEPENDENCIA] y [GRUPO] juntos en una fila sincronizada desde Oracle', () => {
+  const pdf = Object.create(LaborCertificatePdfService.prototype) as LaborCertificatePdfService;
+
+  const DEPENDENCIA = 'Direccion de Talento Humano';
+  const GRUPO = 'Grupo de Administracion de Personal y de Carrera Administrativa';
+
+  // Forma exacta que deja el sincronizador de Oracle (LaborOracleIntegration):
+  //   department = CENTROCOSTO || DEPENDENCIA   ← el CENTROCOSTO es el grupo
+  //   organization_department = DEPENDENCIA
+  //   internal_group = GRUPO_INTERNO || CENTROCOSTO
+  //   position_location = DEPENDENCIA || SUCURSAL
+  const solicitudOracle = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: 'solicitud-oracle',
+      id_number: '53062883',
+      status: 'A',
+      observations: 'E',
+      position_category: 'Cra. Administrativa',
+      career_category: 'Profesional Especializado Grado 16',
+      cod_cargo: '202816',
+      cod_grade: '16',
+      hiring_date: '2024-05-14',
+      department: GRUPO,
+      organization_department: DEPENDENCIA,
+      internal_group: GRUPO,
+      cost_center: GRUPO,
+      position_location: DEPENDENCIA,
+      monthly_salary: 1000000,
+      ...overrides,
+    }) as unknown as CertificateRequest;
+
+  const render = (
+    request: CertificateRequest,
+    templateType: 'administrador' | 'docente' = 'administrador',
+  ) =>
+    pdf['buildCertificateContent']({
+      certificate: { ...request, request } as unknown as Certificate,
+      templateType,
+      includeSalary: false,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>ubicado en [DEPENDENCIA]. [GRUPO]</p>',
+    });
+
+  it.each(['administrador', 'docente'] as const)(
+    'imprime la dependencia y el grupo por separado (%s)',
+    (templateType) => {
+      expect(render(solicitudOracle(), templateType)).toContain(
+        `ubicado en ${DEPENDENCIA}. ${GRUPO}`,
+      );
+    },
+  );
+
+  it('conserva la dependencia de la vinculacion normal durante un encargo', () => {
+    const request = solicitudOracle({ certificate_dependency: DEPENDENCIA });
+
+    expect(render(request)).toContain(`ubicado en ${DEPENDENCIA}. ${GRUPO}`);
+  });
+
+  it('la solicitud de correccion precarga la dependencia y el grupo efectivos', () => {
+    const service = Object.create(CertificatesService.prototype) as CertificatesService;
+    const request = solicitudOracle();
+    const certificate = { ...request, request } as unknown as Certificate;
+
+    // Lo que ve el coordinador al abrir la solicitud de edicion: los mismos
+    // valores que imprime el certificado, no las columnas crudas.
+    const respuesta = service['correctionResponse']({
+      id: 'cor-1',
+      certificate,
+    } as never) as { certificate: Certificate };
+    expect(respuesta.certificate.department).toBe(DEPENDENCIA);
+    expect(respuesta.certificate.position_location).toBe(GRUPO);
+
+    // Y el "antes / despues" compara contra esos mismos valores.
+    const snapshot = service['certificateCorrectionSnapshot'](certificate);
+    expect(snapshot.department).toBe(DEPENDENCIA);
+    expect(snapshot.position_location).toBe(GRUPO);
+  });
+
+  it('sin dependencia organizacional sigue cayendo al grupo y oculta [GRUPO]', () => {
+    // Unica fila sin dependencia: [DEPENDENCIA] usa el grupo como ultimo
+    // recurso y [GRUPO] se calla para no imprimir dos veces lo mismo.
+    const html = render(
+      solicitudOracle({ organization_department: null, department: null }),
+    );
+
+    expect(html).toContain(`ubicado en ${GRUPO}.`);
+    expect(html).not.toContain(`${GRUPO}. ${GRUPO}`);
+  });
+});
+
+/**
+ * Por que en dev y qa salia bien y en pre mal con el MISMO codigo: no es el
+ * ambiente, es la FORMA de la fila.
+ *
+ *   - dev / qa: filas locales (sin Oracle FNC a la vista). `department` guarda
+ *     la dependencia, asi que leerlo primero acertaba por casualidad.
+ *   - pre / produccion: filas sincronizadas desde Oracle. `department` guarda
+ *     el CENTROCOSTO (el grupo) y la dependencia vive en
+ *     `organization_department`.
+ *
+ * Leer `organization_department` primero hace que las dos formas impriman lo
+ * mismo, que es lo unico que garantiza el mismo resultado en todos los
+ * servidores.
+ */
+describe('la misma persona imprime igual en las dos formas de datos', () => {
+  const pdf = Object.create(LaborCertificatePdfService.prototype) as LaborCertificatePdfService;
+
+  const DEPENDENCIA = 'Direccion de Talento Humano';
+  const GRUPO = 'Grupo de Administracion de Personal y de Carrera Administrativa';
+
+  const base = {
+    id_number: '53062883',
+    full_name: 'PERSONA DE PRUEBA',
+    status: 'A',
+    observations: 'E',
+    position_category: 'Cra. Administrativa',
+    career_category: 'Profesional Especializado Grado 16',
+    cod_cargo: '202816',
+    cod_grade: '16',
+    hiring_date: '2024-05-14',
+    monthly_salary: 1000000,
+  };
+
+  /** dev / qa: fila local; `department` ES la dependencia. */
+  const formaLocal = {
+    ...base,
+    department: DEPENDENCIA,
+    organization_department: DEPENDENCIA,
+    internal_group: GRUPO,
+    cost_center: null,
+    position_location: GRUPO,
+  } as unknown as CertificateRequest;
+
+  /** pre / produccion: fila de Oracle; `department` ES el CENTROCOSTO. */
+  const formaOracle = {
+    ...base,
+    department: GRUPO,
+    organization_department: DEPENDENCIA,
+    internal_group: GRUPO,
+    cost_center: GRUPO,
+    position_location: DEPENDENCIA,
+  } as unknown as CertificateRequest;
+
+  const render = (
+    request: CertificateRequest,
+    templateType: 'administrador' | 'docente' = 'administrador',
+  ) =>
+    pdf['buildCertificateContent']({
+      certificate: { ...request, request } as unknown as Certificate,
+      templateType,
+      includeSalary: false,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>ubicado en [DEPENDENCIA]. [GRUPO]</p>',
+    });
+
+  it.each(['administrador', 'docente'] as const)(
+    'local y Oracle dan el mismo texto (%s)',
+    (templateType) => {
+      const esperado = `ubicado en ${DEPENDENCIA}. ${GRUPO}`;
+
+      expect(render(formaLocal, templateType)).toContain(esperado);
+      expect(render(formaOracle, templateType)).toContain(esperado);
+      expect(render(formaLocal, templateType)).toBe(render(formaOracle, templateType));
+    },
+  );
 });

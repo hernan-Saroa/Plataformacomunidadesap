@@ -77,7 +77,11 @@ export const selectNormalLaborRequest = <T extends LaborContextRequest>(selected
 export const buildLaborOrganizationContext = <T extends LaborContextRequest>(selected: T, rows: T[]) => {
   const normal = selectNormalLaborRequest(selected, rows);
   if (!isEncargo(selected) || normal === selected) {
-    return { certificate_dependency: undefined, certificate_organization: undefined };
+    return {
+      certificate_dependency: undefined,
+      certificate_group: undefined,
+      certificate_organization: undefined,
+    };
   }
   const organization: LaborOrganization = {
     department: normal.department ?? null,
@@ -88,12 +92,24 @@ export const buildLaborOrganizationContext = <T extends LaborContextRequest>(sel
   };
   return {
     certificate_organization: organization,
-    // Mismo orden que [DEPENDENCIA] en el PDF: dependencia primero y el centro
-    // de costo (grupo interno) solo como respaldo. Lo que cambia aqui es la
+    // Mismo orden que [DEPENDENCIA] en el PDF: `organization_department` primero
+    // (es la unica columna que significa "dependencia" en las dos fuentes),
+    // luego `department` —que en las filas de Oracle guarda el CENTROCOSTO— y
+    // el centro de costo solo como ultimo recurso. Lo que cambia aqui es la
     // FUENTE (la vinculacion normal, no el encargo), no la precedencia.
-    certificate_dependency: String(organization.department || '').trim() ||
+    certificate_dependency: String(organization.organization_department || '').trim() ||
+      String(organization.department || '').trim() ||
       resolveLaborInternalGroup(organization.internal_group, organization.cost_center) ||
-      String(organization.organization_department || '').trim(),
+      '',
+    // [GRUPO] sale de la MISMA vinculacion que [DEPENDENCIA]: las dos variables
+    // describen un solo lugar. Si salieran de filas distintas el certificado
+    // diria la dependencia de un nombramiento y el grupo de otro.
+    // Misma precedencia que [GRUPO] en el PDF: grupo interno, centro de costo y
+    // por ultimo la ubicacion del cargo.
+    certificate_group: resolveLaborInternalGroup(
+      organization.internal_group,
+      organization.cost_center,
+    ) || String(organization.position_location || '').trim(),
   };
 };
 
