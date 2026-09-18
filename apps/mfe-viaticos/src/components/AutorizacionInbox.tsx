@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   User,
   Award,
+  Building2,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudAutorizacion } from '../types/viaticos';
@@ -326,13 +327,21 @@ export const AutorizacionInbox: React.FC = () => {
                     {/* Fila 2: Pasajero */}
                     <div className="flex items-start gap-2">
                       <User className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-800">
                           {sol.comisionado?.nombreCompleto || 'Sin nombre asignado'}
                         </p>
                         <p className="text-[11px] text-slate-500">
                           C.C. {sol.comisionado?.numeroDocumento || 'N/A'}
                         </p>
+                        <div className="mt-1 flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                            <span className="truncate">
+                              {viaticosService.resolverNombreDependencia(sol)}
+                            </span>
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -449,6 +458,14 @@ export const AutorizacionInbox: React.FC = () => {
                           </div>
                           <div className="text-[11px] text-slate-500 mt-0.5">
                             C.C. {sol.comisionado?.numeroDocumento || 'N/A'}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                              <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia(sol)}>
+                                {viaticosService.resolverNombreDependencia(sol)}
+                              </span>
+                            </span>
                           </div>
                         </td>
 

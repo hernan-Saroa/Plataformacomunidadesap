@@ -820,9 +820,9 @@ export class LaborFunctionsService {
           request_number: row.request_number || null,
           // Valor impreso, separado de los datos exactos del perfil del cargo.
           certificate_dependency: row.certificate_dependency ??
-            (row.department ||
+            (row.organization_department ||
+              row.department ||
               resolveLaborInternalGroup(row.internal_group, row.cost_center) ||
-              row.organization_department ||
               ''),
           /** Cuántas vinculaciones tiene la persona; se muestra solo esta. */
           total_vinculaciones: vinculaciones,

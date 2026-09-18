@@ -180,6 +180,31 @@ export class TravelExpensesService {
     });
   }
 
+  private dependenciasMapCache: Map<string, string> = new Map();
+  private dependenciasMapExpires = 0;
+
+  async obtenerMapDependencias(): Promise<Map<string, string>> {
+    const ahora = Date.now();
+    if (this.dependenciasMapCache.size > 0 && ahora < this.dependenciasMapExpires) {
+      return this.dependenciasMapCache;
+    }
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT id_dependencia, cod_dependencia, nom_dependencia FROM auth.dependencias WHERE activo = true OR estado = 'ACTIVO'`,
+      );
+      this.dependenciasMapCache.clear();
+      for (const r of rows) {
+        const nom = r.nom_dependencia || r.nombre || '';
+        if (r.id_dependencia != null) this.dependenciasMapCache.set(String(r.id_dependencia), nom);
+        if (r.cod_dependencia) this.dependenciasMapCache.set(String(r.cod_dependencia), nom);
+      }
+      this.dependenciasMapExpires = ahora + 60000;
+    } catch (e: any) {
+      this.logger.warn(`[obtenerMapDependencias] No se pudo consultar auth.dependencias: ${e?.message}`);
+    }
+    return this.dependenciasMapCache;
+  }
+
   async obtenerSolicitudes(
     usuarioId?: string,
     isSuperAdmin = false,
@@ -268,24 +293,34 @@ export class TravelExpensesService {
       total,
     );
 
-    const data = solicitudes.map((s) => ({
-      id: s.id,
-      consecutivoUnico: s.consecutivoUnico,
-      comisionadoId: s.comisionadoId,
-      comisionado: s.comisionado
-        ? {
-            id: s.comisionado.id,
-            numeroDocumento: s.comisionado.numeroDocumento,
-            primerNombre: s.comisionado.primerNombre,
-            segundoNombre: s.comisionado.segundoNombre,
-            primerApellido: s.comisionado.primerApellido,
-            segundoApellido: s.comisionado.segundoApellido,
-            tipoComisionado: s.comisionado.tipoComisionado,
-            email: s.comisionado.email,
-            telefonoContacto: s.comisionado.telefonoContacto,
-            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
-          }
-        : null,
+    const depMap = await this.obtenerMapDependencias();
+    const data = solicitudes.map((s) => {
+      const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+      const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+      const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+      return {
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        comisionadoId: s.comisionadoId,
+        idDependencia: idDep,
+        dependencia: depFinal,
+        nombreDependencia: depFinal,
+        comisionado: s.comisionado
+          ? {
+              id: s.comisionado.id,
+              numeroDocumento: s.comisionado.numeroDocumento,
+              primerNombre: s.comisionado.primerNombre,
+              segundoNombre: s.comisionado.segundoNombre,
+              primerApellido: s.comisionado.primerApellido,
+              segundoApellido: s.comisionado.segundoApellido,
+              tipoComisionado: s.comisionado.tipoComisionado,
+              email: s.comisionado.email,
+              telefonoContacto: s.comisionado.telefonoContacto,
+              autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+              idDependencia: s.comisionado.idDependencia,
+              dependencia: depFinal,
+            }
+          : null,
       destinoCiudad: s.destinoCiudad,
       destinoDepartamento: s.destinoDepartamento,
       fechaInicio: s.fechaInicio instanceof Date ? s.fechaInicio.toISOString() : (s.fechaInicio || null),
@@ -336,7 +371,8 @@ export class TravelExpensesService {
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
-    }));
+    };
+    });
 
     return { data, total, page, limit };
   }
@@ -413,25 +449,34 @@ export class TravelExpensesService {
       .limit(limit)
       .getMany();
 
-    const data = solicitudes.map((s) => ({
-      id: s.id,
-      consecutivoUnico: s.consecutivoUnico,
-      comisionadoId: s.comisionadoId,
-      comisionado: s.comisionado
-        ? {
-            id: s.comisionado.id,
-            numeroDocumento: s.comisionado.numeroDocumento,
-            primerNombre: s.comisionado.primerNombre,
-            segundoNombre: s.comisionado.segundoNombre,
-            primerApellido: s.comisionado.primerApellido,
-            segundoApellido: s.comisionado.segundoApellido,
-            tipoComisionado: s.comisionado.tipoComisionado,
-            email: s.comisionado.email,
-            telefonoContacto: s.comisionado.telefonoContacto,
-            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
-            idDependencia: s.comisionado.idDependencia,
-          }
-        : null,
+    const depMap = await this.obtenerMapDependencias();
+    const data = solicitudes.map((s) => {
+      const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+      const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+      const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+      return {
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        comisionadoId: s.comisionadoId,
+        idDependencia: idDep,
+        dependencia: depFinal,
+        nombreDependencia: depFinal,
+        comisionado: s.comisionado
+          ? {
+              id: s.comisionado.id,
+              numeroDocumento: s.comisionado.numeroDocumento,
+              primerNombre: s.comisionado.primerNombre,
+              segundoNombre: s.comisionado.segundoNombre,
+              primerApellido: s.comisionado.primerApellido,
+              segundoApellido: s.comisionado.segundoApellido,
+              tipoComisionado: s.comisionado.tipoComisionado,
+              email: s.comisionado.email,
+              telefonoContacto: s.comisionado.telefonoContacto,
+              autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+              idDependencia: s.comisionado.idDependencia,
+              dependencia: depFinal,
+            }
+          : null,
       destinoCiudad: s.destinoCiudad,
       destinoDepartamento: s.destinoDepartamento,
       fechaInicio: s.fechaInicio.toISOString(),
@@ -452,7 +497,8 @@ export class TravelExpensesService {
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
-    }));
+      };
+    });
 
     return { data, total, page, limit };
   }
@@ -3567,27 +3613,36 @@ export class TravelExpensesService {
       }
     }
 
+    const depMap = await this.obtenerMapDependencias();
     return {
-      data: items.map((s) => ({
-        id: s.id,
-        consecutivoUnico: s.consecutivoUnico,
-        comisionado: s.comisionado
-          ? {
-              id: s.comisionado.id,
-              numeroDocumento: s.comisionado.numeroDocumento,
-              nombreCompleto: [
-                s.comisionado.primerNombre,
-                s.comisionado.segundoNombre,
-                s.comisionado.primerApellido,
-                s.comisionado.segundoApellido,
-              ]
-                .filter(Boolean)
-                .join(' '),
-              tipoComisionado: s.comisionado.tipoComisionado,
-              idDependencia: s.comisionado.idDependencia,
-              email: s.comisionado.email,
-            }
-          : null,
+      data: items.map((s) => {
+        const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+        const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+        const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+        return {
+          id: s.id,
+          consecutivoUnico: s.consecutivoUnico,
+          idDependencia: idDep,
+          dependencia: depFinal,
+          nombreDependencia: depFinal,
+          comisionado: s.comisionado
+            ? {
+                id: s.comisionado.id,
+                numeroDocumento: s.comisionado.numeroDocumento,
+                nombreCompleto: [
+                  s.comisionado.primerNombre,
+                  s.comisionado.segundoNombre,
+                  s.comisionado.primerApellido,
+                  s.comisionado.segundoApellido,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                tipoComisionado: s.comisionado.tipoComisionado,
+                idDependencia: s.comisionado.idDependencia,
+                dependencia: depFinal,
+                email: s.comisionado.email,
+              }
+            : null,
         destinoCiudad: s.destinoCiudad,
         destinoDepartamento: s.destinoDepartamento,
         fechaInicio: s.fechaInicio,
@@ -3621,8 +3676,9 @@ export class TravelExpensesService {
         creadoPorUsuarioId: s.creadoPorUsuarioId,
         documentosSoporte: s.documentosSoporte || [],
         actualizadoEn: s.actualizadoEn,
-      })),
-      total,
+      };
+    }),
+    total,
       page: Number(page) || 1,
       limit: take,
     };
@@ -4127,27 +4183,36 @@ export class TravelExpensesService {
       }
     }
 
+    const depMap = await this.obtenerMapDependencias();
     return {
-      data: items.map((s) => ({
-        id: s.id,
-        consecutivoUnico: s.consecutivoUnico,
-        comisionado: s.comisionado
-          ? {
-              id: s.comisionado.id,
-              numeroDocumento: s.comisionado.numeroDocumento,
-              nombreCompleto: [
-                s.comisionado.primerNombre,
-                s.comisionado.segundoNombre,
-                s.comisionado.primerApellido,
-                s.comisionado.segundoApellido,
-              ]
-                .filter(Boolean)
-                .join(' '),
-              tipoComisionado: s.comisionado.tipoComisionado,
-              idDependencia: s.comisionado.idDependencia,
-              email: s.comisionado.email,
-            }
-          : null,
+      data: items.map((s) => {
+        const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+        const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+        const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+        return {
+          id: s.id,
+          consecutivoUnico: s.consecutivoUnico,
+          idDependencia: idDep,
+          dependencia: depFinal,
+          nombreDependencia: depFinal,
+          comisionado: s.comisionado
+            ? {
+                id: s.comisionado.id,
+                numeroDocumento: s.comisionado.numeroDocumento,
+                nombreCompleto: [
+                  s.comisionado.primerNombre,
+                  s.comisionado.segundoNombre,
+                  s.comisionado.primerApellido,
+                  s.comisionado.segundoApellido,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                tipoComisionado: s.comisionado.tipoComisionado,
+                idDependencia: s.comisionado.idDependencia,
+                dependencia: depFinal,
+                email: s.comisionado.email,
+              }
+            : null,
         destinoCiudad: s.destinoCiudad,
         destinoDepartamento: s.destinoDepartamento,
         fechaInicio: s.fechaInicio,
@@ -4181,8 +4246,9 @@ export class TravelExpensesService {
         creadoPorUsuarioId: s.creadoPorUsuarioId,
         documentosSoporte: s.documentosSoporte || [],
         actualizadoEn: s.actualizadoEn,
-      })),
-      total,
+      };
+    }),
+    total,
       page: Number(page) || 1,
       limit: take,
     };

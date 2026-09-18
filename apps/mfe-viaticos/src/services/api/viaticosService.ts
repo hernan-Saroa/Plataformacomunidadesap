@@ -174,12 +174,87 @@ function encontrarArraySolicitudes(valor: unknown): unknown[] | null {
 }
 
 export class ViaticosService {
+  private dependenciasCache: Map<string, string> = new Map();
+  private cargandoDependenciasPromise: Promise<Map<string, string>> | null = null;
+
+  /**
+   * Carga y cachea en memoria el catálogo de dependencias para resolver nombres rápidamente.
+   */
+  public async cargarDependenciasCache(): Promise<Map<string, string>> {
+    if (this.dependenciasCache.size > 0) {
+      return this.dependenciasCache;
+    }
+    if (this.cargandoDependenciasPromise) {
+      return this.cargandoDependenciasPromise;
+    }
+    this.cargandoDependenciasPromise = (async () => {
+      try {
+        const lista = await this.obtenerDependencias();
+        lista.forEach((d) => {
+          const nom = d.nomDependencia || '';
+          if (nom) {
+            if (d.idDependencia != null) {
+              this.dependenciasCache.set(String(d.idDependencia), nom);
+            }
+            if (d.codDependencia) {
+              this.dependenciasCache.set(String(d.codDependencia), nom);
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('[viaticos] Error precargando dependencias:', e);
+      } finally {
+        this.cargandoDependenciasPromise = null;
+      }
+      return this.dependenciasCache;
+    })();
+    return this.cargandoDependenciasPromise;
+  }
+
+  /**
+   * Obtiene el nombre de una dependencia sincrónicamente desde la caché si está disponible.
+   */
+  public obtenerNombreDependenciaSync(
+    idDependencia?: number | string | null,
+    fallback?: string,
+  ): string {
+    if (idDependencia != null && idDependencia !== '') {
+      const nom = this.dependenciasCache.get(String(idDependencia));
+      if (nom) return nom;
+    }
+    return fallback || (idDependencia != null && idDependencia !== '' ? `Dependencia #${idDependencia}` : 'Sede Central');
+  }
+
+  /**
+   * Resuelve el nombre de la dependencia a partir de cualquier objeto de solicitud o comisionado.
+   */
+  public resolverNombreDependencia(s: any): string {
+    if (!s) return 'Sede Central';
+    if (typeof s === 'string' && s.trim() && s !== 'N/A') return s.trim();
+    if (s.dependencia && typeof s.dependencia === 'string' && s.dependencia.trim() && s.dependencia !== 'N/A') {
+      return s.dependencia.trim();
+    }
+    if (s.nombreDependencia && typeof s.nombreDependencia === 'string' && s.nombreDependencia.trim() && s.nombreDependencia !== 'N/A') {
+      return s.nombreDependencia.trim();
+    }
+    if (s.nomDependencia && typeof s.nomDependencia === 'string' && s.nomDependencia.trim() && s.nomDependencia !== 'N/A') {
+      return s.nomDependencia.trim();
+    }
+    if (s.comisionado?.dependencia && typeof s.comisionado.dependencia === 'string' && s.comisionado.dependencia.trim() && s.comisionado.dependencia !== 'N/A') {
+      return s.comisionado.dependencia.trim();
+    }
+    const idDep = s.idDependencia ?? s.dependenciaId ?? s.comisionado?.idDependencia ?? null;
+    return this.obtenerNombreDependenciaSync(idDep, s.dependencia || undefined);
+  }
+
   /**
    * Mapea una solicitud del backend (GET /solicitudes) al modelo de presentación.
    */
   public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
+    const idDep = (s as any).idDependencia ?? s.comisionado?.idDependencia ?? null;
+    const depNombre = this.resolverNombreDependencia(s);
     return {
       id: s.id,
       codigo: s.consecutivoUnico,
@@ -188,8 +263,10 @@ export class ViaticosService {
         ? formatearNombreComisionado(s.comisionado as Comisionado)
         : 'Comisionado',
       cargoComisionado: s.comisionado?.tipoComisionado || '',
-      dependencia: '',
-      sedeOrigen: '',
+      dependencia: depNombre,
+      idDependencia: idDep,
+      sedeOrigen: s.sedeOrigen || (s as any).origenSede || '',
+      ciudadOrigen: s.ciudadOrigen || (s as any).origenCiudad || s.sedeOrigen || 'Bogotá D.C.',
       ciudadDestino: s.destinoCiudad,
       departamentoDestino: s.destinoDepartamento,
       fechaInicio: s.fechaInicio.slice(0, 10),
@@ -239,6 +316,7 @@ export class ViaticosService {
 
   async obtenerSolicitudes(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
     try {
+      await this.cargarDependenciasCache();
       const timestamp = Date.now();
       const response = await apiClient.get<unknown>(`/viaticos/api/v1/solicitudes?t=${timestamp}`);
       const responseKeys = Object.keys(response as any);
@@ -1112,6 +1190,7 @@ export class ViaticosService {
     limit?: number;
   } = {}): Promise<BandejaSecretarioResponse> {
     try {
+      await this.cargarDependenciasCache();
       const params = new URLSearchParams();
       if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
       if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
@@ -1672,6 +1751,52 @@ export class ViaticosService {
       throw error;
     }
   }
+
+  /**
+   * Carga el archivo físico del comprobante de desembolso / pago bancario en el servidor.
+   * Retorna la ruta en el storage (urlRepositorio) para vincular al expediente.
+   */
+  async subirSoportePago(
+    solicitudId: string,
+    archivo: File,
+  ): Promise<{ urlRepositorio: string; nombreArchivo: string; tamano?: number }> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+      const res = await apiClient.upload<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/soporte-pago`,
+        formData,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error subiendo soporte de pago:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Carga el archivo físico del comprobante de obligación presupuestal SIIF en el servidor.
+   */
+  async subirSoporteObligacion(
+    solicitudId: string,
+    archivo: File,
+  ): Promise<{ urlRepositorio: string; nombreArchivo: string; tamano?: number }> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+      const res = await apiClient.upload<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/soporte-obligacion`,
+        formData,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error subiendo soporte de obligación:', error);
+      throw error;
+    }
+  }
+
 
   /**
    * RF-PAG-002 — Consultar bitácora de notificaciones a SST (Etapa 8).
