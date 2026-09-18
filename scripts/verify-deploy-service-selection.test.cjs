@@ -58,7 +58,8 @@ cmd_rebuild_changed rebuild-changed fixture-range
     assert.equal(result.status,0,result.stderr+result.stdout);
     assert.equal((result.stdout.match(/test:backend-build:chatbot-service/g)||[]).length,1);
     assert(result.stdout.includes('test:migration:chatbot-service'));
-    assert(result.stdout.includes('test:frontend:build frontend-mfe-chatbot frontend-shell'));
+    assert(result.stdout.includes('test:frontend:build frontend-mfe-chatbot'));
+    assert(result.stdout.includes('test:frontend:build frontend-shell'));
   });
   test(`${environment}: OCR junto con PTA, interfaz y SQL conserva el despliegue`,()=>{
     const result=run(['backend/rund-ocr-service/app.py','backend/rund-ocr-service/requirements.txt',
@@ -68,7 +69,8 @@ cmd_rebuild_changed rebuild-changed fixture-range
     assert(!result.stdout.includes('no such service'));
     assert.equal((result.stdout.match(/test:backend-build:academic-work-plan-service/g)||[]).length,1);
     assert(!result.stdout.includes('test:backend-build:rund'));
-    assert(result.stdout.includes('test:frontend:build frontend-mfe-pta frontend-shell'));
+    assert(result.stdout.includes('test:frontend:build frontend-mfe-pta'));
+    assert(result.stdout.includes('test:frontend:build frontend-shell'));
     assert(result.stdout.includes('test:migration:global'));
     assert.equal((result.stdout.match(/OCR RUND: cambios detectados/g)||[]).length,1);
   });
