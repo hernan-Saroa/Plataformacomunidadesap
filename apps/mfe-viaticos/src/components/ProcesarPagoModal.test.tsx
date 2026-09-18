@@ -43,6 +43,8 @@ const mockSolicitudPosterior = {
 vi.mock('../services/api/viaticosService', () => {
   const service = {
     procesarPago: vi.fn(),
+    subirSoportePago: vi.fn(),
+    obtenerUrlArchivo: vi.fn((url) => (url ? `http://localhost:3010${url}` : '')),
   };
   return {
     default: service,
@@ -216,4 +218,76 @@ describe('ProcesarPagoModal — [RF-PAG-003] Etapa 8: Procesar Desembolso y Pago
     expect(mockOnExito).not.toHaveBeenCalled();
     expect(mockOnCerrar).not.toHaveBeenCalled();
   });
+
+  it('permite adjuntar un archivo soporte físico y lo sube al backend al confirmar el pago', async () => {
+    (viaticosService.subirSoportePago as any).mockResolvedValue({
+      urlRepositorio: '/uploads/sol-obli-100/pago_123_comprobante.pdf',
+      nombreArchivo: 'comprobante_bancario_8920.pdf',
+    });
+
+    (viaticosService.procesarPago as any).mockResolvedValue({
+      data: {
+        ...mockSolicitudObligada,
+        estadoSolicitud: 'PAGADA',
+        soportePagoPath: '/uploads/sol-obli-100/pago_123_comprobante.pdf',
+      },
+    });
+
+    render(
+      <ProcesarPagoModal
+        abierta={true}
+        solicitud={mockSolicitudObligada}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputArchivo = screen.getByLabelText(/Cargar soporte de desembolso/i);
+    const archivo = new File(['dummy content'], 'comprobante_bancario_8920.pdf', {
+      type: 'application/pdf',
+    });
+
+    fireEvent.change(inputArchivo, { target: { files: [archivo] } });
+
+    // El nombre del archivo y estado deben mostrarse en pantalla
+    expect(await screen.findByText('comprobante_bancario_8920.pdf')).toBeDefined();
+    expect(screen.getByText(/Listo para cargar al proyecto/i)).toBeDefined();
+
+    const botonEnviar = screen.getByRole('button', { name: /Confirmar Desembolso y Pago/i });
+    fireEvent.click(botonEnviar);
+
+    await waitFor(() => {
+      expect(viaticosService.subirSoportePago).toHaveBeenCalledWith('sol-obli-100', archivo);
+      expect(viaticosService.procesarPago).toHaveBeenCalledWith(
+        'sol-obli-100',
+        expect.objectContaining({
+          soportePagoPath: '/uploads/sol-obli-100/pago_123_comprobante.pdf',
+        }),
+      );
+      expect(mockOnExito).toHaveBeenCalled();
+    });
+  });
+
+  it('muestra error de formato si se adjunta un archivo no permitido', async () => {
+    render(
+      <ProcesarPagoModal
+        abierta={true}
+        solicitud={mockSolicitudObligada}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputArchivo = screen.getByLabelText(/Cargar soporte de desembolso/i);
+    const archivoInvalido = new File(['binario'], 'ejecutable.exe', {
+      type: 'application/x-msdownload',
+    });
+
+    fireEvent.change(inputArchivo, { target: { files: [archivoInvalido] } });
+
+    expect(
+      await screen.findByText(/Solo se admiten documentos PDF o imágenes/i),
+    ).toBeDefined();
+  });
 });
+

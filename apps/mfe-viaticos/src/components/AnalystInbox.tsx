@@ -15,6 +15,7 @@ import {
   Receipt,
   Landmark,
   BadgeDollarSign,
+  MapPin,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -201,6 +202,9 @@ export default function AnalystInbox() {
     return base;
   }, [tabActual, solicitudes, devueltas, pendientes, verificadas, autorizadas, comprometidas, extemporaneas]);
 
+  const obtenerCiudadOrigen = (s: SolicitudListaResponse): string =>
+    s.ciudadOrigen || (s as any).origenCiudad || s.sedeOrigen || 'Bogotá D.C.';
+
   const solicitudesFiltradas = useMemo(() => {
     const termino = busqueda.toLowerCase().trim();
     if (!termino) return solicitudesPorTab;
@@ -209,13 +213,19 @@ export default function AnalystInbox() {
       const coincideExtemporanea =
         esExt && ('extemporanea'.includes(termino) || 'extemporánea'.includes(termino));
 
+      const nombreDep = s.dependencia || s.nombreDependencia || '';
+      const cOrigen = obtenerCiudadOrigen(s);
+
       return (
         coincideExtemporanea ||
         s.consecutivoUnico.toLowerCase().includes(termino) ||
         (s.comisionado?.primerNombre?.toLowerCase().includes(termino) ?? false) ||
         (s.comisionado?.primerApellido?.toLowerCase().includes(termino) ?? false) ||
-        s.destinoCiudad.toLowerCase().includes(termino) ||
+        cOrigen.toLowerCase().includes(termino) ||
+        (s.destinoCiudad && s.destinoCiudad.toLowerCase().includes(termino)) ||
+        (s.destinoDepartamento && s.destinoDepartamento.toLowerCase().includes(termino)) ||
         s.estadoSolicitud.toLowerCase().includes(termino) ||
+        nombreDep.toLowerCase().includes(termino) ||
         (s.motivoDevolucion?.toLowerCase().includes(termino) ?? false) ||
         ((s as any).observacionesSegundaRevision?.toLowerCase().includes(termino) ?? false) ||
         (s.comisionado?.numeroDocumento?.toLowerCase().includes(termino) ?? false)
@@ -227,12 +237,14 @@ export default function AnalystInbox() {
     s.comisionado ? formatearNombreComisionado(s.comisionado as Comisionado) : 'N/A';
 
   const dependenciaOrigen = (s: SolicitudListaResponse): string => {
+    const res = viaticosService.resolverNombreDependencia?.(s);
+    if (res && res !== 'Sede Central') return res;
     const idDep = (s as any)?.idDependencia ?? (s.comisionado as Comisionado | null | undefined)?.idDependencia;
     if (idDep != null) {
       const nombre = dependenciaLookup.get(String(idDep));
       if (nombre) return nombre;
     }
-    return 'N/A';
+    return res || 'Sede Central';
   };
 
   const prioridadConfig = (s: SolicitudListaResponse) =>
@@ -560,6 +572,9 @@ export default function AnalystInbox() {
               <tr className="border-b border-slate-200 bg-rose-50/50">
                 <th className="text-left py-2.5 px-3 font-bold text-slate-600">Consecutivo</th>
                 <th className="text-left py-2.5 px-3 font-bold text-slate-600">Comisionado</th>
+                <th className="text-left py-2.5 px-3 font-bold text-slate-600">Dependencia</th>
+                <th className="text-left py-2.5 px-3 font-bold text-slate-600">Origen</th>
+                <th className="text-left py-2.5 px-3 font-bold text-slate-600">Destino</th>
                 <th className="text-left py-2.5 px-3 font-bold text-slate-600">Tipo Devolución</th>
                 <th className="text-left py-2.5 px-3 font-bold text-slate-600">Responsable</th>
                 <th className="text-left py-2.5 px-3 font-bold text-slate-600">Motivo / Observación</th>
@@ -570,6 +585,7 @@ export default function AnalystInbox() {
             <tbody>
               {solicitudesFiltradas.map((s) => {
                 const nombre = nombreComisionado(s);
+                const dep = dependenciaOrigen(s);
                 const responsable = obtenerResponsableDevolucion(s);
                 const motivo = obtenerMotivoDevolucion(s);
                 const esFacturador = esContratistaFacturador(s);
@@ -607,6 +623,28 @@ export default function AnalystInbox() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 max-w-[180px] truncate" title={dep}>
+                        {dep}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-medium text-slate-800">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{obtenerCiudadOrigen(s)}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-bold text-slate-900">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <span>{s.destinoCiudad || 'N/A'}</span>
+                      </div>
+                      {s.destinoDepartamento && (
+                        <div className="text-[10px] text-slate-400 pl-4.5">
+                          {s.destinoDepartamento}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
                       <span
@@ -685,6 +723,8 @@ export default function AnalystInbox() {
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Consecutivo</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Comisionado</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Dependencia de origen</th>
+                <th className="text-left py-2 px-2 font-bold text-slate-500">Origen</th>
+                <th className="text-left py-2 px-2 font-bold text-slate-500">Destino</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Fechas del viaje</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Prioridad</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Estado</th>
@@ -741,6 +781,23 @@ export default function AnalystInbox() {
                       </div>
                     </td>
                     <td className="py-2 px-2 text-slate-700">{dep}</td>
+                    <td className="py-2 px-2 text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-medium text-slate-800">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{obtenerCiudadOrigen(s)}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-2 text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-bold text-slate-900">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <span>{s.destinoCiudad || 'N/A'}</span>
+                      </div>
+                      {s.destinoDepartamento && (
+                        <div className="text-[10px] text-slate-400 pl-4.5">
+                          {s.destinoDepartamento}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2 px-2 text-slate-700">
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-slate-400" />

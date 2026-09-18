@@ -39,8 +39,10 @@ interface CertificadoLaboralListado {
   observations?: string;
   position_location?: string;
   is_corrected?: boolean;
+  organization_department?: string;
   department?: string;
   certificate_dependency?: string;
+  certificate_group?: string;
   cod_cargo?: string;
   cod_grade?: string;
   campus?: string;
@@ -296,7 +298,17 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cert.cod_cargo ||
           cert.codCargo ||
           '';
+        // `organization_department` primero: en las filas sincronizadas desde
+        // Oracle, `department` guarda el CENTROCOSTO (el grupo) y no la
+        // dependencia. En un certificado corregido manda lo que guardo el
+        // coordinador.
+        const dependenciaOrganizacional = cert.is_corrected
+          ? ''
+          : cert.request?.organization_department ||
+            cert.request?.organizationDepartment ||
+            '';
         const ubicacionRaw =
+          dependenciaOrganizacional ||
           cert.department ||
           cert.request?.department ||
           cert.request?.departmentName ||
@@ -399,6 +411,11 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificate_dependency: cert.is_corrected
             ? undefined
             : cert.request?.certificate_dependency ?? cert.certificate_dependency,
+          // [GRUPO] sale de la misma vinculacion que [DEPENDENCIA]: el visor lo
+          // necesita para no contradecir al PDF del backend.
+          certificate_group: cert.is_corrected
+            ? undefined
+            : cert.request?.certificate_group ?? cert.certificate_group,
           // Centro de costo (grupo interno): [DEPENDENCIA] cae a el cuando no
           // hay dependencia, asi que tiene que llegar hasta el visor. Sin esto
           // la vista previa se queda vacia y contradice al PDF del backend.
@@ -416,7 +433,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           ),
           position_location: normalizarTexto(grupoRaw),
           is_corrected: Boolean(cert.is_corrected),
+          organization_department: normalizarTexto(dependenciaOrganizacional),
           department: normalizarTexto(
+            dependenciaOrganizacional ||
             cert.department ||
             cert.request?.department ||
             cert.request?.departmentName ||

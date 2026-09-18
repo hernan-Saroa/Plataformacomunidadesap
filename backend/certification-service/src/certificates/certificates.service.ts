@@ -2320,9 +2320,10 @@ export class CertificatesService {
    * Dependencia que realmente imprime la plantilla en `[DEPENDENCIA]`.
    *
    * Replica la precedencia de LaborCertificatePdfService: para un certificado
-   * normal manda la dependencia de la solicitud (y el centro de costo solo
-   * cuando la solicitud no trae dependencia), y en
-   * uno ya corregido manda lo que dejó guardado la corrección. Se usa para
+   * normal manda la dependencia de la solicitud —`organization_department`
+   * primero, porque `department` guarda el CENTROCOSTO en las filas de
+   * Oracle— y el centro de costo solo entra cuando no hay ninguna dependencia;
+   * en uno ya corregido manda lo que dejó guardado la corrección. Se usa para
    * precargar el formulario de corrección con el valor que el coordinador ve
    * en el documento, y no con la columna cruda `department`, que puede diferir.
    */
@@ -2342,10 +2343,10 @@ export class CertificatesService {
     }
 
     const dato7 =
+      text(request?.organization_department) ||
       text(request?.department) ||
-      centroCosto ||
       certificateDepartment ||
-      text(request?.organization_department);
+      centroCosto;
     return text(request?.certificate_dependency) || dato7;
   }
 
@@ -2353,8 +2354,9 @@ export class CertificatesService {
    * Grupo que realmente imprime la plantilla en `[GRUPO]`.
    *
    * Replica la precedencia de LaborCertificatePdfService: manda el grupo
-   * interno de trabajo de la solicitud y la ubicación del cargo
-   * (`position_location`) solo entra cuando no hay grupo; en un certificado ya
+   * interno de trabajo de la solicitud (`internal_group` y, si no hay,
+   * `cost_center`) y la ubicación del cargo (`position_location`) solo entra
+   * cuando no hay grupo; en un certificado ya
    * corregido manda lo que dejó guardado la corrección. Se usa para precargar
    * el campo "Grupo o ubicación" del formulario de corrección con el valor que
    * el coordinador ve en el documento, y no con la columna cruda
@@ -2367,15 +2369,18 @@ export class CertificatesService {
     const text = (value: unknown) => String(value ?? '').trim();
     const certificatePositionLocation = text(certificate.position_location);
     const request = certificate.request;
-    // El centro de costo no participa: [GRUPO] es el grupo interno y su único
-    // respaldo es la ubicación del cargo.
-    const grupoInterno = text(resolveLaborInternalGroup(request?.internal_group));
+    // `cost_center` participa porque en las filas de Oracle el CENTROCOSTO ES
+    // el grupo interno; la ubicación del cargo queda como último respaldo.
+    const grupoInterno = text(
+      resolveLaborInternalGroup(request?.internal_group, request?.cost_center),
+    );
 
     if ((certificate as Certificate & { is_corrected?: boolean }).is_corrected === true) {
       return certificatePositionLocation || grupoInterno;
     }
 
     return (
+      text(request?.certificate_group) ||
       grupoInterno ||
       text(request?.position_location) ||
       certificatePositionLocation
@@ -2506,8 +2511,28 @@ export class CertificatesService {
         size: item.size,
       }));
 
+    // La dependencia y el grupo EFECTIVOS, no las columnas crudas: son los que
+    // imprime el certificado y los que debe precargar el formulario de
+    // corrección. Sin ellos el coordinador editaba un valor distinto al que
+    // veia en el documento (`department` guarda el CENTROCOSTO en las filas
+    // sincronizadas desde Oracle).
+    //
+    // Solo se calcula cuando la solicitud viene cargada en la relacion: sin
+    // ella no hay con que resolver y se conservan los valores originales.
+    const certificate = request.certificate;
+    const effectiveCertificate = certificate?.request
+      ? {
+          certificate: {
+            ...certificate,
+            department: this.resolveEffectiveCertificateDependency(certificate),
+            position_location: this.resolveEffectiveCertificateGroup(certificate),
+          },
+        }
+      : {};
+
     return {
       ...request,
+      ...effectiveCertificate,
       submitted_evidence: exposeEvidence(request.submitted_evidence),
       resolution_evidence: exposeEvidence(request.resolution_evidence),
     };
@@ -2750,18 +2775,10 @@ export class CertificatesService {
     });
     if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
-    const response = this.correctionResponse(request);
-    if (!response.certificate) return response;
-    // Se expone la dependencia efectiva (sin tocar la entidad ni la BD) para que
-    // el formulario precargue el mismo valor que imprime el certificado.
-    return {
-      ...response,
-      certificate: {
-        ...response.certificate,
-        department: this.resolveEffectiveCertificateDependency(request.certificate),
-        position_location: this.resolveEffectiveCertificateGroup(request.certificate),
-      },
-    };
+    // `correctionResponse` ya expone la dependencia y el grupo efectivos (sin
+    // tocar la entidad ni la BD) para que el formulario precargue los mismos
+    // valores que imprime el certificado.
+    return this.correctionResponse(request);
   }
 
   async previewCertificateCorrectionRequest(
@@ -5593,10 +5610,13 @@ export class CertificatesService {
           cod_grade: requestContext.cod_grade,
           department: requestContext.department,
           position_location: requestContext.position_location,
-          // [GRUPO] se resuelve con el grupo interno: la vista previa del
-          // navegador necesita el mismo dato que usa el PDF del backend.
+          // [GRUPO] se resuelve con el grupo interno y [DEPENDENCIA] con la
+          // dependencia organizacional: la vista previa del navegador necesita
+          // los mismos datos que usa el PDF del backend.
           internal_group: requestContext.internal_group,
+          organization_department: requestContext.organization_department,
           certificate_dependency: certificate.request?.certificate_dependency,
+          certificate_group: certificate.request?.certificate_group,
         }
       : undefined;
 
@@ -5946,7 +5966,13 @@ export class CertificatesService {
         position_location: verificacion.solicitud.position_location,
         monthly_salary: verificacion.solicitud.monthly_salary,
         department: verificacion.solicitud.department,
+        // [DEPENDENCIA] se resuelve con la dependencia organizacional y [GRUPO]
+        // con el grupo interno: quien pinta el certificado necesita los mismos
+        // datos que usa el PDF del backend.
+        organization_department: verificacion.solicitud.organization_department,
+        internal_group: verificacion.solicitud.internal_group,
         certificate_dependency: verificacion.solicitud.certificate_dependency,
+        certificate_group: verificacion.solicitud.certificate_group,
         cod_cargo: verificacion.solicitud.cod_cargo,
         cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,

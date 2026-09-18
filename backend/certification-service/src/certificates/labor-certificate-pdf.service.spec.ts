@@ -400,10 +400,13 @@ describe('LaborCertificatePdfService', () => {
   );
 
   it.each(['docente', 'administrador'] as const)(
-    'usa la dependencia de la solicitud con datos de ORACLE en la plantilla %s',
+    'imprime la DEPENDENCIA y no el CENTROCOSTO con datos de ORACLE en la plantilla %s',
     (templateType) => {
-      // Forma Oracle: cost_center = CENTROCOSTO y position_location = DEPENDENCIA.
-      // Aqui department ya trae el CENTROCOSTO, asi que ambos coinciden.
+      // Forma Oracle: `department` guarda el CENTROCOSTO (el grupo) y la
+      // dependencia real vive en `organization_department`. Leer `department`
+      // primero hacia que [DEPENDENCIA] imprimiera el grupo y que [GRUPO]
+      // quedara vacio por la regla de no duplicar: cada variable debe traer su
+      // propio dato, igual que en el modal de "Consulta informativa".
       const result = service['buildCertificateContent']({
         certificate: {
           department: 'Grupo de Seguridad y Salud en el Trabajo',
@@ -419,11 +422,11 @@ describe('LaborCertificatePdfService', () => {
         templateType,
         includeSalary: true,
         includeTechnicalBonus: false,
-        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+        templateHtml: '<p>DEP:[DEPENDENCIA]</p><p>GRUPO:[GRUPO]</p>',
       });
 
-      expect(result).toContain('Grupo de Seguridad y Salud en el Trabajo');
-      expect(result).not.toContain('Subdireccion Nacional de Gestion Corporativa');
+      expect(result).toContain('DEP:Subdireccion Nacional de Gestion Corporativa');
+      expect(result).toContain('GRUPO:Grupo de Seguridad y Salud en el Trabajo');
     },
   );
 
@@ -460,7 +463,8 @@ describe('LaborCertificatePdfService', () => {
           department: null,
           request: {
             department: null,
-            organization_department: 'Subdireccion Nacional de Gestion Corporativa',
+            // Sin ninguna dependencia: ni la organizacional ni la del contrato.
+            organization_department: null,
             internal_group: 'Grupo de Seguridad y Salud en el Trabajo',
             cost_center: null,
           },

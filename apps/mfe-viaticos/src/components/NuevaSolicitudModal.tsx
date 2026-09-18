@@ -39,6 +39,7 @@ import { ConfigTipoComisionado } from '../types/parametrizacion';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
@@ -154,10 +155,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [subiendoDocs, setSubiendoDocs] = useState(false);
   const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
   const [eliminandoDoc, setEliminandoDoc] = useState(false);
-  const [previewDoc, setPreviewDoc] = useState<{
-    url: string;
-    nombre: string;
-  } | null>(null);
+  const {
+    documentosVisor,
+    abrirDocumentoVisor,
+    cerrarDocumentoVisor,
+    cerrarTodosVisores,
+  } = useVisorDocumentos();
   const [finalizando, setFinalizando] = useState(false);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
   const [aplicaExcepcionRegional, setAplicaExcepcionRegional] = useState(false);
@@ -415,7 +418,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setChecklist(null);
       setSubiendoDocs(false);
       setEliminandoDoc(false);
-      setPreviewDoc(null);
+      cerrarTodosVisores();
       setFinalizando(false);
       setCategoriaInvestigador('ASOCIADO');
       setAplicaExcepcionRegional(false);
@@ -753,14 +756,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.requiereTiquetes, todasCiudades.length]);
 
-  useEffect(() => {
-    if (!previewDoc) return;
-    const original = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = original;
-    };
-  }, [previewDoc]);
 
   const documentosObligatoriosActuales = (): string[] => {
     if (checklist?.obligatorios) return checklist.obligatorios.map((d) => d.codigo);
@@ -925,9 +920,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorDocumentos('No hay una URL de acceso para este documento.');
       return;
     }
-    setPreviewDoc({
+    abrirDocumentoVisor({
       url,
       nombre: doc.nombreArchivoOriginal || doc.tipoDocumento,
+      tipo: doc.tipoDocumento,
     });
   };
 
@@ -2273,52 +2269,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         </div>
       )}
 
-      {previewDoc &&
-        createPortal(
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[99999] p-3 sm:p-6">
-            <div className="bg-white rounded-2xl w-full max-w-5xl h-[95vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-              <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-slate-100 shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="p-2 bg-red-50 text-red-600 rounded-lg shrink-0">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{previewDoc.nombre}</p>
-                    <p className="text-xs text-slate-400">Previsualización de documento PDF</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href={previewDoc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 hover:bg-slate-50"
-                  >
-                    <Download className="w-4 h-4" /> Abrir
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewDoc(null)}
-                    aria-label="Cerrar previsualización"
-                    className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 bg-slate-100 overflow-hidden">
-                <iframe
-                  src={previewDoc.url}
-                  title={previewDoc.nombre}
-                  className="w-full border-0 bg-white"
-                  style={{ flex: '1 1 0', minHeight: 0 }}
-                  tabIndex={0}
-                />
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
+      />
     </div>
   );
 }

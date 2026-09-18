@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -14,6 +15,9 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   BadRequestException,
+  NotFoundException,
+  ConflictException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -46,9 +50,9 @@ export class MantenimientoController {
   // ---------------------------------------------------------------------------
   @Get('catalogos/:nombre')
   @Public()
-  @ApiOperation({ summary: 'Obtener un catálogo parametrizable (TIPO_MANTENIMIENTO, PRIORIDAD, ESTADO_SOLICITUD, TIPO_ATENCION)' })
+  @ApiOperation({ summary: 'Obtener un catálogo parametrizable (TIPO_MANTENIMIENTO, PRIORIDAD, TIPO_ATENCION, ESTADO_SOLICITUD, CATEGORIA_SERVICIO)' })
   getCatalogo(@Param('nombre') nombre: string) {
-    const permitidos = ['TIPO_MANTENIMIENTO', 'PRIORIDAD', 'TIPO_ATENCION', 'ESTADO_SOLICITUD'];
+    const permitidos = ['TIPO_MANTENIMIENTO', 'PRIORIDAD', 'TIPO_ATENCION', 'ESTADO_SOLICITUD', 'CATEGORIA_SERVICIO'];
     if (!permitidos.includes(nombre)) {
       throw new BadRequestException(`Catálogo ${nombre} no permitido. Usa uno de: ${permitidos.join(', ')}`);
     }
@@ -63,15 +67,18 @@ export class MantenimientoController {
   @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). UMI filtra por defecto area UMI/PENDIENTE; use ?incluirTI=true para ver también las remitidas a TI.' })
   @ApiQuery({ name: 'estado', required: false })
   @ApiQuery({ name: 'prioridad', required: false })
+  @ApiQuery({ name: 'idCategoria', required: false, description: 'Filtrar por categoria servicio EFDS-1732 (idCatalogo CATEGORIA_SERVICIO, 47..54 = CS_001..CS_008)' })
   @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
   findAll(
     @Query('estado') estado?: string,
     @Query('prioridad') prioridad?: string,
     @Query('incluirTI') incluirTI?: string,
+    @Query('idCategoria') idCategoria?: string,
     @Req() req?: any,
   ) {
     const incluir = String(incluirTI || '').toLowerCase() === 'true';
-    return this.mantenimientoService.findAll(estado, prioridad, incluir, req?.user || null);
+    const idCatParsed = (idCategoria && idCategoria.trim() !== '' && Number.isInteger(+idCategoria)) ? Number(idCategoria) : undefined;
+    return this.mantenimientoService.findAll(estado, prioridad, incluir, idCatParsed, req?.user || null);
   }
 
   @Get('mis-solicitudes')
@@ -80,6 +87,324 @@ export class MantenimientoController {
   findMisSolicitudes(@Req() req: any) {
     const usuarioId = req?.user?.userId;
     return this.mantenimientoService.findByUsuario(usuarioId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // CRUD MINI categorías de servicio (EFDS-1732 mini).
+  // Declarado ANTES de @Get(':id') para que el path estatico 'categorias-servicio'
+  // no sea capturado por el comodín :id que espera un UUID de solicitud.
+  // ---------------------------------------------------------------------------
+
+  @Get('categorias-servicio')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Listar todas las categorías de servicio (8 oficiales precargadas CS_001..CS_008 + nuevas que se creen). Use ?soloActivos=true para filtrar solo las activas.',
+  })
+  listarCategoriasServicio(@Query('soloActivos') soloActivos?: string) {
+    const activos = String(soloActivos || '').toLowerCase() === 'true';
+    return this.mantenimientoService.listarCategoriasServicio(
+      soloActivos === undefined ? undefined : activos,
+    );
+  }
+
+  @Post('categorias-servicio')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Crear una nueva categoría de servicio (por ejemplo CS_009 Servicios Especiales). El orden se autoasigna si no se envía. Si el código se repite devuelve 409 Conflict.',
+  })
+  crearCategoriaServicio(
+    @Body()
+    body: {
+      codigo: string;
+      nombre: string;
+      descripcion?: string;
+      orden?: number;
+      isActivo?: boolean;
+      color?: string;
+    },
+  ) {
+    return this.mantenimientoService.crearCategoriaServicio(body);
+  }
+
+  @Patch('categorias-servicio/:id')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Actualizar una categoría de servicio por id. Permite modificar codigo, nombre, descripcion, orden, isActivo y color. Código duplicado devuelve 409.',
+  })
+  actualizarCategoriaServicio(
+    @Param('id', ParseIntPipe) idCatalogo: number,
+    @Body()
+    body: {
+      nombre?: string;
+      descripcion?: string;
+      orden?: number;
+      codigo?: string;
+      isActivo?: boolean;
+      color?: string;
+    },
+  ) {
+    return this.mantenimientoService.actualizarCategoriaServicio(idCatalogo, body);
+  }
+
+  @Patch('categorias-servicio/:id/toggle')
+  @Public()
+  @ApiOperation({
+    summary: 'Toggle rápido activar/desactivar una categoría de servicio. Devuelve el item actualizado.',
+  })
+  toggleCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+    return this.mantenimientoService.toggleCategoriaServicio(idCatalogo);
+  }
+
+  @Delete('categorias-servicio/:id')
+  @Public()
+  @ApiOperation({
+    summary: 'Eliminar una categoría de servicio por id. Devuelve eliminado:true si se borró correctamente.',
+  })
+  eliminarCategoriaServicio(@Param('id', ParseIntPipe) idCatalogo: number) {
+    return this.mantenimientoService.eliminarCategoriaServicio(idCatalogo);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733-bis HUECO 1: Parámetros tiempo respuesta POR CATEGORÍA
+  // (RF-INF-004 L104 TD-FO: "El tiempo POR CATEGORÍA parametriza 1..3 días").
+  // listarParametrosTiempoPorCategoria devuelve array 8 filas (47..54).
+  // GET por idCategoria → path opcional query ?idCategoria=48.
+  // PATCH obligatorio idCategoria.
+  // ---------------------------------------------------------------------------
+  @Get('parametros/tiempo-respuesta')
+  @ApiOperation({
+    summary:
+      'EFDS-1733-bis: Listar los 8 parámetros tiempo-respuesta POR CATEGORÍA (47..54). Si envía ?idCategoria=48 devuelve 1 sola; si no, array 8.',
+  })
+  obtenerParametroTiempoRespuesta(@Query('idCategoria') idCategoria?: string) {
+    const parsed = (idCategoria && String(idCategoria).trim() !== '' && Number.isInteger(+idCategoria))
+      ? Number(idCategoria)
+      : undefined;
+    if (parsed !== undefined) {
+      return this.mantenimientoService.obtenerParametroTiempoRespuesta(parsed);
+    }
+    return this.mantenimientoService.listarParametrosTiempoPorCategoria();
+  }
+
+  @Patch('parametros/tiempo-respuesta')
+  @ApiOperation({
+    summary:
+      'EFDS-1733-bis: Actualizar parámetro tiempo-respuesta POR CATEGORÍA. Body requiere {idCategoria (47..54), dias (1..3)}. Fuera rango BadRequest 400.',
+  })
+  actualizarParametroTiempoRespuesta(@Body() body: { idCategoria: number; dias: number }) {
+    return this.mantenimientoService.actualizarParametroTiempoRespuesta(
+      Number(body?.idCategoria),
+      Number(body?.dias),
+    );
+  }
+
+  @Get('parametros/reglas-escalamiento')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Listar las 2 reglas de escalamiento oficiales (001 eléctrica especialista / 002 equidad carga menor resto 7 categorías).',
+  })
+  listarReglasEscalamiento() {
+    return this.mantenimientoService.listarReglasEscalamiento();
+  }
+
+  @Patch('parametros/reglas-escalamiento/:idRegla')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Actualizar una regla de escalamiento. Principal uso: ligar un técnico al regla_001 eléctrica. body.tecnicoCodigo = string o null para desligar.',
+  })
+  actualizarReglaEscalamiento(
+    @Param('idRegla', ParseIntPipe) idRegla: number,
+    @Body()
+    body: {
+      tecnicoCodigo?: string | null;
+      isActivo?: boolean;
+      metadata?: Record<string, any>;
+    },
+  ) {
+    return this.mantenimientoService.actualizarReglaEscalamiento(idRegla, body);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Técnicos mantenimiento
+  // ---------------------------------------------------------------------------
+  @Get('tecnicos')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Listar técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO). Por defecto solo activos; use ?soloActivos=false para todos.',
+  })
+  listarTecnicos(@Query('soloActivos') soloActivos?: string) {
+    const activos =
+      soloActivos === undefined
+        ? true
+        : String(soloActivos).toLowerCase() === 'true';
+    return this.mantenimientoService.listarTecnicos(activos);
+  }
+
+  @Get('tecnicos/con-carga-vigente')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Listar técnicos mantenimiento con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI). Por defecto solo activos; use ?incluirInactivos=true para también listar inactivos (cargaVigente=0, soft-delete visual Admin).',
+  })
+  listarTecnicosConCargaVigente(@Query('incluirInactivos') incluirInactivos?: string) {
+    const todos = String(incluirInactivos || '').toLowerCase() === 'true';
+    return this.mantenimientoService.listarTecnicosConCargaVigente(todos);
+  }
+
+  @Get('tecnicos/:idTecnico/carga-vigente')
+  @ApiOperation({
+    summary: 'EFDS-1733: Carga vigente puntual de un técnico por ID catalogo_item.',
+  })
+  async getCargaVigenteTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
+    const tecnico = await this.mantenimientoService['catalogoRepo'].findOne({
+      // fallback usando el service method usando codigo. Buscamos por pk y usamos service method con codigo.
+      where: {
+        catalogo: 'TECNICO_MANTENIMIENTO',
+        idCatalogo: idTecnico,
+      },
+    } as any);
+    if (!tecnico) {
+      throw new NotFoundException(`Técnico #${idTecnico} no existe.`);
+    }
+    const carga = await this.mantenimientoService.calcularCargaVigenteTecnico(tecnico.codigo);
+    return { idTecnico, codigo: tecnico.codigo, nombre: tecnico.nombre, cargaVigente: carga };
+  }
+
+  @Post('tecnicos')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Crear un técnico mantenimiento (catálogo TECNICO_MANTENIMIENTO). Validaciones: codigo min 4, nombre min 4, dup código 409.',
+  })
+  crearTecnico(
+    @Body()
+    body: {
+      codigo: string;
+      nombre: string;
+      email?: string;
+      telefono?: string;
+      especialidades?: string[];
+      orden?: number;
+      isActivo?: boolean;
+    },
+  ) {
+    return this.mantenimientoService.crearTecnico(body);
+  }
+
+  @Patch('tecnicos/:idTecnico')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Actualizar técnico mantenimiento por id (codigo, nombre, email, telefono, especialidades, orden, isActivo).',
+  })
+  actualizarTecnico(
+    @Param('idTecnico', ParseIntPipe) idTecnico: number,
+    @Body()
+    body: {
+      codigo?: string;
+      nombre?: string;
+      email?: string;
+      telefono?: string;
+      especialidades?: string[];
+      orden?: number;
+      isActivo?: boolean;
+    },
+  ) {
+    return this.mantenimientoService.actualizarTecnico(idTecnico, body);
+  }
+
+  @Patch('tecnicos/:idTecnico/toggle')
+  @ApiOperation({
+    summary: 'EFDS-1733: Toggle rápido activo/inactivo de un técnico mantenimiento.',
+  })
+  toggleTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
+    return this.mantenimientoService.toggleTecnico(idTecnico);
+  }
+
+  @Delete('tecnicos/:idTecnico')
+  @ApiOperation({
+    summary: 'EFDS-1733: Eliminar un técnico de mantenimiento por id (eliminación lógica de catalogo_item pk).',
+  })
+  eliminarTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
+    return this.mantenimientoService.eliminarTecnico(idTecnico);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1733: Motor sugerir asignación
+  // ---------------------------------------------------------------------------
+  @Post(':idSolicitud/sugerir-asignacion')
+  @ApiOperation({
+    summary:
+      'EFDS-1733: Sugerir técnico para una solicitud. Si eléctricas (idCategoria=48) regla ESPECIALIZACION obligatoria. Resto categorías: EQUIDAD menor carga vigente.',
+  })
+  sugerirAsignacion(@Param('idSolicitud') idSolicitud: string) {
+    return this.mantenimientoService.sugerirAsignacion(idSolicitud);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1734 RF-INF-005: 3 acciones análisis (aprobar-asignar / rechazar / redistribuir)
+  // Guard clause por roles dentro del service (SUPER_ADMIN | GESTOR_MANTENIMIENTO).
+  // Declarados ANTES de POST() radicar y ANTES de GET :id wildcard para evitar routing conflict.
+  // ---------------------------------------------------------------------------
+  @Post(':idSolicitud/aprobar-asignar')
+  @ApiOperation({
+    summary:
+      'EFDS-1734 RF-INF-005 AC-01: Aprobar y asignar una solicitud RECIBIDA. Pasa estado a ASIGNADA, setea responsableAsignado, limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud aprobada y asignada. Histórico auditoría actualizado.' })
+  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  aprobarYAsignar(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body()
+    body: {
+      tecnicoCodigo: string;
+      observaciones?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.aprobarYAsignar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/rechazar')
+  @ApiOperation({
+    summary:
+      'EFDS-1734 RF-INF-005 AC-02: Rechazar una solicitud. Estado pasa a RECHAZADA, motivoRechazo (≥10 chars obligatorio) visible por el solicitante en findById/listado, responsableAsignado se limpia. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud rechazada. Motivo persistido y visible al solicitante.' })
+  @ApiResponse({ status: 400, description: 'Motivo de rechazo vacío o longitud menor a 10 caracteres.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  rechazar(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body()
+    body: {
+      motivo: string;
+      observaciones?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.rechazar(idSolicitud, body, req?.user);
+  }
+
+  @Post(':idSolicitud/redistribuir')
+  @ApiOperation({
+    summary:
+      'EFDS-1734 RF-INF-005 AC-01: Redistribuir asignación (cambio de técnico o reactivación desde RECIBIDA/RECHAZADA). Si estado=RECIBIDA/RECHAZADA pasa automáticamente a ASIGNADA; si ASIGNADA/EN_ANALISIS/EN_PROGRESO mantiene estado. Motivo redistribución opcional. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Técnico redistribuido. Histórico auditoría actualizado.' })
+  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
+  redistribuir(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body()
+    body: {
+      tecnicoCodigo: string;
+      motivoRedistribucion?: string | null;
+      observaciones?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.redistribuir(idSolicitud, body, req?.user);
   }
 
   @Post()
@@ -135,6 +460,7 @@ export class MantenimientoController {
   // Evidencias / Upload
   // ---------------------------------------------------------------------------
   @Post('evidencias/upload')
+  @Public()
   @ApiOperation({
     summary:
       'Subir un archivo evidencia al storage (MinIO). Se pueden subir antes de radicar y luego ligar por uploadedEvidenciaIds, o después con idSolicitud opcional.',

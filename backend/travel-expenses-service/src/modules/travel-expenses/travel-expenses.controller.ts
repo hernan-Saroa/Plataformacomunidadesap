@@ -1694,6 +1694,157 @@ export class TravelExpensesController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  @Post([
+    'requests/:id/soporte-pago',
+    'api/v1/requests/:id/soporte-pago',
+  ])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:process_payment', 'travel_expenses:register_payment', 'travel_expenses:create_obligation', 'travel_expenses:verify_request')
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      storage: multer.diskStorage({
+        destination: (req: any, _file: any, cb: any) => {
+          const dir = join(getUploadRootDir(), req.params.id);
+          try {
+            mkdirSync(dir, { recursive: true });
+          } catch {}
+          cb(null, dir);
+        },
+        filename: (_req: any, file: any, cb: any) => {
+          const rawName = file.originalname || 'soporte_pago.pdf';
+          const ext = extname(rawName) || '.pdf';
+          const base = rawName.replace(ext, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+          cb(null, `pago_${Date.now()}_${base}${ext}`);
+        },
+      }),
+      fileFilter: (_req: any, file: any, cb: any) => {
+        const mime = String(file.mimetype || '').toLowerCase();
+        const nombre = String(file.originalname || '').toLowerCase();
+        const esValido =
+          mime === 'application/pdf' ||
+          mime.startsWith('image/') ||
+          nombre.endsWith('.pdf') ||
+          nombre.endsWith('.png') ||
+          nombre.endsWith('.jpg') ||
+          nombre.endsWith('.jpeg') ||
+          nombre.endsWith('.webp');
+        if (!esValido) {
+          return cb(
+            new BadRequestException(
+              `El soporte de pago debe ser un documento PDF o imagen válida (PDF, PNG, JPG, JPEG).`,
+            ),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  @ApiTags('tesoreria')
+  @ApiOperation({
+    summary: 'Subir archivo soporte de desembolso / pago de comisión',
+    description: 'Permite cargar el archivo físico (PDF o imagen) del comprobante de desembolso bancario o egreso.',
+  })
+  @ApiResponse({ status: 201, description: 'Archivo de soporte cargado exitosamente.' })
+  @ApiBearerAuth()
+  async subirSoportePago(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado ningún archivo para el soporte de pago.');
+    }
+    const relativeUrl = `/uploads/${id}/${file.filename}`;
+    return {
+      success: true,
+      data: {
+        urlRepositorio: relativeUrl,
+        nombreArchivo: file.originalname,
+        nombreArchivoSeguro: file.filename,
+        tamano: file.size,
+        tipoMime: file.mimetype,
+      },
+      message: 'Soporte de desembolso cargado exitosamente en el proyecto.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Post([
+    'requests/:id/soporte-obligacion',
+    'api/v1/requests/:id/soporte-obligacion',
+  ])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('travel_expenses:create_obligation', 'travel_expenses:verify_request', 'travel_expenses:process_payment')
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      storage: multer.diskStorage({
+        destination: (req: any, _file: any, cb: any) => {
+          const dir = join(getUploadRootDir(), req.params.id);
+          try {
+            mkdirSync(dir, { recursive: true });
+          } catch {}
+          cb(null, dir);
+        },
+        filename: (_req: any, file: any, cb: any) => {
+          const rawName = file.originalname || 'soporte_obligacion.pdf';
+          const ext = extname(rawName) || '.pdf';
+          const base = rawName.replace(ext, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+          cb(null, `obligacion_${Date.now()}_${base}${ext}`);
+        },
+      }),
+      fileFilter: (_req: any, file: any, cb: any) => {
+        const mime = String(file.mimetype || '').toLowerCase();
+        const nombre = String(file.originalname || '').toLowerCase();
+        const esValido =
+          mime === 'application/pdf' ||
+          mime.startsWith('image/') ||
+          nombre.endsWith('.pdf') ||
+          nombre.endsWith('.png') ||
+          nombre.endsWith('.jpg') ||
+          nombre.endsWith('.jpeg');
+        if (!esValido) {
+          return cb(
+            new BadRequestException(
+              `El soporte de obligación debe ser un documento PDF o imagen válida (PDF, PNG, JPG).`,
+            ),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Subir archivo soporte de obligación presupuestal SIIF',
+    description: 'Permite cargar el archivo físico (PDF o imagen) del comprobante de obligación expedido en SIIF.',
+  })
+  @ApiResponse({ status: 201, description: 'Archivo de soporte de obligación cargado exitosamente.' })
+  @ApiBearerAuth()
+  async subirSoporteObligacion(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado ningún archivo para el soporte de obligación.');
+    }
+    const relativeUrl = `/uploads/${id}/${file.filename}`;
+    return {
+      success: true,
+      data: {
+        urlRepositorio: relativeUrl,
+        nombreArchivo: file.originalname,
+        nombreArchivoSeguro: file.filename,
+        tamano: file.size,
+        tipoMime: file.mimetype,
+      },
+      message: 'Soporte de obligación cargado exitosamente en el proyecto.',
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
 
 

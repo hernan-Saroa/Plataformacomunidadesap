@@ -289,5 +289,28 @@ describe('RF-PAG-001 — Etapa 8: Crear Obligación en SIIF Nación según Modal
       expect(res.message).toContain('OBL-SIIF-7744');
       expect(res.message).toContain('OBLIGADA');
     });
+
+    it('debe subir el archivo de soporte de obligación y retornar la ruta de repositorio', async () => {
+      const mockFile: any = {
+        originalname: 'comprobante_obligacion.pdf',
+        filename: 'obligacion_1726665600000_comprobante_obligacion.pdf',
+        size: 2048576,
+        mimetype: 'application/pdf',
+      };
+
+      const res = await controller.subirSoporteObligacion('sol-comp-001', mockFile);
+
+      expect(res.success).toBe(true);
+      expect(res.data.urlRepositorio).toBe('/uploads/sol-comp-001/obligacion_1726665600000_comprobante_obligacion.pdf');
+      expect(res.data.nombreArchivo).toBe('comprobante_obligacion.pdf');
+      expect(res.message).toContain('exitosamente');
+    });
+
+    it('debe rechazar la subida de soporte de obligación si no se envía archivo', async () => {
+      await expect(
+        controller.subirSoporteObligacion('sol-comp-001', null as any),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });
+
