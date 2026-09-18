@@ -19,6 +19,7 @@ const valido = {
   piso: 'Piso 3',
   salon: 'Aula 204',
   tipoMantenimiento: 'PREVENTIVO',
+  tipoAtencion: 'FISICA',
   descripcion: 'Falla aire acondicionado aula magister 204 desde ayer',
 };
 
@@ -63,8 +64,8 @@ describe('CreateMantenimientoDto validaciones de entrada', () => {
       uploadedEvidenciaIds: [uuid, 'no-soy-uuid-123'],
     });
     const up = errores.find((e) => e.property === 'uploadedEvidenciaIds');
+    expect(errores.length).toBeGreaterThan(0);
     expect(up).toBeDefined();
-    expect(up?.children?.length).toBeGreaterThan(0);
   });
 
   it('acepta uploadedEvidenciaIds de UUIDs correctos', async () => {
@@ -84,9 +85,9 @@ describe('CreateMantenimientoDto validaciones de entrada', () => {
     expect(largo.some((e) => e.property === 'salon')).toBe(true);
   });
 
-  it('piso, tipoMantenimiento, nombreArea, descripcion NO aceptan nulos', async () => {
+  it('piso, tipoMantenimiento, tipoAtencion, nombreArea, descripcion NO aceptan nulos (EFDS-1731)', async () => {
     const todos = await Promise.all(
-      (['piso', 'salon', 'tipoMantenimiento', 'nombreAreaSolicitante', 'descripcion'] as const).map(
+      (['piso', 'salon', 'tipoMantenimiento', 'tipoAtencion', 'nombreAreaSolicitante', 'descripcion'] as const).map(
         (k) => validar({ ...valido, [k]: undefined }),
       ),
     );

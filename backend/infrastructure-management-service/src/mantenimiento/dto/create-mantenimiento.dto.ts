@@ -80,6 +80,16 @@ export class CreateMantenimientoDto {
   @IsUUID(undefined, { each: true })
   uploadedEvidenciaIds?: string[];
 
+  @ApiPropertyOptional({ example: 47, description: 'EFDS-1732 FASE 2 (opcional entrega 1): Identificador FK del catalogo_item (CATEGORIA_SERVICIO). Valores oficiales 47..54 (CS_001..CS_008). Obligatorio en v2 cuando se alinee la linea base 745 casos.' })
+  @IsNumber()
+  @IsOptional()
+  idCategoria?: number;
+
+  @ApiPropertyOptional({ example: 83, description: 'Subcategoria (opcional): idCatalogo catalogo_item con metadata.parentCodigo = CATEGORIA_PRINCIPAL.codigo del campo idCategoria. Agrega detalle sin alterar las 8 categorias oficiales.' })
+  @IsNumber()
+  @IsOptional()
+  idSubcategoria?: number;
+
   @ApiPropertyOptional({ example: 'MEDIA', description: 'Prioridad: BAJA, MEDIA, ALTA, URGENTE' })
   @IsString()
   @IsOptional()

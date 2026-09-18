@@ -22,7 +22,9 @@ import {
   Upload,
   X,
   Zap,
+  MapPin,
 } from 'lucide-react';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudComisionResponse } from '../types/viaticos';
 import {
@@ -200,13 +202,13 @@ export default function VerificacionSIIFModal({
   const [subiendoFactura, setSubiendoFactura] = useState(false);
   const [errorSubidaFactura, setErrorSubidaFactura] = useState<string | null>(null);
 
-  // Visor integrado y descargas oficiales
-  const [documentoPrevisualizar, setDocumentoPrevisualizar] = useState<{
-    url: string;
-    nombre: string;
-    tipo: string;
-    mime?: string;
-  } | null>(null);
+  // Visor modal flotante y superponible para comparar documentos
+  const {
+    documentosVisor,
+    abrirDocumentoVisor,
+    cerrarDocumentoVisor,
+    cerrarTodosVisores,
+  } = useVisorDocumentos();
   const [descargandoFormato023, setDescargandoFormato023] = useState(false);
 
   useEffect(() => {
@@ -228,7 +230,7 @@ export default function VerificacionSIIFModal({
       setSubiendoFactura(false);
       setErrorSubidaFactura(null);
       setCopied(null);
-      setDocumentoPrevisualizar(null);
+      cerrarTodosVisores();
       setDescargandoFormato023(false);
       void cargarCatalogoDependencias();
     }
@@ -268,6 +270,12 @@ export default function VerificacionSIIFModal({
     | undefined;
 
   const semaforo = resumenPresupuestal?.semaforo || calcularSemaforo(valorNeto);
+
+  const ciudadOrigen =
+    (solicitud as any)?.ciudadOrigen ||
+    (solicitud as any)?.origenCiudad ||
+    (solicitud as any)?.sedeOrigen ||
+    'Bogotá D.C.';
 
   const estaEnControlViaticos = solicitud?.estadoSolicitud === 'SOLICITADA_SIIF';
   const estaVerificada = solicitud?.estadoSolicitud === 'VERIFICADA';
@@ -417,8 +425,10 @@ export default function VerificacionSIIFModal({
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 w-full">
+  return (
+    <>
+      {createPortal(
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 w-full">
       <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[70vh] overflow-y-auto mt-16">
         <div className="p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
@@ -717,12 +727,20 @@ export default function VerificacionSIIFModal({
                           })()}
                         </div>
                       </div>
-                     <div>
-                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Destino</label>
-                       <div className="text-slate-800">
-                         {solicitud.destinoCiudad}, {solicitud.destinoDepartamento}
-                       </div>
-                     </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Origen</label>
+                        <div className="text-slate-800 flex items-center gap-1 font-medium">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{ciudadOrigen}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Destino</label>
+                        <div className="text-slate-800 flex items-center gap-1 font-medium">
+                          <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                          <span>{solicitud.destinoCiudad}, {solicitud.destinoDepartamento}</span>
+                        </div>
+                      </div>
                      <div>
                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Fechas del viaje</label>
                        <div className="text-slate-800">
@@ -842,14 +860,14 @@ export default function VerificacionSIIFModal({
                             <button
                               type="button"
                               onClick={() =>
-                                setDocumentoPrevisualizar({
+                                abrirDocumentoVisor({
                                   url,
                                   nombre: doc.nombreArchivoOriginal || 'Documento de Soporte',
                                   tipo: tipoConfig.label,
                                   mime: doc.tipoMime,
                                 })
                               }
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 text-slate-700 hover:text-[#003DA5] hover:border-blue-300 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 text-slate-700 hover:text-[#003DA5] hover:border-blue-300 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs cursor-pointer"
                               title="Previsualizar soporte en pantalla para análisis"
                             >
                               <Eye className="w-3.5 h-3.5 text-blue-600" />
@@ -964,6 +982,11 @@ export default function VerificacionSIIFModal({
                     <CopiableField
                       label="Tipo y Facturador"
                       value={`${comisionado?.tipoComisionado || 'FUNCIONARIO'} · Facturador: ${(comisionado as any)?.esFacturadorElectronico || solicitud.consultaRutFacturador ? 'SI' : 'NO'}`}
+                      onCopy={handleCopy}
+                    />
+                    <CopiableField
+                      label="Origen"
+                      value={sanitizeTextoPlano(ciudadOrigen).toUpperCase()}
                       onCopy={handleCopy}
                     />
                     <CopiableField
@@ -1346,89 +1369,15 @@ export default function VerificacionSIIFModal({
           </div>
         </div>
       </div>
-
-      {/* ==================== Visor de Documento Integrado ==================== */}
-      {documentoPrevisualizar && (
-        <div className="fixed inset-0 z-60 bg-black/70 flex items-center justify-center p-3 sm:p-6 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 bg-blue-100 text-[#003DA5] rounded-lg shrink-0">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs font-bold text-slate-900 truncate">
-                    {documentoPrevisualizar.nombre}
-                  </h3>
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                    {documentoPrevisualizar.tipo}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={documentoPrevisualizar.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-[#003DA5] border border-blue-200 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors"
-                  title="Abrir en una pestaña independiente"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Abrir en pestaña nueva</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setDocumentoPrevisualizar(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  title="Cerrar visor"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 p-3 bg-slate-100 min-h-[480px] overflow-hidden flex flex-col">
-              {esPdfMime(documentoPrevisualizar.mime || '') ||
-              documentoPrevisualizar.url.toLowerCase().includes('.pdf') ||
-              documentoPrevisualizar.nombre.toLowerCase().endsWith('.pdf') ? (
-                <iframe
-                  src={documentoPrevisualizar.url}
-                  title={documentoPrevisualizar.nombre}
-                  className="w-full flex-1 rounded-xl border border-slate-300 bg-white"
-                />
-              ) : documentoPrevisualizar.url.match(/\.(png|jpe?g|webp|gif)$/i) ? (
-                <div className="w-full flex-1 overflow-auto flex items-center justify-center bg-slate-800/10 rounded-xl p-2">
-                  <img
-                    src={documentoPrevisualizar.url}
-                    alt={documentoPrevisualizar.nombre}
-                    className="max-h-[70vh] object-contain rounded-lg shadow-sm"
-                  />
-                </div>
-              ) : (
-                <div className="w-full flex-1 flex flex-col items-center justify-center p-6 text-center bg-white rounded-xl border border-slate-200">
-                  <FileText className="w-12 h-12 text-slate-400 mb-3" />
-                  <p className="text-xs font-semibold text-slate-700 mb-1">
-                    Visualización previa para {documentoPrevisualizar.nombre}
-                  </p>
-                  <p className="text-[11px] text-slate-500 mb-4 max-w-md">
-                    Abra el archivo en una nueva pestaña para visualizarlo con el visor de su navegador o aplicación correspondiente.
-                  </p>
-                  <a
-                    href={documentoPrevisualizar.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white rounded-lg text-xs font-semibold hover:bg-[#002a7d] transition-colors"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Abrir soporte en pestaña nueva
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>,
     document.body,
+  )}
+
+  {/* ==================== Visor Modal Flotante Superponible ==================== */}
+  <VisorDocumentosFlotante
+    documentos={documentosVisor}
+    onCerrar={cerrarDocumentoVisor}
+  />
+</>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   CheckCircle2,
@@ -14,6 +14,10 @@ import {
   ShieldCheck,
   Receipt,
   FileCheck,
+  UploadCloud,
+  FileUp,
+  Paperclip,
+  Trash2,
 } from 'lucide-react';
 import { SolicitudListaResponse, ProcesarPagoDto } from '../types/viaticos';
 import { viaticosService } from '../services/api/viaticosService';
@@ -28,6 +32,14 @@ interface ProcesarPagoModalProps {
   onExito?: (solicitudActualizada: any) => void;
   onSuccess?: (solicitudActualizada: any) => void;
 }
+
+const formatearTamano = (bytes: number): string => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
 
 export default function ProcesarPagoModal({
   abierta,
@@ -48,9 +60,13 @@ export default function ProcesarPagoModal({
   const [valorPagado, setValorPagado] = useState<number>(0);
   const [numeroOrdenPago, setNumeroOrdenPago] = useState('');
   const [soportePagoPath, setSoportePagoPath] = useState('');
+  const [archivoSoporte, setArchivoSoporte] = useState<File | null>(null);
+  const [esArrastrando, setEsArrastrando] = useState(false);
   const [observaciones, setObservaciones] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (solicitud) {
@@ -71,6 +87,7 @@ export default function ProcesarPagoModal({
       );
       setNumeroOrdenPago(solicitud.numeroOrdenPago || '');
       setSoportePagoPath(solicitud.soportePagoPath || '');
+      setArchivoSoporte(null);
       setObservaciones(solicitud.observacionesPago || '');
       setError(null);
     }
@@ -86,6 +103,49 @@ export default function ProcesarPagoModal({
   const nombreComisionado = solicitud.comisionado
     ? `${solicitud.comisionado.primerNombre || ''} ${solicitud.comisionado.primerApellido || ''}`.trim()
     : 'Funcionario comisionado';
+
+  const validarYEstablecerArchivo = (file: File) => {
+    setError(null);
+    const nombre = file.name.toLowerCase();
+    const esValido =
+      file.type === 'application/pdf' ||
+      file.type.startsWith('image/') ||
+      nombre.endsWith('.pdf') ||
+      nombre.endsWith('.png') ||
+      nombre.endsWith('.jpg') ||
+      nombre.endsWith('.jpeg') ||
+      nombre.endsWith('.webp');
+
+    if (!esValido) {
+      setError(
+        `El archivo '${file.name}' no tiene un formato válido. Solo se admiten documentos PDF o imágenes (PNG, JPG).`,
+      );
+      return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      setError(`El archivo '${file.name}' excede el límite de 25 MB.`);
+      return;
+    }
+
+    setArchivoSoporte(file);
+  };
+
+  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      validarYEstablecerArchivo(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setEsArrastrando(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      validarYEstablecerArchivo(file);
+    }
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e && e.preventDefault) {
@@ -105,11 +165,23 @@ export default function ProcesarPagoModal({
 
     setGuardando(true);
     try {
+      let rutaSoporteFinal = soportePagoPath;
+
+      // Cargar archivo físico al storage del backend si se seleccionó uno nuevo
+      if (archivoSoporte) {
+        const uploadRes = await viaticosService.subirSoportePago(solicitud.id, archivoSoporte);
+        rutaSoporteFinal =
+          uploadRes?.urlRepositorio ||
+          uploadRes?.data?.urlRepositorio ||
+          uploadRes?.nombreArchivoSeguro ||
+          `/uploads/${solicitud.id}/${archivoSoporte.name}`;
+      }
+
       const payload: ProcesarPagoDto = {
         fechaPago,
         valorPagado: Number(valorPagado),
         numeroOrdenPago: numeroOrdenPago.trim() || undefined,
-        soportePagoPath: soportePagoPath.trim() || undefined,
+        soportePagoPath: rutaSoporteFinal ? String(rutaSoporteFinal).trim() : undefined,
         observacionesPago: observaciones.trim() || undefined,
         modalidadPago: modalidad as 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR',
       };
@@ -337,7 +409,7 @@ export default function ProcesarPagoModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               {/* Número de Orden de Pago SIIF */}
               <div>
                 <label
@@ -356,33 +428,126 @@ export default function ProcesarPagoModal({
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-900 dark:text-white uppercase font-mono"
                 />
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                  Identificador oficial de la orden de pago o egreso
+                  Identificador oficial de la orden de pago o egreso expedida en SIIF
                 </span>
               </div>
 
-              {/* Ruta / soporte de desembolso */}
+              {/* Carga de Soporte de Desembolso (PDF o Imagen) */}
               <div>
-                <label
-                  htmlFor="soportePagoPath"
-                  className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1"
-                >
-                  Soporte del Desembolso (Ruta o URL)
-                </label>
-                <div className="relative">
-                  <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    id="soportePagoPath"
-                    value={soportePagoPath}
-                    onChange={(e) => setSoportePagoPath(e.target.value)}
-                    placeholder="uploads/pagos/2026/comprobante-8920.pdf"
-                    maxLength={255}
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-slate-900 dark:text-white"
-                  />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <FileCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Soporte del Desembolso / Comprobante Bancario</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">PDF, PNG, JPG (máx. 25MB)</span>
                 </div>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                  Comprobante bancario o soporte oficial de egreso
-                </span>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  id="soporte-pago-file-input"
+                  aria-label="Cargar soporte de desembolso"
+                  accept=".pdf,image/png,image/jpeg,image/jpg"
+                  onChange={handleSeleccionarArchivo}
+                  className="hidden"
+                />
+
+                {archivoSoporte ? (
+                  <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-lg shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white font-mono truncate">
+                          {archivoSoporte.name}
+                        </p>
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5 mt-0.5">
+                          <span>{formatearTamano(archivoSoporte.size)}</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Listo para cargar al proyecto
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-white/60 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Cambiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setArchivoSoporte(null);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
+                        title="Quitar archivo"
+                        aria-label="Quitar archivo seleccionado"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : soportePagoPath ? (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
+                        <FileCheck className="w-5 h-5" />
+                      </div>
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white font-mono truncate">
+                          {soportePagoPath.split('/').pop() || 'Comprobante registrado'}
+                        </p>
+                        <a
+                          href={viaticosService.obtenerUrlArchivo(soportePagoPath)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-semibold mt-0.5"
+                        >
+                          <span>Ver comprobante registrado</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/40 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Reemplazar comprobante
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setEsArrastrando(true);
+                    }}
+                    onDragLeave={() => setEsArrastrando(false)}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                      esArrastrando
+                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
+                        : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <UploadCloud className="w-6 h-6 text-emerald-600 dark:text-emerald-400 mx-auto mb-1" />
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Haga clic o arrastre aquí el comprobante de desembolso
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      Comprobante bancario de pago o transferencia (PDF, PNG o JPG)
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -285,5 +285,28 @@ describe('RF-PAG-003 — Etapa 8: Procesar Desembolso y Pago de Comisión por Te
       expect(res.message).toContain('PAGADA');
       expect(res.timestamp).toBeDefined();
     });
+
+    it('debe subir el archivo de soporte de pago y retornar la ruta de repositorio', async () => {
+      const mockFile: any = {
+        originalname: 'comprobante_bancario_8920.pdf',
+        filename: 'pago_1726665600000_comprobante_bancario_8920.pdf',
+        size: 1048576,
+        mimetype: 'application/pdf',
+      };
+
+      const res = await controller.subirSoportePago('sol-obli-001', mockFile);
+
+      expect(res.success).toBe(true);
+      expect(res.data.urlRepositorio).toBe('/uploads/sol-obli-001/pago_1726665600000_comprobante_bancario_8920.pdf');
+      expect(res.data.nombreArchivo).toBe('comprobante_bancario_8920.pdf');
+      expect(res.message).toContain('exitosamente');
+    });
+
+    it('debe rechazar la subida de soporte de pago si no se envía archivo', async () => {
+      await expect(
+        controller.subirSoportePago('sol-obli-001', null as any),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });
+
