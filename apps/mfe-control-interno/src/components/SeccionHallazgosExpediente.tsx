@@ -20,7 +20,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle, Plus, Edit2, Eye, Trash2, Search, Filter, Users, Calendar,
-  CheckCircle, Clock, AlertTriangle, FileText, X, Loader2, Upload, Paperclip, Download
+  CheckCircle, Clock, AlertTriangle, FileText, FileSpreadsheet, X, Loader2, Upload, Paperclip, Download
 } from 'lucide-react';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
@@ -1404,101 +1404,149 @@ export function SeccionHallazgosExpediente({
 
       {previewEvidencia && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 sm:p-5"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5"
           onClick={cerrarPreviewEvidencia}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Vista previa de ${previewEvidencia.nombre}`}
         >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
           <div
-            className="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            style={{ height: '94vh', maxHeight: '94vh' }}
             onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Vista previa de ${previewEvidencia.nombre}`}
           >
             <style>{ESTILOS_HOJA_EVIDENCIA}</style>
-            <div className="flex min-h-[56px] items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="truncate text-sm font-bold text-gray-900">
+
+            {/* Encabezado — mismo estilo del visor del Plan Anual */}
+            <div className="shrink-0 rounded-t-xl bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-semibold leading-tight">Vista previa del documento</h3>
+                  <p className="mt-1 truncate text-sm text-blue-100" title={previewEvidencia.nombre}>
                     {previewEvidencia.nombre}
-                  </h3>
-                  <p className="text-xs font-medium text-gray-500">
-                    Vista previa de evidencia · {etiquetaTipoEvidencia(previewEvidencia.evidencia)}
                   </p>
                 </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDescargarEvidencia(previewEvidencia.evidencia)}
-                  disabled={descargandoEvidencia === (previewEvidencia.evidencia.id || previewEvidencia.nombre)}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-60"
-                  title="Descargar evidencia"
-                >
-                  {descargandoEvidencia === (previewEvidencia.evidencia.id || previewEvidencia.nombre) ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  Descargar
-                </button>
                 <button
                   type="button"
                   onClick={cerrarPreviewEvidencia}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                  className="shrink-0 rounded-lg p-2 transition-colors hover:bg-white/15"
                   title="Cerrar vista previa"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-hidden bg-gray-100">
-              {cargandoPreview ? (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-gray-500">
-                  <Loader2 className="h-7 w-7 animate-spin" />
-                  <span className="text-sm font-medium">Cargando vista previa...</span>
+            {/* Barra con el tipo de archivo y la descarga */}
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-5 py-2.5">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                {tipoPreviewEvidenciaHallazgo(previewEvidencia.evidencia) === 'xlsx' ? (
+                  <FileSpreadsheet className="h-4 w-4 text-green-700" />
+                ) : (
+                  <FileText className="h-4 w-4 text-blue-700" />
+                )}
+                <span className="font-medium text-gray-800">
+                  {etiquetaTipoEvidencia(previewEvidencia.evidencia)}
+                </span>
+                {(contenidoPreview?.docxHtml || contenidoPreview?.xlsxHtml) && (
+                  <span className="hidden text-xs text-gray-500 sm:inline">
+                    · Vista aproximada (puede diferir del archivo original)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDescargarEvidencia(previewEvidencia.evidencia)}
+                disabled={descargandoEvidencia === (previewEvidencia.evidencia.id || previewEvidencia.nombre)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60"
+                title="Descargar evidencia"
+              >
+                {descargandoEvidencia === (previewEvidencia.evidencia.id || previewEvidencia.nombre) ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Descargar
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="flex flex-col overflow-hidden bg-gray-200" style={{ flex: '1 1 0', minHeight: 0 }}>
+              {cargandoPreview && (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-gray-100 text-gray-600">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#1e5da8]" />
+                  <p className="text-sm">Cargando documento...</p>
                 </div>
-              ) : errorPreview ? (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
-                  <AlertCircle className="h-8 w-8 text-amber-500" />
-                  <p className="max-w-md text-sm font-medium text-gray-600">{errorPreview}</p>
-                  <ButtonSIGL
-                    variant="primary"
+              )}
+
+              {!cargandoPreview && errorPreview && (
+                <div className="flex flex-1 flex-col items-center justify-center bg-gray-100 px-6 text-center">
+                  <FileText className="mb-3 h-14 w-14 text-gray-400" />
+                  <h4 className="mb-2 text-base font-semibold text-gray-800">Vista previa no disponible</h4>
+                  <p className="mb-4 max-w-md text-sm text-gray-600">{errorPreview}</p>
+                  <button
+                    type="button"
                     onClick={() => handleDescargarEvidencia(previewEvidencia.evidencia)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#174a8a]"
                   >
                     <Download className="h-4 w-4" />
                     Descargar archivo
-                  </ButtonSIGL>
+                  </button>
                 </div>
-              ) : contenidoPreview?.tipo === 'pdf' && contenidoPreview.blobUrl ? (
-                <iframe
-                  src={contenidoPreview.blobUrl}
-                  title={previewEvidencia.nombre}
-                  className="h-full w-full border-0 bg-white"
-                />
-              ) : contenidoPreview?.tipo === 'imagen' && contenidoPreview.blobUrl ? (
-                <div className="flex h-full w-full items-center justify-center overflow-auto p-4">
+              )}
+
+              {!cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'pdf' && contenidoPreview.blobUrl && (
+                <div className="relative w-full bg-gray-600" style={{ flex: '1 1 0', minHeight: 0 }}>
+                  <iframe
+                    src={contenidoPreview.blobUrl}
+                    title={previewEvidencia.nombre}
+                    className="absolute inset-0 h-full w-full border-0"
+                  />
+                </div>
+              )}
+
+              {!cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'imagen' && contenidoPreview.blobUrl && (
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-gray-100 p-4">
                   <img
                     src={contenidoPreview.blobUrl}
                     alt={previewEvidencia.nombre}
-                    className="max-h-full max-w-full rounded-lg object-contain shadow-lg"
+                    className="max-h-full max-w-full rounded-lg border border-gray-200 bg-white object-contain shadow-md"
                   />
                 </div>
-              ) : contenidoPreview?.docxHtml || contenidoPreview?.xlsxHtml ? (
-                <div className="h-full w-full overflow-auto p-4 sm:p-6">
-                  <div className="mx-auto max-w-4xl rounded-lg bg-white p-6 text-sm text-gray-800 shadow-sm evidencia-hallazgo-hoja">
+              )}
+
+              {/* Word: hoja centrada, igual que en el Plan Anual */}
+              {!cargandoPreview && !errorPreview && contenidoPreview?.docxHtml && (
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+                  <div className="flex justify-center px-4 py-8 sm:px-8">
                     <div
-                      dangerouslySetInnerHTML={{
-                        __html: contenidoPreview.docxHtml || contenidoPreview.xlsxHtml || '',
-                      }}
-                    />
+                      className="evidencia-hallazgo-hoja w-full max-w-[800px] bg-white px-8 py-10 text-gray-800 shadow-2xl sm:px-12 sm:py-12"
+                      style={{ fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif', lineHeight: 1.6, fontSize: '14px', minHeight: '1100px' }}
+                    >
+                      <div dangerouslySetInnerHTML={{ __html: contenidoPreview.docxHtml }} />
+                    </div>
                   </div>
                 </div>
-              ) : null}
+              )}
+
+              {/* Excel: hoja centrada */}
+              {!cargandoPreview && !errorPreview && contenidoPreview?.xlsxHtml && (
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+                  <div className="flex justify-center px-4 py-8 sm:px-8">
+                    <div
+                      className="evidencia-hallazgo-hoja w-full max-w-[960px] bg-white p-6 shadow-2xl sm:p-8"
+                      style={{ minHeight: '260px' }}
+                    >
+                      <div
+                        className="overflow-x-auto"
+                        dangerouslySetInnerHTML={{ __html: contenidoPreview.xlsxHtml }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
