@@ -298,7 +298,17 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
   );
 
   const transformCertificado = (cert: any): CertificadoReporte => {
+    // Mismo orden que imprime el certificado: `organization_department`
+    // primero, porque en las filas sincronizadas desde Oracle `department`
+    // guarda el CENTROCOSTO (el grupo). En un certificado corregido manda la
+    // columna del certificado, que es la que edita el coordinador.
+    const dependenciaOrganizacional = cert.is_corrected
+      ? ''
+      : cert.request?.organization_department ||
+        cert.request?.organizationDepartment ||
+        '';
     const ubicacionRaw =
+      dependenciaOrganizacional ||
       cert.department ||
       cert.request?.department ||
       cert.request?.departmentName ||
@@ -307,12 +317,17 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
       cert.position_location ||
       cert.positionLocation ||
       '';
-    const grupoRaw =
-      cert.request?.position_location ||
-      cert.request?.positionLocation ||
-      cert.position_location ||
-      cert.positionLocation ||
-      '';
+    const grupoRaw = cert.is_corrected
+      ? cert.position_location || cert.positionLocation || ''
+      : cert.request?.internal_group ||
+        cert.request?.internalGroup ||
+        cert.request?.cost_center ||
+        cert.request?.costCenter ||
+        cert.request?.position_location ||
+        cert.request?.positionLocation ||
+        cert.position_location ||
+        cert.positionLocation ||
+        '';
     const templateTypeRaw =
       cert.template_type ||
       cert.templateType ||

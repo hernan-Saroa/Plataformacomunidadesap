@@ -66,9 +66,10 @@ export class CertificateRequest {
   @Column({ type: 'varchar', length: 500, nullable: true })
   internal_group: string | null;
 
-  // Contexto de lectura para [DEPENDENCIA] y la matriz; no son columnas.
-  // Los campos originales del encargo alimentan las demas variables.
+  // Contexto de lectura para [DEPENDENCIA], [GRUPO] y la matriz; no son
+  // columnas. Los campos originales del encargo alimentan las demas variables.
   certificate_dependency?: string;
+  certificate_group?: string;
   certificate_organization?: LaborOrganization;
 
   @Column({ type: 'varchar', length: 255, nullable: true })

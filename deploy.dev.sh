@@ -470,7 +470,10 @@ cmd_rebuild_changed() {
 
     if [ ${#frontend_services[@]} -gt 0 ]; then
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
-        compose_dev_mfe build "${frontend_services[@]}"
+        for service_name in "${frontend_services[@]}"; do
+            echo -e "${YELLOW}Construyendo frontend: ${service_name}${NC}"
+            compose_dev_mfe build "$service_name"
+        done
         # Si se toca el gateway (frontend), Nginx valida/resolvea upstreams al inicio.
         # Levantar sin --no-deps para asegurar que los MFEs (incl. pta) existan en DNS.
         if [[ " ${frontend_services[*]} " == *" frontend "* ]]; then

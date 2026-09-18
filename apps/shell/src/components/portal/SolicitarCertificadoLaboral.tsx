@@ -440,7 +440,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       tipo_certificado: 'Certificado Laboral General',
       fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
       cargo: cargoFormateado,
-      dependencia: cert.department || 'N/A',
+      // Misma dependencia que imprime el certificado: en las filas de Oracle
+      // `department` guarda el CENTROCOSTO (el grupo).
+      dependencia: (cert.is_corrected
+        ? ''
+        : cert.request?.organization_department ||
+          cert.request?.organizationDepartment ||
+          '') ||
+      cert.department || 'N/A',
       dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
       fecha_vinculacion: cert.hiring_date?.split('T')[0] || 'N/A',
       salario_actual: salarioBase,
@@ -484,7 +491,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             documento: cert.id_number,
             email: cert.email || cert.certificate_email || 'N/A',
             cargo: cargoFormateado,
-            dependencia: cert.department || 'N/A',
+            // Misma dependencia que imprime el certificado: en las filas de Oracle
+            // `department` guarda el CENTROCOSTO (el grupo).
+            dependencia: (cert.is_corrected
+              ? ''
+              : cert.request?.organization_department ||
+                cert.request?.organizationDepartment ||
+                '') ||
+            cert.department || 'N/A',
             dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
             cod_cargo: cert.cod_cargo || cert.codCargo,
             cod_grade: cert.cod_grade || cert.codGrade,
@@ -511,7 +525,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             cert.position_location ||
             cert.positionLocation ||
             '',
-        department: cert.department,
+        // Misma dependencia que imprime el certificado: en las filas de Oracle
+        // `department` guarda el CENTROCOSTO (el grupo).
+        department: (cert.is_corrected
+          ? ''
+          : cert.request?.organization_department ||
+            cert.request?.organizationDepartment ||
+            '') ||
+        cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
         signer_position: cert.signer_position,
@@ -1267,7 +1288,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         tipo_certificado: 'Certificado Laboral General',
         fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
         cargo: cargoFormateado,
-        dependencia: cert.department || empleadoEncontrado?.dependencia || 'N/A',
+        // Misma dependencia que imprime el certificado: en las filas de Oracle
+        // `department` guarda el CENTROCOSTO (el grupo).
+        dependencia: (cert.is_corrected
+          ? ''
+          : cert.request?.organization_department ||
+            cert.request?.organizationDepartment ||
+            '') ||
+        cert.department || empleadoEncontrado?.dependencia || 'N/A',
         dependenciaPadre: cert.cod_cargo || cert.codCargo || empleadoEncontrado?.dependenciaPadre || 'Registro padre',
         fecha_vinculacion: cert.hiring_date?.split('T')[0] || empleadoEncontrado?.fecha_vinculacion || 'N/A',
         salario_actual: salarioBase,
@@ -1312,7 +1340,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           documento: cert.id_number,
           email: empleadoEncontrado?.correo_institucional || 'N/A',
           cargo: cargoFormateado,
-          dependencia: cert.department || 'N/A',
+          // Misma dependencia que imprime el certificado: en las filas de Oracle
+          // `department` guarda el CENTROCOSTO (el grupo).
+          dependencia: (cert.is_corrected
+            ? ''
+            : cert.request?.organization_department ||
+              cert.request?.organizationDepartment ||
+              '') ||
+          cert.department || 'N/A',
           dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
           cod_cargo: cert.cod_cargo || cert.codCargo,
           cod_grade: cert.cod_grade || cert.codGrade,
@@ -1339,7 +1374,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
               cert.position_location ||
               cert.positionLocation ||
               '',
-          department: cert.department,
+          // Misma dependencia que imprime el certificado: en las filas de Oracle
+          // `department` guarda el CENTROCOSTO (el grupo).
+          department: (cert.is_corrected
+            ? ''
+            : cert.request?.organization_department ||
+              cert.request?.organizationDepartment ||
+              '') ||
+          cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,
             signer_position: cert.signer_position,
