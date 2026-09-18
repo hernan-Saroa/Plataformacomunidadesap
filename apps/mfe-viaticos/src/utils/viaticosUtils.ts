@@ -12,7 +12,7 @@ import {
  * Las restricciones responden a la integración con el SIIF.
  */
 export const AYUDA_OBJETO_SIIF =
-  'No se permiten caracteres especiales, tildes ni la letra ñ (integración con el SIIF).';
+  'No se permiten caracteres especiales, tildes ni la letra ñ';
 
 /**
  * Estado inicial del formulario de nueva solicitud.

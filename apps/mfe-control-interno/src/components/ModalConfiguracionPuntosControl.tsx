@@ -65,7 +65,16 @@ function finDeMes(año: number, mes: number): Date {
   return new Date(año, mes + 1, 0);
 }
 
-function sumarMeses(fechaStr: string, meses: number): string {
+function sumarMeses(fechaStr: string, frecuencia: FrecuenciaPuntoControl): string {
+  const mesesMap: Record<string, number> = {
+      mensual: 1,
+      bimensual: 2,
+      trimestral: 3,
+      cuatrimestral: 4,
+      semestral: 6,
+      anual: 12,
+    };
+  const meses = mesesMap[frecuencia] || 3;
   const original = new Date(`${fechaStr}T00:00:00`);
   const diaOriginal = original.getDate();
   // Poner día 1 para evitar desbordamiento al cambiar mes (ej: 31→Feb=Mar3)
@@ -88,6 +97,13 @@ function sumarDias(fechaStr: string, dias: number): string {
   return `${y}-${m}-${d}`;
 }
 
+function toYYYYMMDD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function generarPuntosControlAutomaticos(
   frecuencia: FrecuenciaPuntoControl,
   fechaInicio: string,
@@ -100,68 +116,71 @@ function generarPuntosControlAutomaticos(
   const inicio = new Date(`${fechaInicio}T00:00:00`);
   const fin = new Date(`${fechaFin}T23:59:59`);
   if (fin < inicio) return [];
-  const candidatos: Date[] = [];
 
-  const esCierrePeriodo = (mes: number): boolean => {
-    switch (frecuencia) {
-      case 'mensual':
-        return true; // Ene..Dic
-      case 'bimensual':
-        return mes % 2 === 1; // Feb, Abr, Jun, Ago, Oct, Dic
-      case 'trimestral':
-        return mes % 3 === 2; // Mar, Jun, Sep, Dic
-      case 'cuatrimestral':
-        return mes % 4 === 3; // Abr, Ago, Dic
-      case 'semestral':
-        return mes === 5 || mes === 11; // Jun, Dic
-      case 'anual':
-        return mes === 11; // Dic
-      default:
-        return false;
-    }
-  };
+  const candidatos: { inicio: string; fin: string }[] = [];
 
   if (frecuencia === 'semanal') {
-    // Semanal: cada 7 días desde el inicio
-    const cursor = new Date(inicio);
-    cursor.setDate(cursor.getDate() + 7);
+    let cursor = new Date(inicio);
     while (cursor <= fin) {
-      candidatos.push(new Date(cursor));
+      const pInicio = new Date(cursor);
+      const pFin = new Date(cursor);
+      pFin.setDate(pFin.getDate() + 6);
+      if (pFin > fin) {
+        pFin.setTime(fin.getTime());
+      }
+      candidatos.push({
+        inicio: toYYYYMMDD(pInicio),
+        fin: toYYYYMMDD(pFin),
+      });
       cursor.setDate(cursor.getDate() + 7);
     }
   } else {
-    // Frecuencias mensuales/por meses: cortes en cierres naturales de calendario
-    // dentro del rango [inicio, fin], sin agregar fechas extra.
-    const cursorMes = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
-    const finMes = new Date(fin.getFullYear(), fin.getMonth(), 1);
+    const mesesMap: Record<string, number> = {
+      mensual: 1,
+      bimensual: 2,
+      trimestral: 3,
+      cuatrimestral: 4,
+      semestral: 6,
+      anual: 12,
+    };
+    const meses = mesesMap[frecuencia] || 3;
 
-    while (cursorMes <= finMes) {
-      const año = cursorMes.getFullYear();
-      const mes = cursorMes.getMonth();
-      if (esCierrePeriodo(mes)) {
-        const corte = finDeMes(año, mes);
-        if (corte >= inicio && corte <= fin) {
-          candidatos.push(corte);
-        }
+    // Alinear al inicio del bloque de meses dentro del año
+    const mesInicioAlineado = Math.floor(inicio.getMonth() / meses) * meses;
+    let cursor = new Date(inicio.getFullYear(), mesInicioAlineado, 1);
+
+    while (cursor <= fin) {
+      let pInicio = new Date(cursor);
+      if (pInicio < inicio) {
+        pInicio = new Date(inicio);
       }
-      cursorMes.setMonth(cursorMes.getMonth() + 1);
+
+      const mesFinPeriodo = cursor.getMonth() + meses - 1;
+      let pFin = finDeMes(cursor.getFullYear(), mesFinPeriodo);
+      if (pFin > fin) {
+        pFin = new Date(fin);
+      }
+
+      if (pFin >= inicio && pInicio <= fin && pInicio <= pFin) {
+        candidatos.push({
+          inicio: toYYYYMMDD(pInicio),
+          fin: toYYYYMMDD(pFin),
+        });
+      }
+
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + meses, 1);
     }
   }
 
-  return candidatos.map((fecha, i) => {
-    // Usar getters locales en lugar de toISOString() para evitar desfase de timezone
-    const y = fecha.getFullYear();
-    const m = String(fecha.getMonth() + 1).padStart(2, '0');
-    const d = String(fecha.getDate()).padStart(2, '0');
-    const fechaProgramada = `${y}-${m}-${d}`;
+  return candidatos.map((rango, i) => {
     const pe = puntosExistentes[i];
     return {
       id: pe?.id || `pc-auto-${i + 1}`,
       orden: i + 1,
       nombre: `Corte ${i + 1}`,
       descripcion: pe?.descripcion || '',
-      fechaProgramada,
-      fechaSeguimiento: pe?.fechaSeguimiento || sumarMeses(fechaProgramada, 2),
+      fechaProgramada: rango.inicio,
+      fechaSeguimiento: rango.fin,
       fechaReal: pe?.fechaReal || null,
       responsable: pe?.responsable || '',
       estado: pe?.estado || 'pendiente',
@@ -603,7 +622,7 @@ export function ModalConfiguracionPuntosControl({
                         <input
                           type="date"
                           value={nuevoPunto.fechaProgramada}
-                          onChange={(e) => setNuevoPunto({ ...nuevoPunto, fechaProgramada: e.target.value, fechaSeguimiento: sumarMeses(e.target.value, 2) })}
+                          onChange={(e) => setNuevoPunto({ ...nuevoPunto, fechaProgramada: e.target.value, fechaSeguimiento: sumarMeses(e.target.value, frecuenciaSeleccionada) })}
                           className="w-full px-2 py-1 bg-white border border-orange-200 rounded-md text-xs font-medium text-gray-700 focus:outline-none focus:border-orange-400"
                         />
                       </div>
@@ -771,7 +790,7 @@ export function ModalConfiguracionPuntosControl({
                                   onChange={(e) => {
                                     manualmenteEditado.current = true;
                                     const nuevaFecha = e.target.value;
-                                    const nuevaFechaSeguimiento = sumarMeses(nuevaFecha, 2);
+                                    const nuevaFechaSeguimiento = sumarMeses(nuevaFecha, frecuenciaSeleccionada);
                                     setPuntosControl(prev =>
                                       prev.map(p => p.id === punto.id
                                         ? { ...p, fechaProgramada: nuevaFecha, fechaSeguimiento: nuevaFechaSeguimiento }

@@ -32,6 +32,8 @@ const mockSolicitudComprometida = {
 vi.mock('../services/api/viaticosService', () => {
   const service = {
     crearObligacion: vi.fn(),
+    subirSoporteObligacion: vi.fn(),
+    obtenerUrlArchivo: vi.fn((url) => (url ? `http://localhost:3010${url}` : '')),
   };
   return {
     default: service,
@@ -244,5 +246,81 @@ describe('CrearObligacionModal — [RF-PAG-001] Etapa 8: Crear Obligación en SI
       );
     });
   });
+
+  it('permite adjuntar soporte oficial de obligación y lo sube al backend al enviar', async () => {
+    (viaticosService.subirSoporteObligacion as any).mockResolvedValue({
+      urlRepositorio: '/uploads/sol-comp-100/obligacion_999_comprobante.pdf',
+      nombreArchivo: 'comprobante_obligacion.pdf',
+    });
+
+    (viaticosService.crearObligacion as any).mockResolvedValue({
+      data: {
+        ...mockSolicitudComprometida,
+        estadoSolicitud: 'OBLIGADA',
+        numeroObligacion: 'OBL-2026-00484',
+        soporteObligacionPath: '/uploads/sol-comp-100/obligacion_999_comprobante.pdf',
+      },
+    });
+
+    render(
+      <CrearObligacionModal
+        abierta={true}
+        solicitud={mockSolicitudComprometida}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputObligacion = screen.getByLabelText(/Número de Obligación SIIF/i);
+    fireEvent.change(inputObligacion, { target: { value: 'OBL-2026-00484' } });
+
+    const inputArchivo = screen.getByLabelText(/Cargar soporte de obligación SIIF/i);
+    const archivo = new File(['dummy pdf'], 'comprobante_obligacion.pdf', {
+      type: 'application/pdf',
+    });
+
+    fireEvent.change(inputArchivo, { target: { files: [archivo] } });
+
+    expect(await screen.findByText('comprobante_obligacion.pdf')).toBeDefined();
+    expect(screen.getByText(/Listo para cargar al proyecto/i)).toBeDefined();
+
+    const botonEnviar = screen.getByRole('button', { name: /Crear Obligación en SIIF/i });
+    fireEvent.click(botonEnviar);
+
+    await waitFor(() => {
+      expect(viaticosService.subirSoporteObligacion).toHaveBeenCalledWith('sol-comp-100', archivo);
+      expect(viaticosService.crearObligacion).toHaveBeenCalledWith(
+        'sol-comp-100',
+        expect.objectContaining({
+          numeroObligacion: 'OBL-2026-00484',
+          soporteObligacionPath: '/uploads/sol-comp-100/obligacion_999_comprobante.pdf',
+        }),
+      );
+      expect(mockOnExito).toHaveBeenCalled();
+    });
+  });
+
+  it('valida formatos no permitidos en el soporte de obligación', async () => {
+    render(
+      <CrearObligacionModal
+        abierta={true}
+        solicitud={mockSolicitudComprometida}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const inputArchivo = screen.getByLabelText(/Cargar soporte de obligación SIIF/i);
+    const archivoInvalido = new File(['script'], 'virus.bat', {
+      type: 'application/x-bat',
+    });
+
+    fireEvent.change(inputArchivo, { target: { files: [archivoInvalido] } });
+
+    expect(
+      await screen.findByText(/Solo se admiten archivos PDF o imágenes/i),
+    ).toBeDefined();
+  });
 });
+
 
