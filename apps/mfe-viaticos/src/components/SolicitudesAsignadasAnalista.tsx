@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileText, Clock, AlertTriangle, UserCheck, Search } from 'lucide-react';
+import { FileText, Clock, AlertTriangle, UserCheck, Search, MapPin } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudListaResponse, EstadoSolicitudViatico } from '../types/viaticos';
 
@@ -23,18 +23,20 @@ const ESTADO_CONFIG: Record<string, { bg: string; text: string; label: string }>
 export default function SolicitudesAsignadasAnalista() {
   const [solicitudes, setSolicitudes] = useState<SolicitudListaResponse[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busqueda, setBusqueda] = useState('');
 
   const cargarSolicitudes = async () => {
     setCargando(true);
     setError(null);
     try {
-      const data = await viaticosService.obtenerSolicitudesAsignadas();
-      setSolicitudes(data);
-    } catch (err) {
-      setError('Error al cargar las solicitudes asignadas.');
-      console.error(err);
+      const fetcher =
+        viaticosService.obtenerSolicitudesAsignadasAnalista ||
+        viaticosService.obtenerSolicitudesAsignadas;
+      const data = await fetcher.call(viaticosService);
+      setSolicitudes(data || []);
+    } catch (err: any) {
+      setError(err?.message || 'Error al cargar las solicitudes asignadas.');
     } finally {
       setCargando(false);
     }
@@ -45,15 +47,18 @@ export default function SolicitudesAsignadasAnalista() {
   }, []);
 
   const solicitudesFiltradas = solicitudes.filter((s) => {
-    const termino = busqueda.toLowerCase();
+    const termino = busqueda.toLowerCase().trim();
+    const cOrigen = s.ciudadOrigen || (s as any).origenCiudad || s.sedeOrigen || 'Bogotá D.C.';
     return (
       !termino ||
       s.consecutivoUnico.toLowerCase().includes(termino) ||
-      s.comisionado?.primerNombre?.toLowerCase().includes(termino) ||
-      s.comisionado?.primerApellido?.toLowerCase().includes(termino) ||
-      s.destinoCiudad.toLowerCase().includes(termino) ||
+      (s.comisionado?.primerNombre?.toLowerCase().includes(termino) ?? false) ||
+      (s.comisionado?.primerApellido?.toLowerCase().includes(termino) ?? false) ||
+      cOrigen.toLowerCase().includes(termino) ||
+      (s.destinoCiudad && s.destinoCiudad.toLowerCase().includes(termino)) ||
+      (s.destinoDepartamento && s.destinoDepartamento.toLowerCase().includes(termino)) ||
       s.estadoSolicitud.toLowerCase().includes(termino) ||
-      viaticosService.resolverNombreDependencia(s).toLowerCase().includes(termino)
+      viaticosService.resolverNombreDependencia?.(s)?.toLowerCase().includes(termino)
     );
   });
 
@@ -74,7 +79,7 @@ export default function SolicitudesAsignadasAnalista() {
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
-              placeholder="Buscar por radicado, comisionado, dependencia..."
+              placeholder="Buscar por consecutivo, comisionado, ciudad o estado..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -91,7 +96,7 @@ export default function SolicitudesAsignadasAnalista() {
       </div>
 
       {cargando ? (
-        <div className="py-8 text-center text-xs text-slate-400">Cargando solicitudes asignadas...</div>
+        <div className="py-8 text-center text-xs text-slate-400">Cargando solicitudes...</div>
       ) : error ? (
         <div className="py-8 text-center text-xs text-rose-500">{error}</div>
       ) : solicitudesFiltradas.length === 0 ? (
@@ -104,6 +109,7 @@ export default function SolicitudesAsignadasAnalista() {
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Consecutivo</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Comisionado</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Dependencia</th>
+                <th className="text-left py-2 px-2 font-bold text-slate-500">Origen</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Destino</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Fechas</th>
                 <th className="text-left py-2 px-2 font-bold text-slate-500">Estado</th>
@@ -120,7 +126,8 @@ export default function SolicitudesAsignadasAnalista() {
                 const nombreComisionado = s.comisionado
                   ? `${s.comisionado.primerNombre} ${s.comisionado.primerApellido}`
                   : 'N/A';
-                const dependenciaNom = viaticosService.resolverNombreDependencia(s);
+                const dependenciaNom = viaticosService.resolverNombreDependencia?.(s) || 'Sede Central';
+                const cOrigen = s.ciudadOrigen || (s as any).origenCiudad || s.sedeOrigen || 'Bogotá D.C.';
 
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -144,8 +151,22 @@ export default function SolicitudesAsignadasAnalista() {
                         {dependenciaNom}
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-slate-700">
-                      {s.destinoCiudad}, {s.destinoDepartamento}
+                    <td className="py-2 px-2 text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-medium text-slate-800">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{cOrigen}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-2 text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-bold text-slate-900">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <span>{s.destinoCiudad}</span>
+                      </div>
+                      {s.destinoDepartamento && (
+                        <div className="text-[10px] text-slate-400 pl-4.5">
+                          {s.destinoDepartamento}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 px-2 text-slate-700">
                       {new Date(s.fechaInicio).toLocaleDateString()} - {new Date(s.fechaFin).toLocaleDateString()}

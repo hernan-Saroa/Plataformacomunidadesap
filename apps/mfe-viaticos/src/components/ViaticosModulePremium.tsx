@@ -14,6 +14,7 @@ import {
   Receipt,
   FileCheck,
   Eye,
+  ExternalLink,
   CreditCard,
   X,
   UserCheck,
@@ -58,6 +59,7 @@ import {
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
@@ -128,6 +130,11 @@ export default function ViaticosModulePremium() {
   const [esSst, setEsSst] = useState(false);
   const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
+  const {
+    documentosVisor,
+    abrirDocumentoVisor,
+    cerrarDocumentoVisor,
+  } = useVisorDocumentos();
   const [cargandoRol, setCargandoRol] = useState(() => {
     if (typeof window === 'undefined') return false;
     return Boolean(
@@ -412,12 +419,15 @@ export default function ViaticosModulePremium() {
     setLogsSst([]);
     setExpandirSst(false);
     setMensajeSst(null);
-    setCargandoLogsSst(true);
-    viaticosService
-      .obtenerLogsSst(sol.id)
-      .then((logs) => setLogsSst(logs))
-      .catch(() => setLogsSst([]))
-      .finally(() => setCargandoLogsSst(false));
+    if (typeof viaticosService.obtenerLogsSst === 'function') {
+      viaticosService
+        .obtenerLogsSst(sol.id)
+        .then((logs) => setLogsSst(logs))
+        .catch(() => setLogsSst([]))
+        .finally(() => setCargandoLogsSst(false));
+    } else {
+      setCargandoLogsSst(false);
+    }
 
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
@@ -1532,15 +1542,30 @@ export default function ViaticosModulePremium() {
                                  <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
                                  <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
                                </div>
-                               <div className="shrink-0 ml-2">
+                               <div className="shrink-0 ml-2 flex items-center gap-1">
                                  <button
                                    type="button"
-                                   onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
-                                   className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
-                                   title="Abrir en nueva pestaña"
+                                   onClick={() =>
+                                     abrirDocumentoVisor({
+                                       url: urlArchivo,
+                                       nombre: doc.nombreArchivoOriginal,
+                                       tipo: doc.tipoDocumento,
+                                     })
+                                   }
+                                   className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200 cursor-pointer"
+                                   title="Previsualizar documento"
                                  >
                                    <Eye className="w-3.5 h-3.5" />
                                  </button>
+                                 <a
+                                   href={urlArchivo}
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300"
+                                   title="Abrir en pestaña nueva"
+                                 >
+                                   <ExternalLink className="w-3.5 h-3.5" />
+                                 </a>
                                </div>
                              </div>
                            );
@@ -2117,6 +2142,12 @@ export default function ViaticosModulePremium() {
           }
           cargarDatos();
         }}
+      />
+
+      {/* Visor de documentos flotante y superponible para comparación */}
+      <VisorDocumentosFlotante
+        documentos={documentosVisor}
+        onCerrar={cerrarDocumentoVisor}
       />
     </ModuleLayout>
   );

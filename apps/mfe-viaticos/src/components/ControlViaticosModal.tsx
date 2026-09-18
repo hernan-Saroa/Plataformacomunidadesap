@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   Eye,
+  ExternalLink,
   FileText,
   Info,
   ShieldCheck,
@@ -19,6 +20,7 @@ import {
   formatearNombreComisionado,
 } from '../utils/viaticosUtils';
 import TicketBudgetWidget from './TicketBudgetWidget';
+import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 
 const DEPENDENCIA_LOOKUP = new Map<number, string>();
 
@@ -221,8 +223,10 @@ function LiquidacionSection({
 
 function DocumentosSoporteSection({
   documentos,
+  onPrevisualizar,
 }: {
   documentos: SolicitudControlViaticosResponse['documentosSoporte'];
+  onPrevisualizar?: (doc: { url: string; nombre: string; tipo: string; mime?: string }) => void;
 }) {
   const documentosPdf = (documentos || []).filter((d) => esPdfMime(d.tipoMime));
 
@@ -239,24 +243,50 @@ function DocumentosSoporteSection({
       {documentosPdf.map((doc) => {
         const url = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
         return (
-          <a
+          <div
             key={doc.id}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+            className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
           >
-            <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <span className="text-xs text-slate-700 truncate block">
-                {doc.nombreArchivoOriginal}
-              </span>
-              <span className="text-[10px] text-slate-400">
-                {doc.tipoDocumento}
-              </span>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs text-slate-700 truncate block font-medium">
+                  {doc.nombreArchivoOriginal}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {doc.tipoDocumento}
+                </span>
+              </div>
             </div>
-            <Eye className="w-4 h-4 text-slate-400 shrink-0" />
-          </a>
+            <div className="flex items-center gap-1 shrink-0">
+              {onPrevisualizar && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onPrevisualizar({
+                      url,
+                      nombre: doc.nombreArchivoOriginal || 'Documento de Soporte',
+                      tipo: doc.tipoDocumento,
+                      mime: doc.tipoMime,
+                    })
+                  }
+                  className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-[#003DA5] hover:border-blue-300 transition-colors cursor-pointer"
+                  title="Previsualizar documento en visor flotante"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                title="Abrir en pestaña nueva"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
         );
       })}
     </div>
@@ -322,6 +352,12 @@ export default function ControlViaticosModal({
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
   const [errorDevolucion, setErrorDevolucion] = useState<string | null>(null);
+  const {
+    documentosVisor,
+    abrirDocumentoVisor,
+    cerrarDocumentoVisor,
+    cerrarTodosVisores,
+  } = useVisorDocumentos();
 
   useEffect(() => {
     if (abierta) {
@@ -333,6 +369,7 @@ export default function ControlViaticosModal({
       setDevolviendo(false);
       setErrorDevolucion(null);
       setCopied(null);
+      cerrarTodosVisores();
       void cargarCatalogoDependencias();
     }
   }, [abierta]);
@@ -414,8 +451,10 @@ export default function ControlViaticosModal({
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 sm:p-6 overflow-y-auto">
+  return (
+    <>
+      {createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 sm:p-6 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl lg:max-w-4xl w-full my-auto max-h-[90vh] overflow-y-auto border border-slate-200">
         <div className="p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
@@ -580,7 +619,10 @@ export default function ControlViaticosModal({
                   Documentos de Soporte (PDF)
                 </h3>
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                  <DocumentosSoporteSection documentos={solicitud.documentosSoporte} />
+                  <DocumentosSoporteSection
+                    documentos={solicitud.documentosSoporte}
+                    onPrevisualizar={abrirDocumentoVisor}
+                  />
                 </div>
               </section>
 
@@ -759,5 +801,13 @@ export default function ControlViaticosModal({
       </div>
     </div>,
     document.body,
+  )}
+
+  {/* Visor de documentos flotante y superponible para comparación */}
+  <VisorDocumentosFlotante
+    documentos={documentosVisor}
+    onCerrar={cerrarDocumentoVisor}
+  />
+</>
   );
 }

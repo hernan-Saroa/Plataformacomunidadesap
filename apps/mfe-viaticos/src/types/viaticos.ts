@@ -145,6 +145,9 @@ export interface SolicitudComisionResponse {
   comisionadoId: string;
   destinoCiudad: string;
   destinoDepartamento: string;
+  ciudadOrigen?: string;
+  origenCiudad?: string;
+  sedeOrigen?: string;
   fechaInicio: Date;
   fechaFin: Date;
   objetoComision: string;
@@ -251,6 +254,7 @@ export interface SolicitudListaResponse {
   destinoCiudad: string;
   destinoDepartamento: string;
   ciudadOrigen?: string;
+  origenCiudad?: string;
   sedeOrigen?: string;
   fechaInicio: string;
   fechaFin: string;
