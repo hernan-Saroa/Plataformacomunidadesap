@@ -20,13 +20,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle, Plus, Edit2, Eye, Trash2, Search, Filter, Users, Calendar,
-  CheckCircle, Clock, AlertTriangle, FileText, X, Loader2, Upload, Paperclip, Download
+  CheckCircle, Clock, AlertTriangle, FileText, FileSpreadsheet, X, Loader2, Upload, Paperclip, Download
 } from 'lucide-react';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
-import { buildServiceAssetUrl } from '../../../config/environment';
+import {
+  cargarPreviewEvidenciaHallazgo,
+  descargarEvidenciaHallazgo,
+  nombreEvidenciaHallazgo,
+  tipoPreviewEvidenciaHallazgo,
+  type ContenidoPreviewEvidenciaHallazgo,
+  type EvidenciaHallazgo,
+} from './services/evidenciasHallazgo';
 import { toast } from 'sonner';
 
 // Tipos locales para UI
@@ -51,6 +58,35 @@ const AREAS_ESAP = [
   'Otra'
 ];
 
+const ESTILOS_HOJA_EVIDENCIA = `
+  .evidencia-hallazgo-hoja p { margin-bottom: 0.7em; }
+  .evidencia-hallazgo-hoja h1 { font-size: 1.5em; margin: 0.8em 0 0.4em; font-weight: 700; }
+  .evidencia-hallazgo-hoja h2 { font-size: 1.25em; margin: 0.7em 0 0.35em; font-weight: 600; }
+  .evidencia-hallazgo-hoja h3 { font-size: 1.1em; margin: 0.6em 0 0.3em; font-weight: 600; }
+  .evidencia-hallazgo-hoja ul, .evidencia-hallazgo-hoja ol { margin-left: 1.5em; margin-bottom: 0.7em; }
+  .evidencia-hallazgo-hoja table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 12px; }
+  .evidencia-hallazgo-hoja td, .evidencia-hallazgo-hoja th { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; }
+  .evidencia-hallazgo-hoja th { background: #f3f4f6; font-weight: 600; }
+  .evidencia-hallazgo-hoja img { max-width: 100%; height: auto; display: block; margin: 0.5em 0; }
+  .evidencia-hallazgo-hoja strong, .evidencia-hallazgo-hoja b { font-weight: bold; }
+  .evidencia-hallazgo-hoja em, .evidencia-hallazgo-hoja i { font-style: italic; }
+`;
+
+function etiquetaTipoEvidencia(ev: EvidenciaHallazgo): string {
+  switch (tipoPreviewEvidenciaHallazgo(ev)) {
+    case 'pdf':
+      return 'PDF';
+    case 'imagen':
+      return 'Imagen';
+    case 'docx':
+      return 'Word';
+    case 'xlsx':
+      return 'Excel';
+    default:
+      return 'Archivo';
+  }
+}
+
 interface Props {
   auditoriaId: string;
   auditoriaNombre: string;
@@ -72,11 +108,8 @@ interface PersonaDisponible {
   cargo?: string;
 }
 interface PreviewEvidencia {
-  url: string;
+  evidencia: EvidenciaHallazgo;
   nombre: string;
-  tipoMime: string;
-  esPDF: boolean;
-  esImagen: boolean;
 }
 
 export function SeccionHallazgosExpediente({
@@ -112,7 +145,11 @@ export function SeccionHallazgosExpediente({
   const [evidenciasHallazgo, setEvidenciasHallazgo] = useState<any[]>([]);
   const [cargandoEvidencias, setCargandoEvidencias] = useState(false);
   const [previewEvidencia, setPreviewEvidencia] = useState<PreviewEvidencia | null>(null);
-  
+  const [contenidoPreview, setContenidoPreview] = useState<ContenidoPreviewEvidenciaHallazgo | null>(null);
+  const [cargandoPreview, setCargandoPreview] = useState(false);
+  const [errorPreview, setErrorPreview] = useState<string | null>(null);
+  const [descargandoEvidencia, setDescargandoEvidencia] = useState<string | null>(null);
+
   // Estado para evidencias de TODOS los hallazgos (para mostrar en tarjetas)
   const [evidenciasPorHallazgo, setEvidenciasPorHallazgo] = useState<Record<string, any[]>>(
     evidenciasPorHallazgoPrecargadas ?? {},
@@ -468,73 +505,71 @@ export function SeccionHallazgosExpediente({
     cargarEvidenciasHallazgo();
   }, [hallazgoSeleccionado?.id]);
 
-  // Ver/Descargar evidencia
-  const handleVerEvidencia = (evidencia: any) => {
-    const nombre = evidencia.nombre || evidencia.nombreArchivoOriginal || evidencia;
-    const tipo = evidencia.tipoMime || evidencia.tipo || '';
-    
-    // Construir URL del servidor según el ambiente actual (dev, qa, pre, prod)
-    let url = evidencia.rutaArchivo;
-    if (url) {
-      url = String(url).replace(/\\/g, '/').trim();
+  // Ver evidencia: siempre abre la vista previa, nunca descarga sola (EFDS-1089)
+  const handleVerEvidencia = (evidencia: EvidenciaHallazgo) => {
+    setPreviewEvidencia({ evidencia, nombre: nombreEvidenciaHallazgo(evidencia) });
+  };
 
-      if (/^https?:\/\//i.test(url)) {
-        try {
-          const parsedUrl = new URL(url);
-          const esLocalhost = ['localhost', '127.0.0.1', '::1'].includes(parsedUrl.hostname);
-
-          url = esLocalhost
-            ? buildServiceAssetUrl(
-                'control-institucional',
-                `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`,
-              )
-            : url;
-        } catch {
-          // Mantener la URL original si no se puede parsear.
-        }
-      } else if (url.startsWith('/services/')) {
-        url = `${window.location.origin}${url}`;
-      } else if (url.startsWith('/control-institucional/')) {
-        url = buildServiceAssetUrl('control-institucional', url.replace(/^\/control-institucional/, ''));
-      } else {
-        url = buildServiceAssetUrl('control-institucional', url);
-      }
-    }
-    
-    // Determinar si es PDF o imagen
-    const esPDF = tipo.includes('pdf') || nombre.toLowerCase().endsWith('.pdf');
-    const esImagen = tipo.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(nombre);
-    
-    if (url) {
-      if (esPDF || esImagen) {
-        setPreviewEvidencia({
-          url,
-          nombre,
-          tipoMime: tipo || (esPDF ? 'application/pdf' : 'image/*'),
-          esPDF,
-          esImagen,
-        });
-      } else {
-        // Descargar el archivo
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = nombre;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        toast.success(`Descargando: ${nombre}`);
-      }
-    } else {
-      // Sin URL, mostrar info
-      toast.info(`Evidencia: ${nombre}`, {
-        description: esPDF ? 'PDF - Sin URL disponible' : esImagen ? 'Imagen - Sin URL disponible' : `Tipo: ${tipo || 'Documento'}`
-      });
+  // Descargar evidencia con la sesión del usuario y el nombre original
+  const handleDescargarEvidencia = async (evidencia: EvidenciaHallazgo) => {
+    const nombre = nombreEvidenciaHallazgo(evidencia);
+    const clave = evidencia.id || nombre;
+    setDescargandoEvidencia(clave);
+    try {
+      await descargarEvidenciaHallazgo(evidencia);
+      toast.success(`Descargando: ${nombre}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo descargar la evidencia');
+    } finally {
+      setDescargandoEvidencia(null);
     }
   };
 
   const cerrarPreviewEvidencia = () => {
     setPreviewEvidencia(null);
   };
+
+  // Contenido de la vista previa: PDF e imágenes por el endpoint preview;
+  // Word y Excel se bajan y se convierten en el navegador (EFDS-1089)
+  useEffect(() => {
+    if (!previewEvidencia) {
+      setContenidoPreview(null);
+      setErrorPreview(null);
+      setCargandoPreview(false);
+      return;
+    }
+
+    let cancelado = false;
+    setCargandoPreview(true);
+    setErrorPreview(null);
+    setContenidoPreview(null);
+
+    cargarPreviewEvidenciaHallazgo(previewEvidencia.evidencia)
+      .then((res) => {
+        if (!cancelado) setContenidoPreview(res);
+      })
+      .catch((err) => {
+        if (cancelado) return;
+        const mensaje = err instanceof Error ? err.message : 'No se pudo abrir la vista previa';
+        setErrorPreview(
+          mensaje === 'PREVIEW_NO_SOPORTADO'
+            ? 'Este tipo de archivo no tiene vista previa. Puede descargarlo desde aquí.'
+            : mensaje,
+        );
+      })
+      .finally(() => {
+        if (!cancelado) setCargandoPreview(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [previewEvidencia]);
+
+  // Liberar el archivo en memoria cuando se cierra o cambia la vista previa
+  useEffect(() => () => {
+    if (contenidoPreview?.blobUrl) URL.revokeObjectURL(contenidoPreview.blobUrl);
+  }, [contenidoPreview]);
 
   // Función para obtener color según categoría
   const getColorCategoria = (categoria: CategoriaHallazgo): string => {
@@ -1074,16 +1109,31 @@ export function SeccionHallazgosExpediente({
                       </span>
                       <div className="flex gap-1.5 flex-wrap">
                         {evidenciasPorHallazgo[hallazgo.id].map((evidencia, idx) => (
-                          <button
+                          <div
                             key={evidencia.id || idx}
-                            onClick={() => handleVerEvidencia(evidencia)}
-                            className="text-[10px] bg-blue-50/50 hover:bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200/60 flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Ver/Descargar evidencia"
+                            className="text-[10px] bg-blue-50/50 text-blue-700 rounded border border-blue-200/60 flex items-center overflow-hidden"
                           >
-                            <Eye className="w-3 h-3" />
-                            <span className="max-w-[150px] truncate">{evidencia.nombre || evidencia.nombreArchivoOriginal}</span>
-                            <Download className="w-3 h-3 text-blue-500" />
-                          </button>
+                            <button
+                              onClick={() => handleVerEvidencia(evidencia)}
+                              className="px-2 py-0.5 flex items-center gap-1 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title={`Ver ${nombreEvidenciaHallazgo(evidencia)}`}
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span className="max-w-[150px] truncate">{nombreEvidenciaHallazgo(evidencia)}</span>
+                            </button>
+                            <button
+                              onClick={() => handleDescargarEvidencia(evidencia)}
+                              disabled={descargandoEvidencia === (evidencia.id || nombreEvidenciaHallazgo(evidencia))}
+                              className="px-1.5 py-0.5 border-l border-blue-200/60 hover:bg-blue-100 transition-colors cursor-pointer disabled:opacity-60"
+                              title={`Descargar ${nombreEvidenciaHallazgo(evidencia)}`}
+                            >
+                              {descargandoEvidencia === (evidencia.id || nombreEvidenciaHallazgo(evidencia)) ? (
+                                <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+                              ) : (
+                                <Download className="w-3 h-3 text-blue-500" />
+                              )}
+                            </button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1299,29 +1349,44 @@ export function SeccionHallazgosExpediente({
                   ) : evidenciasHallazgo.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {evidenciasHallazgo.map((evidencia, idx) => (
-                        <button
+                        <div
                           key={evidencia.id || idx}
-                          onClick={() => handleVerEvidencia(evidencia)}
-                          className="group text-left bg-white text-gray-700 p-3 rounded-lg border border-gray-200 flex items-center gap-3 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
-                          title="Ver/Descargar evidencia"
+                          className="group bg-white text-gray-700 rounded-lg border border-gray-200 flex items-center hover:border-blue-300 hover:shadow-md transition-all overflow-hidden"
                         >
-                          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-100 transition-colors">
-                            <FileText className="w-5 h-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">
-                              {evidencia.nombre || evidencia.nombreArchivoOriginal}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                              <span>{(evidencia.tamanioBytes / 1024).toFixed(1)} KB</span>
-                              <span className="w-1 h-1 rounded-full bg-gray-300 inline-block"></span>
-                              <span className="text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
-                                {/* <Eye className="w-3 h-3" /> Ver */}
-                              </span>
-                            </p>
-                          </div>
-                          <Download className="w-4 h-4 text-gray-300 group-hover:text-blue-600 shrink-0" />
-                        </button>
+                          <button
+                            onClick={() => handleVerEvidencia(evidencia)}
+                            className="flex-1 min-w-0 text-left p-3 flex items-center gap-3 cursor-pointer"
+                            title={`Ver ${nombreEvidenciaHallazgo(evidencia)}`}
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-100 transition-colors">
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {nombreEvidenciaHallazgo(evidencia)}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                                <span>{(evidencia.tamanioBytes / 1024).toFixed(1)} KB</span>
+                                <span className="w-1 h-1 rounded-full bg-gray-300 inline-block"></span>
+                                <span className="text-blue-600 font-medium flex items-center gap-0.5">
+                                  <Eye className="w-3 h-3" /> Ver
+                                </span>
+                              </p>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => handleDescargarEvidencia(evidencia)}
+                            disabled={descargandoEvidencia === (evidencia.id || nombreEvidenciaHallazgo(evidencia))}
+                            className="h-full px-3 py-3 border-l border-gray-200 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-60"
+                            title={`Descargar ${nombreEvidenciaHallazgo(evidencia)}`}
+                          >
+                            {descargandoEvidencia === (evidencia.id || nombreEvidenciaHallazgo(evidencia)) ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
                       ))}
                     </div>
                   ) : (
@@ -1339,59 +1404,149 @@ export function SeccionHallazgosExpediente({
 
       {previewEvidencia && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 sm:p-5"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5"
           onClick={cerrarPreviewEvidencia}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Vista previa de ${previewEvidencia.nombre}`}
         >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
           <div
-            className="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            style={{ height: '94vh', maxHeight: '94vh' }}
             onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Vista previa de ${previewEvidencia.nombre}`}
           >
-            <div className="flex min-h-[56px] items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="truncate text-sm font-bold text-gray-900">
+            <style>{ESTILOS_HOJA_EVIDENCIA}</style>
+
+            {/* Encabezado — mismo estilo del visor del Plan Anual */}
+            <div className="shrink-0 rounded-t-xl bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-semibold leading-tight">Vista previa del documento</h3>
+                  <p className="mt-1 truncate text-sm text-blue-100" title={previewEvidencia.nombre}>
                     {previewEvidencia.nombre}
-                  </h3>
-                  <p className="text-xs font-medium text-gray-500">
-                    Vista previa de evidencia
                   </p>
                 </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={cerrarPreviewEvidencia}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                  className="shrink-0 rounded-lg p-2 transition-colors hover:bg-white/15"
                   title="Cerrar vista previa"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-hidden bg-gray-100">
-              {previewEvidencia.esPDF ? (
-                <iframe
-                  src={previewEvidencia.url}
-                  title={previewEvidencia.nombre}
-                  className="h-full w-full border-0 bg-white"
-                />
-              ) : previewEvidencia.esImagen ? (
-                <div className="flex h-full w-full items-center justify-center overflow-auto p-4">
-                  <img
-                    src={previewEvidencia.url}
-                    alt={previewEvidencia.nombre}
-                    className="max-h-full max-w-full rounded-lg object-contain shadow-lg"
+            {/* Barra con el tipo de archivo y la descarga */}
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-5 py-2.5">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                {tipoPreviewEvidenciaHallazgo(previewEvidencia.evidencia) === 'xlsx' ? (
+                  <FileSpreadsheet className="h-4 w-4 text-green-700" />
+                ) : (
+                  <FileText className="h-4 w-4 text-blue-700" />
+                )}
+                <span className="font-medium text-gray-800">
+                  {etiquetaTipoEvidencia(previewEvidencia.evidencia)}
+                </span>
+                {(contenidoPreview?.docxHtml || contenidoPreview?.xlsxHtml) && (
+                  <span className="hidden text-xs text-gray-500 sm:inline">
+                    · Vista aproximada (puede diferir del archivo original)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDescargarEvidencia(previewEvidencia.evidencia)}
+                disabled={descargandoEvidencia === (previewEvidencia.evidencia.id || previewEvidencia.nombre)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60"
+                title="Descargar evidencia"
+              >
+                {descargandoEvidencia === (previewEvidencia.evidencia.id || previewEvidencia.nombre) ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Descargar
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="flex flex-col overflow-hidden bg-gray-200" style={{ flex: '1 1 0', minHeight: 0 }}>
+              {cargandoPreview && (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-gray-100 text-gray-600">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#1e5da8]" />
+                  <p className="text-sm">Cargando documento...</p>
+                </div>
+              )}
+
+              {!cargandoPreview && errorPreview && (
+                <div className="flex flex-1 flex-col items-center justify-center bg-gray-100 px-6 text-center">
+                  <FileText className="mb-3 h-14 w-14 text-gray-400" />
+                  <h4 className="mb-2 text-base font-semibold text-gray-800">Vista previa no disponible</h4>
+                  <p className="mb-4 max-w-md text-sm text-gray-600">{errorPreview}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleDescargarEvidencia(previewEvidencia.evidencia)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#174a8a]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Descargar archivo
+                  </button>
+                </div>
+              )}
+
+              {!cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'pdf' && contenidoPreview.blobUrl && (
+                <div className="relative w-full bg-gray-600" style={{ flex: '1 1 0', minHeight: 0 }}>
+                  <iframe
+                    src={contenidoPreview.blobUrl}
+                    title={previewEvidencia.nombre}
+                    className="absolute inset-0 h-full w-full border-0"
                   />
                 </div>
-              ) : null}
+              )}
+
+              {!cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'imagen' && contenidoPreview.blobUrl && (
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-gray-100 p-4">
+                  <img
+                    src={contenidoPreview.blobUrl}
+                    alt={previewEvidencia.nombre}
+                    className="max-h-full max-w-full rounded-lg border border-gray-200 bg-white object-contain shadow-md"
+                  />
+                </div>
+              )}
+
+              {/* Word: hoja centrada, igual que en el Plan Anual */}
+              {!cargandoPreview && !errorPreview && contenidoPreview?.docxHtml && (
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+                  <div className="flex justify-center px-4 py-8 sm:px-8">
+                    <div
+                      className="evidencia-hallazgo-hoja w-full max-w-[800px] bg-white px-8 py-10 text-gray-800 shadow-2xl sm:px-12 sm:py-12"
+                      style={{ fontFamily: 'Calibri, "Segoe UI", Arial, sans-serif', lineHeight: 1.6, fontSize: '14px', minHeight: '1100px' }}
+                    >
+                      <div dangerouslySetInnerHTML={{ __html: contenidoPreview.docxHtml }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Excel: hoja centrada */}
+              {!cargandoPreview && !errorPreview && contenidoPreview?.xlsxHtml && (
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+                  <div className="flex justify-center px-4 py-8 sm:px-8">
+                    <div
+                      className="evidencia-hallazgo-hoja w-full max-w-[960px] bg-white p-6 shadow-2xl sm:p-8"
+                      style={{ minHeight: '260px' }}
+                    >
+                      <div
+                        className="overflow-x-auto"
+                        dangerouslySetInnerHTML={{ __html: contenidoPreview.xlsxHtml }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

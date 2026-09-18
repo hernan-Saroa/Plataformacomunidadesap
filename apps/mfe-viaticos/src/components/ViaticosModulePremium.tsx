@@ -27,6 +27,12 @@ import {
   UserPlus,
   XCircle,
   RotateCcw,
+  HeartPulse,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  BadgeDollarSign,
+  CheckCircle2,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -36,6 +42,7 @@ import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
+import ProcesarPagoModal from './ProcesarPagoModal';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -45,6 +52,7 @@ import {
   SolicitudControlViaticosResponse,
   DocumentoSoporte,
   ResultadoConsolidacion,
+  NotificacionSstLog,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -53,6 +61,8 @@ import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
 const Permissions = {
+  VIATICOS_SST_READ_LOGS: 'travel_expenses:read_sst_logs',
+  VIATICOS_SST_RESEND: 'travel_expenses:resend_sst_notification',
   VIATICOS_SOLICITUDES_READ_OWN: 'travel_expenses:view_own_requests',
   VIATICOS_SOLICITUDES_CREATE: 'travel_expenses:create_request',
   VIATICOS_SOLICITUDES_READ_INBOX: 'travel_expenses:read_inbox',
@@ -70,20 +80,22 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto' | 'tesoreria' | 'sst';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
-  EN_PRESUPUESTO: 1,
-  COMPROMETIDA: 2,
-  EN_AUTORIZACION: 3,
-  SOLICITADA_SIIF: 4,
-  VERIFICADA: 5,
-  AUTORIZADA: 6,
-  DEVUELTA: 7,
-  RADICADA: 7,
-  EXTEMPORANEA: 8,
-  SOLICITADO: 9,
-  PENDIENTE: 10,
+  OBLIGADA: 1,
+  EN_PRESUPUESTO: 2,
+  COMPROMETIDA: 3,
+  EN_AUTORIZACION: 4,
+  SOLICITADA_SIIF: 5,
+  VERIFICADA: 6,
+  AUTORIZADA: 7,
+  DEVUELTA: 8,
+  RADICADA: 8,
+  EXTEMPORANEA: 9,
+  SOLICITADO: 10,
+  PENDIENTE: 11,
+  PAGADA: 12,
 };
 
 function prioridadEstadoTabla(estado: string): number {
@@ -111,6 +123,9 @@ export default function ViaticosModulePremium() {
   const [esSubdireccion, setEsSubdireccion] = useState(false);
   const [esDireccionNacional, setEsDireccionNacional] = useState(false);
   const [esPresupuesto, setEsPresupuesto] = useState(false);
+  const [esTesoreria, setEsTesoreria] = useState(false);
+  const [esSst, setEsSst] = useState(false);
+  const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const [cargandoRol, setCargandoRol] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -130,6 +145,13 @@ export default function ViaticosModulePremium() {
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
   const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
+
+  // Estados Notificación SST (RF-PAG-002)
+  const [logsSst, setLogsSst] = useState<NotificacionSstLog[]>([]);
+  const [cargandoLogsSst, setCargandoLogsSst] = useState(false);
+  const [expandirSst, setExpandirSst] = useState(false);
+  const [reenviandoSst, setReenviandoSst] = useState(false);
+  const [mensajeSst, setMensajeSst] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
 
   const grupos: MenuGroup[] = [
     {
@@ -190,6 +212,20 @@ export default function ViaticosModulePremium() {
           subtitle: 'Expedición de RP en SIIF Nación (Etapa 7)',
           icon: <Receipt className="w-5 h-5" />,
           color: '#059669',
+        },
+        {
+          id: 'tesoreria',
+          label: 'Tesorería y Desembolso',
+          subtitle: 'Aprobación de pagos y órdenes SIIF (Etapa 8)',
+          icon: <BadgeDollarSign className="w-5 h-5" />,
+          color: '#059669',
+        },
+        {
+          id: 'sst',
+          label: 'Seguridad y Salud (SST)',
+          subtitle: 'Monitoreo de comisiones obligadas y pagadas',
+          icon: <HeartPulse className="w-5 h-5" />,
+          color: '#10B981',
         },
         {
           id: 'configuracion',
@@ -273,12 +309,20 @@ export default function ViaticosModulePremium() {
         setEsDireccionNacional(dirNac);
         const presupuesto = authService.isPresupuesto();
         setEsPresupuesto(presupuesto);
+        const tesoreria = authService.isTesoreria();
+        const sst = authService.isSst();
+        setEsTesoreria(tesoreria);
+        setEsSst(sst);
         if (dirNac && !superAdmin && !subdir) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
         } else if (presupuesto && !superAdmin) {
           setSeccion('presupuesto');
+        } else if (tesoreria && !superAdmin) {
+          setSeccion('tesoreria');
+        } else if (sst && !superAdmin) {
+          setSeccion('sst');
         }
         setCargandoRol(false);
       }
@@ -307,7 +351,11 @@ export default function ViaticosModulePremium() {
       const cumpleEstado =
         filtroEstado === 'TODOS' ||
         (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
-      return cumpleBusqueda && cumpleEstado;
+      const cumpleSeccion =
+        seccion === 'tesoreria' || seccion === 'sst'
+          ? ['OBLIGADA', 'PAGADA'].includes(sol.estado)
+          : true;
+      return cumpleBusqueda && cumpleEstado && cumpleSeccion;
     })
     .sort(
       (a, b) =>
@@ -356,6 +404,18 @@ export default function ViaticosModulePremium() {
     setMotivoDevolucion('');
     setCargandoDocumentos(true);
     setDocumentosSoporte([]);
+
+    // Cargar logs de notificación formal a SST (RF-PAG-002)
+    setLogsSst([]);
+    setExpandirSst(false);
+    setMensajeSst(null);
+    setCargandoLogsSst(true);
+    viaticosService
+      .obtenerLogsSst(sol.id)
+      .then((logs) => setLogsSst(logs))
+      .catch(() => setLogsSst([]))
+      .finally(() => setCargandoLogsSst(false));
+
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
       setDocumentosSoporte(completa.documentosSoporte || []);
@@ -370,6 +430,28 @@ export default function ViaticosModulePremium() {
       setMensajeExito('No fue posible cargar los documentos de soporte de esta solicitud.');
     } finally {
       setCargandoDocumentos(false);
+    }
+  };
+
+  const handleReenviarSst = async () => {
+    if (!solicitudSeleccionada) return;
+    setReenviandoSst(true);
+    setMensajeSst(null);
+    try {
+      const res = await viaticosService.reenviarNotificacionSst(solicitudSeleccionada.id);
+      setMensajeSst({
+        tipo: res.success ? 'exito' : 'error',
+        texto: res.message || 'Notificación formal despachada a SST exitosamente.',
+      });
+      const nuevosLogs = await viaticosService.obtenerLogsSst(solicitudSeleccionada.id);
+      setLogsSst(nuevosLogs);
+    } catch (err: any) {
+      setMensajeSst({
+        tipo: 'error',
+        texto: err?.response?.data?.message || err?.message || 'Error reenviando notificación a SST.',
+      });
+    } finally {
+      setReenviandoSst(false);
     }
   };
 
@@ -480,7 +562,9 @@ export default function ViaticosModulePremium() {
     authService.isControlViaticos();
   const puedeCrearSolicitud =
     (!tieneContextoAuth || esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE)) &&
-    !esControlViaticos;
+    !esControlViaticos &&
+    !esTesoreria &&
+    !esSst;
   const puedeVerTiquetes =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -538,12 +622,34 @@ export default function ViaticosModulePremium() {
     esPresupuesto ||
     authService.hasPermission('travel_expenses:read_budget') ||
     authService.hasPermission('travel_expenses:register_rp');
+  const puedeVerTesoreria =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esTesoreria ||
+    authService.isTesoreria() ||
+    authService.hasPermission('travel_expenses:read_payments') ||
+    authService.hasPermission('travel_expenses:process_payment');
+  const puedeVerSst =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esSst ||
+    authService.isSst() ||
+    authService.hasPermission('travel_expenses:read_sst_logs') ||
+    authService.hasPermission('travel_expenses:read_sst_requests');
   const puedeEnviarPresupuesto = authService.canEnviarPresupuesto();
+  const puedeReenviarSst =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esPresupuesto ||
+    authService.hasPermission(Permissions.VIATICOS_SST_RESEND);
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
       let items = grupo.items.filter((item) => {
-        if (item.id === 'solicitudes') return puedeVerSolicitudes;
+        if (item.id === 'solicitudes') {
+          if ((esTesoreria || esSst) && !esSuperAdmin) return false;
+          return puedeVerSolicitudes;
+        }
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
@@ -551,6 +657,8 @@ export default function ViaticosModulePremium() {
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
         if (item.id === 'presupuesto') return puedeVerPresupuesto;
+        if (item.id === 'tesoreria') return puedeVerTesoreria;
+        if (item.id === 'sst') return puedeVerSst;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
       });
@@ -571,6 +679,18 @@ export default function ViaticosModulePremium() {
         items = [...items].sort((a, b) => {
           if (a.id === 'presupuesto') return -1;
           if (b.id === 'presupuesto') return 1;
+          return 0;
+        });
+      } else if (esTesoreria && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'tesoreria') return -1;
+          if (b.id === 'tesoreria') return 1;
+          return 0;
+        });
+      } else if (esSst && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'sst') return -1;
+          if (b.id === 'sst') return 1;
           return 0;
         });
       }
@@ -640,74 +760,210 @@ export default function ViaticosModulePremium() {
         />
       ) : (
         <>
-           {/* ── SOLICITUDES ── */}
-           {seccion === 'solicitudes' && puedeVerSolicitudes && (
+           {/* ── SOLICITUDES, TESORERÍA O SST ── */}
+           {((seccion === 'solicitudes' && puedeVerSolicitudes) ||
+             (seccion === 'tesoreria' && puedeVerTesoreria) ||
+             (seccion === 'sst' && puedeVerSst)) && (
             <>
-              {/* ── KPI HEADER (Específico de Solicitudes) ── */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
-                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
-                    <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
+              {/* ── KPI HEADER SEGÚN SECCIÓN ── */}
+              {seccion === 'tesoreria' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Obligadas (Por Pagar)</p>
+                      <h3 className="text-2xl font-black text-emerald-800 mt-1">
+                        {solicitudes.filter((s) => s.estado === 'OBLIGADA').length}
+                      </h3>
+                      <p className="text-xs text-emerald-600 font-medium mt-1">Pendientes de desembolso SIIF</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                      <BadgeDollarSign className="w-6 h-6" />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
-                    <Plane className="w-6 h-6" />
-                  </div>
-                </div>
 
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
-                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
-                    <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas (Desembolsadas)</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                      </h3>
+                      <p className="text-xs text-blue-600 font-medium mt-1">Giros formalizados</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                    <Clock className="w-6 h-6" />
-                  </div>
-                </div>
 
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
-                    <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
-                    <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad Avance</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                      </h3>
+                      <p className="text-xs text-amber-600 font-medium mt-1">Giro previo al viaje</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                      <Clock className="w-6 h-6" />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                    <MapPin className="w-6 h-6" />
-                  </div>
-                </div>
 
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
-                    <h3 className="text-2xl font-black text-slate-800 mt-1">
-                      {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
-                    </h3>
-                    <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
-                  </div>
-                  <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                    <DollarSign className="w-6 h-6" />
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Desembolsado</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {formatearMoneda(
+                          solicitudes
+                            .filter((s) => s.estado === 'PAGADA')
+                            .reduce((acc, s) => acc + (s.valorPagado || s.montoTotalEstimado || 0), 0)
+                        )}
+                      </h3>
+                      <p className="text-xs text-purple-600 font-medium mt-1">Pagos ejecutados en SIIF</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                      <DollarSign className="w-6 h-6" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : seccion === 'sst' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Comisiones Formalizadas</p>
+                      <h3 className="text-2xl font-black text-emerald-800 mt-1">
+                        {solicitudes.filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                      </h3>
+                      <p className="text-xs text-emerald-600 font-medium mt-1">Para cobertura y monitoreo SST</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                      <HeartPulse className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Obligadas (Programadas)</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {solicitudes.filter((s) => s.estado === 'OBLIGADA').length}
+                      </h3>
+                      <p className="text-xs text-amber-600 font-medium mt-1">Desplazamientos próximos</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                      <Clock className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas / Desembolsadas</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                      </h3>
+                      <p className="text-xs text-blue-600 font-medium mt-1">Giro confirmado</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Días Totales en Territorio</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {solicitudes
+                          .filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado))
+                          .reduce((acc, s) => acc + (s.diasComision || 1), 0)}
+                      </h3>
+                      <p className="text-xs text-purple-600 font-medium mt-1">Exposición operativa</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                      <MapPin className="w-6 h-6" />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Solicitudes</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.totalSolicitudes || 0}</h3>
+                      <p className="text-xs text-blue-600 font-medium mt-1">Registradas en vigencia</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
+                      <Plane className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Aprobación</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enProcesoAprobacion || 0}</h3>
+                      <p className="text-xs text-amber-600 font-medium mt-1">Pendientes por VoBo</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                      <Clock className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">En Comisión</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">{resumen?.enComisionActivas || 0}</h3>
+                      <p className="text-xs text-emerald-600 font-medium mt-1">Funcionarios en territorio</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                      <MapPin className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monto Total Estimado</p>
+                      <h3 className="text-2xl font-black text-slate-800 mt-1">
+                        {formatearMoneda(resumen?.montoTotalEjecutado || 0)}
+                      </h3>
+                      <p className="text-xs text-purple-600 font-medium mt-1">Viáticos + Gastos de viaje</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                      <DollarSign className="w-6 h-6" />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
                  <div>
                    <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                     <Plane className="w-5 h-5 text-[#003DA5]" />
-                     Solicitudes de Comisión y Viáticos
+                     {seccion === 'tesoreria' ? (
+                       <>
+                         <BadgeDollarSign className="w-5 h-5 text-emerald-600" />
+                         Tesorería y Desembolso — Comisiones en Etapa 8
+                       </>
+                     ) : seccion === 'sst' ? (
+                       <>
+                         <HeartPulse className="w-5 h-5 text-emerald-600" />
+                         Seguridad y Salud en el Trabajo (SST) — Monitoreo de Comisiones
+                       </>
+                     ) : (
+                       <>
+                         <Plane className="w-5 h-5 text-[#003DA5]" />
+                         Solicitudes de Comisión y Viáticos
+                       </>
+                     )}
                    </h2>
                    <p className="text-xs text-slate-500 mt-0.5">
-                    Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.
-                  </p>
+                     {seccion === 'tesoreria'
+                       ? 'Gestión de desembolsos, órdenes de pago SIIF Nación y comisiones obligadas y pagadas.'
+                       : seccion === 'sst'
+                         ? 'Monitoreo de funcionarios en comisión con obligación y pago formalizados ante SST.'
+                         : 'Proceso de aprobación, emisión de tiquetes y resoluciones para comisiones institucionales.'}
+                   </p>
                 </div>
                 {puedeCrearSolicitud && (
                   <button
                     type="button"
                     onClick={() => setModalNuevaAbierta(true)}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     Nueva Solicitud de Comisión
@@ -733,6 +989,10 @@ export default function ViaticosModulePremium() {
                     id="filtroEstado"
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
+                      { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
+                      { value: 'COMPROMETIDA', label: 'Comprometida (RP)' },
+                      { value: 'EN_PRESUPUESTO', label: 'En Presupuesto' },
                       { value: 'EN_AUTORIZACION', label: 'En Autorización' },
                       { value: 'EXTEMPORANEA', label: 'Extemporánea' },
                       { value: 'AUTORIZADA', label: 'Autorizada' },
@@ -920,6 +1180,18 @@ export default function ViaticosModulePremium() {
                             )}
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
+                                {sol.estado === 'OBLIGADA' && (esTesoreria || authService.canProcesarPago()) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSolicitudParaPagar(sol)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-sm transition-all cursor-pointer mr-1"
+                                    title="Procesar Desembolso y Pago (Etapa 8)"
+                                    aria-label="Procesar Desembolso"
+                                  >
+                                    <BadgeDollarSign className="w-3.5 h-3.5 text-white" />
+                                    <span>Procesar Pago</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => handleExportarPDF(sol)}
@@ -1500,6 +1772,251 @@ export default function ViaticosModulePremium() {
                         </div>
                       </div>
                     )}
+
+                    {/* ========================================================================= */}
+                    {/* HITO GRÁFICO SST (RF-PAG-002 — Etapa 8: Notificación Automática a SST)    */}
+                    {/* ========================================================================= */}
+                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(solicitudSeleccionada.estado)) && (() => {
+                      const ultimoLogSst = logsSst[0];
+                      const payloadSst = (ultimoLogSst?.payloadNotificado as any) || {
+                        nombre_completo_comisionado: solicitudSeleccionada.nombreComisionado,
+                        documento_identidad: solicitudSeleccionada.cedulaComisionado,
+                        ciudad_destino: `${solicitudSeleccionada.ciudadDestino} (${solicitudSeleccionada.departamentoDestino})`,
+                        fecha_inicio_viaje: solicitudSeleccionada.fechaInicio,
+                        fecha_fin_viaje: solicitudSeleccionada.fechaFin,
+                        objeto_comision: solicitudSeleccionada.justificacion,
+                        consecutivo_comision: solicitudSeleccionada.codigo,
+                      };
+
+                      return (
+                        <div className="mt-4 p-3.5 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                              <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
+                                <HeartPulse className="w-4 h-4 text-emerald-700" />
+                              </span>
+                              <div>
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
+                                  <span>✅ Notificación automática enviada a SST (Seguridad y Salud en el Trabajo)</span>
+                                </div>
+                                <span className="text-[11px] font-medium text-emerald-800">
+                                  {ultimoLogSst?.fechaEnvio
+                                    ? `Despachado: ${new Date(ultimoLogSst.fechaEnvio).toLocaleString('es-CO')}`
+                                    : 'Despacho formalizado en compromiso financiero'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {puedeReenviarSst && (
+                                <button
+                                  type="button"
+                                  onClick={handleReenviarSst}
+                                  disabled={reenviandoSst}
+                                  title="Forzar reenvío formal a SST"
+                                  className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <RefreshCw className={`w-3 h-3 ${reenviandoSst ? 'animate-spin' : ''}`} />
+                                  <span>{reenviandoSst ? 'Reenviando...' : 'Reenviar'}</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setExpandirSst(!expandirSst)}
+                                className="p-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 transition-colors cursor-pointer"
+                                title={expandirSst ? 'Ocultar datos notificados' : 'Previsualizar datos notificados a SST'}
+                                aria-expanded={expandirSst}
+                              >
+                                {expandirSst ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {mensajeSst && (
+                            <div className={`mt-2 p-2 rounded-lg text-xs font-medium ${mensajeSst.tipo === 'exito' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                              {mensajeSst.texto}
+                            </div>
+                          )}
+
+                          {/* Panel colapsable de datos notificados */}
+                          {expandirSst && (
+                            <div className="mt-3 pt-3 border-t border-emerald-200 text-xs space-y-2">
+                              <div className="flex items-center justify-between text-[11px] text-emerald-800 font-semibold mb-1">
+                                <span>Expediente de Desplazamiento Formalizado ante SST</span>
+                                <span className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200 text-emerald-950">
+                                  Canal: Bandeja In-App & Correo · Destino: Rol SST ({ultimoLogSst?.destinatario || 'sst@esap.edu.co'})
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Comisionado</span>
+                                  <span className="font-bold text-slate-800 block truncate">
+                                    {payloadSst.nombre_completo_comisionado || 'Servidor Comisionado'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    C.C. {payloadSst.documento_identidad || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Destino</span>
+                                  <span className="font-bold text-slate-800 block truncate">
+                                    {payloadSst.ciudad_destino || 'Destino Oficial'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">
+                                    Itinerario Autorizado
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 col-span-2 sm:col-span-1">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Fechas de Desplazamiento</span>
+                                  <span className="font-semibold text-slate-800 block">
+                                    {payloadSst.fecha_inicio_viaje} → {payloadSst.fecha_fin_viaje}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2.5 rounded-lg border border-emerald-100 col-span-2 sm:col-span-1">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Estado Notificado</span>
+                                  <span className="font-bold text-emerald-700 block">
+                                    {ultimoLogSst?.estadoEnvio || 'ENVIADO'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="bg-white p-2.5 rounded-lg border border-emerald-100">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Objeto del Viaje</span>
+                                <p className="text-slate-700 italic leading-relaxed text-[11px]">
+                                  "{payloadSst.objeto_comision || 'Comisión oficial de servicios institucionales'}"
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* ========================================================================= */}
+                    {/* ETAPA 8: DETALLE DE OBLIGACIÓN FINANCIERA (ESTADO OBLIGADA) */}
+                    {/* ========================================================================= */}
+                    {solicitudSeleccionada.estado === 'OBLIGADA' && (
+                      <div className="mt-4 p-4 bg-purple-50/90 rounded-xl border border-purple-200 shadow-xs">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <span className="p-2 rounded-lg bg-purple-100 text-purple-700 shrink-0 mt-0.5">
+                              <BadgeDollarSign className="w-4 h-4 text-purple-700" />
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-purple-950">
+                                <span>Etapa 8 · Comisión con Obligación Registrada en SIIF Nación</span>
+                              </div>
+                              <p className="text-[11px] text-purple-800 mt-0.5">
+                                Obligación presupuestal perfeccionada. Pendiente de desembolso por parte de Tesorería.
+                              </p>
+                              <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                                <div className="bg-white p-2 rounded-lg border border-purple-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Nº Obligación</span>
+                                  <span className="font-mono font-bold text-purple-900">
+                                    {(solicitudSeleccionada as any).numeroObligacion || 'Registrada'}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-purple-100">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Fecha Obligación</span>
+                                  <span className="font-medium text-slate-700">
+                                    {(solicitudSeleccionada as any).fechaObligacion
+                                      ? new Date((solicitudSeleccionada as any).fechaObligacion).toLocaleDateString('es-CO')
+                                      : 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-purple-100 col-span-2 sm:col-span-1">
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Obligado</span>
+                                  <span className="font-mono font-bold text-emerald-700">
+                                    {(solicitudSeleccionada as any).valorObligacion != null
+                                      ? `$ ${Number((solicitudSeleccionada as any).valorObligacion).toLocaleString('es-CO')}`
+                                      : 'Conforme a liquidación'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {(esTesoreria || authService.canProcesarPago()) && (
+                          <div className="mt-3 pt-3 border-t border-purple-200 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setSolicitudParaPagar(solicitudSeleccionada)}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                            >
+                              <BadgeDollarSign className="w-3.5 h-3.5" />
+                              <span>Aprobar y Desembolsar Comisión</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ========================================================================= */}
+                    {/* ETAPA 8: DETALLE DE DESEMBOLSO / PAGO REALIZADO (ESTADO PAGADA) */}
+                    {/* ========================================================================= */}
+                    {solicitudSeleccionada.estado === 'PAGADA' && (
+                      <div className="mt-4 p-4 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
+                        <div className="flex items-start gap-2.5">
+                          <span className="p-2 rounded-lg bg-emerald-100 text-emerald-800 shrink-0 mt-0.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                          </span>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
+                              <span>Etapa 8 · Comisión Pagada / Desembolso Perfeccionado</span>
+                            </div>
+                            <p className="text-[11px] text-emerald-800 mt-0.5">
+                              Pago ejecutado exitosamente a través de SIIF Nación y conciliado con Tesorería.
+                            </p>
+                            <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                              <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Orden de Pago</span>
+                                <span className="font-mono font-bold text-emerald-900">
+                                  {(solicitudSeleccionada as any).numeroOrdenPago || 'N/A'}
+                                </span>
+                              </div>
+                              <div className="bg-white p-2 rounded-lg border border-emerald-100">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Fecha de Pago</span>
+                                <span className="font-medium text-slate-700">
+                                  {(solicitudSeleccionada as any).fechaPago
+                                    ? new Date((solicitudSeleccionada as any).fechaPago).toLocaleDateString('es-CO')
+                                    : 'N/A'}
+                                </span>
+                              </div>
+                              <div className="bg-white p-2 rounded-lg border border-emerald-100 col-span-2 sm:col-span-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Desembolsado</span>
+                                <span className="font-mono font-bold text-emerald-700">
+                                  {(solicitudSeleccionada as any).valorPagado != null
+                                    ? `$ ${Number((solicitudSeleccionada as any).valorPagado).toLocaleString('es-CO')}`
+                                    : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {(solicitudSeleccionada as any).observacionesPago && (
+                              <div className="mt-2 bg-white p-2 rounded-lg border border-emerald-100 text-xs">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Observaciones del Pago</span>
+                                <span className="text-slate-700">{(solicitudSeleccionada as any).observacionesPago}</span>
+                              </div>
+                            )}
+
+                            {(solicitudSeleccionada as any).soportePagoPath && (
+                              <div className="mt-2.5 flex items-center justify-between bg-white p-2.5 rounded-lg border border-emerald-200">
+                                <span className="text-xs font-semibold text-emerald-900">Soporte oficial de egreso / SIIF</span>
+                                <a
+                                  href={`/api/v1/travel-expenses/${solicitudSeleccionada.id}/payment/support`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-md text-xs font-medium inline-flex items-center gap-1"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>Descargar Soporte</span>
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                 </div>
                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button
@@ -1548,6 +2065,30 @@ export default function ViaticosModulePremium() {
         onSuccess={() => {
           setMensajeExito('Comisión cancelada exitosamente con trazabilidad registrada.');
           setSolicitudParaCancelar(null);
+          if (solicitudSeleccionada) {
+            setSolicitudSeleccionada(null);
+          }
+          cargarDatos();
+        }}
+      />
+
+      <ProcesarPagoModal
+        solicitud={solicitudParaPagar}
+        abierta={Boolean(solicitudParaPagar)}
+        isOpen={Boolean(solicitudParaPagar)}
+        onCerrar={() => setSolicitudParaPagar(null)}
+        onClose={() => setSolicitudParaPagar(null)}
+        onExito={() => {
+          setMensajeExito('Pago y desembolso procesado exitosamente en SIIF Nación.');
+          setSolicitudParaPagar(null);
+          if (solicitudSeleccionada) {
+            setSolicitudSeleccionada(null);
+          }
+          cargarDatos();
+        }}
+        onSuccess={() => {
+          setMensajeExito('Pago y desembolso procesado exitosamente en SIIF Nación.');
+          setSolicitudParaPagar(null);
           if (solicitudSeleccionada) {
             setSolicitudSeleccionada(null);
           }
