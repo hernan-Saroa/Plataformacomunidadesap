@@ -204,6 +204,10 @@ export function SolicitarCertificado() {
       qrCode: cert.verification_code,
       observations: cert.request?.observations || cert.observations,
       request: cert.request,
+      // El visor necesita saberlo para resolver [GRUPO] y [DEPENDENCIA] igual
+      // que el backend: en un certificado corregido mandan las columnas del
+      // certificado, no las de la solicitud.
+      is_corrected: Boolean(cert.is_corrected),
       certificate_dependency: cert.is_corrected ? undefined : cert.request?.certificate_dependency,
       templateSnapshot,
       templateType,

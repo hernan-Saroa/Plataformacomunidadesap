@@ -28,6 +28,14 @@ export const PERMISOS = {
   alertaVer: 'contratacion.alerta.ver',
   /** Consultar los indicadores de gestión (EFDS-1189). */
   reporteVer: 'contratacion.reporte.view',
+  /**
+   * Mover el presupuesto de la entidad: expedir el CDP y el RP, tramitar los
+   * pagos avalados y cerrar financieramente el contrato.
+   *
+   * Es el permiso de la Dirección Financiera, y lo que en la pantalla decide
+   * que alguien tiene bandeja propia en vez de una lista de procesos.
+   */
+  presupuestoGestionar: 'contratacion.presupuesto.gestionar',
 } as const;
 
 /** La sesión tal como la deja el shell; de ahí solo interesan dos campos. */

@@ -11,21 +11,29 @@
  * tampoco las recogió una historia, también se resuelven fuera de la
  * plataforma y también se quedaban en BORRADOR para siempre. Entran por la
  * misma puerta en vez de estrenar tres pantallas.
+ *
+ * La 3.6 y la 3.7 volvieron a salir. Eran la excepción de aquellas tres: la
+ * matriz no las describe como trámites que ocurren afuera y de los que solo
+ * llega un papel. A la causal la llama «filtro según la modalidad», y RF-EST-04
+ * pide *cuál* habilita contratar así. Del comité dice «Va o No / observa o no /
+ * aprueba o no», y RF-DOC-05 precisa las observaciones de fondo y las
+ * aprobaciones condicionadas: tres desenlaces que el registro no sabía
+ * representar —cerraba en APROBADO pasara lo que pasara, así que un proceso
+ * observado avanzaba como si lo hubieran avalado—.
+ *
+ * Que la sesión ocurra afuera no es lo que decide: el acta se sigue adjuntando.
+ * Lo que decide es si lo que hay que guardar cabe en una fecha y una nota.
  */
 export const NUMERALES_CON_REGISTRO = [
   // Etapa 3 · lo que acompaña al estudio previo
   '3.2',
-  // La 3.3, la 3.4 y la 3.5 salieron de la lista con EFDS-1183. Eran el caso
-  // más claro de lo que el comentario de arriba anticipaba: no es que nadie las
-  // recogiera, es que no caben en una fecha y un documento. Radicar es recibir
-  // el proceso en la Dirección y ponerle responsable; la 3.4 es la decisión del
-  // abogado sobre el estudio previo; y la 3.5 es ratificar la modalidad que el
-  // área eligió —subir un papel la daba por definida sin que nadie la mirara—.
-  // La causal la elige el abogado leyendo el Decreto 1082/2015 contra el
-  // objeto, y el comité sesiona en la Dirección de Contratación: ninguna de las
-  // dos es un cálculo que la plataforma pueda hacer ni un trámite que reciba.
-  '3.6',
-  '3.7',
+  // De la etapa 3 solo queda el análisis del sector. Las otras cinco salieron:
+  // radicar es recibir el proceso en la Dirección y ponerle responsable (3.3);
+  // la 3.4 es la decisión del abogado sobre el estudio previo; la 3.5 es
+  // ratificar la modalidad que el área eligió —subir un papel la daba por
+  // definida sin que nadie la mirara—; la 3.6 es elegir la causal del catálogo
+  // de esa modalidad; y la 3.7 es lo que el comité decidió, que son tres
+  // desenlaces y no un adjunto.
   // Etapa 5 · participación previa a la apertura
   '5.9',
   '5.10',

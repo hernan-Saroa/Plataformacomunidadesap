@@ -5,14 +5,17 @@ import {
   AlertTriangle,
   CheckCircle2,
   CheckSquare,
+  Clock,
   Copy,
   Download,
   ExternalLink,
   Eye,
   FileText,
   Info,
+  Landmark,
   LoaderCircle,
   Lock,
+  Receipt,
   RotateCcw,
   ShieldCheck,
   Square,
@@ -269,6 +272,11 @@ export default function VerificacionSIIFModal({
   const estaEnControlViaticos = solicitud?.estadoSolicitud === 'SOLICITADA_SIIF';
   const estaVerificada = solicitud?.estadoSolicitud === 'VERIFICADA';
   const estadoUpper = (solicitud?.estadoSolicitud || '').toUpperCase();
+  const esDevuelta = estadoUpper === 'DEVUELTA';
+  const esExtemporanea = Boolean(solicitud?.extemporanea || estadoUpper === 'EXTEMPORANEA');
+  const estaComprometida = estadoUpper === 'COMPROMETIDA';
+  const estaObligada = estadoUpper === 'OBLIGADA';
+  const estaPagada = estadoUpper === 'PAGADA';
   const estaAutorizada = [
     'AUTORIZADA',
     'RESOLUCION_EMITIDA',
@@ -276,8 +284,18 @@ export default function VerificacionSIIFModal({
     'EN_COMISION',
     'PENDIENTE_LEGALIZACION',
     'LEGALIZADO',
+    'COMPROMETIDA',
+    'OBLIGADA',
+    'PAGADA',
   ].includes(estadoUpper);
-  const esSoloLectura = estaEnControlViaticos || estaVerificada || estaAutorizada;
+  const esSoloLectura =
+    estaEnControlViaticos ||
+    estaVerificada ||
+    estaAutorizada ||
+    estaComprometida ||
+    estaObligada ||
+    estaPagada ||
+    esDevuelta;
 
   const todosCheckMandatory =
     checkLiquidacion && checkSeguridadSocial && checkItinerario;
@@ -338,7 +356,7 @@ export default function VerificacionSIIFModal({
   };
 
   const handleRegistrarVerificacion = async () => {
-    if (!solicitud || !todosCheckMandatory) return;
+    if (!solicitud || !todosCheckMandatory || esDevuelta) return;
     setRegistrando(true);
     setRegistroError(null);
     try {
@@ -359,7 +377,7 @@ export default function VerificacionSIIFModal({
   };
 
   const handleDescargarCsv = async () => {
-    if (!solicitud) return;
+    if (!solicitud || esDevuelta) return;
     try {
       const blob = await viaticosService.exportarSIIF(solicitud.id);
       const url = URL.createObjectURL(blob);
@@ -381,7 +399,7 @@ export default function VerificacionSIIFModal({
   };
 
   const handleDevolverEnlace = async () => {
-    if (!solicitud) return;
+    if (!solicitud || esDevuelta) return;
     if (!motivoDevolucion.trim()) {
       setErrorDevolucion('El motivo de devolución es obligatorio.');
       return;
@@ -400,7 +418,7 @@ export default function VerificacionSIIFModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 w-full">
       <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[70vh] overflow-y-auto mt-16">
         <div className="p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
@@ -424,6 +442,28 @@ export default function VerificacionSIIFModal({
             </div>
           ) : (
             <>
+              {/* ==================== Banner Comisión Extemporánea ==================== */}
+              {esExtemporanea && (
+                <div className="mb-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl shadow-xs flex items-start gap-3">
+                  <div className="p-1.5 bg-amber-100 rounded-xl text-amber-700 shrink-0 mt-0.5">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white">
+                        Comisión Extemporánea
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-800">
+                        (Radicada con menos de 14 días hábiles de anticipación)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 mt-1 font-normal">
+                      Esta comisión conserva su identificación como extemporánea en todo el proceso. Una vez completada la verificación del analista y la segunda revisión de control de viáticos, el sistema la enrutará a la Dirección Nacional para autorización excepcional (RF-AUT-002).
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ==================== Banner Alerta de Devolución ==================== */}
               {(solicitud.estadoSolicitud === 'DEVUELTA' ||
                 (solicitud.estadoSolicitud === 'EN_VERIFICACION' &&
@@ -518,8 +558,100 @@ export default function VerificacionSIIFModal({
                 </div>
               )}
 
+              {/* ==================== Banner Comprometida ==================== */}
+              {estaComprometida && (
+                <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-teal-100 rounded-xl text-teal-700 shrink-0 mt-0.5">
+                      <Receipt className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-700 text-white">
+                          Comisión Comprometida
+                        </span>
+                        {solicitud?.numeroRp && (
+                          <span className="text-[10px] text-teal-800 font-bold">
+                            RP: {solicitud.numeroRp}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-teal-950 mt-1">
+                        Registro Presupuestal Expedido en SIIF Nación
+                      </h4>
+                      <p className="text-xs text-teal-900 mt-1 leading-relaxed">
+                        Esta comisión cuenta con Registro Presupuestal oficial (RP). Se encuentra lista para que el analista registre la Obligación en SIIF Nación según la modalidad de pago y habilite el desembolso de Tesorería (Etapa 8 — RF-PAG-001).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== Banner Obligada ==================== */}
+              {estaObligada && (
+                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-emerald-100 rounded-xl text-emerald-700 shrink-0 mt-0.5">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-700 text-white">
+                          Comisión Obligada (Lista para Pago)
+                        </span>
+                        {solicitud?.numeroObligacion && (
+                          <span className="text-[10px] text-emerald-800 font-bold">
+                            Obligación SIIF: {solicitud.numeroObligacion}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-emerald-950 mt-1">
+                        Obligación Registrada en SIIF Nación
+                      </h4>
+                      <p className="text-xs text-emerald-900 mt-1 leading-relaxed">
+                        La obligación presupuestal ha sido registrada exitosamente. La comisión se encuentra en la etapa de desembolso por parte de Tesorería.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== Banner Pagada ==================== */}
+              {estaPagada && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-green-100 rounded-xl text-green-700 shrink-0 mt-0.5">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-green-700 text-white">
+                          Comisión Pagada y Desembolsada
+                        </span>
+                        {solicitud?.numeroOrdenPago && (
+                          <span className="text-[10px] text-green-800 font-bold font-mono">
+                            OP SIIF: {solicitud.numeroOrdenPago}
+                          </span>
+                        )}
+                        {solicitud?.fechaPago && (
+                          <span className="text-[10px] text-green-800 font-medium">
+                            Fecha: {String(solicitud.fechaPago).split('T')[0]}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-green-950 mt-1">
+                        Desembolso Financiero Ejecutado por Tesorería
+                      </h4>
+                      <p className="text-xs text-green-900 mt-1 leading-relaxed">
+                        El pago ha sido desembolsado exitosamente al comisionado conforme a la modalidad presupuestal. El expediente se encuentra formalmente en estado PAGADA.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ==================== Banner Autorizada ==================== */}
-              {estaAutorizada && (
+              {estaAutorizada && !estaComprometida && !estaObligada && !estaPagada && (
                 <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-2xl shadow-xs">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-purple-100 rounded-xl text-purple-700 shrink-0 mt-0.5">
@@ -742,7 +874,7 @@ export default function VerificacionSIIFModal({
                 )}
 
                 {/* Bloqueo y Requisito de Factura Electrónica */}
-                {bloqueoFacturaActivo && (
+                {!estaComprometida && !estaObligada && bloqueoFacturaActivo && (
                   <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-3">
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0">
@@ -870,43 +1002,53 @@ export default function VerificacionSIIFModal({
                   )}
                 </div>
 
-                <div className="mt-4 flex flex-col sm:flex-row gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDescargarCsv}
-                    disabled={bloqueoFacturaActivo}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                      bloqueoFacturaActivo
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
-                        : 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
-                    }`}
-                    title={
-                      bloqueoFacturaActivo
-                        ? 'Bloqueado: Debe cargar la factura electrónica del contratista para continuar'
-                        : undefined
-                    }
-                  >
-                    {bloqueoFacturaActivo ? (
-                      <Lock className="w-4 h-4" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    Descargar Archivo Plano CSV para SIIF
-                  </button>
-                  {registroError && (
-                    <span className="text-xs text-red-600 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      {registroError}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 text-[10px] text-slate-400">
-                  {estaAutorizada
-                    ? 'Comisión AUTORIZADA corporativamente. El archivo plano CSV se encuentra disponible para fines informativos y de consulta.'
-                    : esSoloLectura
-                    ? 'La solicitud ya fue exportada a SIIF Nación y transferida a Control Viáticos. Puede descargar una copia del archivo plano si lo requiere.'
-                    : 'Al descargar, la solicitud se exporta a SIIF Nación y la comisión se crea en el sistema.'}
-                </p>
+                {!estaComprometida && !estaObligada && (
+                  <>
+                    <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDescargarCsv}
+                        disabled={bloqueoFacturaActivo || esDevuelta}
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                          bloqueoFacturaActivo || esDevuelta
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                            : 'bg-[#003DA5] text-white hover:bg-[#002a7d]'
+                        }`}
+                        title={
+                          esDevuelta
+                            ? 'Bloqueado: La comisión se encuentra DEVUELTA al enlace de dependencia'
+                            : bloqueoFacturaActivo
+                            ? 'Bloqueado: Debe cargar la factura electrónica del contratista para continuar'
+                            : undefined
+                        }
+                      >
+                        {bloqueoFacturaActivo || esDevuelta ? (
+                          <Lock className="w-4 h-4" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
+                        {esSoloLectura
+                          ? 'Descargar Copia de Archivo Plano CSV para SIIF'
+                          : 'Descargar Archivo Plano CSV para SIIF'}
+                      </button>
+                      {registroError && (
+                        <span className="text-xs text-red-600 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {registroError}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-[10px] text-slate-400">
+                      {esDevuelta
+                        ? 'Comisión DEVUELTA al enlace de dependencia. La exportación a SIIF se encuentra bloqueada hasta que el enlace subsane y radique nuevamente.'
+                        : estaAutorizada
+                        ? 'Comisión AUTORIZADA corporativamente. El archivo plano CSV se encuentra disponible para fines informativos y de consulta.'
+                        : esSoloLectura
+                        ? 'La solicitud ya fue exportada a SIIF Nación y transferida a Control Viáticos. Puede descargar una copia del archivo plano si lo requiere.'
+                        : 'Al descargar, la solicitud se exporta a SIIF Nación y la comisión se crea en el sistema.'}
+                    </p>
+                  </>
+                )}
               </section>
 
               {/* ==================== Section 4: Devolver a Enlace ==================== */}
@@ -978,110 +1120,217 @@ export default function VerificacionSIIFModal({
                 </section>
               )}
 
-              {/* ==================== Section 5: Checklist de Verificación y Registro ==================== */}
-              <section className="mb-6 border-t border-slate-200 pt-4 bg-slate-50/50 -mx-6 px-6 pb-2 rounded-b-2xl">
-                <div className="mb-3">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    Checklist de Verificación del Analista
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Habiendo analizado los soportes y datos anteriores, certifique el cumplimiento para registrar la verificación y avanzar el expediente.
-                  </p>
-                </div>
+              {/* ==================== Section 5: Observaciones y Trazabilidad (COMPROMETIDA / OBLIGADA / PAGADA) ó Checklist (Etapa 5) ==================== */}
+              {estaComprometida || estaObligada || estaPagada ? (
+                <section className="mb-6 border-t border-slate-200 pt-4 bg-slate-50/50 -mx-6 px-6 pb-2 rounded-b-2xl">
+                  <div className="mb-3">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      Panel de Observación y Trazabilidad de la Comisión
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Expediente en modo netamente de observación y consulta. No admite modificaciones ni nuevas validaciones de analista.
+                    </p>
+                  </div>
 
-                <div className="border border-slate-200 bg-white rounded-xl p-4 space-y-1 shadow-2xs">
-                  <p className="text-[10px] font-semibold text-slate-500 uppercase mb-2">
-                    Verificaciones obligatorias
-                  </p>
-                  <CheckboxItem
-                    checked={checkLiquidacion}
-                    onChange={setCheckLiquidacion}
-                    disabled={esSoloLectura}
-                    label="Liquidación Correcta"
-                    sublabel="La liquidación calculada coincide con la documentación soporte."
-                  />
-                  <CheckboxItem
-                    checked={checkSeguridadSocial}
-                    onChange={setCheckSeguridadSocial}
-                    disabled={esSoloLectura}
-                    label="Seguridad Social Vigente"
-                    sublabel="Contribuciones de seguridad social al día al momento de la comisión."
-                  />
-                  <CheckboxItem
-                    checked={checkItinerario}
-                    onChange={setCheckItinerario}
-                    disabled={esSoloLectura}
-                    label="Itinerario Coherente"
-                    sublabel="El itinerario justifica el monto y los tiempos declarados."
-                  />
-                </div>
-
-                <div className="border border-slate-200 bg-white rounded-xl p-4 mt-3 shadow-2xs">
-                  <p className="text-[10px] font-semibold text-slate-500 uppercase mb-2">
-                    Verificación de RUT
-                  </p>
-                  <CheckboxItem
-                    checked={checkRutFacturador}
-                    onChange={setCheckRutFacturador}
-                    disabled={esSoloLectura}
-                    label="Comisionado es Facturador Electrónico"
-                    sublabel={
-                      comisionado?.tipoComisionado === 'CONTRATISTA'
-                        ? 'Se consulta el RUT del comisionado en los PDFs de soporte. Si es contratista facturador, el sistema exigirá adjuntar la factura electrónica antes de permitir la exportación a SIIF.'
-                        : 'Se consulta el RUT del comisionado en los PDFs de soporte.'
-                    }
-                  />
-                </div>
-
-                <div className="mt-4 flex items-center justify-between">
-                  {esSoloLectura ? (
-                    <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs font-semibold w-full">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>
-                        {estaAutorizada
-                          ? 'Comisión AUTORIZADA — Ha superado todas las etapas de verificación y cuenta con aprobación corporativa. Modo solo lectura.'
-                          : estaVerificada
-                          ? 'Auditoría y control cruzado completados — Comisión en estado VERIFICADA.'
-                          : 'Verificación de analista completada — Solicitud transferida a Control Viáticos (SOLICITADA_SIIF). Registro cerrado.'}
-                      </span>
+                  <div className="space-y-3">
+                    {/* Tarjeta de Trazabilidad Presupuestal */}
+                    <div className="border border-slate-200 bg-white rounded-xl p-4 shadow-2xs space-y-2">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Receipt className="w-3.5 h-3.5 text-teal-600" />
+                        Registro Presupuestal y Modalidad de Pago
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Número RP</span>
+                          <span className="font-mono font-bold text-slate-800">{solicitud.numeroRp || 'No registrado'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Fecha Expedición RP</span>
+                          <span className="font-medium text-slate-800">{fmtFecha(solicitud.fechaExpedicionRp || solicitud.fechaRp)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Valor Comprometido</span>
+                          <span className="font-bold text-emerald-700">
+                            {solicitud.valorComprometido ? formatearMoneda(Number(solicitud.valorComprometido)) : formatearMoneda(valorNeto)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Modalidad de Pago</span>
+                          <span className="font-medium text-slate-800">{solicitud.modalidadPago || 'No definida'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Rubro Presupuestal</span>
+                          <span className="font-medium text-slate-800">{solicitud.rubroPresupuestal || 'No asignado'}</span>
+                        </div>
+                        {solicitud.numeroObligacion && (
+                          <div>
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase block">Obligación SIIF</span>
+                            <span className="font-mono font-bold text-emerald-800">{solicitud.numeroObligacion}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handleRegistrarVerificacion}
-                        disabled={!todosCheckMandatory || registrando}
-                        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
-                          todosCheckMandatory && !registrando
-                            ? 'bg-[#003DA5] text-white hover:bg-[#002a7d] cursor-pointer'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+
+                    {/* Observaciones y Anotaciones del Expediente */}
+                    <div className="border border-slate-200 bg-white rounded-xl p-4 shadow-2xs space-y-3">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Anotaciones y Observaciones del Expediente
+                      </h4>
+
+                      {solicitud.observacionesRp && (
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Observaciones de Presupuesto (RP)</span>
+                          <p className="text-xs text-slate-700 mt-0.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                            {solicitud.observacionesRp}
+                          </p>
+                        </div>
+                      )}
+
+                      {solicitud.observacionesObligacion && (
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Observaciones de Obligación SIIF</span>
+                          <p className="text-xs text-slate-700 mt-0.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                            {solicitud.observacionesObligacion}
+                          </p>
+                        </div>
+                      )}
+
+                      {solicitud.observacionesAutorizacion && (
+                        <div>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase block">Observaciones de Autorización</span>
+                          <p className="text-xs text-slate-700 mt-0.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                            {solicitud.observacionesAutorizacion}
+                          </p>
+                        </div>
+                      )}
+
+                      <div>
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase block">Objeto de la Comisión</span>
+                        <p className="text-xs text-slate-700 mt-0.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                          {solicitud.objetoComision || 'Sin objeto registrado'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <section className="mb-6 border-t border-slate-200 pt-4 bg-slate-50/50 -mx-6 px-6 pb-2 rounded-b-2xl">
+                  <div className="mb-3">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Checklist de Verificación del Analista
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Habiendo analizado los soportes y datos anteriores, certifique el cumplimiento para registrar la verificación y avanzar el expediente.
+                    </p>
+                  </div>
+
+                  <div className="border border-slate-200 bg-white rounded-xl p-4 space-y-1 shadow-2xs">
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase mb-2">
+                      Verificaciones obligatorias
+                    </p>
+                    <CheckboxItem
+                      checked={checkLiquidacion}
+                      onChange={setCheckLiquidacion}
+                      disabled={esSoloLectura}
+                      label="Liquidación Correcta"
+                      sublabel="La liquidación calculada coincide con la documentación soporte."
+                    />
+                    <CheckboxItem
+                      checked={checkSeguridadSocial}
+                      onChange={setCheckSeguridadSocial}
+                      disabled={esSoloLectura}
+                      label="Seguridad Social Vigente"
+                      sublabel="Contribuciones de seguridad social al día al momento de la comisión."
+                    />
+                    <CheckboxItem
+                      checked={checkItinerario}
+                      onChange={setCheckItinerario}
+                      disabled={esSoloLectura}
+                      label="Itinerario Coherente"
+                      sublabel="El itinerario justifica el monto y los tiempos declarados."
+                    />
+                  </div>
+
+                  <div className="border border-slate-200 bg-white rounded-xl p-4 mt-3 shadow-2xs">
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase mb-2">
+                      Verificación de RUT
+                    </p>
+                    <CheckboxItem
+                      checked={checkRutFacturador}
+                      onChange={setCheckRutFacturador}
+                      disabled={esSoloLectura}
+                      label="Comisionado es Facturador Electrónico"
+                      sublabel={
+                        comisionado?.tipoComisionado === 'CONTRATISTA'
+                          ? 'Se consulta el RUT del comisionado en los PDFs de soporte. Si es contratista facturador, el sistema exigirá adjuntar la factura electrónica antes de permitir la exportación a SIIF.'
+                          : 'Se consulta el RUT del comisionado en los PDFs de soporte.'
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between">
+                    {esSoloLectura ? (
+                      <div
+                        className={`flex items-center gap-2 p-3 border rounded-xl text-xs font-semibold w-full ${
+                          esDevuelta
+                            ? 'bg-rose-50 border-rose-200 text-rose-800'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
                         }`}
                       >
-                        {registrando ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        {esDevuelta ? (
+                          <RotateCcw className="w-4 h-4 text-rose-600 shrink-0" />
                         ) : (
-                          <CheckCircle2 className="w-4 h-4" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                         )}
-                        Registrar Verificación
-                      </button>
+                        <span>
+                          {esDevuelta
+                            ? 'Comisión DEVUELTA al Enlace de Dependencia — El proceso está bloqueado hasta que el enlace subsane las observaciones, adjunte los soportes requeridos y vuelva a radicar la solicitud. No es posible registrar validación ni verificación en este estado.'
+                            : estaAutorizada
+                            ? 'Comisión AUTORIZADA — Ha superado todas las etapas de verificación y cuenta con aprobación corporativa. Modo solo lectura.'
+                            : estaVerificada
+                            ? 'Auditoría y control cruzado completados — Comisión en estado VERIFICADA.'
+                            : 'Verificación de analista completada — Solicitud transferida a Control Viáticos (SOLICITADA_SIIF). Registro cerrado.'}
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleRegistrarVerificacion}
+                          disabled={!todosCheckMandatory || registrando}
+                          className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
+                            todosCheckMandatory && !registrando
+                              ? 'bg-[#003DA5] text-white hover:bg-[#002a7d] cursor-pointer'
+                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {registrando ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4" />
+                          )}
+                          Registrar Verificación
+                        </button>
 
-                      {registroExitoso && (
-                        <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Verificación registrada
-                        </span>
-                      )}
-                      {registroError && (
-                        <span className="text-xs text-red-600 flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5" />
-                          {registroError}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </div>
-              </section>
+                        {registroExitoso && (
+                          <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Verificación registrada
+                          </span>
+                        )}
+                        {registroError && (
+                          <span className="text-xs text-red-600 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {registroError}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </section>
+              )}
             </>
           )}
 

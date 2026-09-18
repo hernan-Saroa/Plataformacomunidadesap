@@ -475,6 +475,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           cod_grade: cert.cod_grade || cert.codGrade,
           observations: cert.request?.observations || cert.observations,
           request: cert.request,
+          // El visor lo necesita para resolver [GRUPO] y [DEPENDENCIA] igual que
+          // el backend: en un certificado corregido mandan las columnas del
+          // certificado, no las de la solicitud.
+          is_corrected: Boolean(cert.is_corrected),
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
@@ -500,12 +504,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           nombre: cert.full_name,
           tipo: 'autoservicio' as const
         },
-        position_location:
-          cert.request?.position_location ||
-          cert.request?.positionLocation ||
-          cert.position_location ||
-          cert.positionLocation ||
-          '',
+        position_location: cert.is_corrected
+          ? cert.position_location || cert.positionLocation || ''
+          : cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation ||
+            '',
         department: cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
@@ -538,6 +543,35 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const [estadoLaboral, setEstadoLaboral] = useState<'activo' | 'inactivo' | null>(null);
   const numeroDocumentoRef = useRef('');
   const numeroDocumentoInputRef = useRef<HTMLInputElement | null>(null);
+  // Each identity/option change invalidates responses from the previous form.
+  const identityRevision = useRef(0);
+  const functionsRevision = useRef(0);
+  const bonusRevision = useRef(0);
+  const submittingRef = useRef(false);
+  const codeOperationRef = useRef(false);
+  const skipNextAutomaticFunctionsValidationRef = useRef(false);
+  const documentInFlight = useRef<{ key: string; promise: Promise<any> } | null>(null);
+
+  const invalidateDocumentValidation = () => {
+    identityRevision.current += 1;
+    functionsRevision.current += 1;
+    bonusRevision.current += 1;
+    documentInFlight.current = null;
+    setValidandoFunciones(false);
+    setValidandoPrimaTecnica(false);
+    setFuncionesMetadata(null);
+    setPrimaTecnicaMetadata(null);
+    setMensajeFunciones(null);
+    setIncluirPrimaTecnica(false);
+    setEmpleadoEncontrado(null);
+    setEstadoLaboral(null);
+  };
+
+  useEffect(() => () => {
+    identityRevision.current += 1;
+    functionsRevision.current += 1;
+    bonusRevision.current += 1;
+  }, []);
   
   // Paso 2: Validación de código (6 dígitos individuales)
   const [digitosCodigo, setDigitosCodigo] = useState<string[]>(['', '', '', '', '', '']);
@@ -601,6 +635,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   };
 
   const actualizarPreferenciasSalario = (ocultarSalarioChecked: boolean | 'indeterminate') => {
+    if (submittingRef.current) return;
+    bonusRevision.current += 1;
+    setValidandoPrimaTecnica(false);
     const incluirSalarioActualizado = ocultarSalarioChecked !== true;
     setIncluirSalario(incluirSalarioActualizado);
     if (!incluirSalarioActualizado) {
@@ -713,7 +750,25 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
   const consultarDocumento = async (documento: string) => {
     const doc = String(documento || '').trim();
-    const verificacion = await certificadosService.autoservicio.verificarDocumento(doc);
+    const revision = identityRevision.current;
+    const key = `${revision}:${doc}`;
+    // Share only a pending request; never cache a completed eligibility check.
+    if (documentInFlight.current?.key !== key) {
+      documentInFlight.current = {
+        key,
+        promise: certificadosService.autoservicio.verificarDocumento(doc),
+      };
+    }
+    const pending = documentInFlight.current;
+    let verificacion: any;
+    try {
+      verificacion = await pending.promise;
+    } finally {
+      if (documentInFlight.current === pending) documentInFlight.current = null;
+    }
+    if (revision !== identityRevision.current) {
+      throw new Error('La identidad cambió durante la consulta.');
+    }
     const solicitudVerificada =
       verificacion?.solicitud && typeof verificacion.solicitud === 'object'
         ? verificacion.solicitud
@@ -747,8 +802,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   };
 
   const validarFuncionesPorDocumento = async (documento: string) => {
+    const revision = ++functionsRevision.current;
+    const current = () => revision === functionsRevision.current;
     const doc = String(documento || '').trim();
-    if (!doc || doc.length < 6) {
+    if (tipoDocumento !== 'CC' || !/^\d{6,15}$/.test(doc)) {
       setMensajeFunciones({
         type: 'info',
         text: 'Ingresa tu documento y al solicitar validaremos la asociación exacta de tus funciones.',
@@ -760,6 +817,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     try {
       const { verificacion, funciones } =
         await consultarDocumento(doc);
+      if (!current()) return false;
       if (!verificacion?.existe || !funciones.disponible) {
         const text = funciones.estado === 'AMBIGUOUS'
           ? 'Encontramos más de una matriz posible y no podemos asociar tus funciones con seguridad. Talento Humano debe revisar tus datos.'
@@ -773,26 +831,64 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       });
       return true;
     } catch (error: any) {
+      if (!current()) return false;
       setMensajeFunciones({
         type: 'error',
         text: error?.response?.data?.message || error?.message || 'No fue posible validar tus funciones laborales.',
       });
       return false;
     } finally {
-      setValidandoFunciones(false);
+      if (current()) setValidandoFunciones(false);
     }
   };
 
   const handleToggleFunciones = async (checked: boolean | 'indeterminate') => {
+    if (submittingRef.current) return;
     const activar = checked === true;
     setIncluirFunciones(activar);
     if (!activar) {
+      functionsRevision.current += 1;
+      setValidandoFunciones(false);
       setMensajeFunciones(null);
       return;
     }
-    const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
+    // The explicit click validates immediately. Subsequent identity changes
+    // are revalidated by the debounced effect below while the check stays on.
+    skipNextAutomaticFunctionsValidationRef.current = true;
+    const documentoIngresado = numeroDocumentoRef.current.trim();
     await validarFuncionesPorDocumento(documentoIngresado);
   };
+
+  useEffect(() => {
+    if (!incluirFunciones) return undefined;
+    if (skipNextAutomaticFunctionsValidationRef.current) {
+      skipNextAutomaticFunctionsValidationRef.current = false;
+      return undefined;
+    }
+
+    functionsRevision.current += 1;
+    const documentoActual = numeroDocumento.trim();
+    if (tipoDocumento !== 'CC' || !/^\d{6,15}$/.test(documentoActual)) {
+      setValidandoFunciones(false);
+      setMensajeFunciones({
+        type: 'info',
+        text: 'Completa una cédula válida. Al terminar volveremos a validar automáticamente tus funciones.',
+      });
+      return undefined;
+    }
+
+    // Wait until the person finishes typing: one Oracle request per document,
+    // never one request for every digit entered.
+    setValidandoFunciones(true);
+    setMensajeFunciones(null);
+    const timeout = window.setTimeout(() => {
+      void validarFuncionesPorDocumento(documentoActual);
+    }, 500);
+    return () => {
+      window.clearTimeout(timeout);
+      functionsRevision.current += 1;
+    };
+  }, [incluirFunciones, numeroDocumento, tipoDocumento]);
 
   const validarPrimaTecnicaPorDocumento = async (
     documento: string,
@@ -801,6 +897,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       mostrarToastError?: boolean;
     } = {},
   ) => {
+    const revision = ++bonusRevision.current;
+    const current = () => revision === bonusRevision.current;
     const doc = String(documento || '').trim();
     if (!doc) {
       if (opciones.mostrarToastError !== false) {
@@ -834,6 +932,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setValidandoPrimaTecnica(true);
     try {
       const { verificacion, metadata } = await consultarDocumento(doc);
+      if (!current()) return false;
       if (!verificacion?.existe) {
         if (opciones.mostrarToastError !== false) {
           toast.error('No encontramos tu documento en la base de datos de ESAP.');
@@ -855,6 +954,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       }
       return true;
     } catch (error: any) {
+      if (!current()) return false;
       if (opciones.mostrarToastError !== false) {
         toast.error(
           error?.response?.data?.message ||
@@ -864,14 +964,16 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       }
       return false;
     } finally {
-      setValidandoPrimaTecnica(false);
+      if (current()) setValidandoPrimaTecnica(false);
     }
   };
 
   const handleTogglePrimaTecnica = async (checked: boolean | 'indeterminate') => {
+    if (submittingRef.current) return;
     const activar = checked === true;
 
     if (!activar) {
+      bonusRevision.current += 1;
       setIncluirPrimaTecnica(false);
       return;
     }
@@ -882,20 +984,24 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       return;
     }
 
-    const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
-    const permitido = await validarPrimaTecnicaPorDocumento(documentoIngresado, {
+    const documentoIngresado = numeroDocumentoRef.current.trim();
+    const identity = identityRevision.current;
+    const pending = validarPrimaTecnicaPorDocumento(documentoIngresado, {
       mostrarToastError: true,
     });
-
-    setIncluirPrimaTecnica(permitido && incluirSalario);
+    const optionRevision = bonusRevision.current;
+    const permitido = await pending;
+    if (identity === identityRevision.current && optionRevision === bonusRevision.current && permitido) {
+      setIncluirPrimaTecnica(incluirSalario);
+    }
   };
 
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
-    if (buscandoEmpleado) return;
+    if (submittingRef.current || validandoFunciones || validandoPrimaTecnica) return;
 
-    const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
+    const documentoIngresado = numeroDocumentoRef.current.trim();
 
     if (!tipoDocumento) {
       toast.error('Por favor, selecciona el tipo de documento');
@@ -923,6 +1029,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setEstadoLaboral(null);
     setEmpleadoEncontrado(null);
     setBuscandoEmpleado(true);
+    submittingRef.current = true;
+    const revision = identityRevision.current;
 
     try {
       // Verificar si existe, si ya tiene certificado activo y si es docente
@@ -985,6 +1093,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           documentoIngresado,
           tipoDocumento,
         );
+      if (revision !== identityRevision.current) return;
       if (!response || typeof response !== 'object') {
         setBuscandoEmpleado(false);
         toast.error('No pudimos generar el código en este momento. Intenta nuevamente.');
@@ -1066,14 +1175,19 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       setCountdownSeed((prev) => prev + 1);
       setPasoActual('validacion-codigo');
     } catch (error: any) {
+      if (revision !== identityRevision.current) return;
       setBuscandoEmpleado(false);
       console.error('Error al buscar empleado:', error);
       toast.error(error.response?.data?.message || error.message || 'No se encontró registro en la base de datos de ESAP');
+    } finally {
+      submittingRef.current = false;
+      if (revision === identityRevision.current) setBuscandoEmpleado(false);
     }
   };
 
   // PASO 2: Validar código y generar certificado
   const handleValidarCodigo = async () => {
+    if (codeOperationRef.current || codigoExpirado || !empleadoEncontrado) return;
     const codigoValidacion = (isMobile ? codigoMobileRef.current : digitosCodigo.join('')).trim();
     if (codigoValidacion.length !== 6) {
       toast.error('Ingresa el código de 6 dígitos');
@@ -1081,6 +1195,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     }
 
     setValidandoCodigo(true);
+    codeOperationRef.current = true;
+    const revision = identityRevision.current;
 
     try {
       // Llamar al backend para validar código y generar certificado
@@ -1095,6 +1211,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           publicBaseUrl: getPublicBaseUrl(),
         }
       );
+      if (revision !== identityRevision.current) return;
       const cert = response?.certificado;
       if (!cert) {
         throw new Error(response?.mensaje || 'Código incorrecto. Verifica e intenta nuevamente.');
@@ -1186,6 +1303,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         cod_grade: cert.cod_grade || cert.codGrade,
         observations: cert.request?.observations || cert.observations,
         request: cert.request,
+        // El visor lo necesita para resolver [GRUPO] y [DEPENDENCIA] igual que
+        // el backend: en un certificado corregido mandan las columnas del
+        // certificado, no las de la solicitud.
+        is_corrected: Boolean(cert.is_corrected),
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
@@ -1211,12 +1332,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             nombre: cert.full_name,
             tipo: 'autoservicio' as const
           },
-          position_location:
-            cert.request?.position_location ||
-            cert.request?.positionLocation ||
-            cert.position_location ||
-            cert.positionLocation ||
-            '',
+          position_location: cert.is_corrected
+            ? cert.position_location || cert.positionLocation || ''
+            : cert.request?.position_location ||
+              cert.request?.positionLocation ||
+              cert.position_location ||
+              cert.positionLocation ||
+              '',
           department: cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,
@@ -1258,6 +1380,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       // Avanzar al paso final
       setPasoActual('certificado-generado');
     } catch (error: any) {
+      if (revision !== identityRevision.current) return;
       setValidandoCodigo(false);
       console.error('Error al validar código:', error);
 
@@ -1276,18 +1399,24 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       } else {
         toast.error(errorMessage || 'Error al validar el código. Intenta nuevamente.');
       }
+    } finally {
+      codeOperationRef.current = false;
+      if (revision === identityRevision.current) setValidandoCodigo(false);
     }
   };
 
   // Reenviar código
   const handleReenviarCodigo = async () => {
-    if (!empleadoEncontrado) return;
+    if (!empleadoEncontrado || codeOperationRef.current) return;
 
     setReenviandoCodigo(true);
+    codeOperationRef.current = true;
+    const revision = identityRevision.current;
 
     try {
       // Llamar al backend para generar y enviar nuevo código
       const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
+      if (revision !== identityRevision.current) return;
 
       const emailDestino = typeof response.email === 'string' ? response.email.trim() : '';
       if (!emailDestino || emailDestino.toLowerCase() === 'n/a') {
@@ -1330,9 +1459,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       console.log('🔐 NUEVO CÓDIGO:', nuevoCodigo);
       console.log('📧 Enviado a:', emailDestino);
     } catch (error: any) {
+      if (revision !== identityRevision.current) return;
       setReenviandoCodigo(false);
       console.error('Error al reenviar código:', error);
       toast.error(error.response?.data?.message || error.message || 'Error al reenviar el código. Intenta nuevamente.');
+    } finally {
+      codeOperationRef.current = false;
+      if (revision === identityRevision.current) setReenviandoCodigo(false);
     }
   };
 
@@ -1357,6 +1490,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
 
   const handleNuevaSolicitud = () => {
+    invalidateDocumentValidation();
     // Reset todo
     setPasoActual('ingreso-documento');
     setTipoDocumento('');
@@ -1548,9 +1682,11 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         {useNativeInputs ? (
                           <select
                             id="tipo-documento"
+                            disabled={buscandoEmpleado}
                             name="tipo-documento"
                             value={tipoDocumento}
                             onChange={(event) => {
+                              invalidateDocumentValidation();
                               setTipoDocumento(event.target.value);
                               setEstadoLaboral(null);
                             }}
@@ -1565,8 +1701,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                           </select>
                         ) : (
                           <Select
+                            disabled={buscandoEmpleado}
                             value={tipoDocumento}
                             onValueChange={(value) => {
+                              invalidateDocumentValidation();
                               setTipoDocumento(value);
                               setEstadoLaboral(null);
                             }}
@@ -1593,6 +1731,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                           <Input
                             ref={numeroDocumentoInputRef}
                             id="numero-documento"
+                            disabled={buscandoEmpleado}
                             type="text"
                             inputMode="numeric"
                             placeholder="Ej: 1234567890"
@@ -1604,6 +1743,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                                 target.value = limpio;
                               }
                               numeroDocumentoRef.current = limpio;
+                              setNumeroDocumento(limpio);
+                              invalidateDocumentValidation();
                               setEstadoLaboral(null);
                               setPrimaTecnicaMetadata(null);
                               setFuncionesMetadata(null);
@@ -1635,6 +1776,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                         <Checkbox
                           id="sin-salario"
+                          disabled={buscandoEmpleado}
                           checked={!incluirSalario}
                           onCheckedChange={actualizarPreferenciasSalario}
                           className="mt-1"
@@ -1657,7 +1799,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         <Checkbox
                           id="incluir-prima-tecnica-paso1"
                           checked={incluirSalario && incluirPrimaTecnica}
-                          disabled={!incluirSalario || validandoPrimaTecnica}
+                          disabled={buscandoEmpleado || !incluirSalario || validandoPrimaTecnica}
                           onCheckedChange={handleTogglePrimaTecnica}
                           className="mt-1"
                         />
@@ -1691,7 +1833,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         <Checkbox
                           id="incluir-funciones-paso1"
                           checked={incluirFunciones}
-                          disabled={validandoFunciones}
+                          disabled={buscandoEmpleado}
                           onCheckedChange={handleToggleFunciones}
                           className="mt-1"
                         />
@@ -1734,7 +1876,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
                       <Button
                         onClick={handleBuscarEmpleado}
-                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === ''}
+                        disabled={buscandoEmpleado || validandoFunciones || validandoPrimaTecnica || estadoLaboral === 'inactivo' || tipoDocumento !== 'CC' || !/^\d{6,15}$/.test(numeroDocumento)}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg"
                       >
                         {buscandoEmpleado ? (

@@ -26,6 +26,7 @@ import { DocumentoCarpetaDigital } from './carpeta-digital/documento-carpeta-dig
 import { EstructuraImportModule } from './estructura-import/estructura-import.module';
 import { LoginSettingsModule } from './settings/login-settings.module';
 import { SystemSetting } from './settings/system-setting.entity';
+import { FestivoColombia } from './settings/festivo-colombia.entity';
 
 @NestModule({
   imports: [
@@ -54,6 +55,7 @@ import { SystemSetting } from './settings/system-setting.entity';
         TipoDocumento,
         DocumentoCarpetaDigital,
         SystemSetting,
+        FestivoColombia,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
       logging: true,

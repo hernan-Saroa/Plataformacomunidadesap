@@ -312,12 +312,20 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   // Se suman los dos roles que el formato describe pero ningún HU había
   // necesitado: el estructurador técnico, que elabora el estudio previo del
   // área, y el apoyo a la supervisión, cuyo trabajo es enteramente de lectura.
+  //
+  // Y la Financiera (migración 072), que tenía `presupuesto.gestionar` para
+  // escribir las cuatro actividades del CDP y ningún permiso para leer el
+  // proceso al que se las escribía: el listado la dejaba entrar por la bandeja
+  // de solicitudes sin atender y dentro le fallaba cada consulta, empezando por
+  // la 4.1. Leer, no editar: `actividad.edit` sigue fuera, que es lo que separa
+  // a quien certifica la disponibilidad de quien diligencia el estudio previo.
   [PERMISO_PROCESO_VER]: [
     'GESTOR_CONTRATACION',
     'ESTRUCTURADOR_TECNICO',
     'REVISOR_CONTRATACION',
     'DIRECTOR_CONTRATACION',
     'APOYO_SUPERVISION',
+    'ESTRUCTURADOR_FINANCIERO',
     'SUPER_ADMIN',
   ],
   // Una sola X en la Hoja1 del formato, la del Jefe de Oficina: ver toda la

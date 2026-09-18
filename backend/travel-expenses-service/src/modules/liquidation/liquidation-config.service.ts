@@ -9,6 +9,8 @@ import { EscalaViaticoEntity } from '../../entities/liquidation/escala-viatico.e
 import { TarifaInvestigadorEntity } from '../../entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
+import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
+import { Optional } from '@nestjs/common';
 import {
   CreateEscalaViaticoDto,
   UpdateEscalaViaticoDto,
@@ -37,6 +39,9 @@ export class LiquidationConfigService {
     private readonly paramRepo: Repository<LiquidationParamEntity>,
     private readonly dataSource: DataSource,
     private readonly liquidationService: LiquidationService,
+    @Optional()
+    @InjectRepository(AuthSystemSettingEntity)
+    private readonly authSettingRepo?: Repository<AuthSystemSettingEntity>,
   ) {}
 
   // ==================== ESCALAS ====================
@@ -300,15 +305,57 @@ export class LiquidationConfigService {
   // ==================== PARÁMETROS GLOBALES ====================
 
   async obtenerParametros(): Promise<LiquidationParamEntity[]> {
-    return this.paramRepo.find({
-      order: { clave: 'ASC' },
-    });
+    const list = (
+      await this.paramRepo.find({
+        order: { clave: 'ASC' },
+      })
+    ).filter((p) => p.clave !== 'SMMLV_2026');
+
+    let smmlvNum = 1423500;
+    if (this.authSettingRepo) {
+      try {
+        const authSetting = await this.authSettingRepo.findOne({
+          where: { key: 'SALARIO_MINIMO_MENSUAL' },
+        });
+        if (authSetting && authSetting.value) {
+          try {
+            if (authSetting.value.trim().startsWith('{')) {
+              const parsed = JSON.parse(authSetting.value);
+              smmlvNum = Number(parsed.salarioMinimo) || 1423500;
+            } else {
+              smmlvNum = Number(authSetting.value) || 1423500;
+            }
+          } catch {
+            smmlvNum = Number(authSetting.value) || 1423500;
+          }
+        }
+      } catch {
+        // En contingencia continúa con valor por defecto
+      }
+    }
+
+    const smmlvParam = new LiquidationParamEntity();
+    smmlvParam.id = 0;
+    smmlvParam.clave = 'SMMLV_2026';
+    smmlvParam.valor = String(smmlvNum);
+    smmlvParam.tipo = 'NUMBER';
+    smmlvParam.descripcion =
+      'Salario mínimo mensual legal vigente (Catálogo maestro Auth - Solo lectura)';
+    smmlvParam.creadoEn = new Date();
+    smmlvParam.actualizadoEn = new Date();
+
+    return [smmlvParam, ...list];
   }
 
   async actualizarParametro(
     clave: string,
     valor: string,
   ): Promise<LiquidationParamEntity> {
+    if (clave === 'SMMLV_2026') {
+      throw new BadRequestException(
+        'El parámetro SMMLV_2026 es de solo lectura y debe gestionarse desde Ajustes Generales de Auth.',
+      );
+    }
     let entity = await this.paramRepo.findOne({ where: { clave } });
     if (!entity) {
       entity = this.paramRepo.create({
@@ -327,24 +374,8 @@ export class LiquidationConfigService {
     params: UpdateLiquidationParamsDto,
   ): Promise<LiquidationParamEntity[]> {
     const resultados: LiquidationParamEntity[] = [];
+
     await this.dataSource.transaction(async (manager) => {
-      if (params.smmlv !== undefined) {
-        const entity = await manager.findOne(LiquidationParamEntity, {
-          where: { clave: 'SMMLV_2026' },
-        });
-        if (!entity) {
-          const nuevo = manager.create(LiquidationParamEntity, {
-            clave: 'SMMLV_2026',
-            valor: String(params.smmlv),
-            tipo: 'NUMBER',
-            descripcion: 'Salario mínimo mensual vigente 2026',
-          });
-          resultados.push(await manager.save(nuevo));
-        } else {
-          entity.valor = String(params.smmlv);
-          resultados.push(await manager.save(entity));
-        }
-      }
       if (params.factorContratista !== undefined) {
         const entity = await manager.findOne(LiquidationParamEntity, {
           where: { clave: 'FACTOR_CONTRATISTA' },

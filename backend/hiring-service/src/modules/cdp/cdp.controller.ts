@@ -16,7 +16,12 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 
 import { CdpService } from './cdp.service';
-import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
+import {
+  ExpedirCdpDto,
+  RechazarCdpDto,
+  SolicitarCdpDto,
+  VerificarCdpDto,
+} from './dto/cdp.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -68,9 +73,17 @@ export class CdpController {
   @Post('verificar')
   @UseGuards(PermisosGuard)
   @Permisos('contratacion.presupuesto.gestionar')
-  @ApiOperation({ summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal' })
-  verificar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.verificar(procesoId, getHiringAccess(req));
+  @ApiOperation({
+    summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal',
+    description:
+      'Se confirma contra un rubro, que queda en el CDP: una disponibilidad sin rubro no se puede conciliar después con la ejecución presupuestal. Solo se pide si la solicitud no lo traía.',
+  })
+  verificar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: VerificarCdpDto,
+    @Req() req: any,
+  ) {
+    return this.service.verificar(procesoId, dto, getHiringAccess(req));
   }
 
   @Post('expedir')
@@ -123,5 +136,36 @@ export class CdpController {
     @Req() req: any,
   ) {
     return this.service.rechazar(procesoId, dto, getHiringAccess(req));
+  }
+}
+
+/**
+ * La bandeja de la Dirección Financiera.
+ *
+ * Ruta propia y no colgada de `procesos/:id` porque la bandeja no es de un
+ * proceso: es la lista de los que esperan. Colgarla de uno obligaría a tener un
+ * proceso a mano para poder preguntar cuáles hay, que es justo lo que no se
+ * sabe todavía.
+ *
+ * Tampoco cuelga de `procesos` a secas: ese controlador tiene un `@Get(':id')`
+ * con `ParseUUIDPipe`, así que `/procesos/bandeja` se estrellaría contra el
+ * pipe antes de llegar aquí.
+ */
+@ApiTags('CDP')
+@Controller('cdp')
+export class BandejaCdpController {
+  constructor(private readonly service: CdpService) {}
+
+  @Get('bandeja')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
+  @ApiOperation({
+    summary: 'Etapa 4 · Las solicitudes de CDP que esperan a la Financiera',
+    description:
+      'Tres montones: las que nadie ha tomado, las que llevo yo y las que lleva otro. ' +
+      'Solo lo abierto —SOLICITADO y VERIFICADO—: un CDP expedido o rechazado salió del trabajo pendiente.',
+  })
+  bandeja(@Req() req: any) {
+    return this.service.bandeja(getHiringAccess(req));
   }
 }
