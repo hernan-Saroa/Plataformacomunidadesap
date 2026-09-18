@@ -51,7 +51,7 @@ const TEMPLATE_VARIABLE_META: Record<string, { label: string; sourceFields: stri
   '[CARGO]': { label: 'Cargo calculado', sourceFields: ['career_category', 'cod_cargo', 'cod_grade', 'encargo_type'] },
   '[CARGO DATO6]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
   '[TIPO_DATO]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
-  '[GRUPO]': { label: 'Grupo o ubicación', sourceFields: ['position_location'] },
+  '[GRUPO]': { label: 'Grupo o ubicación', sourceFields: ['internal_group', 'position_location'] },
   '[SEDE]': { label: 'Sede', sourceFields: ['campus'] },
   '[UBICACIÓN]': { label: 'Dependencia', sourceFields: ['department'] },
   '[UBICACION]': { label: 'Dependencia', sourceFields: ['department'] },
@@ -908,10 +908,26 @@ export class LaborCertificatePdfService {
         certificate.department ||
         requestOrganizationDepartment ||
         '';
-    const grupoVariable =
-      requestPositionLocation ||
-      certificate.position_location ||
-      '';
+    // [GRUPO] imprime el GRUPO INTERNO DE TRABAJO y solo cae a la ubicacion del
+    // cargo (`position_location`) cuando la solicitud no trae grupo.
+    //
+    // `internal_group` se lee siempre de la solicitud porque la entidad
+    // Certificate no tiene esa columna, y `resolveLaborInternalGroup` descarta
+    // los marcadores "N/A", "NO APLICA" y "NINGUNO": para esta variable esos
+    // valores cuentan como vacio y dejan pasar el respaldo.
+    //
+    // En un certificado corregido manda lo que guardo el coordinador en "Grupo
+    // o ubicacion", igual que con [DEPENDENCIA]. Al radicar la correccion ese
+    // campo se precarga con el grupo efectivo (ver
+    // resolveEffectiveCertificateGroup en CertificatesService), de modo que una
+    // correccion que no lo toca sigue imprimiendo exactamente lo mismo.
+    const grupoInterno = resolveLaborInternalGroup(requestInternalGroup) || '';
+    const grupoVariable = preferCorrectedCertificate
+      ? requestPositionLocation || grupoInterno
+      : grupoInterno ||
+        requestPositionLocation ||
+        certificate.position_location ||
+        '';
     // El servicio resuelve la vinculacion normal vigente sin reemplazar los
     // datos del encargo. Las correcciones conservan su precedencia actual.
     const dependenciaVariable = preferCorrectedCertificate

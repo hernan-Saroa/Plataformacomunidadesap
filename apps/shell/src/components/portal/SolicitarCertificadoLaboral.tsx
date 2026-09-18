@@ -475,6 +475,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           cod_grade: cert.cod_grade || cert.codGrade,
           observations: cert.request?.observations || cert.observations,
           request: cert.request,
+          // El visor lo necesita para resolver [GRUPO] y [DEPENDENCIA] igual que
+          // el backend: en un certificado corregido mandan las columnas del
+          // certificado, no las de la solicitud.
+          is_corrected: Boolean(cert.is_corrected),
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
@@ -500,12 +504,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           nombre: cert.full_name,
           tipo: 'autoservicio' as const
         },
-        position_location:
-          cert.request?.position_location ||
-          cert.request?.positionLocation ||
-          cert.position_location ||
-          cert.positionLocation ||
-          '',
+        position_location: cert.is_corrected
+          ? cert.position_location || cert.positionLocation || ''
+          : cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation ||
+            '',
         department: cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
@@ -1298,6 +1303,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         cod_grade: cert.cod_grade || cert.codGrade,
         observations: cert.request?.observations || cert.observations,
         request: cert.request,
+        // El visor lo necesita para resolver [GRUPO] y [DEPENDENCIA] igual que
+        // el backend: en un certificado corregido mandan las columnas del
+        // certificado, no las de la solicitud.
+        is_corrected: Boolean(cert.is_corrected),
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
@@ -1323,12 +1332,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             nombre: cert.full_name,
             tipo: 'autoservicio' as const
           },
-          position_location:
-            cert.request?.position_location ||
-            cert.request?.positionLocation ||
-            cert.position_location ||
-            cert.positionLocation ||
-            '',
+          position_location: cert.is_corrected
+            ? cert.position_location || cert.positionLocation || ''
+            : cert.request?.position_location ||
+              cert.request?.positionLocation ||
+              cert.position_location ||
+              cert.positionLocation ||
+              '',
           department: cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,

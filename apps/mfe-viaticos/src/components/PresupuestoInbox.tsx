@@ -17,7 +17,7 @@ import { SolicitudViatico } from '../types/viaticos';
 import { viaticosService } from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import RegistrarRPModal from './RegistrarRPModal';
-import CargaMasivaRPModal from './CargaMasivaRPModal';
+import CargaMasivaRPModal from './CargaMasivaRpModal';
 
 export default function PresupuestoInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudViatico[]>([]);
