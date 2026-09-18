@@ -414,7 +414,60 @@ export class AuthService {
     );
   }
 
-  private getCurrentUserSync(): UsuarioActual | null {
+  /**
+   * Determina si el usuario pertenece al área de Tesorería (Etapa 8 — RF-PAG-003).
+   */
+  isTesoreria(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    const tieneRol = user.roles.some((r) =>
+      ['TESORERIA', 'GRUPO_TESORERIA', 'ANALISTA_TESORERIA', 'PAGADOR'].includes(r) ||
+      r.includes('TESORERIA') ||
+      r.includes('PAGADOR'),
+    );
+    return (
+      tieneRol ||
+      this.hasPermission('travel_expenses:process_payment') ||
+      this.hasPermission('travel_expenses:read_payments')
+    );
+  }
+
+  /**
+   * Determina si el usuario puede procesar el desembolso y pago en SIIF Nación (Etapa 8 — RF-PAG-003).
+   */
+  canProcesarPago(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isTesoreria() ||
+      this.hasPermission('travel_expenses:process_payment') ||
+      this.hasPermission('travel_expenses:register_payment')
+    );
+  }
+
+  /**
+   * Determina si el usuario pertenece al área de Seguridad y Salud en el Trabajo (SST) (Etapa 8 — RF-PAG-002).
+   */
+  isSst(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    const tieneRol = user.roles.some((r) =>
+      ['SST', 'SEGURIDAD_SALUD_TRABAJO', 'SEGURIDAD_Y_SALUD_EN_EL_TRABAJO', 'GRUPO_SST', 'ANALISTA_SST'].includes(r) ||
+      r.includes('SST') ||
+      (r.includes('SEGURIDAD') && r.includes('TRABAJO')),
+    );
+    return (
+      tieneRol ||
+      this.hasPermission('travel_expenses:read_sst_logs') ||
+      this.hasPermission('travel_expenses:read_sst_requests') ||
+      this.hasPermission('travel_expenses:resend_sst_notification')
+    );
+  }
+
+  getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
         typeof window !== 'undefined' ? (window as any).__esap_auth_cache : null;

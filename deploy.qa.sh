@@ -474,7 +474,10 @@ cmd_rebuild_changed() {
 
     if [ ${#frontend_services[@]} -gt 0 ]; then
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
-        compose_env_mfe build "${frontend_services[@]}"
+        for service_name in "${frontend_services[@]}"; do
+            echo -e "${YELLOW}Construyendo frontend: ${service_name}${NC}"
+            compose_env_mfe build "$service_name"
+        done
         if [[ " ${frontend_services[*]} " == *" frontend "* ]]; then
             compose_env_mfe up -d "${frontend_services[@]}"
         else

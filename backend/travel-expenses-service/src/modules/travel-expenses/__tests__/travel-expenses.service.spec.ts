@@ -422,6 +422,89 @@ describe('TravelExpensesService', () => {
         { estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'] },
       );
     });
+
+    it('debe filtrar comisiones OBLIGADA y PAGADA para el rol de Tesorería (Etapa 8)', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-tesoreria-01',
+        consecutivoUnico: 'SOL-TES-001',
+        comisionadoId: 'com-1',
+        comisionado: null,
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: new Date(),
+        fechaFin: new Date(),
+        objetoComision: 'Pago de comisiones obligadas',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'VIATICOS_OPERATIVOS',
+        requiereTiquetes: false,
+        montoViaticos: 800000,
+        montoGastosViaje: 0,
+        diasComision: 2,
+        estadoSolicitud: 'OBLIGADA',
+        radicadoFueraJornada: false,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+        creadoPorUsuarioId: 'user-otrocualquiera',
+        numeroObligacion: 'OBL-SIIF-2026-001',
+        valorObligacion: 800000,
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudes('user-tesoreria-01', false, 1, 20, false, false, false, true);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].estadoSolicitud).toBe('OBLIGADA');
+      expect(result.data[0].numeroObligacion).toBe('OBL-SIIF-2026-001');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        's.estado_solicitud IN (:...estadosTesoreria)',
+        { estadosTesoreria: ['OBLIGADA', 'PAGADA'] },
+      );
+    });
+
+    it('debe filtrar comisiones OBLIGADA y PAGADA para el rol de SST (Etapa 8)', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-sst-01',
+        consecutivoUnico: 'SOL-SST-001',
+        comisionadoId: 'com-1',
+        comisionado: null,
+        destinoCiudad: 'Cali',
+        destinoDepartamento: 'Valle del Cauca',
+        fechaInicio: new Date(),
+        fechaFin: new Date(),
+        objetoComision: 'Monitoreo de seguridad en desplazamiento',
+        prioridad: 'MEDIA',
+        rubroPresupuestal: 'VIATICOS_OPERATIVOS',
+        requiereTiquetes: true,
+        montoViaticos: 600000,
+        montoGastosViaje: 0,
+        diasComision: 3,
+        estadoSolicitud: 'PAGADA',
+        radicadoFueraJornada: false,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+        creadoPorUsuarioId: 'user-otrocualquiera',
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudes('user-sst-01', false, 1, 20, false, false, false, false, true);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].estadoSolicitud).toBe('PAGADA');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        's.estado_solicitud IN (:...estadosSst)',
+        { estadosSst: ['OBLIGADA', 'PAGADA'] },
+      );
+    });
   });
 
   describe('crearSolicitud', () => {
@@ -4414,6 +4497,110 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
         await expect(svc.exportarPdfTiqueteItinerario('inexistente')).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+    });
+
+    describe('exportarFormato023', () => {
+      it('debe generar y retornar el buffer PDF del Formato 023 con sellos digitales de aprobación para solicitud aprobada y pagada', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.PAGADA),
+          id: 'sol-023-001',
+          consecutivoUnico: 'SOL-2026-0001',
+          creadoPorUsuarioId: 'user-radicador-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorId: 'user-autorizador-1',
+          numeroRp: '2026-09-17_RP_9988',
+          fechaRp: new Date(),
+          fechaPago: new Date(),
+          numeroOrdenPago: 'OP-SIIF-77441',
+          montoViaticos: 850000,
+          montoGastosViaje: 150000,
+          comisionado: {
+            primerNombre: 'Carlos',
+            segundoNombre: 'Andrés',
+            primerApellido: 'Pérez',
+            segundoApellido: 'Mora',
+            numeroDocumento: '1098765432',
+            tipoComisionado: 'DOCENTE',
+            email: 'carlos.perez@esap.edu.co',
+            telefonoContacto: '3001234567',
+          },
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockImplementation(async (query: string, params: any[]) => {
+            const uid = params?.[0];
+            if (uid === 'user-radicador-1') {
+              return [{ nom_largo: 'Carlos Andrés Pérez Mora' }];
+            }
+            if (uid === 'user-revisor-1') {
+              return [{ nom_largo: 'Martha Lucía Gómez' }];
+            }
+            if (uid === 'user-autorizador-1') {
+              return [{ nom_largo: 'Alonso Restrepo Vargas' }];
+            }
+            return [{ nom_largo: 'Funcionario Aprobador' }];
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-001');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+      });
+
+      it('debe generar el Formato 023 correctamente cuando la comisión está en estado RADICADA', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.RADICADA),
+          id: 'sol-023-002',
+          consecutivoUnico: 'SOL-2026-0002',
+          creadoPorUsuarioId: 'user-radicador-1',
+          comisionado: {
+            primerNombre: 'Ana',
+            primerApellido: 'García',
+            numeroDocumento: '52987654',
+          },
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockResolvedValue([{ nom_largo: 'Ana García' }]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-002');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+      });
+
+      it('debe lanzar NotFoundException si la solicitud no existe al exportar Formato 023', async () => {
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(null),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(svc.exportarFormato023('no-existe')).rejects.toThrow(
           NotFoundException,
         );
       });
