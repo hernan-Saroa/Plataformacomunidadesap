@@ -225,7 +225,7 @@ export const AutorizacionDireccionModal: React.FC<AutorizacionDireccionModalProp
               <div>
                 <p className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Dependencia</p>
                 <p className="font-bold text-slate-800 mt-0.5">
-                  {solicitud.comisionado?.dependencia || 'Sede Central / Territorial'}
+                  {viaticosService.resolverNombreDependencia(solicitud)}
                 </p>
                 <p className="text-slate-500 font-medium">
                   {solicitud.comisionado?.tipoComisionado || 'Servidor Público'}
@@ -258,7 +258,16 @@ export const AutorizacionDireccionModal: React.FC<AutorizacionDireccionModalProp
               2. Itinerario y Vigencia del Desplazamiento
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-slate-200">
+                <MapPin className="w-4 h-4 text-sky-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-slate-400 font-bold uppercase text-[10px]">Origen Territorial</p>
+                  <p className="font-black text-slate-900 mt-0.5">{solicitud.ciudadOrigen || solicitud.sedeOrigen || 'Bogotá D.C.'}</p>
+                  <p className="text-slate-500 font-semibold">Sede Origen</p>
+                </div>
+              </div>
+
               <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-slate-200">
                 <MapPin className="w-4 h-4 text-rose-500 mt-0.5 flex-shrink-0" />
                 <div>

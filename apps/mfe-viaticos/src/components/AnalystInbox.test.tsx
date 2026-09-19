@@ -8,6 +8,7 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerDependencias: vi.fn(),
     obtenerSolicitudCompleta: vi.fn(),
     enviarPaquetePresupuesto: vi.fn(),
+    resolverNombreDependencia: vi.fn((s: any) => s?.dependencia || 'Sede Central'),
   },
 }));
 
@@ -379,6 +380,97 @@ describe('AnalystInbox', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Procesar Desembolso y Pago de Comisión/i)).toBeDefined();
+    });
+  });
+
+  it('muestra las columnas y valores de ciudad de origen y ciudad de destino en la bandeja de analista', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        consecutivoUnico: 'COM-2026-RUTA-1',
+        ciudadOrigen: 'Medellín',
+        destinoCiudad: 'Cartagena',
+        destinoDepartamento: 'Bolívar',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-RUTA-1')).toBeDefined();
+      expect(screen.getByText('Origen')).toBeDefined();
+      expect(screen.getByText('Destino')).toBeDefined();
+      expect(screen.getByText('Medellín')).toBeDefined();
+      expect(screen.getByText('Cartagena')).toBeDefined();
+      expect(screen.getByText('Bolívar')).toBeDefined();
+    });
+  });
+
+  it('muestra origen y destino en la Bandeja de Devoluciones', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        consecutivoUnico: 'COM-2026-DEV-RUTA',
+        estadoSolicitud: 'DEVUELTA',
+        motivoDevolucion: 'Subsanar certificado',
+        ciudadOrigen: 'Cali',
+        destinoCiudad: 'Pasto',
+        destinoDepartamento: 'Nariño',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bandeja de Devoluciones')).toBeDefined();
+    });
+
+    const tabDevoluciones = screen.getByRole('button', { name: /Bandeja de Devoluciones/i });
+    fireEvent.click(tabDevoluciones);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-DEV-RUTA')).toBeDefined();
+      expect(screen.getByText('Cali')).toBeDefined();
+      expect(screen.getByText('Pasto')).toBeDefined();
+      expect(screen.getByText('Nariño')).toBeDefined();
+    });
+  });
+
+  it('permite buscar solicitudes por ciudad de origen y por ciudad de destino', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-bog-cali',
+        consecutivoUnico: 'COM-2026-0050',
+        ciudadOrigen: 'Bogotá D.C.',
+        destinoCiudad: 'Cali',
+      }),
+      solMock({
+        id: 'sol-med-bar',
+        consecutivoUnico: 'COM-2026-0051',
+        ciudadOrigen: 'Medellín',
+        destinoCiudad: 'Barranquilla',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0050')).toBeDefined();
+      expect(screen.getByText('COM-2026-0051')).toBeDefined();
+    });
+
+    const input = screen.getByPlaceholderText(/Buscar por consecutivo/i);
+
+    // Buscar por ciudad de origen "Medellín"
+    fireEvent.change(input, { target: { value: 'Medellín' } });
+    await waitFor(() => {
+      expect(screen.queryByText('COM-2026-0050')).toBeNull();
+      expect(screen.getByText('COM-2026-0051')).toBeDefined();
+    });
+
+    // Buscar por ciudad de destino "Cali"
+    fireEvent.change(input, { target: { value: 'Cali' } });
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0050')).toBeDefined();
+      expect(screen.queryByText('COM-2026-0051')).toBeNull();
     });
   });
 });

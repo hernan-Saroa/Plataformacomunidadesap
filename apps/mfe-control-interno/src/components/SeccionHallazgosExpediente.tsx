@@ -34,6 +34,8 @@ import {
   type ContenidoPreviewEvidenciaHallazgo,
   type EvidenciaHallazgo,
 } from './services/evidenciasHallazgo';
+import { VisorOnlyOffice } from './VisorOnlyOffice';
+import { onlyOfficePuedeAbrir } from './services/onlyofficeVisor';
 import { toast } from 'sonner';
 
 // Tipos locales para UI
@@ -149,6 +151,7 @@ export function SeccionHallazgosExpediente({
   const [cargandoPreview, setCargandoPreview] = useState(false);
   const [errorPreview, setErrorPreview] = useState<string | null>(null);
   const [descargandoEvidencia, setDescargandoEvidencia] = useState<string | null>(null);
+  const [onlyOfficeFallo, setOnlyOfficeFallo] = useState<string | null>(null);
 
   // Estado para evidencias de TODOS los hallazgos (para mostrar en tarjetas)
   const [evidenciasPorHallazgo, setEvidenciasPorHallazgo] = useState<Record<string, any[]>>(
@@ -507,6 +510,7 @@ export function SeccionHallazgosExpediente({
 
   // Ver evidencia: siempre abre la vista previa, nunca descarga sola (EFDS-1089)
   const handleVerEvidencia = (evidencia: EvidenciaHallazgo) => {
+    setOnlyOfficeFallo(null);
     setPreviewEvidencia({ evidencia, nombre: nombreEvidenciaHallazgo(evidencia) });
   };
 
@@ -529,10 +533,25 @@ export function SeccionHallazgosExpediente({
     setPreviewEvidencia(null);
   };
 
+  // OnlyOffice abre cualquier formato de ofimática; las imágenes se ven directo
+  const usaOnlyOffice = !!previewEvidencia
+    && !onlyOfficeFallo
+    && tipoPreviewEvidenciaHallazgo(previewEvidencia.evidencia) !== 'imagen'
+    && !!previewEvidencia.evidencia.id
+    && onlyOfficePuedeAbrir(previewEvidencia.nombre);
+
   // Contenido de la vista previa: PDF e imágenes por el endpoint preview;
   // Word y Excel se bajan y se convierten en el navegador (EFDS-1089)
   useEffect(() => {
     if (!previewEvidencia) {
+      setContenidoPreview(null);
+      setErrorPreview(null);
+      setCargandoPreview(false);
+      return;
+    }
+
+    // Si lo abre OnlyOffice, el contenido lo trae el visor y no hay que convertir nada
+    if (usaOnlyOffice) {
       setContenidoPreview(null);
       setErrorPreview(null);
       setCargandoPreview(false);
@@ -564,7 +583,7 @@ export function SeccionHallazgosExpediente({
     return () => {
       cancelado = true;
     };
-  }, [previewEvidencia]);
+  }, [previewEvidencia, usaOnlyOffice]);
 
   // Liberar el archivo en memoria cuando se cierra o cambia la vista previa
   useEffect(() => () => {
@@ -1474,14 +1493,24 @@ export function SeccionHallazgosExpediente({
 
             {/* Contenido */}
             <div className="flex flex-col overflow-hidden bg-gray-200" style={{ flex: '1 1 0', minHeight: 0 }}>
-              {cargandoPreview && (
+              {usaOnlyOffice && (
+                <div className="min-h-0 flex-1">
+                  <VisorOnlyOffice
+                    origen="evidencias"
+                    id={previewEvidencia.evidencia.id as string}
+                    onFallo={(motivo) => setOnlyOfficeFallo(motivo)}
+                  />
+                </div>
+              )}
+
+              {!usaOnlyOffice && cargandoPreview && (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-gray-100 text-gray-600">
                   <Loader2 className="h-8 w-8 animate-spin text-[#1e5da8]" />
                   <p className="text-sm">Cargando documento...</p>
                 </div>
               )}
 
-              {!cargandoPreview && errorPreview && (
+              {!usaOnlyOffice && !cargandoPreview && errorPreview && (
                 <div className="flex flex-1 flex-col items-center justify-center bg-gray-100 px-6 text-center">
                   <FileText className="mb-3 h-14 w-14 text-gray-400" />
                   <h4 className="mb-2 text-base font-semibold text-gray-800">Vista previa no disponible</h4>
@@ -1497,7 +1526,7 @@ export function SeccionHallazgosExpediente({
                 </div>
               )}
 
-              {!cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'pdf' && contenidoPreview.blobUrl && (
+              {!usaOnlyOffice && !cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'pdf' && contenidoPreview.blobUrl && (
                 <div className="relative w-full bg-gray-600" style={{ flex: '1 1 0', minHeight: 0 }}>
                   <iframe
                     src={contenidoPreview.blobUrl}
@@ -1507,7 +1536,7 @@ export function SeccionHallazgosExpediente({
                 </div>
               )}
 
-              {!cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'imagen' && contenidoPreview.blobUrl && (
+              {!usaOnlyOffice && !cargandoPreview && !errorPreview && contenidoPreview?.tipo === 'imagen' && contenidoPreview.blobUrl && (
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-gray-100 p-4">
                   <img
                     src={contenidoPreview.blobUrl}
@@ -1518,7 +1547,7 @@ export function SeccionHallazgosExpediente({
               )}
 
               {/* Word: hoja centrada, igual que en el Plan Anual */}
-              {!cargandoPreview && !errorPreview && contenidoPreview?.docxHtml && (
+              {!usaOnlyOffice && !cargandoPreview && !errorPreview && contenidoPreview?.docxHtml && (
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
                   <div className="flex justify-center px-4 py-8 sm:px-8">
                     <div
@@ -1532,7 +1561,7 @@ export function SeccionHallazgosExpediente({
               )}
 
               {/* Excel: hoja centrada */}
-              {!cargandoPreview && !errorPreview && contenidoPreview?.xlsxHtml && (
+              {!usaOnlyOffice && !cargandoPreview && !errorPreview && contenidoPreview?.xlsxHtml && (
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
                   <div className="flex justify-center px-4 py-8 sm:px-8">
                     <div

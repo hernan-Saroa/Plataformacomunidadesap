@@ -6048,6 +6048,7 @@ function Paso2({
                 const actividad = rol.actividadesSeleccionadas.find(
                   a => a.nombre === actividadConfigurando.nombreActividad
                 );
+                return actividad?.frecuenciaPuntosControl;
               }
             })()
           }
