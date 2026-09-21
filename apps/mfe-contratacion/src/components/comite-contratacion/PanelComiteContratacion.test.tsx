@@ -25,6 +25,7 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   valorEstimado: 2_000_000_000,
   umbral: UMBRAL,
   sesiones: [],
+  reabribles: ['3.1', '3.2', '3.5', '3.6'],
   puedeRegistrar: false,
   puedeDejarConstancia: false,
   motivoNoDecide: null,
@@ -109,12 +110,14 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
   });
 
   /**
-   * A qué actividad vuelve el proceso al observar (EFDS-2068).
+   * Qué actividades se reabren (EFDS-2068).
    *
    * Antes, observar devolvía la 3.7 pero la 3.1 y las demás seguían
-   * aprobadas: la corrección que pidió el comité no tenía dónde aplicarse.
+   * aprobadas: la corrección que pidió el comité no tenía dónde aplicarse. Y
+   * se elegía una sola, aunque una sesión de comité revise el expediente
+   * entero y pueda objetar el estudio previo y el análisis del sector a la vez.
    */
-  it('observar también exige decir a qué actividad vuelve el proceso', async () => {
+  it('observar también exige decir a qué actividades vuelve el proceso', async () => {
     pintar(estado({ puedeRegistrar: true }));
 
     await userEvent.click(
@@ -127,28 +130,46 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     );
     await userEvent.type(screen.getByLabelText(/Fecha de la sesión/), '2026-09-01');
 
-    expect(screen.getByLabelText(/A qué actividad vuelve el proceso/)).toBeInTheDocument();
-    // Con todo lo demás lleno, sigue bloqueado hasta el acta o el numeral.
+    expect(screen.getByText(/A qué actividades vuelve el proceso/)).toBeInTheDocument();
+    // Con todo lo demás lleno, sigue bloqueado hasta el acta o los numerales.
     expect(screen.getByRole('button', { name: /Registrar la sesión/ })).toBeDisabled();
   });
 
-  it('no pide a qué actividad vuelve si el comité aprueba o condiciona', async () => {
+  it('solo ofrece reabrir las actividades que este proceso ya cerró', async () => {
+    // La lista de cuatro dice cuáles son reabribles en general; cuáles están
+    // en APROBADO lo sabe el backend. Ofrecer una que no lo está sería ofrecer
+    // algo que el servicio va a rechazar al enviarlo.
+    pintar(estado({ puedeRegistrar: true, reabribles: ['3.1', '3.5'] }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+
+    expect(screen.getByLabelText(/3.1 · Estudio previo/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/3.5 · Modalidad/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/3.2 · Análisis del sector/)).toBeNull();
+  });
+
+  /**
+   * Reabrir sin frenar el proceso: el comité avala, pero quiere que le
+   * validen un punto.
+   */
+  it('aprobar también deja reabrir, y entonces pide qué hay que validar', async () => {
     pintar(estado({ puedeRegistrar: true }));
 
     await userEvent.click(
       await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
     );
 
-    expect(screen.queryByLabelText(/A qué actividad vuelve el proceso/)).toBeNull();
+    expect(screen.getByText(/Reabrir para validación/)).toBeInTheDocument();
+    // Sin marcar nada no hay nada que validar, así que el campo no está.
+    expect(screen.queryByLabelText(/Qué hay que validar/)).toBeNull();
 
-    await userEvent.selectOptions(
-      screen.getByLabelText(/Qué decidió/),
-      'APROBADO_CON_CONDICIONES',
-    );
-    expect(screen.queryByLabelText(/A qué actividad vuelve el proceso/)).toBeNull();
+    await userEvent.click(screen.getByLabelText(/3.2 · Análisis del sector/));
+    expect(screen.getByLabelText(/Qué hay que validar/)).toBeInTheDocument();
   });
 
-  it('registra la sesión con el numeral elegido cuando el comité observa', async () => {
+  it('registra la sesión con los numerales marcados cuando el comité observa', async () => {
     const registrar = vi
       .spyOn(contratacionService, 'registrarSesionComite')
       .mockResolvedValue(estado({ estado: 'DEVUELTO' }) as never);
@@ -163,7 +184,8 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
       screen.getByLabelText(/Observaciones de fondo/),
       'El estudio previo no sustenta la experiencia exigida',
     );
-    await userEvent.selectOptions(screen.getByLabelText(/A qué actividad vuelve el proceso/), '3.1');
+    await userEvent.click(screen.getByLabelText(/3.1 · Estudio previo/));
+    await userEvent.click(screen.getByLabelText(/3.2 · Análisis del sector/));
 
     const acta = new File(['contenido'], 'acta.pdf', { type: 'application/pdf' });
     await userEvent.upload(
@@ -178,10 +200,97 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
       expect.objectContaining({
         decision: 'OBSERVADO',
         observaciones: 'El estudio previo no sustenta la experiencia exigida',
-        numeralDevolucion: '3.1',
+        numeralesReabrir: ['3.1', '3.2'],
       }),
       acta,
     );
+  });
+
+  /**
+   * El rechazo: el comité concluye que el proceso no sale al mercado.
+   *
+   * Mientras solo existió «observado», un comité que decidía no contratar
+   * tenía que mandar la decisión de vuelta a la 3.4 para que otro la firmara.
+   */
+  it('rechazar pide el motivo y avisa de que termina el proceso', async () => {
+    pintar(estado({ puedeRegistrar: true }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'RECHAZADO');
+
+    expect(screen.getByLabelText(/Por qué se rechaza el proceso/)).toBeInTheDocument();
+    expect(screen.getByText(/El rechazo termina el proceso/)).toBeInTheDocument();
+  });
+
+  it('rechazar no ofrece reabrir nada: el expediente queda negado', async () => {
+    // Una actividad devuelta dentro de un proceso muerto es trabajo que se le
+    // pide a alguien para nada.
+    pintar(estado({ puedeRegistrar: true }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'RECHAZADO');
+
+    expect(screen.queryByLabelText(/3.1 · Estudio previo/)).toBeNull();
+    expect(screen.queryByText(/Reabrir para validación/)).toBeNull();
+  });
+
+  it('registra el rechazo con su motivo', async () => {
+    const registrar = vi
+      .spyOn(contratacionService, 'registrarSesionComite')
+      .mockResolvedValue(estado({ estado: 'NEGADO' }) as never);
+    pintar(estado({ puedeRegistrar: true }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
+    );
+    await userEvent.type(screen.getByLabelText(/Fecha de la sesión/), '2026-09-01');
+    await userEvent.selectOptions(screen.getByLabelText(/Qué decidió/), 'RECHAZADO');
+    await userEvent.type(
+      screen.getByLabelText(/Por qué se rechaza el proceso/),
+      'La necesidad ya está cubierta por el contrato marco vigente',
+    );
+
+    const acta = new File(['contenido'], 'acta.pdf', { type: 'application/pdf' });
+    await userEvent.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      acta,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Registrar la sesión/ }));
+
+    expect(registrar).toHaveBeenCalledWith(
+      'p-1',
+      expect.objectContaining({
+        decision: 'RECHAZADO',
+        observaciones: 'La necesidad ya está cubierta por el contrato marco vigente',
+      }),
+      acta,
+    );
+    expect(registrar.mock.calls[0][1]).not.toHaveProperty('numeralesReabrir');
+  });
+
+  it('un proceso rechazado se ve, y dice que la contratación terminó', async () => {
+    pintar(
+      estado({
+        estado: 'NEGADO',
+        sesiones: [
+          sesion({
+            decision: 'RECHAZADO',
+            observaciones: 'La necesidad ya está cubierta por el contrato marco vigente',
+          }),
+        ],
+      }),
+    );
+
+    // Exacto: el pie repite la frase para explicar por qué ya no hay nada que
+    // hacer, y un `findByText` laxo se chocaría con los dos.
+    expect(await screen.findByText('El comité rechazó el proceso')).toBeInTheDocument();
+    expect(screen.getByText(/contrato marco vigente/)).toBeInTheDocument();
+    expect(screen.getByText(/la contratación terminó ahí/)).toBeInTheDocument();
   });
 
   it('la aprobación condicionada pide las condiciones', async () => {

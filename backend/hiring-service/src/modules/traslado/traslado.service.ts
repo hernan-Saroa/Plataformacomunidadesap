@@ -25,6 +25,8 @@ import { festivosEntre } from '../publicacion/festivos-colombia';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from '../publicacion/dias-habiles';
 import { congelarResultado } from './congelar-resultado';
 import { AnularInformeDto, GenerarInformeDto, TrasladarInformeDto } from './dto/traslado.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 6.4 de la matriz: publicación y traslado del informe preliminar. */
 export const NUMERAL_TRASLADO = '6.4';
@@ -72,7 +74,10 @@ export interface ArchivoCargado {
 export class TrasladoService {
   // Protegido y no privado: la actividad 6.5 (EFDS-1464) extiende este servicio
   // para reusar el proceso, el expediente, la traza y el calendario.
-  constructor(protected readonly dataSource: DataSource) {}
+  constructor(
+    protected readonly dataSource: DataSource,
+    protected readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -279,7 +284,7 @@ export class TrasladoService {
       informe.venceEl = sumarDiasHabiles(desde, plazo.diasHabiles, festivos);
       await em.save(informe);
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
       await this.traza(em, procesoId, informe.id, 'TRASLADAR', acceso, {
         actividad: NUMERAL_TRASLADO,
         numero: informe.numero,
@@ -449,33 +454,58 @@ export class TrasladoService {
   /**
    * La actividad queda cumplida cuando el informe se traslada, no cuando se
    * genera: un borrador es trabajo interno y nadie lo ha recibido.
+   *
+   * Aprobación y firma (EFDS-1183, EFDS-2070) solo se preguntan en esa
+   * transición: si ya estaba decidida, anular y volver a trasladar es lo
+   * único que la reabre.
    */
-  private async marcarActividad(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+  private async marcarActividad(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     const informe = await this.informeEnJuego(procesoId, em);
     const trasladado = informe?.estado === 'TRASLADADO' || informe?.estado === 'CERRADO';
-    const estado = trasladado ? 'APROBADO' : 'BORRADOR';
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_TRASLADO },
     });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_TRASLADO,
-          estado: estado as any,
-          datos: {},
-          ...(trasladado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!trasladado) {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_TRASLADO,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = trasladado ? acceso.userName : null;
-    actividad.revisadoAt = trasladado ? new Date() : null;
-    await em.save(actividad);
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+
+    if (await this.cierre.exigeFirma(em, NUMERAL_TRASLADO)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_TRASLADO,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   protected async guardarDocumento(

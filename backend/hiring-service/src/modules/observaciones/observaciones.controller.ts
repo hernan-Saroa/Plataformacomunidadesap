@@ -16,7 +16,11 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { ObservacionesService } from './observaciones.service';
-import { RegistrarObservacionDto, ResponderObservacionDto } from './dto/observacion.dto';
+import {
+  CerrarSinObservacionesDto,
+  RegistrarObservacionDto,
+  ResponderObservacionDto,
+} from './dto/observacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -121,7 +125,11 @@ export class ObservacionesController {
     description:
       'Solo procede con el plazo de publicidad vencido: antes, que no haya ninguna no significa nada.',
   })
-  cerrar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.cerrarSinObservaciones(procesoId, getHiringAccess(req));
+  cerrar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: CerrarSinObservacionesDto,
+    @Req() req: any,
+  ) {
+    return this.service.cerrarSinObservaciones(procesoId, getHiringAccess(req), dto?.firma);
   }
 }

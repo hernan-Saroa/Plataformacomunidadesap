@@ -8,7 +8,7 @@ import { saltarPlazosDePrueba, TrasladoService } from './traslado.service';
  * que arrastre la variable por error no deja el plazo saltado en producción.
  */
 function servicio() {
-  return new TrasladoService({ manager: {} } as any);
+  return new TrasladoService({ manager: {} } as any, {} as any);
 }
 
 describe('saltarPlazosDePrueba', () => {

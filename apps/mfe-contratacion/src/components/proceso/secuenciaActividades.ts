@@ -74,6 +74,28 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
   '5.5': ['5.2'],
 };
 
+/**
+ * Las que no cierran nunca mientras dura la ejecución, y por eso no pueden
+ * detener nada.
+ *
+ * La 9.2 es el seguimiento: dura todo el contrato y `seguimiento.service.ts`
+ * la deja a propósito en BORRADOR —«el seguimiento dura toda la ejecución:
+ * darlo por cumplido con el primer informe haría que el riel dijera que ya no
+ * hay nada que hacer»—.
+ *
+ * La 9.3 es la reasignación de supervisor: la matriz la describe «en
+ * cualquier momento durante la ejecución», así que no hay un primer envío que
+ * la cierre — es la misma naturaleza de la 9.2, y en ningún módulo del
+ * backend hay código que la marque APROBADO.
+ *
+ * Tratarlas como cualquier actividad a medias encerraba la 9.4 y la 9.5 (pagos
+ * y modificaciones) detrás de dos pasos que ninguno iba a terminar nunca: en
+ * la base, el cien por ciento de los contratos en ejecución tienen la 9.3 en
+ * BORRADOR, así que ningún proceso llegaba a la 9.4 sin una intervención
+ * manual en la base de datos.
+ */
+export const NUNCA_BLOQUEA = new Set(['9.2', '9.3']);
+
 /** Si una dependencia declarada ya no le hace falta a quien la exige. */
 function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {
   const paso = flujo.find((p) => p.numeral === numeral);
@@ -144,7 +166,7 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
 
     if (disponible) disponibles.add(paso.numeral);
 
-    if (estaTerminada(paso)) continue;
+    if (estaTerminada(paso) || NUNCA_BLOQUEA.has(paso.numeral)) continue;
 
     // Una actividad enviada y a la espera no cierra el paso: abre el tramo de
     // las que existen para resolver esa espera. Cualquier otra sin terminar sí
@@ -182,7 +204,7 @@ export function motivoDelBloqueo(
   const anterior = flujo
     .slice(0, indice)
     .reverse()
-    .find((p) => p.aplica && p.construida && !estaTerminada(p));
+    .find((p) => p.aplica && p.construida && !estaTerminada(p) && !NUNCA_BLOQUEA.has(p.numeral));
 
   // Un candado sin explicación se lee como un error del sistema: decir cuál es
   // la actividad que falta convierte el bloqueo en una instrucción.

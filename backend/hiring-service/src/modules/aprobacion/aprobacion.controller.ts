@@ -79,7 +79,13 @@ export class AprobacionController {
     @Body() dto: DecidirAprobacionDto,
     @Req() req: any,
   ) {
-    return this.service.aprobar(procesoId, numeral, dto.observaciones, getHiringAccess(req));
+    return this.service.aprobar(
+      procesoId,
+      numeral,
+      dto.observaciones,
+      getHiringAccess(req),
+      dto.firma,
+    );
   }
 
   @Post('devolver')

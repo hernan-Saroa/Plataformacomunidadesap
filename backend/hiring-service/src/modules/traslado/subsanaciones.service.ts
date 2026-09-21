@@ -10,12 +10,15 @@ import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_PLAZO_TERMINAR, tienePermiso } from '../../auth/permisos';
 import { ArchivoCargado, saltarPlazosDePrueba, TrasladoService } from './traslado.service';
 import {
   CerrarTrasladoDto,
   RegistrarSubsanacionDto,
   ResponderSubsanacionDto,
 } from './dto/subsanaciones.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 6.5 de la matriz: recepción de subsanaciones y observaciones. */
 export const NUMERAL_SUBSANACIONES = '6.5';
@@ -38,8 +41,8 @@ export const NUMERAL_RESPUESTAS = '6.6';
  */
 @Injectable()
 export class SubsanacionesService extends TrasladoService {
-  constructor(dataSource: DataSource) {
-    super(dataSource);
+  constructor(dataSource: DataSource, cierre: CierreActividadService) {
+    super(dataSource, cierre);
   }
 
   // ------------------------------------------------------------- consulta --
@@ -50,7 +53,7 @@ export class SubsanacionesService extends TrasladoService {
    * Cuelga del informe y no del proceso: si un informe se anula y se traslada
    * otro, cada uno conserva lo que se presentó contra él.
    */
-  async listar(procesoId: string) {
+  async listar(procesoId: string, acceso?: HiringAccess) {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
     const informe = await this.informeEnJuego(procesoId);
 
@@ -69,6 +72,8 @@ export class SubsanacionesService extends TrasladoService {
         enTermino: false,
         puedeRegistrar: false,
         plazosSaltados: saltarPlazosDePrueba(),
+        // Sin informe trasladado no hay término corriendo que terminar.
+        puedeTerminarPlazo: false,
         subsanaciones: [],
       };
     }
@@ -99,6 +104,18 @@ export class SubsanacionesService extends TrasladoService {
       // Si el parámetro de pruebas está saltando el plazo: la pantalla lo avisa
       // para que nadie confunda un cierre de prueba con uno real.
       plazosSaltados: saltarPlazosDePrueba(),
+      /**
+       * La llave de pruebas para no esperar los días hábiles del término.
+       *
+       * Solo a quien tiene el permiso y solo mientras el término siga
+       * corriendo: uno ya vencido no se vuelve a terminar, y ofrecer el botón
+       * ahí sería ofrecer algo que no hace nada.
+       */
+      puedeTerminarPlazo:
+        tienePermiso(acceso, PERMISO_PLAZO_TERMINAR) &&
+        trasladado &&
+        !!informe.venceEl &&
+        informe.venceEl >= this.hoy(),
       // Cerrar antes de que venza el término le quitaría al oferente el plazo
       // que se le notificó, y cerrar con algo sin responder dejaría el traslado
       // a medias: las dos condiciones se dicen aquí para que la pantalla
@@ -202,7 +219,7 @@ export class SubsanacionesService extends TrasladoService {
       );
     });
 
-    return this.listar(procesoId);
+    return this.listar(procesoId, acceso);
   }
 
   // ------------------------------------------------------------ respuestas --
@@ -263,7 +280,7 @@ export class SubsanacionesService extends TrasladoService {
       subsanacion.respondidaAt = new Date();
       await em.save(subsanacion);
 
-      await this.marcarRespuestas(em, procesoId, informe.id, acceso);
+      await this.marcarRespuestas(em, procesoId, informe.id, acceso, dto.firma);
       await this.traza(
         em,
         procesoId,
@@ -282,7 +299,7 @@ export class SubsanacionesService extends TrasladoService {
       );
     });
 
-    return this.listar(procesoId);
+    return this.listar(procesoId, acceso);
   }
 
   /**
@@ -293,6 +310,56 @@ export class SubsanacionesService extends TrasladoService {
    * no puede quedar nada sin responder, porque el informe definitivo se
    * sustenta en esas respuestas.
    */
+  /**
+   * Da por terminado el término de subsanaciones, para poder probar el flujo.
+   *
+   * Mueve `vence_el` a ayer en vez de fingir que venció: el cierre del
+   * traslado, la extemporaneidad de lo que llegue después y todo lo que lee esa
+   * fecha se comportan exactamente como en producción, que es justo lo que hay
+   * que poder probar. Un atajo que fingiera el vencimiento dejaría el
+   * expediente diciendo una cosa y la pantalla otra.
+   *
+   * No toca `plazo_dias_habiles`: lo que se probó es un traslado al que se le
+   * acortó el término, y el expediente tiene que poder decir cuál era.
+   */
+  async terminarPlazo(procesoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const informe = await this.informeEnJuego(procesoId, em);
+
+      if (!informe || informe.estado !== 'TRASLADADO') {
+        throw new ConflictException(
+          'No hay informe en traslado: el término de subsanaciones todavía no existe',
+        );
+      }
+      if (!informe.venceEl) {
+        throw new ConflictException(
+          'Este traslado no tiene término que contar: su modalidad no tiene plazo parametrizado',
+        );
+      }
+      if (informe.venceEl < this.hoy()) {
+        throw new ConflictException('El término de subsanaciones ya había vencido');
+      }
+
+      const original = informe.venceEl;
+      const ayer = new Date();
+      ayer.setDate(ayer.getDate() - 1);
+
+      informe.venceEl = ayer.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      await em.save(informe);
+
+      // Queda en la trazabilidad con el término que tenía: uno acortado a mano
+      // no puede ser indistinguible de uno que se cumplió.
+      await this.traza(em, procesoId, informe.id, 'GUARDAR', acceso, {
+        accion: 'TERMINAR_PLAZO',
+        pruebas: true,
+        vencimientoOriginal: original,
+        vencimientoNuevo: informe.venceEl,
+      });
+
+      return this.listar(procesoId, acceso);
+    });
+  }
+
   async cerrar(procesoId: string, dto: CerrarTrasladoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       await this.exigirProceso(em, procesoId);
@@ -327,7 +394,7 @@ export class SubsanacionesService extends TrasladoService {
       informe.notaCierre = dto.nota?.trim() || null;
       await em.save(informe);
 
-      await this.marcarCierre(em, procesoId, acceso);
+      await this.marcarCierre(em, procesoId, acceso, dto.firma);
       await this.traza(em, procesoId, informe.id, 'CERRAR', acceso, {
         actividad: NUMERAL_RESPUESTAS,
         numero: informe.numero,
@@ -335,7 +402,7 @@ export class SubsanacionesService extends TrasladoService {
       });
     });
 
-    return this.listar(procesoId);
+    return this.listar(procesoId, acceso);
   }
 
   // ----------------------------------------------------------- auxiliares --
@@ -439,6 +506,7 @@ export class SubsanacionesService extends TrasladoService {
     procesoId: string,
     informeId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const pendientes = await em
       .getRepository(Subsanacion)
@@ -451,44 +519,91 @@ export class SubsanacionesService extends TrasladoService {
       NUMERAL_RESPUESTAS,
       completas ? 'APROBADO' : 'BORRADOR',
       completas ? acceso : null,
+      firma,
     );
   }
 
   /** Cerrar el traslado cierra las dos actividades: la recepción y sus respuestas. */
-  private async marcarCierre(em: EntityManager, procesoId: string, acceso: HiringAccess) {
-    await this.marcarActividadDelTraslado(em, procesoId, NUMERAL_SUBSANACIONES, 'APROBADO', acceso);
-    await this.marcarActividadDelTraslado(em, procesoId, NUMERAL_RESPUESTAS, 'APROBADO', acceso);
+  private async marcarCierre(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
+    await this.marcarActividadDelTraslado(
+      em,
+      procesoId,
+      NUMERAL_SUBSANACIONES,
+      'APROBADO',
+      acceso,
+      firma,
+    );
+    // Ya pudo cerrarse sola en `responder`, con la última respuesta: aquí solo
+    // se repite por si acaso, y `marcarActividadDelTraslado` no vuelve a pedir
+    // la firma de algo que ya quedó decidido.
+    await this.marcarActividadDelTraslado(
+      em,
+      procesoId,
+      NUMERAL_RESPUESTAS,
+      'APROBADO',
+      acceso,
+      firma,
+    );
   }
 
-  /** Crea o actualiza la fila del riel para un numeral de esta historia. */
+  /**
+   * Crea o actualiza la fila del riel para un numeral de esta historia.
+   *
+   * Aprobación y firma solo se preguntan al pasar de BORRADOR a APROBADO: si
+   * ya estaba decidida —aprobada o en revisión—, no se repite la pregunta.
+   */
   private async marcarActividadDelTraslado(
     em: EntityManager,
     procesoId: string,
     numeral: string,
     estado: 'APROBADO' | 'BORRADOR',
     acceso: HiringAccess | null,
+    firma?: FirmaOtpDto,
   ) {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral,
-          estado: estado as any,
-          datos: {},
-          ...(acceso ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (estado === 'BORRADOR') {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = acceso ? acceso.userName : null;
-    actividad.revisadoAt = acceso ? new Date() : null;
-    await em.save(actividad);
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+    if (!acceso) return;
+
+    if (await this.cierre.exigeFirma(em, numeral)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      numeral,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   /**

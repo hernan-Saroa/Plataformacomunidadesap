@@ -34,6 +34,8 @@ import {
 } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
@@ -199,6 +201,13 @@ export class EstudioPrevioService {
     private readonly aprobacion: AprobacionService,
     /** Aprobar la 3.4 puede cerrar la etapa 3 y radicar el CDP. */
     private readonly cdp: CdpService,
+    /**
+     * Si la 3.1 o la 3.4 exigen firmar con el token institucional (EFDS-2070).
+     *
+     * Quien envía y quien aprueba son dos personas y dos acciones distintas:
+     * cada numeral tiene su propia regla, así que cada una firma la suya.
+     */
+    private readonly cierre: CierreActividadService,
     /**
      * El paquete con el que se radica en la Dirección de Contratación.
      *
@@ -635,7 +644,7 @@ export class EstudioPrevioService {
    * Criterio 1: si está completo, registra el estudio previo como documento
    * del expediente electrónico.
    */
-  async enviar(procesoId: string, acceso: HiringAccess) {
+  async enviar(procesoId: string, acceso: HiringAccess, firma?: FirmaOtpDto) {
     await this.exigirQueSeaSuyo(procesoId, acceso);
 
     return this.dataSource.transaction(async (em) => {
@@ -748,12 +757,21 @@ export class EstudioPrevioService {
         em,
       );
 
+      // La firma es de quien envía, no de quien luego aprueba la 3.4: cada
+      // quien firma su propia acción (EFDS-2070).
+      if (await this.cierre.exigeFirma(em, NUMERAL_ESTUDIO_PREVIO)) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
       actividad.estado = revisan ? 'EN_REVISION' : 'APROBADO';
       actividad.enviadoPor = acceso.userName;
       // Los avisos buscan por cuenta a quien envió: con solo el nombre, la
       // devolución de la 3.1 no le llegaba a nadie.
       actividad.enviadoPorId = acceso.userId ?? null;
       actividad.enviadoAt = new Date();
+      if (firma) {
+        actividad.datos = { ...(actividad.datos ?? {}), firma };
+      }
       await em.save(ProcesoActividad, actividad);
 
       await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'ENVIAR', acceso, {
@@ -881,8 +899,13 @@ export class EstudioPrevioService {
    * Aprueba el estudio previo enviado (numeral 3.4). A partir de aquí el
    * proceso puede continuar a las etapas siguientes.
    */
-  async aprobar(procesoId: string, observaciones: string | undefined, acceso: HiringAccess) {
-    return this.decidirRevision(procesoId, 'APROBADO', observaciones, acceso);
+  async aprobar(
+    procesoId: string,
+    observaciones: string | undefined,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
+    return this.decidirRevision(procesoId, 'APROBADO', observaciones, acceso, firma);
   }
 
   /**
@@ -928,6 +951,7 @@ export class EstudioPrevioService {
     decision: DecisionRevision,
     observaciones: string | undefined,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     // Quién puede decidir se resuelve antes de abrir la transacción: no toca
     // nada y así el error de autorización no arrastra un lock.
@@ -956,6 +980,12 @@ export class EstudioPrevioService {
         );
       }
 
+      // La firma es de quien aprueba la 3.4, distinta de la de quien envió la
+      // 3.1: cada quien firma su propia acción (EFDS-2070).
+      if (decision === 'APROBADO' && (await this.cierre.exigeFirma(em, NUMERAL_REVISION))) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
       await em.save(Revision, {
         procesoActividadId: actividad.id,
         decision,
@@ -976,7 +1006,7 @@ export class EstudioPrevioService {
       // dado por bueno, y negar dejaba una actividad aprobada colgando de un
       // proceso muerto.
       await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
-      await this.cerrarLaRevision(em, procesoId, decision, acceso);
+      await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
 
       /*
        * Y si con esto se acabó la etapa 3, la solicitud de CDP nace aquí.
@@ -1059,6 +1089,7 @@ export class EstudioPrevioService {
     procesoId: string,
     decision: DecisionRevision,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const revision = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_REVISION },
@@ -1070,6 +1101,9 @@ export class EstudioPrevioService {
     revision.estado = concluida ? 'APROBADO' : 'BORRADOR';
     revision.revisadoPor = concluida ? acceso.userName : (null as any);
     revision.revisadoAt = concluida ? new Date() : (null as any);
+    if (decision === 'APROBADO' && firma) {
+      revision.datos = { ...(revision.datos ?? {}), firma };
+    }
     await em.save(ProcesoActividad, revision);
   }
 

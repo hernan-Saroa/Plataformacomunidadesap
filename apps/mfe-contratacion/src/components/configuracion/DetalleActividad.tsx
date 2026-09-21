@@ -7,13 +7,14 @@ import { CampoConfigurable, CeldaMatriz, FilaMatriz, Modalidad } from '../../typ
 import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/DetalleProceso';
 
 import { AprobacionActividad } from './AprobacionActividad';
+import { FirmaActividad } from './FirmaActividad';
 import { NotificacionesActividad } from './NotificacionesActividad';
 import { FormatosActividad } from './FormatosActividad';
 import { QueSePide } from './QueSePide';
 import { VistaPrevia } from './VistaPrevia';
 import { Peticion } from './peticiones';
 
-type Pestana = 'entrega' | 'archivos' | 'aprobacion' | 'avisos' | 'previa';
+type Pestana = 'entrega' | 'archivos' | 'aprobacion' | 'firma' | 'avisos' | 'previa';
 
 /** La única actividad cuyo formulario se arma con campos configurables. */
 const NUMERAL_FORMULARIO_CONFIGURABLE = '3.1';
@@ -70,6 +71,7 @@ export function DetalleActividad({
     ['entrega', 'Qué entrega'],
     ['archivos', 'Archivos'],
     ['aprobacion', 'Aprobación'],
+    ['firma', 'Firma'],
     ['avisos', 'Notificaciones'],
     ...(esFormulario ? ([['previa', 'Vista previa']] as [Pestana, string][]) : []),
   ];
@@ -136,6 +138,7 @@ export function DetalleActividad({
         )}
 
         {pestana === 'aprobacion' && <AprobacionActividad numeral={fila.numeral} />}
+        {pestana === 'firma' && <FirmaActividad numeral={fila.numeral} />}
         {pestana === 'avisos' && <NotificacionesActividad numeral={fila.numeral} />}
 
         {pestana === 'previa' && esFormulario && <VistaPrevia actividad={fila} campos={campos} />}

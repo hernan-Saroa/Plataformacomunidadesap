@@ -3,15 +3,25 @@ import { FileText, Paperclip, Scale, Trash2, UserPlus, Users, Undo2 } from 'luci
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoComite, MiembroPropuesto, Persona, RolEvaluador } from '../../types';
+import {
+  EstadoComite,
+  EvidenciaFirmaOtp,
+  MiembroPropuesto,
+  Persona,
+  RolEvaluador,
+} from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 import { SelectorPersona } from '../estudio-previo/SelectorPersona';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '6.2';
 
 const ETIQUETA_ROL: Record<RolEvaluador, string> = {
   JURIDICO: 'Jurídica',
@@ -27,6 +37,8 @@ const ETIQUETA_ROL: Record<RolEvaluador, string> = {
  * el acto que los nombra, o no hay comité.
  */
 export function PanelComite({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Designar el comité evaluador');
   const [estado, setEstado] = useState<EstadoComite | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +93,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
   const quitar = (indice: number) =>
     setPropuestos((lista) => lista.filter((_, i) => i !== indice));
 
-  const designar = async () => {
+  const designar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (propuestos.length === 0 || !memorando || !fecha) return;
 
     setGuardando(true);
@@ -89,7 +101,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
       setEstado(
         await contratacionService.designarComite(
           procesoId,
-          { fechaDesignacion: fecha, miembros: propuestos },
+          { fechaDesignacion: fecha, miembros: propuestos, firma: firmaOtp },
           memorando,
         ),
       );
@@ -104,7 +116,13 @@ export function PanelComite({ procesoId, onCambio }: Props) {
   };
 
   const revocar = async () => {
-    const motivo = window.prompt('¿Por qué se revoca la designación del comité?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Revocar la designación del comité',
+      descripcion: 'El proceso queda sin comité evaluador hasta que se designe otro.',
+      etiqueta: 'Motivo de la revocatoria',
+      confirmar: 'Revocar la designación',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -332,7 +350,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
             <Boton
               icono={<UserPlus className="w-3.5 h-3.5" />}
               disabled={guardando || propuestos.length === 0 || !memorando || !fecha}
-              onClick={designar}
+              onClick={() => firma.conFirma(designar)}
             >
               {guardando ? 'Designando…' : 'Designar comité'}
             </Boton>
@@ -346,6 +364,8 @@ export function PanelComite({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

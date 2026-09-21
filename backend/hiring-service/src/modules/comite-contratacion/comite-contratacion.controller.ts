@@ -64,7 +64,7 @@ export class ComiteContratacionController {
   @ApiOperation({
     summary: 'Actividad 3.7 · Registrar lo que decidió el comité',
     description:
-      'Aprobar —con o sin condiciones— cierra la actividad; observar la devuelve con las observaciones de fondo para corregir y volver al comité.',
+      'Aprobar —con o sin condiciones— cierra la actividad; observar la devuelve con las observaciones de fondo para corregir y volver al comité; rechazar la niega y termina el proceso. Cualquiera de los tres primeros puede reabrir actividades anteriores ya cerradas, obligatorio al observar y opcional al aprobar, cuando el comité quiere que se las validen.',
   })
   async registrar(
     @Param('id', ParseUUIDPipe) procesoId: string,

@@ -25,6 +25,7 @@ import { EstudioPrevioService } from './estudio-previo.service';
 import {
   AnotarRadicadoDto,
   CrearProcesoDto,
+  EnviarEstudioPrevioDto,
   GuardarBorradorDto,
   RevisarDto,
 } from './dto/estudio-previo.dto';
@@ -116,8 +117,12 @@ export class EstudioPrevioController {
       'Valida los campos obligatorios. Si faltan responde 422 con camposFaltantes. ' +
       'Si está completo registra el estudio previo como documento del expediente.',
   })
-  enviar(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
-    return this.service.enviar(id, getHiringAccess(req));
+  enviar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EnviarEstudioPrevioDto,
+    @Req() req: any,
+  ) {
+    return this.service.enviar(id, getHiringAccess(req), dto?.firma);
   }
 
   @Post(':id/estudio-previo/aprobar')
@@ -132,7 +137,7 @@ export class EstudioPrevioController {
     @Body() dto: RevisarDto,
     @Req() req: any,
   ) {
-    return this.service.aprobar(id, dto.observaciones, getHiringAccess(req));
+    return this.service.aprobar(id, dto.observaciones, getHiringAccess(req), dto.firma);
   }
 
   @Post(':id/estudio-previo/devolver')

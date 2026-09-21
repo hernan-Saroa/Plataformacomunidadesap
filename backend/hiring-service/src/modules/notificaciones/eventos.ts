@@ -381,6 +381,19 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     case 'modalidad_proceso:DEVOLVER':
       return ocurrido('DEVUELTA', enActividad);
 
+    /*
+     * El comité de contratación (3.7).
+     *
+     * Dos trazas distintas con la misma acción, y las dos tienen que avisar:
+     * la de la sesión, que dice qué decidió el comité sobre la 3.7, y una por
+     * cada actividad anterior que la sesión reabrió, que lleva su numeral en
+     * el detalle. Sin esto, al técnico que trabajó la 3.2 se le reabría la
+     * actividad sin que nadie se lo dijera: la veía en azul en el riel si
+     * entraba a mirar, y solo si entraba.
+     */
+    case 'comite_contratacion:DEVOLVER':
+      return ocurrido('DEVUELTA', enActividad);
+
     case 'estudio_previo:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', '3.1');
     case 'estudio_previo:APROBAR':

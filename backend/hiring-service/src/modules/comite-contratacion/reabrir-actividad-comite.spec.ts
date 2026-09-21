@@ -43,6 +43,7 @@ describe('ComiteContratacionService · reabrirActividad', () => {
       dataSource as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     return { instancia, em, guardados, trazas };

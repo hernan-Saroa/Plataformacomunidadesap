@@ -16,6 +16,7 @@ import {
   DatosPublicacionActa,
   DestinoPublicacionActa,
   EstadoArchivoExpediente,
+  EvidenciaFirmaOtp,
   IndiceDocumental,
   PublicacionActaRegistrada,
 } from '../../types';
@@ -32,11 +33,15 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { PanelCierreDefinitivo } from './PanelCierreDefinitivo';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '10.4';
 
 const NOMBRE_DESTINO: Record<DestinoPublicacionActa, string> = {
   SECOP_II: 'SECOP II',
@@ -63,6 +68,8 @@ const ARCHIVO_VACIO = { radicadoActiveDocument: '', observaciones: '' };
  * vista: es lo que convierte «archivado» en algo que se puede probar.
  */
 export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Archivar el expediente');
   const [estado, setEstado] = useState<EstadoArchivoExpediente | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +122,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
     }
   };
 
-  const archivar = async () => {
+  const archivar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     const cuerpo: DatosArchivoExpediente = {
       ...(datosArchivo.radicadoActiveDocument.trim()
         ? { radicadoActiveDocument: datosArchivo.radicadoActiveDocument.trim() }
@@ -123,6 +130,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
       ...(datosArchivo.observaciones.trim()
         ? { observaciones: datosArchivo.observaciones.trim() }
         : {}),
+      firma: firmaOtp,
     };
 
     setGuardando(true);
@@ -140,7 +148,13 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
   };
 
   const reabrir = async () => {
-    const motivo = window.prompt('¿Por qué se reabre el expediente?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Reabrir el expediente',
+      descripcion: 'El expediente ya se declaró completo ante entes de control: la reapertura queda registrada con su motivo.',
+      etiqueta: 'Motivo de la reapertura',
+      confirmar: 'Reabrir el expediente',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -428,7 +442,7 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Archive className="w-3.5 h-3.5" />}
               disabled={guardando}
-              onClick={archivar}
+              onClick={() => firma.conFirma(archivar)}
             >
               Archivar el expediente
             </Boton>
@@ -451,6 +465,8 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
           Va al final porque es lo último del proceso, y puede llegar años
           después. */}
       <PanelCierreDefinitivo procesoId={procesoId} onCambio={onCambio} />
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

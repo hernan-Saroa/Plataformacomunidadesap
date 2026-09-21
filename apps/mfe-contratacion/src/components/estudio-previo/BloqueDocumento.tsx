@@ -240,6 +240,7 @@ export function BloqueDocumento({ procesoId, documentos, bloqueado, onAdjuntado 
                           nombre: doc.nombre,
                           descargaUrl: doc.descargaUrl!,
                           detalle: `${new Date(doc.createdAt).toLocaleDateString('es-CO')} · ${doc.subidoPor ?? ''}`,
+                          mimeType: doc.mimeType,
                         })
                       }
                       className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-[#003DA5] hover:bg-gray-50"

@@ -21,6 +21,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
       // igual que la publicación del pliego.
       DiaNoHabil,
     ]),
+    CierreActividadModule,
   ],
   controllers: [TrasladoController, SubsanacionesController],
   providers: [TrasladoService, SubsanacionesService],

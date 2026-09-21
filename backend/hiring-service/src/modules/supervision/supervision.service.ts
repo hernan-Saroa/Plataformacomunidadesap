@@ -19,6 +19,8 @@ import {
   ReasignarSupervisorDto,
   RelevarSupervisorDto,
 } from './dto/supervision.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 8.2 de la matriz: la designación del supervisor. */
 export const NUMERAL_SUPERVISOR = '8.2';
@@ -61,7 +63,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class SupervisionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -154,6 +159,10 @@ export class SupervisionService {
 
       this.validarFecha(dto.fechaDesignacion);
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_SUPERVISOR)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
@@ -180,7 +189,7 @@ export class SupervisionService {
         } as Partial<SupervisionContrato>),
       );
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, supervision.id, 'DESIGNAR', acceso, {
         actividad: NUMERAL_SUPERVISOR,
@@ -267,6 +276,10 @@ export class SupervisionService {
 
       this.validarFecha(dto.fechaDesignacion);
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_SUPERVISOR)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
@@ -301,7 +314,7 @@ export class SupervisionService {
         } as Partial<SupervisionContrato>),
       );
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, nueva.id, 'DESIGNAR', acceso, {
         actividad: NUMERAL_SUPERVISOR,
@@ -386,31 +399,41 @@ export class SupervisionService {
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const aprobado = !!(await this.supervisorVigente(contratoId, em));
-    const estado = aprobado ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_SUPERVISOR },
-    });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_SUPERVISOR,
-          estado: estado as any,
-          datos: {},
-          ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!aprobado) {
+      const actividad = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_SUPERVISOR },
+      });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_SUPERVISOR,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = aprobado ? acceso.userName : null;
-    actividad.revisadoAt = aprobado ? new Date() : null;
-    await em.save(actividad);
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_SUPERVISOR,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {

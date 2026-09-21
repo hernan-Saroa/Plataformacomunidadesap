@@ -247,6 +247,7 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                           nombre: doc.nombre,
                           descargaUrl: doc.descargaUrl!,
                           detalle: `${new Date(doc.createdAt).toLocaleDateString('es-CO')} · ${doc.subidoPor ?? ''}`,
+                          mimeType: doc.mimeType,
                         })
                       }
                       className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"

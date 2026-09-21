@@ -34,6 +34,7 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { CicloContrato } from '../shared/CicloContrato';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
@@ -99,6 +100,7 @@ const APROBACION_VACIA = { numero: '', fechaSuscripcion: hoyEnBogota() };
  * justo lo que la pantalla debe evitar.
  */
 export function PanelModificaciones({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoModificaciones | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -238,8 +240,14 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
     }
   };
 
-  const revocar = (modificacionId: string) => {
-    const motivo = window.prompt('¿Por qué se revoca la modificación?')?.trim();
+  const revocar = async (modificacionId: string) => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Revocar la modificación',
+      descripcion: 'La modificación ya aprobada deja de surtir efecto. Queda en el expediente con su motivo.',
+      etiqueta: 'Motivo de la revocatoria',
+      confirmar: 'Revocar la modificación',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     return conError(
@@ -248,8 +256,14 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
     );
   };
 
-  const rechazar = (modificacionId: string) => {
-    const motivo = window.prompt('¿Por qué se rechaza la modificación?')?.trim();
+  const rechazar = async (modificacionId: string) => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Rechazar la modificación',
+      descripcion: 'Quien la solicitó tiene que poder leer por qué no procede.',
+      etiqueta: 'Motivo del rechazo',
+      confirmar: 'Rechazar la modificación',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     return conError(
@@ -644,6 +658,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {dialogo.elemento}
     </Marco>
   );
 }

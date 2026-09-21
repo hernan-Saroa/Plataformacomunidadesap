@@ -17,6 +17,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { CdpModule } from '../cdp/cdp.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { CdpModule } from '../cdp/cdp.module';
     // Aprobar cierra la 3.7, que en las modalidades que pasan por comité es la
     // última de la etapa 3: la solicitud de CDP nace ahí.
     CdpModule,
+    CierreActividadModule,
   ],
   controllers: [ComiteContratacionController],
   providers: [ComiteContratacionService],

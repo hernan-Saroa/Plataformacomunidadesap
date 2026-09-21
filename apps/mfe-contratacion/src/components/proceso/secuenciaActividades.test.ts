@@ -4,6 +4,7 @@ import {
   actividadesDisponibles,
   estaTerminada,
   motivoDelBloqueo,
+  NUNCA_BLOQUEA,
   PasoDelFlujo,
 } from './secuenciaActividades';
 
@@ -304,5 +305,58 @@ describe('actividadesDisponibles · la revisión no bloquea a quien la atiende',
     expect(abiertas.has('3.2')).toBe(true);
     // Y se detiene en la primera sin terminar, que ahora es la 3.2.
     expect(abiertas.has('3.3')).toBe(false);
+  });
+});
+
+/**
+ * La 9.2 (seguimiento) y la 9.3 (reasignación) duran toda la ejecución y
+ * ningún módulo del backend las marca APROBADO — la matriz las describe como
+ * algo que ocurre «en cualquier momento», no como un trámite con un primer
+ * envío que lo cierre. Tratarlas como cualquier actividad a medias encerraba
+ * la 9.4 y la 9.5 detrás de dos pasos que nunca se cierran: en la base, el
+ * cien por ciento de los contratos en ejecución tenían la 9.3 en BORRADOR.
+ */
+describe('actividadesDisponibles · la 9.2 y la 9.3 nunca bloquean lo que sigue', () => {
+  const etapa9 = (estadoDeLa92: string | null, estadoDeLa93: string | null) => [
+    paso('9.1', { estado: 'APROBADO' }),
+    paso('9.2', { estado: estadoDeLa92 }),
+    paso('9.3', { estado: estadoDeLa93 }),
+    paso('9.4'),
+    paso('9.5'),
+  ];
+
+  it('las dos en borrador, como se quedan toda la ejecución, igual se pueden abrir', () => {
+    const disponibles = actividadesDisponibles(etapa9('BORRADOR', 'BORRADOR'));
+
+    expect(disponibles.has('9.2')).toBe(true);
+    expect(disponibles.has('9.3')).toBe(true);
+  });
+
+  it('y no le impiden a la 9.4 abrirse, aunque ninguna de las dos haya cerrado', () => {
+    const disponibles = actividadesDisponibles(etapa9('BORRADOR', 'BORRADOR'));
+
+    expect(disponibles.has('9.4')).toBe(true);
+  });
+
+  it('la 9.5 sigue siendo un paso normal: solo se abre cuando la 9.4 —pagos— cierra', () => {
+    const conLa94Aprobada = [...etapa9('BORRADOR', 'BORRADOR')];
+    conLa94Aprobada[3] = paso('9.4', { estado: 'APROBADO' });
+
+    expect(actividadesDisponibles(etapa9('BORRADOR', 'BORRADOR')).has('9.5')).toBe(false);
+    expect(actividadesDisponibles(conLa94Aprobada).has('9.5')).toBe(true);
+  });
+
+  it('motivoDelBloqueo no manda a "terminar la 9.2" ni "la 9.3"', () => {
+    const flujo = etapa9('BORRADOR', 'BORRADOR');
+
+    expect(motivoDelBloqueo('9.4', flujo)).toBeNull();
+    expect(motivoDelBloqueo('9.5', flujo)).toBe('Antes hay que terminar 9.4');
+  });
+
+  it('la excepción es la 9.2 y la 9.3, no el resto de la etapa 9', () => {
+    expect(NUNCA_BLOQUEA.has('9.2')).toBe(true);
+    expect(NUNCA_BLOQUEA.has('9.3')).toBe(true);
+    expect(NUNCA_BLOQUEA.has('9.1')).toBe(false);
+    expect(NUNCA_BLOQUEA.has('9.4')).toBe(false);
   });
 });

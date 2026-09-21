@@ -30,6 +30,7 @@ import {
   CrearCampoDto,
   EstadoPlantillaDto,
   GuardarAprobacionDto,
+  GuardarFirmaDto,
   GuardarPlantillaDto,
   GuardarTipologiaDto,
 } from './dto/configuracion.dto';
@@ -217,6 +218,31 @@ export class ConfiguracionController {
     @Body() dto: GuardarAprobacionDto,
   ) {
     return this.service.guardarAprobacion(numeral, dto);
+  }
+
+  // ------------------------------------------------ firma de la actividad ----
+
+  @Get('actividades/:numeral/firma')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
+  @ApiOperation({ summary: 'Si la actividad requiere firma con el token institucional' })
+  firma(@Param('numeral') numeral: string) {
+    return this.service.firmaDe(numeral);
+  }
+
+  @Put('actividades/:numeral/firma')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({
+    summary: 'Configurar si la actividad exige firma',
+    description:
+      'Los procesos ya cerrados no cambian: la regla anterior se deroga y la nueva rige de ahora en adelante.',
+  })
+  guardarFirma(
+    @Param('numeral') numeral: string,
+    @Body() dto: GuardarFirmaDto,
+  ) {
+    return this.service.guardarFirma(numeral, dto);
   }
 
   @Get('roles-aprobadores')

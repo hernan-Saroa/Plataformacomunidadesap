@@ -25,6 +25,8 @@ import { BloqueDocumento } from './BloqueDocumento';
 import { ListaChequeoRadicacion } from './ListaChequeoRadicacion';
 import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
 import { usarAprobacion } from '../shared/usarAprobacion';
+import { useFirma } from '../shared/useFirma';
+import { EvidenciaFirmaOtp } from '../../types';
 
 interface Props {
   procesoId: string;
@@ -85,6 +87,14 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   // Si alguien revisa esta actividad, para no llamar «aprobado» a lo que se
   // cerró sin que nadie decidiera.
   const revision = usarAprobacion(procesoId, NUMERAL);
+
+  /*
+   * Quien envía y quien aprueba firman por separado (EFDS-2070): la 3.1 es de
+   * quien radica, la 3.4 de quien decide, y cada acción pide su propio token
+   * solo si esa actividad quedó configurada para exigirlo.
+   */
+  const firmaEnvio = useFirma('3.1', 'Enviar el estudio previo a revisión');
+  const firmaAprobacion = useFirma('3.4', 'Aprobar el estudio previo');
 
   const cargarAnexos = () =>
     Promise.all([
@@ -209,13 +219,13 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
     }
   };
 
-  const decidir = async () => {
+  const decidir = async (firma?: EvidenciaFirmaOtp) => {
     if (!accion) return;
     setProcesando(true);
     setError(null);
     try {
       if (accion === 'aprobar') {
-        await contratacionService.aprobar(procesoId, observaciones.trim() || undefined);
+        await contratacionService.aprobar(procesoId, observaciones.trim() || undefined, firma);
       } else if (accion === 'negar') {
         await contratacionService.negar(procesoId, observaciones.trim());
       } else {
@@ -570,11 +580,13 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
             <button
               type="button"
-              onClick={async () => {
-                await enviar();
-                await cargarAnexos();
-                onCambio?.();
-              }}
+              onClick={() =>
+                firmaEnvio.conFirma(async (firma) => {
+                  await enviar(firma);
+                  await cargarAnexos();
+                  onCambio?.();
+                })
+              }
               disabled={guardando || enviando}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
                 rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm
@@ -621,7 +633,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           <>
             <button
               type="button"
-              onClick={decidir}
+              onClick={() =>
+                accion === 'aprobar' ? firmaAprobacion.conFirma(decidir) : decidir()
+              }
               disabled={procesando || (accion !== 'aprobar' && !observaciones.trim())}
               className={`px-3.5 py-2 text-xs font-extrabold rounded-lg text-white shadow-sm
                 active:scale-95 disabled:opacity-50 transition-all ${
@@ -680,6 +694,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           </p>
         )}
       </Modal>
+
+      {firmaEnvio.modal}
+      {firmaAprobacion.modal}
     </div>
   );
 }

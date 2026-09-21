@@ -32,13 +32,19 @@ import {
   GuardarCondicionMipymeDto,
   RegistrarManifestacionDto,
 } from './dto/mipyme.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 5.4 de la matriz: la limitación de la convocatoria a MIPYME. */
 export const NUMERAL_MIPYME = '5.4';
 
 @Injectable()
 export class MipymeService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /** Si la 5.4 exige firmar con el token institucional al decidir (EFDS-2070). */
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -389,6 +395,12 @@ export class MipymeService {
         );
       }
 
+      // Cada decisión —y cada rectificación— es un acto propio: quien la toma
+      // firma la suya, aunque ya hubiera una decisión anterior (EFDS-2070).
+      if (await this.cierre.exigeFirma(em, NUMERAL_MIPYME)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const { tope, minimo } = await this.parametros(em);
       const documento = archivo
         ? await this.guardarSoporte(em, procesoId, archivo, hash!, acceso)
@@ -424,7 +436,7 @@ export class MipymeService {
 
       await em.save(decision);
 
-      await this.marcarActividad(em, procesoId, 'APROBADO', acceso);
+      await this.marcarActividad(em, procesoId, 'APROBADO', acceso, dto.firma);
       await this.traza(em, procesoId, decision.id, previa ? 'GUARDAR' : 'APROBAR', acceso, {
         limitado: dto.limitado,
         condicionesCumplidas: cumplidas,
@@ -475,10 +487,12 @@ export class MipymeService {
     procesoId: string,
     estado: 'BORRADOR' | 'APROBADO',
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const cumplida = estado === 'APROBADO';
     const revisadoPor = (cumplida ? acceso.userName : null) as any;
     const revisadoAt = (cumplida ? new Date() : null) as any;
+    const datosFirma = cumplida && firma ? { firma } : {};
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_MIPYME },
@@ -490,7 +504,7 @@ export class MipymeService {
           procesoId,
           numeral: NUMERAL_MIPYME,
           estado,
-          datos: {},
+          datos: datosFirma,
           revisadoPor,
           revisadoAt,
         }),
@@ -501,6 +515,9 @@ export class MipymeService {
     actividad.estado = estado;
     actividad.revisadoPor = revisadoPor;
     actividad.revisadoAt = revisadoAt;
+    if (cumplida && firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(actividad);
   }
 

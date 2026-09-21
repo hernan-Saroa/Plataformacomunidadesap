@@ -36,6 +36,51 @@ describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
     });
   });
 
+  /**
+   * El comité de contratación reabre actividades anteriores (EFDS-2068).
+   *
+   * Sin estos dos casos, al técnico que trabajó la 3.2 se le reabría la
+   * actividad y nadie se lo decía: la veía en azul en el riel si entraba a
+   * mirar, y solo si entraba.
+   */
+  it('avisa de cada actividad que el comité reabre, con su numeral', () => {
+    const [ev] = eventosDeTraza(
+      traza({
+        entidad: 'comite_contratacion',
+        accion: 'DEVOLVER',
+        detalle: {
+          numeral: '3.2',
+          observaciones: 'Confirmar que el valor estimado sigue vigente',
+          origen: 'comite_contratacion',
+        },
+      }),
+    );
+
+    // DEVUELTA viene sugerida a QUIEN_ENVIO: el que la mandó es el que tiene
+    // que volver a diligenciarla.
+    expect(ev).toMatchObject({
+      evento: 'DEVUELTA',
+      numeral: '3.2',
+      observaciones: 'Confirmar que el valor estimado sigue vigente',
+    });
+  });
+
+  it('y de la propia 3.7 cuando el comité la observa, que la guarda como «actividad»', () => {
+    const [ev] = eventosDeTraza(
+      traza({
+        entidad: 'comite_contratacion',
+        accion: 'DEVOLVER',
+        detalle: {
+          actividad: '3.7',
+          decision: 'OBSERVADO',
+          observaciones: 'El estudio previo no sustenta la experiencia exigida',
+        },
+      }),
+    );
+
+    expect(ev).toMatchObject({ evento: 'DEVUELTA', numeral: '3.7' });
+  });
+
   it('pone la actividad fija a los eventos del reparto, que no la guardan', () => {
     expect(eventosDeTraza(traza({ entidad: 'participacion_proceso', accion: 'RADICAR', detalle: {} }))[0])
       .toMatchObject({ evento: 'RECIBIDO_EN_CONTRATACION', numeral: '3.3' });
