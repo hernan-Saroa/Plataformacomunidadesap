@@ -11,6 +11,7 @@ import {
 import { EspacioFisico } from '../espacios/espacio.entity.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
+import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 
 @Entity({ name: 'solicitud_mantenimiento', schema: 'infrastructure-management' })
 export class SolicitudMantenimiento {
@@ -110,6 +111,57 @@ export class SolicitudMantenimiento {
   @Column({ type: 'text', nullable: true, name: 'evidencia_inicial_url' })
   evidenciaInicialUrl?: string;
 
+  // ----- EFDS-1735 RF-INF-006 Valoración en Campo -----
+  @Column({
+    type: 'varchar',
+    length: 20,
+    name: 'estado_valoracion',
+    default: 'NO_APLICA',
+  })
+  estadoValoracion: 'NO_APLICA' | 'EN_CURSO' | 'FINALIZADA';
+
+  @Column({ type: 'timestamptz', name: 'fecha_inicio_valoracion', nullable: true })
+  fechaInicioValoracion?: Date;
+
+  @Column({ type: 'timestamptz', name: 'fecha_fin_valoracion', nullable: true })
+  fechaFinValoracion?: Date;
+
+  @Column({ type: 'varchar', length: 10, name: 'riesgo_valoracion', nullable: true })
+  riesgoValoracion?: 'BAJO' | 'MEDIO' | 'ALTO';
+
+  @Column({
+    type: 'boolean',
+    name: 'requiere_apagado_electrico',
+    default: false,
+  })
+  requiereApagadoElectrico: boolean;
+
+  @Column({
+    type: 'numeric',
+    precision: 15,
+    scale: 2,
+    name: 'total_estimado_insumos_cop',
+    default: 0,
+  })
+  totalEstimadoInsumosCop: number;
+
+  @Column({ type: 'boolean', name: 'espera_insumos_flag', default: false })
+  esperaInsumosFlag: boolean;
+
+  @Column({
+    type: 'timestamptz',
+    name: 'fecha_limite_original_antes_extension',
+    nullable: true,
+  })
+  fechaLimiteOriginalAntesExtension?: Date;
+
+  @Column({
+    type: 'smallint',
+    name: 'dias_extendidos_por_insumos',
+    default: 0,
+  })
+  diasExtendidosPorInsumos: number;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 
@@ -126,4 +178,7 @@ export class SolicitudMantenimiento {
 
   @OneToMany(() => SolicitudEvidencia, (e) => e.solicitud, { nullable: true })
   evidencias?: SolicitudEvidencia[];
+
+  @OneToMany(() => SolicitudValoracion, (v) => v.solicitud, { nullable: true })
+  valoraciones?: SolicitudValoracion[];
 }
