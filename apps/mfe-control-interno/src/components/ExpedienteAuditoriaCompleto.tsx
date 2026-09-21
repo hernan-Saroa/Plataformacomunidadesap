@@ -789,6 +789,15 @@ export function ExpedienteAuditoriaCompleto({
           // Checklist de actividades del proceso
           checklistCompletados: data.checklistCompletados || {},
         };
+        if(auditoriaBackend.normatividadAplicable?.length == 0) {
+          auditoriaBackend.normatividadAplicable = data.programaAnualMetadata.normatividadAplicable || []
+        }
+        if(auditoriaBackend.riesgosIdentificados?.length == 0) {
+          auditoriaBackend.riesgosIdentificados = data.programaAnualMetadata.riesgosIdentificados || []
+        }
+        if(auditoriaBackend.controlesAplicar?.length == 0) {
+          auditoriaBackend.controlesAplicar = data.programaAnualMetadata.controlesAplicar || []
+        }
 
         if (cancelled) return;
         setAuditoria(auditoriaBackend);

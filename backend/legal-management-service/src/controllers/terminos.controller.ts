@@ -7,6 +7,7 @@ import type { Response } from 'express';
 import { TerminosService } from '../services/terminos.service';
 import { AlertasVencimientoTerminosService } from '../services/alertas-vencimiento-terminos.service';
 import { getLegalAccessFromRequest } from '../auth/legal-access';
+import { calcularDiasTermino } from '../utils/plazo-termino';
 
 // Colombia no maneja horario de verano, así que el offset es fijo todo el año.
 const OFFSET_BOGOTA = '-05:00';
@@ -73,8 +74,7 @@ export class TerminosController {
 
         let diasTermino = body.diasTermino || 0;
         if (fechaVencimiento && !diasTermino) {
-            const diffTime = Math.abs(fechaVencimiento.getTime() - fechaBase.getTime());
-            diasTermino = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            diasTermino = calcularDiasTermino(fechaBase, fechaVencimiento);
         }
 
         const creado = await this.terminosService.create({

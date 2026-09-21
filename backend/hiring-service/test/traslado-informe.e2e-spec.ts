@@ -97,7 +97,7 @@ describe('HU EFDS-1158 · traslado del informe y subsanaciones (6.4 a 6.6)', () 
     );
 
     await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(proceso.id, financiero);
+    await cdp.verificar(proceso.id, {}, financiero);
     await cdp.expedir(
       proceso.id,
       { numero: 'CDP-2026-158', valor: 1_000_000, fechaExpedicion: hoy() },

@@ -25,6 +25,11 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
     const participacion = {
       procesosDe: async () => enProcesos,
       estaEnLaBandeja: async () => enBandeja,
+      // La cuarta vía: una solicitud de CDP sin atender también alcanza el
+      // proceso. Aquí siempre en falso —estos casos son sobre el reparto—, pero
+      // el doble tiene que responderla o la rama falla por método inexistente
+      // en vez de por la regla que se está probando.
+      estaEnLaBandejaFinanciera: async () => false,
     };
     return new EstudioPrevioService(
       dataSource as never,
@@ -32,6 +37,8 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
       {} as never,
       participacion as never,
       permisosService as never,
+      {} as never,
+      {} as never,
       {} as never,
     );
   };

@@ -8,6 +8,7 @@ import { EscalaViaticoEntity } from '../../entities/liquidation/escala-viatico.e
 import { TarifaInvestigadorEntity } from '../../entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
+import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
 
 /**
  * Módulo de autoliquidación de viáticos.
@@ -21,6 +22,7 @@ import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-p
       TarifaInvestigadorEntity,
       TarifaRegionalExcepcionEntity,
       LiquidationParamEntity,
+      AuthSystemSettingEntity,
     ]),
   ],
   controllers: [LiquidationController, LiquidationConfigController],

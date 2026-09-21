@@ -7,8 +7,32 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerSolicitudesAsignadasAnalista: vi.fn(),
     obtenerDependencias: vi.fn(),
     obtenerSolicitudCompleta: vi.fn(),
+    enviarPaquetePresupuesto: vi.fn(),
+    resolverNombreDependencia: vi.fn((s: any) => s?.dependencia || 'Sede Central'),
   },
 }));
+
+vi.mock('../services/api/authService', () => {
+  const auth = {
+    canCancelarComision: vi.fn(() => true),
+    canEnviarPresupuesto: vi.fn(() => true),
+    canCrearObligacion: vi.fn(() => true),
+    canProcesarPago: vi.fn(() => true),
+    isTesoreria: vi.fn(() => true),
+    isAnalista: vi.fn(() => true),
+    getCurrentUserSync: vi.fn(() => ({
+      userId: '1',
+      username: 'analista_test',
+      roles: ['ANALISTA'],
+      permissions: [],
+      esAdmin: false,
+    })),
+  };
+  return {
+    default: auth,
+    authService: auth,
+  };
+});
 
 import viaticosService from '../services/api/viaticosService';
 
@@ -142,8 +166,62 @@ describe('AnalystInbox', () => {
     await waitFor(() => {
       expect(screen.getByText('COM-2026-DEV1')).toBeDefined();
       expect(screen.getByText(/Falta RUT actualizado y soporte de transporte/i)).toBeDefined();
-      expect(screen.getByText('Subsanar / Auditar')).toBeDefined();
+      expect(screen.getByText('Consultar Devolución')).toBeDefined();
       expect(screen.queryByText('COM-2026-OK2')).toBeNull();
+    });
+  });
+
+  it('muestra badge de Extemporánea coexistiendo con el estado ordinario y pestaña Extemporáneas', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-ext-1',
+        consecutivoUnico: 'COM-2026-EXT1',
+        estadoSolicitud: 'VERIFICADA',
+        extemporanea: true,
+      }),
+      solMock({
+        id: 'sol-norm-2',
+        consecutivoUnico: 'COM-2026-NORM2',
+        estadoSolicitud: 'SOLICITADO',
+        extemporanea: false,
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-EXT1')).toBeDefined();
+      // Extemporánea badge coexists with VERIFICADA state
+      expect(screen.getAllByText('Extemporánea').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Verificada')).toBeDefined();
+    });
+
+    // Switch to Extemporáneas tab
+    const tabExtemporaneas = screen.getByRole('button', { name: /Extemporáneas/i });
+    fireEvent.click(tabExtemporaneas);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-EXT1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-NORM2')).toBeNull();
+    });
+  });
+
+  it('muestra botón "Ver Devolución" y no "Auditoría" cuando la solicitud está en estado DEVUELTA', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-dev-1',
+        consecutivoUnico: 'COM-2026-DEV99',
+        estadoSolicitud: 'DEVUELTA',
+        motivoDevolucion: 'Documentos ilegibles',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-DEV99')).toBeDefined();
+      expect(screen.getByText('Ver Devolución')).toBeDefined();
+      expect(screen.queryByText('Auditoría')).toBeNull();
     });
   });
 
@@ -177,7 +255,7 @@ describe('AnalystInbox', () => {
     });
   });
 
-  it('no muestra comisiones en estado AUTORIZADA en el perfil de analista', async () => {
+  it('muestra comisiones en estado AUTORIZADA con acción "A Presupuesto" (Etapa 7)', async () => {
     (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
       solMock({
         id: 'sol-aut-1',
@@ -195,7 +273,204 @@ describe('AnalystInbox', () => {
 
     await waitFor(() => {
       expect(screen.getByText('COM-2026-SOL1')).toBeDefined();
-      expect(screen.queryByText('COM-2026-AUT1')).toBeNull();
+      expect(screen.getByText('COM-2026-AUT1')).toBeDefined();
+      expect(screen.getByText('A Presupuesto')).toBeDefined();
+    });
+  });
+
+  it('separa solicitudes Verificadas de Pendientes y muestra botón "Verificada · Consultar"', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-pend-1',
+        consecutivoUnico: 'COM-2026-PEND1',
+        estadoSolicitud: 'SOLICITADO',
+      }),
+      solMock({
+        id: 'sol-verif-1',
+        consecutivoUnico: 'COM-2026-VERIF1',
+        estadoSolicitud: 'VERIFICADA',
+        motivoDevolucion: 'Observación antigua ya corregida',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-PEND1')).toBeDefined();
+      expect(screen.getByText('COM-2026-VERIF1')).toBeDefined();
+    });
+
+    // Validar que en la pestaña "Pendientes de Verificación", solo aparece COM-2026-PEND1
+    const tabPendientes = screen.getByRole('button', { name: /Pendientes de Verificación/i });
+    fireEvent.click(tabPendientes);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-PEND1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-VERIF1')).toBeNull();
+    });
+
+    // Validar que en la pestaña "Verificadas", solo aparece COM-2026-VERIF1
+    const tabVerificadas = screen.getByRole('button', { name: /Verificadas/i });
+    fireEvent.click(tabVerificadas);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-VERIF1')).toBeDefined();
+      expect(screen.queryByText('COM-2026-PEND1')).toBeNull();
+      // Debe mostrar el botón verde "Verificada · Consultar"
+      expect(screen.getByText('Verificada · Consultar')).toBeDefined();
+      // No debe mostrar la observación de devolución previa porque ya está verificada
+      expect(screen.queryByText(/Observación antigua ya corregida/i)).toBeNull();
+    });
+  });
+
+  it('RF-PAG-001: muestra la pestaña Comprometidas y permite abrir el modal Crear Obligación SIIF', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-comp-01',
+        consecutivoUnico: 'COM-2026-0099',
+        estadoSolicitud: 'COMPROMETIDA',
+        codigoRp: '2026-10-25_RP_48920',
+        modalidadPago: 'AVANCE',
+        valorComprometido: 850000,
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Comprometidas \(Obligación SIIF\)/i)).toBeDefined();
+    });
+
+    const tabComprometidas = screen.getByRole('button', { name: /Comprometidas \(Obligación SIIF\)/i });
+    fireEvent.click(tabComprometidas);
+
+    expect(screen.getByText('COM-2026-0099')).toBeDefined();
+    expect(screen.getByText(/Crear Obligación SIIF/i)).toBeDefined();
+
+    const botonCrearObligacion = screen.getByRole('button', { name: /Crear Obligación SIIF/i });
+    fireEvent.click(botonCrearObligacion);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Crear Obligación en SIIF Nación/i)).toBeDefined();
+    });
+  });
+
+  it('RF-PAG-003: muestra botón Procesar Pago para solicitudes en estado OBLIGADA y abre modal', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: '15',
+        consecutivoUnico: 'COM-2026-0100',
+        estadoSolicitud: 'OBLIGADA',
+        codigoRp: '2026-10-25_RP_48920',
+        numeroObligacion: 'OBL-2026-00481',
+        modalidadPago: 'AVANCE',
+        valorObligacion: 850000,
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0100')).toBeDefined();
+    });
+
+    const botonProcesarPago = screen.getByRole('button', { name: /Procesar Pago/i });
+    expect(botonProcesarPago).toBeDefined();
+    fireEvent.click(botonProcesarPago);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Procesar Desembolso y Pago de Comisión/i)).toBeDefined();
+    });
+  });
+
+  it('muestra las columnas y valores de ciudad de origen y ciudad de destino en la bandeja de analista', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        consecutivoUnico: 'COM-2026-RUTA-1',
+        ciudadOrigen: 'Medellín',
+        destinoCiudad: 'Cartagena',
+        destinoDepartamento: 'Bolívar',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-RUTA-1')).toBeDefined();
+      expect(screen.getByText('Origen')).toBeDefined();
+      expect(screen.getByText('Destino')).toBeDefined();
+      expect(screen.getByText('Medellín')).toBeDefined();
+      expect(screen.getByText('Cartagena')).toBeDefined();
+      expect(screen.getByText('Bolívar')).toBeDefined();
+    });
+  });
+
+  it('muestra origen y destino en la Bandeja de Devoluciones', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        consecutivoUnico: 'COM-2026-DEV-RUTA',
+        estadoSolicitud: 'DEVUELTA',
+        motivoDevolucion: 'Subsanar certificado',
+        ciudadOrigen: 'Cali',
+        destinoCiudad: 'Pasto',
+        destinoDepartamento: 'Nariño',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bandeja de Devoluciones')).toBeDefined();
+    });
+
+    const tabDevoluciones = screen.getByRole('button', { name: /Bandeja de Devoluciones/i });
+    fireEvent.click(tabDevoluciones);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-DEV-RUTA')).toBeDefined();
+      expect(screen.getByText('Cali')).toBeDefined();
+      expect(screen.getByText('Pasto')).toBeDefined();
+      expect(screen.getByText('Nariño')).toBeDefined();
+    });
+  });
+
+  it('permite buscar solicitudes por ciudad de origen y por ciudad de destino', async () => {
+    (viaticosService.obtenerSolicitudesAsignadasAnalista as any).mockResolvedValue([
+      solMock({
+        id: 'sol-bog-cali',
+        consecutivoUnico: 'COM-2026-0050',
+        ciudadOrigen: 'Bogotá D.C.',
+        destinoCiudad: 'Cali',
+      }),
+      solMock({
+        id: 'sol-med-bar',
+        consecutivoUnico: 'COM-2026-0051',
+        ciudadOrigen: 'Medellín',
+        destinoCiudad: 'Barranquilla',
+      }),
+    ]);
+
+    render(<AnalystInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0050')).toBeDefined();
+      expect(screen.getByText('COM-2026-0051')).toBeDefined();
+    });
+
+    const input = screen.getByPlaceholderText(/Buscar por consecutivo/i);
+
+    // Buscar por ciudad de origen "Medellín"
+    fireEvent.change(input, { target: { value: 'Medellín' } });
+    await waitFor(() => {
+      expect(screen.queryByText('COM-2026-0050')).toBeNull();
+      expect(screen.getByText('COM-2026-0051')).toBeDefined();
+    });
+
+    // Buscar por ciudad de destino "Cali"
+    fireEvent.change(input, { target: { value: 'Cali' } });
+    await waitFor(() => {
+      expect(screen.getByText('COM-2026-0050')).toBeDefined();
+      expect(screen.queryByText('COM-2026-0051')).toBeNull();
     });
   });
 });

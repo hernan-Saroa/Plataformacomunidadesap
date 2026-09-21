@@ -25,6 +25,7 @@ import { Permissions } from '../../auth/decorators/permissions.decorator';
 import { Public } from '../../auth/decorators/public.decorator';
 import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { EvidenciasService } from './evidencias.service';
+import { OnlyOfficeService } from '../common/onlyoffice.service';
 import { CreateEvidenciaDto } from './dto/create-evidencia.dto';
 import { ValidarEvidenciaDto } from './dto/validar-evidencia.dto';
 
@@ -43,7 +44,10 @@ interface MulterFile {
 
 @Controller('evidencias')
 export class EvidenciasController {
-  constructor(private readonly evidenciasService: EvidenciasService) {}
+  constructor(
+    private readonly evidenciasService: EvidenciasService,
+    private readonly onlyOfficeService: OnlyOfficeService,
+  ) {}
 
   /**
    * POST /evidencias
@@ -227,6 +231,38 @@ export class EvidenciasController {
     );
 
     return res.sendFile(path.resolve(evidencia.rutaArchivo));
+  }
+
+  /**
+   * GET /evidencias/:id/onlyoffice-config
+   * Configuración del visor de OnlyOffice para ver la evidencia en pantalla (EFDS-1080)
+   */
+  @Get(':id/onlyoffice-config')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.EVIDENCIA_VIEW)
+  async onlyOfficeConfig(@Param('id') id: string, @Req() req: any) {
+    const evidencia = await this.evidenciasService.findOne(id);
+
+    if (!existsSync(evidencia.rutaArchivo)) {
+      throw new BadRequestException('El archivo no existe en el servidor');
+    }
+
+    const nombre = evidencia.nombreArchivoOriginal;
+    if (!this.onlyOfficeService.puedePrevisualizar(nombre)) {
+      throw new BadRequestException(
+        `Este tipo de archivo no se puede previsualizar: ${nombre}`,
+      );
+    }
+
+    return this.onlyOfficeService.generarConfigVista(
+      `/evidencias/${id}/download`,
+      `ev${id}v${evidencia.tamanioBytes}`,
+      nombre,
+      {
+        id: req.user?.userId || 'anonimo',
+        nombre: req.user?.username || 'Usuario',
+      },
+    );
   }
 
   /**

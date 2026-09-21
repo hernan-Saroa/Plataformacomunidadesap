@@ -917,12 +917,6 @@ async function seed() {
     if (existingParams === 0) {
       await dataSource.getRepository(LiquidationParamEntity).save([
         {
-          clave: 'SMMLV_2026',
-          valor: '1423500',
-          tipo: 'NUMBER',
-          descripcion: 'Salario mínimo mensual vigente 2026',
-        },
-        {
           clave: 'FACTOR_CONTRATISTA',
           valor: '0.8',
           tipo: 'NUMBER',
@@ -950,12 +944,6 @@ async function seed() {
       console.log(`✅ ${existingParams} parámetros de liquidación creados.`);
     } else {
       await dataSource.getRepository(LiquidationParamEntity).save([
-        {
-          clave: 'SMMLV_2026',
-          valor: '1423500',
-          tipo: 'NUMBER',
-          descripcion: 'Salario mínimo mensual vigente 2026',
-        },
         {
           clave: 'FACTOR_CONTRATISTA',
           valor: '0.8',

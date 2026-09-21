@@ -184,6 +184,9 @@ backend/internal-institutional-control-service/uploads/control-interno/
 backend/academic-registration-service/uploads/
 backend/academic-work-plan-service/uploads/
 backend/hiring-service/uploads/
+backend/travel-expenses-service/uploads/
+
+#Archivos de ambiente
 .env.dev
 .env.qa
 .env.pre

@@ -22,6 +22,20 @@ export class Proceso {
   @Column({ length: 60, unique: true })
   radicado: string;
 
+  /**
+   * Consecutivo de Active Document con el que el área remitió el paquete a la
+   * Dirección de Contratación (actividad 3.3).
+   *
+   * No es `radicado`: aquel es el consecutivo del módulo (PC-AAAA-NNNN) y este
+   * el del aplicativo de gestión documental de la escuela. Sin él, el
+   * expediente y Active Document no se pueden cruzar.
+   *
+   * Nulo cuando el paquete se remitió por una vía que no genera radicado: el
+   * procedimiento admite el correo y la carpeta compartida.
+   */
+  @Column({ name: 'radicado_gestion_documental', length: 120, nullable: true })
+  radicadoGestionDocumental: string | null;
+
   @Column({ type: 'text' })
   objeto: string;
 
@@ -33,6 +47,22 @@ export class Proceso {
    */
   @Column({ length: 60, nullable: true })
   modalidad: string | null;
+
+  /**
+   * Causal que habilita contratar por esa modalidad; referencia a
+   * hiring.causales_contratacion (actividad 3.6).
+   *
+   * Nula en las nueve modalidades donde la matriz no marca la actividad, y
+   * también en las dos donde sí mientras el abogado no la haya elegido. Vive
+   * junto a la modalidad porque es del proceso: la lee la 5.1 para redactar el
+   * acto de justificación de la directa, no solo la pantalla de la 3.6.
+   */
+  @Column({ length: 60, nullable: true })
+  causal: string | null;
+
+  /** Por qué el objeto encaja en esa causal, en palabras del abogado. */
+  @Column({ name: 'causal_sustento', type: 'text', nullable: true })
+  causalSustento: string | null;
 
   /**
    * Valor estimado del contrato, en pesos.

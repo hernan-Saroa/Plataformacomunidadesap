@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Save, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle, Lock } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { LiquidationParam } from '../../types/parametrizacion';
-import { formatearMoneda, soloNumeros } from '../../utils/viaticosUtils';
+import { formatearMoneda } from '../../utils/viaticosUtils';
 
 const PARAMETROS_MONETARIOS = new Set(['SMMLV_2026']);
 
@@ -28,7 +28,9 @@ export default function ParametrosLiquidacionAdmin() {
     }
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    cargar();
+  }, []);
 
   const cambiar = (clave: string, valor: string) => {
     setParams((prev) => ({
@@ -43,7 +45,6 @@ export default function ParametrosLiquidacionAdmin() {
     setExito(null);
     try {
       const dto: any = {};
-      if (params['SMMLV_2026']) dto.smmlv = Number(params['SMMLV_2026'].valor);
       if (params['FACTOR_CONTRATISTA']) dto.factorContratista = Number(params['FACTOR_CONTRATISTA'].valor);
       if (params['FACTOR_SIN_PERNOCTA']) dto.factorSinPernocta = Number(params['FACTOR_SIN_PERNOCTA'].valor);
       if (params['CACHE_TTL_MINUTES']) dto.cacheTtlMinutes = Number(params['CACHE_TTL_MINUTES'].valor);
@@ -101,19 +102,30 @@ export default function ParametrosLiquidacionAdmin() {
         <div className="py-10 text-center text-xs text-slate-500">Cargando...</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1">SMMLV 2026</label>
+          <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Lock className="w-3 h-3 text-slate-400" />
+                SMMLV 2026
+              </label>
+              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium" title="Parámetro maestro centralizado en Auth">
+                Solo Lectura (Auth)
+              </span>
+            </div>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
               <input
                 type="text"
-                inputMode="numeric"
+                readOnly
+                disabled
                 value={formatearMoneda(Number(getParam('SMMLV_2026')?.valor || '1423500'))}
-                onChange={(e) => cambiar('SMMLV_2026', String(Number(soloNumeros(e.target.value)) || 0))}
-                className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+                className="w-full pl-7 pr-3 py-2 bg-slate-100/70 border border-slate-200 rounded-xl text-xs text-right font-bold text-slate-600 cursor-not-allowed select-all"
+                title="El salario mínimo se administra exclusivamente desde Ajustes Generales de Auth"
               />
             </div>
-            <p className="text-[10px] text-slate-500 mt-1">{formatearValor('SMMLV_2026', getParam('SMMLV_2026')?.valor || '1423500')}</p>
+            <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+              <span>Gestionado en <strong>Configuración General &gt; Ajustes Generales</strong></span>
+            </p>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Factor Contratista</label>

@@ -121,7 +121,18 @@ export type CertificateCorrectionListResponse =
       page: number;
       limit: number;
       totalPages: number;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     };
+
+/** Columnas por las que el backend acepta ordenar la bandeja de correcciones. */
+export type CorrectionSortField =
+  | 'status'
+  | 'request_number'
+  | 'requester_name'
+  | 'certificate_number'
+  | 'created_at'
+  | 'due_date';
 
 export type PrimaTecnicaCategoria = string;
 
@@ -172,58 +183,8 @@ export type LaborFunctionProfileApi = {
   is_active: boolean;
   functions: LaborFunctionItemApi[];
   function_count: number;
-  association_count: number;
   created_at: string;
   updated_at: string;
-};
-
-export type LaborFunctionAssociationApi = {
-  id: string;
-  /** De donde salio la vinculacion: la tabla local o la vista Oracle FNC. */
-  origen: 'local' | 'oracle';
-  request_number: string;
-  full_name: string;
-  id_number: string;
-  document_type: string | null;
-  email: string | null;
-  campus: string | null;
-  status: string;
-  position_name: string | null;
-  position_category: string | null;
-  hierarchical_level: string | null;
-  combined_code: string;
-  department_name: string | null;
-  internal_group: string | null;
-  hiring_date: string | null;
-  request_date: string | null;
-  created_at: string;
-};
-
-export type LaborFunctionAssociationsResponseApi = {
-  profile: {
-    id: string;
-    combined_code: string;
-    position_code: string;
-    grade_code: string | null;
-    position_name: string;
-    hierarchical_level: string | null;
-    department_name: string | null;
-    internal_group: string | null;
-    function_count: number;
-  };
-  items: LaborFunctionAssociationApi[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-  summary: {
-    associations: number;
-    uniquePeople: number;
-    byStatus: Record<string, number>;
-    fromLocal: number;
-    fromOracle: number;
-    oracleAvailable: boolean;
-  };
 };
 
 export type LaborFunctionProfileHintApi = {
@@ -300,6 +261,8 @@ export const certificadosService = {
       limit?: number;
       status?: CorrectionStatus | 'ALL';
       search?: string;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     }, options?: CorrectionReadOptions): Promise<CertificateCorrectionListResponse> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params, correctionReadConfig(options));
     },
@@ -456,19 +419,9 @@ export const certificadosService = {
       page: number;
       limit: number;
       totalPages: number;
-      stats: { profiles: number; functions: number; associatedRequests: number };
+      stats: { profiles: number; functions: number };
     }> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/labor-functions`, params);
-    },
-
-    async listarAsociadosFuncionesLaborales(
-      id: string,
-      params?: { search?: string; page?: number; limit?: number },
-    ): Promise<LaborFunctionAssociationsResponseApi> {
-      return apiClient.get(
-        `${SERVICE_PREFIX}/certificates/labor-functions/${id}/associations`,
-        params,
-      );
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/labor-functions`, params, { cache: 'no-store' });
     },
 
     async consultarEmpleadoFuncionesLaborales(
@@ -497,7 +450,6 @@ export const certificadosService = {
           | 'department_name'
           | 'internal_group'
           | 'function_count'
-          | 'association_count'
         >
       >;
     }> {

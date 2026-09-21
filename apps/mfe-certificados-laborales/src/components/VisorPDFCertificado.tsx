@@ -419,11 +419,17 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
         ? ubicacionCargo
         : observationsEncargo;
 
-    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
-    // solo usa la dependencia cuando no hay centro de costo. Misma regla y
-    // mismo orden que labor-certificate-pdf.service.ts en el backend: esta
-    // vista previa se renderiza aqui, asi que si las dos copias no coinciden el
-    // usuario ve una cosa en pantalla y otra en el PDF.
+    // [DEPENDENCIA] imprime la DEPENDENCIA y el centro de costo (grupo interno
+    // de trabajo) es solo el ultimo recurso. Misma regla y mismo orden que
+    // labor-certificate-pdf.service.ts en el backend: esta vista previa se
+    // renderiza aqui, asi que si las dos copias no coinciden el usuario ve una
+    // cosa en pantalla y otra en el PDF.
+    //
+    // `organization_department` va PRIMERO porque es la unica columna que
+    // significa "dependencia" en las dos fuentes: en las filas sincronizadas
+    // desde Oracle, `department` guarda el CENTROCOSTO (el grupo), y leerla
+    // primero hacia que [DEPENDENCIA] imprimiera el grupo. En un certificado
+    // corregido manda lo que guardo el coordinador.
     //
     // No se usa `position_location`: es el unico campo cuyo significado se
     // invierte segun la fuente (en las filas locales trae el grupo y en las de
@@ -436,11 +442,15 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       (certificado as any)?.internal_group,
       (certificado as any)?.cost_center,
     );
-    const dato7 =
-      centroCosto ||
-      dependenciaHijo ||
-      normalizarDependencia(requestData?.organization_department) ||
-      '';
+    const dependenciaOrganizacional = normalizarDependencia(
+      requestData?.organization_department ||
+      requestData?.organizationDepartment ||
+      (certificado as any)?.organization_department ||
+      '',
+    );
+    const dato7 = (certificado as any)?.is_corrected
+      ? dependenciaHijo || centroCosto || ''
+      : dependenciaOrganizacional || dependenciaHijo || centroCosto || '';
     const cargoDato6 = tipoVinculacion;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
@@ -450,18 +460,47 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       new Date().toISOString();
     const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
 
-    const grupoVariable = normalizarDependencia(
-      requestData?.position_location ||
-      requestData?.positionLocation ||
-      certificado.position_location ||
-      '',
-    );
+    // [GRUPO] imprime el GRUPO INTERNO DE TRABAJO y solo cae a la ubicacion del
+    // cargo (`position_location`) cuando no hay grupo. Misma regla y mismo
+    // orden que labor-certificate-pdf.service.ts: esta vista previa se
+    // renderiza aqui, asi que si las dos copias no coinciden el usuario ve una
+    // cosa en pantalla y otra en el PDF. `resolverCentroCosto` descarta los
+    // "N/A" y "NO APLICA", que para esta variable cuentan como vacio.
+    // En un certificado corregido manda lo que guardo el coordinador.
+    // Mismo valor que usa [DEPENDENCIA] como ultimo recurso: en las filas de
+    // Oracle el CENTROCOSTO ES el grupo interno.
+    const grupoInterno = centroCosto;
+    // Durante un encargo, [GRUPO] sale de la MISMA vinculacion que
+    // [DEPENDENCIA]: las dos variables describen un solo lugar. El backend lo
+    // resuelve en `certificate_group`, igual que `certificate_dependency`.
+    const grupoDeLaVinculacionImpresa =
+      requestData?.certificate_group ??
+      (certificado as any)?.certificate_group ??
+      '';
+    const grupoVariable = (certificado as any)?.is_corrected
+      ? normalizarDependencia(certificado.position_location || '') ||
+        normalizarDependencia(grupoInterno)
+      : normalizarDependencia(
+          grupoDeLaVinculacionImpresa ||
+          grupoInterno ||
+          requestData?.position_location ||
+          requestData?.positionLocation ||
+          certificado.position_location ||
+          '',
+        );
     const hasGrupoVariable = /\[GRUPO\]/i.test(html || '');
     const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(html || '');
+    const dependenciaVariable = (certificado as any)?.is_corrected
+      ? dato7
+      : requestData?.certificate_dependency ?? certificado.certificate_dependency ?? dato7;
+    // Se compara contra lo que [DEPENDENCIA] IMPRIME de verdad, no contra
+    // `dato7`: durante un encargo [DEPENDENCIA] usa la vinculacion normal, asi
+    // que comparar con `dato7` (la dependencia del encargo) callaba [GRUPO]
+    // aunque en el documento no se estuviera repitiendo nada.
     const shouldHideGrupo =
       hasGrupoVariable &&
       hasDependenciaVariable &&
-      sonValoresPlantillaEquivalentes(grupoVariable, dato7);
+      sonValoresPlantillaEquivalentes(grupoVariable, dependenciaVariable);
     const grupoVariableResolved = shouldHideGrupo ? '' : grupoVariable;
     const cargoVariable = construirCargoVariable(
       requestData?.career_category || (certificado as any)?.career_category || certificado.empleado.cargo || '',
@@ -498,9 +537,7 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       '[GRUPO]': grupoVariableResolved,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': (certificado as any).is_corrected
-        ? dato7
-        : requestData?.certificate_dependency ?? certificado.certificate_dependency ?? dato7,
+      '[DEPENDENCIA]': dependenciaVariable,
       '[DEPENDENCIA_PADRE]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',

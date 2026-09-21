@@ -83,11 +83,23 @@ export class SolicitudMantenimiento {
   @Column({ type: 'simple-json', default: () => "'[]'", name: 'remisiones' })
   remisiones: Array<Record<string, any>>;
 
-  @Column({ type: 'uuid', nullable: true, name: 'id_categoria' })
-  idCategoria: string;
+  @Column({ type: 'int', nullable: true, name: 'id_categoria' })
+  idCategoria: number;
+
+  @Column({ type: 'int', nullable: true, name: 'id_subcategoria' })
+  idSubcategoria: number;
 
   @Column({ type: 'timestamptz', nullable: true, name: 'fecha_radicacion' })
   fechaRadicacion: Date;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'fecha_limite_atencion' })
+  fechaLimiteAtencion?: Date;
+
+  @Column({ type: 'simple-json', default: () => "'[]'", name: 'asignaciones' })
+  asignaciones?: Array<Record<string, any>>;
+
+  @Column({ type: 'text', nullable: true, name: 'motivo_rechazo' })
+  motivoRechazo?: string;
 
   @Column({ type: 'uuid', nullable: true, name: 'usuario_solicitante_id' })
   usuarioSolicitanteId: string;

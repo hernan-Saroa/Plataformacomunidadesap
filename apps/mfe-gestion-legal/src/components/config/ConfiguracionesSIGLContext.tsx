@@ -764,16 +764,46 @@ function leerListaLocal<T>(clave: string): T[] | null {
   }
 }
 
-// Lee una lista del backend. Devuelve null si no existe o falla la petición,
-// para que el llamador pueda caer a la caché local o a los valores iniciales.
-async function leerListaBackend<T>(clave: string): Promise<T[] | null> {
-  try {
-    const res = await legalService.getConfiguration(clave);
-    const value = res?.value;
-    return Array.isArray(value) ? (value as T[]) : null;
-  } catch (error) {
-    console.warn(`⚠️ No se pudo leer ${clave} del backend, se usará la caché local.`, error);
-    return null;
+// Resultado de leer una lista del backend. Distingue los tres casos que importan:
+//   ok        → el servidor devolvió la lista guardada.
+//   sin-fila  → la clave todavía no existe (instalación nueva): hay que sembrarla.
+//   error     → no se pudo saber qué hay guardado (red caída, 500, sesión que
+//               acababa de renovarse...).
+//
+// Confundir "error" con "sin-fila" era lo que borraba la configuración: al fallar
+// la lectura se sembraban los valores de fábrica y se escribían ENCIMA de lo que el
+// administrador ya tenía guardado. Como el logout hace localStorage.clear(), en la
+// siguiente sesión no quedaba ni la caché local y la parametrización se perdía.
+type LecturaLista<T> =
+  | { estado: 'ok'; lista: T[] }
+  | { estado: 'sin-fila' }
+  | { estado: 'error' };
+
+const REINTENTOS_LECTURA_LISTA = 2;
+const ESPERA_REINTENTO_MS = 400;
+
+const esperar = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+// Lee una lista del backend, reintentando ante fallos transitorios (el arranque del
+// servicio o la renovación de la cookie justo después de iniciar sesión pueden tumbar
+// la primera petición).
+async function leerListaBackend<T>(clave: string): Promise<LecturaLista<T>> {
+  for (let intento = 0; ; intento++) {
+    try {
+      const res = await legalService.getConfiguration(clave);
+      const value = res?.value;
+      return Array.isArray(value) ? { estado: 'ok', lista: value as T[] } : { estado: 'sin-fila' };
+    } catch (error: any) {
+      // Un 404 sí es una respuesta: la clave no está configurada todavía.
+      if (error?.statusCode === 404 || error?.status === 404) {
+        return { estado: 'sin-fila' };
+      }
+      if (intento >= REINTENTOS_LECTURA_LISTA) {
+        console.warn(`⚠️ No se pudo leer ${clave} del backend tras ${intento + 1} intentos.`, error);
+        return { estado: 'error' };
+      }
+      await esperar(ESPERA_REINTENTO_MS * (intento + 1));
+    }
   }
 }
 
@@ -798,6 +828,28 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   // backend es asíncrona: sin esta bandera, una respuesta lenta pisaría lo que el
   // usuario ya editó.
   const usuarioEditoRef = useRef(false);
+  // Claves de Términos e Informes cuya lectura inicial falló: no sabemos qué hay
+  // guardado en el servidor, así que NO se escriben (ni la semilla de fábrica ni las
+  // ediciones posteriores) para no pisar la parametrización existente.
+  const listasNoCargadasRef = useRef<Set<string>>(new Set());
+  // Carga inicial de esas listas. Guardar antes de que termine dejaría el bloqueo de
+  // escritura sin efecto, así que el guardado la espera.
+  const cargaListasRef = useRef<Promise<void> | null>(null);
+  const avisoListasNoCargadasRef = useRef(false);
+  // Evita repetir el aviso de autoguardado fallido en cada rebote del debounce; se
+  // rearma en cuanto un guardado vuelve a salir bien.
+  const avisoAutoguardadoFallidoRef = useRef(false);
+
+  // Avisa una sola vez de que la configuración de Términos e Informes no se pudo leer
+  // y que, por seguridad, no se está guardando.
+  const avisarListasNoCargadas = () => {
+    if (avisoListasNoCargadasRef.current) return;
+    avisoListasNoCargadasRef.current = true;
+    toast.error('No se pudo cargar la configuración de Términos e Informes', {
+      description: 'Para no sobrescribir lo ya parametrizado, los cambios de esta sección no se guardarán. Recarga la página e inténtalo de nuevo.',
+      duration: 8000,
+    });
+  };
 
   // Cargar configuraciones desde API
   useEffect(() => {
@@ -952,31 +1004,80 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     const fuentesLocales = leerListaLocal<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
     if (fuentesLocales) setTiposFuenteNormativa(fuentesLocales);
 
+    // Resuelve una lista contra las tres fuentes posibles, en orden de autoridad.
+    //
+    // La clave está en distinguir "nunca se configuró" de "se configuró y quedó vacía":
+    // los valores por defecto son una semilla inicial, NO un respaldo permanente. Antes,
+    // al no existir fila en el backend se re-mostraban los 4 destinatarios de fábrica, y
+    // el autoguardado los reescribía; por eso, si el usuario los borraba todos, volvían
+    // a aparecer solos. Ahora se siembran UNA vez y a partir de ahí el backend manda,
+    // incluso cuando lo que dice es "esta lista está vacía".
+    const resolverLista = <T,>(
+      lectura: LecturaLista<T>,
+      local: T[] | null,
+      iniciales: T[],
+      clave: string,
+      aplicar: (valor: T[]) => void,
+    ) => {
+      if (lectura.estado === 'ok') {
+        aplicar(lectura.lista);
+        localStorage.setItem(clave, JSON.stringify(lectura.lista));
+        return;
+      }
+
+      if (lectura.estado === 'error') {
+        // No se pudo leer: lo guardado en el servidor sigue siendo la verdad, pero no
+        // sabemos cuál es. Se pinta la caché local si existe (solo para no dejar la
+        // pantalla vacía) y se bloquea la escritura de esta clave.
+        listasNoCargadasRef.current.add(clave);
+        if (local) aplicar(local);
+        return;
+      }
+
+      // Sin fila en el backend. Si hay caché local se respeta (puede ser una lista que el
+      // usuario vació a propósito); si no hay nada, es una instalación nueva y se siembra.
+      const semilla = local ?? iniciales;
+      aplicar(semilla);
+      localStorage.setItem(clave, JSON.stringify(semilla));
+      legalService.saveConfiguration(clave, semilla).catch(err => {
+        console.warn(`⚠️ No se pudo sembrar ${clave} en el backend:`, err);
+      });
+    };
+
     const loadListasTerminosInformes = async () => {
-      const [destinatariosRemotos, entesRemotos, fuentesRemotas] = await Promise.all([
+      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes] = await Promise.all([
         leerListaBackend<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme),
         leerListaBackend<EnteSolicitanteInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme),
         leerListaBackend<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa),
       ]);
 
+      // El bloqueo de escritura se marca aunque el usuario ya esté editando: si no sabemos
+      // qué hay guardado, tampoco podemos dejar que el autoguardado lo reemplace.
+      const claves = [
+        [lecturaDestinatarios, CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme],
+        [lecturaEntes, CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme],
+        [lecturaFuentes, CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa],
+      ] as const;
+      claves.forEach(([lectura, clave]) => {
+        if (lectura.estado === 'error') listasNoCargadasRef.current.add(clave);
+      });
+      if (listasNoCargadasRef.current.size > 0) avisarListasNoCargadas();
+
       // Si el usuario ya empezó a editar, la respuesta del backend llegó tarde: descartarla.
       if (usuarioEditoRef.current) return;
 
-      if (destinatariosRemotos) {
-        setDestinatariosInforme(destinatariosRemotos);
-        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(destinatariosRemotos));
+      resolverLista(lecturaDestinatarios, destinatariosLocales, destinatariosInformeIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, setDestinatariosInforme);
+      resolverLista(lecturaEntes, entesSolicitantesLocales, entesSolicitantesInformeIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, setEntesSolicitantesInforme);
+      resolverLista(lecturaFuentes, fuentesLocales, tiposFuenteNormativaIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, setTiposFuenteNormativa);
+
+      if (listasNoCargadasRef.current.size === 0) {
+        console.log('✅ Listas de Términos e Informes sincronizadas desde backend');
       }
-      if (entesRemotos) {
-        setEntesSolicitantesInforme(entesRemotos);
-        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(entesRemotos));
-      }
-      if (fuentesRemotas) {
-        setTiposFuenteNormativa(fuentesRemotas);
-        localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, JSON.stringify(fuentesRemotas));
-      }
-      console.log('✅ Listas de Términos e Informes sincronizadas desde backend');
     };
-    loadListasTerminosInformes();
+    cargaListasRef.current = loadListasTerminosInformes();
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -1141,6 +1242,28 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
   // Guardar configuraciones
   const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
+    // Esperar la lectura inicial: hasta que termine no se sabe qué claves son seguras
+    // de escribir. En la práctica ya está resuelta salvo que el usuario guarde en el
+    // primer segundo tras abrir la pantalla.
+    try {
+      await cargaListasRef.current;
+    } catch (error) {
+      console.warn('⚠️ La carga inicial de las listas de Términos e Informes no terminó bien:', error);
+    }
+
+    // Listas de Términos e Informes que sí se pueden escribir: las que se leyeron bien
+    // al arrancar. Si una lectura falló, guardar lo que hay en pantalla (los valores de
+    // fábrica) borraría la parametrización real que sigue en la base de datos.
+    const listasTerminosInformes: [string, any][] = [
+      [CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInforme],
+      [CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInforme],
+      [CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativa],
+    ];
+    const listasGuardables = listasTerminosInformes.filter(([clave]) => !listasNoCargadasRef.current.has(clave));
+    if (listasGuardables.length < listasTerminosInformes.length) {
+      avisarListasNoCargadas();
+    }
+
     // Persistir en localStorage ANTES de cualquier await: si el backend falla, el
     // usuario no pierde lo que acaba de editar (antes estas escrituras estaban al
     // final y una sola petición fallida se llevaba por delante todos los cambios).
@@ -1152,9 +1275,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
       localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
       localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
-      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, JSON.stringify(destinatariosInforme));
-      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, JSON.stringify(entesSolicitantesInforme));
-      localStorage.setItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, JSON.stringify(tiposFuenteNormativa));
+      listasGuardables.forEach(([clave, valor]) => localStorage.setItem(clave, JSON.stringify(valor)));
     } catch (error) {
       console.warn('⚠️ No se pudo escribir la caché local de configuraciones:', error);
     }
@@ -1186,9 +1307,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         ...configuraciones.map(config =>
           legalService.saveConfiguration(config.id, config)
         ),
-        legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInforme),
-        legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInforme),
-        legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativa),
+        ...listasGuardables.map(([clave, valor]) => legalService.saveConfiguration(clave, valor)),
       ]);
 
       // Renombrar tipoProceso en expedientes afectados
@@ -1235,6 +1354,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
       // La caché local ya se escribió al inicio de esta función.
       usuarioEditoRef.current = false;
+      avisoAutoguardadoFallidoRef.current = false;
       setCambiosPendientes(false);
       
       if (!silencioso) {
@@ -1268,6 +1388,16 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       } catch (err) {
         console.error('❌ Error en guardado automático:', err);
         setSavingStatus('error');
+        // El autoguardado era mudo: la configuración se veía bien toda la sesión
+        // (venía de la caché local) y solo al volver a entrar se descubría que nunca
+        // había llegado al servidor. Ahora se avisa en el momento.
+        if (!avisoAutoguardadoFallidoRef.current) {
+          avisoAutoguardadoFallidoRef.current = true;
+          toast.error('No se pudieron guardar las configuraciones en el servidor', {
+            description: 'Los cambios están solo en este navegador y se perderán al cerrar sesión. Revisa la conexión y pulsa "Guardar".',
+            duration: 8000,
+          });
+        }
       }
     }, 1500); // 1.5s debounce
 

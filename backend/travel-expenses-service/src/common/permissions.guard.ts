@@ -19,6 +19,31 @@ const SUPER_ADMIN_ROLES = [
 ];
 
 const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
+  ENLACE_DEPENDENCIA: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ROL_ENLACE_DEPENDENCIA: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ENLACE: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ROL_ENLACE: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
+  ENLACE_DE_DEPENDENCIA: [
+    'travel_expenses:create_request',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
+  ],
   CONTROL_VIATICOS: [
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
@@ -35,6 +60,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:verify_request',
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
+    'travel_expenses:send_to_budget',
   ],
   ROL_ANALISTA: [
     'travel_expenses:read_assigned',
@@ -42,8 +68,23 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:verify_request',
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
+    'travel_expenses:send_to_budget',
+  ],
+  ANALISTA_VIATICOS: [
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:export_siif',
+    'travel_expenses:return_assigned',
+    'travel_expenses:send_to_budget',
   ],
   SECRETARIO: [
+    'travel_expenses:read_inbox',
+    'travel_expenses:set_priority',
+    'travel_expenses:return_request',
+    'travel_expenses:assign_analyst',
+  ],
+  SECRETARIO_VIATICOS: [
     'travel_expenses:read_inbox',
     'travel_expenses:set_priority',
     'travel_expenses:return_request',
@@ -52,6 +93,113 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
   SOLICITANTE: [
     'travel_expenses:create_request',
     'travel_expenses:read_my_requests',
+  ],
+  PRESUPUESTO: [
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:issue_rp',
+    'travel_expenses:register_rp',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+  ],
+  GRUPO_PRESUPUESTO: [
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:issue_rp',
+    'travel_expenses:register_rp',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+  ],
+  TESORERIA: [
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_inbox',
+  ],
+  ROL_TESORERIA: [
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_inbox',
+  ],
+  GRUPO_TESORERIA: [
+    'travel_expenses:read_payments',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_inbox',
+  ],
+  SST: [
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_payments',
+    'travel_expenses:read_inbox',
+  ],
+  ROL_SST: [
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_payments',
+    'travel_expenses:read_inbox',
+  ],
+  SEGURIDAD_SALUD_TRABAJO: [
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_payments',
+    'travel_expenses:read_inbox',
+  ],
+  SEGURIDAD_Y_SALUD_EN_EL_TRABAJO: [
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_payments',
+    'travel_expenses:read_inbox',
+  ],
+  GRUPO_SST: [
+    'travel_expenses:read_sst_requests',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+    'travel_expenses:read_obligations',
+    'travel_expenses:read_payments',
+    'travel_expenses:read_inbox',
+  ],
+  SUBDIRECCION_GESTION_CORPORATIVA: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+  ],
+  ROL_SUBDIRECCION_GESTION_CORPORATIVA: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+  ],
+  DIRECCION_NACIONAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+  ],
+  ROL_DIRECCION_NACIONAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+  ],
+  RESPONSABLE_TIQUETES: [
+    'travel_expenses:create_request',
+    'travel_expenses:manage_tickets',
   ],
 };
 

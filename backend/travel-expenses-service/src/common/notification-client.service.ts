@@ -57,6 +57,30 @@ export class NotificationClientService {
     }
   }
 
+  async getEmailsByRole(roleCode: string): Promise<string[]> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT DISTINCT COALESCE(u.username, '') AS email
+         FROM auth."user" u
+         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         INNER JOIN auth.role r ON r.id = ur.id_rol
+         WHERE u.is_active = true
+           AND (r.id::text = $1 OR UPPER(r.code) = UPPER($1) OR UPPER(r.name) = UPPER($1))
+           AND COALESCE(ur.is_active, true) = true
+           AND COALESCE(r.is_active, true) = true`,
+        [roleCode],
+      );
+      return rows
+        .map((r: any) => r.email)
+        .filter((email: string) => email && email.includes('@'));
+    } catch (err: any) {
+      this.logger.error(
+        `[NotificationClient] Error consultando correos para rol "${roleCode}": ${err?.message}`,
+      );
+      return [];
+    }
+  }
+
   async notifyByRole(
     roleCode: string,
     dto: Omit<SendNotificationDto, 'id_usuario_destinatario'>,
@@ -93,6 +117,7 @@ export class NotificationClientService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dto),
+          signal: AbortSignal.timeout(2000),
         });
         if (response.ok) {
           return;

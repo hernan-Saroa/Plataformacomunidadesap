@@ -52,9 +52,12 @@ interface CertificadoLaboral {
   certificateHash: string;
   qrCode: string;
   position_location?: string;
+  is_corrected?: boolean;
+  organization_department?: string;
   observations?: string;
   department?: string;
   certificate_dependency?: string;
+  certificate_group?: string;
   cod_cargo?: string;
   cod_grade?: string;
   campus?: string;
@@ -107,13 +110,18 @@ interface CertificadosLaboralesDashboardProps {
   canManageTemplates?: boolean;
   canEditPrima?: boolean;
   canManageFunctions?: boolean;
+  /** Acceso de solo lectura al modulo; la gestion lo implica. */
+  canViewFunctions?: boolean;
   canExportReport?: boolean;
   canDeliver?: boolean;
   canVerify?: boolean;
   canManageCorrections?: boolean;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canManageFunctions = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canManageFunctions = false, canViewFunctions = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
+  // El boton abre el modulo, asi que basta el permiso de consulta. Se mantiene
+  // el respaldo a canManageFunctions por si el router no envia el nuevo prop.
+  const puedeVerFunciones = canViewFunctions || canManageFunctions;
   const resolverTemplateType = (value?: string) => {
     const base = String(value || '').toLowerCase();
     const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -249,7 +257,16 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         : cert.status === 'EXPIRED'
           ? 'expirado'
           : employmentEstado;
+    // `organization_department` primero: en las filas sincronizadas desde
+    // Oracle, `department` guarda el CENTROCOSTO (el grupo) y no la dependencia.
+    // En un certificado corregido manda lo que guardo el coordinador.
+    const dependenciaOrganizacional = cert.is_corrected
+      ? ''
+      : cert.request?.organization_department ||
+        cert.request?.organizationDepartment ||
+        '';
     const ubicacionRaw = normalizarDependencia(
+      dependenciaOrganizacional ||
       cert.department ||
       cert.request?.department ||
       cert.request?.departmentName ||
@@ -259,12 +276,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cert.positionLocation ||
       '',
     );
+    // En un certificado corregido manda la columna del certificado: es la que
+    // edita el coordinador y la que imprime el backend. La correccion no
+    // reescribe la solicitud, asi que leerla primero mostraria el valor viejo.
     const grupoRaw = normalizarDependencia(
-      cert.request?.position_location ||
-      cert.request?.positionLocation ||
-      cert.position_location ||
-      cert.positionLocation ||
-      '',
+      cert.is_corrected
+        ? cert.position_location || cert.positionLocation || ''
+        : cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '',
     );
     const incluyeSalario = normalizarBoolean(
       cert.include_salary ??
@@ -315,14 +337,21 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
       position_location: grupoRaw,
+      is_corrected: Boolean(cert.is_corrected),
+      organization_department: dependenciaOrganizacional,
       observations: cert.observations || cert.request?.observations,
       department: ubicacionRaw,
       certificate_dependency: cert.is_corrected
         ? undefined
         : cert.request?.certificate_dependency ?? cert.certificate_dependency,
-      // Centro de costo (grupo interno): [DEPENDENCIA] lo prioriza sobre la
+      // [GRUPO] sale de la misma vinculacion que [DEPENDENCIA]: el visor lo
+      // necesita para no contradecir al PDF del backend.
+      certificate_group: cert.is_corrected
+        ? undefined
+        : cert.request?.certificate_group ?? cert.certificate_group,
+      // Centro de costo (grupo interno): [DEPENDENCIA] cae a el cuando no hay
       // dependencia, asi que tiene que llegar hasta el visor. Sin esto la vista
-      // previa cae al department y contradice al PDF del backend.
+      // previa se queda vacia y contradice al PDF del backend.
       internal_group:
         cert.request?.internal_group ||
         cert.request?.internalGroup ||
@@ -858,7 +887,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         </span>
                       </DropdownMenuItem>
                     )}
-                    {canManageFunctions && (
+                    {puedeVerFunciones && (
                       <DropdownMenuItem
                         onClick={() => onNavigate?.('funciones-laborales')}
                         className="certificates-tools-item group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
@@ -868,7 +897,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block font-semibold text-slate-800">Funciones laborales</span>
-                          <span className="block truncate text-xs font-normal text-slate-500">Carga individual y Matriz Funciones ESAP</span>
+                          <span className="block truncate text-xs font-normal text-slate-500">{canManageFunctions ? 'Carga individual y Matriz Funciones ESAP' : 'Consulta la Matriz Funciones ESAP'}</span>
                         </span>
                       </DropdownMenuItem>
                     )}

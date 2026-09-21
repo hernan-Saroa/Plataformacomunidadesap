@@ -42,7 +42,7 @@ const TEMPLATE_VARIABLE_META: Record<string, { label: string; sourceFields: stri
   '[DATO4]': { label: 'Fecha de vinculación', sourceFields: ['hiring_date'] },
   '[DATO5]': { label: 'Cargo', sourceFields: ['career_category'] },
   '[DATO6]': { label: 'Dato adicional de ubicación', sourceFields: ['department', 'position_location'] },
-  '[DATO7]': { label: 'Dependencia', sourceFields: ['department'] },
+  '[DATO7]': { label: 'Dependencia', sourceFields: ['organization_department', 'department'] },
   '[DATO8]': { label: 'Salario en letras calculado', sourceFields: ['monthly_salary', 'include_salary'] },
   '[NOMBRE_EMPLEADO]': { label: 'Nombre del empleado', sourceFields: ['full_name'] },
   '[TIPO_DOCUMENTO]': { label: 'Tipo de documento', sourceFields: ['document_type'] },
@@ -51,11 +51,11 @@ const TEMPLATE_VARIABLE_META: Record<string, { label: string; sourceFields: stri
   '[CARGO]': { label: 'Cargo calculado', sourceFields: ['career_category', 'cod_cargo', 'cod_grade', 'encargo_type'] },
   '[CARGO DATO6]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
   '[TIPO_DATO]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
-  '[GRUPO]': { label: 'Grupo o ubicación', sourceFields: ['position_location'] },
+  '[GRUPO]': { label: 'Grupo o ubicación', sourceFields: ['internal_group', 'cost_center', 'position_location'] },
   '[SEDE]': { label: 'Sede', sourceFields: ['campus'] },
-  '[UBICACIÓN]': { label: 'Dependencia', sourceFields: ['department'] },
-  '[UBICACION]': { label: 'Dependencia', sourceFields: ['department'] },
-  '[DEPENDENCIA]': { label: 'Dependencia', sourceFields: ['department'] },
+  '[UBICACIÓN]': { label: 'Dependencia', sourceFields: ['organization_department', 'department'] },
+  '[UBICACION]': { label: 'Dependencia', sourceFields: ['organization_department', 'department'] },
+  '[DEPENDENCIA]': { label: 'Dependencia', sourceFields: ['organization_department', 'department'] },
   '[DEPENDENCIA_PADRE]': { label: 'Dependencia padre', sourceFields: ['cod_cargo'] },
   '[FECHA_INICIO]': { label: 'Fecha de vinculación', sourceFields: ['hiring_date'] },
   '[FECHA_FIN]': { label: 'Fecha de finalización', sourceFields: [] },
@@ -844,7 +844,13 @@ export class LaborCertificatePdfService {
       tipoVinculacion ||
       '';
     const grado = certificate.position_location || '';
-    const dependenciaHijo = requestDepartment || certificate.department || '';
+    // Alimenta la "ubicacion del cargo" ([DATO5] y [DATO6] de la plantilla
+    // docente). Mismo orden que [DEPENDENCIA]: `organization_department`
+    // primero, porque en las filas de Oracle `department` guarda el
+    // CENTROCOSTO. En un certificado corregido `requestOrganizationDepartment`
+    // llega vacio y manda lo que guardo el coordinador.
+    const dependenciaHijo =
+      requestOrganizationDepartment || requestDepartment || certificate.department || '';
     const dependenciaPadre =
       (preferCorrectedCertificate ? certificateExtras.cod_cargo : (certificate as Certificate & { request?: { cod_cargo?: string } }).request?.cod_cargo) ||
       certificateExtras.cod_cargo ||
@@ -868,8 +874,9 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    // [DEPENDENCIA] prioriza el CENTRO DE COSTO (grupo interno de trabajo) y
-    // solo usa la dependencia cuando no hay centro de costo.
+    // [DEPENDENCIA] imprime la DEPENDENCIA y el centro de costo (grupo interno
+    // de trabajo) es solo el ultimo recurso, para las filas que no traen
+    // ninguna dependencia.
     //
     // OJO con el cruce de datos entre fuentes: la misma informacion llega en
     // columnas distintas segun de donde venga la fila.
@@ -882,36 +889,66 @@ export class LaborCertificatePdfService {
     //   organization_department | dependencia          | DEPENDENCIA
     //   position_location       | grupo, si no depend. | DEPENDENCIA, si no SUCURSAL
     //
-    // `internal_group` y `organization_department` significan lo mismo en las
-    // dos fuentes, asi que son los anclajes fiables. `position_location` NO se
-    // usa a proposito: es el unico campo cuyo significado se invierte entre
-    // fuentes y en Oracle puede traer la SUCURSAL (p. ej. "SEDE CENTRAL"), que
-    // no es una dependencia.
+    // Por eso `organization_department` va PRIMERO: es la unica columna que
+    // significa "dependencia" en las dos fuentes. `department` la sigue porque
+    // en las filas sincronizadas desde Oracle guarda el CENTROCOSTO (el grupo),
+    // y leerla primero hacia que [DEPENDENCIA] imprimiera el grupo y dejara
+    // [GRUPO] sin nada que mostrar. Es el mismo orden que usa el modal de
+    // "Consulta informativa" (`department_name` en LaborFunctionsService).
     //
-    // Resultado: centro de costo si existe, dependencia si no, y el mismo
-    // comportamiento en local, dev, qa, pre y produccion.
+    // `position_location` NO se usa a proposito: es el unico campo cuyo
+    // significado se invierte entre fuentes y en Oracle puede traer la SUCURSAL
+    // (p. ej. "SEDE CENTRAL"), que no es una dependencia.
+    //
+    // Mismo comportamiento en local, dev, qa, pre y produccion.
     const centroCosto = resolveLaborInternalGroup(
       requestInternalGroup,
       requestCostCenter,
     );
     // En un certificado corregido la dependencia que guardo el coordinador es
     // la fuente de verdad y va primero: el formulario de correccion muestra ese
-    // campo, asi que lo que edita tiene que ser lo que se imprime. Antes el
-    // centro de costo ganaba siempre y la edicion quedaba sin efecto.
+    // campo, asi que lo que edita tiene que ser lo que se imprime.
     // Al radicar la correccion el campo se precarga con la dependencia efectiva
     // (ver resolveEffectiveCertificateDependency), de modo que una correccion
     // que no toca la dependencia sigue imprimiendo exactamente lo mismo.
     const dato7 = preferCorrectedCertificate
       ? requestDepartment || centroCosto || ''
-      : centroCosto ||
+      : requestOrganizationDepartment ||
         requestDepartment ||
         certificate.department ||
-        requestOrganizationDepartment ||
+        centroCosto ||
         '';
-    const grupoVariable =
-      requestPositionLocation ||
-      certificate.position_location ||
-      '';
+    // [GRUPO] imprime el GRUPO INTERNO DE TRABAJO y solo cae a la ubicacion del
+    // cargo (`position_location`) cuando la solicitud no trae grupo.
+    //
+    // El grupo se lee siempre de la solicitud porque la entidad Certificate no
+    // tiene esas columnas. Es el mismo `centroCosto` que [DEPENDENCIA] usa como
+    // ultimo recurso: `internal_group` y, si no hay, `cost_center` (en las
+    // filas de Oracle el CENTROCOSTO ES el grupo). `resolveLaborInternalGroup`
+    // descarta los marcadores "N/A", "NO APLICA" y "NINGUNO": para esta
+    // variable esos valores cuentan como vacio y dejan pasar el respaldo.
+    // Mismo orden que `internal_group` del modal de "Consulta informativa".
+    //
+    // En un certificado corregido manda lo que guardo el coordinador en "Grupo
+    // o ubicacion", igual que con [DEPENDENCIA]. Al radicar la correccion ese
+    // campo se precarga con el grupo efectivo (ver
+    // resolveEffectiveCertificateGroup en CertificatesService), de modo que una
+    // correccion que no lo toca sigue imprimiendo exactamente lo mismo.
+    // Durante un encargo, [GRUPO] sale de la MISMA vinculacion que
+    // [DEPENDENCIA] (la normal vigente): las dos variables describen un solo
+    // lugar. `certificate_group` lo resuelve el mismo contexto que
+    // `certificate_dependency`, y cuando no hay encargo llega vacio y manda la
+    // fila del propio certificado.
+    const grupoInterno = centroCosto || '';
+    const grupoDeLaVinculacionImpresa =
+      certificate.request?.certificate_group ?? '';
+    const grupoVariable = preferCorrectedCertificate
+      ? requestPositionLocation || grupoInterno
+      : grupoDeLaVinculacionImpresa ||
+        grupoInterno ||
+        requestPositionLocation ||
+        certificate.position_location ||
+        '';
     // El servicio resuelve la vinculacion normal vigente sin reemplazar los
     // datos del encargo. Las correcciones conservan su precedencia actual.
     const dependenciaVariable = preferCorrectedCertificate
@@ -929,10 +966,14 @@ export class LaborCertificatePdfService {
     const documentTypeLabel = this.formatDocumentType(documentTypeCode);
     const hasGrupoVariable = /\[GRUPO\]/i.test(templateHtml || '');
     const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(templateHtml || '');
+    // Se compara contra lo que [DEPENDENCIA] IMPRIME de verdad, no contra
+    // `dato7`: durante un encargo [DEPENDENCIA] usa la vinculacion normal, asi
+    // que comparar con `dato7` (la dependencia del encargo) callaba [GRUPO]
+    // aunque en el documento no se estuviera repitiendo nada.
     const shouldHideGrupo =
       hasGrupoVariable &&
       hasDependenciaVariable &&
-      this.areEquivalentTemplateValues(grupoVariable, dato7);
+      this.areEquivalentTemplateValues(grupoVariable, dependenciaVariable);
     const grupoVariableResolved = shouldHideGrupo ? '' : grupoVariable;
 
     const replacements: Record<string, string> = {

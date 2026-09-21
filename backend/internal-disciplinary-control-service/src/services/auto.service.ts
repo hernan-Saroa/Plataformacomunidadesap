@@ -1380,7 +1380,7 @@ export class AutoService {
       console.warn('Error consultando usuarios con rol Radicador:', err);
     }
 
-    // 4. Usuarios con permiso de radicación
+    // 4. Usuarios con permiso de radicación (es_radicador)
     try {
       const permUsers: any[] = await this.autoRepository.manager.query(
         `SELECT DISTINCT u.id_user
@@ -1390,7 +1390,7 @@ export class AutoService {
          JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
          WHERE u.is_active = true
            AND p.code = $1`,
-        ['control-disciplinario.noticia-disciplinaria.view_mine'],
+        ['control-disciplinario.general.es_radicador'],
       );
       for (const r of permUsers) {
         if (r.id_user) radicadoresIds.add(r.id_user);
@@ -2053,7 +2053,7 @@ export class AutoService {
        JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
        JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
        WHERE p.code = $1`,
-      ['control-disciplinario.noticia-disciplinaria.view_mine'],
+      ['control-disciplinario.general.es_radicador'],
     );
 
     const ids = radicadoresRows.map((r) => r.id_user).filter(Boolean);

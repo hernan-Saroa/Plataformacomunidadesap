@@ -276,7 +276,7 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               <User className="h-4 w-4 text-slate-400" />
               <span>1. Datos del Pasajero / Comisionado</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs sm:text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs sm:text-sm">
               <div>
                 <span className="text-[11px] text-slate-400 font-semibold block">Nombre Completo:</span>
                 <span className="font-bold text-slate-900">
@@ -287,6 +287,12 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
                 <span className="text-[11px] text-slate-400 font-semibold block">Documento de Identidad:</span>
                 <span className="font-bold text-slate-900">
                   {solicitud.comisionado?.numeroDocumento || 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-400 font-semibold block">Dependencia:</span>
+                <span className="font-bold text-slate-900">
+                  {viaticosService.resolverNombreDependencia(solicitud)}
                 </span>
               </div>
               <div>
@@ -304,9 +310,15 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               <MapPin className="h-4 w-4 text-slate-400" />
               <span>2. Itinerario y Objeto de la Comisión</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs sm:text-sm mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs sm:text-sm mb-3">
               <div>
-                <span className="text-[11px] text-slate-400 font-semibold block">Destino:</span>
+                <span className="text-[11px] text-slate-400 font-semibold block">Ciudad Origen:</span>
+                <span className="font-bold text-slate-900">
+                  {solicitud.ciudadOrigen || solicitud.sedeOrigen || 'Bogotá D.C.'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-400 font-semibold block">Ciudad Destino:</span>
                 <span className="font-bold text-slate-900">
                   {solicitud.destinoCiudad}, {solicitud.destinoDepartamento}
                 </span>

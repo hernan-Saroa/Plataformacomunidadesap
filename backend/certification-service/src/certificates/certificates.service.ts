@@ -2320,8 +2320,10 @@ export class CertificatesService {
    * Dependencia que realmente imprime la plantilla en `[DEPENDENCIA]`.
    *
    * Replica la precedencia de LaborCertificatePdfService: para un certificado
-   * normal manda la dependencia del certificado (centro de costo primero) y en
-   * uno ya corregido manda lo que dejó guardado la corrección. Se usa para
+   * normal manda la dependencia de la solicitud —`organization_department`
+   * primero, porque `department` guarda el CENTROCOSTO en las filas de
+   * Oracle— y el centro de costo solo entra cuando no hay ninguna dependencia;
+   * en uno ya corregido manda lo que dejó guardado la corrección. Se usa para
    * precargar el formulario de corrección con el valor que el coordinador ve
    * en el documento, y no con la columna cruda `department`, que puede diferir.
    */
@@ -2341,11 +2343,48 @@ export class CertificatesService {
     }
 
     const dato7 =
-      centroCosto ||
+      text(request?.organization_department) ||
       text(request?.department) ||
       certificateDepartment ||
-      text(request?.organization_department);
+      centroCosto;
     return text(request?.certificate_dependency) || dato7;
+  }
+
+  /**
+   * Grupo que realmente imprime la plantilla en `[GRUPO]`.
+   *
+   * Replica la precedencia de LaborCertificatePdfService: manda el grupo
+   * interno de trabajo de la solicitud (`internal_group` y, si no hay,
+   * `cost_center`) y la ubicación del cargo (`position_location`) solo entra
+   * cuando no hay grupo; en un certificado ya
+   * corregido manda lo que dejó guardado la corrección. Se usa para precargar
+   * el campo "Grupo o ubicación" del formulario de corrección con el valor que
+   * el coordinador ve en el documento, y no con la columna cruda
+   * `position_location`, que puede diferir.
+   */
+  private resolveEffectiveCertificateGroup(
+    certificate?: Certificate | null,
+  ): string {
+    if (!certificate) return '';
+    const text = (value: unknown) => String(value ?? '').trim();
+    const certificatePositionLocation = text(certificate.position_location);
+    const request = certificate.request;
+    // `cost_center` participa porque en las filas de Oracle el CENTROCOSTO ES
+    // el grupo interno; la ubicación del cargo queda como último respaldo.
+    const grupoInterno = text(
+      resolveLaborInternalGroup(request?.internal_group, request?.cost_center),
+    );
+
+    if ((certificate as Certificate & { is_corrected?: boolean }).is_corrected === true) {
+      return certificatePositionLocation || grupoInterno;
+    }
+
+    return (
+      text(request?.certificate_group) ||
+      grupoInterno ||
+      text(request?.position_location) ||
+      certificatePositionLocation
+    );
   }
 
   private certificateCorrectionSnapshot(certificate: Certificate) {
@@ -2359,7 +2398,9 @@ export class CertificatesService {
       career_category: certificate.career_category,
       hiring_date: certificate.hiring_date,
       position_category: certificate.position_category,
-      position_location: certificate.position_location,
+      // El grupo efectivo, no la columna cruda: es el que se compara en el
+      // "antes / después" y el que ve el coordinador en el documento.
+      position_location: this.resolveEffectiveCertificateGroup(certificate),
       monthly_salary: Number(certificate.monthly_salary || 0),
       technical_bonus: Number(certificate.technical_bonus || 0),
       include_salary: certificate.include_salary,
@@ -2428,7 +2469,18 @@ export class CertificatesService {
       ['include_functions', 'Inclusión de funciones'],
       ['functions_snapshot', 'Funciones laborales'],
     ];
+    // El certificado SIEMPRE imprime pesos enteros: LaborCertificatePdfService
+    // redondea al renderizar, y el formulario de corrección solo admite enteros.
+    // Comparar el valor crudo hacía que una prima almacenada con centavos
+    // (p. ej. 1508313.52, como llegan de Oracle) apareciera como "campo
+    // modificado" al aprobar sin tocar nada, cuando el documento imprimía
+    // 1.508.314 antes y después. Se comparan con el mismo redondeo del PDF.
+    const moneyFields = new Set(['monthly_salary', 'technical_bonus']);
     const comparable = (field: string, value: unknown) => {
+      if (moneyFields.has(field)) {
+        const parsed = Number(String(value ?? '').replace(/[^\d.-]/g, ''));
+        return Number.isFinite(parsed) ? String(Math.round(parsed)) : '';
+      }
       if (field === 'functions_snapshot') {
         const functions = this.correctionFunctionDescriptions(value, false);
         return functions.length
@@ -2459,8 +2511,28 @@ export class CertificatesService {
         size: item.size,
       }));
 
+    // La dependencia y el grupo EFECTIVOS, no las columnas crudas: son los que
+    // imprime el certificado y los que debe precargar el formulario de
+    // corrección. Sin ellos el coordinador editaba un valor distinto al que
+    // veia en el documento (`department` guarda el CENTROCOSTO en las filas
+    // sincronizadas desde Oracle).
+    //
+    // Solo se calcula cuando la solicitud viene cargada en la relacion: sin
+    // ella no hay con que resolver y se conservan los valores originales.
+    const certificate = request.certificate;
+    const effectiveCertificate = certificate?.request
+      ? {
+          certificate: {
+            ...certificate,
+            department: this.resolveEffectiveCertificateDependency(certificate),
+            position_location: this.resolveEffectiveCertificateGroup(certificate),
+          },
+        }
+      : {};
+
     return {
       ...request,
+      ...effectiveCertificate,
       submitted_evidence: exposeEvidence(request.submitted_evidence),
       resolution_evidence: exposeEvidence(request.resolution_evidence),
     };
@@ -2581,22 +2653,53 @@ export class CertificatesService {
     };
   }
 
+  /**
+   * Columnas por las que se puede ordenar la bandeja de correcciones.
+   *
+   * Es una lista blanca cerrada a propósito: el valor llega por query string y
+   * termina dentro de un ORDER BY, que no admite parámetros vinculados. Todo lo
+   * que no esté aquí cae al orden por defecto (fecha de recepción), nunca se
+   * interpola el texto recibido.
+   */
+  // Es un Map y no un objeto literal a propósito: un objeto hereda de
+  // Object.prototype y claves como `constructor` o `__proto__` devolverían un
+  // valor truthy que acabaría dentro del ORDER BY.
+  private static readonly CORRECTION_SORT_COLUMNS = new Map<string, string>([
+    ['status', 'correction.status'],
+    ['request_number', 'correction.request_number'],
+    ['requester_name', 'correction.requester_name'],
+    ['certificate_number', 'certificate.certificate_number'],
+    ['created_at', 'correction.created_at'],
+    ['due_date', 'correction.due_date'],
+  ]);
+
+  private resolveCorrectionSort(sort?: string): { column: string; field: string } {
+    const field = String(sort || '').trim().toLowerCase();
+    const column = CertificatesService.CORRECTION_SORT_COLUMNS.get(field);
+    return column
+      ? { column, field }
+      : { column: 'correction.created_at', field: 'created_at' };
+  }
+
   async listCertificateCorrectionRequests(params: {
     page?: number;
     limit?: number;
     status?: string;
     search?: string;
+    sort?: string;
+    order?: string;
   }) {
     const page = Math.max(1, Number(params.page) || 1);
     const limit = Math.min(50, Math.max(1, Number(params.limit) || 10));
+    const { column: sortColumn, field: sortField } = this.resolveCorrectionSort(
+      params.sort,
+    );
+    const sortOrder =
+      String(params.order || '').trim().toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
     const query = this.correctionRequestRepo
       .createQueryBuilder('correction')
       .leftJoinAndSelect('correction.certificate', 'certificate')
-      .leftJoinAndSelect('certificate.request', 'certificateRequest')
-      .addSelect(
-        `CASE correction.status WHEN 'PENDING' THEN 0 WHEN 'IN_REVIEW' THEN 1 ELSE 2 END`,
-        'correction_status_priority',
-      );
+      .leftJoinAndSelect('certificate.request', 'certificateRequest');
 
     const status = String(params.status || '').trim().toUpperCase();
     if (status && status !== 'ALL') {
@@ -2614,9 +2717,15 @@ export class CertificatesService {
       );
     }
 
+    // Orden cronológico por defecto: la más reciente primero, sin agrupar por
+    // estado. El estado ya se filtra con las pestañas de la bandeja.
+    // La columna sale SIEMPRE de una lista blanca (resolveCorrectionSort), nunca
+    // del texto que llega por query string.
+    // `id` desempata para que la paginación sea estable cuando dos solicitudes
+    // comparten el mismo valor en la columna ordenada.
     const [items, total] = await query
-      .orderBy('correction_status_priority', 'ASC')
-      .addOrderBy('correction.created_at', 'DESC')
+      .orderBy(sortColumn, sortOrder)
+      .addOrderBy('correction.id', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
@@ -2629,6 +2738,10 @@ export class CertificatesService {
       page,
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+      // Se devuelve el orden REAL aplicado: si llegó una columna desconocida, el
+      // frontend se entera de que se usó el de por defecto.
+      sort: sortField,
+      order: sortOrder,
     };
   }
 
@@ -2662,17 +2775,10 @@ export class CertificatesService {
     });
     if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
-    const response = this.correctionResponse(request);
-    if (!response.certificate) return response;
-    // Se expone la dependencia efectiva (sin tocar la entidad ni la BD) para que
-    // el formulario precargue el mismo valor que imprime el certificado.
-    return {
-      ...response,
-      certificate: {
-        ...response.certificate,
-        department: this.resolveEffectiveCertificateDependency(request.certificate),
-      },
-    };
+    // `correctionResponse` ya expone la dependencia y el grupo efectivos (sin
+    // tocar la entidad ni la BD) para que el formulario precargue los mismos
+    // valores que imprime el certificado.
+    return this.correctionResponse(request);
   }
 
   async previewCertificateCorrectionRequest(
@@ -2898,6 +3004,28 @@ export class CertificatesService {
       }
       return parsed;
     };
+    /**
+     * Monto de la corrección conservando el valor almacenado cuando no se editó.
+     *
+     * La prima es un valor CALCULADO (salario x porcentaje, con dos decimales),
+     * así que casi siempre trae centavos. El formulario de corrección solo
+     * admite pesos enteros, de modo que ese monto llega redondeado aunque el
+     * coordinador no lo haya tocado. Si el valor recibido coincide con el
+     * redondeo del almacenado, se conserva el original con sus centavos en vez
+     * de sobrescribirlo: así aprobar sin editar no modifica absolutamente nada.
+     *
+     * Un monto realmente distinto sigue pasando por la validación de enteros.
+     */
+    const preservedMoney = (input: unknown, current: unknown, field: string) => {
+      const stored = Number(current);
+      const hasStored = Number.isFinite(stored) && stored >= 0;
+      if (input === undefined || input === null || input === '') {
+        return hasStored ? stored : 0;
+      }
+      const requested = money(input, field);
+      if (hasStored && Math.round(stored) === requested) return stored;
+      return requested;
+    };
     const hiringDate = this.normalizeDateOnly(input.hiring_date || certificate.hiring_date);
     if (!hiringDate) {
       throw new BadRequestException('La fecha de vinculación no es válida.');
@@ -2943,11 +3071,11 @@ export class CertificatesService {
       encargo_type: encargoType || 'N',
       campus: text(input.campus ?? certificate.campus, 'La sede', 100),
       hiring_date: hiringDate,
-      monthly_salary: money(input.monthly_salary ?? certificate.monthly_salary, 'El salario'),
+      monthly_salary: preservedMoney(input.monthly_salary, certificate.monthly_salary, 'El salario'),
       // Campo heredado: se conserva por compatibilidad, pero el texto visible se
       // calcula siempre desde monthly_salary en el renderizador institucional.
       salary_text: text(certificate.salary_text, 'El salario en letras', 255),
-      technical_bonus: money(input.technical_bonus ?? certificate.technical_bonus ?? 0, 'La prima técnica'),
+      technical_bonus: preservedMoney(input.technical_bonus, certificate.technical_bonus, 'La prima técnica'),
       include_salary: includeSalary,
       include_technical_bonus: includeTechnicalBonus,
       include_functions: includeFunctions,
@@ -3285,6 +3413,53 @@ export class CertificatesService {
   }
 
   /**
+   * Destinatarios finales de un aviso interno.
+   *
+   * Se deduplica por el correo REAL de la persona (alguien puede tener el
+   * permiso por varios roles a la vez), NO por el correo ya redirigido. Dedupar
+   * por el redirigido hacía que en modo seguro los N revisores colapsaran en un
+   * único envío: llegaba un solo correo, con el nombre del primero de la lista,
+   * y parecía que solo se avisaba a ese rol.
+   *
+   * Cuando el envío se desvía, se conserva a quién iba dirigido para poder
+   * comprobar la cobertura en los ambientes de prueba. Es el mismo criterio que
+   * usa notifications-service con EMAIL_REDIRECT_TO.
+   */
+  private buildCorrectionReviewerAlerts(
+    reviewers: Array<{ email: string; name: string | null }>,
+  ): Array<{ to: string; name: string | null; intendedFor: string | null }> {
+    const byRealEmail = new Map<
+      string,
+      { to: string; name: string | null; intendedFor: string | null }
+    >();
+
+    for (const reviewer of reviewers) {
+      const realEmail = String(reviewer?.email || '').trim();
+      if (!realEmail) continue;
+      const key = realEmail.toLowerCase();
+      if (byRealEmail.has(key)) continue;
+
+      const to = this.resolveOutboundEmailRecipient(realEmail);
+      byRealEmail.set(key, {
+        to,
+        name: reviewer.name,
+        // En producción el destinatario es el real y esto queda en null.
+        intendedFor: to.trim().toLowerCase() === key ? null : realEmail,
+      });
+    }
+
+    return Array.from(byRealEmail.values());
+  }
+
+  /** Deja visible el destinatario original cuando el correo fue desviado. */
+  private correctionAlertSubject(
+    subject: string,
+    intendedFor: string | null,
+  ): string {
+    return intendedFor ? `[Para ${intendedFor}] ${subject}` : subject;
+  }
+
+  /**
    * Envío puntual al servicio institucional de notificaciones, sin adjuntos.
    *
    * Lleva timeout propio porque estos avisos salen desde el endpoint público de
@@ -3360,20 +3535,16 @@ export class CertificatesService {
       return;
     }
 
-    // En modo seguro todos los destinatarios se redirigen a la misma cuenta, así
-    // que se deduplica para no mandar el mismo aviso varias veces.
-    const alerts = new Map<string, { to: string; name: string | null }>();
-    for (const reviewer of reviewers) {
-      const to = this.resolveOutboundEmailRecipient(reviewer.email);
-      const key = to.toLowerCase();
-      if (!alerts.has(key)) alerts.set(key, { to, name: reviewer.name });
-    }
+    const alerts = this.buildCorrectionReviewerAlerts(reviewers);
 
     const results = await Promise.allSettled(
-      Array.from(alerts.values()).map((alert) =>
+      alerts.map((alert) =>
         this.postCorrectionNotificationEmail({
           to: alert.to,
-          subject: `Nueva solicitud de corrección ${requestNumber} - Certificados Laborales ESAP`,
+          subject: this.correctionAlertSubject(
+            `Nueva solicitud de corrección ${requestNumber} - Certificados Laborales ESAP`,
+            alert.intendedFor,
+          ),
           text: `Se radicó la solicitud de corrección ${requestNumber} de ${request.requester_name || 'un solicitante'} sobre el certificado ${String(request.certificate_snapshot?.certificate_number || 'laboral')}. Está pendiente de revisión en la bandeja de correcciones.`,
           html: this.buildCorrectionReviewerAlertEmailHtml(
             request,
@@ -3463,12 +3634,18 @@ export class CertificatesService {
     const idNumber = this.escapeEmailHtml(
       String(request.certificate_snapshot?.id_number || 'No disponible'),
     );
+    // El nombre del revisor cae al username cuando el token no trae uno, y en
+    // esta plataforma el username ES el correo. Sin esta comprobación el bloque
+    // "Resuelta por" mostraba la misma dirección dos veces seguidas.
+    const reviewerName = String(request.reviewed_by_name || '').trim();
+    const reviewerEmail = String(request.reviewed_by_email || '').trim();
     const resolvedBy = this.escapeEmailHtml(
-      request.reviewed_by_name || 'Coordinador Certificados Laborales',
+      reviewerName || reviewerEmail || 'Coordinador Certificados Laborales',
     );
-    const resolvedByEmail = request.reviewed_by_email
-      ? `<br><span style="font-size:12px;color:#6b7280">${this.escapeEmailHtml(request.reviewed_by_email)}</span>`
-      : '';
+    const resolvedByEmail =
+      reviewerEmail && reviewerEmail.toLowerCase() !== reviewerName.toLowerCase()
+        ? `<br><span style="font-size:12px;color:#6b7280">${this.escapeEmailHtml(reviewerEmail)}</span>`
+        : '';
     const resolvedAt = this.escapeEmailHtml(
       this.formatCorrectionEmailDate(request.resolved_at || new Date(), true),
     );
@@ -3545,13 +3722,7 @@ export class CertificatesService {
       return;
     }
 
-    // En modo seguro todos los destinatarios se redirigen al mismo buzón.
-    const alerts = new Map<string, { to: string; name: string | null }>();
-    for (const reviewer of reviewers) {
-      const to = this.resolveOutboundEmailRecipient(reviewer.email);
-      const key = to.toLowerCase();
-      if (!alerts.has(key)) alerts.set(key, { to, name: reviewer.name });
-    }
+    const alerts = this.buildCorrectionReviewerAlerts(reviewers);
 
     const changeSummary = options.approved
       ? options.changes.length === 0
@@ -3560,10 +3731,13 @@ export class CertificatesService {
       : '';
 
     const results = await Promise.allSettled(
-      Array.from(alerts.values()).map((alert) =>
+      alerts.map((alert) =>
         this.postCorrectionNotificationEmail({
           to: alert.to,
-          subject: `Resuelta: corrección ${requestNumber} ${decision} - Certificados Laborales ESAP`,
+          subject: this.correctionAlertSubject(
+            `Resuelta: corrección ${requestNumber} ${decision} - Certificados Laborales ESAP`,
+            alert.intendedFor,
+          ),
           text: `La solicitud de corrección ${requestNumber} de ${request.requester_name || 'un solicitante'} sobre el certificado ${options.certificateNumber} fue ${decision} por ${request.reviewed_by_name || 'el equipo de Certificados Laborales'}. ${changeSummary}`.trim(),
           html: this.buildCorrectionResolutionReviewerEmailHtml(request, {
             ...options,
@@ -5436,7 +5610,13 @@ export class CertificatesService {
           cod_grade: requestContext.cod_grade,
           department: requestContext.department,
           position_location: requestContext.position_location,
+          // [GRUPO] se resuelve con el grupo interno y [DEPENDENCIA] con la
+          // dependencia organizacional: la vista previa del navegador necesita
+          // los mismos datos que usa el PDF del backend.
+          internal_group: requestContext.internal_group,
+          organization_department: requestContext.organization_department,
           certificate_dependency: certificate.request?.certificate_dependency,
+          certificate_group: certificate.request?.certificate_group,
         }
       : undefined;
 
@@ -5786,7 +5966,13 @@ export class CertificatesService {
         position_location: verificacion.solicitud.position_location,
         monthly_salary: verificacion.solicitud.monthly_salary,
         department: verificacion.solicitud.department,
+        // [DEPENDENCIA] se resuelve con la dependencia organizacional y [GRUPO]
+        // con el grupo interno: quien pinta el certificado necesita los mismos
+        // datos que usa el PDF del backend.
+        organization_department: verificacion.solicitud.organization_department,
+        internal_group: verificacion.solicitud.internal_group,
         certificate_dependency: verificacion.solicitud.certificate_dependency,
+        certificate_group: verificacion.solicitud.certificate_group,
         cod_cargo: verificacion.solicitud.cod_cargo,
         cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,

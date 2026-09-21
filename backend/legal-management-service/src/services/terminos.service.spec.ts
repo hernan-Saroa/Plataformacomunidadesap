@@ -972,6 +972,62 @@ describe('TerminosService', () => {
 
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
         });
+
+        // -----------------------------------------------------------------
+        // Edición del plazo: `diasTermino` tiene que seguir a las fechas.
+        // Es el número que alimenta la barra de progreso del detalle; si se queda con el
+        // valor viejo al aplazar un informe, el detalle muestra un avance imposible
+        // ("35 de 30 días transcurridos").
+        // -----------------------------------------------------------------
+        describe('update() · parametrización del plazo', () => {
+            const terminoBase = (extra: any = {}) => ({
+                id: 'plazo-1',
+                observaciones: null,
+                fechaBase: new Date('2026-01-01T05:00:00.000Z'),
+                fechaVencimiento: new Date('2026-01-12T04:59:59.999Z'), // 11/01 a las 23:59 de Bogotá
+                diasTermino: 10,
+                ...extra,
+            });
+
+            it('recalcula diasTermino cuando la edición mueve solo la fecha de vencimiento', async () => {
+                mockTerminoRepo.findOne.mockResolvedValue(terminoBase());
+
+                const result = await service.update('plazo-1', {
+                    fechaVencimiento: new Date('2026-01-22T04:59:59.999Z'), // 21/01 en Bogotá
+                });
+
+                expect(result.diasTermino).toBe(20);
+            });
+
+            it('recalcula diasTermino cuando la edición mueve solo la fecha base', async () => {
+                mockTerminoRepo.findOne.mockResolvedValue(terminoBase());
+
+                const result = await service.update('plazo-1', {
+                    fechaBase: new Date('2026-01-06T05:00:00.000Z'),
+                });
+
+                expect(result.diasTermino).toBe(5);
+            });
+
+            it('respeta diasTermino explícito y no lo recalcula (el formulario ya lo envía sincronizado)', async () => {
+                mockTerminoRepo.findOne.mockResolvedValue(terminoBase());
+
+                const result = await service.update('plazo-1', {
+                    fechaVencimiento: new Date('2026-01-22T04:59:59.999Z'),
+                    diasTermino: 7,
+                });
+
+                expect(result.diasTermino).toBe(7);
+            });
+
+            it('no toca diasTermino en una edición que no mueve ninguna fecha', async () => {
+                mockTerminoRepo.findOne.mockResolvedValue(terminoBase());
+
+                const result = await service.update('plazo-1', { prioridad: 'ALTA' });
+
+                expect(result.diasTermino).toBe(10);
+            });
+        });
     });
 
     // ---------------------------------------------------------------------

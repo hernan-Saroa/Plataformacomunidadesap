@@ -21,7 +21,12 @@ import { createHash, randomBytes } from 'crypto';
 import { createReadStream } from 'fs';
 
 import { EstudioPrevioService } from './estudio-previo.service';
-import { CrearProcesoDto, GuardarBorradorDto, RevisarDto } from './dto/estudio-previo.dto';
+import {
+  AnotarRadicadoDto,
+  CrearProcesoDto,
+  GuardarBorradorDto,
+  RevisarDto,
+} from './dto/estudio-previo.dto';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
 import {
@@ -202,5 +207,86 @@ export class EstudioPrevioController {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.registrarAdjunto(id, file, hash, getHiringAccess(req));
+  }
+
+  // ---------------------------------------------- lista de chequeo (3.1) ---
+
+  @Get(':id/estudio-previo/lista-chequeo')
+  @ApiOperation({
+    summary: 'Documentos que el área debe remitir al radicar, y cuáles ya están',
+    description:
+      'La lista depende de la modalidad. Se consulta aunque el estudio previo esté a medias: saber qué va a pedirse es lo que permite ir armando el paquete.',
+  })
+  listaChequeo(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.paqueteDeRadicacion(id);
+  }
+
+  @Post(':id/estudio-previo/lista-chequeo')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: STORAGE_PATH,
+        filename: (_req, file, cb) =>
+          cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 25 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) =>
+        MIME_PERMITIDOS.includes(file.mimetype)
+          ? cb(null, true)
+          : cb(new BadRequestException('Solo se admiten archivos PDF, Word o Excel'), false),
+    }),
+  )
+  @ApiOperation({
+    summary: 'Cargar uno de los documentos de la lista de chequeo',
+    description:
+      'El `codigo` dice qué requisito cubre: sin él el archivo sería un adjunto más y no descontaría de lo que falta para radicar.',
+  })
+  async cargarDeLaLista(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('codigo') codigo: string,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    if (!codigo) throw new BadRequestException('Indica a qué documento de la lista corresponde');
+    const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
+    return this.service.cargarDelPaquete(id, codigo, file, hash, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/lista-chequeo/radicado')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @ApiOperation({
+    summary: 'Anotar el radicado de Active Document con el que se remitió el paquete',
+    description:
+      'Sin integración con el aplicativo: lo transcribe quien radicó. Opcional, porque el procedimiento admite remitir por correo o por carpeta compartida, vías que no generan consecutivo; mandarlo vacío lo borra.',
+  })
+  anotarRadicado(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AnotarRadicadoDto,
+    @Req() req: any,
+  ) {
+    return this.service.anotarRadicadoDeLaRadicacion(
+      id,
+      dto.radicado ?? null,
+      getHiringAccess(req),
+    );
+  }
+
+  @Post(':id/estudio-previo/lista-chequeo/:documentoId/anular')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @ApiOperation({
+    summary: 'Sustituir uno de los documentos de la lista',
+    description: 'Lo deja sin efecto para poder cargar otro. No lo borra del expediente.',
+  })
+  anularDeLaLista(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentoId', ParseUUIDPipe) documentoId: string,
+    @Req() req: any,
+  ) {
+    return this.service.anularDelPaquete(id, documentoId, getHiringAccess(req));
   }
 }
