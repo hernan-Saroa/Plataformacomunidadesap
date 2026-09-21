@@ -104,6 +104,8 @@ export interface AuditoriaBasicaPDF {
   aspectosRelevantes?: string;
   evaluacionControlInterno?: string;
   fortalezas?: string[];
+  /** Conclusiones registradas en Ejecución (EFDS-1636) */
+  conclusiones?: string;
   recomendacionesPorCategoria?: Array<{ categoria: string; items: string[] }>;
   riesgosIdentificados?: string[];
   procesoAuditado?: string;
@@ -1147,7 +1149,7 @@ export async function exportarPDFInformeAuditoria(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10.5);
     const cText = isFinal ? infFinal?.observacionesFinales : infPrelim?.observaciones;
-    y = imprimirParrafo(doc, cText || 'Sin conclusiones.', margin, y, tableW, LH, FOOTER_MARGIN);
+    y = imprimirParrafo(doc, cText || auditoria.conclusiones || 'Sin conclusiones.', margin, y, tableW, LH, FOOTER_MARGIN);
     y += SEC;
 
     // Firmas...

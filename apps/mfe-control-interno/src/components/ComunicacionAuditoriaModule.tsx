@@ -235,6 +235,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     aspectosRelevantes: (auditoria as any).aspectosRelevantes,
     evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
     fortalezas: (auditoria as any).fortalezas,
+    conclusiones: (auditoria as any).conclusiones,
     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
     riesgosIdentificados: (auditoria as any).riesgosIdentificados,
     riesgosAsociados: (auditoria as any).riesgosAsociados,
@@ -631,6 +632,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.focos && { focos: audData.focos }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
+          // Recomendaciones generales y conclusiones registradas en Ejecución (EFDS-1636)
+          ...(!audData.recomendacionesPorCategoria?.length && audData.recomendacionesGenerales?.length && {
+            recomendacionesPorCategoria: [{ categoria: 'Recomendaciones generales', items: audData.recomendacionesGenerales }],
+          }),
+          ...(audData.conclusiones && { conclusiones: audData.conclusiones }),
           ...(audData.fechaReunionApertura && { fechaReunionApertura: audData.fechaReunionApertura }),
           ...(audData.fechaReunionCierre && { fechaReunionCierre: audData.fechaReunionCierre }),
           reuniones: reunionesArr,
@@ -744,8 +750,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
         hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
       }
-      if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
-        informeFinalTmp = { ...informeFinalTmp, observaciones: contenidoIA.conclusiones };
+      if (!informePreliminar.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+        informeFinalTmp = { ...informeFinalTmp, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
       toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
     } catch {
@@ -790,8 +796,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
       
       let informeFinalMapeado = { ...informeFinal };
-      if (!informeFinal.observacionesFinales && contenidoIA.conclusiones) {
-        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: contenidoIA.conclusiones };
+      if (!informeFinal.observacionesFinales && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
 
       toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-final' });
@@ -1630,7 +1636,12 @@ const SeccionInformePreliminar: React.FC<{
       </CardSIGL>
 
       {/* Riesgos Identificados del Proceso */}
-      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+      {((auditoria as any).riesgosIdentificados?.length > 0
+        || (auditoria as any).objetivo
+        // Resultados registrados en Ejecución (EFDS-1636)
+        || (auditoria as any).fortalezas?.length > 0
+        || (auditoria as any).recomendacionesPorCategoria?.length > 0
+        || (auditoria as any).conclusiones) && (
         <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
           <div className={embedded ? 'p-4' : 'p-6'}>
             <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1698,6 +1709,13 @@ const SeccionInformePreliminar: React.FC<{
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(auditoria as any).conclusiones && (
+              <div className="mt-4">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Conclusiones registradas en Ejecución</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">{(auditoria as any).conclusiones}</p>
               </div>
             )}
           </div>
@@ -2656,8 +2674,8 @@ const SeccionInformeEjecutivo: React.FC<{
               
               // Usar conclusiones generadas si no hay observaciones propias
               let informeMapeado = { ...informe };
-              if (!informe.observacionesFinales && contenidoIA.conclusiones) {
-                informeMapeado = { ...informeMapeado, observacionesFinales: contenidoIA.conclusiones };
+              if (!informe.observacionesFinales && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+                informeMapeado = { ...informeMapeado, observacionesFinales: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
               }
 
               toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-exec' });
@@ -3367,8 +3385,8 @@ const ModalPreviewInforme: React.FC<{
             if ((auditoriaBase as any).hallazgos && hallazgosParaPDF.length === 0) {
               hallazgosParaPDF = (auditoriaBase as any).hallazgos;
             }
-            if (!informe.observaciones && contenidoIA.conclusiones) {
-              informeParaPDF = { ...informeParaPDF, observaciones: contenidoIA.conclusiones };
+            if (!informe.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+              informeParaPDF = { ...informeParaPDF, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
             }
           } catch (e) {
             console.error('Error IA preview:', e);
@@ -3410,8 +3428,8 @@ const ModalPreviewInforme: React.FC<{
         if ((auditoriaBase as any).hallazgos && hallazgosParaPDF.length === 0) {
           hallazgosParaPDF = (auditoriaBase as any).hallazgos;
         }
-        if (!informe.observaciones && contenidoIA.conclusiones) {
-          informeParaPDF = { ...informeParaPDF, observaciones: contenidoIA.conclusiones };
+        if (!informe.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+          informeParaPDF = { ...informeParaPDF, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
         }
       }
 
