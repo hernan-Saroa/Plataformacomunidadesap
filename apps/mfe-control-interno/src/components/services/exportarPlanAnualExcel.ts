@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import logoBase64 from '../../assets/esap-logo-institucional.b64?raw';
+import logoBase64 from '../../assets/esap-logo-certificaciones.b64?raw';
 
 /**
  * Columnas del informe en el orden en que se escriben. Es la única fuente: alimenta
@@ -42,7 +42,7 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
       // Colocar el logo en la esquina superior izquierda (A1:B3)
       worksheet.addImage(imageId, {
         tl: { col: 0.1, row: 0.1 },
-        ext: { width: 140, height: 50 }
+        ext: { width: 150, height: 57 }
       });
     } catch (err) {
       console.warn('No se pudo cargar el logo', err);

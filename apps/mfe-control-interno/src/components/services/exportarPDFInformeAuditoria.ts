@@ -1,10 +1,10 @@
 import type { jsPDF as JsPDFType } from 'jspdf';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, DOCUMENTOS_PREDEFINIDOS, getLogoESAP, type ConfiguracionDocumento } from './pdfESAPHeader';
-import { LOGO_INSTITUCIONAL_ESAP_B64 } from './logoInstitucionalESAP';
+import { LOGO_CERTIFICACIONES_ESAP_B64 } from './logoCertificacionesESAP';
 
 /** Logo institucional ESAP - cargado desde modulo dedicado (base64 correcto, sin red ni CORS) */
 async function getLogoInstitucionalESAP(): Promise<string> {
-  return LOGO_INSTITUCIONAL_ESAP_B64;
+  return LOGO_CERTIFICACIONES_ESAP_B64;
 }
 
 // Tipos mínimos necesarios (coinciden con los de ComunicacionAuditoriaModule)

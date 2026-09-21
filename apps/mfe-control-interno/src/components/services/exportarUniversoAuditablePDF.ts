@@ -20,7 +20,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ✅ Importar logo ESAP dinámicamente (Vite lo maneja automáticamente)
-import logoESAP from '@/assets/cropped-favicon-32x32.png';
+import { LOGO_CERTIFICACIONES_ESAP_B64 as logoESAP } from './logoCertificacionesESAP';
 
 // Cache del logo en base64 para reutilización
 let _logoCache: string | null = null;
