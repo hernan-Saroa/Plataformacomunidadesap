@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import logoBase64 from '../../assets/esap-logo-institucional.b64?raw';
+import logoBase64 from '../../assets/esap-logo-certificaciones.b64?raw';
 
 export async function exportarAuditoriasTemplate(
   auditorias: any[],
