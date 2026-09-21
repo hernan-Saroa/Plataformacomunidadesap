@@ -77,19 +77,28 @@ export class PdfModifierService {
             // Texto: desde yPosition hasta yPosition - 45 (45pt + margen)
             const signatureTopOffset = hasSignatureImage ? 70 : 15;
             const signatureBottomOffset = 45;
-            // El pie institucional en 4.8cm equivale a ~136pt. Dejamos margen seguro.
-            const footerClearanceY = 136;
-            const minRequiredYPosition = footerClearanceY + signatureBottomOffset + 5; // ~186pt
+            // El pie institucional en ~3.4cm equivale a ~96pt. Dejamos 120pt como margen seguro.
+            const footerClearanceY = 120;
+            const minRequiredYPosition = footerClearanceY + signatureBottomOffset + 5; // ~170pt
 
             // Detectar dónde termina el texto del cuerpo del auto en la última página
-            const lowestBodyY = await this.getLowestBodyY(pdfBytes, lastPageIndex, footerClearanceY, height - 80);
+            const { hasBodyText, lowestY: lowestBodyY } = await this.getLowestBodyY(
+                pdfBytes,
+                lastPageIndex,
+                footerClearanceY,
+                height - 80,
+            );
 
             let targetPage = lastPage;
             let yPosition: number;
 
-            if (lowestBodyY === null) {
-                // Si la página no tiene texto en el cuerpo o no se pudo extraer, usar posición segura
-                yPosition = 210;
+            if (!hasBodyText) {
+                // Si la última página no tiene texto en el cuerpo, usar posición estándar en la página
+                yPosition = height - 200;
+            } else if (lowestBodyY === null) {
+                // Hay texto y desciende hasta/más allá del margen seguro: no cabe en esta página
+                targetPage = pdfDoc.addPage([width, height]);
+                yPosition = height - 200;
             } else {
                 // La parte superior de la firma debe quedar al menos a 25pt por debajo del texto más bajo
                 const maxYPositionBelowText = lowestBodyY - signatureTopOffset - 25;
@@ -163,27 +172,31 @@ export class PdfModifierService {
         pdfBytes: Buffer,
         pageIndex: number,
         footerThreshold: number,
-        headerThreshold: number
-    ): Promise<number | null> {
+        headerThreshold: number,
+    ): Promise<{ hasBodyText: boolean; lowestY: number | null }> {
         try {
             const pdfjsLib = require('pdfjs-dist/build/pdf.js');
             const doc = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
             const page = await doc.getPage(pageIndex + 1);
             const textContent = await page.getTextContent();
             let lowestY: number | null = null;
+            let hasBodyText = false;
             for (const item of textContent.items) {
                 if (!item.str || !item.str.trim()) continue;
                 const y = Math.round(item.transform[5]);
-                if (y > footerThreshold && y < headerThreshold) {
-                    if (lowestY === null || y < lowestY) {
-                        lowestY = y;
+                if (y < headerThreshold) {
+                    hasBodyText = true;
+                    if (y > footerThreshold) {
+                        if (lowestY === null || y < lowestY) {
+                            lowestY = y;
+                        }
                     }
                 }
             }
-            return lowestY;
+            return { hasBodyText, lowestY };
         } catch (error) {
             console.warn('No se pudo extraer coordenadas de texto con pdfjs-dist:', error?.message);
-            return null;
+            return { hasBodyText: true, lowestY: null };
         }
     }
 }
