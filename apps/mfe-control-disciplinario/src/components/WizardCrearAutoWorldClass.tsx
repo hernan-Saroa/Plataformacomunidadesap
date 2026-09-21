@@ -27,8 +27,14 @@ import {
 import { toast } from 'sonner';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { Button } from '@esap-mfe/shared-ui/button';
-import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
+import {
+  ETAPAS_PROCESO,
+  canonicalizarEtapaId,
+  getEtapaProcesoConfig,
+  type EtapaProcesoId,
+  type TipoAuto,
+  type PlantillaArchivo,
+} from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { buildApiUrl } from '../../../config/environment';
 import { authService } from '../../../services/api/authService';
@@ -148,7 +154,7 @@ interface WizardCrearAutoWorldClassProps {
 // EFDS-1566: un auto de apertura no puede retroceder la etapa del proceso.
 // El orden de las etapas sale de "Configuracion > Estados Kanban"; ETAPAS_PROCESO es el respaldo.
 const normalizarClaveEtapa = (valor?: string): string =>
-  String(valor || '')
+  canonicalizarEtapaId(valor)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
@@ -720,7 +726,9 @@ export function WizardCrearAutoWorldClass({
   const ordenEtapaActualProceso = ordenEtapaDe(proceso?.etapaActual);
 
   const tiposFiltrados = tiposAutos.filter(tipo => {
-    const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
+    const cumpleFiltroEtapa =
+      filtroEtapa === 'todas' ||
+      canonicalizarEtapaId(tipo.etapa) === canonicalizarEtapaId(filtroEtapa);
     const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     // EFDS-1566: ocultar autos de apertura cuya etapa destino es anterior a la
@@ -1052,7 +1060,7 @@ export function WizardCrearAutoWorldClass({
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {tiposFiltrados.map((tipo) => {
-                          const etapa = ETAPAS_PROCESO[tipo.etapa] || { nombre: 'Etapa Desconocida', color: '#6B7280', icon: FileText };
+                          const etapa = getEtapaProcesoConfig(tipo.etapa);
 
                           const Icon = etapa.icon;
                           const seleccionado = tipoSeleccionado?.id === tipo.id;

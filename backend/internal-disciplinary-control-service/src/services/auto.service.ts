@@ -13,7 +13,7 @@ import { DisciplinaryProfessional } from '../entities/disciplinary-professional.
 import { AlertasService } from './alertas.service';
 import { DocumentConversionService } from './document-conversion.service';
 import { PdfModifierService } from './pdf-modifier.service';
-import { ProcessService } from './process.service';
+import { ProcessService, normalizeProcessStage } from './process.service';
 import { SequenceService } from './sequence.service';
 import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
@@ -139,7 +139,9 @@ export class AutoService {
         documentType: createAutoDto.documentType,
         documentSize: createAutoDto.documentSize,
         comentarios: createAutoDto.comentarios,
-        etapaDestino: createAutoDto.etapaDestino,
+        etapaDestino: createAutoDto.etapaDestino || (createAutoDto.tipoAuto?.startsWith('AUTO_APERTURA_')
+          ? createAutoDto.tipoAuto.replace(/^AUTO_APERTURA_/, '')
+          : undefined),
         prorrogaMeses: createAutoDto.prorrogaMeses ?? null,
       });
 
@@ -289,10 +291,13 @@ export class AutoService {
       const etapaAntesDeAprobar = auto.process?.etapaActual;
 
       // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
-      if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
+      if (auto.tipo.startsWith('AUTO_APERTURA_')) {
+        const etapaCandidata =
+          auto.etapaDestino ||
+          auto.tipo.replace(/^AUTO_APERTURA_/, '');
         await this.processService.changeStageByAutoApertura(
           auto.processId,
-          auto.etapaDestino as ProcessStage,
+          etapaCandidata,
           new Date(),
           aprobadoPorId,
           aprobadoPorNombre,
