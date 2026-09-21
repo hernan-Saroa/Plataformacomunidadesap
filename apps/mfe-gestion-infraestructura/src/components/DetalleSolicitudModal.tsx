@@ -14,13 +14,17 @@ import {
   CatalogoItem,
   infraestructuraService,
   clasificarSLA,
+  SolicitudValoracion,
 } from '../services/infraestructuraService';
+import { DetalleValoracionForm } from './DetalleValoracionForm';
+import { Play as PlayIcon, ClipboardCheck as ClipboarCheckIcon, PackageX, Truck } from 'lucide-react';
 
 interface DetalleSolicitudModalProps {
   open: boolean;
   idSolicitud: string | null;
   onClose: () => void;
   catalogoCS?: CatalogoItem[];
+  onCambioExitoso?: () => void | Promise<void>;
 }
 
 const LUCIDE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -103,6 +107,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   idSolicitud,
   onClose,
   catalogoCS = [],
+  onCambioExitoso,
 }) => {
   const [detalle, setDetalle] = useState<SolicitudMantenimiento | null>(null);
   const [evidenciasEndpoint, setEvidenciasEndpoint] = useState<SolicitudEvidencia[]>([]);
@@ -144,6 +149,24 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [historicoAbierto, setHistoricoAbierto] = useState<boolean>(true);
   const [toastModal, setToastModal] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Valoración en campo + insumos
+  // ---------------------------------------------------------------------------
+  const [valoraciones, setValoraciones] = useState<SolicitudValoracion[]>([]);
+  const [valoracionesCargando, setValoracionesCargando] = useState<boolean>(false);
+  const [mostrarDetalleValoracion, setMostrarDetalleValoracion] = useState<boolean>(false);
+  const [idValoracionAbierta, setIdValoracionAbierta] = useState<string | null>(null);
+
+  const [ejecutandoInicioDirecto, setEjecutandoInicioDirecto] = useState<boolean>(false);
+  const [ejecutandoInicioValoracion, setEjecutandoInicioValoracion] = useState<boolean>(false);
+
+  const [mostrarModalConfirmarRecepcion, setMostrarModalConfirmarRecepcion] = useState<boolean>(false);
+  const [recepcionObservaciones, setRecepcionObservaciones] = useState<string>('');
+  const [ejecutandoRecepcion, setEjecutandoRecepcion] = useState<boolean>(false);
+  const [errorRecepcion, setErrorRecepcion] = useState<string>('');
+
+  const [valoracionesAbierto, setValoracionesAbierto] = useState<boolean>(true);
+
   useEffect(() => {
     let cancelado = false;
     if (!open || !idSolicitud) {
@@ -154,6 +177,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
       setAprobacionObservaciones('');
+      setValoraciones([]);
+      setIdValoracionAbierta(null);
+      setMostrarDetalleValoracion(false);
+      setMostrarModalConfirmarRecepcion(false);
       return;
     }
     const cargar = async () => {
@@ -165,6 +192,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
       setAprobacionObservaciones('');
+      setValoracionesCargando(true);
       try {
         const tareas: Promise<any>[] = [
           infraestructuraService.getMantenimientoById(idSolicitud),
@@ -172,6 +200,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getRemisiones(idSolicitud || ''),
+          infraestructuraService.listarValoracionesPorSolicitud(idSolicitud),
         ];
         if (!catalogoCS || catalogoCS.length === 0) {
           tareas.push(infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'));
@@ -190,6 +219,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         const est = results[idx++];
         const pri = results[idx++];
         const rems = results[idx++];
+        const vals = results[idx++];
         if (!catalogoCS || catalogoCS.length === 0) {
           csFallback = results[idx++];
         }
@@ -199,6 +229,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         setDetalle(d);
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
         setRemisiones(Array.isArray(rems) ? rems : []);
+        setValoraciones(Array.isArray(vals) ? vals : []);
+        const valoracionAbierta = (vals || []).find((v: SolicitudValoracion) => !v.estadoAlFinalizar);
+        if (valoracionAbierta) setIdValoracionAbierta(valoracionAbierta.idValoracion);
         setCatalogoEstado(est);
         setCatalogoPrioridad(pri);
         if (csFallback && Array.isArray(csFallback)) setCatalogoCSLocal(csFallback);
@@ -209,6 +242,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         if (!cancelado) {
           setCargando(false);
           setCargandoTecnicos(false);
+          setValoracionesCargando(false);
         }
       }
     };
@@ -342,6 +376,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         observaciones: aprobacionObservaciones.trim() || undefined,
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
+      if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
       if (res?.__meta?.warning) {
         setToastModal({ tipo: 'warn', texto: res.__meta.warning });
       } else {
@@ -356,6 +391,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setSugerencia(null);
       setAprobacionObservaciones('');
       await recargarDetalle();
+      await onCambioExitoso?.();
     } catch (err: any) {
       setToastModal({ tipo: 'err', texto: err?.message || 'No se pudo aprobar la solicitud. Verifica permisos.' });
     } finally {
@@ -392,6 +428,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       }
       setMostrarModalRechazar(false);
       await recargarDetalle();
+      await onCambioExitoso?.();
     } catch (err: any) {
       setErrorRechazo(err?.message || 'No se pudo rechazar la solicitud. Intenta nuevamente.');
     } finally {
@@ -423,6 +460,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         motivoRedistribucion: redistMotivo.trim() || undefined,
         observaciones: redistObservaciones.trim() || undefined,
       });
+      if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
       if (res?.__meta?.warning) {
         setToastModal({ tipo: 'warn', texto: res.__meta.warning });
       } else {
@@ -433,6 +471,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setTecnicoManualSeleccionado('');
       setSugerencia(null);
       await recargarDetalle();
+      await onCambioExitoso?.();
     } catch (err: any) {
       setErrorRedist(err?.message || 'No se pudo redistribuir la solicitud. Intenta nuevamente.');
     } finally {
@@ -537,24 +576,151 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     );
   };
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Handlers valoración e insumos
+  // ---------------------------------------------------------------------------
+  const handleIniciarEjecucionDirecta = async () => {
+    if (!detalle || !idSolicitud) return;
+    setEjecutandoInicioDirecto(true);
+    setToastModal(null);
+    try {
+      const actualizado = await infraestructuraService.iniciarEjecucionDirecta(idSolicitud);
+      setDetalle(actualizado);
+      setToastModal({ tipo: 'ok', texto: 'Solicitud pasó a En ejecución (sin valoración previa).' });
+    } catch (err: any) {
+      setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar ejecución directa.' });
+    } finally {
+      setEjecutandoInicioDirecto(false);
+    }
+  };
+
+  const handleIniciarValoracion = async () => {
+    if (!detalle || !idSolicitud) return;
+    setEjecutandoInicioValoracion(true);
+    setToastModal(null);
+    try {
+      const r = await infraestructuraService.iniciarValoracion(idSolicitud, {});
+      setDetalle(r.solicitud);
+      const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
+      setValoraciones(lista);
+      setIdValoracionAbierta(r.valoracion.idValoracion);
+      setMostrarDetalleValoracion(true);
+      setToastModal({ tipo: 'ok', texto: 'Valoración previa iniciada. Complete el formulario y guarde.' });
+    } catch (err: any) {
+      setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar la valoración.' });
+    } finally {
+      setEjecutandoInicioValoracion(false);
+    }
+  };
+
+  const handleAbrirValoracionExistente = (v: SolicitudValoracion) => {
+    setIdValoracionAbierta(v.idValoracion);
+    setMostrarDetalleValoracion(true);
+  };
+
+  const handleValoracionSaved = async (r: { solicitud: SolicitudMantenimiento; valoracion: SolicitudValoracion }) => {
+    setDetalle(r.solicitud);
+    if (idSolicitud) {
+      const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
+      setValoraciones(lista);
+    }
+    setIdValoracionAbierta(null);
+  };
+
+  const abrirConfirmarRecepcion = () => {
+    setRecepcionObservaciones('');
+    setErrorRecepcion('');
+    setMostrarModalConfirmarRecepcion(true);
+  };
+
+  const handleConfirmarRecepcion = async () => {
+    if (!idSolicitud) return;
+    setErrorRecepcion('');
+    setEjecutandoRecepcion(true);
+    try {
+      const actualizado = await infraestructuraService.confirmarRecepcionInsumos(idSolicitud, {
+        observaciones: recepcionObservaciones.trim() || undefined,
+      });
+      setDetalle(actualizado);
+      setMostrarModalConfirmarRecepcion(false);
+      setToastModal({ tipo: 'ok', texto: 'Recepción de materiales confirmada. Solicitud pasó a En ejecución.' });
+    } catch (err: any) {
+      setErrorRecepcion(err?.message || 'Error al confirmar recepción.');
+    } finally {
+      setEjecutandoRecepcion(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helpers permisos EFDS-1735: decidir qué botones renderizar según estado
+  // ---------------------------------------------------------------------------
+  const estadoActual = (detalle?.estado || '').toUpperCase();
+  // EFDS-1730 / EFDS-1734: estados pre-aprobación donde sí tiene sentido Aprobar o Rechazar la primera vez.
+  const ESTADOS_PRE_APROBACION_UMI: string[] = [
+    'RECIBIDA',
+    'EN_ANALISIS',
+    'PENDIENTE_CLASIFICACION',
+    'PENDIENTE_APROBACION',
+  ];
+  const ESTADOS_PRE_APROBACION_TI: string[] = [
+    'REMITIDA_TI',
+    'PENDIENTE_APROBACION',
+  ];
+  const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
+    'COMPLETADA',
+    'CERRADA',
+    'CERRADA_SIN_ATENCION',
+    'RECHAZADA',
+  ];
+  const puedeAprobarAsignarUMI =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    ESTADOS_PRE_APROBACION_UMI.includes(estadoActual);
+  const puedeAprobarRemisionTI =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() === 'TI' &&
+    ESTADOS_PRE_APROBACION_TI.includes(estadoActual);
+  const puedeRechazarUMI = puedeAprobarAsignarUMI;
+  const puedeRechazarRemisionTI = puedeAprobarRemisionTI;
+  const puedeRedistribuir =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual);
+
+  const puedeIniciarEjecOValoracion =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    (estadoActual === 'ASIGNADA');
+  const puedeConfirmarRecepcionMateriales =
+    detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS';
+  const esCategoriaElectricas48 = Number(detalle?.idCategoria) === 48;
+
   if (!open) return null;
-  const bloqueado = ejecutandoAprobar || ejecutandoRechazo || ejecutandoRedist || remitirEnviando;
+  const bloqueado =
+    ejecutandoAprobar ||
+    ejecutandoRechazo ||
+    ejecutandoRedist ||
+    remitirEnviando ||
+    ejecutandoInicioDirecto ||
+    ejecutandoInicioValoracion ||
+    ejecutandoRecepcion;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        background: 'rgba(15, 23, 42, 0.5)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget && !bloqueado) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Detalle de solicitud de mantenimiento ${detalle?.consecutivo || ''}`}
-    >
+    <>
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          background: 'rgba(15, 23, 42, 0.5)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget && !bloqueado) onClose(); }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Detalle de solicitud de mantenimiento ${detalle?.consecutivo || ''}`}
+      >
       <div
         style={{
           position: 'fixed',
@@ -636,6 +802,18 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   </span>
                 );
               })()}
+              {detalle && Number(detalle.diasExtendidosPorInsumos || 0) > 0 && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 shadow-sm text-[11px] font-bold">
+                  <AlertTriangle className="w-3 h-3" />
+                  SLA extendida · +{detalle.diasExtendidosPorInsumos} d por materiales
+                </span>
+              )}
+              {detalle && detalle.esperaInsumosFlag && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-300 shadow-sm text-[11px] font-bold">
+                  <PackageX className="w-3 h-3" />
+                  En espera de insumos
+                </span>
+              )}
             </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
               {cargando ? (
@@ -1106,6 +1284,212 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 )}
               </div>
 
+              {/* ------------------------------------------------------------------- */}
+              {/* EFDS-1735 RF-INF-006: Acordeón Valoraciones e insumos             */}
+              {/* ------------------------------------------------------------------- */}
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setValoracionesAbierto(!valoracionesAbierto)}
+                  className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
+                >
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+                    <ClipboarCheckIcon className="w-3.5 h-3.5" />
+                    Valoraciones e insumos
+                    <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
+                      {valoraciones.length}
+                    </span>
+                    {idValoracionAbierta && (
+                      <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300 tracking-normal">
+                        1 abierta
+                      </span>
+                    )}
+                  </div>
+                  {valoracionesAbierto ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                  )}
+                </button>
+                {valoracionesAbierto && (
+                  <div className="space-y-2">
+                    {valoracionesCargando && valoraciones.length === 0 && (
+                      <div className="rounded-lg border border-slate-200 px-3 py-2.5 text-xs text-slate-500 bg-slate-50 flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Cargando valoraciones...
+                      </div>
+                    )}
+                    {!valoracionesCargando && valoraciones.length === 0 && (
+                      <div className="rounded-lg border border-slate-200 px-3 py-4 text-xs text-slate-500 bg-slate-50 text-center">
+                        <ClipboarCheckIcon className="w-4.5 h-4.5 mx-auto mb-1.5 text-slate-400" />
+                        No hay valoraciones. Si la solicitud está <strong>ASIGNADA</strong>, el técnico puede Iniciar Ejecución Directa o Registrar una Valoración Previa desde los botones del pie de página.
+                      </div>
+                    )}
+                    {valoraciones.map((v) => {
+                      const totalInsumos = (v.insumos || []).reduce(
+                        (acc, i) => acc + ((Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0),
+                        0,
+                      );
+                      const abierta = !v.estadoAlFinalizar;
+                      return (
+                        <div
+                          key={v.idValoracion}
+                          className={[
+                            'rounded-lg border p-3 space-y-2 transition',
+                            abierta
+                              ? 'bg-indigo-50/50 border-indigo-200'
+                              : 'bg-white border-slate-200',
+                          ].join(' ')}
+                        >
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={[
+                                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                  abierta
+                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                                    : v.estadoAlFinalizar === 'EN_ESPERA_DE_INSUMOS'
+                                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                                ].join(' ')}>
+                                  {abierta ? 'Borrador' : v.estadoAlFinalizar}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {formatearFecha(v.createdAt)}
+                                </span>
+                                {v.esVersionCorregidaPorEncargado && (
+                                  <span className="text-[10px] font-bold text-indigo-700 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                    Corregida por Encargado
+                                  </span>
+                                )}
+                                {esCategoriaElectricas48 && (
+                                  <span className={[
+                                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                    v.requiereApagadoElectrico
+                                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                      : 'bg-slate-100 text-slate-700 border-slate-200',
+                                  ].join(' ')}>
+                                    <Zap className="w-2.5 h-2.5" />
+                                    {v.requiereApagadoElectrico ? 'Requiere apagado' : 'Sin apagado'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                <span className="font-semibold text-slate-700">{v.tecnicoNombreValorador || v.tecnicoCodigoValorador || 'Valorador'}</span>
+                                {' · '}Riesgo {v.nivelRiesgo || '—'} · Tiempo {v.tiempoEstimadoHoras || 0} h
+                                {totalInsumos > 0 && <> · Insumos estimados <span className="font-semibold text-slate-700">${totalInsumos.toLocaleString('es-CO')} COP</span></>}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirValoracionExistente(v)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold transition"
+                              >
+                                <Eye className="w-3 h-3" />
+                                {abierta ? 'Continuar edición' : 'Ver detalle'}
+                              </button>
+                              {idValoracionAbierta === v.idValoracion && (
+                                <span className="text-[10px] font-bold text-indigo-600 px-1">Abierta</span>
+                              )}
+                            </div>
+                          </div>
+                          {(v.diagnostico || v.alcanceIdentificado) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                              <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Diagnóstico</p>
+                                <p className="text-slate-700 leading-5">{v.diagnostico || '—'}</p>
+                              </div>
+                              <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Alcance</p>
+                                <p className="text-slate-700 leading-5">{v.alcanceIdentificado || '—'}</p>
+                              </div>
+                            </div>
+                          )}
+                          {Array.isArray(v.insumos) && v.insumos.length > 0 && (
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                              <table className="min-w-full text-[11px]">
+                                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                  <tr>
+                                    <th className="px-2 py-1.5 text-left font-bold w-8">#</th>
+                                    <th className="px-2 py-1.5 text-left font-bold min-w-[160px]">Insumo</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-16">Cant</th>
+                                    <th className="px-2 py-1.5 text-left font-bold w-16">Unidad</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-24">$ Unit</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-24">Subtotal</th>
+                                    <th className="px-2 py-1.5 text-left font-bold w-44">Disponibilidad</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-14">Días</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {v.insumos!.map((i, idx) => {
+                                    const sub = (Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0;
+                                    return (
+                                      <tr key={i.idInsumo || (v.idValoracion + idx)} className="border-b border-slate-100 last:border-b-0">
+                                        <td className="px-2 py-1.5 text-slate-500 font-semibold">{idx + 1}</td>
+                                        <td className="px-2 py-1.5 font-semibold text-slate-800">{i.nombre}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{i.cantidad}</td>
+                                        <td className="px-2 py-1.5 text-slate-600">{i.unidadMedida}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">${(Number(i.costoUnitarioCop || 0)).toLocaleString('es-CO')}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-slate-800">${sub.toLocaleString('es-CO')}</td>
+                                        <td className="px-2 py-1.5">
+                                          <span className={[
+                                            'inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                            i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
+                                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                              : 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                                          ].join(' ')}>
+                                            {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Solicitar' : 'En bodega'}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
+                                          {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? (i.tiempoAdquisicionDias ?? '-') : '—'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                                <tfoot className="bg-slate-50 border-t border-slate-200">
+                                  <tr>
+                                    <td className="px-2 py-1.5" colSpan={5}></td>
+                                    <td className="px-2 py-1.5 text-right tabular-nums text-xs font-black text-slate-900">
+                                      ${totalInsumos.toLocaleString('es-CO')}
+                                    </td>
+                                    <td className="px-2 py-1.5" colSpan={2}></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          )}
+                          {v.observaciones && (
+                            <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
+                              <span className="font-bold text-slate-500">Notas:</span> {v.observaciones}
+                            </div>
+                          )}
+                          {Array.isArray(v.evidencias) && v.evidencias.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {v.evidencias.map((e, i) => (
+                                <a
+                                  key={e.idEvidencia || ('evv-' + v.idValoracion + '-' + i)}
+                                  href={e.urlPresigned || e.urlPublica || '#'}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold hover:bg-slate-200 transition"
+                                >
+                                  <Paperclip className="w-2.5 h-2.5" />
+                                  {(e.nombreOriginal || 'evidencia').slice(0, 28)}
+                                  {(e.nombreOriginal || '').length > 28 ? '…' : ''}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-3">
                 <button
                   type="button"
@@ -1245,70 +1629,158 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
               if (areaTI) {
                 return (
                   <>
-                    <button
-                      type="button"
-                      onClick={aprobarYAsignarHandler}
-                      disabled={ejecutandoAprobar}
-                      title="Aprobar la remisión a Oficina TI (confirmar recepción formal). No requiere asignación de técnico UMI."
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
-                    >
-                      {ejecutandoAprobar ? (
-                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
-                      ) : (
-                        <><ShieldCheck className="w-3.5 h-3.5" /> Aprobar remisión a TI</>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={abrirModalRechazo}
-                      disabled={ejecutandoRechazo}
-                      title="Rechazar la remisión a TI con motivo (solicitud retorna a unidad UMI para correcciones)"
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                    >
-                      <Ban className="w-3.5 h-3.5" />
-                      Rechazar remisión
-                    </button>
+                    {puedeAprobarRemisionTI && (
+                      <button
+                        type="button"
+                        onClick={aprobarYAsignarHandler}
+                        disabled={ejecutandoAprobar}
+                        title="Aprobar la remisión a Oficina TI (confirmar recepción formal). No requiere asignación de técnico UMI."
+                        className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                      >
+                        {ejecutandoAprobar ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                        ) : (
+                          <><ShieldCheck className="w-3.5 h-3.5" /> Aprobar remisión a TI</>
+                        )}
+                      </button>
+                    )}
+                    {puedeRechazarRemisionTI && (
+                      <button
+                        type="button"
+                        onClick={abrirModalRechazo}
+                        disabled={ejecutandoRechazo}
+                        title="Rechazar la remisión a TI con motivo (solicitud retorna a unidad UMI para correcciones)"
+                        className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        Rechazar remisión
+                      </button>
+                    )}
                   </>
                 );
               }
               return (
                 <>
-                  <button
-                    type="button"
-                    onClick={aprobarYAsignarHandler}
-                    disabled={ejecutandoAprobar}
-                    title="Aprobar solicitud y asignar técnico seleccionado (sugerido o manual)"
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    {ejecutandoAprobar ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
-                    ) : (
-                      <><ThumbsUp className="w-3.5 h-3.5" /> Aprobar y Asignar</>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={abrirModalRechazo}
-                    disabled={ejecutandoRechazo}
-                    title="Rechazar solicitud con motivo obligatorio. El motivo es visible para el solicitante."
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    <Ban className="w-3.5 h-3.5" />
-                    Rechazar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={abrirModalRedistribucion}
-                    disabled={ejecutandoRedist}
-                    title="Redistribuir / reasignar técnico responsable (cambia responsable manteniendo o pasando a ASIGNADA)"
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    <RedistribuirIcon className="w-3.5 h-3.5" />
-                    Redistribuir
-                  </button>
+                  {puedeAprobarAsignarUMI && (
+                    <button
+                      type="button"
+                      onClick={aprobarYAsignarHandler}
+                      disabled={ejecutandoAprobar}
+                      title="Aprobar solicitud y asignar técnico seleccionado (sugerido o manual)"
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      {ejecutandoAprobar ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                      ) : (
+                        <><ThumbsUp className="w-3.5 h-3.5" /> Aprobar y Asignar</>
+                      )}
+                    </button>
+                  )}
+                  {puedeRechazarUMI && (
+                    <button
+                      type="button"
+                      onClick={abrirModalRechazo}
+                      disabled={ejecutandoRechazo}
+                      title="Rechazar solicitud con motivo obligatorio. El motivo es visible para el solicitante."
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                      Rechazar
+                    </button>
+                  )}
+                  {puedeRedistribuir && (
+                    <button
+                      type="button"
+                      onClick={abrirModalRedistribucion}
+                      disabled={ejecutandoRedist}
+                      title="Redistribuir / reasignar técnico responsable (cambia responsable manteniendo o pasando a ASIGNADA)"
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      <RedistribuirIcon className="w-3.5 h-3.5" />
+                      Redistribuir
+                    </button>
+                  )}
                 </>
               );
             })()}
+
+            {/* EFDS-1735 RF-INF-006: Botones flujo ejecución / valoración  */}
+            {puedeConfirmarRecepcionMateriales && (
+              <button
+                type="button"
+                onClick={abrirConfirmarRecepcion}
+                disabled={bloqueado}
+                title="Encargado UMI: confirma recepción física de materiales comprados/solicitados. Estado pasa a En ejecución."
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+              >
+                <Truck className="w-3.5 h-3.5" />
+                Confirmar recepción materiales
+              </button>
+            )}
+            {puedeIniciarEjecOValoracion && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleIniciarEjecucionDirecta}
+                  disabled={bloqueado || !!idValoracionAbierta}
+                  title="El alcance es evidente y no requiere inspección previa. Pasa ASIGNADA → EN_PROGRESO inmediatamente."
+                  className={[
+                    'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
+                    idValoracionAbierta
+                      ? 'bg-slate-400 border-slate-500 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border-emerald-700',
+                  ].join(' ')}
+                >
+                  {ejecutandoInicioDirecto ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Iniciando...
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="w-3.5 h-3.5" />
+                      Iniciar Ejecución Directa
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (idValoracionAbierta) {
+                      setMostrarDetalleValoracion(true);
+                    } else {
+                      handleIniciarValoracion();
+                    }
+                  }}
+                  disabled={bloqueado}
+                  title="Registro de valoración previa en campo: diagnóstico, alcance, tiempos, materiales y evidencia. Si insumos no disponibles → EN_ESPERA_DE_INSUMOS."
+                  className={[
+                    'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
+                    idValoracionAbierta
+                      ? 'bg-indigo-700 hover:bg-indigo-800 disabled:bg-indigo-400 disabled:cursor-not-allowed border-indigo-800'
+                      : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
+                  ].join(' ')}
+                >
+                  {ejecutandoInicioValoracion ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Iniciando valoración...
+                    </>
+                  ) : (
+                    <>
+                      <ClipboarCheckIcon className="w-3.5 h-3.5" />
+                      {idValoracionAbierta ? 'Continuar Valoración' : 'Registrar Valoración Previa'}
+                    </>
+                  )}
+                </button>
+                {esCategoriaElectricas48 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold whitespace-nowrap">
+                    <Zap className="w-3.5 h-3.5" />
+                    CS_002 Eléctricas · sólo Técnico Especializado
+                  </span>
+                )}
+              </>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">
             {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && (
@@ -1661,8 +2133,106 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* ------------------------------------------------------------------- */}
+        {/* EFDS-1735 RF-INF-006: Modal confirmación recepción materiales       */}
+        {/* ------------------------------------------------------------------- */}
+        {mostrarModalConfirmarRecepcion && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
+              <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-amber-50/60 rounded-t-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                      Confirmar recepción de materiales
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                      <strong>Encargado UMI</strong> confirma la recepción física de todos los materiales y repuestos solicitados en la valoración. El estado pasará automáticamente a <strong>EN_PROGRESO</strong> y el técnico asignado podrá iniciar la ejecución.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
+                  disabled={ejecutandoRecepcion}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                  aria-label="Cerrar confirmación recepción"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {errorRecepcion && (
+                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs font-medium">{errorRecepcion}</div>
+                  </div>
+                )}
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200 text-indigo-900 text-[11px] leading-5 font-semibold">
+                  <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Se creará una nueva entrada en el Histórico Asignaciones con la acción <strong>RECEPCION_MATERIALES_Y_PASO_A_EJECUCION</strong> para trazabilidad de Gestión de Calidad.
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                    Observaciones de recepción
+                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={recepcionObservaciones}
+                    onChange={(e) => setRecepcionObservaciones(e.target.value)}
+                    rows={3}
+                    placeholder="Entrega de materiales 4 tubos PVC 1/2, 1 rollo teflón, 1 tubo silicona neutra 280ml. Proveedor Ferretería La 38, remisión #F-02045."
+                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-amber-200 focus:border-amber-500 border-slate-200 resize-none"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
+                  disabled={ejecutandoRecepcion}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmarRecepcion}
+                  disabled={ejecutandoRecepcion}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                >
+                  {ejecutandoRecepcion ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                  ) : (
+                    <><Truck className="w-4 h-4" /> Confirmar recepción</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         </div>
+
       </div>
+
     </div>
+
+      {mostrarDetalleValoracion && detalle && (
+        <DetalleValoracionForm
+          open={mostrarDetalleValoracion}
+          onClose={() => setMostrarDetalleValoracion(false)}
+          idSolicitud={idSolicitud || ''}
+          idValoracion={idValoracionAbierta || undefined}
+          idCategoria={Number.isInteger(detalle.idCategoria) ? (detalle.idCategoria as number) : null}
+          onSaved={handleValoracionSaved}
+        />
+      )}
+    </>
   );
 };

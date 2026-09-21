@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -31,7 +32,14 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { MantenimientoService } from './mantenimiento.service.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto } from './dto/create-mantenimiento.dto.js';
+import {
+  CreateMantenimientoDto,
+  UpdateMantenimientoEstadoDto,
+  RemitirATIDto,
+  IniciarValoracionDto,
+  GuardarValoracionCompletaDto,
+  ConfirmarRecepcionInsumosDto,
+} from './dto/create-mantenimiento.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
@@ -405,6 +413,96 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.redistribuir(idSolicitud, body, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Valoración en campo y registro de insumos requeridos
+  // Rutas estaticas /valoraciones/* DECLARADAS ANTES de wildcard :id y :idSolicitud
+  // para evitar routing conflict.
+  // ---------------------------------------------------------------------------
+  @Get('valoraciones/mis-asignadas')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Listar las valoraciones pendientes asignadas al técnico autenticado. Útil para bandeja personalizada de campo.',
+  })
+  @ApiQuery({ name: 'estado', required: false, description: 'Filtrar valoraciones por estado (EN_CAMPO_VALORACION | EN_ESPERA_DE_INSUMOS).' })
+  listarMisValoracionesAsignadas(@Req() req: any, @Query('estado') estado?: string) {
+    return this.mantenimientoService.listarValoraciones(null, req?.user, estado);
+  }
+
+  @Put('valoraciones/:idValoracion')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006 AC-01..AC-03: Guardar valoración completa (diagnóstico + alcance + insumos + evidencias). Si hay materiales NO_DISPONIBLES: pasa solicitud a EN_ESPERA_DE_INSUMOS y extiende SLA automáticamente. Si cero insumos o todos DISPONIBLES: pasa a EN_PROGRESO. Sólo técnico asignado, Encargado o SUPER_ADMIN.',
+  })
+  @ApiResponse({ status: 200, description: 'Valoración guardada. Solicitud transiciona EN_PROGRESO o EN_ESPERA_DE_INSUMOS según insumos.' })
+  @ApiResponse({ status: 400, description: 'Validación fallida: diagnóstico/alcance <10 chars, tiempo <0.25h, CS_002 requiereApagado undefined, insumo NO_DISPONIBLE sin tiempoAdquisicion.' })
+  @ApiResponse({ status: 403, description: 'Usuario no es técnico asignado, o Multipropósito intentando valorar CS_002.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está EN_CAMPO_VALORACION o valoración no pertenece a solicitud.' })
+  guardarValoracionCompleta(
+    @Param('idValoracion') idValoracion: string,
+    @Body() dto: GuardarValoracionCompletaDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.guardarValoracionCompleta(idValoracion, dto, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Acciones sobre una solicitud (:idSolicitud)
+  // Declaradas ANTES de :id wildcard para evitar colisiones con GET /:id.
+  // ---------------------------------------------------------------------------
+  @Post(':idSolicitud/iniciar-ejecucion-directa')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Inicio ejecución DIRECTA SIN valoración previa (alcance evidente). Estado ASIGNADA → EN_PROGRESO. Sólo técnico asignado. Multipropósito NO puede usar en CS_002 (403).',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud pasa a EN_PROGRESO. Se registra INICIO_EJECUCION_DIRECTA en historial.' })
+  @ApiResponse({ status: 403, description: 'Técnico Multipropósito en CS_002 o usuario no asignado.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está en estado ASIGNADA.' })
+  iniciarEjecucionDirecta(@Param('idSolicitud') idSolicitud: string, @Req() req: any) {
+    return this.mantenimientoService.iniciarEjecucionDirecta(idSolicitud, req?.user);
+  }
+
+  @Post(':idSolicitud/iniciar-valoracion')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Iniciar valoración previa (crea borrador SolicitudValoracion, estado solicitud pasa ASIGNADA → EN_CAMPO_VALORACION). Sólo técnico asignado o Encargado. Multipropósito 403 en CS_002.',
+  })
+  @ApiResponse({ status: 201, description: 'Borrador de valoración creado. Solicitud EN_CAMPO_VALORACION.' })
+  @ApiResponse({ status: 403, description: 'Multipropósito sobre CS_002 o usuario no autorizado.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está ASIGNADA o ya tiene valoración abierta.' })
+  iniciarValoracion(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: IniciarValoracionDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.iniciarValoracion(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/confirmar-recepcion-insumos')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006 AC-03: Encargado UMI confirma recepción física de materiales. Estado EN_ESPERA_DE_INSUMOS → EN_PROGRESO. Sólo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Materiales confirmados. Solicitud pasa a EN_PROGRESO.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (no Encargado/Asignador).' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está en EN_ESPERA_DE_INSUMOS.' })
+  confirmarRecepcionInsumos(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: ConfirmarRecepcionInsumosDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.confirmarRecepcionInsumos(idSolicitud, dto, req?.user);
+  }
+
+  @Get(':idSolicitud/valoraciones')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Historial de valoraciones de una solicitud (ordenado fecha DESC, incluye relación insumos). Si estado=EN_CAMPO_VALORACION devuelve la valoración abierta para edición.',
+  })
+  listarValoraciones(@Param('idSolicitud') idSolicitud: string) {
+    return this.mantenimientoService.listarValoraciones(idSolicitud, null, null);
   }
 
   @Post()

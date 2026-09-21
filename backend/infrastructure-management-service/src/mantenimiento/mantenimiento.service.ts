@@ -2,10 +2,12 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
+import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
+import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
 import { StorageService } from './storage.service.js';
 
 interface AuthUser {
@@ -66,6 +68,10 @@ export class MantenimientoService implements OnModuleInit {
     private readonly catalogoRepo: Repository<CatalogoItem>,
     @InjectRepository(SolicitudEvidencia)
     private readonly evidenciaRepo: Repository<SolicitudEvidencia>,
+    @InjectRepository(SolicitudValoracion)
+    private readonly valoracionRepo: Repository<SolicitudValoracion>,
+    @InjectRepository(SolicitudValoracionInsumo)
+    private readonly valoracionInsumoRepo: Repository<SolicitudValoracionInsumo>,
     private readonly storage: StorageService,
   ) {}
 
@@ -1015,7 +1021,18 @@ export class MantenimientoService implements OnModuleInit {
   private pushAsignacion(
     solicitud: SolicitudMantenimiento,
     args: {
-      accion: 'APROBADA_Y_ASIGNADA' | 'APROBADA_REMISION_TI' | 'RECHAZADA' | 'REDISTRIBUIDA';
+      accion:
+        | 'APROBADA_Y_ASIGNADA'
+        | 'APROBADA_REMISION_TI'
+        | 'RECHAZADA'
+        | 'REDISTRIBUIDA'
+        | 'INICIO_VALORACION'
+        | 'FINALIZA_VALORACION_CON_DISPONIBLES'
+        | 'FINALIZA_VALORACION_EN_ESPERA'
+        | 'EXTENSION_SLA_POR_INSUMOS'
+        | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
+        | 'EDICION_VALORACION_POR_ENCARGADO'
+        | 'INICIO_EJECUCION_DIRECTA';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       motivo?: string | null;
@@ -1072,6 +1089,19 @@ export class MantenimientoService implements OnModuleInit {
     const solicitud = await this.findById(idSolicitud);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
     const codTec = (args.tecnicoCodigo || '').trim();
+
+    // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
+    // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
+    const ESTADOS_PERMITIDOS_APROBAR = esTI
+      ? ['PENDIENTE_APROBACION', 'EN_ANALISIS']
+      : ['RECIBIDA', 'EN_ANALISIS', 'PENDIENTE_CLASIFICACION', 'PENDIENTE_APROBACION'];
+    if (!ESTADOS_PERMITIDOS_APROBAR.includes(solicitud.estado || '')) {
+      throw new ConflictException(
+        esTI
+          ? `Solo se puede aprobar la remisión a TI en estados PENDIENTE_APROBACION o EN_ANALISIS. Estado actual: ${solicitud.estado}. Para reasignar técnico utilice Redistribuir.`
+          : `Solo se puede aprobar y asignar la primera vez en estados: ${ESTADOS_PERMITIDOS_APROBAR.join(', ')}. Estado actual: ${solicitud.estado}. Para cambiar técnico responsable utilice Redistribuir (acción permitida).`,
+      );
+    }
 
     if (!esTI && !codTec) {
       throw new BadRequestException('Código técnico es obligatorio para asignar / redistribuir solicitudes UMI físicas.');
@@ -1156,6 +1186,17 @@ export class MantenimientoService implements OnModuleInit {
 
     const solicitud = await this.findById(idSolicitud);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+
+    // EFDS-1734: Rechazo solo tiene sentido pre-aprobación.
+    const ESTADOS_PERMITIDOS_RECHAZAR = esTI
+      ? ['PENDIENTE_APROBACION', 'EN_ANALISIS']
+      : ['RECIBIDA', 'EN_ANALISIS', 'PENDIENTE_CLASIFICACION', 'PENDIENTE_APROBACION'];
+    if (!ESTADOS_PERMITIDOS_RECHAZAR.includes(solicitud.estado || '')) {
+      throw new ConflictException(
+        `Solo se puede rechazar en estados previos a la aprobación: ${ESTADOS_PERMITIDOS_RECHAZAR.join(', ')}. Estado actual: ${solicitud.estado}. La solicitud ya fue aprobada y asignada; no se puede rechazar retroactivamente.`,
+      );
+    }
+
     solicitud.estado = 'RECHAZADA';
     solicitud.motivoRechazo = motivo;
     solicitud.responsableAsignado = null as any;
@@ -1195,9 +1236,24 @@ export class MantenimientoService implements OnModuleInit {
     if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
 
     const solicitud = await this.findById(idSolicitud);
+
+    // EFDS-1734: Redistribuir se permite solo cuando la solicitud no está cerrada/rechazada/remitida.
+    const ESTADOS_NO_PERMITIDOS = [
+      'COMPLETADA',
+      'CERRADA',
+      'CERRADA_SIN_ATENCION',
+      'RECHAZADA',
+      'REMITIDA_TI',
+    ];
+    if (ESTADOS_NO_PERMITIDOS.includes(solicitud.estado || '')) {
+      throw new ConflictException(
+        `No se puede redistribuir una solicitud en estado ${solicitud.estado}. Estados no permitidos: ${ESTADOS_NO_PERMITIDOS.join(', ')}.`,
+      );
+    }
+
     const tec = await this.resolverTecnicoActivo(args.tecnicoCodigo);
     // D10: si estaba RECIBIDA pasa a ASIGNADA. Si ASIGNADA/EN_ANALISIS/EN_PROGRESO se mantiene el estado actual.
-    if (solicitud.estado === 'RECIBIDA' || !solicitud.estado || solicitud.estado === 'RECHAZADA') {
+    if (solicitud.estado === 'RECIBIDA' || !solicitud.estado) {
       solicitud.estado = 'ASIGNADA';
     }
     solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
@@ -1213,6 +1269,417 @@ export class MantenimientoService implements OnModuleInit {
     });
 
     return this.mantenimientoRepo.save(solicitud);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006. Valoración en campo y registro de insumos requeridos
+  // ---------------------------------------------------------------------------
+
+  private usuarioEsSuperAdminOAsignador(user: AuthUser | null | undefined): boolean {
+    if (!user || !Array.isArray(user.roles)) return false;
+    const roles = user.roles.map((r) => String(r || '').toUpperCase());
+    return (
+      roles.includes('SUPER_ADMIN') ||
+      roles.includes('GESTOR_MANTENIMIENTO') ||
+      roles.includes('ADMINISTRADOR_FUNCIONAL')
+    );
+  }
+
+  private extraerTecnicoCodigoDesdeResponsable(
+    solicitud: SolicitudMantenimiento,
+  ): { codigo: string | null; nombre: string | null } {
+    const s = String(solicitud.responsableAsignado || '').trim();
+    if (!s || s.indexOf(' · ') < 0) return { codigo: null, nombre: s || null };
+    const [cod, ...rest] = s.split(' · ');
+    return { codigo: (cod || '').trim() || null, nombre: rest.join(' · ').trim() || null };
+  }
+
+  private async usuarioPuedeOperarComoTecnicoAsignado(
+    solicitud: SolicitudMantenimiento,
+    user: AuthUser | null | undefined,
+  ): Promise<{ puede: boolean; tecnicoCodigo?: string | null; tecnicoNombre?: string | null }> {
+    if (!user) return { puede: false };
+    const roles = (user.roles || []).map((r) => String(r).toUpperCase());
+    if (this.usuarioEsSuperAdminOAsignador(user)) {
+      const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+      return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
+    }
+    const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+    if (!t.codigo) return { puede: false };
+    const tecnico = await this.catalogoRepo.findOne({
+      where: { catalogo: TECNICO_MANTENIMIENTO, codigo: t.codigo, isActivo: true },
+    });
+    if (!tecnico || !tecnico.metadata || typeof tecnico.metadata !== 'object') {
+      return { puede: false };
+    }
+    const md = tecnico.metadata as any;
+    const correos = Array.isArray(md.correos) ? md.correos : [];
+    const ids = Array.isArray(md.usuarioIdsAutorizados) ? md.usuarioIdsAutorizados : [];
+    const coincide =
+      correos.some((c: string) => String(c).toLowerCase() === String(user.email || '').toLowerCase()) ||
+      ids.some((id: string) => String(id) === String(user.userId || ''));
+    if (coincide) {
+      return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
+    }
+    return { puede: false };
+  }
+
+  private async validarEspecializacionCS002(
+    solicitud: SolicitudMantenimiento,
+    per: { puede: boolean; tecnicoCodigo?: string | null; tecnicoNombre?: string | null },
+    user: AuthUser | null | undefined,
+  ): Promise<void> {
+    if (Number(solicitud.idCategoria) !== 48) return;
+    if (this.usuarioEsSuperAdminOAsignador(user)) return;
+    const tecnicoAsignadoCodigo = per.tecnicoCodigo;
+    if (!tecnicoAsignadoCodigo) return;
+    const regla001 = await this.catalogoRepo.findOne({
+      where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+    });
+    const esp =
+      regla001?.metadata && typeof regla001.metadata === 'object'
+        ? String((regla001.metadata as any).tecnicoCodigo || '').trim()
+        : '';
+    if (esp && tecnicoAsignadoCodigo !== esp) {
+      throw new ForbiddenException(
+        'La categoría CS_002 Eléctricas requiere el técnico especializado configurado en la regla 001.',
+      );
+    }
+  }
+
+  async iniciarEjecucionDirecta(
+    idSolicitud: string,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+    if (esTI) {
+      throw new BadRequestException('Las solicitudes TI no pasan por valoración o ejecución física UMI.');
+    }
+    const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!per.puede) {
+      throw new ForbiddenException('No está autorizado para iniciar la ejecución de esta solicitud.');
+    }
+    await this.validarEspecializacionCS002(solicitud, per, user);
+    if (solicitud.estado !== 'ASIGNADA') {
+      throw new ConflictException(
+        `La solicitud debe estar en estado ASIGNADA para iniciar ejecución directa. Estado actual: ${solicitud.estado}`,
+      );
+    }
+    solicitud.estadoValoracion = 'NO_APLICA';
+    solicitud.estado = 'EN_PROGRESO';
+    solicitud.fechaInicioValoracion = undefined;
+    solicitud.fechaFinValoracion = undefined;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'INICIO_EJECUCION_DIRECTA',
+      tecnicoCodigo: per.tecnicoCodigo ?? null,
+      tecnicoNombreDisplay: per.tecnicoNombre ?? null,
+      motivo: 'Inicio de ejecución sin valoración previa (alcance evidente).',
+      observaciones: null,
+      user: user as AuthUser,
+    });
+
+    return this.mantenimientoRepo.save(solicitud);
+  }
+
+  async iniciarValoracion(
+    idSolicitud: string,
+    _dto: IniciarValoracionDto | null | undefined,
+    user: AuthUser | null | undefined,
+  ): Promise<{ solicitud: SolicitudMantenimiento; valoracion: SolicitudValoracion }> {
+    const solicitud = await this.findById(idSolicitud);
+    const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+    if (esTI) {
+      throw new BadRequestException('Las solicitudes TI no pasan por valoración física UMI.');
+    }
+    const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!per.puede) {
+      throw new ForbiddenException('No está autorizado para registrar la valoración de esta solicitud.');
+    }
+    await this.validarEspecializacionCS002(solicitud, per, user);
+    if (!['ASIGNADA', 'EN_CAMPO_VALORACION'].includes(solicitud.estado || '')) {
+      throw new ConflictException(
+        `La solicitud debe estar ASIGNADA o EN_CAMPO_VALORACION para registrar valoración. Estado actual: ${solicitud.estado}`,
+      );
+    }
+
+    const ahora = new Date();
+    solicitud.estado = 'EN_CAMPO_VALORACION';
+    solicitud.estadoValoracion = 'EN_CURSO';
+    solicitud.fechaInicioValoracion = solicitud.fechaInicioValoracion ?? ahora;
+
+    let valoracion = await this.valoracionRepo.findOne({
+      where: {
+        idSolicitudMantenimiento: solicitud.idSolicitud,
+        estadoAlFinalizar: undefined as any,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!valoracion) {
+      valoracion = this.valoracionRepo.create({
+        idSolicitudMantenimiento: solicitud.idSolicitud,
+        idTecnicoValorador: user?.userId ?? undefined,
+        tecnicoCodigo: per.tecnicoCodigo ?? undefined,
+        tecnicoNombre: per.tecnicoNombre || (user?.username || 'Usuario sin nombre'),
+        diagnostico: 'Visita técnica en curso…',
+        alcanceIdentificado: 'Pendiente diligenciar durante la visita.',
+        tiempoEstimadoHoras: 1,
+        nivelRiesgo: 'BAJO',
+        requiereApagadoElectrico: false,
+        evidencias: [],
+        estadoAlFinalizar: 'EN_PROGRESO',
+        fechaInicioValoracion: solicitud.fechaInicioValoracion ?? ahora,
+        fechaFinValoracion: ahora,
+      });
+      valoracion = await this.valoracionRepo.save(valoracion as any);
+    }
+
+    const valoracionNonNull = valoracion!;
+    this.pushAsignacion(solicitud, {
+      accion: 'INICIO_VALORACION',
+      tecnicoCodigo: per.tecnicoCodigo ?? null,
+      tecnicoNombreDisplay: per.tecnicoNombre ?? null,
+      motivo: 'Inicio de visita de valoración en campo.',
+      observaciones: `idValoracion=${valoracionNonNull.idValoracion}`,
+      user: user as AuthUser,
+    });
+
+    const savedSol = await this.mantenimientoRepo.save(solicitud);
+    return { solicitud: savedSol, valoracion: valoracionNonNull };
+  }
+
+  async guardarValoracionCompleta(
+    idValoracion: string,
+    dto: GuardarValoracionCompletaDto,
+    user: AuthUser | null | undefined,
+  ): Promise<{ solicitud: SolicitudMantenimiento; valoracion: SolicitudValoracion }> {
+    const valoracion = await this.valoracionRepo.findOne({
+      where: { idValoracion },
+      relations: ['solicitud'],
+    });
+    if (!valoracion) {
+      throw new NotFoundException(`Valoración ${idValoracion} no encontrada.`);
+    }
+    const solicitud = valoracion.solicitud;
+    if (!solicitud) throw new NotFoundException('Solicitud no encontrada para la valoración.');
+
+    const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!per.puede) {
+      throw new ForbiddenException('No está autorizado para guardar la valoración.');
+    }
+    await this.validarEspecializacionCS002(solicitud, per, user);
+    if (solicitud.estado !== 'EN_CAMPO_VALORACION' && solicitud.estado !== 'ASIGNADA') {
+      throw new ConflictException(
+        `No se puede editar la valoración con la solicitud en estado ${solicitud.estado}.`,
+      );
+    }
+
+    const diagnostico = (dto.diagnostico || '').trim();
+    const alcance = (dto.alcanceIdentificado || '').trim();
+    if (diagnostico.length < 10) {
+      throw new BadRequestException('El diagnóstico debe contener al menos 10 caracteres.');
+    }
+    if (alcance.length < 10) {
+      throw new BadRequestException('El alcance identificado debe contener al menos 10 caracteres.');
+    }
+    if (!dto.tiempoEstimadoHoras || Number(dto.tiempoEstimadoHoras) < 0.25) {
+      throw new BadRequestException('El tiempo estimado de ejecución debe ser >= 0.25 horas.');
+    }
+    if (!['BAJO', 'MEDIO', 'ALTO'].includes(dto.nivelRiesgo || '')) {
+      throw new BadRequestException("Nivel de riesgo inválido. Use 'BAJO', 'MEDIO' o 'ALTO'.");
+    }
+    const esElectrico = Number(solicitud.idCategoria) === 48;
+    if (esElectrico && dto.requiereApagadoElectrico === null || dto.requiereApagadoElectrico === undefined) {
+      throw new BadRequestException(
+        'Para CS_002 Eléctricas debe marcar si requiere apagado/aislamiento eléctrico.',
+      );
+    }
+
+    const insumos = Array.isArray(dto.insumos) ? dto.insumos : [];
+    let totalEstimado = 0;
+    let maxDiasAdquisicion = 0;
+    let hayNoDisponible = false;
+    for (const it of insumos) {
+      const nombre = (it.nombre || '').trim();
+      if (nombre.length < 2) throw new BadRequestException('Cada insumo debe tener un nombre de al menos 2 caracteres.');
+      if (!it.cantidad || Number(it.cantidad) <= 0) {
+        throw new BadRequestException(`Cantidad inválida para el insumo ${nombre}.`);
+      }
+      const disp = (it.disponibilidad || '').toUpperCase();
+      if (!['DISPONIBLE_EN_BODEGA', 'NO_DISPONIBLE_A_SOLICITAR'].includes(disp)) {
+        throw new BadRequestException(
+          `Disponibilidad inválida para el insumo ${nombre}. Valores permitidos: DISPONIBLE_EN_BODEGA, NO_DISPONIBLE_A_SOLICITAR.`,
+        );
+      }
+      if (disp === 'NO_DISPONIBLE_A_SOLICITAR') {
+        if (it.tiempoAdquisicionDias === undefined || it.tiempoAdquisicionDias === null) {
+          throw new BadRequestException(
+            `Insumo ${nombre}: para disponibilidad NO_DISPONIBLE_A_SOLICITAR, indique tiempo de adquisición en días.`,
+          );
+        }
+        const d = Number(it.tiempoAdquisicionDias);
+        if (!Number.isFinite(d) || d < 0 || d > 90) {
+          throw new BadRequestException(`Insumo ${nombre}: tiempo de adquisición inválido (0-90 días).`);
+        }
+        hayNoDisponible = true;
+        if (d > maxDiasAdquisicion) maxDiasAdquisicion = d;
+      }
+      totalEstimado += Number(it.cantidad) * Number(it.costoUnitarioCop || 0);
+    }
+
+    // Actualizar valoración
+    valoracion.diagnostico = diagnostico;
+    valoracion.alcanceIdentificado = alcance;
+    valoracion.tiempoEstimadoHoras = Number(dto.tiempoEstimadoHoras);
+    valoracion.nivelRiesgo = dto.nivelRiesgo as any;
+    valoracion.requiereApagadoElectrico = esElectrico ? Boolean(dto.requiereApagadoElectrico) : false;
+    valoracion.observaciones = (dto.observaciones || '').trim() || undefined;
+    valoracion.evidencias = Array.isArray(dto.evidencias) ? dto.evidencias : [];
+    valoracion.fechaFinValoracion = new Date();
+
+    const estadoFinal: 'EN_PROGRESO' | 'EN_ESPERA_DE_INSUMOS' = hayNoDisponible
+      ? 'EN_ESPERA_DE_INSUMOS'
+      : 'EN_PROGRESO';
+    valoracion.estadoAlFinalizar = estadoFinal;
+
+    const savedValoracion = await this.valoracionRepo.save(valoracion as any);
+
+    // Reemplazar insumos
+    await this.valoracionInsumoRepo.delete({ idValoracion });
+    if (insumos.length > 0) {
+      const rows = insumos.map((it, idx) =>
+        this.valoracionInsumoRepo.create({
+          idValoracion: savedValoracion.idValoracion,
+          codigoInsumo: (it.codigoInsumo || '').trim() || undefined,
+          nombre: (it.nombre || '').trim(),
+          cantidad: Number(it.cantidad),
+          unidadMedida: it.unidadMedida || 'un',
+          costoUnitarioCop: Number(it.costoUnitarioCop || 0),
+          disponibilidad: (it.disponibilidad || '').toUpperCase() as any,
+          tiempoAdquisicionDias:
+            it.disponibilidad &&
+            String(it.disponibilidad).toUpperCase() === 'NO_DISPONIBLE_A_SOLICITAR'
+              ? Number(it.tiempoAdquisicionDias)
+              : undefined,
+          ordenItem: idx + 1,
+        } as any),
+      );
+      await this.valoracionInsumoRepo.save(rows as any);
+    }
+
+    // Actualizar solicitud
+    solicitud.estadoValoracion = 'FINALIZADA';
+    solicitud.fechaFinValoracion = savedValoracion.fechaFinValoracion;
+    solicitud.riesgoValoracion = savedValoracion.nivelRiesgo;
+    solicitud.requiereApagadoElectrico = savedValoracion.requiereApagadoElectrico;
+    solicitud.totalEstimadoInsumosCop = totalEstimado;
+    solicitud.estado = estadoFinal;
+    solicitud.esperaInsumosFlag = hayNoDisponible;
+
+    if (hayNoDisponible && maxDiasAdquisicion > 0) {
+      if (solicitud.fechaLimiteAtencion) {
+        solicitud.fechaLimiteOriginalAntesExtension =
+          solicitud.fechaLimiteOriginalAntesExtension ?? solicitud.fechaLimiteAtencion;
+        const original = new Date(solicitud.fechaLimiteOriginalAntesExtension).getTime();
+        const nueva = new Date(original + maxDiasAdquisicion * 24 * 60 * 60 * 1000);
+        solicitud.fechaLimiteAtencion = nueva;
+        const diffMs = nueva.getTime() - new Date(solicitud.fechaLimiteOriginalAntesExtension).getTime();
+        solicitud.diasExtendidosPorInsumos = Math.max(
+          solicitud.diasExtendidosPorInsumos || 0,
+          Math.round(diffMs / (24 * 60 * 60 * 1000)),
+        );
+        this.pushAsignacion(solicitud, {
+          accion: 'EXTENSION_SLA_POR_INSUMOS',
+          tecnicoCodigo: null,
+          tecnicoNombreDisplay: null,
+          motivo: `Se extiende la fecha límite en ${solicitud.diasExtendidosPorInsumos} días por materiales pendientes.`,
+          observaciones: JSON.stringify({
+            fechaOriginal: solicitud.fechaLimiteOriginalAntesExtension,
+            fechaNueva: nueva.toISOString(),
+            diasAdicionales: maxDiasAdquisicion,
+          }),
+          user: user as AuthUser,
+        });
+      }
+    }
+
+    this.pushAsignacion(solicitud, {
+      accion: hayNoDisponible
+        ? 'FINALIZA_VALORACION_EN_ESPERA'
+        : 'FINALIZA_VALORACION_CON_DISPONIBLES',
+      tecnicoCodigo: per.tecnicoCodigo ?? null,
+      tecnicoNombreDisplay: per.tecnicoNombre ?? null,
+      motivo: hayNoDisponible
+        ? 'Valoración finalizada con insumos pendientes por solicitar.'
+        : 'Valoración finalizada; todos los insumos están en bodega. Inicia ejecución.',
+      observaciones: `idValoracion=${savedValoracion.idValoracion} · totalEstimado=$${Math.round(totalEstimado).toLocaleString('es-CO')} COP`,
+      user: user as AuthUser,
+    });
+
+    const savedSol = await this.mantenimientoRepo.save(solicitud);
+    return { solicitud: savedSol, valoracion: savedValoracion };
+  }
+
+  async confirmarRecepcionInsumos(
+    idSolicitud: string,
+    dto: ConfirmarRecepcionInsumosDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    const solicitud = await this.findById(idSolicitud);
+    if (solicitud.estado !== 'EN_ESPERA_DE_INSUMOS') {
+      throw new ConflictException(
+        `Solo se puede confirmar recepción de insumos en estado EN_ESPERA_DE_INSUMOS. Estado actual: ${solicitud.estado}`,
+      );
+    }
+    solicitud.estado = 'EN_PROGRESO';
+    solicitud.esperaInsumosFlag = false;
+    const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+    this.pushAsignacion(solicitud, {
+      accion: 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION',
+      tecnicoCodigo: t.codigo ?? null,
+      tecnicoNombreDisplay: t.nombre ?? null,
+      motivo: (dto?.observaciones || '').trim() || 'Materiales recibidos. Inicia ejecución del trabajo.',
+      observaciones: null,
+      user: user as AuthUser,
+    });
+    return this.mantenimientoRepo.save(solicitud);
+  }
+
+  async listarValoraciones(
+    idSolicitud: string | null,
+    user: AuthUser | null | undefined,
+    estado: string | null | undefined,
+  ): Promise<SolicitudValoracion[]> {
+    if (idSolicitud) {
+      const solicitud = await this.findById(idSolicitud);
+      const rows = await this.valoracionRepo.find({
+        where: { idSolicitudMantenimiento: solicitud.idSolicitud },
+        relations: ['insumos'],
+        order: { createdAt: 'ASC' },
+      });
+      return rows;
+    }
+    const where: any = {};
+    if (user?.userId) {
+      where.idTecnicoValorador = user.userId;
+    }
+    const rows = await this.valoracionRepo.find({
+      where,
+      relations: ['insumos'],
+      order: { createdAt: 'DESC' },
+      take: 200,
+    });
+    if (estado) {
+      const estUp = String(estado).toUpperCase();
+      return rows.filter((r) => {
+        const estadoSol = (r as any).solicitud?.estado || '';
+        return !estadoSol || estadoSol.includes(estUp) || (r as any).estadoAlFinalizar === estUp;
+      });
+    }
+    return rows;
   }
 
   // ---------------------------------------------------------------------------
