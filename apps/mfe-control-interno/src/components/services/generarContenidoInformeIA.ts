@@ -79,7 +79,16 @@ function buildPrompt(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoPDF[], a�
     proceso: auditoria.proceso,
     unidadAuditable: auditoria.unidadAuditable || auditoria.nombre,
     periodoAuditoria: auditoria.periodoAuditoria,
-    hallazgos: hallazgos.map((h, i) => ({ numero: i + 1, titulo: h.titulo, descripcion: h.descripcion })),
+    // La respuesta del auditado y la decisión del auditor se consideran en las conclusiones (EFDS-1637)
+    hallazgos: hallazgos.map((h, i) => ({
+      numero: i + 1,
+      titulo: h.titulo,
+      descripcion: h.descripcion,
+      estado: h.estadoFinal,
+      respuestaAuditado: h.respuestaAuditado,
+      decisionAuditor: h.decisionAuditor,
+      fundamentacionTecnica: h.fundamentacionTecnica,
+    })),
     año
   }, null, 2);
 

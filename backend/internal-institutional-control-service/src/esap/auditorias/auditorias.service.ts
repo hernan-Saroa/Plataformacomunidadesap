@@ -7,6 +7,7 @@ import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
 import { UpdateNotaDto } from './dto/update-nota.dto';
 import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
+import { ActualizarResultadosAuditoriaDto } from './dto/actualizar-resultados-auditoria.dto';
 import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { ObjetivoAuditoria } from './entities/objetivo-auditoria.entity';
@@ -941,6 +942,9 @@ export class AuditoriasService {
       }
     }
 
+    // Mismo conteo de documentos que el expediente (EFDS-1614)
+    await this.aplicarConteoDocumentosExpediente(auditorias);
+
     // Serializar fechas e inyectar nombres y datos de procesos
     return auditorias.map(aud => {
       const serialized = this.serializeAuditoria(aud, namesMap);
@@ -1116,10 +1120,11 @@ export class AuditoriasService {
         );
         const conteosById = new Map<string, any>();
         for (const c of conteos) conteosById.set(String(c.id), c);
+        const conteoDocumentos = await this.contarDocumentosExpediente(ids);
         for (const a of serializadas) {
           const c = conteosById.get(a.id);
           if (c) {
-            a.totalDocumentos = c.total_documentos;
+            a.totalDocumentos = conteoDocumentos.get(a.id) ?? c.total_documentos;
             a.totalHallazgos = c.total_hallazgos;
           }
         }
@@ -1300,6 +1305,74 @@ export class AuditoriasService {
     serialized.planAnualAñoVal = planAnualAñoVal;
 
     return serialized;
+  }
+
+  /**
+   * Registra los resultados consolidados en Ejecución: fortalezas, recomendaciones generales
+   * y conclusiones. Los hallazgos se gestionan en su propia sección (EFDS-1636).
+   */
+  async actualizarResultados(
+    id: string,
+    dto: ActualizarResultadosAuditoriaDto,
+    usuarioId?: string,
+  ): Promise<{ fortalezas: string[]; recomendacionesGenerales: string[]; conclusiones: string | null }> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA || auditoria.archivada) {
+      throw new BadRequestException('La auditoría está finalizada; sus resultados ya no se pueden modificar.');
+    }
+
+    const limpiarLista = (lista?: string[]) =>
+      (Array.isArray(lista) ? lista : []).map((item) => String(item ?? '').trim()).filter(Boolean);
+    const cambios: string[] = [];
+
+    if (dto.fortalezas !== undefined) {
+      auditoria.fortalezas = limpiarLista(dto.fortalezas);
+      cambios.push('fortalezas');
+    }
+    if (dto.recomendacionesGenerales !== undefined) {
+      auditoria.recomendacionesGenerales = limpiarLista(dto.recomendacionesGenerales);
+      cambios.push('recomendaciones generales');
+    }
+    if (dto.conclusiones !== undefined) {
+      auditoria.conclusiones = String(dto.conclusiones ?? '').trim() || null;
+      cambios.push('conclusiones');
+    }
+
+    await this.auditoriaRepository.update(
+      { id },
+      {
+        fortalezas: auditoria.fortalezas ?? [],
+        recomendacionesGenerales: auditoria.recomendacionesGenerales ?? [],
+        conclusiones: auditoria.conclusiones ?? null,
+      } as any,
+    );
+
+    if (cambios.length > 0) {
+      try {
+        const { fecha, hora } = getFechaHoraColombia();
+        const historial = new HistorialAuditoria();
+        historial.auditoriaId = id;
+        historial.tipoEvento = TipoEvento.ACTUALIZACION;
+        historial.fecha = fecha;
+        historial.hora = hora;
+        historial.usuarioId = await this.resolverPersonaDeUsuario(usuarioId);
+        historial.accion = 'Resultados de la auditoría actualizados';
+        historial.descripcion = `Resultados registrados en Ejecución: ${cambios.join(', ')}`;
+        historial.cambios = cambios.map((c) => ({ campo: c, valorAnterior: '', valorNuevo: '' }));
+        await this.historialRepository.save(historial);
+      } catch (histError) {
+        console.error('[AuditoriasService.actualizarResultados] Error al registrar en historial:', histError);
+      }
+    }
+
+    return {
+      fortalezas: auditoria.fortalezas ?? [],
+      recomendacionesGenerales: auditoria.recomendacionesGenerales ?? [],
+      conclusiones: auditoria.conclusiones ?? null,
+    };
   }
 
   /**
@@ -2307,6 +2380,8 @@ export class AuditoriasService {
       // ✅ 1. Evento estándar predefinido (si está activo)
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: saved.id,
+        // Los Jefes OCIG configurados en Profesionales OCI se enteran de cada cambio de etapa (EFDS-873).
+        usuariosIds: await this.notificacionesService.obtenerJefesOcig(),
         auditoriaCodigo: saved.codigo,
         tituloCustom: `Auditoría movida: ${saved.codigo}`,
         mensajeCustom: `La auditoría "${saved.nombre}" ha sido movida a la etapa: ${nuevoEstadoKanban}.`,
@@ -2707,6 +2782,7 @@ export class AuditoriasService {
       }
 
       await this.resolveAuditoriasResponsables(auditorias);
+      await this.aplicarConteoDocumentosExpediente(auditorias);
 
       // Si no hay auditorías, retornar array vacío
       if (!auditorias || auditorias.length === 0) {
@@ -2990,6 +3066,7 @@ export class AuditoriasService {
     });
 
     await this.resolveAuditoriasResponsables(auditorias);
+    await this.aplicarConteoDocumentosExpediente(auditorias);
 
     // Obtener información de personas desde auth.personas usando query raw
     const auditoriasConPersonas = await Promise.all(
@@ -3225,6 +3302,45 @@ export class AuditoriasService {
     if (total <= 0) return 100;
     const porcentaje = Math.round((transcurrido / total) * 100);
     return Math.max(0, Math.min(100, porcentaje));
+  }
+
+  /**
+   * Cantidad de documentos del expediente por auditoría con el mismo criterio de
+   * Expediente → Documentación: documentos + evidencias (sin duplicar) + documento de cierre (EFDS-1614).
+   */
+  async contarDocumentosExpediente(ids: string[]): Promise<Map<string, number>> {
+    const conteo = new Map<string, number>();
+    const idsValidos = (ids || []).filter(Boolean).map(String);
+    if (idsValidos.length === 0) return conteo;
+    try {
+      const filas = await this.auditoriaRepository.query(
+        `SELECT a.id::text AS id,
+                (SELECT COUNT(*) FROM control_interno.documento d WHERE d.auditoria_id = a.id)
+              + (SELECT COUNT(*)
+                   FROM control_interno.evidencia_documento e
+                   LEFT JOIN control_interno.hallazgo h ON h.id = e.hallazgo_id
+                  WHERE (e.auditoria_id = a.id OR h.auditoria_id = a.id)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM control_interno.documento d2 WHERE d2.id = e.id AND d2.auditoria_id = a.id
+                    ))
+              + CASE WHEN COALESCE(a.documento_cierre->>'url', '') <> '' THEN 1 ELSE 0 END AS total
+           FROM control_interno.auditoria a
+          WHERE a.id = ANY($1::uuid[])`,
+        [idsValidos],
+      );
+      for (const fila of filas) conteo.set(String(fila.id), Number(fila.total) || 0);
+    } catch (error) {
+      console.warn('[AuditoriasService.contarDocumentosExpediente] No se pudo contar documentos:', error);
+    }
+    return conteo;
+  }
+
+  private async aplicarConteoDocumentosExpediente(auditorias: Auditoria[]): Promise<void> {
+    const conteo = await this.contarDocumentosExpediente((auditorias || []).map((a) => a.id));
+    for (const auditoria of auditorias || []) {
+      const total = conteo.get(String(auditoria.id));
+      if (total !== undefined) auditoria.totalDocumentos = total;
+    }
   }
 
   /**
@@ -4577,6 +4693,8 @@ export class AuditoriasService {
     try {
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: auditoria.id,
+        // Los Jefes OCIG configurados en Profesionales OCI se enteran de cada cambio de etapa (EFDS-873).
+        usuariosIds: await this.notificacionesService.obtenerJefesOcig(),
         auditoriaCodigo: auditoria.codigo,
         tituloCustom: `Cambio de Estado - Auditoría ${auditoria.codigo}`,
         mensajeCustom: `El estado de la auditoría "${auditoria.nombre}" ha cambiado de "${estadoAnterior}" a "${estadoNuevo}".`,

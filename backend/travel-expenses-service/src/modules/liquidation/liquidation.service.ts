@@ -5,6 +5,8 @@ import { EscalaViaticoEntity } from '../../entities/liquidation/escala-viatico.e
 import { TarifaInvestigadorEntity } from '../../entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
+import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
+import { Optional } from '@nestjs/common';
 import {
   CalcularLiquidacionDto,
   TipoComisionadoLiquidacion,
@@ -78,6 +80,9 @@ export class LiquidationService {
     @InjectRepository(LiquidationParamEntity)
     private readonly paramRepo: Repository<LiquidationParamEntity>,
     private readonly dataSource: DataSource,
+    @Optional()
+    @InjectRepository(AuthSystemSettingEntity)
+    private readonly authSettingRepo?: Repository<AuthSystemSettingEntity>,
   ) {}
 
   private async obtenerParametro(
@@ -95,9 +100,39 @@ export class LiquidationService {
     return param.valor;
   }
 
+  /**
+   * Obtiene el Salario Mínimo Legal Vigente (SMMLV) desde el catálogo maestro
+   * centralizado en auth.system_settings ('SALARIO_MINIMO_MENSUAL').
+   * Si no estuviera disponible, utiliza el valor legal vigente por defecto (1.423.500 COP).
+   */
   private async obtenerSMMLV(): Promise<number> {
-    const valor = await this.obtenerParametro('SMMLV_2026', '1423500');
-    return Number(valor);
+    if (this.authSettingRepo) {
+      try {
+        const setting = await this.authSettingRepo.findOne({
+          where: { key: 'SALARIO_MINIMO_MENSUAL' },
+        });
+        if (setting && setting.value) {
+          let numericVal = 1423500;
+          try {
+            if (setting.value.trim().startsWith('{')) {
+              const parsed = JSON.parse(setting.value);
+              numericVal = Number(parsed.salarioMinimo) || 1423500;
+            } else {
+              numericVal = Number(setting.value) || 1423500;
+            }
+          } catch {
+            numericVal = Number(setting.value) || 1423500;
+          }
+          if (numericVal > 0) {
+            return numericVal;
+          }
+        }
+      } catch {
+        // En caso de contingencia continúa con el valor por defecto
+      }
+    }
+
+    return 1423500;
   }
 
   private async obtenerFactorContratista(): Promise<number> {

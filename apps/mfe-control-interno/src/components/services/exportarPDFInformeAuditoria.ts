@@ -1,10 +1,10 @@
 import type { jsPDF as JsPDFType } from 'jspdf';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, DOCUMENTOS_PREDEFINIDOS, getLogoESAP, type ConfiguracionDocumento } from './pdfESAPHeader';
-import { LOGO_INSTITUCIONAL_ESAP_B64 } from './logoInstitucionalESAP';
+import { LOGO_CERTIFICACIONES_ESAP_B64 } from './logoCertificacionesESAP';
 
 /** Logo institucional ESAP - cargado desde modulo dedicado (base64 correcto, sin red ni CORS) */
 async function getLogoInstitucionalESAP(): Promise<string> {
-  return LOGO_INSTITUCIONAL_ESAP_B64;
+  return LOGO_CERTIFICACIONES_ESAP_B64;
 }
 
 // Tipos mínimos necesarios (coinciden con los de ComunicacionAuditoriaModule)
@@ -104,6 +104,8 @@ export interface AuditoriaBasicaPDF {
   aspectosRelevantes?: string;
   evaluacionControlInterno?: string;
   fortalezas?: string[];
+  /** Conclusiones registradas en Ejecución (EFDS-1636) */
+  conclusiones?: string;
   recomendacionesPorCategoria?: Array<{ categoria: string; items: string[] }>;
   riesgosIdentificados?: string[];
   procesoAuditado?: string;
@@ -123,6 +125,23 @@ export interface HallazgoPDF {
   estadoFinal?: string;
   decisionAuditor?: string;
   fundamentacionTecnica?: string;
+  /** Respuesta del área auditada con el historial de réplicas de la controversia */
+  respuestaAuditado?: string;
+  /** Nombre del soporte que adjuntó el área auditada */
+  soporteAuditado?: string;
+  fechaDecision?: string;
+}
+
+const DECISIONES_AUDITOR = ['ratificado', 'modificado', 'retirado'];
+
+/** Cómo respondió el área auditada al hallazgo, para el resumen del informe final */
+function respuestaAuditadoResumen(h: HallazgoPDF): string {
+  const estado = (h.estadoFinal || '').toLowerCase();
+  if (estado === 'aceptado') return 'ACEPTADO';
+  if (h.respuestaAuditado?.trim() || estado === 'en-controversia' || DECISIONES_AUDITOR.includes(estado)) {
+    return 'CONTROVERTIDO';
+  }
+  return 'SIN RESPUESTA';
 }
 
 type TipoInforme = 'preliminar' | 'final' | 'ejecutivo';
@@ -1003,6 +1022,39 @@ export async function exportarPDFInformeAuditoria(
           y = imprimirParrafo(doc, h.efectos.join(' '), margin + 2, y, tableW - 4, LH, FOOTER_MARGIN);
           y += 2;
         }
+
+        // El informe final conserva la posición del auditado y el análisis del auditor (EFDS-1637)
+        if (isFinal) {
+          const estadoH = (h.estadoFinal || '').toLowerCase();
+          const respuesta = (h.respuestaAuditado || '').trim();
+          const textoRespuesta = respuesta
+            ? `${respuesta}${estadoH === 'aceptado' ? '\nFinalmente, el área auditada aceptó el hallazgo.' : ''}`
+            : estadoH === 'aceptado'
+              ? 'El área auditada aceptó el hallazgo sin presentar controversia.'
+              : 'El área auditada no registró respuesta frente al hallazgo.';
+
+          y = checkPage(doc, y, 14, FOOTER_MARGIN);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('RESPUESTA DEL ÁREA AUDITADA:', margin, y); y += LH;
+          doc.setFont('helvetica', 'normal');
+          y = imprimirParrafo(doc, textoRespuesta, margin + 2, y, tableW - 4, LH, FOOTER_MARGIN);
+          if (h.soporteAuditado) {
+            y = imprimirParrafo(doc, `Soporte adjunto: ${h.soporteAuditado}`, margin + 2, y, tableW - 4, LH, FOOTER_MARGIN);
+          }
+          y += 2;
+
+          const decision = (h.decisionAuditor || estadoH).toLowerCase();
+          if (DECISIONES_AUDITOR.includes(decision)) {
+            const fechaDecision = h.fechaDecision ? ` el ${new Date(h.fechaDecision).toLocaleDateString('es-CO')}` : '';
+            y = checkPage(doc, y, 14, FOOTER_MARGIN);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('ANÁLISIS Y DECISIÓN DEL AUDITOR:', margin, y); y += LH;
+            doc.setFont('helvetica', 'normal');
+            y = imprimirParrafo(doc, `Hallazgo ${decision.toUpperCase()}${fechaDecision}.`, margin + 2, y, tableW - 4, LH, FOOTER_MARGIN);
+            if (h.fundamentacionTecnica) {
+              y = imprimirParrafo(doc, h.fundamentacionTecnica, margin + 2, y, tableW - 4, LH, FOOTER_MARGIN);
+            }
+            y += 2;
+          }
+        }
         y = checkPage(doc, y, 10, FOOTER_MARGIN);
       });
       y += SEC;
@@ -1016,9 +1068,12 @@ export async function exportarPDFInformeAuditoria(
       doc.text('RESUMEN DE HALLAZGOS', margin, y);
       y += 6;
       {
-        const colsSum = [12, 110, 30, 28]; // Total 180
+        // En el final se agrega cómo respondió el área auditada (EFDS-1637). Total 180
+        const colsSum = isFinal ? [12, 78, 30, 34, 26] : [12, 110, 30, 28];
         const rhSum = 9;
-        const headLabels = ['No.', 'HALLAZGO', isFinal ? 'ESTADO' : 'GRAVEDAD', 'REPETITIVO'];
+        const headLabels = isFinal
+          ? ['No.', 'HALLAZGO', 'ESTADO', 'RESPUESTA', 'REPETITIVO']
+          : ['No.', 'HALLAZGO', 'GRAVEDAD', 'REPETITIVO'];
         
         doc.setFillColor(230, 230, 230);
         doc.rect(margin, y, tableW, rhSum, 'F');
@@ -1068,8 +1123,16 @@ export async function exportarPDFInformeAuditoria(
           doc.text(valGravedad.toUpperCase(), rx0 + (colsSum[2] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
           rx0 += colsSum[2]; doc.line(rx0, y, rx0, y + rh0);
 
-          // Col 4: REPETITIVO
-          doc.text('NO', rx0 + (colsSum[3] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
+          // Col RESPUESTA (solo informe final)
+          let colRepetitivo = 3;
+          if (isFinal) {
+            doc.text(respuestaAuditadoResumen(h), rx0 + (colsSum[3] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
+            rx0 += colsSum[3]; doc.line(rx0, y, rx0, y + rh0);
+            colRepetitivo = 4;
+          }
+
+          // Col REPETITIVO
+          doc.text('NO', rx0 + (colsSum[colRepetitivo] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
           
           y += rh0;
         });
@@ -1086,7 +1149,7 @@ export async function exportarPDFInformeAuditoria(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10.5);
     const cText = isFinal ? infFinal?.observacionesFinales : infPrelim?.observaciones;
-    y = imprimirParrafo(doc, cText || 'Sin conclusiones.', margin, y, tableW, LH, FOOTER_MARGIN);
+    y = imprimirParrafo(doc, cText || auditoria.conclusiones || 'Sin conclusiones.', margin, y, tableW, LH, FOOTER_MARGIN);
     y += SEC;
 
     // Firmas...

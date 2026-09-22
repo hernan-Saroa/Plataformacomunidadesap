@@ -341,6 +341,16 @@ export class Auditoria {
   @Column({ name: 'observaciones_cierre', type: 'text', nullable: true })
   observacionesCierre?: string;
 
+  /** Resultados consolidados en Ejecución (EFDS-1636) */
+  @Column({ name: 'fortalezas', type: 'jsonb', default: () => "'[]'::jsonb" })
+  fortalezas: string[];
+
+  @Column({ name: 'recomendaciones_generales', type: 'jsonb', default: () => "'[]'::jsonb" })
+  recomendacionesGenerales: string[];
+
+  @Column({ name: 'conclusiones', type: 'text', nullable: true })
+  conclusiones?: string | null;
+
   /** Informe de cierre (Sección 2): lecciones y recomendaciones */
   @Column({ name: 'lecciones_aprendidas', type: 'text', nullable: true })
   leccionesAprendidas?: string | null;

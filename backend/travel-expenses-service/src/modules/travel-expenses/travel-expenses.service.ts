@@ -15,10 +15,15 @@ import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
+import { FestivoColombiaEntity } from '../../entities/festivo-colombia.entity';
+import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
+export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
@@ -29,6 +34,15 @@ import {
   AutorizacionExtemporaneaDto,
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
+import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
+import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
+import { IssueRpDto } from '../../dto/issue-rp.dto';
+import { ItemCargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
+import { ItemBulkIssueRpDto, BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
+import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
+import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
+
 import {
   sanitizeObjetoComision,
   sanitizeTextoPlano,
@@ -40,8 +54,10 @@ import {
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
 import { ConfigService } from '../config/config.service';
-import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
-import { NotificationClientService } from '../../common/notification-client.service';
+import {
+  NotificationClientService,
+  buildTravelExpenseEmailHtml,
+} from '../../common/notification-client.service';
 import { LiquidationService } from '../liquidation/liquidation.service';
 import {
   TipoComisionadoLiquidacion,
@@ -122,7 +138,29 @@ export class TravelExpensesService {
     private readonly liquidationService?: LiquidationService,
     @Optional()
     private readonly ticketsService?: TicketsService,
+    @Optional()
+    private readonly eventEmitter?: EventEmitter2,
   ) {}
+
+  /**
+   * Emite el evento asíncrono 'commission.disbursement_ready' para que el listener
+   * de SST despache automáticamente la notificación formal de desplazamiento [RF-PAG-002].
+   */
+  private emitirDisbursementReady(solicitudId: string, estadoNuevo: string, usuarioId?: string) {
+    if (this.eventEmitter) {
+      try {
+        this.eventEmitter.emit('commission.disbursement_ready', {
+          solicitudId,
+          estadoNuevo,
+          usuarioId,
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `[RF-PAG-002] No se pudo emitir evento commission.disbursement_ready para ${solicitudId}: ${err?.message}`,
+        );
+      }
+    }
+  }
 
   private readonly SUPER_ADMIN_ROLES = [
     'ADMIN',
@@ -145,6 +183,31 @@ export class TravelExpensesService {
     });
   }
 
+  private dependenciasMapCache: Map<string, string> = new Map();
+  private dependenciasMapExpires = 0;
+
+  async obtenerMapDependencias(): Promise<Map<string, string>> {
+    const ahora = Date.now();
+    if (this.dependenciasMapCache.size > 0 && ahora < this.dependenciasMapExpires) {
+      return this.dependenciasMapCache;
+    }
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT id_dependencia, cod_dependencia, nom_dependencia FROM auth.dependencias WHERE activo = true OR estado = 'ACTIVO'`,
+      );
+      this.dependenciasMapCache.clear();
+      for (const r of rows) {
+        const nom = r.nom_dependencia || r.nombre || '';
+        if (r.id_dependencia != null) this.dependenciasMapCache.set(String(r.id_dependencia), nom);
+        if (r.cod_dependencia) this.dependenciasMapCache.set(String(r.cod_dependencia), nom);
+      }
+      this.dependenciasMapExpires = ahora + 60000;
+    } catch (e: any) {
+      this.logger.warn(`[obtenerMapDependencias] No se pudo consultar auth.dependencias: ${e?.message}`);
+    }
+    return this.dependenciasMapCache;
+  }
+
   async obtenerSolicitudes(
     usuarioId?: string,
     isSuperAdmin = false,
@@ -153,6 +216,8 @@ export class TravelExpensesService {
     isControlViaticos = false,
     isAnalista = false,
     isSecretario = false,
+    isTesoreria = false,
+    isSst = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -165,6 +230,10 @@ export class TravelExpensesService {
       isAnalista,
       'isSecretario=',
       isSecretario,
+      'isTesoreria=',
+      isTesoreria,
+      'isSst=',
+      isSst,
       'page=',
       page,
       'limit=',
@@ -175,33 +244,40 @@ export class TravelExpensesService {
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
     if (!isSuperAdmin && !isSecretario) {
-      if (isControlViaticos) {
+      if (isTesoreria) {
+        query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
+          estadosTesoreria: ['OBLIGADA', 'PAGADA'],
+        });
+      } else if (isSst) {
+        query.andWhere('s.estado_solicitud IN (:...estadosSst)', {
+          estadosSst: ['OBLIGADA', 'PAGADA'],
+        });
+      } else if (isControlViaticos) {
         query.andWhere('s.estado_solicitud IN (:...estadosControl)', {
           estadosControl: ['SOLICITADA_SIIF', 'VERIFICADA'],
         });
       } else if (isAnalista && usuarioId) {
-        query.andWhere(
-          '(s.creadoPorUsuarioId = :usuarioId OR s.analistaAsignadoId = :usuarioId)',
-          { usuarioId },
-        );
+        query.andWhere('s.analistaAsignadoId = :usuarioId', { usuarioId });
       } else if (usuarioId) {
         query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
       }
     }
 
-    // Orden por prioridad de estado (vista general): Solicitadas SIIF → Verificadas →
-    // Radicadas → Extemporáneas → Solicitadas (en revisión) → Pendientes → resto.
-    // Dentro del mismo estado se ordena por fecha de creación (más reciente primero).
+    // Orden por prioridad de estado: OBLIGADA primero (prioridad operativa Tesorería),
+    // luego Solicitadas SIIF → Verificadas → Radicadas → Extemporáneas → Solicitadas →
+    // Pendientes → Pagadas → resto.
     query
       .orderBy(
         `CASE s.estado_solicitud
-           WHEN 'SOLICITADA_SIIF' THEN 1
-           WHEN 'VERIFICADA' THEN 2
-           WHEN 'RADICADA' THEN 3
-           WHEN 'EXTEMPORANEA' THEN 4
-           WHEN 'SOLICITADO' THEN 5
-           WHEN 'PENDIENTE' THEN 6
-           ELSE 7
+           WHEN 'OBLIGADA' THEN 1
+           WHEN 'SOLICITADA_SIIF' THEN 2
+           WHEN 'VERIFICADA' THEN 3
+           WHEN 'RADICADA' THEN 4
+           WHEN 'EXTEMPORANEA' THEN 5
+           WHEN 'SOLICITADO' THEN 6
+           WHEN 'PENDIENTE' THEN 7
+           WHEN 'PAGADA' THEN 8
+           ELSE 9
          END`,
         'ASC',
       )
@@ -220,28 +296,38 @@ export class TravelExpensesService {
       total,
     );
 
-    const data = solicitudes.map((s) => ({
-      id: s.id,
-      consecutivoUnico: s.consecutivoUnico,
-      comisionadoId: s.comisionadoId,
-      comisionado: s.comisionado
-        ? {
-            id: s.comisionado.id,
-            numeroDocumento: s.comisionado.numeroDocumento,
-            primerNombre: s.comisionado.primerNombre,
-            segundoNombre: s.comisionado.segundoNombre,
-            primerApellido: s.comisionado.primerApellido,
-            segundoApellido: s.comisionado.segundoApellido,
-            tipoComisionado: s.comisionado.tipoComisionado,
-            email: s.comisionado.email,
-            telefonoContacto: s.comisionado.telefonoContacto,
-            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
-          }
-        : null,
+    const depMap = await this.obtenerMapDependencias();
+    const data = solicitudes.map((s) => {
+      const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+      const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+      const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+      return {
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        comisionadoId: s.comisionadoId,
+        idDependencia: idDep,
+        dependencia: depFinal,
+        nombreDependencia: depFinal,
+        comisionado: s.comisionado
+          ? {
+              id: s.comisionado.id,
+              numeroDocumento: s.comisionado.numeroDocumento,
+              primerNombre: s.comisionado.primerNombre,
+              segundoNombre: s.comisionado.segundoNombre,
+              primerApellido: s.comisionado.primerApellido,
+              segundoApellido: s.comisionado.segundoApellido,
+              tipoComisionado: s.comisionado.tipoComisionado,
+              email: s.comisionado.email,
+              telefonoContacto: s.comisionado.telefonoContacto,
+              autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+              idDependencia: s.comisionado.idDependencia,
+              dependencia: depFinal,
+            }
+          : null,
       destinoCiudad: s.destinoCiudad,
       destinoDepartamento: s.destinoDepartamento,
-      fechaInicio: s.fechaInicio.toISOString(),
-      fechaFin: s.fechaFin.toISOString(),
+      fechaInicio: s.fechaInicio instanceof Date ? s.fechaInicio.toISOString() : (s.fechaInicio || null),
+      fechaFin: s.fechaFin instanceof Date ? s.fechaFin.toISOString() : (s.fechaFin || null),
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
@@ -252,18 +338,44 @@ export class TravelExpensesService {
       estadoSolicitud: s.estadoSolicitud,
       radicadoFueraJornada: s.radicadoFueraJornada,
       extemporanea: s.extemporanea,
-      creadoEn: s.creadoEn.toISOString(),
-      actualizadoEn: s.actualizadoEn.toISOString(),
+      creadoEn: s.creadoEn instanceof Date ? s.creadoEn.toISOString() : (s.creadoEn || null),
+      actualizadoEn: s.actualizadoEn instanceof Date ? s.actualizadoEn.toISOString() : (s.actualizadoEn || null),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
       motivoDevolucion: s.motivoDevolucion || s.observacionesSegundaRevision || null,
       observacionesSegundaRevision: s.observacionesSegundaRevision || null,
       fechaSegundaRevision: s.fechaSegundaRevision?.toISOString() ?? null,
       revisorControlId: s.revisorControlId || null,
+      // Etapa 7: Presupuesto & RP
+      enviadoPresupuesto: Boolean((s as any).enviadoPresupuesto),
+      fechaEnvioPresupuesto: (s as any).fechaEnvioPresupuesto?.toISOString?.() ?? (s as any).fechaEnvioPresupuesto ?? null,
+      numeroRp: (s as any).numeroRp ?? null,
+      fechaRp: (s as any).fechaRp?.toISOString?.() ?? (s as any).fechaRp ?? null,
+      valorComprometido: (s as any).valorComprometido != null ? Number((s as any).valorComprometido) : null,
+      rubroRp: (s as any).rubroRp ?? null,
+      codigoRp: (s as any).codigoRp ?? null,
+      fechaExpedicionRp: (s as any).fechaExpedicionRp?.toISOString?.() ?? (s as any).fechaExpedicionRp ?? null,
+      // Etapa 7: Modalidad de Pago
+      modalidadPago: (s as any).modalidadPago ?? null,
+      diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : null,
+      fechaCalculoModalidad: (s as any).fechaCalculoModalidad?.toISOString?.() ?? (s as any).fechaCalculoModalidad ?? null,
+      // Etapa 8: Obligación SIIF
+      numeroObligacion: (s as any).numeroObligacion ?? null,
+      fechaObligacion: (s as any).fechaObligacion?.toISOString?.() ?? (s as any).fechaObligacion ?? null,
+      valorObligacion: (s as any).valorObligacion != null ? Number((s as any).valorObligacion) : null,
+      // Etapa 8: Pago & Desembolso Tesorería
+      numeroOrdenPago: (s as any).numeroOrdenPago ?? null,
+      fechaPago: (s as any).fechaPago ? (s.fechaPago instanceof Date ? s.fechaPago.toISOString().split('T')[0] : String(s.fechaPago)) : null,
+      valorPagado: (s as any).valorPagado != null ? Number((s as any).valorPagado) : null,
+      soportePagoPath: (s as any).soportePagoPath ?? null,
+      observacionesPago: (s as any).observacionesPago ?? null,
+      pagadoPorId: (s as any).pagadoPorId ?? null,
+      fechaRegistroPago: (s as any).fechaRegistroPago?.toISOString?.() ?? (s as any).fechaRegistroPago ?? null,
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
-    }));
+    };
+    });
 
     return { data, total, page, limit };
   }
@@ -340,25 +452,34 @@ export class TravelExpensesService {
       .limit(limit)
       .getMany();
 
-    const data = solicitudes.map((s) => ({
-      id: s.id,
-      consecutivoUnico: s.consecutivoUnico,
-      comisionadoId: s.comisionadoId,
-      comisionado: s.comisionado
-        ? {
-            id: s.comisionado.id,
-            numeroDocumento: s.comisionado.numeroDocumento,
-            primerNombre: s.comisionado.primerNombre,
-            segundoNombre: s.comisionado.segundoNombre,
-            primerApellido: s.comisionado.primerApellido,
-            segundoApellido: s.comisionado.segundoApellido,
-            tipoComisionado: s.comisionado.tipoComisionado,
-            email: s.comisionado.email,
-            telefonoContacto: s.comisionado.telefonoContacto,
-            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
-            idDependencia: s.comisionado.idDependencia,
-          }
-        : null,
+    const depMap = await this.obtenerMapDependencias();
+    const data = solicitudes.map((s) => {
+      const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+      const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+      const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+      return {
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        comisionadoId: s.comisionadoId,
+        idDependencia: idDep,
+        dependencia: depFinal,
+        nombreDependencia: depFinal,
+        comisionado: s.comisionado
+          ? {
+              id: s.comisionado.id,
+              numeroDocumento: s.comisionado.numeroDocumento,
+              primerNombre: s.comisionado.primerNombre,
+              segundoNombre: s.comisionado.segundoNombre,
+              primerApellido: s.comisionado.primerApellido,
+              segundoApellido: s.comisionado.segundoApellido,
+              tipoComisionado: s.comisionado.tipoComisionado,
+              email: s.comisionado.email,
+              telefonoContacto: s.comisionado.telefonoContacto,
+              autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+              idDependencia: s.comisionado.idDependencia,
+              dependencia: depFinal,
+            }
+          : null,
       destinoCiudad: s.destinoCiudad,
       destinoDepartamento: s.destinoDepartamento,
       fechaInicio: s.fechaInicio.toISOString(),
@@ -379,7 +500,8 @@ export class TravelExpensesService {
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
-    }));
+      };
+    });
 
     return { data, total, page, limit };
   }
@@ -482,25 +604,51 @@ export class TravelExpensesService {
       );
 
     if (solicitud.creadoPorUsuarioId) {
-      this.notificationClient
-        .send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-          tipo_notificacion: 'VIATICOS_DEVOLUCION',
-          titulo: `Solicitud devuelta: ${solicitud.consecutivoUnico}`,
-          mensaje: `Su solicitud ${solicitud.consecutivoUnico} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
-          descripcion_corta: `Devolución · ${solicitud.consecutivoUnico}`,
-          icono: 'AlertTriangle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver solicitud',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: solicitud.consecutivoUnico,
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      void this.notificationClient
+        .notifyUser(
+          solicitud.creadoPorUsuarioId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVOLUCION',
+            titulo: `Solicitud devuelta: ${consecutivo}`,
+            mensaje: `Su solicitud ${consecutivo} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
+            descripcion_corta: `Devolución · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver solicitud',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              motivo,
+            },
           },
-        })
+          {
+            subject: `[Viáticos ESAP] Solicitud Devuelta para Corrección: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Notificación de Devolución de Expediente',
+              mensajePrincipal: `Le informamos que la solicitud de comisión <strong>${consecutivo}</strong> ha sido devuelta por la Secretaría del Grupo de Viáticos para la subsanación de inconsistencias o documentos faltantes:`,
+              consecutivo,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: 'DEVUELTA',
+              motivoUObservaciones: motivo,
+              tipoNovedad: 'DANGER',
+              textoBoton: 'Subsanar Solicitud',
+            }),
+            text: `Su solicitud ${consecutivo} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
+          },
+        )
         .catch((err) =>
           this.logger.warn(
             `[notify] No se pudo notificar devolución a usuario ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
@@ -1615,10 +1763,80 @@ export class TravelExpensesService {
     return { camposFaltantes };
   }
 
+  /**
+   * Limpia y normaliza texto para renderizado correcto en PDFKit sin problemas de codificación.
+   */
+  sanitizarTextoPdf(texto: string | null | undefined): string {
+    if (!texto) return '';
+    return String(texto)
+      .replace(/Ã¡/g, 'á')
+      .replace(/Ã©/g, 'é')
+      .replace(/Ã­/g, 'í')
+      .replace(/Ã³/g, 'ó')
+      .replace(/Ãº/g, 'ú')
+      .replace(/Ã±/g, 'ñ')
+      .replace(/Ã‘/g, 'Ñ')
+      .replace(/Ã\u0081/g, 'Á')
+      .replace(/Ã\u0089/g, 'É')
+      .replace(/Ã\u008D/g, 'Í')
+      .replace(/Ã\u0093/g, 'Ó')
+      .replace(/Ã\u009A/g, 'Ú')
+      .replace(/Ã\u0091/g, 'Ñ')
+      .replace(/Ã-/g, 'í')
+      .replace(/Ã\u00ad/g, 'í')
+      .replace(/Â/g, '')
+      .trim();
+  }
+
+  /**
+   * Resuelve el nombre y apellidos de un usuario a partir de su ID consultando
+   * auth."user" y auth.personas. Si no se encuentra, retorna fallbackNombre.
+   */
+  async resolverNombreUsuario(
+    usuarioId?: string | null,
+    fallbackNombre: string = '',
+  ): Promise<string> {
+    if (!usuarioId) return fallbackNombre;
+    if (typeof this.dataSource?.query === 'function') {
+      try {
+        const rows: any[] = await this.dataSource.query(
+          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.id_user = $1
+           LIMIT 1`,
+          [usuarioId],
+        );
+        if (Array.isArray(rows) && rows[0]) {
+          const r = rows[0];
+          const nombre =
+            r.nom_largo ||
+            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
+            r.username;
+          if (nombre) return String(nombre).trim();
+        }
+      } catch (e) {
+        this.logger.warn(`Error resolviendo nombre de usuario ${usuarioId}: ${e}`);
+      }
+    }
+    return fallbackNombre;
+  }
+
   async exportarFormato023(solicitudId: string, req?: any): Promise<Buffer> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
-      relations: ['comisionado', 'documentosSoporte'],
+      relations: [
+        'comisionado',
+        'documentosSoporte',
+        'analistaAsignado',
+        'revisorControl',
+        'autorizador',
+        'autorizadorDireccion',
+        'expedidoRpPor',
+        'usuarioPresupuesto',
+        'obligadoPor',
+        'pagadoPor',
+      ],
     });
 
     if (!solicitud) {
@@ -1627,6 +1845,44 @@ export class TravelExpensesService {
 
     const comisionado = solicitud.comisionado;
     const PDFDocument = require('pdfkit');
+
+    const nombreComisionado = this.sanitizarTextoPdf(
+      [
+        comisionado?.primerNombre,
+        comisionado?.segundoNombre,
+        comisionado?.primerApellido,
+        comisionado?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+
+    const solicitanteNombre = await this.resolverNombreUsuario(
+      solicitud.creadoPorUsuarioId,
+      nombreComisionado || 'Solicitante / Comisionado',
+    );
+
+    const revisorNombre = await this.resolverNombreUsuario(
+      solicitud.revisorControlId || solicitud.analistaAsignadoId,
+      'Grupo de Gestión de Viáticos',
+    );
+
+    const autorizadorNombre = await this.resolverNombreUsuario(
+      solicitud.autorizadorId || solicitud.autorizadorDireccionId,
+      'Subdirección de Gestión Corporativa',
+    );
+
+    const presupuestoNombre = await this.resolverNombreUsuario(
+      solicitud.expedidoRpPorId ||
+        solicitud.usuarioPresupuestoId ||
+        solicitud.enviadoPresupuestoPorId,
+      'Grupo de Presupuesto',
+    );
+
+    const tesoreriaNombre = await this.resolverNombreUsuario(
+      solicitud.pagadoPorId || solicitud.obligadoPorId,
+      'Grupo de Tesorería',
+    );
 
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'letter' });
@@ -1691,7 +1947,7 @@ export class TravelExpensesService {
         doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
         doc.text(`${label}: `, { continued: true });
         doc.font('Helvetica').fillColor('#000000');
-        doc.text(value || 'N/A');
+        doc.text(this.sanitizarTextoPdf(value) || 'N/A');
       };
 
       const drawMultiLineField = (label: string, value: string) => {
@@ -1699,18 +1955,23 @@ export class TravelExpensesService {
         doc.text(`${label}:`);
         doc.moveDown(0.3);
         doc.font('Helvetica').fillColor('#000000');
-        doc.text(value || 'N/A', {
+        doc.text(this.sanitizarTextoPdf(value) || 'N/A', {
           width: 512,
           align: 'justify',
         });
         doc.moveDown(0.3);
       };
 
-      const formatDate = (date: Date | string): string => {
-        const d = new Date(date);
+      const formatDate = (
+        date: Date | string | null | undefined,
+        estiloMes: 'long' | 'short' = 'long',
+      ): string => {
+        if (!date) return 'N/A';
+        const d = typeof date === 'string' ? new Date(date) : date;
+        if (isNaN(d.getTime())) return 'N/A';
         return d.toLocaleDateString('es-CO', {
           year: 'numeric',
-          month: 'long',
+          month: estiloMes,
           day: 'numeric',
         });
       };
@@ -1723,14 +1984,7 @@ export class TravelExpensesService {
         }).format(amount || 0);
       };
 
-      const nombreCompleto = [
-        comisionado?.primerNombre,
-        comisionado?.segundoNombre,
-        comisionado?.primerApellido,
-        comisionado?.segundoApellido,
-      ]
-        .filter(Boolean)
-        .join(' ');
+      const nombreCompleto = nombreComisionado;
 
       const tipoTransporte = solicitud.requiereTiquetes
         ? 'Aéreo / Terrestre'
@@ -1818,28 +2072,246 @@ export class TravelExpensesService {
       }
       doc.moveDown(0.5);
 
+      // Verificamos si queda espacio suficiente para las firmas (~180pt). Si no, nueva página con header limpio.
+      if (doc.y > 510) {
+        doc.addPage();
+        drawHeader();
+      }
+
       drawSectionTitle('7. FIRMAS Y APROBACIONES');
-      doc.moveDown(1);
+      doc.moveDown(0.5);
 
-      const firmaY = doc.y;
-      doc.strokeColor('#333333').lineWidth(0.5);
-      doc.moveTo(80, firmaY).lineTo(250, firmaY).stroke();
-      doc.moveTo(350, firmaY).lineTo(520, firmaY).stroke();
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(8).fillColor('#333333');
-      doc.text('Firma del Solicitante', 80, firmaY + 5);
-      doc.text('Firma del Jefe Inmediato / Aprobación', 350, firmaY + 5);
+      // Estados de avance del flujo para activar los sellos visuales de aprobación
+      const estadosRevisionAprobada = [
+        EstadoSolicitud.VERIFICADA,
+        EstadoSolicitud.APROBADO_JEFE,
+        EstadoSolicitud.APROBADO_TALENTO_HUMANO,
+        EstadoSolicitud.AUTORIZACION_DIRECCION,
+        EstadoSolicitud.EN_AUTORIZACION,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.PAGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
 
-      doc.moveDown(3);
+      const estadosAutorizacionAprobada = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.PAGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
 
-      const fechaY = doc.y;
-      doc.strokeColor('#333333').lineWidth(0.5);
-      doc.moveTo(200, fechaY).lineTo(400, fechaY).stroke();
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(8).fillColor('#333333');
-      doc.text('Firma Subdirector / Director', 220, fechaY + 5);
+      const estadosPresupuestoAprobado = [
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.PAGADA,
+      ];
 
-      doc.moveDown(3);
+      const estadosPagoAprobado = [EstadoSolicitud.PAGADA];
+
+      const solicitanteAprobado = true; // Radicado y solicitado formalmente en el sistema
+      const revisorAprobado =
+        estadosRevisionAprobada.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaRevision) ||
+        Boolean(solicitud.fechaSegundaRevision) ||
+        Boolean(solicitud.revisorControlId);
+      const autorizadorAprobado =
+        estadosAutorizacionAprobada.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaAutorizacion) ||
+        Boolean(solicitud.autorizadorId);
+      const tienePresupuesto =
+        estadosPresupuestoAprobado.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.numeroRp) ||
+        Boolean(solicitud.fechaRp);
+      const tienePago =
+        estadosPagoAprobado.includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaPago) ||
+        Boolean(solicitud.numeroOrdenPago);
+
+      const drawSelloOFirma = (
+        x: number,
+        y: number,
+        width: number,
+        aprobado: boolean,
+        nombre: string,
+        detalle: string,
+        etiquetaFirma: string,
+      ) => {
+        const boxHeight = 44;
+        if (aprobado) {
+          // Sello visual digital APROBADO (diseño corporativo ESAP idéntico al visto bueno de tiquete)
+          doc
+            .roundedRect(x, y, width, boxHeight, 4)
+            .lineWidth(1)
+            .strokeColor('#15803D')
+            .fillAndStroke('#F0FDF4', '#15803D');
+
+          doc.fontSize(8).font('Helvetica-Bold').fillColor('#15803D');
+          doc.text('ESTADO: APROBADO', x, y + 5, {
+            width,
+            align: 'center',
+          });
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#14532D');
+          doc.text(
+            this.sanitizarTextoPdf(`Aprobado por: ${nombre}`),
+            x,
+            y + 17,
+            {
+              width,
+              align: 'center',
+            },
+          );
+          doc.fontSize(6.5).font('Helvetica').fillColor('#166534');
+          doc.text(this.sanitizarTextoPdf(detalle), x, y + 29, {
+            width,
+            align: 'center',
+          });
+
+          // Etiqueta del rol formal debajo del sello
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(etiquetaFirma, x, y + boxHeight + 4, {
+            width,
+            align: 'center',
+          });
+        } else {
+          // Línea clásica para firma física pendiente
+          const lineY = y + 26;
+          doc
+            .strokeColor('#94a3b8')
+            .lineWidth(0.8)
+            .moveTo(x + 10, lineY)
+            .lineTo(x + width - 10, lineY)
+            .stroke();
+
+          doc.fontSize(7.5).font('Helvetica').fillColor('#475569');
+          doc.text(etiquetaFirma, x, lineY + 5, {
+            width,
+            align: 'center',
+          });
+          doc.fontSize(6.5).font('Helvetica-Oblique').fillColor('#94a3b8');
+          doc.text('Pendiente de firma / aprobación', x, lineY + 16, {
+            width,
+            align: 'center',
+          });
+        }
+      };
+
+      const anchoColumna = 215;
+      const xCol1 = 60;
+      const xCol2 = 337;
+      let curY = doc.y;
+
+      // Fila 1: Solicitante (izq) y Jefe Inmediato / Revisión (der)
+      drawSelloOFirma(
+        xCol1,
+        curY,
+        anchoColumna,
+        solicitanteAprobado,
+        solicitanteNombre,
+        `Radicación Digital · ${formatDate(solicitud.creadoEn, 'short')}`,
+        'Firma del Solicitante / Comisionado',
+      );
+
+      drawSelloOFirma(
+        xCol2,
+        curY,
+        anchoColumna,
+        revisorAprobado,
+        revisorNombre,
+        `Revisión y Control · ${formatDate(
+          solicitud.fechaSegundaRevision ||
+            solicitud.fechaRevision ||
+            solicitud.actualizadoEn,
+          'short',
+        )}`,
+        'Firma del Jefe Inmediato / Aprobación',
+      );
+
+      curY += 66;
+
+      // Fila 2: Subdirector / Director (izq o centro) y Presupuesto (der si aplica)
+      if (tienePresupuesto) {
+        drawSelloOFirma(
+          xCol1,
+          curY,
+          anchoColumna,
+          autorizadorAprobado,
+          autorizadorNombre,
+          `Autorización Institucional · ${formatDate(
+            solicitud.fechaAutorizacion || solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Subdirector / Director',
+        );
+
+        drawSelloOFirma(
+          xCol2,
+          curY,
+          anchoColumna,
+          true,
+          presupuestoNombre,
+          `Presupuesto · RP No. ${solicitud.numeroRp || 'S/N'} · ${formatDate(
+            solicitud.fechaRp ||
+              solicitud.fechaExpedicionRp ||
+              solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Presupuesto (RP Expedido)',
+        );
+
+        curY += 66;
+      } else {
+        const xCentro = 198;
+        drawSelloOFirma(
+          xCentro,
+          curY,
+          anchoColumna,
+          autorizadorAprobado,
+          autorizadorNombre,
+          `Autorización Institucional · ${formatDate(
+            solicitud.fechaAutorizacion || solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Subdirector / Director',
+        );
+
+        curY += 66;
+      }
+
+      // Fila 3: Si ya tiene Desembolso / Pago en Tesorería
+      if (tienePago) {
+        const xCentro = 198;
+        drawSelloOFirma(
+          xCentro,
+          curY,
+          anchoColumna,
+          true,
+          tesoreriaNombre,
+          `Tesorería · OP No. ${solicitud.numeroOrdenPago || 'SIIF'} · ${formatDate(
+            solicitud.fechaPago ||
+              solicitud.fechaRegistroPago ||
+              solicitud.actualizadoEn,
+            'short',
+          )}`,
+          'Firma Tesorería (Desembolso y Pago)',
+        );
+
+        curY += 66;
+      }
+
+      doc.y = curY + 6;
 
       doc.fontSize(8).font('Helvetica').fillColor('#999999');
       doc.text('─'.repeat(80), { align: 'center' });
@@ -1874,23 +2346,22 @@ export class TravelExpensesService {
       throw new BadRequestException('analistaId es obligatorio.');
     }
 
-    const esSuperAdmin = this.esSuperAdmin(rolesUsuario);
-
     const estadosActivosAnalista = [
       EstadoSolicitud.SOLICITADO,
       EstadoSolicitud.EN_VERIFICACION,
+      EstadoSolicitud.EXTEMPORANEA,
       EstadoSolicitud.VERIFICADA,
+      EstadoSolicitud.SOLICITADA_SIIF,
       EstadoSolicitud.DEVUELTA,
+      EstadoSolicitud.AUTORIZADA,
+      EstadoSolicitud.COMPROMETIDA,
+      EstadoSolicitud.OBLIGADA,
     ];
 
-    const whereCondition: any = esSuperAdmin
-      ? {
-          estadoSolicitud: In(estadosActivosAnalista),
-        }
-      : {
-          analistaAsignadoId: analistaId,
-          estadoSolicitud: In(estadosActivosAnalista),
-        };
+    const whereCondition: any = {
+      analistaAsignadoId: analistaId,
+      estadoSolicitud: In(estadosActivosAnalista),
+    };
 
     return this.solicitudRepo.find({
       where: whereCondition,
@@ -1902,7 +2373,8 @@ export class TravelExpensesService {
   /**
    * RF-REC-002 Etapa 5 — Registra el checklist de verificacion del analista.
    * Valida Segregacion de Funciones y estado de la solicitud. Almacena el
-   * resultado del checklist en el historial y actualiza el flag de consulta RUT.
+   * resultado del checklist en el historial, actualiza el flag de consulta RUT
+   * y transiciona el estado de la solicitud a VERIFICADA.
    */
   async verificarAuditoria(
     solicitudId: string,
@@ -1914,7 +2386,7 @@ export class TravelExpensesService {
       throw new BadRequestException('solicitudId es obligatorio.');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
@@ -1928,12 +2400,21 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
-      if (
-        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
-        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
-      ) {
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
         throw new BadRequestException(
-          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+          'La comisión se encuentra DEVUELTA al enlace de dependencia. No se puede verificar hasta que el enlace subsane las observaciones y radique nuevamente la corrección.',
+        );
+      }
+
+      const estadosPermitidos = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
+      ];
+
+      if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para verificacion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION o EXTEMPORANEA.`,
         );
       }
 
@@ -1943,10 +2424,15 @@ export class TravelExpensesService {
         consulta_rut_facturador: dto.consultaRutFacturador ?? false,
       });
 
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      solicitud.motivoDevolucion = null;
+      solicitud.observacionesSegundaRevision = null;
+
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
-        estadoAnterior: solicitud.estadoSolicitud,
-        estadoNuevo: solicitud.estadoSolicitud,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.VERIFICADA,
         usuarioId: usuarioId,
         comentarios:
           comentarioChecklist.length > 255
@@ -1982,6 +2468,61 @@ export class TravelExpensesService {
 
       return saved;
     });
+
+    // Notificación in-app y correo institucional al Control de Viáticos (Segunda Revisión)
+    try {
+      const consecutivo = result.consecutivoUnico || result.id;
+      const destino = `${result.destinoCiudad || ''}${result.destinoDepartamento ? ` (${result.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = result.fechaInicio ? new Date(result.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = result.fechaFin ? new Date(result.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      void this.notificationClient
+        .notifyByPermission(
+          'travel_expenses.general.es_control_viaticos',
+          {
+            tipo_notificacion: 'VIATICOS_PENDIENTE_SEGUNDA_REVISION',
+            titulo: `Comisión verificada para control: ${consecutivo}`,
+            mensaje: `El analista ha verificado la comisión ${consecutivo} hacia ${destino}. Se encuentra lista para segunda revisión técnica (Control Cruzado).`,
+            descripcion_corta: `Segunda Revisión · ${consecutivo}`,
+            icono: 'CheckSquare',
+            color: '#2563EB',
+            prioridad: 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Revisar comisión',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: result.id,
+              consecutivoUnico: consecutivo,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Comisión Verificada para Control Técnico: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Revisor de Control de Viáticos',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Segunda Revisión Técnica (Control Cruzado)',
+              mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha completado la verificación por analista y está pendiente de su segunda revisión técnica:`,
+              consecutivo,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: 'VERIFICADA',
+              tipoNovedad: 'INFO',
+              textoBoton: 'Ver en Bandeja de Control',
+            }),
+            text: `La comisión ${consecutivo} ha sido verificada por el analista y está pendiente de segunda revisión técnica.`,
+          },
+          'CONTROL_VIATICOS',
+        )
+        .catch((err) => {
+          this.logger.warn(`[notify] Error notificando a Control de Viáticos: ${err?.message}`);
+        });
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en bloque de notificación de verificación: ${err?.message}`);
+    }
+
+    return result;
   }
 
   /**
@@ -2001,7 +2542,7 @@ export class TravelExpensesService {
       throw new BadRequestException('El motivo de devolucion es obligatorio.');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
@@ -2015,12 +2556,22 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
-      if (
-        solicitud.estadoSolicitud !== EstadoSolicitud.SOLICITADO &&
-        solicitud.estadoSolicitud !== EstadoSolicitud.EN_VERIFICACION
-      ) {
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
         throw new BadRequestException(
-          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO o EN_VERIFICACION.`,
+          'La comisión ya se encuentra devuelta al enlace de dependencia.',
+        );
+      }
+
+      const estadosPermitidosDevolucion = [
+        EstadoSolicitud.SOLICITADO,
+        EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
+        EstadoSolicitud.VERIFICADA,
+      ];
+
+      if (!estadosPermitidosDevolucion.includes(solicitud.estadoSolicitud)) {
+        throw new BadRequestException(
+          `Estado no valido para devolucion: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, EXTEMPORANEA o VERIFICADA.`,
         );
       }
 
@@ -2047,6 +2598,60 @@ export class TravelExpensesService {
 
       return saved;
     });
+
+    // Notificación in-app y correo electrónico al Enlace creador
+    if (result.creadoPorUsuarioId) {
+      const consecutivo = result.consecutivoUnico || result.id;
+      const destino = `${result.destinoCiudad || ''}${result.destinoDepartamento ? ` (${result.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = result.fechaInicio ? new Date(result.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = result.fechaFin ? new Date(result.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      void this.notificationClient
+        .notifyUser(
+          result.creadoPorUsuarioId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVOLUCION_ANALISTA',
+            titulo: `Solicitud devuelta por el analista: ${consecutivo}`,
+            mensaje: `El analista ha devuelto su solicitud ${consecutivo} para subsanación. Observaciones: ${motivo}`,
+            descripcion_corta: `Devolución analista · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Subsanar solicitud',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: result.id,
+              consecutivoUnico: consecutivo,
+              motivo,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Solicitud Devuelta por Analista para Subsanación: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Devolución de Expediente en Verificación Técnica',
+              mensajePrincipal: `El analista de viáticos ha devuelto la comisión <strong>${consecutivo}</strong> solicitando correcciones o soportes adicionales:`,
+              consecutivo,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: 'DEVUELTA',
+              motivoUObservaciones: motivo,
+              tipoNovedad: 'DANGER',
+              textoBoton: 'Subsanar Expediente',
+            }),
+            text: `Su solicitud ${consecutivo} fue devuelta por el analista. Motivo: ${motivo}`,
+          },
+        )
+        .catch((err) => {
+          this.logger.warn(`[notify] Error notificando devolución de analista a enlace: ${err?.message}`);
+        });
+    }
+
+    return result;
   }
 
   /**
@@ -2080,15 +2685,30 @@ export class TravelExpensesService {
 
       this.validarSoD(solicitud, usuarioId, rolesUsuario);
 
+      if (solicitud.estadoSolicitud === EstadoSolicitud.DEVUELTA) {
+        throw new BadRequestException(
+          'La comisión se encuentra devuelta al enlace de dependencia y no puede exportarse a SIIF.',
+        );
+      }
+
       const estadosPermitidos = [
         EstadoSolicitud.SOLICITADO,
         EstadoSolicitud.EN_VERIFICACION,
+        EstadoSolicitud.EXTEMPORANEA,
         EstadoSolicitud.VERIFICADA,
         EstadoSolicitud.SOLICITADA_SIIF,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
       ];
       if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
         throw new BadRequestException(
-          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, VERIFICADA o SOLICITADA_SIIF.`,
+          `Estado no valido para exportacion SIIF: ${solicitud.estadoSolicitud}. La solicitud debe estar SOLICITADO, EN_VERIFICACION, EXTEMPORANEA, VERIFICADA o SOLICITADA_SIIF.`,
         );
       }
 
@@ -2211,30 +2831,51 @@ export class TravelExpensesService {
       const fechaCorta = new Date().toISOString().slice(0, 10);
       const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
 
+      const estadosAvanzadosSoloLectura = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.COMPROMETIDA,
+        EstadoSolicitud.OBLIGADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        EstadoSolicitud.LEGALIZADO,
+      ];
+      const esEstadoAvanzado = estadosAvanzadosSoloLectura.includes(solicitud.estadoSolicitud);
+
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.siifExportado = true;
       solicitud.fechaExportacionSiif = new Date();
       solicitud.usuarioExportadorId = usuarioId;
-      solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+
+      if (!esEstadoAvanzado) {
+        solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
         .save(solicitud);
 
-      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior,
-        estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-        usuarioId: usuarioId,
-        comentarios:
-          estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
-            ? 'Re-exportado a SIIF Nacion'
-            : 'Exportado a SIIF Nacion',
-      });
+      if (!esEstadoAvanzado) {
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          usuarioId: usuarioId,
+          comentarios:
+            estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
+              ? 'Re-exportado a SIIF Nacion'
+              : 'Exportado a SIIF Nacion',
+        });
 
-      this.logger.log(
-        `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
-      );
+        this.logger.log(
+          `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
+        );
+      } else {
+        this.logger.log(
+          `[consulta-siif] Solicitud ${solicitud.consecutivoUnico} (${estadoAnterior}) descargada como copia CSV por usuario ${usuarioId}`,
+        );
+      }
 
       return { csvContent, fileName, solicitud: saved };
     });
@@ -2637,29 +3278,99 @@ export class TravelExpensesService {
         `[RF-REV-002] Solicitud ${solicitud.consecutivoUnico} verificada en segunda revisión por usuario ${usuarioId} (estadoNuevo: ${solicitud.estadoSolicitud})`,
       );
 
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
       if (esExtemporanea) {
         void this.notificationClient
-          .notifyByRole('DIRECCION_NACIONAL', {
-            tipo_notificacion: 'VIATICOS_COMISION_EXTEMPORANEA_PENDIENTE',
-            titulo: `Nueva comisión extemporánea para autorización: ${solicitud.consecutivoUnico || solicitud.id}`,
-            mensaje: `La comisión ${solicitud.consecutivoUnico || solicitud.id} no cumplió los 14 días hábiles y requiere su autorización excepcional en bandeja (RF-AUT-002).`,
-            descripcion_corta: `Extemporánea pendiente · ${solicitud.consecutivoUnico || solicitud.id}`,
-            icono: 'Award',
-            color: '#7C3AED',
-            prioridad: 'Alta',
-            categoria: 'VIATICOS',
-            tiene_accion: true,
-            texto_boton_accion: 'Revisar comisión',
-            url_accion: '/viaticos',
-            datos_adicionales: {
-              solicitudId: solicitud.id,
-              consecutivoUnico: solicitud.consecutivoUnico,
-              extemporanea: true,
+          .notifyByPermission(
+            'travel_expenses.general.es_direccion_nacional',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_EXTEMPORANEA_PENDIENTE',
+              titulo: `Nueva comisión extemporánea para autorización: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} no cumplió los 14 días hábiles y requiere su autorización excepcional en bandeja (RF-AUT-002).`,
+              descripcion_corta: `Extemporánea pendiente · ${consecutivo}`,
+              icono: 'Award',
+              color: '#7C3AED',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Revisar comisión',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+                extemporanea: true,
+              },
             },
-          })
+            {
+              subject: `[Viáticos ESAP] Comisión Extemporánea para Autorización: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Dirección Nacional',
+                tituloHeader: 'ESAP — Dirección Nacional',
+                subtituloHeader: 'Autorización Excepcional de Comisión Extemporánea',
+                mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha sido verificada en control técnico y requiere su autorización excepcional por radicación extemporánea:`,
+                consecutivo,
+                destino,
+                fechas: fechasStr,
+                nuevoEstado: 'AUTORIZACIÓN DIRECCIÓN',
+                tipoNovedad: 'WARNING',
+                textoBoton: 'Revisar Comisión',
+              }),
+              text: `La comisión ${consecutivo} requiere su autorización excepcional en la plataforma de viáticos.`,
+            },
+            'DIRECCION_NACIONAL',
+          )
           .catch((err) => {
             this.logger.warn(
               `Error notificando a Dirección Nacional sobre comisión extemporánea: ${err?.message}`,
+            );
+          });
+      } else {
+        void this.notificationClient
+          .notifyByPermission(
+            'travel_expenses.general.es_subdireccion_corporativa',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_EN_AUTORIZACION',
+              titulo: `Comisión avalada para autorización: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} hacia ${destino} fue avalada en segunda revisión técnica y se encuentra en su bandeja para autorización corporativa.`,
+              descripcion_corta: `En Autorización · ${consecutivo}`,
+              icono: 'FileCheck',
+              color: '#003DA5',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Autorizar comisión',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+              },
+            },
+            {
+              subject: `[Viáticos ESAP] Comisión Lista para Autorización Corporativa: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Subdirección de Gestión Corporativa (Ordenador)',
+                tituloHeader: 'ESAP — Ordenación del Gasto',
+                subtituloHeader: 'Comisión Avalada en Control Técnico',
+                mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha superado la segunda revisión técnica (Control Cruzado) y está lista para su firma y autorización:`,
+                consecutivo,
+                destino,
+                fechas: fechasStr,
+                nuevoEstado: 'VERIFICADA / EN AUTORIZACIÓN',
+                tipoNovedad: 'INFO',
+                textoBoton: 'Autorizar Expediente',
+              }),
+              text: `La comisión ${consecutivo} está lista para su autorización corporativa en la plataforma de viáticos.`,
+            },
+            'SUBDIRECCION_GESTION_CORPORATIVA',
+          )
+          .catch((err) => {
+            this.logger.warn(
+              `Error notificando a Subdirección Corporativa sobre comisión avalada: ${err?.message}`,
             );
           });
       }
@@ -3110,27 +3821,36 @@ export class TravelExpensesService {
       }
     }
 
+    const depMap = await this.obtenerMapDependencias();
     return {
-      data: items.map((s) => ({
-        id: s.id,
-        consecutivoUnico: s.consecutivoUnico,
-        comisionado: s.comisionado
-          ? {
-              id: s.comisionado.id,
-              numeroDocumento: s.comisionado.numeroDocumento,
-              nombreCompleto: [
-                s.comisionado.primerNombre,
-                s.comisionado.segundoNombre,
-                s.comisionado.primerApellido,
-                s.comisionado.segundoApellido,
-              ]
-                .filter(Boolean)
-                .join(' '),
-              tipoComisionado: s.comisionado.tipoComisionado,
-              idDependencia: s.comisionado.idDependencia,
-              email: s.comisionado.email,
-            }
-          : null,
+      data: items.map((s) => {
+        const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+        const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+        const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+        return {
+          id: s.id,
+          consecutivoUnico: s.consecutivoUnico,
+          idDependencia: idDep,
+          dependencia: depFinal,
+          nombreDependencia: depFinal,
+          comisionado: s.comisionado
+            ? {
+                id: s.comisionado.id,
+                numeroDocumento: s.comisionado.numeroDocumento,
+                nombreCompleto: [
+                  s.comisionado.primerNombre,
+                  s.comisionado.segundoNombre,
+                  s.comisionado.primerApellido,
+                  s.comisionado.segundoApellido,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                tipoComisionado: s.comisionado.tipoComisionado,
+                idDependencia: s.comisionado.idDependencia,
+                dependencia: depFinal,
+                email: s.comisionado.email,
+              }
+            : null,
         destinoCiudad: s.destinoCiudad,
         destinoDepartamento: s.destinoDepartamento,
         fechaInicio: s.fechaInicio,
@@ -3164,8 +3884,9 @@ export class TravelExpensesService {
         creadoPorUsuarioId: s.creadoPorUsuarioId,
         documentosSoporte: s.documentosSoporte || [],
         actualizadoEn: s.actualizadoEn,
-      })),
-      total,
+      };
+    }),
+    total,
       page: Number(page) || 1,
       limit: take,
     };
@@ -3363,29 +4084,50 @@ export class TravelExpensesService {
       const consecutivo = solicitud.consecutivoUnico;
       const destino = `${solicitud.destinoCiudad}, ${solicitud.destinoDepartamento}`;
 
-      // 1. Notificación al Responsable de Tiquetes
-      try {
-        await this.notificationClient.notifyByRole('RESPONSABLE_TIQUETES', {
-          tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_TIQUETES',
-          titulo: `Comisión autorizada para tiquetes: ${consecutivo}`,
-          mensaje: `La comisión ${consecutivo} con destino a ${destino} fue AUTORIZADA corporativamente. Requiere tiquetes: ${solicitud.requiereTiquetes ? 'SÍ' : 'NO'}. Proceder con la emisión y reserva.`,
-          descripcion_corta: `Autorizada · ${consecutivo}`,
-          icono: 'Plane',
-          color: '#0284C7',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Gestionar tiquete',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: consecutivo,
-            requiereTiquetes: solicitud.requiereTiquetes,
-            destinoCiudad: solicitud.destinoCiudad,
-          },
-        });
-      } catch (err: any) {
-        this.logger.warn(`[notify] Error notificando a RESPONSABLE_TIQUETES: ${err?.message}`);
+      // 1. Notificación al Responsable de Tiquetes (si requiere tiquetes o como rol)
+      if (solicitud.requiereTiquetes) {
+        try {
+          await this.notificationClient.notifyByPermission(
+            'travel_expenses.general.es_responsable_tiquetes',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_TIQUETES',
+              titulo: `Comisión autorizada para tiquetes: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} con destino a ${destino} fue AUTORIZADA corporativamente. Requiere tiquetes. Proceder con emisión y reserva.`,
+              descripcion_corta: `Autorizada · ${consecutivo}`,
+              icono: 'Plane',
+              color: '#0284C7',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Gestionar tiquete',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+                requiereTiquetes: solicitud.requiereTiquetes,
+                destinoCiudad: solicitud.destinoCiudad,
+              },
+            },
+            {
+              subject: `[Viáticos ESAP] Comisión Autorizada Requiere Emisión de Tiquetes: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Responsable de Tiquetes',
+                tituloHeader: 'ESAP — Gestión de Tiquetes',
+                subtituloHeader: 'Emisión y Reserva de Tiquetes para Comisión Autorizada',
+                mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido autorizada corporativamente y requiere gestión de tiquetes aéreos o terrestres:`,
+                consecutivo,
+                destino,
+                nuevoEstado: 'AUTORIZADA',
+                tipoNovedad: 'INFO',
+                textoBoton: 'Gestionar Tiquetes',
+              }),
+              text: `La comisión ${consecutivo} fue autorizada y requiere emisión de tiquetes.`,
+            },
+            'RESPONSABLE_TIQUETES',
+          );
+        } catch (err: any) {
+          this.logger.warn(`[notify] Error notificando a RESPONSABLE_TIQUETES: ${err?.message}`);
+        }
       }
 
       // 2. Notificación al Comisionado (Pasajero)
@@ -3402,95 +4144,90 @@ export class TravelExpensesService {
 
       if (solicitud.comisionadoId) {
         try {
-          await this.notificationClient.send({
-            id_usuario_destinatario: solicitud.comisionadoId,
-            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
-            titulo: `¡Comisión autorizada!: ${consecutivo}`,
-            mensaje: `Estimado(a) ${nombrePasajero || 'pasajero'}, su comisión de servicios hacia ${destino} ha sido AUTORIZADA por la Subdirección de Gestión Corporativa. Su itinerario y tiquete están confirmados.`,
-            descripcion_corta: `Comisión autorizada · ${consecutivo}`,
-            icono: 'CheckCircle2',
-            color: '#10B981',
-            prioridad: 'Alta',
-            categoria: 'VIATICOS',
-            tiene_accion: true,
-            texto_boton_accion: 'Ver itinerario y tiquete',
-            url_accion: '/viaticos',
-            datos_adicionales: {
-              solicitudId: solicitud.id,
-              consecutivoUnico: consecutivo,
+          await this.notificationClient.notifyUser(
+            solicitud.comisionadoId,
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
+              titulo: `¡Comisión autorizada!: ${consecutivo}`,
+              mensaje: `Estimado(a) ${nombrePasajero || 'pasajero'}, su comisión de servicios hacia ${destino} ha sido AUTORIZADA por la Subdirección de Gestión Corporativa. Su itinerario y tiquete están confirmados.`,
+              descripcion_corta: `Comisión autorizada · ${consecutivo}`,
+              icono: 'CheckCircle2',
+              color: '#10B981',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver itinerario y tiquete',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+              },
             },
-          });
+            correoPasajero
+              ? {
+                  subject: `[ESAP Viáticos] Comisión autorizada y confirmación de itinerario: ${consecutivo}`,
+                  html: buildTravelExpenseEmailHtml({
+                    destinatarioNombre: nombrePasajero || 'Comisionado(a)',
+                    tituloHeader: 'ESAP — Módulo de Viáticos',
+                    subtituloHeader: 'Autorización Corporativa de Gasto e Itinerario',
+                    mensajePrincipal: `Nos complace informarle que su comisión de servicios <strong>${consecutivo}</strong> ha sido <strong>AUTORIZADA</strong> por la Subdirección de Gestión Corporativa:`,
+                    consecutivo,
+                    comisionadoNombre: nombrePasajero,
+                    destino,
+                    nuevoEstado: 'AUTORIZADA',
+                    tipoNovedad: 'SUCCESS',
+                    textoBoton: 'Acceder a la Plataforma',
+                  }),
+                  text: `Comisión ${consecutivo} autorizada con éxito hacia ${destino}.`,
+                }
+              : undefined,
+          );
         } catch (err: any) {
-          this.logger.warn(`[notify] In-app comisionado: ${err?.message}`);
+          this.logger.warn(`[notify] Error notificando al comisionado: ${err?.message}`);
         }
       }
 
-      if (correoPasajero) {
-        const subject = `[ESAP Viáticos] Comisión autorizada y confirmación de itinerario: ${consecutivo}`;
-        const html = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-            <div style="background-color: #003DA5; color: #ffffff; padding: 20px; text-align: center;">
-              <h2 style="margin: 0; font-size: 20px;">ESAP — Módulo de Viáticos</h2>
-              <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Autorización Corporativa de Gasto e Itinerario de Viaje</p>
-            </div>
-            <div style="padding: 24px; color: #1e293b; font-size: 14px; line-height: 1.6;">
-              <p>Estimado(a) <strong>${nombrePasajero || 'Comisionado(a)'}</strong>,</p>
-              <p>Nos complace informarle que la comisión de servicios <strong>${consecutivo}</strong> ha sido <strong>AUTORIZADA</strong> por la Subdirección de Gestión Corporativa.</p>
-              
-              <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
-                <strong style="color: #15803d; font-size: 14px;">ESTADO: COMISIÓN AUTORIZADA</strong>
-                <p style="margin: 4px 0 0 0; color: #166534; font-size: 13px;">
-                  Destino: <strong>${destino}</strong><br>
-                  Fecha: Del <strong>${new Date(solicitud.fechaInicio).toLocaleDateString()}</strong> al <strong>${new Date(solicitud.fechaFin).toLocaleDateString()}</strong> (${solicitud.diasComision} día(s))<br>
-                  Transporte: <strong>${solicitud.requiereTiquetes ? 'Aéreo con gestión de tiquetes' : 'Terrestre'}</strong>
-                </p>
-              </div>
-
-              <p>Puede consultar y descargar su constancia de itinerario y tiquete en la plataforma institucional:</p>
-
-              <div style="margin-top: 25px; text-align: center;">
-                <a href="${process.env.APP_BASE_URL || 'http://localhost:3000'}/viaticos" 
-                   style="background-color: #003DA5; color: #ffffff; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: bold; font-size: 13px; display: inline-block;">
-                  Acceder a la Plataforma de Viáticos
-                </a>
-              </div>
-            </div>
-            <div style="background-color: #f8fafc; padding: 12px 20px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
-              Mensaje institucional generado automáticamente por la Escuela Superior de Administración Pública - ESAP.
-            </div>
-          </div>
-        `;
-        void this.notificationClient.sendEmail({
-          to: correoPasajero,
-          subject,
-          text: `Comisión ${consecutivo} autorizada con éxito hacia ${destino}.`,
-          html,
-        });
-      }
-
-      // 3. Notificación al Enlace (Creador)
+      // 3. Notificación al Enlace Creador
       if (solicitud.creadoPorUsuarioId && solicitud.creadoPorUsuarioId !== solicitud.comisionadoId) {
         try {
-          await this.notificationClient.send({
-            id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_ENLACE',
-            titulo: `Comisión autorizada por Subdirección: ${consecutivo}`,
-            mensaje: `La solicitud de comisión ${consecutivo} para ${nombrePasajero || 'el pasajero'} fue autorizada por Subdirección de Gestión Corporativa.`,
-            descripcion_corta: `Autorizada · ${consecutivo}`,
-            icono: 'CheckCircle2',
-            color: '#10B981',
-            prioridad: 'Media',
-            categoria: 'VIATICOS',
-            tiene_accion: true,
-            texto_boton_accion: 'Ver comisión',
-            url_accion: '/viaticos',
-            datos_adicionales: {
-              solicitudId: solicitud.id,
-              consecutivoUnico: consecutivo,
+          await this.notificationClient.notifyUser(
+            solicitud.creadoPorUsuarioId,
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_ENLACE',
+              titulo: `Comisión autorizada por Subdirección: ${consecutivo}`,
+              mensaje: `La solicitud de comisión ${consecutivo} para ${nombrePasajero || 'el comisionado'} fue autorizada formalmente por la Subdirección de Gestión Corporativa.`,
+              descripcion_corta: `Autorizada · ${consecutivo}`,
+              icono: 'CheckCircle2',
+              color: '#10B981',
+              prioridad: 'Media',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver comisión',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+              },
             },
-          });
+            {
+              subject: `[Viáticos ESAP] Comisión de Servicios Autorizada: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Enlace de Dependencia',
+                tituloHeader: 'ESAP — Grupo de Viáticos',
+                subtituloHeader: 'Autorización Formal Emitida',
+                mensajePrincipal: `La solicitud de comisión <strong>${consecutivo}</strong> ha sido autorizada formalmente por la Subdirección y continuará su trámite ante Presupuesto para expedición de RP:`,
+                consecutivo,
+                comisionadoNombre: nombrePasajero,
+                destino,
+                nuevoEstado: 'AUTORIZADA',
+                tipoNovedad: 'SUCCESS',
+                textoBoton: 'Ver Expediente',
+              }),
+              text: `La comisión ${consecutivo} fue autorizada formalmente por la Subdirección.`,
+            },
+          );
         } catch (err: any) {
-          this.logger.warn(`[notify] In-app enlace: ${err?.message}`);
+          this.logger.warn(`[notify] Error notificando al enlace: ${err?.message}`);
         }
       }
     } catch (err: any) {
@@ -3499,37 +4236,58 @@ export class TravelExpensesService {
   }
 
   /**
-   * Notifica la devolución efectuada por la Subdirección al analista y al enlace.
+   * Notifica la devolución efectuada por la Subdirección al analista y al enlace (in-app y correo).
    */
   private async despacharNotificacionesDevolucionAutorizacion(
     solicitud: SolicitudComisionEntity,
     observaciones: string,
   ): Promise<void> {
     try {
-      const destinatario = solicitud.analistaAsignadoId || solicitud.creadoPorUsuarioId;
-      if (destinatario) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: destinatario,
-          tipo_notificacion: 'VIATICOS_DEVOLUCION_SUBDIRECCION',
-          titulo: `Comisión devuelta por Subdirección: ${solicitud.consecutivoUnico}`,
-          mensaje: `La Subdirección de Gestión Corporativa devolvió la comisión ${solicitud.consecutivoUnico}. Reparos: ${observaciones}`,
-          descripcion_corta: `Devuelta Subdirección · ${solicitud.consecutivoUnico}`,
-          icono: 'AlertTriangle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Subsanar expediente',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: solicitud.consecutivoUnico,
-            observaciones,
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim();
+      const destinatarios = [solicitud.analistaAsignadoId, solicitud.creadoPorUsuarioId].filter(Boolean) as string[];
+
+      for (const destId of Array.from(new Set(destinatarios))) {
+        await this.notificationClient.notifyUser(
+          destId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVOLUCION_SUBDIRECCION',
+            titulo: `Comisión devuelta por Subdirección: ${consecutivo}`,
+            mensaje: `La Subdirección de Gestión Corporativa devolvió la comisión ${consecutivo}. Reparos: ${observaciones}`,
+            descripcion_corta: `Devuelta Subdirección · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Subsanar expediente',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              observaciones,
+            },
           },
-        });
+          {
+            subject: `[Viáticos ESAP] Comisión Devuelta por Subdirección Corporativa: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: destId === solicitud.analistaAsignadoId ? 'Analista de Viáticos' : 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Gestión Corporativa',
+              subtituloHeader: 'Devolución de Expediente en Fase de Autorización',
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido devuelta por el Ordenador del Gasto con los siguientes reparos u observaciones:`,
+              consecutivo,
+              destino,
+              nuevoEstado: 'EN VERIFICACIÓN',
+              motivoUObservaciones: observaciones,
+              tipoNovedad: 'DANGER',
+              textoBoton: 'Revisar Observaciones',
+            }),
+            text: `La Subdirección devolvió la comisión ${consecutivo}. Motivo: ${observaciones}`,
+          },
+        );
       }
     } catch (err: any) {
-      this.logger.warn(`[notify] Error enviando notificación de devolución: ${err?.message}`);
+      this.logger.warn(`[notify] Error enviando notificación de devolución de autorización: ${err?.message}`);
     }
   }
 
@@ -3670,27 +4428,36 @@ export class TravelExpensesService {
       }
     }
 
+    const depMap = await this.obtenerMapDependencias();
     return {
-      data: items.map((s) => ({
-        id: s.id,
-        consecutivoUnico: s.consecutivoUnico,
-        comisionado: s.comisionado
-          ? {
-              id: s.comisionado.id,
-              numeroDocumento: s.comisionado.numeroDocumento,
-              nombreCompleto: [
-                s.comisionado.primerNombre,
-                s.comisionado.segundoNombre,
-                s.comisionado.primerApellido,
-                s.comisionado.segundoApellido,
-              ]
-                .filter(Boolean)
-                .join(' '),
-              tipoComisionado: s.comisionado.tipoComisionado,
-              idDependencia: s.comisionado.idDependencia,
-              email: s.comisionado.email,
-            }
-          : null,
+      data: items.map((s) => {
+        const idDep = s.idDependencia ?? s.comisionado?.idDependencia ?? null;
+        const nomDep = idDep != null ? depMap.get(String(idDep)) : null;
+        const depFinal = nomDep || (idDep != null ? `Dependencia #${idDep}` : 'Sede Central');
+        return {
+          id: s.id,
+          consecutivoUnico: s.consecutivoUnico,
+          idDependencia: idDep,
+          dependencia: depFinal,
+          nombreDependencia: depFinal,
+          comisionado: s.comisionado
+            ? {
+                id: s.comisionado.id,
+                numeroDocumento: s.comisionado.numeroDocumento,
+                nombreCompleto: [
+                  s.comisionado.primerNombre,
+                  s.comisionado.segundoNombre,
+                  s.comisionado.primerApellido,
+                  s.comisionado.segundoApellido,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                tipoComisionado: s.comisionado.tipoComisionado,
+                idDependencia: s.comisionado.idDependencia,
+                dependencia: depFinal,
+                email: s.comisionado.email,
+              }
+            : null,
         destinoCiudad: s.destinoCiudad,
         destinoDepartamento: s.destinoDepartamento,
         fechaInicio: s.fechaInicio,
@@ -3724,8 +4491,9 @@ export class TravelExpensesService {
         creadoPorUsuarioId: s.creadoPorUsuarioId,
         documentosSoporte: s.documentosSoporte || [],
         actualizadoEn: s.actualizadoEn,
-      })),
-      total,
+      };
+    }),
+    total,
       page: Number(page) || 1,
       limit: take,
     };
@@ -3904,6 +4672,18 @@ export class TravelExpensesService {
   }
 
   /**
+   * Helper para obtener el nombre completo legible del comisionado.
+   */
+  private getComisionadoNombre(c?: ComisionadoEntity | null): string {
+    if (!c) return 'Servidor Comisionado';
+    return (
+      [c.primerNombre, c.segundoNombre, c.primerApellido, c.segundoApellido]
+        .filter(Boolean)
+        .join(' ') || 'Servidor Comisionado'
+    );
+  }
+
+  /**
    * Notificaciones cuando la Dirección Nacional autoriza la extemporaneidad y pasa a Subdirección.
    */
   private async despacharNotificacionesAutorizacionDireccion(
@@ -3914,18 +4694,21 @@ export class TravelExpensesService {
     try {
       const consecutivo = solicitud.consecutivoUnico || solicitud.id;
       const rolFirmante = esDelegado ? 'Delegado(a) de la Dirección Nacional' : 'Dirección Nacional';
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
 
-      // 1. Notificación al Enlace Creador
+      // 1. Notificación al Enlace Creador (In-app + Correo)
       if (solicitud.creadoPorUsuarioId) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+        const notifEnlace = {
           tipo_notificacion: 'VIATICOS_EXTEMPORANEA_AUTORIZADA',
           titulo: `Comisión extemporánea avalada: ${consecutivo}`,
           mensaje: `La solicitud ${consecutivo} fue autorizada de manera excepcional por ${rolFirmante}. Continúa a la Subdirección para autorización corporativa.`,
           descripcion_corta: `Aval Dirección · ${consecutivo}`,
           icono: 'Award',
           color: '#7C3AED',
-          prioridad: 'Media',
+          prioridad: 'Media' as const,
           categoria: 'VIATICOS',
           tiene_accion: true,
           texto_boton_accion: 'Ver estado',
@@ -3935,18 +4718,37 @@ export class TravelExpensesService {
             consecutivoUnico: consecutivo,
             justificacion,
           },
-        });
+        };
+
+        const emailEnlace = {
+          asunto: `Comisión extemporánea avalada por Dirección: ${consecutivo}`,
+          html: buildTravelExpenseEmailHtml({
+            consecutivo,
+            comisionadoNombre,
+            destino,
+            fechaInicio,
+            fechaFin,
+            estadoBadge: 'AVAL EXCEPCIONAL DIRECCIÓN',
+            badgeColor: '#7C3AED',
+            mensajePrincipal: `La solicitud <strong>${consecutivo}</strong> ha sido avalada excepcionalmente por <strong>${rolFirmante}</strong> y continúa su trámite hacia la Subdirección de Gestión Corporativa.`,
+            observaciones: `Justificación del aval: ${justificacion}`,
+            botonTexto: 'Consultar Expediente',
+            botonUrl: '/viaticos',
+          }),
+        };
+
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifEnlace, emailEnlace);
       }
 
-      // 2. Notificación in-app a la bandeja de Subdirección de Gestión Corporativa
-      await this.notificationClient.notifyByRole('SUBDIRECCION_GESTION_CORPORATIVA', {
+      // 2. Notificación a la bandeja de Subdirección de Gestión Corporativa (In-app + Correo por permiso inmutable)
+      const notifSub = {
         tipo_notificacion: 'VIATICOS_EXTEMPORANEA_EN_SUBDIRECCION',
         titulo: `Nueva comisión extemporánea para visto bueno: ${consecutivo}`,
         mensaje: `La comisión ${consecutivo} cuenta con aval excepcional de ${rolFirmante} y se encuentra en su bandeja para visto bueno de gasto e itinerario.`,
         descripcion_corta: `Extemporánea en bandeja · ${consecutivo}`,
         icono: 'FileCheck',
         color: '#4F46E5',
-        prioridad: 'Alta',
+        prioridad: 'Alta' as const,
         categoria: 'VIATICOS',
         tiene_accion: true,
         texto_boton_accion: 'Revisar comisión',
@@ -3956,7 +4758,31 @@ export class TravelExpensesService {
           consecutivoUnico: consecutivo,
           autorizadoPorDireccion: true,
         },
-      });
+      };
+
+      const emailSub = {
+        asunto: `Nueva comisión extemporánea para visto bueno: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'EN BANDEJA SUBDIRECCIÓN',
+          badgeColor: '#4F46E5',
+          mensajePrincipal: `La comisión <strong>${consecutivo}</strong> cuenta con aval excepcional de la Dirección Nacional y requiere su visto bueno corporativo de gasto e itinerario.`,
+          observaciones: `Justificación Dirección: ${justificacion}`,
+          botonTexto: 'Revisar en Plataforma',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_subdireccion_corporativa',
+        notifSub,
+        emailSub,
+        'SUBDIRECCION_GESTION_CORPORATIVA',
+      );
     } catch (err: any) {
       this.logger.warn(`[notify] Error en despacharNotificacionesAutorizacionDireccion: ${err?.message}`);
     }
@@ -3973,27 +4799,59 @@ export class TravelExpensesService {
     try {
       const consecutivo = solicitud.consecutivoUnico || solicitud.id;
       const rolFirmante = esDelegado ? 'Delegado(a) de la Dirección Nacional' : 'Dirección Nacional';
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
 
-      // Notificación al Enlace Creador
+      const notifRechazo = {
+        tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
+        titulo: `Comisión extemporánea rechazada: ${consecutivo}`,
+        mensaje: `La solicitud ${consecutivo} fue rechazada por ${rolFirmante}. Motivo: ${justificacion}`,
+        descripcion_corta: `Rechazada Dirección · ${consecutivo}`,
+        icono: 'AlertTriangle',
+        color: '#DC2626',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver solicitud',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo: justificacion,
+        },
+      };
+
+      const emailRechazo = {
+        asunto: `Comisión extemporánea rechazada por Dirección: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'RECHAZADA',
+          badgeColor: '#DC2626',
+          mensajePrincipal: `La solicitud <strong>${consecutivo}</strong> ha sido rechazada por <strong>${rolFirmante}</strong> y no continuará su trámite.`,
+          observaciones: `Motivo del rechazo: ${justificacion}`,
+          botonTexto: 'Ver Expediente',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      // 1. Notificación al Enlace Creador
       if (solicitud.creadoPorUsuarioId) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
-          titulo: `Comisión extemporánea rechazada: ${consecutivo}`,
-          mensaje: `La solicitud ${consecutivo} fue rechazada por ${rolFirmante}. Motivo: ${justificacion}`,
-          descripcion_corta: `Rechazada Dirección · ${consecutivo}`,
-          icono: 'AlertTriangle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver solicitud',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: consecutivo,
-            motivo: justificacion,
-          },
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifRechazo, emailRechazo);
+      }
+
+      // 2. Correo directo al Comisionado si tiene email configurado
+      if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
+        await this.notificationClient.sendEmail({
+          to: solicitud.comisionado.email,
+          subject: emailRechazo.asunto,
+          html: emailRechazo.html,
+          text: notifRechazo.mensaje,
         });
       }
     } catch (err: any) {
@@ -4002,9 +4860,297 @@ export class TravelExpensesService {
   }
 
   /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad completa (Etapa 6).
+   *
+   * Criterios de aceptación (Gherkin):
+   * 1. Dada una comisión en curso, cuando la dependencia solicita cancelarla,
+   *    entonces el sistema permite registrar la cancelación con motivo y responsable.
+   * 2. Dada una cancelación, cuando se confirma, entonces la comisión pasa a
+   *    estado CANCELADA y se conserva toda su trazabilidad en el historial inmutable.
+   * 3. Dada una comisión con recursos ya comprometidos, cuando se cancela,
+   *    entonces el sistema señala la necesidad de reintegro/liberación (se conecta con Etapa 8).
+   *
+   * Aplicabilidad: Todas las comisiones no legalizadas.
+   */
+  async cancelarComision(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: CancelarComisionDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    const motivo = (dto?.motivoCancelacion || '').trim();
+    if (motivo.length < 5) {
+      throw new BadRequestException(
+        'El motivo de cancelación es obligatorio (mínimo 5 caracteres).',
+      );
+    }
+
+    const responsable =
+      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.CANCELADA) {
+        throw new BadRequestException('La comisión ya se encuentra cancelada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.LEGALIZADO) {
+        throw new BadRequestException(
+          'No es posible cancelar una comisión que ya ha sido legalizada.',
+        );
+      }
+
+      // Estados con recursos presupuestales o pasajes ya comprometidos (Criterio 3)
+      const estadosRecursosComprometidos: EstadoSolicitud[] = [
+        EstadoSolicitud.SOLICITADA_SIIF,
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.RESOLUCION_EMITIDA,
+        EstadoSolicitud.TIQUETES_COMPRADOS,
+        EstadoSolicitud.EN_COMISION,
+        EstadoSolicitud.PENDIENTE_LEGALIZACION,
+      ];
+
+      const tieneRecursosComprometidos =
+        dto.recursosComprometidos === true ||
+        solicitud.siifExportado === true ||
+        estadosRecursosComprometidos.includes(solicitud.estadoSolicitud);
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      const fechaCancelacion = new Date();
+
+      solicitud.estadoSolicitud = EstadoSolicitud.CANCELADA;
+      solicitud.motivoCancelacion = motivo.slice(0, 2000);
+      solicitud.fechaCancelacion = fechaCancelacion;
+      solicitud.canceladoPorUsuarioId = usuarioId;
+      solicitud.responsableCancelacion = responsable.slice(0, 255);
+      solicitud.pendienteReintegro = tieneRecursosComprometidos;
+
+      const saved = await manager
+        .getRepository(SolicitudComisionEntity)
+        .save(solicitud);
+
+      const notaReintegro = tieneRecursosComprometidos
+        ? ' [RECURSOS COMPROMETIDOS: Requiere reintegro / liberación presupuestal en SIIF Nación - Etapa 8 / RF-PAG-004]'
+        : '';
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.CANCELADA,
+        usuarioId,
+        comentarios: `Cancelada por ${responsable}: ${motivo.slice(0, 140)}${notaReintegro}`.slice(0, 255),
+      });
+
+      // 1. Sin recursos comprometidos (Etapas 1 a 5 - Antes de RP/Desembolso):
+      // Libera cualquier cupo de tiquetes retenido en el tablero de saldo presupuestal.
+      if (
+        !tieneRecursosComprometidos &&
+        solicitud.requiereTiquetes &&
+        Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+        this.ticketsService?.liberarSaldo
+      ) {
+        try {
+          const depId =
+            solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+          await this.ticketsService.liberarSaldo({
+            dependenciaId: String(depId),
+            solicitudId: solicitud.id,
+            montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+          });
+          this.logger.log(
+            `[RF-AUT-003] Cupo de tiquetes liberado exitosamente en saldo presupuestal para solicitud ${solicitud.consecutivoUnico || solicitud.id} en dependencia ${depId}`,
+          );
+        } catch (err: any) {
+          this.logger.warn(
+            `[RF-AUT-003] No se pudo liberar saldo de tiquetes para solicitud ${solicitud.id}: ${err?.message}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `[RF-AUT-003] Solicitud ${solicitud.consecutivoUnico} CANCELADA por ${responsable} (usuario ${usuarioId}). Pendiente de reintegro: ${tieneRecursosComprometidos}`,
+      );
+
+      return saved;
+    });
+
+    await this.despacharNotificacionesCancelacion(
+      result,
+      motivo,
+      responsable,
+      result.pendienteReintegro,
+    );
+
+    return result;
+  }
+
+  /**
+   * Notificaciones cuando una comisión es cancelada (RF-AUT-003).
+   * - Alerta al enlace creador sobre la cancelación.
+   * - Si hay recursos comprometidos o desembolsados (Etapas 6 a 8), activa novedad
+   *   y notifica a Tesorería y Presupuesto para reintegro de viáticos y liberación de RP en SIIF Nación (RF-PAG-004).
+   */
+  private async despacharNotificacionesCancelacion(
+    solicitud: SolicitudComisionEntity,
+    motivo: string,
+    responsable: string,
+    pendienteReintegro: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
+
+      const notifCancelacion = {
+        tipo_notificacion: 'VIATICOS_COMISION_CANCELADA',
+        titulo: `Comisión cancelada: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}`,
+        descripcion_corta: `Cancelada · ${consecutivo}`,
+        icono: 'XCircle',
+        color: '#DC2626',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver expediente',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo,
+          responsable,
+          pendienteReintegro,
+        },
+      };
+
+      const emailCancelacion = {
+        asunto: `Comisión de servicios cancelada: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'CANCELADA',
+          badgeColor: '#DC2626',
+          mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha sido cancelada en plataforma por <strong>${responsable}</strong>.`,
+          observaciones: `Motivo: ${motivo}${pendienteReintegro ? ' (Se activa novedad de reintegro y anulación RP)' : ''}`,
+          botonTexto: 'Consultar Expediente',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      // 1. Notificación al usuario que radicó la solicitud
+      if (solicitud.creadoPorUsuarioId) {
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifCancelacion, emailCancelacion);
+      }
+
+      // Notificación directa por correo al comisionado si tiene email registrado
+      if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
+        await this.notificationClient.sendEmail({
+          to: solicitud.comisionado.email,
+          subject: emailCancelacion.asunto,
+          html: emailCancelacion.html,
+          text: notifCancelacion.mensaje,
+        });
+      }
+
+      // 2. Con recursos comprometidos o desembolsados (Etapas 6 a 8 - Con RP, Obligación o Pago realizado):
+      // Activa de forma automática una novedad de reintegro y liberación de recursos (RF-NOV / RF-PAG-004).
+      // Notifica a Tesorería y Presupuesto para que el comisionado reintegre los viáticos anticipados
+      // y se anule/libere el Registro Presupuestal (RP) en SIIF Nación.
+      if (pendienteReintegro) {
+        const notifNovedad = {
+          tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
+          titulo: `Novedad de reintegro y anulación RP SIIF: ${consecutivo}`,
+          mensaje: `La comisión ${consecutivo} fue cancelada con recursos comprometidos o desembolsados. Se activa novedad de reintegro de viáticos y anulación/liberación de Registro Presupuestal (RP) en SIIF Nación (RF-NOV / RF-PAG-004).`,
+          descripcion_corta: `Reintegro y RP SIIF · ${consecutivo}`,
+          icono: 'RotateCcw',
+          color: '#D97706',
+          prioridad: 'Alta' as const,
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Gestionar reintegro',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivoUnico: consecutivo,
+            motivo,
+            responsable,
+            pendienteReintegro: true,
+            novedad: 'RF-PAG-004',
+          },
+        };
+
+        const emailNovedad = {
+          asunto: `[SIIF Novedad] Reintegro y anulación RP: ${consecutivo}`,
+          html: buildTravelExpenseEmailHtml({
+            consecutivo,
+            comisionadoNombre,
+            destino,
+            fechaInicio,
+            fechaFin,
+            estadoBadge: 'REINTEGRO Y LIBERACIÓN SIIF',
+            badgeColor: '#D97706',
+            mensajePrincipal: `La comisión <strong>${consecutivo}</strong> fue cancelada con recursos comprometidos o desembolsados. Se requiere gestionar reintegro de viáticos y/o liberación de RP en SIIF Nación.`,
+            observaciones: `Motivo: ${motivo} | Responsable cancelación: ${responsable}`,
+            botonTexto: 'Gestionar en Plataforma',
+            botonUrl: '/viaticos',
+          }),
+        };
+
+        // Notificaciones directas a Tesorería, Presupuesto, Control de Viáticos y Subdirección mediante permisos inmutables
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_tesoreria',
+          notifNovedad,
+          emailNovedad,
+          'TESORERIA',
+        );
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_presupuesto',
+          notifNovedad,
+          emailNovedad,
+          'PRESUPUESTO',
+        );
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_control_viaticos',
+          notifNovedad,
+          emailNovedad,
+          'CONTROL_VIATICOS',
+        );
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_subdireccion_corporativa',
+          notifNovedad,
+          emailNovedad,
+          'SUBDIRECCION_GESTION_CORPORATIVA',
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en despacharNotificacionesCancelacion: ${err?.message}`);
+    }
+  }
+
+  /**
    * RF-AUT-001 — Genera el PDF oficial de Autorización Corporativa de Gasto e Itinerario.
    */
   async exportarPdfTiqueteItinerario(
+
     solicitudId: string,
     req?: any,
   ): Promise<Buffer> {
@@ -4026,31 +5172,10 @@ export class TravelExpensesService {
     const comisionado = solicitud.comisionado;
     const PDFDocument = require('pdfkit');
 
-    let autorizadorNombre = 'Subdirección de Gestión Corporativa';
-    if (solicitud.autorizadorId && typeof this.dataSource?.query === 'function') {
-      try {
-        const rowsAut: any[] = await this.dataSource.query(
-          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
-           FROM auth."user" u
-           LEFT JOIN auth.personas p ON p.id_person = u.id_person
-           WHERE u.id_user = $1
-           LIMIT 1`,
-          [solicitud.autorizadorId],
-        );
-        if (Array.isArray(rowsAut) && rowsAut[0]) {
-          const r = rowsAut[0];
-          autorizadorNombre =
-            r.nom_largo ||
-            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
-            r.username ||
-            'Subdirección de Gestión Corporativa';
-        }
-      } catch (e) {
-        this.logger.warn(`Error resolviendo autorizador en PDF: ${e}`);
-      }
-    } else if (solicitud.autorizador?.username) {
-      autorizadorNombre = solicitud.autorizador.username;
-    }
+    const autorizadorNombre = await this.resolverNombreUsuario(
+      solicitud.autorizadorId,
+      solicitud.autorizador?.username || 'Subdirección de Gestión Corporativa',
+    );
 
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'letter' });
@@ -4086,25 +5211,7 @@ export class TravelExpensesService {
       };
 
       const sanitizarTexto = (texto: string | null | undefined): string => {
-        if (!texto) return '';
-        return String(texto)
-          .replace(/Ã¡/g, 'á')
-          .replace(/Ã©/g, 'é')
-          .replace(/Ã­/g, 'í')
-          .replace(/Ã³/g, 'ó')
-          .replace(/Ãº/g, 'ú')
-          .replace(/Ã±/g, 'ñ')
-          .replace(/Ã‘/g, 'Ñ')
-          .replace(/Ã\u0081/g, 'Á')
-          .replace(/Ã\u0089/g, 'É')
-          .replace(/Ã\u008D/g, 'Í')
-          .replace(/Ã\u0093/g, 'Ó')
-          .replace(/Ã\u009A/g, 'Ú')
-          .replace(/Ã\u0091/g, 'Ñ')
-          .replace(/Ã-/g, 'í')
-          .replace(/Ã\u00ad/g, 'í')
-          .replace(/Â/g, '')
-          .trim();
+        return this.sanitizarTextoPdf(texto);
       };
 
       const drawSectionTitle = (title: string) => {
@@ -4152,6 +5259,21 @@ export class TravelExpensesService {
           .join(' '),
       );
 
+      const esAprobadaItinerario =
+        [
+          EstadoSolicitud.AUTORIZADA,
+          EstadoSolicitud.EN_PRESUPUESTO,
+          EstadoSolicitud.COMPROMETIDA,
+          EstadoSolicitud.OBLIGADA,
+          EstadoSolicitud.PAGADA,
+          EstadoSolicitud.RESOLUCION_EMITIDA,
+          EstadoSolicitud.TIQUETES_COMPRADOS,
+          EstadoSolicitud.EN_COMISION,
+          EstadoSolicitud.PENDIENTE_LEGALIZACION,
+          EstadoSolicitud.LEGALIZADO,
+        ].includes(solicitud.estadoSolicitud) ||
+        Boolean(solicitud.fechaAutorizacion);
+
       drawHeader();
 
       doc.fontSize(14).font('Helvetica-Bold');
@@ -4161,7 +5283,7 @@ export class TravelExpensesService {
       });
       doc.fontSize(10).font('Helvetica-Bold');
       doc.fillColor(
-        solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA
+        esAprobadaItinerario
           ? '#15803D'
           : '#B45309',
       );
@@ -4215,7 +5337,7 @@ export class TravelExpensesService {
       const stampHeight = 44;
       const yFirmas = yStampTop + stampHeight + 20;
 
-      if (solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA) {
+      if (esAprobadaItinerario) {
         // Sello visual digital APROBADO para la Subdirección
         doc
           .roundedRect(60, yStampTop, 180, stampHeight, 4)
@@ -4229,7 +5351,7 @@ export class TravelExpensesService {
           align: 'center',
         });
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#14532D');
-        doc.text(sanitizarTexto(autorizadorNombre), 60, yStampTop + 18, {
+        doc.text(sanitizarTexto(`Aprobado por: ${autorizadorNombre}`), 60, yStampTop + 18, {
           width: 180,
           align: 'center',
         });
@@ -4292,4 +5414,1179 @@ export class TravelExpensesService {
       doc.end();
     });
   }
+
+  /**
+   * Validador y generador de nomenclatura Fecha_RP_Número (RF-PRE-001).
+   * Admite:
+   *   YYYY-MM-DD_RP_NUMERO (ej. 2026-09-16_RP_12345)
+   *   YYYYMMDD_RP_NUMERO   (ej. 20260916_RP_12345)
+   */
+  validarYFormatearNomenclaturaRp(
+    fechaRp: string,
+    numeroRp: string,
+    codigoRpSuministrado?: string,
+  ): string {
+    const fechaLimpia = (fechaRp || '').split('T')[0].trim();
+    const numLimpio = (numeroRp || '').trim();
+
+    if (!numLimpio) {
+      throw new BadRequestException('El número de RP es obligatorio.');
+    }
+
+    if (codigoRpSuministrado && codigoRpSuministrado.trim()) {
+      const cod = codigoRpSuministrado.trim();
+      const regexNomenclatura = /^\d{4}-?\d{2}-?\d{2}_RP_[A-Za-z0-9\-_]+$/i;
+      if (!regexNomenclatura.test(cod)) {
+        throw new BadRequestException(
+          `La nomenclatura '${cod}' es inválida. Debe respetar el formato Fecha_RP_Número (ej. ${fechaLimpia}_RP_${numLimpio}).`,
+        );
+      }
+      return cod;
+    }
+
+    // Generar formato estándar Fecha_RP_Número
+    return `${fechaLimpia}_RP_${numLimpio}`;
+  }
+
+  /**
+   * RF-PRE-003: Determinar días hábiles en Colombia disponibles antes del viaje.
+   * Excluye sábados (6), domingos (0) y días festivos registrados en travel_expenses.festivos_colombia.
+   *
+   * @param fechaReferencia Fecha de expedición del RP o fecha de corte actual (excluida del cómputo).
+   * @param fechaInicioViaje Fecha de inicio de la comisión de servicios.
+   * @returns Cantidad de días hábiles completos antes del inicio del viaje (entero >= 0).
+   */
+  async calcularDiasHabilesPrevios(
+    fechaReferencia: Date | string,
+    fechaInicioViaje: Date | string,
+  ): Promise<number> {
+    if (!fechaReferencia || !fechaInicioViaje) {
+      return 0;
+    }
+
+    const parseToUtcDate = (val: Date | string): Date => {
+      if (typeof val === 'string') {
+        const clean = val.split('T')[0].trim();
+        const parts = clean.split('-');
+        if (parts.length === 3) {
+          return new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+        }
+      }
+      const d = new Date(val);
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    };
+
+    const inicio = parseToUtcDate(fechaReferencia);
+    const fin = parseToUtcDate(fechaInicioViaje);
+
+    // Si la comisión inicia en la misma fecha o ya inició en el pasado, no hay días hábiles disponibles
+    if (fin.getTime() <= inicio.getTime()) {
+      return 0;
+    }
+
+    // Obtener festivos de Colombia
+    const festivosSet = new Set<string>();
+    try {
+      const festivoRepo = this.dataSource.getRepository(FestivoColombiaEntity);
+      const festivos = await festivoRepo.find();
+      if (Array.isArray(festivos)) {
+        festivos.forEach((f) => {
+          if (f.fecha) {
+            const fStr =
+              typeof f.fecha === 'string'
+                ? f.fecha.slice(0, 10)
+                : new Date(f.fecha).toISOString().slice(0, 10);
+            festivosSet.add(fStr);
+          }
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[calcularDiasHabilesPrevios] No se pudieron consultar festivos en BD: ${err?.message}`,
+      );
+    }
+
+    let diasHabiles = 0;
+    // Cursor avanza desde el día siguiente a la fecha de referencia hasta estrictamente antes de fechaInicioViaje
+    const cursor = new Date(inicio.getTime());
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
+    while (cursor.getTime() < fin.getTime()) {
+      const dayOfWeek = cursor.getUTCDay(); // 0 = Domingo, 6 = Sábado
+      const isoDate = cursor.toISOString().slice(0, 10);
+
+      const esFinDeSemana = dayOfWeek === 0 || dayOfWeek === 6;
+      const esFestivo = festivosSet.has(isoDate);
+
+      if (!esFinDeSemana && !esFestivo) {
+        diasHabiles++;
+      }
+
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return diasHabiles;
+  }
+
+  /**
+   * RF-PRE-003: Determinar modalidad de pago según los días hábiles previos disponibles.
+   * Regla de negocio institucional ESAP:
+   *   - Si diasHabiles >= umbral (por defecto 5 días hábiles): AVANCE (pago anticipado).
+   *   - Si diasHabiles < umbral: RECONOCIMIENTO_POSTERIOR (reembolso posterior a la comisión).
+   */
+  determinarModalidadPago(
+    diasHabiles: number,
+    umbral: number = DIAS_HABILES_MINIMOS_AVANCE_DEFAULT,
+  ): 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' {
+    if (diasHabiles >= umbral) {
+      return 'AVANCE';
+    }
+    return 'RECONOCIMIENTO_POSTERIOR';
+  }
+
+  /**
+   * RF-PRE-003: Previsualizar modalidad de pago para una comisión antes de expedir el RP.
+   */
+  async previsualizarModalidadPago(
+    solicitudId: string,
+    fechaRp?: string,
+  ): Promise<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    fechaReferencia: string;
+    fechaInicioComision: string;
+    diasHabilesPrevios: number;
+    modalidadPago: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR';
+    umbralMinimoAvance: number;
+  }> {
+    const solicitud = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+    }
+
+    const fechaRef = fechaRp && fechaRp.trim() ? fechaRp.trim() : new Date().toISOString().slice(0, 10);
+    const diasHabiles = await this.calcularDiasHabilesPrevios(fechaRef, solicitud.fechaInicio);
+    const modalidad = this.determinarModalidadPago(diasHabiles);
+
+    const formatIso = (v: any) =>
+      typeof v === 'string' ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+
+    return {
+      solicitudId: solicitud.id,
+      consecutivoUnico: solicitud.consecutivoUnico,
+      fechaReferencia: typeof fechaRef === 'string' ? fechaRef.slice(0, 10) : formatIso(fechaRef),
+      fechaInicioComision: formatIso(solicitud.fechaInicio),
+      diasHabilesPrevios: diasHabiles,
+      modalidadPago: modalidad,
+      umbralMinimoAvance: DIAS_HABILES_MINIMOS_AVANCE_DEFAULT,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada al Grupo de Presupuesto (Etapa 7).
+   *
+   * Criterio 1 (Gherkin):
+   *   Dada una comisión AUTORIZADA, Cuando el analista envía el paquete a Presupuesto,
+   *   Entonces aparece en la bandeja del Grupo de Presupuesto.
+   */
+  async enviarPaquetePresupuesto(
+    solicitudId: string,
+    usuarioId: string,
+    roles: string[] = [],
+    dto?: EnviarPresupuestoDto,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+    }
+
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.AUTORIZADA) {
+      throw new BadRequestException(
+        `Solo las comisiones en estado AUTORIZADA pueden ser enviadas al Grupo de Presupuesto. Estado actual: ${solicitud.estadoSolicitud}`,
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    // Mantiene el estado oficial AUTORIZADA marcando el envío al Grupo de Presupuesto
+    solicitud.enviadoPresupuesto = true;
+    solicitud.fechaEnvioPresupuesto = new Date();
+    solicitud.enviadoPresupuestoPorId = usuarioId;
+    if (dto?.observaciones) {
+      solicitud.observacionesEnvioPresupuesto = dto.observaciones.trim();
+    }
+
+    const guardada = await this.solicitudRepo.save(solicitud);
+
+    await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: solicitud.id,
+      estadoAnterior,
+      estadoNuevo: solicitud.estadoSolicitud,
+      usuarioId,
+      motivo: `[RF-PRE-001] Paquete de comisión remitido al Grupo de Presupuesto para expedición de RP en SIIF Nación.${dto?.observaciones ? ` Observaciones: ${dto.observaciones.trim()}` : ''}`,
+    });
+
+    // Notificar al rol PRESUPUESTO mediante permiso inmutable (In-app + Correo)
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
+
+      const notifPresupuesto = {
+        tipo_notificacion: 'VIATICOS_COMISION_EN_PRESUPUESTO',
+        titulo: `Nueva comisión para expedición de RP: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} con destino a ${destino} fue enviada a Presupuesto para expedición de Registro Presupuestal en SIIF Nación.`,
+        descripcion_corta: `En Presupuesto · ${consecutivo}`,
+        icono: 'Receipt',
+        color: '#059669',
+        prioridad: 'Media' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Expedir RP',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+        },
+      };
+
+      const emailPresupuesto = {
+        asunto: `Nueva comisión para expedición de RP en SIIF: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'EN PRESUPUESTO',
+          badgeColor: '#059669',
+          mensajePrincipal: `La comisión <strong>${consecutivo}</strong> con destino a <strong>${destino}</strong> ha sido remitida al Grupo de Presupuesto para expedición de Registro Presupuestal (RP) en SIIF Nación.`,
+          observaciones: dto?.observaciones ? `Observaciones: ${dto.observaciones}` : undefined,
+          botonTexto: 'Expedir RP en Plataforma',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_presupuesto',
+        notifPresupuesto,
+        emailPresupuesto,
+        'PRESUPUESTO',
+      );
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error notificando a Presupuesto: ${err?.message}`);
+    }
+
+    return guardada;
+  }
+
+  /**
+   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
+   *
+   * Permite consultar comisiones autorizadas pendientes de RP (AUTORIZADA / EN_PRESUPUESTO)
+   * y comisiones comprometidas (COMPROMETIDA), con búsqueda, paginación y KPIs.
+   */
+  async obtenerBandejaPresupuesto(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    estado?: string,
+  ): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+    kpis: {
+      pendientesRp: number;
+      comprometidas: number;
+      totalComprometido: number;
+    };
+  }> {
+    const qb = this.solicitudRepo
+      .createQueryBuilder('sol')
+      .leftJoinAndSelect('sol.comisionado', 'com')
+      .leftJoinAndSelect('sol.enviadoPresupuestoPor', 'envUser')
+      .leftJoinAndSelect('sol.expedidoRpPor', 'expUser');
+
+    if (estado && estado !== 'TODOS') {
+      if (estado === 'AUTORIZADA' || estado === 'EN_PRESUPUESTO' || estado === 'PENDIENTES_RP') {
+        qb.where(
+          '(sol.estadoSolicitud = :autorizada OR sol.estadoSolicitud = :enPresupuesto)',
+          {
+            autorizada: EstadoSolicitud.AUTORIZADA,
+            enPresupuesto: EstadoSolicitud.EN_PRESUPUESTO,
+          },
+        );
+      } else {
+        qb.where('sol.estadoSolicitud = :estado', { estado });
+      }
+    } else {
+      qb.where(
+        '(sol.estadoSolicitud IN (:...estados) OR (sol.estadoSolicitud = :autorizada AND sol.enviadoPresupuesto = true))',
+        {
+          estados: [EstadoSolicitud.AUTORIZADA, EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
+          autorizada: EstadoSolicitud.AUTORIZADA,
+        },
+      );
+    }
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(sol.consecutivoUnico) LIKE :term OR LOWER(com.primerNombre) LIKE :term OR LOWER(com.primerApellido) LIKE :term OR LOWER(com.numeroDocumento) LIKE :term OR LOWER(sol.destinoCiudad) LIKE :term OR LOWER(sol.numeroRp) LIKE :term OR LOWER(sol.codigoRp) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('sol.fechaEnvioPresupuesto', 'DESC')
+      .addOrderBy('sol.actualizadoEn', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+
+    // KPIs consolidados
+    const pendientesRpCount = await this.solicitudRepo.count({
+      where: [
+        { estadoSolicitud: EstadoSolicitud.AUTORIZADA },
+        { estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO },
+      ],
+    });
+
+    const comprometidasCount = await this.solicitudRepo.count({
+      where: { estadoSolicitud: EstadoSolicitud.COMPROMETIDA },
+    });
+
+    const sumResult = await this.solicitudRepo
+      .createQueryBuilder('sol')
+      .select('SUM(sol.valorComprometido)', 'total')
+      .where('sol.estadoSolicitud = :comp', { comp: EstadoSolicitud.COMPROMETIDA })
+      .getRawOne();
+
+    const totalComprometido = Number(sumResult?.total || 0);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      kpis: {
+        pendientesRp: pendientesRpCount,
+        comprometidas: comprometidasCount,
+        totalComprometido,
+      },
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  /**
+   * RF-PRE-001 — Expedir y Registrar RP en SIIF Nación (Etapa 7).
+   *
+   * Método transaccional ACID con bloqueo pesimista SELECT ... FOR UPDATE.
+   * Transiciona la comisión de AUTORIZADA / EN_PRESUPUESTO al estado COMPROMETIDA.
+   */
+  async registrarRP(
+    solicitudId: string,
+    datosRp: IssueRpDto,
+    usuarioId: string,
+  ): Promise<SolicitudComisionEntity> {
+    return this.dataSource.transaction(async (manager) => {
+      // 1. Bloqueo Pesimista: Obtener la solicitud con SELECT ... FOR UPDATE (sin outer joins para compatibilidad total con PostgreSQL)
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .findOne({
+          where: { id: solicitudId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+      if (!solicitud) {
+        throw new NotFoundException(`Solicitud de comisión no encontrada: ${solicitudId}`);
+      }
+
+      if (solicitud.comisionadoId) {
+        const comisionado = await manager.getRepository(ComisionadoEntity).findOne({
+          where: { id: solicitud.comisionadoId },
+        });
+        if (comisionado) {
+          solicitud.comisionado = comisionado;
+        }
+      }
+
+      // 2. Validación de Estado: Verificar que esté en AUTORIZADA o en Presupuesto
+      const esEstadoValido =
+        solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA ||
+        solicitud.estadoSolicitud === EstadoSolicitud.EN_PRESUPUESTO;
+
+      if (!esEstadoValido) {
+        throw new BadRequestException(
+          `La comisión debe estar en la bandeja de Presupuesto para expedir su RP. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      if (datosRp.valorComprometido == null || Number(datosRp.valorComprometido) <= 0) {
+        throw new BadRequestException('El valor comprometido debe ser un monto positivo mayor a 0.');
+      }
+
+      const rubroFinal = (datosRp.rubroPresupuestal || datosRp.rubro || '').trim();
+      if (!rubroFinal) {
+        throw new BadRequestException('El rubro presupuestal es obligatorio para expedir el RP.');
+      }
+
+      // 3. Validación Nomenclatura SOPORTE RP
+      if (datosRp.soporteRpPath) {
+        const regexSoporte = /^.*(\d{4}-?\d{2}-?\d{2})_RP_([A-Za-z0-9\-_]+)(\.pdf)?$/i;
+        if (!regexSoporte.test(datosRp.soporteRpPath.trim())) {
+          throw new BadRequestException(
+            `El archivo soporte de RP '${datosRp.soporteRpPath}' es inválido. Debe cumplir con la regla de nomenclatura Fecha_RP_Número (ejemplo: YYYYMMDD_RP_Numero.pdf o 20260916_RP_12345.pdf).`,
+          );
+        }
+      }
+
+      const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
+        datosRp.fechaRp,
+        datosRp.numeroRp,
+        datosRp.codigoRp,
+      );
+
+      // 4. Actualización de Registro
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.COMPROMETIDA;
+      solicitud.numeroRp = datosRp.numeroRp.trim();
+      solicitud.fechaRp = new Date(datosRp.fechaRp);
+      solicitud.valorComprometido = Number(datosRp.valorComprometido);
+      solicitud.rubroPresupuestalRp = rubroFinal;
+      solicitud.rubroRp = rubroFinal;
+      solicitud.soporteRpPath = datosRp.soporteRpPath ? datosRp.soporteRpPath.trim() : null;
+      solicitud.codigoRp = codigoOficialRp;
+      solicitud.usuarioPresupuestoId = usuarioId;
+      solicitud.expedidoRpPorId = usuarioId;
+      solicitud.fechaRegistroRp = new Date();
+      solicitud.fechaExpedicionRp = new Date();
+      if (datosRp.observaciones) {
+        solicitud.observacionesRp = datosRp.observaciones.trim();
+      }
+
+      // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
+      const fechaBaseModalidad = datosRp.fechaRp || new Date();
+      const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
+        fechaBaseModalidad,
+        solicitud.fechaInicio,
+      );
+      const modalidadPago = this.determinarModalidadPago(diasHabilesPrevios);
+      solicitud.modalidadPago = modalidadPago;
+      solicitud.diasHabilesPrevios = diasHabilesPrevios;
+      solicitud.fechaCalculoModalidad = new Date();
+
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.COMPROMETIDA,
+        usuarioId,
+        motivo: `[RF-PRE-001 / RF-PRE-003] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
+      });
+
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
+      return guardada;
+    });
+  }
+
+  /**
+   * RF-PRE-001 — Expedir RP en SIIF Nación (Etapa 7).
+   *
+   * Criterio 2 (Gherkin):
+   *   Dada una comisión en Presupuesto, Cuando se expide el RP en SIIF Nación,
+   *   Entonces la comisión pasa a estado COMPROMETIDA.
+   */
+  async expedirRp(
+    solicitudId: string,
+    usuarioId: string,
+    roles: string[] = [],
+    dto: ExpedirRpDto | IssueRpDto,
+  ): Promise<SolicitudComisionEntity> {
+    const issueDto: IssueRpDto = {
+      numeroRp: dto.numeroRp,
+      fechaRp: dto.fechaRp,
+      valorComprometido: dto.valorComprometido,
+      rubroPresupuestal: (dto as any).rubroPresupuestal || (dto as any).rubro,
+      rubro: (dto as any).rubro || (dto as any).rubroPresupuestal,
+      codigoRp: dto.codigoRp,
+      soporteRpPath: (dto as any).soporteRpPath,
+      observaciones: dto.observaciones,
+    };
+
+    const guardada = await this.registrarRP(solicitudId, issueDto, usuarioId);
+
+    // Notificaciones al comisionado / enlace / analista (In-app + Correo)
+    try {
+      const consecutivo = guardada.consecutivoUnico || guardada.id;
+      const comisionadoNombre = this.getComisionadoNombre(guardada.comisionado);
+      const destino = `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim();
+      const fechaInicio = guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : undefined;
+
+      const notifRp = {
+        tipo_notificacion: 'VIATICOS_RP_EXPEDIDO',
+        titulo: `RP Expedido en SIIF Nación: ${consecutivo}`,
+        mensaje: `Se ha expedido el RP ${guardada.codigoRp} para la comisión ${consecutivo}. Estado: COMPROMETIDA. Recursos comprometidos: $${Number(guardada.valorComprometido).toLocaleString('es-CO')}.`,
+        descripcion_corta: `RP Expedido · ${consecutivo}`,
+        icono: 'CheckCircle2',
+        color: '#059669',
+        prioridad: 'Media' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver comisión',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: guardada.id,
+          consecutivoUnico: consecutivo,
+          codigoRp: guardada.codigoRp,
+          valorComprometido: guardada.valorComprometido,
+        },
+      };
+
+      const emailRp = {
+        asunto: `Registro Presupuestal (RP) expedido en SIIF: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'COMPROMETIDA',
+          badgeColor: '#059669',
+          mensajePrincipal: `Se ha expedido el <strong>Registro Presupuestal ${guardada.codigoRp}</strong> para la comisión <strong>${consecutivo}</strong> en SIIF Nación por valor comprometido de <strong>$${Number(guardada.valorComprometido).toLocaleString('es-CO')}</strong>. La comisión se encuentra en estado <strong>COMPROMETIDA</strong>.`,
+          observaciones: guardada.observacionesRp ? `Observaciones RP: ${guardada.observacionesRp}` : undefined,
+          botonTexto: 'Consultar Comisión',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      const destinatarios = Array.from(new Set([
+        guardada.creadoPorUsuarioId,
+        guardada.analistaAsignadoId,
+      ].filter(Boolean) as string[]));
+
+      for (const destId of destinatarios) {
+        await this.notificationClient.notifyUser(destId, notifRp, emailRp);
+      }
+
+      // Notificación directa por email al comisionado si tiene correo registrado
+      if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
+        await this.notificationClient.sendEmail({
+          to: guardada.comisionado.email,
+          subject: emailRp.asunto,
+          html: emailRp.html,
+          text: notifRp.mensaje,
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error enviando notificaciones de RP expedido: ${err?.message}`);
+    }
+
+    return guardada;
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de Registro Presupuestal (RP) en SIIF Nación (Etapa 7).
+   *
+   * Criterio 3 (Gherkin):
+   *   Dado el registro del RP, Cuando se carga, Entonces respeta la nomenclatura
+   *   Fecha_RP_Número y admite carga masiva.
+   */
+  async cargaMasivaRp(
+    usuarioId: string,
+    roles: string[] = [],
+    items: ItemCargaMasivaRpDto[],
+  ): Promise<{
+    total: number;
+    exitosos: number;
+    fallidos: number;
+    procesados: Array<{
+      solicitudId: string;
+      consecutivoUnico: string;
+      codigoRp: string;
+      valorComprometido: number;
+      estado: string;
+    }>;
+    errores: Array<{
+      fila: number;
+      identificador: string;
+      error: string;
+    }>;
+  }> {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('El archivo o listado de carga masiva está vacío.');
+    }
+
+    const procesados: Array<any> = [];
+    const errores: Array<any> = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const fila = i + 1;
+      const identificador = item.consecutivoUnico || item.solicitudId || `Fila #${fila}`;
+
+      try {
+        let solicitud: SolicitudComisionEntity | null = null;
+
+        const consecutivoFinal =
+          item.consecutivoUnico ||
+          (item as any).solicitud_consecutivo ||
+          (item as any).consecutivo ||
+          (item as any).solicitudConsecutivo;
+        const numRpFinal = item.numeroRp || (item as any).numero_rp;
+        const fechaRpFinal = item.fechaRp || (item as any).fecha_rp;
+        const valorFinal = item.valorComprometido ?? (item as any).valor_comprometido;
+        const rubroFinal = item.rubro || (item as any).rubroPresupuestal || (item as any).rubro_presupuestal;
+        const soporteFinal = (item as any).soporteRpPath || (item as any).soporte_rp_path || null;
+
+        if (item.solicitudId) {
+          solicitud = await this.solicitudRepo.findOne({
+            where: { id: item.solicitudId },
+          });
+        } else if (consecutivoFinal) {
+          solicitud = await this.solicitudRepo.findOne({
+            where: { consecutivoUnico: consecutivoFinal.trim().toUpperCase() },
+          });
+        }
+
+        if (!solicitud) {
+          errores.push({
+            fila,
+            identificador,
+            error: `Comisión no encontrada con el identificador '${identificador}'.`,
+          });
+          continue;
+        }
+
+        const esEstadoValido =
+          solicitud.estadoSolicitud === EstadoSolicitud.EN_PRESUPUESTO ||
+          solicitud.estadoSolicitud === EstadoSolicitud.AUTORIZADA;
+
+        if (!esEstadoValido) {
+          errores.push({
+            fila,
+            identificador,
+            error: `La comisión '${solicitud.consecutivoUnico}' no está en estado AUTORIZADA o en Presupuesto (estado actual: ${solicitud.estadoSolicitud}).`,
+          });
+          continue;
+        }
+
+        if (!numRpFinal || !String(numRpFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Número de RP no suministrado.',
+          });
+          continue;
+        }
+
+        if (!fechaRpFinal || !String(fechaRpFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Fecha de RP no suministrada.',
+          });
+          continue;
+        }
+
+        if (valorFinal == null || Number(valorFinal) <= 0) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Valor comprometido debe ser un número positivo mayor a 0.',
+          });
+          continue;
+        }
+
+        if (!rubroFinal || !String(rubroFinal).trim()) {
+          errores.push({
+            fila,
+            identificador,
+            error: 'Rubro presupuestal no suministrado.',
+          });
+          continue;
+        }
+
+        // Valida y normaliza la nomenclatura Fecha_RP_Número
+        const codigoOficialRp = this.validarYFormatearNomenclaturaRp(
+          fechaRpFinal,
+          numRpFinal,
+          item.codigoRp,
+        );
+
+        const estadoAnterior = solicitud.estadoSolicitud;
+        solicitud.estadoSolicitud = EstadoSolicitud.COMPROMETIDA;
+        solicitud.numeroRp = String(numRpFinal).trim();
+        solicitud.fechaRp = new Date(fechaRpFinal);
+        solicitud.valorComprometido = Number(valorFinal);
+        solicitud.rubroRp = String(rubroFinal).trim();
+        solicitud.rubroPresupuestalRp = String(rubroFinal).trim();
+        solicitud.soporteRpPath = soporteFinal ? String(soporteFinal).trim() : null;
+        solicitud.codigoRp = codigoOficialRp;
+        solicitud.usuarioPresupuestoId = usuarioId;
+        solicitud.expedidoRpPorId = usuarioId;
+        solicitud.fechaRegistroRp = new Date();
+        solicitud.fechaExpedicionRp = new Date();
+        if (item.observaciones) {
+          solicitud.observacionesRp = String(item.observaciones).trim();
+        }
+
+        // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
+        const fechaBaseModalidad = fechaRpFinal || new Date();
+        const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
+          fechaBaseModalidad,
+          solicitud.fechaInicio,
+        );
+        const modalidadPago = this.determinarModalidadPago(diasHabilesPrevios);
+        solicitud.modalidadPago = modalidadPago;
+        solicitud.diasHabilesPrevios = diasHabilesPrevios;
+        solicitud.fechaCalculoModalidad = new Date();
+
+        await this.solicitudRepo.save(solicitud);
+
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.COMPROMETIDA,
+          usuarioId,
+          motivo: `[RF-PRE-001 / RF-PRE-003 - Carga Masiva] RP expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor: $${Number(valorFinal).toLocaleString('es-CO')}`,
+        });
+
+        procesados.push({
+          solicitudId: solicitud.id,
+          consecutivoUnico: solicitud.consecutivoUnico,
+          codigoRp: codigoOficialRp,
+          valorComprometido: Number(valorFinal),
+          modalidadPago,
+          diasHabilesPrevios,
+          estado: EstadoSolicitud.COMPROMETIDA,
+        });
+
+        this.emitirDisbursementReady(solicitud.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
+      } catch (err: any) {
+        errores.push({
+          fila,
+          identificador,
+          error: err?.message || 'Error inesperado al procesar registro.',
+        });
+      }
+    }
+
+    return {
+      total: items.length,
+      exitosos: procesados.length,
+      fallidos: errores.length,
+      procesados,
+      errores,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Alias de Carga Masiva de RP (cargaMasivaRP)
+   */
+  async cargaMasivaRP(
+    usuarioId: string,
+    roles: string[] = [],
+    items: any[],
+  ) {
+    return this.cargaMasivaRp(usuarioId, roles, items);
+  }
+
+  /**
+   * RF-PAG-001 — Etapa 8: Crear obligación en SIIF Nación según modalidad de pago.
+   * Actor: Analista de Viáticos.
+   *
+   * Criterios de Aceptación (Gherkin):
+   * 1. Dada una comisión COMPROMETIDA con modalidad definida,
+   *    Cuando el analista crea la obligación en SIIF Nación,
+   *    Entonces queda registrada según la modalidad (avance o posterior).
+   * 2. Dada la obligación creada,
+   *    Cuando se registra,
+   *    Entonces la comisión queda lista para el desembolso por Tesorería (pasa a OBLIGADA).
+   *
+   * Detalle funcional:
+   * - Entrada: modalidad de pago (de RF-PRE-003 o confirmada), valor, RP.
+   * - Acción: crear obligación en SIIF Nación.
+   * - Resultado: comisión lista para pago (OBLIGADA).
+   */
+  async crearObligacion(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[] = [],
+    dto: CrearObligacionDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('El ID de la solicitud es obligatorio.');
+    }
+    if (!dto || !dto.numeroObligacion?.trim()) {
+      throw new BadRequestException('El número de obligación en SIIF Nación es obligatorio.');
+    }
+
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión ${solicitudId} no encontrada.`);
+    }
+
+    // Validación de estado: Debe estar en estado COMPROMETIDA
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.COMPROMETIDA) {
+      throw new BadRequestException(
+        `La solicitud no se encuentra en estado COMPROMETIDA (Estado actual: ${solicitud.estadoSolicitud}). Solo comisiones con RP expedido pueden ser obligadas.`,
+      );
+    }
+
+    // Validación de RP
+    const tieneRp = Boolean(solicitud.codigoRp || solicitud.numeroRp);
+    if (!tieneRp) {
+      throw new BadRequestException(
+        'La comisión no cuenta con Registro Presupuestal (RP) expedido en SIIF Nación.',
+      );
+    }
+
+    // Modalidad de pago (de RF-PRE-003 o del DTO si se especifica)
+    const modalidadFinal = dto.modalidadPago || solicitud.modalidadPago || 'AVANCE';
+    const valorObligacionFinal =
+      dto.valorObligacion != null && Number(dto.valorObligacion) > 0
+        ? Number(dto.valorObligacion)
+        : Number(solicitud.valorComprometido || solicitud.montoViaticos || 0);
+
+    if (valorObligacionFinal <= 0) {
+      throw new BadRequestException(
+        'El valor de la obligación debe ser un monto positivo mayor a cero.',
+      );
+    }
+
+    // Actualización de campos de la Obligación en SIIF Nación
+    const fechaObligacionFinal = dto.fechaObligacion ? new Date(dto.fechaObligacion) : new Date();
+    const estadoAnterior = solicitud.estadoSolicitud;
+
+    solicitud.estadoSolicitud = EstadoSolicitud.OBLIGADA;
+    solicitud.numeroObligacion = dto.numeroObligacion.trim();
+    solicitud.fechaObligacion = fechaObligacionFinal;
+    solicitud.valorObligacion = valorObligacionFinal;
+    solicitud.modalidadPago = modalidadFinal;
+    solicitud.observacionesObligacion = dto.observacionesObligacion?.trim() || null;
+    if (dto.soporteObligacionPath) {
+      solicitud.soporteObligacionPath = dto.soporteObligacionPath;
+    }
+    solicitud.obligadoPorId = usuarioId;
+    solicitud.fechaRegistroObligacion = new Date();
+
+    const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+    const codigoRp = solicitud.codigoRp || solicitud.numeroRp || 'RP-N/A';
+
+    return await this.dataSource.transaction(async (manager) => {
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: guardada.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.OBLIGADA,
+        usuarioId,
+        comentarios: `[RF-PAG-001] Obligación registrada en SIIF Nación: ${dto.numeroObligacion.trim()}. Modalidad: ${modalidadFinal}. RP: ${codigoRp}. Valor obligado: $${valorObligacionFinal.toLocaleString('es-CO')}. Comisión lista para desembolso de Tesorería.`.slice(0, 255),
+      });
+
+      if (this.notificationClient) {
+        try {
+          const comisionadoNombre = this.getComisionadoNombre(guardada.comisionado);
+          const destino = `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim();
+          const fechaInicio = guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : undefined;
+          const fechaFin = guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : undefined;
+
+          const notifObligacion = {
+            tipo_notificacion: 'OBLIGACION_SIIF_REGISTRADA',
+            titulo: `Obligación creada en SIIF: ${consecutivo}`,
+            mensaje: `Se ha creado la obligación ${dto.numeroObligacion.trim()} para la comisión ${consecutivo} (Modalidad: ${modalidadFinal}). La comisión está lista para desembolso por Tesorería.`,
+            descripcion_corta: `Obligación SIIF · ${consecutivo}`,
+            icono: 'CheckCircle2',
+            color: '#059669',
+            prioridad: 'Media' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver comisión',
+            url_accion: '/viaticos',
+          };
+
+          const emailObligacion = {
+            asunto: `Obligación presupuestal creada en SIIF: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechaInicio,
+              fechaFin,
+              estadoBadge: 'OBLIGADA',
+              badgeColor: '#059669',
+              mensajePrincipal: `Se ha registrado la obligación <strong>${dto.numeroObligacion.trim()}</strong> para la comisión <strong>${consecutivo}</strong> (Modalidad: ${modalidadFinal}) por valor de <strong>$${valorObligacionFinal.toLocaleString('es-CO')}</strong>. La comisión queda en estado <strong>OBLIGADA</strong> y pasa a trámite de desembolso en Tesorería.`,
+              observaciones: dto.observacionesObligacion ? `Observaciones: ${dto.observacionesObligacion}` : undefined,
+              botonTexto: 'Consultar Expediente',
+              botonUrl: '/viaticos',
+            }),
+          };
+
+          const destinatarios = Array.from(new Set([
+            guardada.creadoPorUsuarioId,
+            guardada.analistaAsignadoId,
+          ].filter(Boolean) as string[]));
+
+          for (const destId of destinatarios) {
+            await this.notificationClient.notifyUser(destId, notifObligacion, emailObligacion);
+          }
+
+          // Notificación directa por email al comisionado si tiene correo registrado
+          if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
+            await this.notificationClient.sendEmail({
+              to: guardada.comisionado.email,
+              subject: emailObligacion.asunto,
+              html: emailObligacion.html,
+              text: notifObligacion.mensaje,
+            });
+          }
+
+          // Notificación al rol de Tesorería por permiso inmutable
+          const notifTesoreria = {
+            tipo_notificacion: 'VIATICOS_COMISION_LISTA_PAGO',
+            titulo: `Comisión lista para desembolso: ${consecutivo}`,
+            mensaje: `La comisión ${consecutivo} tiene la obligación ${dto.numeroObligacion.trim()} registrada y se encuentra en su bandeja para proceso de pago.`,
+            descripcion_corta: `Para desembolso · ${consecutivo}`,
+            icono: 'DollarSign',
+            color: '#059669',
+            prioridad: 'Alta' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Procesar pago',
+            url_accion: '/viaticos',
+          };
+
+          const emailTesoreria = {
+            asunto: `Comisión lista para desembolso en Tesorería: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechaInicio,
+              fechaFin,
+              estadoBadge: 'LISTA PARA PAGO',
+              badgeColor: '#059669',
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> cuenta con la obligación SIIF <strong>${dto.numeroObligacion.trim()}</strong> debidamente registrada y requiere trámite de desembolso por Tesorería.`,
+              observaciones: `Valor a desembolsar: $${valorObligacionFinal.toLocaleString('es-CO')} · Modalidad: ${modalidadFinal}`,
+              botonTexto: 'Procesar Pago en Plataforma',
+              botonUrl: '/viaticos',
+            }),
+          };
+
+          await this.notificationClient.notifyByPermission(
+            'travel_expenses.general.es_tesoreria',
+            notifTesoreria,
+            emailTesoreria,
+            'TESORERIA',
+          );
+
+          // Notificación informativa a SST
+          await this.notificationClient.notifyByPermission(
+            'travel_expenses.general.es_sst',
+            notifObligacion,
+            emailObligacion,
+            'SST',
+          );
+        } catch (notifErr: any) {
+          this.logger.warn(`[RF-PAG-001] No se pudo enviar notificación de obligación: ${notifErr?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[RF-PAG-001] Obligación ${dto.numeroObligacion.trim()} registrada exitosamente para solicitud ${consecutivo}. Estado: OBLIGADA. Modalidad: ${modalidadFinal}.`,
+      );
+
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.OBLIGADA, usuarioId);
+      return guardada;
+    });
+  }
+
+  /**
+   * [RF-PAG-003] Etapa 8 — Tesorería y desembolso: Procesar pago de comisión.
+   *
+   * Criterios de aceptación (Gherkin):
+   * 1. Dada una comisión con obligación creada (estado OBLIGADA),
+   *    Cuando Tesorería procesa el pago,
+   *    Entonces la comisión pasa a estado PAGADA.
+   * 2. Dado el pago realizado,
+   *    Cuando se registra,
+   *    Entonces queda con su soporte y fecha en la trazabilidad (solicitudes_historial_estados).
+   *
+   * Detalle funcional y validaciones:
+   * - Estado previo requerido: OBLIGADA.
+   * - Estado resultante: PAGADA.
+   * - Campos registrados: fecha de pago, valor pagado, soporte de desembolso, orden de pago SIIF, observaciones.
+   * - Respeta la modalidad presupuestal (AVANCE / RECONOCIMIENTO_POSTERIOR).
+   * - Aplicabilidad: Todas las comisiones con obligación creada.
+   */
+  async procesarPago(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[] = [],
+    dto: ProcesarPagoDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('El ID de la solicitud es obligatorio.');
+    }
+    if (!dto) {
+      throw new BadRequestException('Los datos del pago y desembolso son requeridos.');
+    }
+    if (!dto.fechaPago) {
+      throw new BadRequestException('La fecha de pago es obligatoria.');
+    }
+    if (dto.valorPagado == null || Number(dto.valorPagado) <= 0) {
+      throw new BadRequestException('El valor pagado debe ser un monto positivo mayor a cero.');
+    }
+
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException(`Solicitud de comisión ${solicitudId} no encontrada.`);
+    }
+
+    // Validación de estado: Debe estar en estado OBLIGADA
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.OBLIGADA) {
+      throw new BadRequestException(
+        `La solicitud no se encuentra en estado OBLIGADA (Estado actual: ${solicitud.estadoSolicitud}). Solo comisiones con obligación creada en SIIF Nación pueden ser desembolsadas por Tesorería.`,
+      );
+    }
+
+    // Validación de número de obligación
+    if (!solicitud.numeroObligacion) {
+      throw new BadRequestException(
+        'La comisión no cuenta con número de obligación registrado en SIIF Nación.',
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    const fechaPagoFinal = new Date(dto.fechaPago);
+    const valorPagadoFinal = Number(dto.valorPagado);
+    const soporteFinal = dto.soportePagoPath?.trim() || dto.soporteDesembolsoPath?.trim() || null;
+    const ordenPagoFinal = dto.numeroOrdenPago?.trim() || dto.comprobantePago?.trim() || null;
+    const modalidadFinal = dto.modalidadPago || solicitud.modalidadPago || 'AVANCE';
+
+    solicitud.estadoSolicitud = EstadoSolicitud.PAGADA;
+    solicitud.fechaPago = fechaPagoFinal;
+    solicitud.valorPagado = valorPagadoFinal;
+    solicitud.soportePagoPath = soporteFinal;
+    solicitud.numeroOrdenPago = ordenPagoFinal;
+    solicitud.observacionesPago = dto.observacionesPago?.trim() || null;
+    solicitud.pagadoPorId = usuarioId;
+    solicitud.fechaRegistroPago = new Date();
+
+    const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+    const numObligacion = solicitud.numeroObligacion;
+
+    return await this.dataSource.transaction(async (manager) => {
+      const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      const comentariosTrazabilidad = `[RF-PAG-003] Pago procesado por Tesorería. Estado: PAGADA. Valor desembolsado: $${valorPagadoFinal.toLocaleString('es-CO')}. Modalidad: ${modalidadFinal}. Obligación SIIF: ${numObligacion}${ordenPagoFinal ? `. Orden Pago: ${ordenPagoFinal}` : ''}${soporteFinal ? `. Soporte: ${soporteFinal}` : ''}.`;
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: guardada.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.PAGADA,
+        usuarioId,
+        comentarios: comentariosTrazabilidad.slice(0, 255),
+      });
+
+      if (this.notificationClient) {
+        try {
+          const comisionadoNombre = this.getComisionadoNombre(guardada.comisionado);
+          const destino = `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim();
+          const fechaInicio = guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : undefined;
+          const fechaFin = guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : undefined;
+
+          const notifPago = {
+            tipo_notificacion: 'COMISION_PAGADA',
+            titulo: `Comisión Pagada: ${consecutivo}`,
+            mensaje: `Tesorería ha desembolsado el pago de la comisión ${consecutivo} por un valor de $${valorPagadoFinal.toLocaleString('es-CO')} (Modalidad: ${modalidadFinal}). La comisión se encuentra PAGADA.`,
+            descripcion_corta: `Desembolso Tesorería · ${consecutivo}`,
+            icono: 'BadgeDollarSign',
+            color: '#059669',
+            prioridad: 'Alta' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver comprobante',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: guardada.id,
+              consecutivoUnico: consecutivo,
+              valorPagado: valorPagadoFinal,
+              modalidad: modalidadFinal,
+            },
+          };
+
+          const emailPago = {
+            asunto: `Comisión Pagada / Desembolsada: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechaInicio,
+              fechaFin,
+              estadoBadge: 'PAGADA',
+              badgeColor: '#059669',
+              mensajePrincipal: `Tesorería ha desembolsado el pago de la comisión <strong>${consecutivo}</strong> por un valor de <strong>$${valorPagadoFinal.toLocaleString('es-CO')}</strong> (Modalidad: ${modalidadFinal}). La comisión se encuentra en estado <strong>PAGADA</strong>.`,
+              observaciones: `${numObligacion ? `Obligación SIIF: ${numObligacion} · ` : ''}${ordenPagoFinal ? `Orden de Pago: ${ordenPagoFinal}` : ''}`,
+              botonTexto: 'Consultar Expediente',
+              botonUrl: '/viaticos',
+            }),
+          };
+
+          const destinatarios = Array.from(new Set([
+            guardada.creadoPorUsuarioId,
+            guardada.analistaAsignadoId,
+          ].filter(Boolean) as string[]));
+
+          for (const destId of destinatarios) {
+            await this.notificationClient.notifyUser(destId, notifPago, emailPago);
+          }
+
+          // Notificación directa por email al comisionado si tiene correo registrado
+          if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
+            await this.notificationClient.sendEmail({
+              to: guardada.comisionado.email,
+              subject: emailPago.asunto,
+              html: emailPago.html,
+              text: notifPago.mensaje,
+            });
+          }
+        } catch (notifErr: any) {
+          this.logger.warn(`[RF-PAG-003] No se pudo enviar notificación de pago: ${notifErr?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[RF-PAG-003] Pago procesado exitosamente para solicitud ${consecutivo}. Estado: PAGADA. Valor: $${valorPagadoFinal}. Modalidad: ${modalidadFinal}.`,
+      );
+
+      this.emitirDisbursementReady(guardada.id, EstadoSolicitud.PAGADA, usuarioId);
+      return guardada;
+    });
+  }
 }
+
+

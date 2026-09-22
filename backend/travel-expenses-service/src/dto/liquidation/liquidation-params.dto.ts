@@ -4,11 +4,6 @@ export class UpdateLiquidationParamsDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  smmlv?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
   @Max(1)
   factorContratista?: number;
 

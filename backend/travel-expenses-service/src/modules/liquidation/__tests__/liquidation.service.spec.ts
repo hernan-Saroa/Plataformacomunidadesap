@@ -6,6 +6,7 @@ import { EscalaViaticoEntity } from '../../../entities/liquidation/escala-viatic
 import { TarifaInvestigadorEntity } from '../../../entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from '../../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../../entities/liquidation/liquidation-param.entity';
+import { AuthSystemSettingEntity } from '../../../entities/auth-system-setting.entity';
 import {
   TipoComisionadoLiquidacion,
   CategoriaInvestigador,
@@ -18,6 +19,7 @@ describe('LiquidationService - unit by process', () => {
       investigadorRepo?: any;
       regionalRepo?: any;
       paramRepo?: any;
+      authSettingRepo?: any;
       dataSource?: any;
     } = {},
   ) => {
@@ -26,6 +28,7 @@ describe('LiquidationService - unit by process', () => {
       investigadorRepo = { findOne: jest.fn() },
       regionalRepo = { findOne: jest.fn() },
       paramRepo = { findOne: jest.fn() },
+      authSettingRepo = { findOne: jest.fn() },
       dataSource = {},
     } = overrides;
 
@@ -48,6 +51,10 @@ describe('LiquidationService - unit by process', () => {
         {
           provide: getRepositoryToken(LiquidationParamEntity),
           useValue: paramRepo,
+        },
+        {
+          provide: getRepositoryToken(AuthSystemSettingEntity),
+          useValue: authSettingRepo,
         },
       ],
     }).compile();
@@ -111,7 +118,7 @@ describe('LiquidationService - unit by process', () => {
       expect(result.data.salarioBaseAplicado).toBe(5500000);
     });
 
-    it('ESTUDIANTE: usa SMMLV 2026 como salario base', async () => {
+    it('ESTUDIANTE: usa SMMLV 2026 como salario base por defecto/contingencia', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -134,6 +141,41 @@ describe('LiquidationService - unit by process', () => {
       });
 
       expect(result.data.salarioBaseAplicado).toBe(1423500);
+    });
+
+    it('ESTUDIANTE: usa SMMLV maestro centralizado desde auth.system_settings', async () => {
+      const svc = await buildSvc({
+        authSettingRepo: {
+          findOne: jest.fn().mockResolvedValue({
+            key: 'SALARIO_MINIMO_MENSUAL',
+            value: JSON.stringify({
+              salarioMinimo: 1600000,
+              anio: 2026,
+              moneda: 'COP',
+            }),
+          }),
+        },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 0,
+              rangoMaximo: 1917184,
+              tarifaDiaria: 173886,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
+      });
+
+      const result = await svc.calcularLiquidacion({
+        tipoComisionado: TipoComisionadoLiquidacion.ESTUDIANTE,
+        fechaInicio: '2026-09-20',
+        fechaFin: '2026-09-21',
+        pernocta: true,
+        destinoCiudad: 'Bogotá',
+      });
+
+      expect(result.data.salarioBaseAplicado).toBe(1600000);
     });
 
     it('INVESTIGADOR: usa la tarifa de investigador como base', async () => {

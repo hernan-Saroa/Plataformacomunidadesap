@@ -22,6 +22,23 @@ export const ROLES_ANALISTA_VIATICOS = [
   'ANALISTA_VIATICOS',
 ];
 
+/**
+ * Permisos generales inmutables por rol funcional en Viáticos (Migración 441).
+ * Evitan depender de códigos de rol modificables administrativamente.
+ */
+export const VIATICOS_PERMISOS_GENERALES = {
+  ENLACE: 'travel_expenses.general.es_enlace_dependencia',
+  SECRETARIO: 'travel_expenses.general.es_secretario_viaticos',
+  ANALISTA: 'travel_expenses.general.es_analista_viaticos',
+  CONTROL_VIATICOS: 'travel_expenses.general.es_control_viaticos',
+  SUBDIRECCION: 'travel_expenses.general.es_subdireccion_corporativa',
+  DIRECCION_NACIONAL: 'travel_expenses.general.es_direccion_nacional',
+  PRESUPUESTO: 'travel_expenses.general.es_presupuesto',
+  TESORERIA: 'travel_expenses.general.es_tesoreria',
+  SST: 'travel_expenses.general.es_sst',
+  TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
+} as const;
+
 export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
   'SUBDIRECCION_GESTION_CORPORATIVA',
   'SUBDIRECTOR_GESTION_CORPORATIVA',
@@ -265,70 +282,287 @@ export class AuthService {
     return user.esAdmin || user.roles.some((r) => /SUPER.*ADMIN|ADMIN/.test(r));
   }
 
+  /**
+   * Determina si el usuario autenticado tiene la función de Secretario/a de Viáticos.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_secretario_viaticos` (Migración 441).
+   */
+  isSecretario(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.SECRETARIO)) return true;
+    if (
+      this.hasAnyPermission([
+        'travel_expenses:read_inbox',
+        'travel_expenses:set_priority',
+        'travel_expenses:assign_analyst',
+        'travel_expenses:return_request',
+      ])
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['SECRETARIO', 'SECRETARIO_VIATICOS', 'SUPERVISOR'].includes(r) ||
+      r.includes('SECRETARIO'),
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado es Analista de Viáticos.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_analista_viaticos` (Migración 441).
+   */
   isAnalista(): boolean {
     const user = this.getCurrentUserSync();
-    if (!user || !user.roles.length) return false;
+    if (!user) return false;
     if (user.esAdmin) return false;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.ANALISTA)) return true;
     return user.roles.some((r) => ROLES_ANALISTA_VIATICOS.includes(r));
   }
 
   /**
-   * Determina si el usuario autenticado tiene el rol técnico
+   * Determina si el usuario autenticado tiene el rol técnico / función
    * `CONTROL_VIATICOS` (segunda revisión / control cruzado).
-   *
-   * Un usuario con rol `SUPER_ADMIN` o `ADMIN` también puede acceder
-   * a la bandeja por herencia administrativa.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_control_viaticos` (Migración 441).
    */
   isControlViaticos(): boolean {
     const user = this.getCurrentUserSync();
-    if (!user || !user.roles.length) return false;
+    if (!user) return false;
     if (user.esAdmin) return true;
-    return user.roles.some((r) => r === 'CONTROL_VIATICOS');
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.CONTROL_VIATICOS)) return true;
+    if (
+      this.hasAnyPermission([
+        'travel_expenses:read_siif_requested',
+        'travel_expenses:double_check_request',
+        'travel_expenses:return_to_analyst',
+      ])
+    ) {
+      return true;
+    }
+    return user.roles.some((r) => r === 'CONTROL_VIATICOS' || r.includes('CONTROL_VIATICOS'));
   }
 
   /**
-   * Determina si el usuario autenticado tiene el rol de
-   * Subdirección de Gestión Corporativa o el permiso de
-   * autorización corporativa (Etapa 6 - RF-AUT-001).
+   * Determina si el usuario autenticado tiene función de Ordenador /
+   * Subdirección de Gestión Corporativa (Etapa 6 - RF-AUT-001).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_subdireccion_corporativa` (Migración 441).
    */
   isSubdireccionGestionCorporativa(): boolean {
     const user = this.getCurrentUserSync();
-    if (!user || !user.roles.length) {
-      return this.hasPermission('travel_expenses:read_authorizations');
+    if (!user) {
+      return this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+        this.hasPermission('travel_expenses:read_authorizations');
     }
-    const tieneRol = user.roles.some((r) =>
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION)) return true;
+    if (
+      this.hasPermission('travel_expenses:read_authorizations') ||
+      this.hasPermission('travel_expenses:authorize_expense')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
       (ROLES_SUBDIRECCION_GESTION_CORPORATIVA as readonly string[]).includes(r) ||
       r.includes('SUBDIRECCION_GESTION_CORPORATIVA'),
     );
-    return tieneRol || this.hasPermission('travel_expenses:read_authorizations');
   }
 
   /**
-   * Determina si el usuario autenticado tiene el rol de
-   * Dirección Nacional o delegado, o el permiso de
-   * autorización extemporánea (Etapa 6 - RF-AUT-002).
+   * Determina si el usuario autenticado tiene el rol / función de
+   * Dirección Nacional o delegado (Etapa 6 - RF-AUT-002).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_direccion_nacional` (Migración 441).
    */
   isDireccionNacional(): boolean {
     const user = this.getCurrentUserSync();
-    if (!user || !user.roles.length) {
+    if (!user) {
       return (
+        this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
         this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
         this.hasPermission('travel_expenses:authorize_extemporaneous')
       );
     }
-    const tieneRol = user.roles.some((r) =>
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL)) return true;
+    if (
+      this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+      this.hasPermission('travel_expenses:authorize_extemporaneous')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
       (ROLES_DIRECCION_NACIONAL as readonly string[]).includes(r) ||
       r.includes('DIRECCION_NACIONAL') ||
       r.includes('DIRECTOR_NACIONAL'),
     );
-    return (
-      tieneRol ||
-      this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
-      this.hasPermission('travel_expenses:authorize_extemporaneous')
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene permiso para cancelar una
+   * comisión (RF-AUT-003, Etapa 6).
+   */
+  canCancelarComision(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return user.permissions.some((p) =>
+      ['travel_expenses:cancel_request',
+        'travel_expenses:create_request',
+        'travel_expenses:read_inbox',
+        'travel_expenses:authorize_expense',
+        'travel_expenses:*',
+        '*'].includes(p),
     );
   }
 
-  private getCurrentUserSync(): UsuarioActual | null {
+  /**
+   * Determina si el usuario pertenece al Grupo de Presupuesto (Etapa 7 — RF-PRE-001).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_presupuesto` (Migración 441).
+   */
+  isPresupuesto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.PRESUPUESTO)) return true;
+    if (
+      this.hasPermission('travel_expenses:read_budget') ||
+      this.hasPermission('travel_expenses:register_rp')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['PRESUPUESTO', 'GRUPO_PRESUPUESTO', 'ANALISTA_PRESUPUESTO'].includes(r) ||
+      r.includes('PRESUPUESTO'),
+    );
+  }
+
+  /**
+   * Determina si el usuario puede remitir paquetes autorizados a Presupuesto.
+   */
+  canEnviarPresupuesto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isAnalista() ||
+      this.hasPermission('travel_expenses:send_to_budget') ||
+      this.hasPermission('travel_expenses:verify_request') ||
+      this.hasPermission('travel_expenses:authorize_expense')
+    );
+  }
+
+  /**
+   * Determina si el usuario puede expedir RP en SIIF Nación.
+   */
+  canExpedirRp(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return this.isPresupuesto() || this.hasPermission('travel_expenses:register_rp');
+  }
+
+  /**
+   * Determina si el usuario puede crear y registrar la obligación en SIIF Nación (Etapa 8 — RF-PAG-001).
+   */
+  canCrearObligacion(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isAnalista() ||
+      this.hasPermission('travel_expenses:create_obligation') ||
+      this.hasPermission('travel_expenses:register_obligation') ||
+      this.hasPermission('travel_expenses:verify_request')
+    );
+  }
+
+  /**
+   * Determina si el usuario pertenece al área de Tesorería (Etapa 8 — RF-PAG-003).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_tesoreria` (Migración 441).
+   */
+  isTesoreria(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.TESORERIA)) return true;
+    if (
+      this.hasPermission('travel_expenses:process_payment') ||
+      this.hasPermission('travel_expenses:read_payments')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['TESORERIA', 'GRUPO_TESORERIA', 'ANALISTA_TESORERIA', 'PAGADOR'].includes(r) ||
+      r.includes('TESORERIA') ||
+      r.includes('PAGADOR'),
+    );
+  }
+
+  /**
+   * Determina si el usuario puede procesar el desembolso y pago en SIIF Nación (Etapa 8 — RF-PAG-003).
+   */
+  canProcesarPago(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isTesoreria() ||
+      this.hasPermission('travel_expenses:process_payment') ||
+      this.hasPermission('travel_expenses:register_payment')
+    );
+  }
+
+  /**
+   * Determina si el usuario pertenece al área de Seguridad y Salud en el Trabajo (SST) (Etapa 8 — RF-PAG-002).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_sst` (Migración 441).
+   */
+  isSst(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.SST)) return true;
+    if (
+      this.hasPermission('travel_expenses:read_sst_logs') ||
+      this.hasPermission('travel_expenses:read_sst_requests') ||
+      this.hasPermission('travel_expenses:resend_sst_notification')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['SST', 'SEGURIDAD_SALUD_TRABAJO', 'SEGURIDAD_Y_SALUD_EN_EL_TRABAJO', 'GRUPO_SST', 'ANALISTA_SST'].includes(r) ||
+      r.includes('SST') ||
+      (r.includes('SEGURIDAD') && r.includes('TRABAJO')),
+    );
+  }
+
+  /**
+   * Determina si el usuario es Responsable de Tiquetes (Etapa de Tiquetes).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_responsable_tiquetes` (Migración 441).
+   */
+  isResponsableTiquetes(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.TIQUETES)) return true;
+    if (
+      this.hasPermission('travel_expenses:tickets.view') ||
+      this.hasPermission('travel_expenses:tickets.manage')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) => r.includes('TIQUETES'));
+  }
+
+  /**
+   * Determina si el usuario es Enlace de Dependencia (Radicación inicial).
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_enlace_dependencia` (Migración 441).
+   */
+  isEnlaceDependencia(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.ENLACE)) return true;
+    return user.roles.some((r) => r.includes('ENLACE'));
+  }
+
+  getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
         typeof window !== 'undefined' ? (window as any).__esap_auth_cache : null;

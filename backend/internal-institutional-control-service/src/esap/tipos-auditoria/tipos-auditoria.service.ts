@@ -116,21 +116,16 @@ export class TiposAuditoriaService {
   async update(id: string, updateDto: UpdateTipoAuditoriaDto): Promise<TipoAuditoria> {
     const tipo = await this.findOne(id);
 
-    // Si se actualiza el código, verificar que no exista otro con ese código (incluyendo eliminados)
-    if (updateDto.codigo && updateDto.codigo !== tipo.codigo) {
-      const codigoUpper = updateDto.codigo.toUpperCase();
-      const existe = await this.tipoAuditoriaRepository
-        .createQueryBuilder('tipo')
-        .where('UPPER(tipo.codigo) = :codigo', { codigo: codigoUpper })
-        .andWhere('tipo.id != :id', { id })
-        .getOne();
-      
-      if (existe) {
-        throw new ConflictException(
-          `Ya existe un tipo de auditoría con el código ${codigoUpper}`,
-        );
-      }
-      tipo.codigo = codigoUpper;
+    // El código se asigna al crear y no se puede cambiar: el módulo lo usa para
+    // reconocer los tipos especiales (AUD-ESP, AUD-TERR), así que cambiarlo
+    // dejaría auditorías y procesos sin su comportamiento (EFDS-1923).
+    if (
+      updateDto.codigo &&
+      updateDto.codigo.trim().toUpperCase() !== (tipo.codigo || '').trim().toUpperCase()
+    ) {
+      throw new BadRequestException(
+        'El código del tipo de auditoría no se puede modificar',
+      );
     }
 
     // Actualizar campos

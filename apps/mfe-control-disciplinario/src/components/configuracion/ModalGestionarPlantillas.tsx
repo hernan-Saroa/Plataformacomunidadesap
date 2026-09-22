@@ -22,7 +22,7 @@ interface ModalGestionarPlantillasProps {
   isOpen: boolean;
   onClose: () => void;
   tipoAuto: TipoAuto | null;
-  onActualizarPlantillas: (tipoAutoId: string, plantillas: PlantillaArchivo[]) => void;
+  onActualizarPlantillas: (tipoAutoId: string, plantillas: PlantillaArchivo[]) => void | Promise<void>;
 }
 
 export function ModalGestionarPlantillas({ 
@@ -116,36 +116,42 @@ export function ModalGestionarPlantillas({
 
     setGuardando(true);
     try {
-      // Si hay un archivo nuevo en alguna plantilla, subirlo al backend
+      // Si hay un archivo nuevo en alguna plantilla, subirlo al backend con metadatos
       for (const plantilla of plantillas) {
-        // Buscar si hay un archivo que fue seleccionado y tiene URL local (blob)
-        if (plantilla.url && plantilla.url.startsWith('blob:')) {
+        if (plantilla.file || (plantilla.url && plantilla.url.startsWith('blob:'))) {
           try {
-            // Descargar el blob para obtener el archivo
-            const response = await fetch(plantilla.url);
-            const blob = await response.blob();
-            
-            // Crear un archivo a partir del blob
-            // Usar type assertion para crear el archivo correctamente
-            const fileName = plantilla.nombreArchivo;
-            const fileType = blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            
-            // Crear el archivo usando la clase File global
-            const file = new globalThis.File([blob], fileName, { type: fileType });
-            
-            // Usar el servicio para subir el archivo
-            const uploadedData = await disciplinaryService.uploadAutoPlantilla(tipoAuto.id, file);
-            
-            // Actualizar la URL con la respuesta del servidor
-            plantilla.url = uploadedData.plantilla || plantilla.url;
+            let fileToUpload = plantilla.file;
+            if (!fileToUpload && plantilla.url) {
+              const response = await fetch(plantilla.url);
+              const blob = await response.blob();
+              const fileName = plantilla.nombreArchivo || 'plantilla.docx';
+              const fileType = blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+              fileToUpload = new globalThis.File([blob], fileName, { type: fileType });
+            }
+
+            if (fileToUpload) {
+              const uploadedData = await disciplinaryService.uploadAutoPlantilla(
+                tipoAuto.id,
+                fileToUpload,
+                plantilla.nombre,
+                plantilla.descripcion,
+                plantilla.version,
+                plantilla.activo ? 'activo' : 'inactivo',
+              );
+
+              plantilla.url = uploadedData.plantilla || plantilla.url;
+              plantilla.nombre = uploadedData.nombre_plantilla || plantilla.nombre;
+              plantilla.file = undefined;
+            }
           } catch (uploadError) {
-            console.error('Error subiendo archivo:', uploadError);
-            // Continuar con la siguiente plantilla aunque falle la subida
+            console.error('Error subiendo archivo de plantilla:', uploadError);
+            toast.error('Error al subir el archivo de plantilla');
+            throw uploadError;
           }
         }
       }
       
-      onActualizarPlantillas(tipoAuto.id, plantillas);
+      await onActualizarPlantillas(tipoAuto.id, plantillas);
       toast.success('Cambios guardados', {
         description: `${plantillas.length} plantilla(s) configurada(s)`
       });
@@ -619,7 +625,8 @@ function ModalFormularioPlantilla({
         url: archivo ? URL.createObjectURL(archivo) : archivoExistente?.url || '',
         tamano: archivo ? archivo.size : archivoExistente?.tamano || 0,
         version: formData.version.trim(),
-        activo: formData.activo
+        activo: formData.activo,
+        file: archivo || undefined,
       };
 
       onGuardar(plantilla);

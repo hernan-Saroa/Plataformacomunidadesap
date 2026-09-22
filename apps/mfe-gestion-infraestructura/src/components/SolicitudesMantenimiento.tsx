@@ -5,23 +5,28 @@ import {
   Package, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
+  User, ThumbsDown,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
   SolicitudEvidencia,
   CatalogoItem,
   infraestructuraService,
+  clasificarSLA,
+  obtenerSesionUMI,
+  listarCodigosTecnicosDeSesionUMI,
 } from '../services/infraestructuraService';
 
 interface SolicitudesMantenimientoProps {
   mantenimientos: SolicitudMantenimiento[];
   remitidasTI: SolicitudMantenimiento[];
-  vista: 'todas' | 'remitidasTI';
-  onChangeVista: (vista: 'todas' | 'remitidasTI') => void;
+  vista: 'todas' | 'remitidasTI' | 'asignadasMi';
+  onChangeVista: (vista: 'todas' | 'remitidasTI' | 'asignadasMi') => void;
   onNuevaSolicitud: () => void;
   onGestionar?: (idSolicitud: string) => void;
   loading?: boolean;
   onRefresh?: () => void;
+  catalogoCS?: CatalogoItem[];
 }
 
 const LUCIDE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -68,8 +73,54 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   onGestionar,
   loading,
   onRefresh,
+  catalogoCS = [],
 }) => {
-  const lista = vista === 'todas' ? mantenimientos : remitidasTI;
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const [catalogoTecnicos, setCatalogoTecnicos] = useState<CatalogoItem[]>([]);
+  const [codigosTecnicosSesion, setCodigosTecnicosSesion] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelado = false;
+    const cargar = async () => {
+      try {
+        const tecnicos = await infraestructuraService.getTecnicos(false);
+        if (cancelado) return;
+        setCatalogoTecnicos(Array.isArray(tecnicos) ? tecnicos : []);
+        const cods = await listarCodigosTecnicosDeSesionUMI(sesionUmi, Array.isArray(tecnicos) ? tecnicos : []);
+        if (cancelado) return;
+        setCodigosTecnicosSesion(cods);
+      } catch (err) {
+        console.error('[UMI-ERROR cargar tecnicos]', err);
+        setCatalogoTecnicos([]);
+      }
+    };
+    cargar();
+    return () => { cancelado = true; };
+  }, [sesionUmi]);
+  const asignadasMi = useMemo(() => {
+    const codigosSet = new Set((codigosTecnicosSesion || []).map((c) => c.trim().toUpperCase()));
+    const result = mantenimientos.filter((m) => {
+      const r = String(m.responsableAsignado || '').trim();
+      if (!r) return false;
+      if (codigosSet.size > 0) {
+        const match = r.match(/TEC[-_][A-Za-z0-9]+[-_][A-Za-z0-9]+/);
+        if (match && match[0]) {
+          return codigosSet.has(match[0].toUpperCase());
+        }
+      }
+      const lower = r.toLowerCase();
+      const email = String(sesionUmi.email || '').trim().toLowerCase();
+      const userId = String(sesionUmi.userId || '').trim().toLowerCase();
+      if (email && lower.includes(` ${email} `)) return true;
+      if (email && lower.endsWith(` ${email}`)) return true;
+      if (email && lower.startsWith(`${email} `)) return true;
+      if (email && lower === email) return true;
+      if (userId && lower.includes(userId)) return true;
+      return false;
+    });
+    return result;
+  }, [mantenimientos, codigosTecnicosSesion, sesionUmi]);
+  const lista =
+    vista === 'todas' ? mantenimientos : vista === 'asignadasMi' ? asignadasMi : remitidasTI;
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
@@ -100,6 +151,14 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     for (const it of catalogoPrioridad) m.set((it.codigo || '').toUpperCase(), it);
     return m;
   }, [catalogoPrioridad]);
+
+  const mapIdCategoria = useMemo(() => {
+    const m = new Map<number, CatalogoItem>();
+    for (const it of catalogoCS) {
+      if (Number.isInteger(it.idCatalogo)) m.set(it.idCatalogo as number, it);
+    }
+    return m;
+  }, [catalogoCS]);
 
   const claseEstado = (estado: string): string => {
     const it = mapEstado.get((estado || '').toUpperCase());
@@ -241,6 +300,21 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           </button>
           <button
             type="button"
+            onClick={() => onChangeVista('asignadasMi')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+              vista === 'asignadasMi'
+                ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            Asignadas a mí
+            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
+              {asignadasMi.length}
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={() => onChangeVista('remitidasTI')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
               vista === 'remitidasTI'
@@ -270,15 +344,19 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <p className="text-sm font-semibold text-slate-700">
                 {vista === 'remitidasTI'
                   ? 'Aún no hay solicitudes remitidas a Tecnologías de la Información'
+                  : vista === 'asignadasMi'
+                  ? 'Aún no tienes solicitudes de mantenimiento asignadas'
                   : 'No hay solicitudes de mantenimiento para la bandeja UMI'}
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {vista === 'remitidasTI'
                   ? 'Cuando radique una solicitud clasificada como TECNOLÓGICA, aparecerá aquí para seguimiento.'
+                  : vista === 'asignadasMi'
+                  ? 'Las solicitudes asignadas a tus códigos de técnico vinculados aparecerán aquí automáticamente.'
                   : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
               </p>
             </div>
-            {vista === 'todas' && (
+            {(vista === 'todas') && (
               <button
                 type="button"
                 onClick={onNuevaSolicitud}
@@ -294,10 +372,15 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
         {lista.map((m) => {
           const numEvidencias = (m.evidencias && m.evidencias.length) || 0;
           const expandido = !!expandidos[m.idSolicitud];
+          const estadoRechazada = String(m.estado || '').toUpperCase() === 'RECHAZADA';
           return (
             <div
               key={m.idSolicitud}
-              className="p-5 rounded-xl border border-slate-200/80 bg-slate-50/40 hover:bg-white hover:border-slate-300 transition-all flex flex-col gap-4"
+              className={`p-5 rounded-xl border transition-all flex flex-col gap-4 ${
+                estadoRechazada
+                  ? 'bg-rose-50/80 border-rose-200 hover:bg-rose-50 hover:border-rose-300'
+                  : 'bg-slate-50/40 border-slate-200/80 hover:bg-white hover:border-slate-300'
+              }`}
             >
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                 <div className="space-y-1.5 flex-1 w-full">
@@ -331,6 +414,16 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                         </span>
                       );
                     })()}
+                    {Number.isInteger(m.idCategoria) && (() => {
+                      const cat = mapIdCategoria.get(m.idCategoria as number);
+                      if (!cat) return null;
+                      const colorClase = cat?.metadata?.color || 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+                      return (
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${colorClase}`} title={cat.codigo || ''}>
+                          {cat.nombre}
+                        </span>
+                      );
+                    })()}
                     {numEvidencias > 0 && (
                       <button
                         type="button"
@@ -347,9 +440,22 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                       </button>
                     )}
                   </div>
-                  <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                  <h4 className={`text-sm font-bold leading-snug ${
+                    estadoRechazada
+                      ? 'text-slate-500 line-through decoration-rose-400 decoration-2 decoration-slice'
+                      : 'text-slate-900'
+                  }`}>
                     {m.descripcion}
                   </h4>
+                  {estadoRechazada && m.motivoRechazo && (
+                    <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-rose-200 bg-white/70 px-2.5 py-1.5 text-[11px] text-rose-700 font-semibold leading-snug">
+                      <ThumbsDown className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-500" />
+                      <span className="line-through-none decoration-none no-underline">
+                        Motivo rechazo: <strong className="font-black">{String(m.motivoRechazo).slice(0, 120)}</strong>
+                        {String(m.motivoRechazo).length > 120 && '… (ver detalle)'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 pt-1">
                     <span className="inline-flex items-center gap-1">
                       <strong className="text-slate-700">{m.solicitanteNombre}</strong>
@@ -382,7 +488,48 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 self-end md:self-center w-full md:w-auto justify-end">
+                <div className="flex items-center gap-3 self-end md:self-center w-full md:w-auto justify-end flex-wrap">
+                  {(() => {
+                    const sla = clasificarSLA(m.fechaLimiteAtencion);
+                    const coloresSLA: Record<string, string> = {
+                      vencido: 'bg-rose-100 text-rose-800 border-rose-200',
+                      alerta: 'bg-amber-100 text-amber-800 border-amber-200',
+                      ok: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                      sin: 'bg-slate-100 text-slate-600 border-slate-200',
+                    };
+                    return (
+                      <span
+                        title={`SLA: ${sla.texto}${sla.horasRestantes !== null ? ` · ${sla.horasRestantes.toFixed(1)} h restantes` : ''}`}
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${coloresSLA[sla.clase] || coloresSLA.sin}`}
+                      >
+                        <Clock className="w-2.5 h-2.5" />
+                        {sla.clase === 'vencido' ? 'Vencido' : sla.clase === 'alerta' ? 'Alerta' : sla.clase === 'ok' ? 'En plazo' : 'SLA s/dato'}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    const resp = m.responsableAsignado;
+                    if (!resp) {
+                      return (
+                        <span
+                          title="No hay técnico asignado aún"
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-slate-100 text-slate-500 border-slate-200"
+                        >
+                          <User className="w-2.5 h-2.5" />
+                          Sin asignar
+                        </span>
+                      );
+                    }
+                    return (
+                      <span
+                        title={`Asignado a: ${resp}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-indigo-50 text-indigo-700 border-indigo-200 max-w-[200px]"
+                      >
+                        <User className="w-2.5 h-2.5 flex-shrink-0" />
+                        <span className="truncate">{resp}</span>
+                      </span>
+                    );
+                  })()}
                   <span
                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${claseEstado(m.estado)}`}
                   >

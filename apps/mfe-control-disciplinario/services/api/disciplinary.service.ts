@@ -1582,9 +1582,20 @@ class DisciplinaryService {
     /**
      * Subir plantilla Word para un auto
      */
-    async uploadAutoPlantilla(id: string, file: File): Promise<AutoConfiguration> {
+    async uploadAutoPlantilla(
+        id: string,
+        file: File,
+        nombrePlantilla?: string,
+        descripcionPlantilla?: string,
+        versionPlantilla?: string,
+        estadoPlantilla?: string
+    ): Promise<AutoConfiguration> {
         const formData = new FormData();
         formData.append('file', file);
+        if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla);
+        if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
+        if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
+        if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
         return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 

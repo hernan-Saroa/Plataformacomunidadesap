@@ -21,7 +21,7 @@ export class AutoConfiguration {
   estado: string;
 
   @Column({ type: 'text', nullable: true })
-  plantilla: string;
+  plantilla: string | null;
 
   // Nuevos campos para información de la plantilla
   @Column({ type: 'varchar', length: 255, nullable: true })

@@ -45,7 +45,18 @@ import {
   BandejaAutorizacionResponse,
   AutorizarExtemporaneaPayload,
   RechazarExtemporaneaPayload,
+  CancelarComisionPayload,
+  CancelarComisionResponse,
+  EnviarPresupuestoPayload,
+  ExpedirRpPayload,
+  ItemCargaMasivaRp,
+  ResumenCargaMasivaRp,
+  BandejaPresupuestoResponse,
+  CrearObligacionDto,
+  ProcesarPagoDto,
+  NotificacionSstLog,
 } from '../../types/viaticos';
+
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
@@ -163,12 +174,87 @@ function encontrarArraySolicitudes(valor: unknown): unknown[] | null {
 }
 
 export class ViaticosService {
+  private dependenciasCache: Map<string, string> = new Map();
+  private cargandoDependenciasPromise: Promise<Map<string, string>> | null = null;
+
+  /**
+   * Carga y cachea en memoria el catálogo de dependencias para resolver nombres rápidamente.
+   */
+  public async cargarDependenciasCache(): Promise<Map<string, string>> {
+    if (this.dependenciasCache.size > 0) {
+      return this.dependenciasCache;
+    }
+    if (this.cargandoDependenciasPromise) {
+      return this.cargandoDependenciasPromise;
+    }
+    this.cargandoDependenciasPromise = (async () => {
+      try {
+        const lista = await this.obtenerDependencias();
+        lista.forEach((d) => {
+          const nom = d.nomDependencia || '';
+          if (nom) {
+            if (d.idDependencia != null) {
+              this.dependenciasCache.set(String(d.idDependencia), nom);
+            }
+            if (d.codDependencia) {
+              this.dependenciasCache.set(String(d.codDependencia), nom);
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('[viaticos] Error precargando dependencias:', e);
+      } finally {
+        this.cargandoDependenciasPromise = null;
+      }
+      return this.dependenciasCache;
+    })();
+    return this.cargandoDependenciasPromise;
+  }
+
+  /**
+   * Obtiene el nombre de una dependencia sincrónicamente desde la caché si está disponible.
+   */
+  public obtenerNombreDependenciaSync(
+    idDependencia?: number | string | null,
+    fallback?: string,
+  ): string {
+    if (idDependencia != null && idDependencia !== '') {
+      const nom = this.dependenciasCache.get(String(idDependencia));
+      if (nom) return nom;
+    }
+    return fallback || (idDependencia != null && idDependencia !== '' ? `Dependencia #${idDependencia}` : 'Sede Central');
+  }
+
+  /**
+   * Resuelve el nombre de la dependencia a partir de cualquier objeto de solicitud o comisionado.
+   */
+  public resolverNombreDependencia(s: any): string {
+    if (!s) return 'Sede Central';
+    if (typeof s === 'string' && s.trim() && s !== 'N/A') return s.trim();
+    if (s.dependencia && typeof s.dependencia === 'string' && s.dependencia.trim() && s.dependencia !== 'N/A') {
+      return s.dependencia.trim();
+    }
+    if (s.nombreDependencia && typeof s.nombreDependencia === 'string' && s.nombreDependencia.trim() && s.nombreDependencia !== 'N/A') {
+      return s.nombreDependencia.trim();
+    }
+    if (s.nomDependencia && typeof s.nomDependencia === 'string' && s.nomDependencia.trim() && s.nomDependencia !== 'N/A') {
+      return s.nomDependencia.trim();
+    }
+    if (s.comisionado?.dependencia && typeof s.comisionado.dependencia === 'string' && s.comisionado.dependencia.trim() && s.comisionado.dependencia !== 'N/A') {
+      return s.comisionado.dependencia.trim();
+    }
+    const idDep = s.idDependencia ?? s.dependenciaId ?? s.comisionado?.idDependencia ?? null;
+    return this.obtenerNombreDependenciaSync(idDep, s.dependencia || undefined);
+  }
+
   /**
    * Mapea una solicitud del backend (GET /solicitudes) al modelo de presentación.
    */
   public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
+    const idDep = (s as any).idDependencia ?? s.comisionado?.idDependencia ?? null;
+    const depNombre = this.resolverNombreDependencia(s);
     return {
       id: s.id,
       codigo: s.consecutivoUnico,
@@ -177,8 +263,10 @@ export class ViaticosService {
         ? formatearNombreComisionado(s.comisionado as Comisionado)
         : 'Comisionado',
       cargoComisionado: s.comisionado?.tipoComisionado || '',
-      dependencia: '',
-      sedeOrigen: '',
+      dependencia: depNombre,
+      idDependencia: idDep,
+      sedeOrigen: s.sedeOrigen || (s as any).origenSede || '',
+      ciudadOrigen: s.ciudadOrigen || (s as any).origenCiudad || s.sedeOrigen || 'Bogotá D.C.',
       ciudadDestino: s.destinoCiudad,
       departamentoDestino: s.destinoDepartamento,
       fechaInicio: s.fechaInicio.slice(0, 10),
@@ -203,11 +291,32 @@ export class ViaticosService {
       observacionesSegundaRevision: (s as any).observacionesSegundaRevision || null,
       fechaSegundaRevision: (s as any).fechaSegundaRevision || null,
       revisorControlId: (s as any).revisorControlId || null,
+      enviadoPresupuesto: Boolean((s as any).enviadoPresupuesto),
+      fechaEnvioPresupuesto: (s as any).fechaEnvioPresupuesto || null,
+      numeroRp: (s as any).numeroRp || null,
+      fechaRp: (s as any).fechaRp || null,
+      valorComprometido: (s as any).valorComprometido != null ? Number((s as any).valorComprometido) : null,
+      rubroRp: (s as any).rubroRp || null,
+      codigoRp: (s as any).codigoRp || null,
+      fechaExpedicionRp: (s as any).fechaExpedicionRp || null,
+      modalidadPago: (s as any).modalidadPago || (s as any).modalidad_pago || null,
+      diasHabilesPrevios: (s as any).diasHabilesPrevios != null ? Number((s as any).diasHabilesPrevios) : ((s as any).dias_habiles_previos != null ? Number((s as any).dias_habiles_previos) : null),
+      fechaCalculoModalidad: (s as any).fechaCalculoModalidad || (s as any).fecha_calculo_modalidad || null,
+      numeroObligacion: (s as any).numeroObligacion || (s as any).numero_obligacion || null,
+      fechaObligacion: (s as any).fechaObligacion || (s as any).fecha_obligacion || null,
+      valorObligacion: (s as any).valorObligacion != null ? Number((s as any).valorObligacion) : ((s as any).valor_obligacion != null ? Number((s as any).valor_obligacion) : null),
+      numeroOrdenPago: (s as any).numeroOrdenPago || (s as any).numero_orden_pago || null,
+      fechaPago: (s as any).fechaPago || (s as any).fecha_pago || null,
+      valorPagado: (s as any).valorPagado != null ? Number((s as any).valorPagado) : ((s as any).valor_pagado != null ? Number((s as any).valor_pagado) : null),
+      soportePagoPath: (s as any).soportePagoPath || (s as any).soporte_pago_path || null,
+      observacionesPago: (s as any).observacionesPago || (s as any).observaciones_pago || null,
+      pagadoPorId: (s as any).pagadoPorId || (s as any).pagado_por_id || null,
     };
   }
 
   async obtenerSolicitudes(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
     try {
+      await this.cargarDependenciasCache();
       const timestamp = Date.now();
       const response = await apiClient.get<unknown>(`/viaticos/api/v1/solicitudes?t=${timestamp}`);
       const responseKeys = Object.keys(response as any);
@@ -1081,6 +1190,7 @@ export class ViaticosService {
     limit?: number;
   } = {}): Promise<BandejaSecretarioResponse> {
     try {
+      await this.cargarDependenciasCache();
       const params = new URLSearchParams();
       if (filtros.dependenciaId) params.set('dependencia_id', filtros.dependenciaId);
       if (filtros.prioridad) params.set('prioridad', filtros.prioridad);
@@ -1475,7 +1585,252 @@ export class ViaticosService {
       throw error;
     }
   }
+
+  /**
+   * RF-AUT-003 — Cancelar comisión con trazabilidad completa (Etapa 6).
+   * Registra motivo obligatorio, responsable e indicación de recursos comprometidos/reintegro (Etapa 8).
+   */
+  async cancelarComision(
+    solicitudId: string,
+    payload: CancelarComisionPayload,
+  ): Promise<CancelarComisionResponse> {
+    try {
+      return await apiClient.post<CancelarComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/cancel`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error cancelando comisión:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Enviar paquete de comisión autorizada a Presupuesto (Etapa 7).
+   */
+  async enviarPaquetePresupuesto(
+    solicitudId: string,
+    observaciones?: string,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/send-to-budget`,
+        { observaciones },
+      );
+    } catch (error) {
+      console.error('[viaticos] Error enviando paquete a Presupuesto:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Consultar bandeja del Grupo de Presupuesto (Etapa 7).
+   */
+  async obtenerBandejaPresupuesto(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    estado?: string;
+  }): Promise<BandejaPresupuestoResponse> {
+    try {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.search) q.set('search', params.search);
+      if (params?.estado) q.set('estado', params.estado);
+
+      const qs = q.toString();
+      const url = `/viaticos/api/v1/requests/budget/inbox${qs ? `?${qs}` : ''}`;
+      return await apiClient.get<BandejaPresupuestoResponse>(url);
+    } catch (error) {
+      console.error('[viaticos] Error obteniendo bandeja de presupuesto:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Expedir Registro Presupuestal RP en SIIF Nación (Etapa 7).
+   */
+  async expedirRp(
+    solicitudId: string,
+    payload: ExpedirRpPayload,
+  ): Promise<any> {
+    try {
+      return await apiClient.post(
+        `/viaticos/api/v1/requests/${solicitudId}/register-rp`,
+        payload,
+      );
+    } catch (error) {
+      console.error('[viaticos] Error expidiendo RP en SIIF Nación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-001 — Carga masiva de RPs en SIIF Nación (Etapa 7).
+   */
+  async cargaMasivaRp(
+    items: ItemCargaMasivaRp[],
+  ): Promise<ResumenCargaMasivaRp> {
+    try {
+      const res = await apiClient.post<any>(
+        '/viaticos/api/v1/requests/budget/batch-rp',
+        { items },
+      );
+      return res.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error procesando carga masiva de RPs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PRE-003 — Previsualizar modalidad de pago según días hábiles previos (Etapa 7).
+   */
+  async previsualizarModalidadPago(
+    solicitudId: string,
+    fechaRp?: string,
+  ): Promise<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    fechaReferencia: string;
+    fechaInicioComision: string;
+    diasHabilesPrevios: number;
+    modalidadPago: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR';
+    umbralMinimoAvance: number;
+  }> {
+    try {
+      const q = fechaRp ? `?fechaRp=${encodeURIComponent(fechaRp)}` : '';
+      const res = await apiClient.get<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/modalidad-pago${q}`,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error previsualizando modalidad de pago:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-001 — Etapa 8: Crear obligación en SIIF Nación según modalidad de pago.
+   * Actor: Analista de Viáticos.
+   */
+  async crearObligacion(
+    solicitudId: string,
+    dto: CrearObligacionDto,
+  ): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/crear-obligacion`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error creando obligación en SIIF Nación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-003 — Etapa 8: Procesar desembolso y pago de comisión.
+   * Actor: Tesorería / Pagador.
+   * Transiciona la comisión al estado final PAGADA.
+   */
+  async procesarPago(
+    solicitudId: string,
+    dto: ProcesarPagoDto,
+  ): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/procesar-pago`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error procesando desembolso en Tesorería:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Carga el archivo físico del comprobante de desembolso / pago bancario en el servidor.
+   * Retorna la ruta en el storage (urlRepositorio) para vincular al expediente.
+   */
+  async subirSoportePago(
+    solicitudId: string,
+    archivo: File,
+  ): Promise<{ urlRepositorio: string; nombreArchivo: string; tamano?: number }> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+      const res = await apiClient.upload<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/soporte-pago`,
+        formData,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error subiendo soporte de pago:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Carga el archivo físico del comprobante de obligación presupuestal SIIF en el servidor.
+   */
+  async subirSoporteObligacion(
+    solicitudId: string,
+    archivo: File,
+  ): Promise<{ urlRepositorio: string; nombreArchivo: string; tamano?: number }> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+      const res = await apiClient.upload<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/soporte-obligacion`,
+        formData,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error subiendo soporte de obligación:', error);
+      throw error;
+    }
+  }
+
+
+  /**
+   * RF-PAG-002 — Consultar bitácora de notificaciones a SST (Etapa 8).
+   */
+  async obtenerLogsSst(solicitudId: string): Promise<NotificacionSstLog[]> {
+    try {
+      const res = await apiClient.get<any>(
+        `/viaticos/api/v1/notifications/sst/${solicitudId}/log`,
+      );
+      const data = res?.data?.data || res?.data || res;
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('[viaticos] Error consultando logs de SST:', error);
+      return [];
+    }
+  }
+
+  /**
+   * RF-PAG-002 — Forzar reenvío manual de notificación a SST (Etapa 8).
+   */
+  async reenviarNotificacionSst(solicitudId: string): Promise<any> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/notifications/sst/${solicitudId}/resend`,
+        {},
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error reenviando notificación a SST:', error);
+      throw error;
+    }
+  }
 }
+
 
 export const viaticosService = new ViaticosService();
 export default viaticosService;

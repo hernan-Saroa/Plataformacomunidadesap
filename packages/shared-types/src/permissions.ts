@@ -78,6 +78,9 @@ export enum Permissions {
   // Gestión Legal - Términos e Informaciones
   GESTION_LEGAL_TERMINOS_MANAGE = 'gestion-legal.terminos.manage',
   GESTION_LEGAL_TERMINOS_VER = 'gestion-legal.terminos.ver',
+  // Habilita el botón "Editar" del detalle de un informe/término (edición de datos,
+  // fecha de vencimiento y parametrización del plazo). Ver migración 435.
+  GESTION_LEGAL_TERMINOS_EDIT = 'gestion-legal.terminos.edit',
 
   // Gestión Legal - Órganos de Control
   GESTION_LEGAL_ORGANOS_CONTROL_MANAGE = 'gestion-legal.organos-control.manage',
@@ -223,9 +226,9 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_REPORTES_MANAGE = 'control-disciplinario.reportes.manage',
 
   // Control Disciplinario - Permisos Identificadores de Rol
-  CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID = 'control-disciplinario.es_jefe_ocid',
-  CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR = 'control-disciplinario.es_radicador',
-  CONTROL_DISCIPLINARIO_ROL_ES_PROFESIONAL = 'control-disciplinario.es_profesional',
+  CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID = 'control-disciplinario.general.es_jefe_ocid',
+  CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR = 'control-disciplinario.general.es_radicador',
+  CONTROL_DISCIPLINARIO_ROL_ES_PROFESIONAL = 'control-disciplinario.general.es_profesional',
 
   // Control Disciplinario - Nuevos Permisos (Granulares)
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL = 'control-disciplinario.procesos.view_all',
@@ -461,4 +464,16 @@ export enum Permissions {
   VIATICOS_LEGALIZACIONES_VIEW = 'travel_expenses:legalizations.view',
   VIATICOS_RESOLUCIONES_VIEW = 'travel_expenses:resolutions.view',
   VIATICOS_CONFIG_MANAGE = 'travel_expenses:manage_config',
+
+  // Viáticos y Gastos de Viaje - Permisos Generales Inmutables por Rol (Migración 441)
+  VIATICOS_GENERAL_ES_ENLACE = 'travel_expenses.general.es_enlace_dependencia',
+  VIATICOS_GENERAL_ES_SECRETARIO = 'travel_expenses.general.es_secretario_viaticos',
+  VIATICOS_GENERAL_ES_ANALISTA = 'travel_expenses.general.es_analista_viaticos',
+  VIATICOS_GENERAL_ES_CONTROL = 'travel_expenses.general.es_control_viaticos',
+  VIATICOS_GENERAL_ES_SUBDIRECCION = 'travel_expenses.general.es_subdireccion_corporativa',
+  VIATICOS_GENERAL_ES_DIRECCION = 'travel_expenses.general.es_direccion_nacional',
+  VIATICOS_GENERAL_ES_PRESUPUESTO = 'travel_expenses.general.es_presupuesto',
+  VIATICOS_GENERAL_ES_TESORERIA = 'travel_expenses.general.es_tesoreria',
+  VIATICOS_GENERAL_ES_SST = 'travel_expenses.general.es_sst',
+  VIATICOS_GENERAL_ES_TIQUETES = 'travel_expenses.general.es_responsable_tiquetes',
 }

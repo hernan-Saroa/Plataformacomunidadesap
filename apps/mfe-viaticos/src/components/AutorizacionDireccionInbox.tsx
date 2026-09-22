@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   User,
   XCircle,
+  Building2,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudAutorizacion } from '../types/viaticos';
@@ -277,6 +278,14 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                   <p className="text-[11px] text-slate-500">
                     CC {sol.comisionado?.numeroDocumento || 'N/A'} · {sol.destinoCiudad}
                   </p>
+                  <div className="mt-1 flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                      <span className="truncate">
+                        {viaticosService.resolverNombreDependencia(sol)}
+                      </span>
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between text-xs font-bold pt-2 border-t border-slate-200">
@@ -343,6 +352,14 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                         <span className="text-[11px] text-slate-400 font-medium">
                           CC {sol.comisionado?.numeroDocumento || 'N/A'}
                         </span>
+                        <div className="mt-1 flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                            <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia(sol)}>
+                              {viaticosService.resolverNombreDependencia(sol)}
+                            </span>
+                          </span>
+                        </div>
                       </td>
 
                       <td className="py-3 px-4">
