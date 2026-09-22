@@ -176,49 +176,27 @@ export function ModalNuevoTipoAuto({
         }));
     }
 
-    // Asegurar que la opción CARGOS siempre esté disponible para selección (especialmente útil para autos de pliego)
-    const tieneCargos = opciones.some((op) => {
-      const n = (op.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return n.includes('CARGO') || n.includes('PLIEGO');
-    });
-
-    if (!tieneCargos) {
-      const idxJuzgamiento = opciones.findIndex((op) =>
-        (op.etapa || '').toUpperCase().includes('JUZG')
-      );
-      const ordenJuzgamiento = idxJuzgamiento >= 0 ? opciones[idxJuzgamiento].orden : 6;
-      const opcionCargos = {
-        id: 'CARGOS',
-        etapa: 'CARGOS',
-        nombre: 'CARGOS (Formulación de Cargos)',
-        orden: ordenJuzgamiento - 0.5,
-      };
-      if (idxJuzgamiento >= 0) {
-        opciones.splice(idxJuzgamiento, 0, opcionCargos);
-      } else {
-        opciones.push(opcionCargos);
-      }
-    }
-
     return opciones;
   }, [stages]);
 
   // Sincronizar etapa inicial cuando cargan los stages
   useEffect(() => {
-    if (stages.length > 0) {
+    if (stages.length > 0 && etapasOpciones.length > 0) {
       setFormData((prev) => {
         // Si ya tiene una etapa que existe en etapasOpciones, conservarla
         if (prev.etapa && etapasOpciones.some((s) => s.etapa === prev.etapa)) {
           return prev;
         }
         if (prev.tipoAccion === 'PLIEGO') {
-          const stageCargos = etapasOpciones.find((s) => {
+          const stageCargosOEvaluacion = etapasOpciones.find((s) => {
             const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            return norm.includes('CARGO') || norm.includes('PLIEGO');
+            return norm.includes('CARGO') || norm.includes('PLIEGO') || norm.includes('EVALUAC');
           });
-          return { ...prev, etapa: stageCargos ? stageCargos.etapa : 'CARGOS' };
+          if (stageCargosOEvaluacion) {
+            return { ...prev, etapa: stageCargosOEvaluacion.etapa };
+          }
         }
-        // Si la etapa actual coincide de forma flexible con alguna
+        // Si la etapa actual coincide de forma flexible con alguna etapa real
         const coincidencia = etapasOpciones.find((s) => {
           const normA = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           const normB = (prev.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -227,11 +205,11 @@ export function ModalNuevoTipoAuto({
         if (coincidencia) {
           return { ...prev, etapa: coincidencia.etapa };
         }
-        // Por defecto, buscar la etapa de investigación o la primera
+        // Por defecto, buscar la etapa de investigación o la primera real
         const stageInvestigacion = etapasOpciones.find((s) =>
           (s.etapa || '').toUpperCase().includes('INVESTIGAC')
         );
-        return { ...prev, etapa: stageInvestigacion ? stageInvestigacion.etapa : etapasOpciones[0].etapa };
+        return { ...prev, etapa: stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? '') };
       });
     }
   }, [stages, etapasOpciones]);
@@ -252,17 +230,23 @@ export function ModalNuevoTipoAuto({
           etapa = stageEncontrado.etapa;
         }
       } else if (tipoAccion === 'PLIEGO') {
-        // Si es pliego y no tiene etapa o tiene recepción/otra, verificar si coincide con cargos
-        const stageCargos = etapasOpciones.find((s) => {
-          const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          return norm.includes('CARGO') || norm.includes('PLIEGO');
-        });
-        etapa = etapa || stageCargos?.etapa || 'CARGOS';
+        const stageExistente = etapasOpciones.find((s) => s.etapa === etapa);
+        if (!stageExistente) {
+          const stageCargosOEvaluacion = etapasOpciones.find((s) => {
+            const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return norm.includes('CARGO') || norm.includes('PLIEGO') || norm.includes('EVALUAC');
+          });
+          if (stageCargosOEvaluacion) {
+            etapa = stageCargosOEvaluacion.etapa;
+          } else if (etapasOpciones.length > 0) {
+            etapa = etapasOpciones[0].etapa;
+          }
+        }
       }
 
       setFormData({
         nombre: tipoEdicion.nombre,
-        etapa: etapa || (etapasOpciones[0]?.etapa ?? 'INVESTIGACION'),
+        etapa: etapa || (etapasOpciones[0]?.etapa ?? ''),
         activo: tipoEdicion.activo,
         orden: tipoEdicion.orden,
         tipoAccion: tipoAccion,
@@ -274,7 +258,7 @@ export function ModalNuevoTipoAuto({
       );
       setFormData({
         nombre: '',
-        etapa: stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? 'INVESTIGACION'),
+        etapa: stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? ''),
         activo: true,
         orden: 1,
         tipoAccion: 'NORMAL',
@@ -291,12 +275,24 @@ export function ModalNuevoTipoAuto({
           const norm = (o.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           return norm.includes('CARGO') || norm.includes('PLIEGO');
         });
-        nuevaEtapa = stageCargos ? stageCargos.etapa : 'CARGOS';
-      } else if (tipoId === 'APERTURA' && (!prev.etapa || prev.etapa === 'CARGOS')) {
+        if (stageCargos) {
+          nuevaEtapa = stageCargos.etapa;
+        } else {
+          const stageEvaluacion = etapasOpciones.find((o) => {
+            const norm = (o.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return norm.includes('EVALUAC');
+          });
+          if (stageEvaluacion) {
+            nuevaEtapa = stageEvaluacion.etapa;
+          } else if (!etapasOpciones.some((o) => o.etapa === prev.etapa)) {
+            nuevaEtapa = etapasOpciones[0]?.etapa ?? '';
+          }
+        }
+      } else if (tipoId === 'APERTURA' && (!prev.etapa || !etapasOpciones.some((o) => o.etapa === prev.etapa))) {
         const stageInvestigacion = etapasOpciones.find((o) =>
           (o.etapa || '').toUpperCase().includes('INVESTIGAC')
         );
-        nuevaEtapa = stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? 'INVESTIGACION');
+        nuevaEtapa = stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? '');
       }
       return {
         ...prev,
