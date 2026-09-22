@@ -1,6 +1,15 @@
 import { PtaService } from './pta.service';
 
 describe('Justificaciones: aplicabilidad del componente y sección', () => {
+  const aprobadorExtension = {
+    userId: 'user-extension', name: 'Aprobador Extensión', email: 'extension@esap.edu.co', roles: [],
+    territorialIds: [], isSuperUser: false, approvesAll: false,
+    permissions: new Set(['pta.approve.extension.capacitacion']),
+    allowedComponents: ['ext_capacitacion'], approvalLevels: [2], reviewsAll: false,
+    allowedReviewSubsecciones: [], allowedNivelesTerritorialAprobar: [],
+    allowedNivelesTerritorialRevisar: [],
+  } as any;
+
   function serviceFor(datosEstructurados: any = {}) {
     const service = Object.create(PtaService.prototype) as any;
     service.configuracionRepo = { findOne: jest.fn().mockResolvedValue(null) };
@@ -49,16 +58,16 @@ describe('Justificaciones: aplicabilidad del componente y sección', () => {
   it('no aprueba un soporte histórico de un componente vacío, pero permite rechazarlo sin borrarlo', async () => {
     const service = serviceFor();
     service.evidenciaRepo.findOne.mockResolvedValue({ id: 'e1', componentePta: 'extension', seccionExtension: 'capacitacion', estadoRevision: 'pendiente' });
-    await expect(service.revisarEvidenciaPTA('pta-1', 'e1', { decision: 'aprobado' })).rejects.toThrow('no aplica');
+    await expect(service.revisarEvidenciaPTA('pta-1', 'e1', { decision: 'aprobado' }, aprobadorExtension)).rejects.toThrow('no aplica');
     expect(service.evidenciaRepo.save).not.toHaveBeenCalled();
-    await service.revisarEvidenciaPTA('pta-1', 'e1', { decision: 'rechazado' });
+    await service.revisarEvidenciaPTA('pta-1', 'e1', { decision: 'rechazado' }, aprobadorExtension);
     expect(service.evidenciaRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1', estadoRevision: 'rechazado' }));
   });
 
   it('conserva la revisión de soportes legacy sin sección si Extensión sí tiene carga', async () => {
     const service = serviceFor({ extension_actividades: [{ seccion: 'fortalecimiento', horas: 40 }] });
     service.evidenciaRepo.findOne.mockResolvedValue({ id: 'e1', componentePta: 'extension', estadoRevision: 'pendiente' });
-    await service.revisarEvidenciaPTA('pta-1', 'e1', { decision: 'aprobado' });
+    await service.revisarEvidenciaPTA('pta-1', 'e1', { decision: 'aprobado' }, aprobadorExtension);
     expect(service.evidenciaRepo.save).toHaveBeenCalledTimes(1);
   });
 });

@@ -64,6 +64,13 @@ function isPtaHabilitadoParaSeguimientoPorEstado(value: unknown): boolean {
   ]).has(normalizeEstadoFilter(value));
 }
 
+const EVIDENCIA_EXTENSION_COMPONENT_KEYS: PTAComponentKey[] = [
+  'ext_capacitacion',
+  'ext_procesos',
+  'ext_fortalecimiento',
+  'ext_gobierno',
+];
+
 function resolveHorasResolucionProyecto(proyecto: any): number {
   return Math.max(0, Math.round(Number(proyecto?.horas_solicitadas) || 0));
 }
@@ -5421,6 +5428,71 @@ export class PtaService {
     return rows.map((row) => this.toEvidenciaDto(row));
   }
 
+  /**
+   * Traduce la clasificación amplia guardada en la evidencia a los componentes
+   * granulares que pueden revisarla. Docencia y Complementarias no guardan el
+   * nivel/subtipo en la evidencia, por eso cualquiera de sus permisos específicos
+   * habilita exclusivamente ese grupo. Extensión sí conserva la sección.
+   */
+  private componentKeysForEvidencia(evidencia: Pick<PtaEvidenciaEntity, 'componentePta' | 'seccionExtension'>): PTAComponentKey[] {
+    const componente = normalizeEstadoFilter(evidencia?.componentePta).toLowerCase();
+    if (componente === 'docencia' || componente === 'academica') {
+      return DOCENCIA_COMPONENT_KEYS;
+    }
+    if (componente === 'investigacion') return ['investigacion'];
+    if (componente === 'complementarias' || componente === 'acad_admin') {
+      return COMPLEMENTARIAS_COMPONENT_KEYS;
+    }
+    if (componente !== 'extension') return [];
+
+    const seccion = normalizeEstadoFilter(evidencia?.seccionExtension).toLowerCase();
+    const keyBySection: Record<string, PTAComponentKey> = {
+      capacitacion: 'ext_capacitacion',
+      seleccion: 'ext_procesos',
+      procesos_seleccion: 'ext_procesos',
+      fortalecimiento: 'ext_fortalecimiento',
+      laboratorio_innovacion: 'ext_fortalecimiento',
+      investigacion_aplicada: 'ext_fortalecimiento',
+      alto_gobierno: 'ext_gobierno',
+    };
+    const key = keyBySection[seccion];
+    // Compatibilidad con soportes históricos que no almacenaban sección.
+    // Una sección no vacía pero desconocida se bloquea: no debe heredar por
+    // accidente el permiso de otra sección de Extensión.
+    return key ? [key] : seccion ? [] : EVIDENCIA_EXTENSION_COMPONENT_KEYS;
+  }
+
+  private grupoSeguimientoParaEvidencia(
+    evidencia: Pick<PtaEvidenciaEntity, 'componentePta'>,
+  ): 'docencia' | 'investigacion' | 'extension' | 'complementarias' | null {
+    const componente = normalizeEstadoFilter(evidencia?.componentePta).toLowerCase();
+    if (componente === 'academica') return 'docencia';
+    if (componente === 'acad_admin') return 'complementarias';
+    if (['docencia', 'investigacion', 'extension', 'complementarias'].includes(componente)) {
+      return componente as 'docencia' | 'investigacion' | 'extension' | 'complementarias';
+    }
+    return null;
+  }
+
+  private puedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity): boolean {
+    if (!auth) return false;
+    if (auth.isSuperUser || auth.approvesAll) return true;
+    const permitidos = new Set(auth.allowedComponents || []);
+    return this.componentKeysForEvidencia(evidencia).some(key => permitidos.has(key));
+  }
+
+  private assertPuedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity): void {
+    if (this.puedeGestionarEvidencia(auth, evidencia)) return;
+    const requeridos = this.componentKeysForEvidencia(evidencia)
+      .map(key => COMPONENT_PERMISSION[key])
+      .filter(Boolean);
+    throw new ForbiddenException(
+      requeridos.length
+        ? `No tiene permiso para gestionar esta evidencia. Se requiere uno de: ${requeridos.join(', ')}.`
+        : 'La evidencia no tiene un componente PTA reconocido para su aprobación.',
+    );
+  }
+
   /** Valida la carga real, no la autoaprobación técnica de componentes vacíos. */
   private async validarComponenteJustificacion(ptaId: string, componente: string | null | undefined, seccion: string | null | undefined, permitirLegacySinSeccion = false) {
     const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
@@ -5527,9 +5599,15 @@ export class PtaService {
     return { deleted: true };
   }
 
-  async revisarEvidenciaPTA(ptaId: string, evidenciaId: string, body: any) {
+  async revisarEvidenciaPTA(
+    ptaId: string,
+    evidenciaId: string,
+    body: any,
+    auth?: PtaAuthenticatedUser,
+  ) {
     const existing = await this.evidenciaRepo.findOne({ where: { id: evidenciaId, ptaId } });
     if (!existing) throw new NotFoundException('Evidencia no encontrada');
+    this.assertPuedeGestionarEvidencia(auth, existing);
 
     const decision = coalesceString(body?.decision, body?.estado_revision, body?.estadoRevision);
     const estadoRevision =
@@ -5548,7 +5626,8 @@ export class PtaService {
     const updated = await this.evidenciaRepo.save({
       ...existing,
       estadoRevision,
-      revisadoPor: coalesceString(body?.revisado_por, body?.revisadoPor) ?? existing.revisadoPor,
+      // La identidad del aprobador proviene de la sesión verificada, no del body.
+      revisadoPor: coalesceString(auth?.name, auth?.email, auth?.userId) ?? existing.revisadoPor,
       comentarioRevision: coalesceString(body?.observaciones, body?.comentario, body?.comentarioRevision) ?? existing.comentarioRevision,
     });
 
@@ -6442,7 +6521,10 @@ export class PtaService {
     );
   }
 
-  async getAllPtasConEvidencias(periodo?: string) {
+  async getAllPtasConEvidencias(periodo: string | undefined, auth?: PtaAuthenticatedUser) {
+    if (!auth || (!auth.isSuperUser && !auth.approvesAll && !(auth.allowedComponents || []).length)) {
+      throw new ForbiddenException('Se requiere al menos un permiso pta.approve.* para consultar Seguimiento.');
+    }
     const qb = this.ptaRepo.createQueryBuilder('pta');
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
     qb.orderBy('pta.updatedAt', 'DESC');
@@ -6462,7 +6544,14 @@ export class PtaService {
         )),
     );
 
-    const ids = ptas.map((p) => p.id);
+    const extMult = await this.getExtMultiplicadores();
+    const dtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
+    await this.attachPtaReferenceDates(dtos);
+    const summaries = await this.enrichPtaSummaries(dtos);
+    const scopedPtas = await this.filterGestionPtas(summaries, ptas, auth);
+    const ids = scopedPtas.map((pta) => pta.id || pta.pta_id).filter(Boolean);
+    if (ids.length === 0) return [];
+
     const evidencias = await this.evidenciaRepo
       .createQueryBuilder('ev')
       .where('ev.ptaId IN (:...ids)', { ids })
@@ -6470,18 +6559,40 @@ export class PtaService {
       .getMany();
 
     const evidenciasByPta: Record<string, any[]> = {};
+    const resumenByPta: Record<string, Record<string, { horas_aprobadas: number }>> = {};
     for (const ev of evidencias) {
+      resumenByPta[ev.ptaId] ||= {
+        docencia: { horas_aprobadas: 0 },
+        investigacion: { horas_aprobadas: 0 },
+        extension: { horas_aprobadas: 0 },
+        complementarias: { horas_aprobadas: 0 },
+      };
+      const grupo = this.grupoSeguimientoParaEvidencia(ev);
+      if (
+        grupo
+        && normalizeEstadoFilter(ev.estado) !== 'ELIMINADO'
+        && normalizeEstadoFilter(ev.estadoRevision) === 'APROBADO'
+      ) {
+        resumenByPta[ev.ptaId][grupo].horas_aprobadas += Math.max(0, Number(ev.horasAvance) || 0);
+      }
+      if (!this.puedeGestionarEvidencia(auth, ev)) continue;
       evidenciasByPta[ev.ptaId] ||= [];
       evidenciasByPta[ev.ptaId].push(this.toEvidenciaDto(ev));
     }
 
-    const extMult = await this.getExtMultiplicadores();
-    const dtos = ptas.map((pta) => ({
-      ...this.toPtaDto(pta, extMult),
-      evidencias: evidenciasByPta[pta.id] || [],
+    const resultado = scopedPtas.map((pta) => ({
+      ...pta,
+      evidencias: evidenciasByPta[pta.id || pta.pta_id] || [],
+      // Agregado sin datos del archivo: mantiene correcto el avance global aun
+      // cuando las evidencias ajenas se ocultan por permiso.
+      seguimiento_resumen: resumenByPta[pta.id || pta.pta_id] || {
+        docencia: { horas_aprobadas: 0 },
+        investigacion: { horas_aprobadas: 0 },
+        extension: { horas_aprobadas: 0 },
+        complementarias: { horas_aprobadas: 0 },
+      },
     }));
-    await this.attachPtaReferenceDates(dtos);
-    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
+    return this.sortPtasByReferenceDate(resultado);
   }
 
   async getConfiguracionPTAGlobal() {

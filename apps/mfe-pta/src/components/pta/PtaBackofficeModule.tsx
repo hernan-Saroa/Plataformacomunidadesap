@@ -731,7 +731,12 @@ function normalizeComponenteSeguimiento(value: unknown): string {
 
 function getResumenHorasSeguimiento(pta: any, componente: string) {
   const total = Math.max(0, Number(pta?.[`horas_${componente}`]) || 0);
-  const aprobadas = Math.max(0, (Array.isArray(pta?.evidencias) ? pta.evidencias : [])
+  const resumenServidor = pta?.seguimiento_resumen?.[componente];
+  const horasAprobadasServidor = resumenServidor?.horas_aprobadas ?? resumenServidor?.horasAprobadas;
+  const tieneResumenServidor = horasAprobadasServidor !== null
+    && horasAprobadasServidor !== undefined
+    && Number.isFinite(Number(horasAprobadasServidor));
+  const aprobadasDesdeEvidencias = (Array.isArray(pta?.evidencias) ? pta.evidencias : [])
     .filter((evidencia: any) =>
       normalizeComponenteSeguimiento(
         evidencia?.componente_pta ?? evidencia?.componentePta,
@@ -740,7 +745,11 @@ function getResumenHorasSeguimiento(pta: any, componente: string) {
       (suma: number, evidencia: any) =>
         suma + Math.max(0, Number(evidencia?.horas_avance ?? evidencia?.horasAvance) || 0),
       0,
-    ));
+    );
+  const aprobadas = Math.max(
+    0,
+    tieneResumenServidor ? Number(horasAprobadasServidor) : aprobadasDesdeEvidencias,
+  );
   const faltantes = Math.max(total - aprobadas, 0);
   const porcentaje = total > 0
     ? Math.min(Math.round((aprobadas / total) * 100), 100)

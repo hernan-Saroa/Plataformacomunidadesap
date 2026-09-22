@@ -138,6 +138,38 @@ describe('listado y contadores del backoffice', () => {
     expect(screen.queryByText('Complementarias')).toBeNull();
   });
 
+  it('mantiene verdadero el avance global sin mostrar evidencias de componentes ajenos', async () => {
+    sync.allowedPermissions = new Set(['pta.approve.academica.pregrado']);
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{
+      id: 'pta-resumen-seguro',
+      pta_id: 'pta-resumen-seguro',
+      docente_nombre: 'Docente con seguimiento completo',
+      estado: 'Aprobado',
+      periodo: '2026-1',
+      horas_docencia: 100,
+      horas_investigacion: 200,
+      evidencias: [{
+        id: 'ev-docencia', componente_pta: 'docencia', estado_revision: 'aprobado', horas_avance: 100,
+      }],
+      seguimiento_resumen: {
+        docencia: { horas_aprobadas: 100 },
+        investigacion: { horas_aprobadas: 200 },
+        extension: { horas_aprobadas: 0 },
+        complementarias: { horas_aprobadas: 0 },
+      },
+    }] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+
+    expect(await screen.findByText('Docente con seguimiento completo')).toBeTruthy();
+    expect(screen.getByText('Seguimiento 100%')).toBeTruthy();
+    expect(screen.getByText('Soportes completos')).toBeTruthy();
+    expect(screen.getByText('Docencia')).toBeTruthy();
+    expect(screen.queryByText('Investigación')).toBeNull();
+  });
+
   it('sincroniza Seguimiento con el período global y descarta resultados de otros períodos', async () => {
     vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [
       {

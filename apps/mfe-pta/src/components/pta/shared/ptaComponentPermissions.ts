@@ -601,10 +601,17 @@ export function isEvidenciaAuthorized(
 ): boolean {
   const comp = String(ev?.componentePta ?? ev?.componente_pta ?? '').toLowerCase().trim();
   const sec = ev?.seccionExtension ?? ev?.seccion_extension;
+  // La evidencia no conserva el subtipo de Complementarias; cualquiera de sus
+  // permisos granulares debe poder gestionar este grupo, igual que Docencia.
+  if (comp === 'complementarias' || comp === 'acad_admin') {
+    return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(k => isAuthorized(k));
+  }
   const key = componentKeyForEvidencia(comp, sec);
   if (key) return isAuthorized(key);
   // Extensión legacy sin sección: autorizada si el usuario aprueba CUALQUIER sección de extensión.
-  if (comp === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(k => isAuthorized(k));
+  if (comp === 'extension' && !String(sec || '').trim()) {
+    return PTA_EXTENSION_COMPONENT_KEYS.some(k => isAuthorized(k));
+  }
   // Docencia sin nivel asignado: autorizada si el usuario aprueba pregrado O posgrado.
   if (DOCENCIA_EVIDENCIA_VALUES.has(comp)) return PTA_DOCENCIA_COMPONENT_KEYS.some(k => isAuthorized(k));
   return false;
