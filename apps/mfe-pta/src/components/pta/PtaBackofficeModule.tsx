@@ -294,14 +294,24 @@ function formatSolicitudDateTime(value: unknown): string {
 }
 
 function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre: string; syncCounter?: number }) {
+  const { permisos } = usePermisosPTA();
+  const auth = useAuth();
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState('');
   const [procesando, setProcesando] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Formulario de resolución
-  const [resForm, setResForm] = useState<Record<string, { accion?: string; motivo?: string; territorial?: string; horasOrig?: number; horasNuevo?: number }>>({});
+  const [resForm, setResForm] = useState<Record<string, {
+    accion?: string;
+    motivo?: string;
+    territorial?: string;
+    horasOrig?: number;
+    horasNuevo?: number;
+    componentes?: string[];
+  }>>({});
   const [territoriales, setTerritoriales] = useState<any[]>([]);
+  const tieneAlcanceEdicion = auth.isSuperUser || (permisos.componentesRevisables?.length || 0) > 0;
 
   const load = async () => {
     setLoading(true);
@@ -320,7 +330,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
       .catch(() => {});
   }, []);
 
-  const handleResolver = async (id: string, decision: 'aprobado' | 'denegado') => {
+  const handleResolver = async (id: string, decision: 'aprobado' | 'denegado', componentes: string[]) => {
     const form = resForm[id] || {};
     setProcesando(id);
     const res = await resolverSolicitudPTA(id, {
@@ -331,9 +341,22 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
       horasPtaOriginal: form.horasOrig,
       horasPtaNuevo: form.horasNuevo,
       resueltoPor: aprobadorNombre,
+      componentes,
     });
     setProcesando(null);
-    if (res.success) { toast.success(decision === 'aprobado' ? 'Solicitud aprobada' : 'Solicitud denegada'); load(); }
+    if (res.success) {
+      setResForm(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      toast.success(res.data?.resolucionParcial
+        ? componentes.length === 1
+          ? 'Decisión registrada para el componente'
+          : 'Decisión registrada para los componentes seleccionados'
+        : decision === 'aprobado' ? 'Solicitud aprobada' : 'Solicitud denegada');
+      load();
+    }
     else toast.error(res.message || 'Error');
   };
 
@@ -341,7 +364,18 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
     setResForm(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
-  const pendientes = solicitudes.filter(s => s.estado === 'pendiente').length;
+  const pendientes = solicitudes.filter((s) => {
+    if (s.estado !== 'pendiente') return false;
+    const esEdicion = s.tipoSolicitud === 'edicion_componentes' || s.caso === 'edicion_pta';
+    if (!esEdicion) return true;
+    if (s.requiereConsolidacion) return true;
+    const decisiones = s.decisionesComponentes && typeof s.decisionesComponentes === 'object'
+      ? s.decisionesComponentes
+      : {};
+    return (Array.isArray(s.componentes) ? s.componentes : []).some(
+      (componente: string) => String(decisiones[componente]?.estado || 'pendiente').toLowerCase() === 'pendiente',
+    );
+  }).length;
 
   const CASO_LABELS: Record<string, { label: string; color: string }> = {
     edicion_pta: { label: 'Edición de PTA', color: '#003DA5' },
@@ -370,11 +404,11 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Solicitudes PTA</h2>
-          <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Creación de planes y edición parcial de componentes aprobados</p>
+          <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Revisión de solicitudes según los componentes autorizados para tu rol</p>
         </div>
         {pendientes > 0 && (
           <span style={{ padding: '4px 10px', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: '0.72rem', fontWeight: 700 }}>
-            {pendientes} pendiente{pendientes > 1 ? 's' : ''}
+            {pendientes} por resolver
           </span>
         )}
       </div>
@@ -401,7 +435,14 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
       ) : solicitudes.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, background: '#F9FAFB', borderRadius: 14 }}>
           <Send style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: '0.9rem', color: '#9CA3AF', margin: 0 }}>Sin solicitudes</p>
+          <p style={{ fontSize: '0.9rem', color: '#64748B', margin: 0, fontWeight: 600 }}>
+            {!tieneAlcanceEdicion && !filtro ? 'Sin componentes de revisión asignados' : 'Sin solicitudes'}
+          </p>
+          {!tieneAlcanceEdicion && !filtro && (
+            <p style={{ maxWidth: 520, margin: '6px auto 0', fontSize: '0.7rem', color: '#94A3B8', lineHeight: 1.45 }}>
+              El permiso de la pestaña está activo, pero el rol necesita al menos un permiso pta.review.* para visualizar y resolver componentes.
+            </p>
+          )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -417,6 +458,20 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
             const form = resForm[sol.id] || {};
             const archivos = Array.isArray(sol.archivos) ? sol.archivos : [];
             const componentesSolicitud = Array.isArray(sol.componentes) ? sol.componentes : [];
+            const decisionesComponentes = sol.decisionesComponentes && typeof sol.decisionesComponentes === 'object'
+              ? sol.decisionesComponentes
+              : {};
+            const componentesPendientes = componentesSolicitud.filter(
+              (key: string) => String(decisionesComponentes[key]?.estado || 'pendiente').toLowerCase() === 'pendiente',
+            );
+            const requiereConsolidacion = Boolean(sol.requiereConsolidacion);
+            const componentesSeleccionados = requiereConsolidacion
+              ? componentesSolicitud
+              : componentesPendientes.length === 1
+                ? componentesPendientes
+                : (Array.isArray(form.componentes) ? form.componentes : [])
+                  .filter((key: string) => componentesPendientes.includes(key));
+            const faltaSeleccionComponente = esEdicion && !requiereConsolidacion && componentesSeleccionados.length === 0;
             const docenteNombre = sol.docenteNombre
               || sol.docente?.nombreCompleto
               || sol.docente?.persona?.nombreCompleto
@@ -452,9 +507,10 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
                       </span>
                       {componentesSolicitud.map((key: string) => {
                         const componente = COMPONENTE_SOLICITUD[key] || { label: key, color: '#475569' };
+                        const decisionComponente = String(decisionesComponentes[key]?.estado || 'pendiente').toLowerCase();
                         return (
                           <span key={key} style={{ padding: '2px 7px', borderRadius: 5, fontSize: '0.6rem', fontWeight: 700, background: `${componente.color}0D`, color: componente.color, border: `1px solid ${componente.color}22` }}>
-                            {componente.label}
+                            {componente.label} · {decisionComponente === 'aprobado' ? 'Aprobado' : decisionComponente === 'denegado' ? 'Denegado' : 'Pendiente'}
                           </span>
                         );
                       })}
@@ -534,9 +590,13 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                               {componentesSolicitud.map((key: string) => {
                                 const componente = COMPONENTE_SOLICITUD[key] || { label: key, color: '#475569' };
+                                const decisionComponente = String(decisionesComponentes[key]?.estado || 'pendiente').toLowerCase();
+                                const decisionColor = decisionComponente === 'aprobado'
+                                  ? '#047857'
+                                  : decisionComponente === 'denegado' ? '#B91C1C' : '#92400E';
                                 return (
-                                  <span key={key} style={{ padding: '3px 8px', borderRadius: 6, background: 'white', border: `1px solid ${componente.color}55`, color: componente.color, fontSize: '0.66rem', fontWeight: 700 }}>
-                                    {componente.label}
+                                  <span key={key} style={{ padding: '3px 8px', borderRadius: 6, background: 'white', border: `1px solid ${decisionColor}55`, color: decisionColor, fontSize: '0.66rem', fontWeight: 700 }}>
+                                    {componente.label} · {decisionComponente === 'aprobado' ? 'Aprobado' : decisionComponente === 'denegado' ? 'Denegado' : 'Pendiente'}
                                   </span>
                                 );
                               })}
@@ -583,13 +643,49 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
                         )}
 
                         {/* Formulario de resolución (solo pendientes) */}
-                        {isPendiente && (
+                        {isPendiente && (!esEdicion || componentesPendientes.length > 0 || requiereConsolidacion) && (
                           <div style={{ padding: '14px', borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0', marginTop: 10 }}>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>Resolver solicitud</div>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                              {requiereConsolidacion ? 'Completar resolución' : esEdicion ? 'Resolver componentes de mi área' : 'Resolver solicitud'}
+                            </div>
                             {esEdicion && (
-                              <p style={{ fontSize: '0.68rem', color: '#64748B', lineHeight: 1.4, margin: '0 0 10px' }}>
-                                Al aprobar, solo los componentes seleccionados pasarán a edición y reaprobación. El PTA conservará su identidad y los demás componentes permanecerán aprobados.
-                              </p>
+                              <>
+                                <p style={{ fontSize: '0.68rem', color: '#64748B', lineHeight: 1.4, margin: '0 0 10px' }}>
+                                  {requiereConsolidacion
+                                    ? 'Todas las áreas ya registraron su decisión, pero falta consolidar la reapertura del PTA. Puedes reintentar sin modificar las decisiones existentes.'
+                                    : 'La edición se habilitará cuando todas las áreas solicitadas hayan decidido. Puedes resolver cada componente por separado y los demás conservarán su estado.'}
+                                </p>
+                                {!requiereConsolidacion && componentesPendientes.length > 1 ? (
+                                  <fieldset style={{ margin: '0 0 10px', padding: '9px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white' }}>
+                                    <legend style={{ padding: '0 4px', fontSize: '0.67rem', fontWeight: 700, color: '#334155' }}>
+                                      Componentes que deseas resolver ahora
+                                    </legend>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                      {componentesPendientes.map((key: string) => {
+                                        const componente = COMPONENTE_SOLICITUD[key] || { label: key, color: '#475569' };
+                                        const checked = componentesSeleccionados.includes(key);
+                                        return (
+                                          <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 7, border: `1px solid ${checked ? componente.color : '#CBD5E1'}`, background: checked ? `${componente.color}0D` : '#F8FAFC', color: checked ? componente.color : '#475569', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
+                                            <input
+                                              type="checkbox"
+                                              aria-label={`Seleccionar ${componente.label}`}
+                                              checked={checked}
+                                              onChange={() => updateForm(sol.id, 'componentes', checked
+                                                ? componentesSeleccionados.filter((item: string) => item !== key)
+                                                : [...componentesSeleccionados, key])}
+                                            />
+                                            {componente.label}
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </fieldset>
+                                ) : !requiereConsolidacion ? (
+                                  <div style={{ margin: '0 0 10px', fontSize: '0.68rem', fontWeight: 700, color: '#334155' }}>
+                                    Componente a resolver: {COMPONENTE_SOLICITUD[componentesPendientes[0]]?.label || componentesPendientes[0]}
+                                  </div>
+                                ) : null}
+                              </>
                             )}
 
                             {/* Si es caso 3, elegir acción */}
@@ -638,19 +734,34 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
                             </div>
 
                             {/* Botones */}
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              <button onClick={() => handleResolver(sol.id, 'aprobado')} disabled={procesando === sol.id}
-                                style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#059669', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
-                                <CheckCircle style={{ width: 14, height: 14 }} /> {esEdicion ? 'Habilitar edición' : 'Aprobar'}
+                            {requiereConsolidacion ? (
+                              <button onClick={() => handleResolver(sol.id, 'aprobado', componentesSeleccionados)} disabled={procesando === sol.id}
+                                style={{ width: '100%', padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
+                                <RefreshCw style={{ width: 14, height: 14 }} /> Completar resolución
                               </button>
-                              <button onClick={() => handleResolver(sol.id, 'denegado')} disabled={procesando === sol.id || !(form.motivo?.trim())}
-                                style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: !(form.motivo?.trim()) ? '#D1D5DB' : '#DC2626', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: !(form.motivo?.trim()) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
-                                <XCircle style={{ width: 14, height: 14 }} /> Denegar
-                              </button>
-                            </div>
-                            {!(form.motivo?.trim()) && (
+                            ) : (
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <button onClick={() => handleResolver(sol.id, 'aprobado', componentesSeleccionados)} disabled={procesando === sol.id || faltaSeleccionComponente}
+                                  style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: faltaSeleccionComponente ? '#D1D5DB' : '#059669', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: faltaSeleccionComponente ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
+                                  <CheckCircle style={{ width: 14, height: 14 }} /> {esEdicion ? 'Aprobar componente(s)' : 'Aprobar'}
+                                </button>
+                                <button onClick={() => handleResolver(sol.id, 'denegado', componentesSeleccionados)} disabled={procesando === sol.id || faltaSeleccionComponente || !(form.motivo?.trim())}
+                                  style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: faltaSeleccionComponente || !(form.motivo?.trim()) ? '#D1D5DB' : '#DC2626', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: faltaSeleccionComponente || !(form.motivo?.trim()) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
+                                  <XCircle style={{ width: 14, height: 14 }} /> Denegar
+                                </button>
+                              </div>
+                            )}
+                            {faltaSeleccionComponente && (
+                              <p style={{ fontSize: '0.62rem', color: '#B45309', margin: '6px 0 0', textAlign: 'center', fontWeight: 600 }}>Selecciona al menos un componente para continuar</p>
+                            )}
+                            {!requiereConsolidacion && !(form.motivo?.trim()) && (
                               <p style={{ fontSize: '0.62rem', color: '#9CA3AF', margin: '6px 0 0', textAlign: 'center' }}>Para denegar es obligatorio escribir un motivo</p>
                             )}
+                          </div>
+                        )}
+                        {isPendiente && esEdicion && componentesPendientes.length === 0 && !requiereConsolidacion && (
+                          <div style={{ padding: '10px 12px', borderRadius: 9, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: '0.7rem', fontWeight: 600, marginTop: 10 }}>
+                            Tu área ya fue resuelta. La solicitud permanece pendiente mientras las demás áreas solicitadas registran su decisión.
                           </div>
                         )}
                       </div>
@@ -1514,7 +1625,9 @@ const BULK_APPROVAL_GROUP_ICON: Record<PTABulkApprovalGroupKey, React.ComponentT
 function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}) {
   const { permisos, tieneVista, rolLabel, isSimulando, perfil, rolColor, rolBg } = usePermisosPTA();
   const auth = useAuth();
-  const isSuperUserEffective = auth.isSuperUser || perfil.rol === 'admin';
+  // La etiqueta visual del rol nunca sustituye la bandera autenticada. Esto evita
+  // que un rol custom llamado "admin" eluda la segmentación por componentes.
+  const isSuperUserEffective = auth.isSuperUser;
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
     if (isSuperUserEffective) return [...PTA_COMPONENT_KEYS];
     return [...new Set([...(permisos.componentesAprobables || []),
@@ -1721,7 +1834,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [approvalObs, setApprovalObs] = useState('');
   const [devolucionMotivo, setDevolucionMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
-  const initialModuleView = useMemo<ModuleView>(() => (initialView as ModuleView) || 'gestion', [initialView]);
+  const initialModuleView = useMemo<ModuleView>(() => {
+    const requested = (initialView as ModuleView) || 'gestion';
+    if (requested === 'solicitudes_pta' && !tieneVista('solicitudes_pta')) return 'gestion';
+    return requested;
+  }, [initialView, tieneVista]);
   const [moduleView, setModuleView] = useState<ModuleView>(initialModuleView);
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);

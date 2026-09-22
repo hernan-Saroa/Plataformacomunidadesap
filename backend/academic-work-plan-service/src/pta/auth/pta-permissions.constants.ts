@@ -32,9 +32,9 @@ export type PTAComponentKey =
   | 'ext_gobierno';
 
 /**
- * Permite consultar y resolver la bandeja de solicitudes que reabre componentes
- * de un PTA ya aprobado, sin conceder administración de solicitudes de creación
- * ni permisos de aprobación/revisión sobre los componentes del plan.
+ * Habilita la pestaña, consulta y acción de la bandeja de edición. El alcance
+ * concreto de componentes continúa dependiendo de pta.review.*; este permiso no
+ * concede por sí solo ningún componente ni administra solicitudes de creación.
  */
 export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
 

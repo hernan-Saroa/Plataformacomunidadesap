@@ -6,15 +6,15 @@
 -- podían entrar a Gestión, pero no veían "Solicitudes PTA" y el backend seguía
 -- comprobando pta.backoffice.aprobar, permiso genérico retirado por la 370.
 --
--- Este permiso habilita exclusivamente:
+-- Este permiso funciona como puerta de entrada y habilita exclusivamente:
 --   1. Ver la pestaña Solicitudes PTA.
 --   2. Consultar solicitudes de tipo edicion_componentes.
---   3. Aprobar o denegar esas solicitudes.
+--   3. Ejecutar la acción de aprobar o denegar.
 --
--- No concede permisos para revisar/aprobar componentes ni permite administrar
--- solicitudes de creación. Se asigna desde Roles y Permisos al rol funcional que
--- corresponda (por ejemplo, "Aprobación de Edición"). No se asigna masivamente a
--- todos los revisores para preservar la segregación de funciones.
+-- Los componentes visibles y gestionables se calculan por los permisos
+-- pta.review.* que tenga el mismo rol. Por sí solo no concede ningún componente
+-- ni permite administrar solicitudes de creación. Se asigna desde Roles y
+-- Permisos a los roles autorizados (revisores o Gestión Profesoral).
 -- ============================================================================
 
 DO $$
@@ -42,7 +42,7 @@ BEGIN
     gen_random_uuid(),
     'pta.requests.edit.manage',
     'Gestionar solicitudes de edición PTA',
-    'Permite ver, aprobar y denegar solicitudes para editar parcialmente componentes de un PTA aprobado, sin crear un nuevo plan',
+    'Habilita la pestaña y las acciones de solicitudes de edición PTA; los componentes visibles y gestionables dependen de los permisos pta.review.* del rol',
     v_module_id,
     true
   )
@@ -52,4 +52,3 @@ BEGIN
         id_module = EXCLUDED.id_module,
         is_active = true;
 END $$;
-

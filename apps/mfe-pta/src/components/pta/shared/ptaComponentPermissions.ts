@@ -18,7 +18,7 @@ export type PTAComponentKey =
   | 'complementarias_territorial'
   | 'complementarias_gestion_profesoral';
 
-/** Bandeja y decisión de solicitudes que reabren componentes ya aprobados. */
+/** Puerta de entrada a la bandeja; pta.review.* define los componentes gestionables. */
 export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
 
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {

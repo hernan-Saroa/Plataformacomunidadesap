@@ -217,10 +217,10 @@ export function deriveFromGranular(
     vistasSet.add('seguimiento_docs');
     vistasSet.add('gestion');
   }
-  // Un REVISOR puro (solo pta.review.*, sin ningún pta.approve.*) también debe poder
-  // entrar a Gestión: es justamente donde abre el PTA y ejecuta la preaprobación.
-  // Ningún permiso pta.review.* está en PERMISO_TO_VISTA, así que sin esto su
-  // vistasPerm quedaba vacío y el módulo no le mostraba ninguna pestaña.
+  // Un revisor puro también necesita Gestión para ejecutar la preaprobación del
+  // PTA. La pestaña Solicitudes PTA, en cambio, se concede exclusivamente por
+  // pta.requests.edit.manage (mapeado arriba); los permisos pta.review.* solo
+  // determinan qué componentes verá y podrá resolver una vez dentro.
   if (puedeRevisar) {
     vistasSet.add('gestion');
   }
@@ -263,7 +263,7 @@ export function deriveFromGranular(
 
 const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = {
   admin: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','solicitudes_pta','configuracion','config_reglas','programacion_institucional','cargas','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes','mapeo_sincronizacion','salud_sistema','reconciliacion_masiva','tablero_unificado'],
+    vistasPerm: ['gestion','seguimiento_docs','configuracion','config_reglas','programacion_institucional','cargas','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes','mapeo_sincronizacion','salud_sistema','reconciliacion_masiva','tablero_unificado'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -283,7 +283,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     granularCount: 0,
   }),
   director: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','solicitudes_pta','programacion_institucional','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','benchmarking','metricas_sla','centro_reportes','cronograma','banco_docentes'],
+    vistasPerm: ['gestion','seguimiento_docs','programacion_institucional','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','benchmarking','metricas_sla','centro_reportes','cronograma','banco_docentes'],
     puedeAprobar: false,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -303,7 +303,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     granularCount: 0,
   }),
   gestion_profesoral: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','solicitudes_pta','programacion_institucional','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes'],
+    vistasPerm: ['gestion','seguimiento_docs','programacion_institucional','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -585,10 +585,14 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
 
   // ── DERIVAR PERMISOS: granular (KV) > hardcoded (fallback) ──────────
   const permisos = useMemo<PermisosPTA>(() => {
-    // Superuser ALWAYS gets full admin hardcoded permissions
-    if (isSuperUserEffective || perfil.rol === 'admin') {
+    // Solo el superusuario recibe la excepción total. Un rol llamado "admin"
+    // también debe respetar sus permisos granulares reales.
+    if (isSuperUserEffective) {
       const hardcoded = PERMISOS_POR_ROL['admin'](perfil);
-      return hardcoded;
+      return {
+        ...hardcoded,
+        vistasPerm: Array.from(new Set([...hardcoded.vistasPerm, 'solicitudes_pta'])),
+      };
     }
 
     const allPerms = auth.session?.permisos || [];

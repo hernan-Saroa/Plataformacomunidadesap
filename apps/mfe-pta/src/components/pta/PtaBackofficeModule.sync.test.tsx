@@ -1,10 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PtaBackofficeModule } from './PtaBackofficeModule';
-import { deletePTA, getAllPTAs, getAllPtasConEvidencias, getPTADecisionListScope } from '../../services/api/ptaApi';
+import {
+  deletePTA, getAllPTAs, getAllPtasConEvidencias, getPTADecisionListScope,
+  getSolicitudesPTA, resolverSolicitudPTA,
+} from '../../services/api/ptaApi';
 import { toast } from 'sonner';
 
-const sync = vi.hoisted(() => ({ options: null as any, isSuperUser: false, rol: 'jefatura', allowedPermissions: null as Set<string> | null, permissions: {
+const sync = vi.hoisted(() => ({ options: null as any, isSuperUser: false, rol: 'jefatura', allowedPermissions: null as Set<string> | null, visibleViews: null as Set<string> | null, permissions: {
   nivelAprobacion: 1, puedeAprobar: true, componentesAprobables: [] as string[], componentesRevisables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
 } }));
 vi.mock('../../hooks/usePTARealtimeSync', () => ({
@@ -14,7 +17,7 @@ vi.mock('./PTASyncIndicator', () => ({ PTASyncIndicator: () => null }));
 vi.mock('./PermisosPTAContext', () => ({
   PermisosPTAProvider: ({ children }: any) => children,
   SelectorRolPTA: () => null,
-  usePermisosPTA: () => ({ permisos: sync.permissions, tieneVista: () => true, rolLabel: 'Revisor', perfil: { rol: sync.rol, territorial_ids: [] } }),
+  usePermisosPTA: () => ({ permisos: sync.permissions, tieneVista: (view: string) => sync.visibleViews?.has(view) ?? true, rolLabel: 'Revisor', perfil: { rol: sync.rol, territorial_ids: [] } }),
   usePermisosPTAGranulares: () => ({
     puede: (permission: string) => sync.allowedPermissions?.has(permission) ?? true,
   }),
@@ -33,6 +36,9 @@ vi.mock('../../services/api/ptaApi', () => ({
   revisarEvidenciaPTA: vi.fn(),
   deletePTA: vi.fn(),
   getPTADecisionListScope: vi.fn(),
+  getSolicitudesPTA: vi.fn(),
+  resolverSolicitudPTA: vi.fn(),
+  getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
   getPTAEstadisticas: vi.fn().mockResolvedValue({ success: true, data: {} }),
   getPTAById: vi.fn().mockResolvedValue({ success: false }),
 }));
@@ -51,12 +57,15 @@ beforeEach(() => {
   sync.isSuperUser = false;
   sync.rol = 'jefatura';
   sync.allowedPermissions = null;
+  sync.visibleViews = null;
   sync.permissions.filtroTerritorial = undefined;
   sync.permissions.componentesAprobables = [];
   sync.permissions.componentesRevisables = [];
   vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: false, territoriales: null, programas: null, cetaps: null } });
   vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: pendientes });
   vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [] });
+  vi.mocked(getSolicitudesPTA).mockResolvedValue({ success: true, data: [] });
+  vi.mocked(resolverSolicitudPTA).mockResolvedValue({ success: true, data: {} });
 });
 
 describe('eliminación administrativa en la interfaz', () => {
@@ -112,6 +121,123 @@ afterEach(cleanup);
 const tab = (name: string) => screen.getAllByText(name)[0].closest('button')!;
 
 describe('listado y contadores del backoffice', () => {
+  it('no abre Solicitudes PTA mediante initialView cuando el rol no tiene esa vista', async () => {
+    sync.visibleViews = new Set(['gestion', 'seguimiento_docs']);
+
+    render(<PtaBackofficeModule initialView="solicitudes_pta" />);
+
+    expect(await screen.findByText('Docente uno')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Solicitudes PTA' })).toBeNull();
+    expect(getSolicitudesPTA).not.toHaveBeenCalled();
+  });
+
+  it('muestra y resuelve solamente los componentes de solicitud entregados al revisor', async () => {
+    vi.mocked(getSolicitudesPTA).mockResolvedValue({ success: true, data: [{
+      id: 'sol-docencia',
+      tipoSolicitud: 'edicion_componentes',
+      caso: 'edicion_pta',
+      estado: 'pendiente',
+      docenteNombre: 'Docente solicitud parcial',
+      componentes: ['docencia'],
+      componentesTotal: 2,
+      decisionesComponentes: { docencia: { estado: 'pendiente' } },
+      justificacion: 'Actualizar la carga de docencia.',
+      createdAt: '2026-09-22T12:00:00.000Z',
+    }] });
+    vi.mocked(resolverSolicitudPTA).mockResolvedValue({
+      success: true,
+      data: { resolucionParcial: true, componentesPendientes: ['investigacion'] },
+    });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Solicitudes PTA' }));
+    fireEvent.click(await screen.findByText('Docente solicitud parcial'));
+
+    expect(screen.getAllByText('Docencia · Pendiente').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Investigación ·/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Aprobar componente/i }));
+    await waitFor(() => expect(resolverSolicitudPTA).toHaveBeenCalledWith(
+      'sol-docencia',
+      expect.objectContaining({ decision: 'aprobado', componentes: ['docencia'] }),
+    ));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Decisión registrada para el componente'));
+  });
+
+  it('permite decidir por separado cuando el revisor tiene varios componentes visibles', async () => {
+    vi.mocked(getSolicitudesPTA).mockResolvedValue({ success: true, data: [{
+      id: 'sol-multiple', tipoSolicitud: 'edicion_componentes', caso: 'edicion_pta',
+      estado: 'pendiente', docenteNombre: 'Docente solicitud múltiple',
+      componentes: ['docencia', 'investigacion'], componentesTotal: 2,
+      decisionesComponentes: {
+        docencia: { estado: 'pendiente' }, investigacion: { estado: 'pendiente' },
+      },
+      justificacion: 'Actualizar dos componentes.',
+      createdAt: '2026-09-22T12:00:00.000Z',
+    }] });
+    vi.mocked(resolverSolicitudPTA).mockResolvedValue({
+      success: true, data: { resolucionParcial: true, componentesPendientes: ['investigacion'] },
+    });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Solicitudes PTA' }));
+    fireEvent.click(await screen.findByText('Docente solicitud múltiple'));
+
+    const aprobar = screen.getByRole('button', { name: /Aprobar componente/i }) as HTMLButtonElement;
+    expect(aprobar.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Seleccionar Docencia' }));
+    expect(aprobar.disabled).toBe(false);
+    fireEvent.click(aprobar);
+
+    await waitFor(() => expect(resolverSolicitudPTA).toHaveBeenCalledWith(
+      'sol-multiple',
+      expect.objectContaining({ decision: 'aprobado', componentes: ['docencia'] }),
+    ));
+  });
+
+  it('permite reintentar la consolidación sin cambiar decisiones ya registradas', async () => {
+    vi.mocked(getSolicitudesPTA).mockResolvedValue({ success: true, data: [{
+      id: 'sol-consolidacion', tipoSolicitud: 'edicion_componentes', caso: 'edicion_pta',
+      estado: 'pendiente', requiereConsolidacion: true,
+      docenteNombre: 'Docente por consolidar', componentes: ['docencia'], componentesTotal: 2,
+      decisionesComponentes: { docencia: { estado: 'aprobado' } },
+      justificacion: 'Cambio ya decidido.', createdAt: '2026-09-22T12:00:00.000Z',
+    }] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Solicitudes PTA' }));
+    fireEvent.click(await screen.findByText('Docente por consolidar'));
+    fireEvent.click(screen.getByRole('button', { name: 'Completar resolución' }));
+
+    await waitFor(() => expect(resolverSolicitudPTA).toHaveBeenCalledWith(
+      'sol-consolidacion',
+      expect.objectContaining({ decision: 'aprobado', componentes: ['docencia'] }),
+    ));
+    expect(screen.queryByRole('button', { name: /Denegar/i })).toBeNull();
+  });
+
+  it('indica cuando el área visible ya decidió y la solicitud espera otras áreas', async () => {
+    vi.mocked(getSolicitudesPTA).mockResolvedValue({ success: true, data: [{
+      id: 'sol-docencia-resuelta', tipoSolicitud: 'edicion_componentes', caso: 'edicion_pta',
+      estado: 'pendiente', docenteNombre: 'Docente pendiente de otras áreas',
+      componentes: ['docencia'], componentesTotal: 2,
+      decisionesComponentes: { docencia: { estado: 'aprobado' } },
+      createdAt: '2026-09-22T12:00:00.000Z',
+    }] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Solicitudes PTA' }));
+    fireEvent.click(await screen.findByText('Docente pendiente de otras áreas'));
+
+    expect(screen.getAllByText('Docencia · Aprobado').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Tu área ya fue resuelta/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Aprobar componente/i })).toBeNull();
+    expect(screen.queryByText('1 por resolver')).toBeNull();
+  });
+
   it('muestra la tarjeta agrupada de Docencia con un permiso granular aunque no haya evidencias', async () => {
     sync.allowedPermissions = new Set(['pta.approve.academica.pregrado']);
     vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{

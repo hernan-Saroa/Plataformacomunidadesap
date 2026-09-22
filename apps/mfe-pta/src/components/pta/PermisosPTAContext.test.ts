@@ -17,21 +17,40 @@ const perfil: PerfilRolPTA = {
 describe('PermisosPTAContext - solicitudes de edición', () => {
   it('muestra Solicitudes PTA cuando el rol tiene el permiso funcional', () => {
     const permisos = deriveFromGranular([
-      'pta.review.academica.pregrado',
       PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
     ], perfil);
 
-    expect(permisos?.vistasPerm).toContain('gestion');
+    expect(permisos?.vistasPerm).toEqual(['solicitudes_pta']);
     expect(permisos?.vistasPerm).toContain('solicitudes_pta');
   });
 
-  it('no deriva la pestaña desde un permiso de revisión de componente', () => {
+  it('un permiso de revisión aislado no muestra la pestaña de solicitudes', () => {
     const permisos = deriveFromGranular([
       'pta.review.academica.pregrado',
     ], perfil);
 
     expect(permisos?.vistasPerm).toContain('gestion');
     expect(permisos?.vistasPerm).not.toContain('solicitudes_pta');
+    expect(permisos?.componentesRevisables).toContain('academica_pregrado:general');
+  });
+
+  it('combina el permiso de bandeja con el alcance granular del revisor', () => {
+    const permisos = deriveFromGranular([
+      PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
+      'pta.review.academica.pregrado',
+    ], perfil);
+
+    expect(permisos?.vistasPerm).toContain('solicitudes_pta');
+    expect(permisos?.puedeRevisar).toBe(true);
+    expect(permisos?.puedeAprobar).toBe(false);
+    expect(permisos?.componentesRevisables).toContain('academica_pregrado:general');
+  });
+
+  it('pta.review.all tampoco abre la bandeja sin el permiso funcional', () => {
+    const permisos = deriveFromGranular(['pta.review.all'], perfil);
+
+    expect(permisos?.vistasPerm).not.toContain('solicitudes_pta');
+    expect(permisos?.puedeRevisar).toBe(true);
   });
 });
 
@@ -45,6 +64,7 @@ describe('PermisosPTAContext - acceso a Seguimiento por aprobación', () => {
 
     expect(permisos?.vistasPerm).toContain('seguimiento_docs');
     expect(permisos?.vistasPerm).toContain('gestion');
+    expect(permisos?.vistasPerm).not.toContain('solicitudes_pta');
     expect(permisos?.componentesAprobables).toEqual([componente]);
   });
 
@@ -52,6 +72,7 @@ describe('PermisosPTAContext - acceso a Seguimiento por aprobación', () => {
     const permisos = deriveFromGranular(['pta.approve.all'], perfil);
 
     expect(permisos?.vistasPerm).toContain('seguimiento_docs');
+    expect(permisos?.vistasPerm).not.toContain('solicitudes_pta');
     expect(permisos?.componentesAprobables).toEqual(PTA_COMPONENT_KEYS);
   });
 });
