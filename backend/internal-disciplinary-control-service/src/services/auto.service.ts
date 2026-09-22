@@ -1448,8 +1448,9 @@ export class AutoService {
       ? await this.obtenerNombreUsuario(radicadorAsignadoId)
       : 'Sin asignar';
 
-    const asunto = `Auto Aprobado: ${this.formatearTipoAuto(auto.tipo)} - Proceso ${proceso.radicadoProceso}`;
-    const mensajeBase = `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+    const tipoAutoFormateado = await this.formatearTipoAuto(auto);
+    const asunto = `Auto Aprobado: ${tipoAutoFormateado} - Proceso ${proceso.radicadoProceso}`;
+    const mensajeBase = `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
       (radicadorAsignadoId
         ? `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`
         : `El auto se encuentra disponible en la plataforma para las actuaciones correspondientes.`);
@@ -1490,11 +1491,12 @@ export class AutoService {
     const radicadoresFiltrados = radicadoresIds.filter((rId) => rId !== aprobadoPorId);
 
     if (radicadoresFiltrados.length > 0) {
+      const tipoAutoFormateado = await this.formatearTipoAuto(auto);
       const notificacionesRadicadores: import('./notification-client.service').SendNotificationDto[] = radicadoresFiltrados.map((radicadorId) => ({
         id_usuario_destinatario: radicadorId,
         tipo_notificacion: 'NUEVO_AUTO_RADICADOR',
         titulo: 'Nuevo auto disponible para radicación',
-        mensaje: `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+        mensaje: `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
           (radicadorAsignadoId
             ? `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`
             : `El auto se encuentra disponible en la plataforma para continuar con las actuaciones correspondientes.`),
@@ -1518,8 +1520,8 @@ export class AutoService {
       await this.notificationClient.sendMany(notificacionesRadicadores);
 
       // Correo a cada radicador
-      const asuntoRadicador = `Auto aprobado: ${this.formatearTipoAuto(auto.tipo)} - Proceso ${proceso.radicadoProceso}`;
-      const mensajeRadicador = `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+      const asuntoRadicador = `Auto aprobado: ${tipoAutoFormateado} - Proceso ${proceso.radicadoProceso}`;
+      const mensajeRadicador = `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
         (radicadorAsignadoId
           ? `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`
           : `El auto se encuentra disponible en la plataforma para continuar con las actuaciones correspondientes.`);
@@ -1701,8 +1703,18 @@ export class AutoService {
     return 'Usuario';
   }
 
-  private formatearTipoAuto(tipo: string): string {
-    return tipo.replace(/_/g, ' ').toLowerCase();
+  private async formatearTipoAuto(auto: LegalAuto): Promise<string> {
+    if (auto.autoConfigurationId) {
+      try {
+        const config = await this.autosConfigurationService.findById(auto.autoConfigurationId);
+        if (config?.nombre) {
+          return config.nombre;
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener configuración de auto:', error);
+      }
+    }
+    return auto.tipo.replace(/_/g, ' ').toLowerCase();
   }
 
   private async resolverDestinatario(idOrProfId: string): Promise<{
@@ -1819,6 +1831,7 @@ export class AutoService {
     profesionalNombre: string;
     radicadoProceso: string;
     tipoAuto: string;
+    tipoAutoFormateado?: string;
     numeroAuto?: string;
     jefeNombre: string;
     observaciones: string;
@@ -1826,7 +1839,7 @@ export class AutoService {
     processId?: string;
     urlAcceso?: string;
   }): string {
-    const tipoFormateado = this.formatearTipoAuto(data.tipoAuto);
+    const tipoFormateado = data.tipoAutoFormateado || data.tipoAuto.replace(/_/g, ' ').toLowerCase();
     const baseUrl = this.getFrontendBaseUrl();
     const urlAcceso =
       data.urlAcceso ||
@@ -1984,7 +1997,7 @@ export class AutoService {
       }
 
       const motivoTexto = observaciones?.trim() || 'Sin observaciones registradas';
-      const tipoAutoFormateado = this.formatearTipoAuto(auto.tipo);
+      const tipoAutoFormateado = await this.formatearTipoAuto(auto);
       const baseUrl = this.getFrontendBaseUrl();
       const urlAcceso = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(auto.processId || '')}&radicado=${encodeURIComponent(proceso.radicadoProceso || '')}`;
 
@@ -2042,6 +2055,7 @@ export class AutoService {
               profesionalNombre: datos.nombre,
               radicadoProceso: proceso.radicadoProceso,
               tipoAuto: auto.tipo,
+              tipoAutoFormateado,
               numeroAuto: auto.numero,
               jefeNombre,
               observaciones: motivoTexto,
