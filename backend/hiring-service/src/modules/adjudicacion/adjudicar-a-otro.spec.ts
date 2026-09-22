@@ -13,7 +13,7 @@ import { ActoAdjudicacionService } from './acto-adjudicacion.service';
  * Servicio con la base de datos fuera del camino: aquí se prueba la regla.
  */
 function servicio() {
-  return new ActoAdjudicacionService({ manager: {} } as any);
+  return new ActoAdjudicacionService({ manager: {} } as any, {} as any);
 }
 
 const OFERTAS = [

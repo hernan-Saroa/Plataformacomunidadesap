@@ -15,6 +15,8 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ExpedirRpDto, RechazarRpDto, SolicitarRpDto } from './dto/registro-presupuestal.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 8.3 de la matriz: la expedición del registro presupuestal. */
 export const NUMERAL_RP = '8.3';
@@ -75,7 +77,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class RegistroPresupuestalService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -229,7 +234,7 @@ export class RegistroPresupuestalService {
       rp.expedidoPor = acceso.userName;
       await em.save(rp);
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, rp.id, 'EXPEDIR', acceso, {
         actividad: NUMERAL_RP,
@@ -293,38 +298,61 @@ export class RegistroPresupuestalService {
     }
   }
 
-  /** La actividad se cumple cuando el RP queda expedido. */
+  /**
+   * La actividad se cumple cuando el RP queda expedido.
+   *
+   * Solo ahí se pregunta por aprobación o firma (EFDS-1183, EFDS-2070): antes
+   * de expedirse la actividad ni siquiera se da por hecha, así que exigir la
+   * firma en la radicación o la verificación sería pedirla por algo que
+   * todavía no cierra nada.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const rp = await this.rpVigente(contratoId, em);
     const aprobado = rp?.estado === 'EXPEDIDO';
-    const estado = aprobado ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em
-      .getRepository(ProcesoActividad)
-      .findOne({ where: { procesoId, numeral: NUMERAL_RP } });
+    if (!aprobado) {
+      const actividad = await em
+        .getRepository(ProcesoActividad)
+        .findOne({ where: { procesoId, numeral: NUMERAL_RP } });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_RP,
-          estado: estado as any,
-          datos: {},
-          ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_RP,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = aprobado ? acceso.userName : null;
-    actividad.revisadoAt = aprobado ? new Date() : null;
-    await em.save(actividad);
+    if (await this.cierre.exigeFirma(em, NUMERAL_RP)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_RP,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   /**

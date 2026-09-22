@@ -26,6 +26,8 @@ import {
   GenerarContratoDto,
   RechazarContratoDto,
 } from './dto/contrato.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 8.1 de la matriz: la elaboración del contrato. */
 export const NUMERAL_CONTRATO = '8.1';
@@ -144,7 +146,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class ContratosService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -373,7 +378,7 @@ export class ContratosService {
       contrato.aceptadoObservacion = dto.observacion ?? null;
       await em.save(contrato);
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, contrato.id, 'ACEPTAR', acceso, {
         actividad: NUMERAL_CONTRATO,
@@ -615,32 +620,66 @@ export class ContratosService {
    * que el proponente no ha aceptado todavía no formaliza nada, y darlo por
    * cumplido haría que el riel mintiera.
    */
-  private async marcarActividad(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+  /**
+   * La 8.1 se cumple al aceptar, no al firmar: la matriz da la actividad por
+   * hecha cuando el proponente acepta la minuta, y lo que viene después
+   * —las firmas del ordenador y del contratista— es el perfeccionamiento del
+   * contrato, no un segundo cierre de la misma actividad.
+   *
+   * Por eso la aprobación o la firma (EFDS-1183, EFDS-2070) solo se preguntan
+   * en la transición de BORRADOR a cumplida: si ya estaba decidida —aprobada
+   * o en revisión—, cada firma que se registre después no vuelve a pedirla.
+   * Rechazar la devuelve a BORRADOR, y ahí sí se vuelve a preguntar la próxima
+   * vez que se acepte.
+   */
+  private async marcarActividad(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     const contrato = await this.contratoVigente(procesoId, em);
     const aprobado = actividadCumplida(contrato?.estado);
-    const estado = aprobado ? 'APROBADO' : 'BORRADOR';
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_CONTRATO },
     });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_CONTRATO,
-          estado: estado as any,
-          datos: {},
-          ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!aprobado) {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_CONTRATO,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = aprobado ? acceso.userName : null;
-    actividad.revisadoAt = aprobado ? new Date() : null;
-    await em.save(actividad);
+    // Ya se decidió cómo cierra: no se repite la decisión en cada firma.
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+
+    if (await this.cierre.exigeFirma(em, NUMERAL_CONTRATO)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_CONTRATO,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

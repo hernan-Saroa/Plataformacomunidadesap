@@ -17,6 +17,7 @@ import { join } from 'path';
 
 import { CdpService } from './cdp.service';
 import {
+  AdjuntarSoporteCdpDto,
   ExpedirCdpDto,
   RechazarCdpDto,
   SolicitarCdpDto,
@@ -119,11 +120,12 @@ export class CdpController {
   async adjuntar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @UploadedFile() file: any,
+    @Body() dto: AdjuntarSoporteCdpDto,
     @Req() req: any,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
-    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
+    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req), dto.firma);
   }
 
   @Post('rechazar')

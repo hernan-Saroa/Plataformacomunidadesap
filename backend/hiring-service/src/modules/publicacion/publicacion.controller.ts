@@ -29,6 +29,7 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { PERMISO_PLAZO_TERMINAR } from '../../auth/permisos';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
 
@@ -113,5 +114,17 @@ export class PublicacionController {
     @Req() req: any,
   ) {
     return this.service.anular(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('plazo/terminar')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_PLAZO_TERMINAR)
+  @ApiOperation({
+    summary: 'Terminar el plazo de publicidad (pruebas)',
+    description:
+      'Mueve la fecha de vencimiento a ayer para poder recorrer el flujo sin esperar los días hábiles. Deja traza con el vencimiento original: un término acortado a mano no puede confundirse con uno cumplido.',
+  })
+  terminarPlazo(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.terminarPlazo(procesoId, getHiringAccess(req));
   }
 }

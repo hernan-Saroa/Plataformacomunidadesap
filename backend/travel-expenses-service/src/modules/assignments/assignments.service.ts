@@ -10,6 +10,10 @@ import { AnalistaEntity } from '../../entities/analista.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
 import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
+import {
+  NotificationClientService,
+  buildTravelExpenseEmailHtml,
+} from '../../common/notification-client.service';
 
 /**
  * RF-REC-002 — Asignar comisión a analista con tablero de carga.
@@ -30,6 +34,7 @@ export class AssignmentsService {
     @InjectRepository(SolicitudHistorialEstadoEntity)
     private readonly historialRepo: Repository<SolicitudHistorialEstadoEntity>,
     private readonly dataSource: DataSource,
+    private readonly notificationClient: NotificationClientService,
   ) {}
 
   /**
@@ -234,7 +239,7 @@ export class AssignmentsService {
       );
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       // 1. Bloquear la fila de la solicitud (pessimistic lock)
       const solicitud = await manager
         .getRepository(SolicitudComisionEntity)
@@ -302,6 +307,61 @@ export class AssignmentsService {
 
       return { solicitud: savedSolicitud, historial: savedHistorial };
     });
+
+    // Despacho de notificación in-app y correo institucional al analista individual asignado
+    try {
+      const sol = result.solicitud;
+      const consecutivo = sol.consecutivoUnico || sol.id;
+      const destino = `${sol.destinoCiudad || ''}${sol.destinoDepartamento ? ` (${sol.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = sol.fechaInicio ? new Date(sol.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = sol.fechaFin ? new Date(sol.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      await this.notificationClient.notifyUser(
+        analistaId,
+        {
+          tipo_notificacion: 'VIATICOS_ASIGNACION_ANALISTA',
+          titulo: `Comisión asignada para verificación: ${consecutivo}`,
+          mensaje: `Se le ha asignado la comisión ${consecutivo} con destino a ${destino} para verificación técnica y documental.`,
+          descripcion_corta: `Asignada · ${consecutivo}`,
+          icono: 'UserCheck',
+          color: '#003DA5',
+          prioridad: 'Alta',
+          categoria: 'VIATICOS',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver comisión',
+          url_accion: '/viaticos',
+          datos_adicionales: {
+            solicitudId: sol.id,
+            consecutivoUnico: consecutivo,
+            analistaId,
+            secretarioId,
+          },
+        },
+        {
+          subject: `[Viáticos ESAP] Comisión Asignada para Verificación: ${consecutivo}`,
+          html: buildTravelExpenseEmailHtml({
+            destinatarioNombre: 'Analista de Viáticos',
+            tituloHeader: 'ESAP — Gestión de Viáticos y Comisiones',
+            subtituloHeader: 'Asignación de Expediente para Verificación Técnica',
+            mensajePrincipal: `Se le ha asignado formalmente una comisión de servicios para que proceda con su revisión técnica, validación de soportes y liquidación:`,
+            consecutivo,
+            destino,
+            fechas: fechasStr,
+            nuevoEstado: 'EN VERIFICACIÓN',
+            tipoNovedad: 'INFO',
+            textoBoton: 'Revisar Solicitud',
+          }),
+          text: `Se le ha asignado la comisión ${consecutivo} con destino a ${destino} para verificación técnica en la plataforma de viáticos.`,
+        },
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `[assignments] No se pudo despachar notificación de asignación a analista ${analistaId}: ${err?.message}`,
+      );
+    }
+
+    return result;
   }
 
   /**

@@ -30,6 +30,8 @@ import {
   RadicarPagoDto,
   TramitarPagoDto,
 } from './dto/pagos.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 export { NUMERAL_PAGOS };
 
@@ -169,7 +171,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class PagosService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -505,7 +510,7 @@ export class PagosService {
       pago.referenciaPago = dto.referenciaPago;
       await em.save(pago);
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, pago.id, 'EXPEDIR', acceso, {
         actividad: NUMERAL_PAGOS,
@@ -595,11 +600,20 @@ export class PagosService {
     return 'el contrato todavía no está legalizado';
   }
 
-  /** Si el usuario que consulta es el supervisor vigente del contrato. */
+  /**
+   * Si el usuario que consulta es el supervisor vigente del contrato.
+   *
+   * Incluye al super admin, igual que `exigirSupervisor`: si aquí no lo
+   * contara, el botón de avalar nunca se le mostraría aunque la petición real
+   * se la fuera a aceptar —el soporte que tiene que poder destrabar un
+   * contrato sin supervisor con acceso se quedaría viendo solo "radicar", sin
+   * forma de llegar al botón que sí puede usar.
+   */
   private esElSupervisor(
     supervisor: SupervisionContrato | null,
     acceso: HiringAccess,
   ): boolean {
+    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
     if (!supervisor) return false;
     return supervisor.personaId === acceso.userId || supervisor.nombre === acceso.userName;
   }
@@ -727,39 +741,61 @@ export class PagosService {
    * trámite ya funcionó al menos una vez; mientras solo haya cuentas radicadas
    * o devueltas, sigue en curso.
    */
+  /**
+   * Cumplida con el primer pago tramitado. Aprobación y firma (EFDS-1183,
+   * EFDS-2070) solo se preguntan en esa transición: los pagos que se tramiten
+   * después no vuelven a pedirla, porque la actividad ya cerró.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const tramitados = await em
       .getRepository(PagoContrato)
       .count({ where: { contratoId, estado: 'TRAMITADO' } });
     const cumplida = tramitados > 0;
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_PAGOS },
     });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_PAGOS,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_PAGOS,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+
+    if (await this.cierre.exigeFirma(em, NUMERAL_PAGOS)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_PAGOS,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

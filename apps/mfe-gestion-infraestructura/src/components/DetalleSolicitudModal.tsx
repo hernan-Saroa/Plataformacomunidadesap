@@ -7,6 +7,8 @@ import {
   Eye, Monitor, GitBranch, Send, AlertCircle, Wand2, Users,
   ChevronDown, Zap, ChevronUp, ThumbsUp, Ban as IconRechazar,
   Repeat as RedistribuirIcon, CheckCircle2, ThumbsDown, RotateCcw,
+  BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge,
+  ScrollText
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -14,13 +16,20 @@ import {
   CatalogoItem,
   infraestructuraService,
   clasificarSLA,
+  SolicitudValoracion,
+  obtenerSesionUMI,
 } from '../services/infraestructuraService';
+import { DetalleValoracionForm } from './DetalleValoracionForm';
+import { DetalleCierreEjecucionForm } from './DetalleCierreEjecucionForm';
+import { DetalleConformidadForm, ModoConformidad } from './DetalleConformidadForm';
+import { Play as PlayIcon, ClipboardCheck as ClipboarCheckIcon, PackageX, Truck } from 'lucide-react';
 
 interface DetalleSolicitudModalProps {
   open: boolean;
   idSolicitud: string | null;
   onClose: () => void;
   catalogoCS?: CatalogoItem[];
+  onCambioExitoso?: () => void | Promise<void>;
 }
 
 const LUCIDE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -98,11 +107,55 @@ const dedupeEvidencias = (listas: SolicitudEvidencia[][]): SolicitudEvidencia[] 
   return Array.from(porId.values()).sort((a, b) => (a.orden || 0) - (b.orden || 0));
 };
 
+const parseJsonSeguro = (valor: string | null | undefined): Record<string, any> | null => {
+  if (!valor) return null;
+  const s = String(valor).trim();
+  if (!s.startsWith('{') && !s.startsWith('[')) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+};
+
+const resumirExtensionSLA = (obj: Record<string, any>): string | null => {
+  const dias = Number(obj.diasAdicionales || obj.dias || 0);
+  const fechaOrig = obj.fechaOriginal;
+  const fechaNueva = obj.fechaNueva;
+  if (!dias && !fechaOrig) return null;
+  const parts: string[] = [];
+  if (dias) parts.push(`+${dias} día(s) adicionales`);
+  if (fechaOrig) parts.push(`tope original: ${new Date(fechaOrig).toLocaleDateString('es-CO', { day:'numeric', month:'short' })}`);
+  if (fechaNueva) parts.push(`nuevo tope: ${new Date(fechaNueva).toLocaleDateString('es-CO', { day:'numeric', month:'short' })}`);
+  return parts.join(' · ');
+};
+
+const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; icon: React.ComponentType<any> }> = {
+  APROBADA_Y_ASIGNADA:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',     dot: 'bg-emerald-500', icon: BadgeCheck },
+  RECHAZADA:                { badge: 'bg-rose-100 text-rose-800 border-rose-200',              dot: 'bg-rose-500',    icon: XCircle },
+  REDISTRIBUIDA:            { badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',          dot: 'bg-indigo-500',  icon: Users },
+  INICIO_VALORACION:        { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-500',     icon: ClipboardList },
+  FINALIZA_VALORACION_CON_DISPONIBLES: { badge: 'bg-teal-100 text-teal-800 border-teal-200',     dot: 'bg-teal-600',    icon: CheckCircle2 },
+  FINALIZA_VALORACION_EN_ESPERA:       { badge: 'bg-amber-100 text-amber-800 border-amber-200',   dot: 'bg-amber-500',   icon: PackageX },
+  EXTENSION_SLA_POR_INSUMOS:{ badge: 'bg-orange-100 text-orange-800 border-orange-200',          dot: 'bg-orange-500',  icon: Clock },
+  RECEPCION_MATERIALES_Y_PASO_A_EJECUCION: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', icon: Truck },
+  EDICION_VALORACION_POR_ENCARGADO:    { badge: 'bg-slate-100 text-slate-800 border-slate-200',  dot: 'bg-slate-500',   icon: FileBadge },
+  INICIO_EJECUCION_DIRECTA: { badge: 'bg-green-100 text-green-800 border-green-200',             dot: 'bg-green-500',   icon: PlayIcon },
+  CIERRE_TECNICO:           { badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',       dot: 'bg-emerald-700',  icon: ClipboarCheckIcon },
+  CONFORMIDAD_CONFIRMADA:   { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
+  CONFORMIDAD_SIN_RESPUESTA:{ badge: 'bg-slate-100 text-slate-700 border-slate-200',              dot: 'bg-slate-500',    icon: Clock },
+  CONFORMIDAD_RECHAZADA_Y_REABIERTA: { badge: 'bg-amber-100 text-amber-800 border-amber-200',     dot: 'bg-amber-500',    icon: RotateCcw },
+  REMITIDA_TI:              { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-600',     icon: Monitor },
+  RECHAZO_REMISION_TI:      { badge: 'bg-rose-100 text-rose-800 border-rose-200',                dot: 'bg-rose-600',    icon: Ban },
+  APROBADA_REMISION_TI:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
+};
+
 export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   open,
   idSolicitud,
   onClose,
   catalogoCS = [],
+  onCambioExitoso,
 }) => {
   const [detalle, setDetalle] = useState<SolicitudMantenimiento | null>(null);
   const [evidenciasEndpoint, setEvidenciasEndpoint] = useState<SolicitudEvidencia[]>([]);
@@ -140,8 +193,55 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [errorRedist, setErrorRedist] = useState<string>('');
 
   const [ejecutandoAprobar, setEjecutandoAprobar] = useState<boolean>(false);
+  const [aprobacionObservaciones, setAprobacionObservaciones] = useState<string>('');
   const [historicoAbierto, setHistoricoAbierto] = useState<boolean>(true);
   const [toastModal, setToastModal] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Valoración en campo + insumos
+  // ---------------------------------------------------------------------------
+  const [valoraciones, setValoraciones] = useState<SolicitudValoracion[]>([]);
+  const [valoracionesCargando, setValoracionesCargando] = useState<boolean>(false);
+  const [mostrarDetalleValoracion, setMostrarDetalleValoracion] = useState<boolean>(false);
+  const [idValoracionAbierta, setIdValoracionAbierta] = useState<string | null>(null);
+
+  const [ejecutandoInicioDirecto, setEjecutandoInicioDirecto] = useState<boolean>(false);
+  const [ejecutandoInicioValoracion, setEjecutandoInicioValoracion] = useState<boolean>(false);
+
+  const [mostrarModalConfirmarRecepcion, setMostrarModalConfirmarRecepcion] = useState<boolean>(false);
+  const [recepcionObservaciones, setRecepcionObservaciones] = useState<string>('');
+  const [ejecutandoRecepcion, setEjecutandoRecepcion] = useState<boolean>(false);
+  const [errorRecepcion, setErrorRecepcion] = useState<string>('');
+
+  const [valoracionesAbierto, setValoracionesAbierto] = useState<boolean>(true);
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1736 RF-INF-007: Cierre técnico ejecución + evidencia
+  // ---------------------------------------------------------------------------
+  const [openCierre, setOpenCierre] = useState<boolean>(false);
+
+  const handleCierreSaved = async (resp: any) => {
+    if (resp && typeof resp === 'object' && (resp.idSolicitud || resp.estado)) {
+      setDetalle(resp);
+    }
+    await recargarDetalle();
+    await onCambioExitoso?.();
+  };
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008: Conformidad del área solicitante
+  // ---------------------------------------------------------------------------
+  const [openConformidad, setOpenConformidad] = useState<boolean>(false);
+  const [modoConformidad, setModoConformidad] = useState<ModoConformidad>('confirmar');
+
+  const handleConformidadSaved = async (resp: any) => {
+    setOpenConformidad(false);
+    if (resp && typeof resp === 'object' && (resp.idSolicitud || resp.estado)) {
+      setDetalle(resp);
+    }
+    await recargarDetalle();
+    await onCambioExitoso?.();
+  };
 
   useEffect(() => {
     let cancelado = false;
@@ -152,6 +252,11 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setSugerencia(null);
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
+      setAprobacionObservaciones('');
+      setValoraciones([]);
+      setIdValoracionAbierta(null);
+      setMostrarDetalleValoracion(false);
+      setMostrarModalConfirmarRecepcion(false);
       return;
     }
     const cargar = async () => {
@@ -162,6 +267,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setSugerencia(null);
       setErrorSugerir('');
       setTecnicoManualSeleccionado('');
+      setAprobacionObservaciones('');
+      setValoracionesCargando(true);
       try {
         const tareas: Promise<any>[] = [
           infraestructuraService.getMantenimientoById(idSolicitud),
@@ -169,6 +276,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           infraestructuraService.getCatalogo('ESTADO_SOLICITUD'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getRemisiones(idSolicitud || ''),
+          infraestructuraService.listarValoracionesPorSolicitud(idSolicitud),
         ];
         if (!catalogoCS || catalogoCS.length === 0) {
           tareas.push(infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'));
@@ -187,6 +295,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         const est = results[idx++];
         const pri = results[idx++];
         const rems = results[idx++];
+        const vals = results[idx++];
         if (!catalogoCS || catalogoCS.length === 0) {
           csFallback = results[idx++];
         }
@@ -196,6 +305,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         setDetalle(d);
         setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
         setRemisiones(Array.isArray(rems) ? rems : []);
+        setValoraciones(Array.isArray(vals) ? vals : []);
+        const valoracionAbierta = (vals || []).find((v: SolicitudValoracion) => !v.estadoAlFinalizar);
+        if (valoracionAbierta) setIdValoracionAbierta(valoracionAbierta.idValoracion);
         setCatalogoEstado(est);
         setCatalogoPrioridad(pri);
         if (csFallback && Array.isArray(csFallback)) setCatalogoCSLocal(csFallback);
@@ -206,6 +318,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         if (!cancelado) {
           setCargando(false);
           setCargandoTecnicos(false);
+          setValoracionesCargando(false);
         }
       }
     };
@@ -240,6 +353,61 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const evidenciasFinales = useMemo<SolicitudEvidencia[]>(() => {
     return dedupeEvidencias([evidenciasEndpoint, detalle?.evidencias || []]);
   }, [evidenciasEndpoint, detalle]);
+
+  type GrupoEvidencias = {
+    key: 'radicacion' | 'valoracion' | 'cierre' | 'otras';
+    label: string;
+    icon: React.ComponentType<any>;
+    claseBadge: string;
+    items: SolicitudEvidencia[];
+  };
+
+  const evidenciasAgrupadas = useMemo<GrupoEvidencias[]>(() => {
+    const idsValoracion = new Set<string>();
+    (detalle?.valoraciones || []).forEach((v) => {
+      (v.evidencias || []).forEach((e) => e?.idEvidencia && idsValoracion.add(e.idEvidencia));
+    });
+    const idsCierre = new Set<string>();
+    const arrCierre = (detalle?.evidenciasCierre || []);
+    for (const it of arrCierre) {
+      if (it?.idEvidencia) idsCierre.add(String(it.idEvidencia));
+      if (it?.key) idsCierre.add(String(it.key));
+      if (it?.rutaObjeto) idsCierre.add(String(it.rutaObjeto));
+    }
+    const evRadArr: SolicitudEvidencia[] = [];
+    const evValArr: SolicitudEvidencia[] = [];
+    const evCieArr: SolicitudEvidencia[] = [];
+    const evOtrArr: SolicitudEvidencia[] = [];
+
+    for (const e of evidenciasFinales) {
+      const idMatch = e.idEvidencia;
+      const ruta = (e.rutaObjeto || '').toLowerCase();
+      if (idsCierre.has(idMatch) || ruta.includes('/cierre-tecnico') || ruta.includes('cierre_tecnico')) {
+        evCieArr.push(e);
+      } else if (idsValoracion.has(idMatch) || ruta.includes('/valoracion') || ruta.includes('valoracion_') || (e.notas || '').toLowerCase().includes('valor')) {
+        evValArr.push(e);
+      } else if (evRadArr.length === 0 && (
+        (e.orden === 1) ||
+        (detalle?.evidenciaInicialUrl && (e.urlPublica === detalle.evidenciaInicialUrl || e.urlPresigned?.startsWith(detalle.evidenciaInicialUrl.split('?')[0]))) ||
+        ruta.includes('/mantenimiento/2026') || ruta.endsWith(`/${e.nombreAlmacenado}`)
+      )) {
+        evRadArr.push(e);
+      } else {
+        evOtrArr.push(e);
+      }
+    }
+    const grupos: GrupoEvidencias[] = [
+      { key: 'radicacion', label: 'Radicación inicial', icon: FileText,     claseBadge: 'bg-slate-100 text-slate-700 border border-slate-200',           items: evRadArr },
+      { key: 'valoracion', label: 'Valoración en campo', icon: ClipboardList, claseBadge: 'bg-sky-100 text-sky-800 border border-sky-200',              items: evValArr },
+      { key: 'cierre',     label: 'Cierre técnico',       icon: ClipboarCheckIcon, claseBadge: 'bg-emerald-100 text-emerald-800 border border-emerald-200', items: evCieArr },
+      { key: 'otras',      label: 'Otras evidencias',     icon: Paperclip,   claseBadge: 'bg-indigo-100 text-indigo-800 border border-indigo-200',        items: evOtrArr },
+    ];
+    return grupos;
+  }, [evidenciasFinales, detalle]);
+
+  const [evAbierto, setEvAbierto] = useState<Record<string, boolean>>({
+    radicacion: true, valoracion: true, cierre: true, otras: false,
+  });
 
   const claseEstado = (estado: string): string => {
     const it = mapEstado.get((estado || '').toUpperCase());
@@ -336,9 +504,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     try {
       const payload: any = {
         tecnicoCodigo: areaTI ? undefined : codTec,
-        observaciones: rechazoObservaciones.trim() || undefined,
+        observaciones: aprobacionObservaciones.trim() || undefined,
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
+      if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
       if (res?.__meta?.warning) {
         setToastModal({ tipo: 'warn', texto: res.__meta.warning });
       } else {
@@ -351,7 +520,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       }
       setTecnicoManualSeleccionado('');
       setSugerencia(null);
+      setAprobacionObservaciones('');
       await recargarDetalle();
+      await onCambioExitoso?.();
     } catch (err: any) {
       setToastModal({ tipo: 'err', texto: err?.message || 'No se pudo aprobar la solicitud. Verifica permisos.' });
     } finally {
@@ -380,9 +551,15 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         motivo,
         observaciones: rechazoObservaciones.trim() || undefined,
       });
-      setToastModal({ tipo: 'ok', texto: 'Solicitud RECHAZADA. El motivo es visible para el solicitante.' });
+      const areaTI = (detalle?.areaResponsableActual || '').toUpperCase() === 'TI';
+      if (areaTI) {
+        setToastModal({ tipo: 'ok', texto: 'Remisión TI RECHAZADA. La solicitud retorna a la bandeja UMI para correcciones. El motivo queda registrado.' });
+      } else {
+        setToastModal({ tipo: 'ok', texto: 'Solicitud RECHAZADA. El motivo es visible para el solicitante.' });
+      }
       setMostrarModalRechazar(false);
       await recargarDetalle();
+      await onCambioExitoso?.();
     } catch (err: any) {
       setErrorRechazo(err?.message || 'No se pudo rechazar la solicitud. Intenta nuevamente.');
     } finally {
@@ -414,6 +591,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         motivoRedistribucion: redistMotivo.trim() || undefined,
         observaciones: redistObservaciones.trim() || undefined,
       });
+      if (res && typeof res === 'object' && (res.idSolicitud || res.estado)) setDetalle(res);
       if (res?.__meta?.warning) {
         setToastModal({ tipo: 'warn', texto: res.__meta.warning });
       } else {
@@ -424,6 +602,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setTecnicoManualSeleccionado('');
       setSugerencia(null);
       await recargarDetalle();
+      await onCambioExitoso?.();
     } catch (err: any) {
       setErrorRedist(err?.message || 'No se pudo redistribuir la solicitud. Intenta nuevamente.');
     } finally {
@@ -442,6 +621,71 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return renderIcono(it?.metadata?.icon, size, 'clock');
   };
 
+  const renderThumbnailEvidencia = (e: SolicitudEvidencia) => {
+    const esImagen = !!e.mimeType && e.mimeType.startsWith('image/');
+    const esPdf = !!e.mimeType && e.mimeType === 'application/pdf';
+    const url = e.urlPresigned || e.urlPublica || '#';
+    if (esImagen) {
+      return (
+        <a
+          key={e.idEvidencia}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group relative block rounded-2xl overflow-hidden border border-slate-200 bg-white aspect-square hover:ring-2 hover:ring-amber-400/60 transition-all shadow-sm hover:shadow-md"
+          title={e.nombreOriginal}
+        >
+          <img
+            src={url}
+            alt={e.nombreOriginal}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={(ev) => {
+              const img = ev.currentTarget;
+              if (e.urlPublica && img.src !== e.urlPublica && e.urlPresigned !== e.urlPublica) {
+                img.src = e.urlPublica;
+                return;
+              }
+              const container = img.parentElement;
+              if (!container) return;
+              const fallback = document.createElement('div');
+              fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-500 gap-1.5';
+              fallback.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-9 h-9 text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                <div class="text-[10px] font-bold px-2 text-center truncate w-full">${(e.nombreOriginal || 'imagen').replace(/[\"'<>]/g, ' ').slice(0, 22)}</div>
+              `;
+              img.replaceWith(fallback);
+            }}
+          />
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/75 to-transparent text-white text-[10px] font-semibold truncate">
+            {e.nombreOriginal}
+          </div>
+        </a>
+      );
+    }
+    const IconComp = esPdf ? FileText : Image;
+    return (
+      <a
+        key={e.idEvidencia}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-amber-300 hover:shadow-sm transition-all text-center"
+        title={e.nombreOriginal}
+      >
+        <IconComp className={`w-10 h-10 ${esPdf ? 'text-rose-500' : 'text-slate-500'}`} />
+        <div className="text-[11px] font-semibold text-slate-700 line-clamp-2 leading-tight w-full break-words">
+          {e.nombreOriginal}
+        </div>
+        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+          <Download className="w-3 h-3" />
+          {formatearTamano(e.tamanoBytes)}
+        </div>
+      </a>
+    );
+  };
+
   const renderEvidencias = () => {
     if (cargando) {
       return (
@@ -451,7 +695,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         </div>
       );
     }
-    if (!evidenciasFinales || evidenciasFinales.length === 0) {
+    const total = evidenciasFinales?.length || 0;
+    if (total === 0) {
       return (
         <div className="text-xs text-slate-500 py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
           No hay evidencias adjuntas registradas para esta solicitud
@@ -459,93 +704,321 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       );
     }
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {evidenciasFinales.map((e) => {
-          const esImagen = !!e.mimeType && e.mimeType.startsWith('image/');
-          const esPdf = !!e.mimeType && e.mimeType === 'application/pdf';
-          const url = e.urlPresigned || e.urlPublica || '#';
-          if (esImagen) {
-            return (
-              <a
-                key={e.idEvidencia}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative block rounded-2xl overflow-hidden border border-slate-200 bg-white aspect-square hover:ring-2 hover:ring-amber-400/60 transition-all shadow-sm hover:shadow-md"
-                title={e.nombreOriginal}
-              >
-                <img
-                  src={url}
-                  alt={e.nombreOriginal}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  onError={(ev) => {
-                    const img = ev.currentTarget;
-                    if (e.urlPublica && img.src !== e.urlPublica && e.urlPresigned !== e.urlPublica) {
-                      img.src = e.urlPublica;
-                      return;
-                    }
-                    const container = img.parentElement;
-                    if (!container) return;
-                    const fallback = document.createElement('div');
-                    fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-500 gap-1.5';
-                    fallback.innerHTML = `
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-9 h-9 text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-                      <div class="text-[10px] font-bold px-2 text-center truncate w-full">${(e.nombreOriginal || 'imagen').replace(/[\"'<>]/g, ' ').slice(0, 22)}</div>
-                    `;
-                    img.replaceWith(fallback);
-                  }}
-                />
-                <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/75 to-transparent text-white text-[10px] font-semibold truncate">
-                  {e.nombreOriginal}
-                </div>
-              </a>
-            );
-          }
-          const IconComp = esPdf ? FileText : Image;
+      <div className="space-y-3">
+        {evidenciasAgrupadas.map((grupo) => {
+          if (!grupo.items || grupo.items.length === 0) return null;
+          const Icono = grupo.icon;
+          const abierto = !!evAbierto[grupo.key];
           return (
-            <a
-              key={e.idEvidencia}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-amber-300 hover:shadow-sm transition-all text-center"
-              title={e.nombreOriginal}
-            >
-              <IconComp className={`w-10 h-10 ${esPdf ? 'text-rose-500' : 'text-slate-500'}`} />
-              <div className="text-[11px] font-semibold text-slate-700 line-clamp-2 leading-tight w-full break-words">
-                {e.nombreOriginal}
-              </div>
-              <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                <Download className="w-3 h-3" />
-                {formatearTamano(e.tamanoBytes)}
-              </div>
-            </a>
+            <div key={grupo.key} className="rounded-2xl border border-slate-200 bg-slate-50/40 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setEvAbierto((prev) => ({ ...prev, [grupo.key]: !prev[grupo.key] }))}
+                className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-slate-100/70 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-xl flex items-center justify-center border ${grupo.claseBadge}`}>
+                    <Icono className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-700">
+                    {grupo.label}
+                  </span>
+                  <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 border ${grupo.claseBadge}`}>
+                    {grupo.items.length}
+                  </span>
+                </div>
+                {abierto ? (
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+              </button>
+              {abierto && (
+                <div className="px-4 pb-4 pt-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {grupo.items.map((e) => renderThumbnailEvidencia(e))}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
     );
   };
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Handlers valoración e insumos
+  // ---------------------------------------------------------------------------
+  const handleIniciarEjecucionDirecta = async () => {
+    if (!detalle || !idSolicitud) return;
+    setEjecutandoInicioDirecto(true);
+    setToastModal(null);
+    try {
+      const actualizado = await infraestructuraService.iniciarEjecucionDirecta(idSolicitud);
+      setDetalle(actualizado);
+      setToastModal({ tipo: 'ok', texto: 'Solicitud pasó a En ejecución (sin valoración previa).' });
+    } catch (err: any) {
+      setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar ejecución directa.' });
+    } finally {
+      setEjecutandoInicioDirecto(false);
+    }
+  };
+
+  const handleIniciarValoracion = async () => {
+    if (!detalle || !idSolicitud) return;
+    setEjecutandoInicioValoracion(true);
+    setToastModal(null);
+    try {
+      const r = await infraestructuraService.iniciarValoracion(idSolicitud, {});
+      setDetalle(r.solicitud);
+      const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
+      setValoraciones(lista);
+      setIdValoracionAbierta(r.valoracion.idValoracion);
+      setMostrarDetalleValoracion(true);
+      setToastModal({ tipo: 'ok', texto: 'Valoración previa iniciada. Complete el formulario y guarde.' });
+    } catch (err: any) {
+      setToastModal({ tipo: 'err', texto: err?.message || 'Error al iniciar la valoración.' });
+    } finally {
+      setEjecutandoInicioValoracion(false);
+    }
+  };
+
+  const handleAbrirValoracionExistente = (v: SolicitudValoracion) => {
+    setIdValoracionAbierta(v.idValoracion);
+    setMostrarDetalleValoracion(true);
+  };
+
+  const handleValoracionSaved = async (r: { solicitud: SolicitudMantenimiento; valoracion: SolicitudValoracion }) => {
+    setDetalle(r.solicitud);
+    if (idSolicitud) {
+      const lista = await infraestructuraService.listarValoracionesPorSolicitud(idSolicitud);
+      setValoraciones(lista);
+    }
+    setIdValoracionAbierta(null);
+  };
+
+  const abrirConfirmarRecepcion = () => {
+    setRecepcionObservaciones('');
+    setErrorRecepcion('');
+    setMostrarModalConfirmarRecepcion(true);
+  };
+
+  const handleConfirmarRecepcion = async () => {
+    if (!idSolicitud) return;
+    setErrorRecepcion('');
+    setEjecutandoRecepcion(true);
+    try {
+      const actualizado = await infraestructuraService.confirmarRecepcionInsumos(idSolicitud, {
+        observaciones: recepcionObservaciones.trim() || undefined,
+      });
+      setDetalle(actualizado);
+      setMostrarModalConfirmarRecepcion(false);
+      setToastModal({ tipo: 'ok', texto: 'Recepción de materiales confirmada. Solicitud pasó a En ejecución.' });
+    } catch (err: any) {
+      setErrorRecepcion(err?.message || 'Error al confirmar recepción.');
+    } finally {
+      setEjecutandoRecepcion(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helpers permisos EFDS-1735: decidir qué botones renderizar según estado
+  // ---------------------------------------------------------------------------
+  const estadoActual = (detalle?.estado || '').toUpperCase();
+  // EFDS-1730 / EFDS-1734: estados pre-aprobación donde sí tiene sentido Aprobar o Rechazar la primera vez.
+  const ESTADOS_PRE_APROBACION_UMI: string[] = [
+    'RECIBIDA',
+    'EN_ANALISIS',
+    'PENDIENTE_CLASIFICACION',
+    'PENDIENTE_APROBACION',
+  ];
+  const ESTADOS_PRE_APROBACION_TI: string[] = [
+    'REMITIDA_TI',
+    'PENDIENTE_APROBACION',
+  ];
+  const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
+    'COMPLETADA',
+    'CERRADA',
+    'CERRADA_SIN_ATENCION',
+    'RECHAZADA',
+  ];
+  const puedeAprobarAsignarUMI =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    ESTADOS_PRE_APROBACION_UMI.includes(estadoActual);
+  const puedeAprobarRemisionTI =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() === 'TI' &&
+    ESTADOS_PRE_APROBACION_TI.includes(estadoActual);
+  const puedeRechazarUMI = puedeAprobarAsignarUMI;
+  const puedeRechazarRemisionTI = puedeAprobarRemisionTI;
+  const puedeRedistribuir =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    estadoActual === 'ASIGNADA';
+
+  // Visibilidad caja Motor sugerencia + reasignación manual (EFDS-1734 / 1735 / 1736):
+  // Sólo tiene sentido durante aprobación inicial o reasignación en ASIGNADA; nunca en ejecución / finales.
+  const puedeVerMotorAsignacion = !!(puedeAprobarAsignarUMI || estadoActual === 'ASIGNADA');
+
+  const puedeIniciarEjecOValoracion =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    (estadoActual === 'ASIGNADA');
+  const puedeConfirmarRecepcionMateriales =
+    detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS';
+  const esCategoriaElectricas48 = Number(detalle?.idCategoria) === 48;
+
+  // EFDS-1736 helpers footer
+  const yaCerradoTecnicamente = !!(detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION');
+  const puedeCerrarTecnicamente =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    estadoActual === 'EN_PROGRESO' &&
+    !yaCerradoTecnicamente;
+  const puedeVerCierreTecnico =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    yaCerradoTecnicamente;
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008 helpers conformidad
+  // ---------------------------------------------------------------------------
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+
+  const validarRolesAsignadorFE = (roles: string[]): boolean => {
+    const set = new Set((roles || []).map((r) => String(r).trim().toUpperCase()));
+    return set.has('SUPER_ADMIN') || set.has('GESTOR_MANTENIMIENTO') || set.has('ADMINISTRADOR_FUNCIONAL') || set.has('ADMIN');
+  };
+
+  const esUsuarioSolicitanteConforme = useMemo(() => {
+    if (!detalle) return false;
+    if (validarRolesAsignadorFE(sesionUmi.roles || [])) return true;
+    const userIdActual = String(sesionUmi.userId || '').trim().toLowerCase();
+    const emailActual = String(sesionUmi.email || '').trim().toLowerCase();
+    const sUserId = String((detalle as any).usuarioSolicitanteId || '').trim().toLowerCase();
+    const sEmail = String((detalle as any).usuarioSolicitanteEmail || (detalle as any).solicitanteEmail || '').trim().toLowerCase();
+    if (userIdActual && sUserId && userIdActual === sUserId) return true;
+    if (emailActual && sEmail && emailActual === sEmail) return true;
+    return false;
+  }, [detalle, sesionUmi]);
+
+  const usuarioEsSolicitanteOAsignador = !!(detalle && esUsuarioSolicitanteConforme);
+
+  const puedeConfirmarConformidad =
+    detalle &&
+    estadoActual === 'COMPLETADA' &&
+    usuarioEsSolicitanteOAsignador;
+
+  const countdownConformidad = useMemo(() => {
+    if (!detalle?.fechaLimiteConformidad) return null;
+    const d = new Date(detalle.fechaLimiteConformidad);
+    if (isNaN(d.getTime())) return null;
+    const ms = d.getTime() - Date.now();
+    const totalSeg = Math.floor(ms / 1000);
+    const dias = Math.floor(totalSeg / 86400);
+    const horas = Math.floor((totalSeg % 86400) / 3600);
+    const minutos = Math.floor((totalSeg % 3600) / 60);
+    const vencido = totalSeg < 0;
+    if (vencido) {
+      const av = Math.abs(totalSeg);
+      const dv = Math.floor(av / 86400);
+      const hv = Math.floor((av % 86400) / 3600);
+      const txt = dv > 0 ? `Vencido hace ${dv}d ${hv}h` : hv > 0 ? `Vencido hace ${hv}h` : `Vencido hace ${Math.floor(av/60)}m`;
+      return { vencido: true, dias: 0, horas: 0, minutos: 0, texto: txt };
+    }
+    if (dias > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${dias}d ${horas}h` };
+    if (horas > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${horas}h ${minutos}m` };
+    return { vencido: false, dias, horas, minutos, texto: `Vence en ${Math.max(0, minutos)}m` };
+  }, [detalle?.fechaLimiteConformidad]);
+
+  const mostrarBannerPendienteConformidad =
+    detalle &&
+    estadoActual === 'COMPLETADA' &&
+    !usuarioEsSolicitanteOAsignador &&
+    !!detalle.fechaLimiteConformidad;
+
+  const resumenConformidadBadge = useMemo(() => {
+    if (!detalle) return null;
+    const resultado = detalle.resultadoConformidad;
+    const fecha = detalle.fechaConformidad;
+    if (!resultado) return null;
+    if (resultado === 'CONFIRMADA') {
+      return {
+        cls: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
+        icon: ThumbsUp,
+        label: `Conformidad confirmada · ${fecha ? formatearFecha(fecha) : 'Pendiente'}`,
+      };
+    }
+    if (resultado === 'SIN_RESPUESTA') {
+      return {
+        cls: 'bg-slate-100 text-slate-700 ring-slate-200',
+        icon: Clock,
+        label: `Cierre sin respuesta · ${fecha ? formatearFecha(fecha) : '—'}`,
+      };
+    }
+    if (resultado === 'RECHAZADA_Y_REABIERTA') {
+      return {
+        cls: 'bg-amber-100 text-amber-800 ring-amber-200',
+        icon: RotateCcw,
+        label: `Rechazada y reabierta · ${fecha ? formatearFecha(fecha) : '—'} · ${Number(detalle.conteoReaperturasConformidad || 0)} reintento(s)`,
+      };
+    }
+    return null;
+  }, [detalle]);
+
+  const abrirConformidad = (modo: ModoConformidad) => {
+    if (!puedeConfirmarConformidad || bloqueado) return;
+    setModoConformidad(modo);
+    setOpenConformidad(true);
+  };
+
   if (!open) return null;
-  const bloqueado = ejecutandoAprobar || ejecutandoRechazo || ejecutandoRedist || remitirEnviando;
+  const bloqueado =
+    ejecutandoAprobar ||
+    ejecutandoRechazo ||
+    ejecutandoRedist ||
+    remitirEnviando ||
+    ejecutandoInicioDirecto ||
+    ejecutandoInicioValoracion ||
+    ejecutandoRecepcion;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        background: 'rgba(15, 23, 42, 0.5)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget && !bloqueado) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Detalle de solicitud de mantenimiento ${detalle?.consecutivo || ''}`}
-    >
+    <>
+      {detalle && idSolicitud && (
+        <DetalleCierreEjecucionForm
+          open={openCierre}
+          onClose={() => setOpenCierre(false)}
+          idSolicitud={idSolicitud}
+          solicitud={detalle}
+          onSaved={handleCierreSaved}
+        />
+      )}
+      {detalle && idSolicitud && (
+        <DetalleConformidadForm
+          open={openConformidad}
+          onClose={() => setOpenConformidad(false)}
+          idSolicitud={idSolicitud}
+          solicitud={detalle}
+          modo={modoConformidad}
+          onSaved={handleConformidadSaved}
+        />
+      )}
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          background: 'rgba(15, 23, 42, 0.5)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget && !bloqueado) onClose(); }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Detalle de solicitud de mantenimiento ${detalle?.consecutivo || ''}`}
+      >
       <div
         style={{
           position: 'fixed',
@@ -627,6 +1100,18 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   </span>
                 );
               })()}
+              {detalle && Number(detalle.diasExtendidosPorInsumos || 0) > 0 && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 shadow-sm text-[11px] font-bold">
+                  <AlertTriangle className="w-3 h-3" />
+                  SLA extendida · +{detalle.diasExtendidosPorInsumos} d por materiales
+                </span>
+              )}
+              {detalle && detalle.esperaInsumosFlag && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-300 shadow-sm text-[11px] font-bold">
+                  <PackageX className="w-3 h-3" />
+                  En espera de insumos
+                </span>
+              )}
             </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
               {cargando ? (
@@ -853,6 +1338,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           </div>
                         </div>
                       );
+                    }
+                    if (!puedeVerMotorAsignacion) {
+                      return null;
                     }
                     return (
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
@@ -1097,6 +1585,212 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 )}
               </div>
 
+              {/* ------------------------------------------------------------------- */}
+              {/* EFDS-1735 RF-INF-006: Acordeón Valoraciones e insumos             */}
+              {/* ------------------------------------------------------------------- */}
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setValoracionesAbierto(!valoracionesAbierto)}
+                  className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
+                >
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+                    <ClipboarCheckIcon className="w-3.5 h-3.5" />
+                    Valoraciones e insumos
+                    <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
+                      {valoraciones.length}
+                    </span>
+                    {idValoracionAbierta && (
+                      <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300 tracking-normal">
+                        1 abierta
+                      </span>
+                    )}
+                  </div>
+                  {valoracionesAbierto ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                  )}
+                </button>
+                {valoracionesAbierto && (
+                  <div className="space-y-2">
+                    {valoracionesCargando && valoraciones.length === 0 && (
+                      <div className="rounded-lg border border-slate-200 px-3 py-2.5 text-xs text-slate-500 bg-slate-50 flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Cargando valoraciones...
+                      </div>
+                    )}
+                    {!valoracionesCargando && valoraciones.length === 0 && (
+                      <div className="rounded-lg border border-slate-200 px-3 py-4 text-xs text-slate-500 bg-slate-50 text-center">
+                        <ClipboarCheckIcon className="w-4.5 h-4.5 mx-auto mb-1.5 text-slate-400" />
+                        No hay valoraciones. Si la solicitud está <strong>ASIGNADA</strong>, el técnico puede Iniciar Ejecución Directa o Registrar una Valoración Previa desde los botones del pie de página.
+                      </div>
+                    )}
+                    {valoraciones.map((v) => {
+                      const totalInsumos = (v.insumos || []).reduce(
+                        (acc, i) => acc + ((Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0),
+                        0,
+                      );
+                      const abierta = !v.estadoAlFinalizar;
+                      return (
+                        <div
+                          key={v.idValoracion}
+                          className={[
+                            'rounded-lg border p-3 space-y-2 transition',
+                            abierta
+                              ? 'bg-indigo-50/50 border-indigo-200'
+                              : 'bg-white border-slate-200',
+                          ].join(' ')}
+                        >
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={[
+                                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                  abierta
+                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                                    : v.estadoAlFinalizar === 'EN_ESPERA_DE_INSUMOS'
+                                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                                ].join(' ')}>
+                                  {abierta ? 'Borrador' : v.estadoAlFinalizar}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {formatearFecha(v.createdAt)}
+                                </span>
+                                {v.esVersionCorregidaPorEncargado && (
+                                  <span className="text-[10px] font-bold text-indigo-700 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded-full">
+                                    Corregida por Encargado
+                                  </span>
+                                )}
+                                {esCategoriaElectricas48 && (
+                                  <span className={[
+                                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                    v.requiereApagadoElectrico
+                                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                      : 'bg-slate-100 text-slate-700 border-slate-200',
+                                  ].join(' ')}>
+                                    <Zap className="w-2.5 h-2.5" />
+                                    {v.requiereApagadoElectrico ? 'Requiere apagado' : 'Sin apagado'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500">
+                                <span className="font-semibold text-slate-700">{v.tecnicoNombreValorador || v.tecnicoCodigoValorador || 'Valorador'}</span>
+                                {' · '}Riesgo {v.nivelRiesgo || '—'} · Tiempo {v.tiempoEstimadoHoras || 0} h
+                                {totalInsumos > 0 && <> · Insumos estimados <span className="font-semibold text-slate-700">${totalInsumos.toLocaleString('es-CO')} COP</span></>}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirValoracionExistente(v)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold transition"
+                              >
+                                <Eye className="w-3 h-3" />
+                                {abierta ? 'Continuar edición' : 'Ver detalle'}
+                              </button>
+                              {idValoracionAbierta === v.idValoracion && (
+                                <span className="text-[10px] font-bold text-indigo-600 px-1">Abierta</span>
+                              )}
+                            </div>
+                          </div>
+                          {(v.diagnostico || v.alcanceIdentificado) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                              <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Diagnóstico</p>
+                                <p className="text-slate-700 leading-5">{v.diagnostico || '—'}</p>
+                              </div>
+                              <div className="rounded bg-white/80 border border-slate-100 px-2.5 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Alcance</p>
+                                <p className="text-slate-700 leading-5">{v.alcanceIdentificado || '—'}</p>
+                              </div>
+                            </div>
+                          )}
+                          {Array.isArray(v.insumos) && v.insumos.length > 0 && (
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                              <table className="min-w-full text-[11px]">
+                                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                  <tr>
+                                    <th className="px-2 py-1.5 text-left font-bold w-8">#</th>
+                                    <th className="px-2 py-1.5 text-left font-bold min-w-[160px]">Insumo</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-16">Cant</th>
+                                    <th className="px-2 py-1.5 text-left font-bold w-16">Unidad</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-24">$ Unit</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-24">Subtotal</th>
+                                    <th className="px-2 py-1.5 text-left font-bold w-44">Disponibilidad</th>
+                                    <th className="px-2 py-1.5 text-right font-bold w-14">Días</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {v.insumos!.map((i, idx) => {
+                                    const sub = (Number(i.cantidad || 0) * Number(i.costoUnitarioCop || 0)) || 0;
+                                    return (
+                                      <tr key={i.idInsumo || (v.idValoracion + idx)} className="border-b border-slate-100 last:border-b-0">
+                                        <td className="px-2 py-1.5 text-slate-500 font-semibold">{idx + 1}</td>
+                                        <td className="px-2 py-1.5 font-semibold text-slate-800">{i.nombre}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{i.cantidad}</td>
+                                        <td className="px-2 py-1.5 text-slate-600">{i.unidadMedida}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">${(Number(i.costoUnitarioCop || 0)).toLocaleString('es-CO')}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-slate-800">${sub.toLocaleString('es-CO')}</td>
+                                        <td className="px-2 py-1.5">
+                                          <span className={[
+                                            'inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                            i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
+                                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                              : 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                                          ].join(' ')}>
+                                            {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Solicitar' : 'En bodega'}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
+                                          {i.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? (i.tiempoAdquisicionDias ?? '-') : '—'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                                <tfoot className="bg-slate-50 border-t border-slate-200">
+                                  <tr>
+                                    <td className="px-2 py-1.5" colSpan={5}></td>
+                                    <td className="px-2 py-1.5 text-right tabular-nums text-xs font-black text-slate-900">
+                                      ${totalInsumos.toLocaleString('es-CO')}
+                                    </td>
+                                    <td className="px-2 py-1.5" colSpan={2}></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          )}
+                          {v.observaciones && (
+                            <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
+                              <span className="font-bold text-slate-500">Notas:</span> {v.observaciones}
+                            </div>
+                          )}
+                          {Array.isArray(v.evidencias) && v.evidencias.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {v.evidencias.map((e, i) => (
+                                <a
+                                  key={e.idEvidencia || ('evv-' + v.idValoracion + '-' + i)}
+                                  href={e.urlPresigned || e.urlPublica || '#'}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold hover:bg-slate-200 transition"
+                                >
+                                  <Paperclip className="w-2.5 h-2.5" />
+                                  {(e.nombreOriginal || 'evidencia').slice(0, 28)}
+                                  {(e.nombreOriginal || '').length > 28 ? '…' : ''}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-3">
                 <button
                   type="button"
@@ -1104,7 +1798,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
                 >
                   <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
-                    <ClipboardList className="w-3.5 h-3.5" />
+                    <ScrollText className="w-3.5 h-3.5" />
                     Histórico Asignaciones
                     <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
                       {Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones.length : 0}
@@ -1126,86 +1820,144 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                       </div>
                     );
                   }
-                  const accionColor: Record<string, string> = {
-                    APROBAR_Y_ASIGNAR: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                    RECHAZAR: 'bg-rose-100 text-rose-800 border-rose-200',
-                    REDISTRIBUIR: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-                  };
                   return (
-                    <ol className="relative border-l-2 border-slate-200 ml-3 space-y-4 py-1">
-                      {arr.slice().sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || ''))).map((entry, i) => {
-                        const acc = String(entry.accion || 'DESCONOCIDA');
-                        const color = accionColor[acc] || 'bg-slate-100 text-slate-700 border-slate-200';
-                        return (
-                          <li key={entry.id || `hist-${i}`} className="ml-5">
-                            <span className={`absolute -left-[13px] flex items-center justify-center w-6 h-6 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200 ${
-                              acc.includes('APROBAR') ? 'bg-emerald-500' : acc.includes('RECHAZAR') ? 'bg-rose-500' : 'bg-indigo-500'
-                            }`}>
-                              <span className="text-[9px] font-black text-white">
-                                {i + 1}
+                    <ol className="relative border-l border-slate-200 ml-3.5 space-y-5 py-1.5">
+                      {arr.slice()
+                        .sort((a, b) => {
+                          const da = new Date(a.fecha || 0).getTime();
+                          const db = new Date(b.fecha || 0).getTime();
+                          return isFinite(db) && isFinite(da) ? db - da : String(b.fecha || '').localeCompare(String(a.fecha || ''));
+                        })
+                        .map((entry, i) => {
+                          const acc = String(entry.accion || 'DESCONOCIDA');
+                          const style = HISTORICO_ACCION_STYLE[acc] || {
+                            badge: 'bg-slate-100 text-slate-700 border-slate-200',
+                            dot: 'bg-slate-500',
+                            icon: ClipboardList,
+                          };
+                          const IconoAccion = style.icon;
+                          const obsJson = parseJsonSeguro(entry.observaciones);
+                          const resumenSLA = (acc === 'EXTENSION_SLA_POR_INSUMOS' && obsJson) ? resumirExtensionSLA(obsJson) : null;
+                          return (
+                            <li key={entry.id || `hist-${i}`} className="ml-6 relative">
+                              <span
+                                className={`absolute -left-[17px] -top-0.5 flex items-center justify-center w-7 h-7 rounded-full border-[3px] border-white shadow-md ring-1 ring-slate-200 ${style.dot}`}
+                                title={acc}
+                              >
+                                <IconoAccion className="w-3.5 h-3.5 text-white" />
                               </span>
-                            </span>
-                            <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm space-y-2">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${color}`}>
-                                    {acc.replace(/_/g, ' · ')}
-                                  </span>
-                                  {entry.tecnico_codigo && (
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                      <User className="w-3 h-3" />
-                                      <span className="font-mono">{entry.tecnico_codigo}</span>
-                                      {entry.tecnico_nombre_display && <span>· {String(entry.tecnico_nombre_display).split(' · ').pop() || entry.tecnico_nombre_display}</span>}
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-[0.08em] border shadow-[0_1px_0_rgba(0,0,0,0.04)] ${style.badge}`}>
+                                      <IconoAccion className="w-3 h-3" />
+                                      {acc.replace(/_/g, ' · ')}
                                     </span>
-                                  )}
-                                </div>
-                                <div className="text-[11px] font-mono text-slate-500">
-                                  {formatearFecha(entry.fecha)}
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-                                {entry.motivo && (
-                                  <div className="md:col-span-2 flex items-start gap-1.5">
-                                    <span className="font-bold text-slate-500 shrink-0 mt-0.5">Motivo:</span>
-                                    <span className="text-slate-700 leading-snug whitespace-pre-wrap font-medium bg-slate-50 px-2 py-1 rounded-md border border-slate-200 flex-1">
-                                      {String(entry.motivo)}
-                                    </span>
-                                  </div>
-                                )}
-                                {entry.observaciones && (
-                                  <div className="md:col-span-2 flex items-start gap-1.5">
-                                    <span className="font-bold text-slate-500 shrink-0 mt-0.5">Observaciones:</span>
-                                    <span className="text-slate-600 leading-snug whitespace-pre-wrap">
-                                      {String(entry.observaciones)}
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
-                                  <span className="font-semibold text-slate-700">
-                                    {entry.usuario_email || 'Sistema'}
-                                  </span>
-                                  {entry.usuario_id && (
-                                    <span className="text-slate-400 font-mono truncate max-w-[120px]" title={String(entry.usuario_id)}>
-                                      (id: {String(entry.usuario_id).slice(0, 10)}…)
-                                    </span>
-                                  )}
-                                </div>
-                                {entry.usuario_roles && (
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    <span className="font-bold text-slate-500 shrink-0">Roles:</span>
-                                    {(String(entry.usuario_roles).split(',').filter(Boolean) || []).map((rol, j) => (
-                                      <span key={j} className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                        {rol.trim()}
+                                    {entry.tecnico_codigo && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-50 text-slate-700 border border-slate-200">
+                                        <User className="w-3 h-3 text-slate-500" />
+                                        <span className="font-mono text-slate-700">{entry.tecnico_codigo}</span>
+                                        {entry.tecnico_nombre_display && (
+                                          <span className="text-slate-600">· {String(entry.tecnico_nombre_display).split(' · ').pop() || entry.tecnico_nombre_display}</span>
+                                        )}
                                       </span>
-                                    ))}
+                                    )}
                                   </div>
-                                )}
+                                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                                    <Calendar className="w-3 h-3 text-slate-400" />
+                                    {formatearFecha(entry.fecha)}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {entry.motivo && (
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-slate-100">
+                                        Motivo
+                                      </span>
+                                      <span className="text-slate-700 leading-relaxed whitespace-pre-wrap font-medium bg-slate-50/70 px-3 py-2 rounded-xl border border-slate-200 flex-1 text-[12px]">
+                                        {String(entry.motivo)}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {(resumenSLA || (!obsJson && entry.observaciones)) && (
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-100">
+                                        {resumenSLA ? 'Ajuste SLA' : 'Observaciones'}
+                                      </span>
+                                      <span className="text-slate-600 leading-relaxed whitespace-pre-wrap flex-1 text-[12px]">
+                                        {resumenSLA || String(entry.observaciones)}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {obsJson && (acc === 'EXTENSION_SLA_POR_INSUMOS') && (
+                                    <div className="grid grid-cols-3 gap-2 text-[11px] ml-10 border-l-2 border-orange-200 pl-3">
+                                      {obsJson.diasAdicionales != null && (
+                                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-2 text-center">
+                                          <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">Días extra</div>
+                                          <div className="text-orange-800 font-black text-base leading-none mt-1">+{Number(obsJson.diasAdicionales)}</div>
+                                        </div>
+                                      )}
+                                      {obsJson.fechaOriginal && (
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-center">
+                                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tope original</div>
+                                          <div className="text-slate-800 font-bold text-[11px] leading-snug mt-1">
+                                            {new Date(obsJson.fechaOriginal).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {obsJson.fechaNueva && (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+                                          <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Nuevo tope</div>
+                                          <div className="text-emerald-900 font-bold text-[11px] leading-snug mt-1">
+                                            {new Date(obsJson.fechaNueva).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 mt-2 border-t border-dashed border-slate-200">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px]">
+                                      <User className="w-3 h-3 text-slate-400" />
+                                      <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
+                                      <span className="font-semibold text-slate-700">
+                                        {entry.usuario_email || 'Sistema'}
+                                      </span>
+                                      {entry.usuario_id && (
+                                        <span className="text-slate-400 font-mono text-[10px]" title={String(entry.usuario_id)}>
+                                          id·{String(entry.usuario_id).slice(0, 8)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {entry.usuario_roles && (
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-slate-500">Rol activo:</span>
+                                      {(String(entry.usuario_roles).split(',').filter(Boolean) || []).map((rol, j) => {
+                                        const rolClean = rol.trim();
+                                        const rolColor =
+                                          rolClean === 'SUPER_ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                          rolClean === 'USER'        ? 'bg-slate-50 text-slate-700 border-slate-200' :
+                                          rolClean === 'ADMIN'       ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                          'bg-slate-50 text-slate-700 border-slate-200';
+                                        return (
+                                          <span key={j} className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl border ${rolColor}`}>
+                                            {rolClean}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </li>
-                        );
-                      })}
+                            </li>
+                          );
+                        })}
                     </ol>
                   );
                 })()}
@@ -1214,6 +1966,21 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           )}
         </div>
 
+        {detalle && ((detalle.areaResponsableActual || '').toUpperCase() === 'TI') && (
+          <div className="px-5 pb-4 -mt-3 bg-white">
+            <label className="block text-xs font-bold text-slate-700 tracking-tight mb-1.5">
+              Observaciones de confirmación de recepción (opcional)
+            </label>
+            <textarea
+              value={aprobacionObservaciones}
+              onChange={(e) => setAprobacionObservaciones(e.target.value)}
+              rows={2}
+              placeholder="Ej: Recepción confirmada. Derivado a mesa de servicios TIC, ticket consecutivo TIC-2026-..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all resize-none placeholder:text-slate-400"
+            />
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-t border-slate-200 bg-white">
           <div className="flex flex-wrap items-center gap-3">
             {detalle && (() => {
@@ -1221,73 +1988,224 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
               if (areaTI) {
                 return (
                   <>
-                    <button
-                      type="button"
-                      onClick={aprobarYAsignarHandler}
-                      disabled={ejecutandoAprobar}
-                      title="Aprobar la remisión a Oficina TI (confirmar recepción formal). No requiere asignación de técnico UMI."
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
-                    >
-                      {ejecutandoAprobar ? (
-                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
-                      ) : (
-                        <><ShieldCheck className="w-3.5 h-3.5" /> Aprobar remisión a TI</>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={abrirModalRechazo}
-                      disabled={ejecutandoRechazo}
-                      title="Rechazar la remisión a TI con motivo (solicitud retorna a unidad UMI para correcciones)"
-                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                    >
-                      <Ban className="w-3.5 h-3.5" />
-                      Rechazar remisión
-                    </button>
+                    {puedeAprobarRemisionTI && (
+                      <button
+                        type="button"
+                        onClick={aprobarYAsignarHandler}
+                        disabled={ejecutandoAprobar}
+                        title="Aprobar la remisión a Oficina TI (confirmar recepción formal). No requiere asignación de técnico UMI."
+                        className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                      >
+                        {ejecutandoAprobar ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                        ) : (
+                          <><ShieldCheck className="w-3.5 h-3.5" /> Aprobar remisión a TI</>
+                        )}
+                      </button>
+                    )}
+                    {puedeRechazarRemisionTI && (
+                      <button
+                        type="button"
+                        onClick={abrirModalRechazo}
+                        disabled={ejecutandoRechazo}
+                        title="Rechazar la remisión a TI con motivo (solicitud retorna a unidad UMI para correcciones)"
+                        className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        Rechazar remisión
+                      </button>
+                    )}
                   </>
                 );
               }
               return (
                 <>
-                  <button
-                    type="button"
-                    onClick={aprobarYAsignarHandler}
-                    disabled={ejecutandoAprobar}
-                    title="Aprobar solicitud y asignar técnico seleccionado (sugerido o manual)"
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    {ejecutandoAprobar ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
-                    ) : (
-                      <><ThumbsUp className="w-3.5 h-3.5" /> Aprobar y Asignar</>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={abrirModalRechazo}
-                    disabled={ejecutandoRechazo}
-                    title="Rechazar solicitud con motivo obligatorio. El motivo es visible para el solicitante."
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    <Ban className="w-3.5 h-3.5" />
-                    Rechazar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={abrirModalRedistribucion}
-                    disabled={ejecutandoRedist}
-                    title="Redistribuir / reasignar técnico responsable (cambia responsable manteniendo o pasando a ASIGNADA)"
-                    className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
-                  >
-                    <RedistribuirIcon className="w-3.5 h-3.5" />
-                    Redistribuir
-                  </button>
+                  {puedeAprobarAsignarUMI && (
+                    <button
+                      type="button"
+                      onClick={aprobarYAsignarHandler}
+                      disabled={ejecutandoAprobar}
+                      title="Aprobar solicitud y asignar técnico seleccionado (sugerido o manual)"
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm shadow-blue-500/20 transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      {ejecutandoAprobar ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando…</>
+                      ) : (
+                        <><ThumbsUp className="w-3.5 h-3.5" /> Aprobar y Asignar</>
+                      )}
+                    </button>
+                  )}
+                  {puedeRechazarUMI && (
+                    <button
+                      type="button"
+                      onClick={abrirModalRechazo}
+                      disabled={ejecutandoRechazo}
+                      title="Rechazar solicitud con motivo obligatorio. El motivo es visible para el solicitante."
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-rose-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                      Rechazar
+                    </button>
+                  )}
+                  {puedeRedistribuir && (
+                    <button
+                      type="button"
+                      onClick={abrirModalRedistribucion}
+                      disabled={ejecutandoRedist}
+                      title="Redistribuir / reasignar técnico responsable (cambia responsable manteniendo o pasando a ASIGNADA)"
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      <RedistribuirIcon className="w-3.5 h-3.5" />
+                      Redistribuir
+                    </button>
+                  )}
                 </>
               );
             })()}
+
+            {/* EFDS-1735 RF-INF-006: Botones flujo ejecución / valoración  */}
+            {puedeConfirmarRecepcionMateriales && (
+              <button
+                type="button"
+                onClick={abrirConfirmarRecepcion}
+                disabled={bloqueado}
+                title="Encargado UMI: confirma recepción física de materiales comprados/solicitados. Estado pasa a En ejecución."
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+              >
+                <Truck className="w-3.5 h-3.5" />
+                Confirmar recepción materiales
+              </button>
+            )}
+            {puedeIniciarEjecOValoracion && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleIniciarEjecucionDirecta}
+                  disabled={bloqueado || !!idValoracionAbierta}
+                  title="El alcance es evidente y no requiere inspección previa. Pasa ASIGNADA → EN_PROGRESO inmediatamente."
+                  className={[
+                    'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
+                    idValoracionAbierta
+                      ? 'bg-slate-400 border-slate-500 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border-emerald-700',
+                  ].join(' ')}
+                >
+                  {ejecutandoInicioDirecto ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Iniciando...
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="w-3.5 h-3.5" />
+                      Iniciar Ejecución Directa
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (idValoracionAbierta) {
+                      setMostrarDetalleValoracion(true);
+                    } else {
+                      handleIniciarValoracion();
+                    }
+                  }}
+                  disabled={bloqueado}
+                  title="Registro de valoración previa en campo: diagnóstico, alcance, tiempos, materiales y evidencia. Si insumos no disponibles → EN_ESPERA_DE_INSUMOS."
+                  className={[
+                    'inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm border',
+                    idValoracionAbierta
+                      ? 'bg-indigo-700 hover:bg-indigo-800 disabled:bg-indigo-400 disabled:cursor-not-allowed border-indigo-800'
+                      : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed border-blue-700',
+                  ].join(' ')}
+                >
+                  {ejecutandoInicioValoracion ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Iniciando valoración...
+                    </>
+                  ) : (
+                    <>
+                      <ClipboarCheckIcon className="w-3.5 h-3.5" />
+                      {idValoracionAbierta ? 'Continuar Valoración' : 'Registrar Valoración Previa'}
+                    </>
+                  )}
+                </button>
+                {esCategoriaElectricas48 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10px] font-bold whitespace-nowrap">
+                    <Zap className="w-3.5 h-3.5" />
+                    CS_002 Eléctricas · sólo Técnico Especializado
+                  </span>
+                )}
+              </>
+            )}
+            {puedeCerrarTecnicamente && (
+              <button
+                type="button"
+                onClick={() => setOpenCierre(true)}
+                disabled={bloqueado}
+                title="Cerrar técnicamente la ejecución: registrar trabajo realizado, costo final y evidencias fotográficas mínimas (1). Estado pasa a COMPLETADA."
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Cierre Técnico
+              </button>
+            )}
+            {puedeVerCierreTecnico && (
+              <button
+                type="button"
+                onClick={() => setOpenCierre(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                title="Ver el resumen de cierre técnico ya ejecutado (modo lectura)."
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Ver cierre técnico
+              </button>
+            )}
+            {puedeConfirmarConformidad && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => abrirConformidad('confirmar')}
+                  disabled={bloqueado}
+                  title="Como solicitante o responsable UMI confirma la conformidad del servicio y cierra la solicitud definitivamente (estado CERRADA)."
+                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                  Confirmar conformidad
+                </button>
+                <button
+                  type="button"
+                  onClick={() => abrirConformidad('rechazar')}
+                  disabled={bloqueado}
+                  title="Devolver la solicitud al técnico por inconsistencias. Debe detallar las observaciones (mínimo 20 caracteres). Estado retorna a EN_PROGRESO con nuevo SLA 24h."
+                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                  Devolver por observaciones
+                </button>
+              </>
+            )}
+            {mostrarBannerPendienteConformidad && countdownConformidad && (
+              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${countdownConformidad.vencido
+                ? 'bg-rose-50 text-rose-800 ring-rose-200'
+                : countdownConformidad.dias === 0 && countdownConformidad.horas <= 24
+                  ? 'bg-amber-50 text-amber-800 ring-amber-200'
+                  : 'bg-sky-50 text-sky-800 ring-sky-200'}`}>
+                <Clock className="w-3.5 h-3.5" />
+                Pendiente conformidad usuario solicitante · {countdownConformidad.texto}
+              </div>
+            )}
+            {resumenConformidadBadge && (
+              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${resumenConformidadBadge.cls}`}>
+                {(React.createElement(resumenConformidadBadge.icon, { className: 'w-3.5 h-3.5' }))}
+                {resumenConformidadBadge.label}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">
-            {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && (
+            {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
               <button
                 type="button"
                 onClick={abrirRemitir}
@@ -1637,8 +2555,106 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* ------------------------------------------------------------------- */}
+        {/* EFDS-1735 RF-INF-006: Modal confirmación recepción materiales       */}
+        {/* ------------------------------------------------------------------- */}
+        {mostrarModalConfirmarRecepcion && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
+              <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-100 bg-amber-50/60 rounded-t-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                      Confirmar recepción de materiales
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                      <strong>Encargado UMI</strong> confirma la recepción física de todos los materiales y repuestos solicitados en la valoración. El estado pasará automáticamente a <strong>EN_PROGRESO</strong> y el técnico asignado podrá iniciar la ejecución.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
+                  disabled={ejecutandoRecepcion}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors disabled:opacity-50"
+                  aria-label="Cerrar confirmación recepción"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {errorRecepcion && (
+                  <div className="flex items-start gap-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs font-medium">{errorRecepcion}</div>
+                  </div>
+                )}
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/60 border border-indigo-200 text-indigo-900 text-[11px] leading-5 font-semibold">
+                  <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Se creará una nueva entrada en el Histórico Asignaciones con la acción <strong>RECEPCION_MATERIALES_Y_PASO_A_EJECUCION</strong> para trazabilidad de Gestión de Calidad.
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 tracking-wide inline-flex items-center gap-1.5">
+                    Observaciones de recepción
+                    <span className="font-normal text-slate-400 normal-case">(opcional)</span>
+                  </label>
+                  <textarea
+                    value={recepcionObservaciones}
+                    onChange={(e) => setRecepcionObservaciones(e.target.value)}
+                    rows={3}
+                    placeholder="Entrega de materiales 4 tubos PVC 1/2, 1 rollo teflón, 1 tubo silicona neutra 280ml. Proveedor Ferretería La 38, remisión #F-02045."
+                    className="w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm outline-none transition-all focus:ring-2 focus:ring-amber-200 focus:border-amber-500 border-slate-200 resize-none"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => { setMostrarModalConfirmarRecepcion(false); setErrorRecepcion(''); }}
+                  disabled={ejecutandoRecepcion}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmarRecepcion}
+                  disabled={ejecutandoRecepcion}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm shadow-amber-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                >
+                  {ejecutandoRecepcion ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</>
+                  ) : (
+                    <><Truck className="w-4 h-4" /> Confirmar recepción</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         </div>
+
       </div>
+
     </div>
+
+      {mostrarDetalleValoracion && detalle && (
+        <DetalleValoracionForm
+          open={mostrarDetalleValoracion}
+          onClose={() => setMostrarDetalleValoracion(false)}
+          idSolicitud={idSolicitud || ''}
+          idValoracion={idValoracionAbierta || undefined}
+          idCategoria={Number.isInteger(detalle.idCategoria) ? (detalle.idCategoria as number) : null}
+          onSaved={handleValoracionSaved}
+        />
+      )}
+    </>
   );
 };

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { actividadEnCurso } from './DetalleProceso';
+import { actividadEnCurso, actividadReabierta } from './DetalleProceso';
 
 /**
  * Qué actividad abre la pantalla al entrar por «Ver etapa» o «Consultar».
@@ -108,5 +108,61 @@ describe('actividadEnCurso · lo que espera decisión no es el punto del proceso
     const catalogo = [act('3.1', null), act('3.2', null), act('3.3', null)];
 
     expect(actividadEnCurso(catalogo, 'BORRADOR')).toBe('3.1');
+  });
+});
+
+/**
+ * Lo reabierto manda sobre lo que viene después (EFDS-2068).
+ *
+ * El comité aprueba la 3.7 y de paso reabre la 3.2 para que se la validen. La
+ * guía del paso siguiente solo miraba hacia adelante: saltaba por encima de la
+ * 3.2 y mandaba a la etapa 4, o —cuando la 3.2 bloqueaba el resto— decía «debe
+ * continuar otra persona». Ninguna de las dos era lo que acababa de pasar.
+ */
+describe('actividadReabierta · a dónde hay que volver', () => {
+  const paso = (
+    numeral: string,
+    estado: string | null,
+    extra: { aplica?: boolean; construida?: boolean } = {},
+  ) => ({
+    numeral,
+    estado,
+    aplica: extra.aplica ?? true,
+    construida: extra.construida ?? true,
+  });
+
+  it('encuentra la que quedó devuelta aunque esté antes en el flujo', () => {
+    const flujo = [
+      paso('3.1', 'APROBADO'),
+      paso('3.2', 'DEVUELTO'),
+      paso('3.7', 'APROBADO'),
+      paso('4.1', null),
+    ];
+
+    expect(actividadReabierta(flujo)?.numeral).toBe('3.2');
+  });
+
+  it('sin nada devuelto no desvía a ninguna parte', () => {
+    const flujo = [paso('3.1', 'APROBADO'), paso('3.7', 'APROBADO'), paso('4.1', null)];
+
+    expect(actividadReabierta(flujo)).toBeNull();
+  });
+
+  it('ignora las que la modalidad excluye o no tienen panel', () => {
+    // Mandar a una actividad que no se puede abrir es peor que no mandar a
+    // ninguna: el botón lleva a una pantalla que no existe.
+    const flujo = [
+      paso('3.2', 'DEVUELTO', { aplica: false }),
+      paso('3.6', 'DEVUELTO', { construida: false }),
+      paso('3.5', 'DEVUELTO'),
+    ];
+
+    expect(actividadReabierta(flujo)?.numeral).toBe('3.5');
+  });
+
+  it('con varias devueltas manda a la primera: es por donde hay que empezar', () => {
+    const flujo = [paso('3.1', 'DEVUELTO'), paso('3.2', 'DEVUELTO'), paso('3.7', 'APROBADO')];
+
+    expect(actividadReabierta(flujo)?.numeral).toBe('3.1');
   });
 });

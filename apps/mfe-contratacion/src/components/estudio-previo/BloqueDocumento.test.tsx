@@ -113,4 +113,76 @@ describe('BloqueDocumento', () => {
     // Verlos, en cambio, sigue estando: es justo lo que hace quien revisa.
     expect(screen.getByTitle(/Ver Estudio previo firmado/)).toBeInTheDocument();
   });
+
+  it('retira un adjunto y recarga la lista', async () => {
+    const retirar = vi
+      .spyOn(contratacionService, 'retirarAdjuntoDelEstudioPrevio')
+      .mockResolvedValue({ retirado: true });
+    const { onAdjuntado } = montar([documento()]);
+
+    await userEvent.click(screen.getByTitle(/Retirar Estudio previo firmado/));
+
+    await waitFor(() =>
+      expect(retirar).toHaveBeenCalledWith(
+        '7f1e1b8a-0000-4000-8000-000000000001',
+        expect.any(String),
+      ),
+    );
+    expect(onAdjuntado).toHaveBeenCalledTimes(1);
+  });
+
+  it('no ofrece retirar mientras el estudio está en revisión', () => {
+    montar([documento()], true);
+
+    expect(screen.queryByTitle(/Retirar Estudio previo firmado/)).toBeNull();
+  });
+
+  it('no ofrece retirar el snapshot del formulario enviado', () => {
+    montar([documento({ tipo: 'SNAPSHOT_FORMULARIO', nombre: 'Estudio previo — datos enviados' })]);
+
+    expect(screen.queryByTitle(/Retirar Estudio previo/)).toBeNull();
+  });
+
+  /**
+   * Reemplazar un adjunto (EFDS-2067).
+   *
+   * Antes, corregir un documento equivocado eran dos pasos sueltos: retirar y
+   * volver a adjuntar. Con un solo botón se elige el archivo nuevo y se
+   * reemplaza en una sola llamada.
+   */
+  it('reemplaza un adjunto con el archivo elegido y recarga la lista', async () => {
+    const reemplazar = vi
+      .spyOn(contratacionService, 'reemplazarAdjuntoDelEstudioPrevio')
+      .mockResolvedValue({ id: 'doc-nuevo', nombre: 'anexo-v2.pdf' });
+    const { onAdjuntado } = montar([documento()]);
+
+    await userEvent.click(screen.getByTitle(/Reemplazar Estudio previo firmado/));
+
+    const entrada = screen.getByTestId('input-reemplazar-documento') as HTMLInputElement;
+    await userEvent.upload(
+      entrada,
+      new File(['contenido'], 'anexo-v2.pdf', { type: 'application/pdf' }),
+    );
+
+    await waitFor(() =>
+      expect(reemplazar).toHaveBeenCalledWith(
+        '7f1e1b8a-0000-4000-8000-000000000001',
+        expect.any(String),
+        expect.objectContaining({ name: 'anexo-v2.pdf' }),
+      ),
+    );
+    expect(onAdjuntado).toHaveBeenCalledTimes(1);
+  });
+
+  it('no ofrece reemplazar mientras el estudio está en revisión', () => {
+    montar([documento()], true);
+
+    expect(screen.queryByTitle(/Reemplazar Estudio previo firmado/)).toBeNull();
+  });
+
+  it('no ofrece reemplazar el snapshot del formulario enviado', () => {
+    montar([documento({ tipo: 'SNAPSHOT_FORMULARIO', nombre: 'Estudio previo — datos enviados' })]);
+
+    expect(screen.queryByTitle(/Reemplazar Estudio previo/)).toBeNull();
+  });
 });

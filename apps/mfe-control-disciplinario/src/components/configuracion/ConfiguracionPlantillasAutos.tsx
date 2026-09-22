@@ -24,11 +24,14 @@ import {
 import { ConfirmationModal } from './ConfirmationModal';
 import {
   SeccionPlantillasAutosUnificada,
+  canonicalizarEtapaId,
   type PlantillaArchivo,
   type TipoAuto,
 } from './SeccionPlantillasAutosUnificada';
 import { ModalNuevoTipoAuto, type NuevoTipoAutoData } from './ModalNuevoTipoAuto';
 import { ModalGestionarPlantillas } from './ModalGestionarPlantillas';
+
+type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO' | 'INHIBITORIO';
 
 const TIPOS_AUTOS_DEFECTO: TipoAuto[] = [
   {
@@ -51,10 +54,16 @@ const mapTipoAccionToBackend = (tipoAccion: string, etapa: string): string => {
   switch (tipoAccion) {
     case 'NORMAL':
       return 'AUTO_NORMAL';
-    case 'APERTURA':
-      // Genera dinámicamente: AUTO_APERTURA_{NOMBRE_ETAPA}
-      const etapaNormalizada = etapa.toUpperCase().replace(/\s+/g, '_');
-      return `AUTO_APERTURA_${etapaNormalizada}`;
+    case 'APERTURA': {
+      // Genera código dinámico válido para el backend respetando el nombre de la etapa
+      const etapaCodigo = (etapa || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      return `AUTO_APERTURA_${etapaCodigo || 'INVESTIGACION'}`;
+    }
     case 'ARCHIVO':
       return 'AUTO_ARCHIVO';
     case 'PRORROGA':
@@ -264,17 +273,35 @@ export function ConfiguracionPlantillasAutos() {
           ? disciplinaryService.getFileUrl(auto.plantilla)
           : '';
 
+        let nombreArchivo = 'plantilla.docx';
+        if (auto.plantilla) {
+          const rawName = auto.plantilla.split(/[/\\]/).pop() || '';
+          nombreArchivo = rawName || `${auto.nombre_plantilla || 'plantilla'}.docx`;
+        } else if (auto.nombre_plantilla) {
+          nombreArchivo =
+            auto.nombre_plantilla.endsWith('.docx') ||
+            auto.nombre_plantilla.endsWith('.doc') ||
+            auto.nombre_plantilla.endsWith('.pdf')
+              ? auto.nombre_plantilla
+              : `${auto.nombre_plantilla}.docx`;
+        }
+
+        let etapaAuto = auto.stage;
+        if (!etapaAuto && (auto.tipo === 'AUTO_FORMULACION_PLIEGO' || auto.tipo === 'PLIEGO_CARGOS')) {
+          etapaAuto = 'CARGOS';
+        }
+
         return {
           id: auto.id,
           nombre: auto.nombre,
           descripcion: `Auto: ${auto.tipo}`,
-          etapa: (auto.stage || 'INDAGACION') as TipoAuto['etapa'],
+          etapa: (etapaAuto || 'INDAGACION') as TipoAuto['etapa'],
           plantilla:
             auto.plantilla || auto.nombre_plantilla
               ? {
                   id: `plt-${auto.id}`,
                   nombre: auto.nombre_plantilla || 'Plantilla configurada',
-                  nombreArchivo: 'plantilla.docx',
+                  nombreArchivo: nombreArchivo,
                   descripcion:
                     auto.descripcion_plantilla ||
                     'Plantilla almacenada en BD',
@@ -362,6 +389,10 @@ export function ConfiguracionPlantillasAutos() {
             await disciplinaryService.uploadAutoPlantilla(
               tipoAutoEdicion.id,
               nuevoTipo.plantillaFile,
+              nuevoTipo.nombre,
+              nuevoTipo.descripcion,
+              '1.0',
+              nuevoTipo.activo ? 'activo' : 'inactivo',
             );
           }
 
@@ -390,6 +421,10 @@ export function ConfiguracionPlantillasAutos() {
           await disciplinaryService.uploadAutoPlantilla(
             response.data.id,
             nuevoTipo.plantillaFile,
+            nuevoTipo.nombre,
+            nuevoTipo.descripcion,
+            '1.0',
+            nuevoTipo.activo ? 'activo' : 'inactivo',
           );
         }
 
@@ -575,6 +610,7 @@ export function ConfiguracionPlantillasAutos() {
           stage: auto.etapa,
           estado: auto.activo ? 'activo' : 'inactivo',
           orden: auto.orden,
+          plantilla: plantilla ? undefined : null,
           nombre_plantilla: plantilla?.nombre || null,
           descripcion_plantilla: plantilla?.descripcion || null,
           version_plantilla: plantilla?.version || '1.0',

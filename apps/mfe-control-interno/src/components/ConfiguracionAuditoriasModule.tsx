@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Target, CheckSquare, List, ChevronRight, Info, Save,
-  Plus, Edit, Eye, Clock, Users, HelpCircle, X, Trash2, AlertCircle,
+  Plus, Edit, Eye, Clock, Users, HelpCircle, Trash2, AlertCircle,
   FileText, Check, GripVertical, Loader2
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
@@ -410,18 +410,13 @@ function ModalTipoAuditoria({open, tipo, onGuardar, onCerrar, guardando = false 
   return (
     <Dialog open={open} onOpenChange={onCerrar}>
       <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">
-              {tipo ? 'Editar Tipo de Auditoría' : 'Nuevo Tipo de Auditoría'}
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {tipo ? 'Modifica los datos del tipo de auditoría' : 'Crea un nuevo tipo de auditoría'}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={onCerrar}>
-            <X className="w-4 h-4" />
-          </Button>
+        <div className="p-6 pr-14 border-b border-gray-200">
+          <h2 className="text-xl font-bold text-gray-900">
+            {tipo ? 'Editar Tipo de Auditoría' : 'Nuevo Tipo de Auditoría'}
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            {tipo ? 'Modifica los datos del tipo de auditoría' : 'Crea un nuevo tipo de auditoría'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -435,7 +430,16 @@ function ModalTipoAuditoria({open, tipo, onGuardar, onCerrar, guardando = false 
                 onChange={(e) => handleChange('codigo', e.target.value.toUpperCase())}
                 placeholder="AUD-GEST"
                 required
+                readOnly={!!tipo}
+                aria-readonly={!!tipo}
+                className={tipo ? 'bg-gray-100 text-gray-700 cursor-not-allowed focus-visible:ring-0 focus-visible:border-input' : undefined}
+                title={tipo ? 'El código no se puede modificar' : undefined}
               />
+              {tipo && (
+                <p className="mt-1 text-xs text-gray-500">
+                  El código identifica el tipo en todo el módulo, por eso no se puede cambiar.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

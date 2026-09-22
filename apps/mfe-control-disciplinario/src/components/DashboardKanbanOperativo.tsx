@@ -53,7 +53,26 @@ import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Ut
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
 import { useResponsive } from './hooks/useResponsive';
 
+import { canonicalizarEtapaId } from './configuracion/SeccionPlantillasAutosUnificada';
+
 // ==================== HELPERS GLOBALES ====================
+const matchEtapasKanban = (etapaA?: string, etapaB?: string): boolean => {
+  if (!etapaA || !etapaB) return false;
+  if (etapaA === etapaB) return true;
+  const canA = canonicalizarEtapaId(etapaA);
+  const canB = canonicalizarEtapaId(etapaB);
+  if (canA && canB && canA === canB) return true;
+
+  const normA = String(etapaA).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const normB = String(etapaB).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  if (normA === normB) return true;
+
+  if (normA.startsWith('investigac') && normB.startsWith('investigac')) return true;
+  if (normA.startsWith('indagac') && normB.startsWith('indagac')) return true;
+
+  return false;
+};
+
 const getNombre = (p: any): string => {
   if (!p) return 'Sin información';
   return typeof p === 'string' ? p : (p.nombre || 'Sin información');
@@ -1296,8 +1315,12 @@ function VistaLista({
         ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
-    // Filtrar por etapa comparando ID de etapa parametrizada contra kanbanStage del item
-    const matchEtapa = filtroEtapa === 'todos' || item.kanbanStage === filtroEtapa;
+    // Filtrar por etapa comparando ID de etapa parametrizada o nombre contra kanbanStage / etapaActual del item
+    const matchEtapa =
+      filtroEtapa === 'todos' ||
+      item.kanbanStage === filtroEtapa ||
+      item.etapaActual === filtroEtapa ||
+      matchEtapasKanban(item.etapaActual, filtroEtapa);
 
     return matchSearch && matchEtapa;
   });
@@ -2122,16 +2145,16 @@ function ColumnaKanban({
         } else {
           // Para procesos, buscar la etapa actual del proceso
           const etapaActualProceso = etapasConfig.find(e =>
-            e.etapa === item.etapaActual ||
-            e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+            matchEtapasKanban(e.etapa, item.etapaActual) ||
+            matchEtapasKanban(e.nombre, item.etapaActual)
           );
           itemOrden = etapaActualProceso?.orden ?? 0;
         }
 
         // Obtener el orden de la etapa de destino
         const etapaDestino = etapasConfig.find(e =>
-          e.etapa === etapa ||
-          e.etapa.toLowerCase() === etapa.toLowerCase()
+          matchEtapasKanban(e.etapa, etapa) ||
+          matchEtapasKanban(e.nombre, etapa)
         );
         const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
 
@@ -2194,10 +2217,20 @@ function ColumnaKanban({
     if (item.tipo === 'noticia') {
       const noticia = item as Noticia;
       if (noticia.procesoAsociado) return false;
-      // Las noticias se muestran en la etapa inicial (orden 1) - comparar de forma normalizada
-      return etapaNormalizada === etapaInicialNormalizada;
+      // Las noticias se muestran en la etapa inicial (orden 1) - comparar con matchEtapasKanban
+      return matchEtapasKanban(etapa, etapaInicial);
     }
-    return item.tipo === 'proceso' && item.etapaActual === etapa;
+    if (item.tipo === 'proceso') {
+      const stageConfigDeColumna = etapasConfig.find(e => e.etapa === etapa || e.id === etapa);
+      if (stageConfigDeColumna && item.kanbanStage && item.kanbanStage === stageConfigDeColumna.id) {
+        return true;
+      }
+      if (item.etapaActual === etapa) {
+        return true;
+      }
+      return matchEtapasKanban(item.etapaActual, etapa);
+    }
+    return false;
   });
 
   const noticias = (itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[])
@@ -4245,7 +4278,11 @@ export function DashboardKanbanOperativo({
     if (etapaNombre) {
       // Buscar en config solo si no es INHIBITORIO/ARCHIVO (no están en columnas Kanban)
       if (etapaNombre !== 'INHIBITORIO' && etapaNombre !== 'ARCHIVO') {
-        const match = currentStages.find(s => s.id === etapaNombre || s.etapa === etapaNombre || s.nombre === etapaNombre);
+        const match = currentStages.find(s =>
+          s.id === etapaNombre ||
+          matchEtapasKanban(s.etapa, etapaNombre) ||
+          matchEtapasKanban(s.nombre, etapaNombre)
+        );
         if (match) etapa = match.etapa || match.nombre || etapaNombre;
       }
       // INHIBITORIO/ARCHIVO se preservan tal cual
@@ -4256,7 +4293,10 @@ export function DashboardKanbanOperativo({
         const match = currentStages.find(s => s.id === proceso.kanbanStage);
         if (match) etapa = match.etapa || match.nombre || proceso.kanbanStage;
       } else {
-        const match = currentStages.find(s => s.etapa === proceso.kanbanStage || s.nombre === proceso.kanbanStage);
+        const match = currentStages.find(s =>
+          matchEtapasKanban(s.etapa, proceso.kanbanStage) ||
+          matchEtapasKanban(s.nombre, proceso.kanbanStage)
+        );
         if (match) etapa = match.etapa || match.nombre || proceso.kanbanStage;
       }
     }

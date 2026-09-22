@@ -34,6 +34,8 @@ import {
 } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
@@ -199,6 +201,13 @@ export class EstudioPrevioService {
     private readonly aprobacion: AprobacionService,
     /** Aprobar la 3.4 puede cerrar la etapa 3 y radicar el CDP. */
     private readonly cdp: CdpService,
+    /**
+     * Si la 3.1 o la 3.4 exigen firmar con el token institucional (EFDS-2070).
+     *
+     * Quien envía y quien aprueba son dos personas y dos acciones distintas:
+     * cada numeral tiene su propia regla, así que cada una firma la suya.
+     */
+    private readonly cierre: CierreActividadService,
     /**
      * El paquete con el que se radica en la Dirección de Contratación.
      *
@@ -635,7 +644,7 @@ export class EstudioPrevioService {
    * Criterio 1: si está completo, registra el estudio previo como documento
    * del expediente electrónico.
    */
-  async enviar(procesoId: string, acceso: HiringAccess) {
+  async enviar(procesoId: string, acceso: HiringAccess, firma?: FirmaOtpDto) {
     await this.exigirQueSeaSuyo(procesoId, acceso);
 
     return this.dataSource.transaction(async (em) => {
@@ -748,9 +757,21 @@ export class EstudioPrevioService {
         em,
       );
 
+      // La firma es de quien envía, no de quien luego aprueba la 3.4: cada
+      // quien firma su propia acción (EFDS-2070).
+      if (await this.cierre.exigeFirma(em, NUMERAL_ESTUDIO_PREVIO)) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
       actividad.estado = revisan ? 'EN_REVISION' : 'APROBADO';
       actividad.enviadoPor = acceso.userName;
+      // Los avisos buscan por cuenta a quien envió: con solo el nombre, la
+      // devolución de la 3.1 no le llegaba a nadie.
+      actividad.enviadoPorId = acceso.userId ?? null;
       actividad.enviadoAt = new Date();
+      if (firma) {
+        actividad.datos = { ...(actividad.datos ?? {}), firma };
+      }
       await em.save(ProcesoActividad, actividad);
 
       await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'ENVIAR', acceso, {
@@ -878,8 +899,13 @@ export class EstudioPrevioService {
    * Aprueba el estudio previo enviado (numeral 3.4). A partir de aquí el
    * proceso puede continuar a las etapas siguientes.
    */
-  async aprobar(procesoId: string, observaciones: string | undefined, acceso: HiringAccess) {
-    return this.decidirRevision(procesoId, 'APROBADO', observaciones, acceso);
+  async aprobar(
+    procesoId: string,
+    observaciones: string | undefined,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
+    return this.decidirRevision(procesoId, 'APROBADO', observaciones, acceso, firma);
   }
 
   /**
@@ -925,6 +951,7 @@ export class EstudioPrevioService {
     decision: DecisionRevision,
     observaciones: string | undefined,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     // Quién puede decidir se resuelve antes de abrir la transacción: no toca
     // nada y así el error de autorización no arrastra un lock.
@@ -953,6 +980,12 @@ export class EstudioPrevioService {
         );
       }
 
+      // La firma es de quien aprueba la 3.4, distinta de la de quien envió la
+      // 3.1: cada quien firma su propia acción (EFDS-2070).
+      if (decision === 'APROBADO' && (await this.cierre.exigeFirma(em, NUMERAL_REVISION))) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
       await em.save(Revision, {
         procesoActividadId: actividad.id,
         decision,
@@ -973,7 +1006,7 @@ export class EstudioPrevioService {
       // dado por bueno, y negar dejaba una actividad aprobada colgando de un
       // proceso muerto.
       await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
-      await this.cerrarLaRevision(em, procesoId, decision, acceso);
+      await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
 
       /*
        * Y si con esto se acabó la etapa 3, la solicitud de CDP nace aquí.
@@ -1056,6 +1089,7 @@ export class EstudioPrevioService {
     procesoId: string,
     decision: DecisionRevision,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const revision = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_REVISION },
@@ -1067,6 +1101,9 @@ export class EstudioPrevioService {
     revision.estado = concluida ? 'APROBADO' : 'BORRADOR';
     revision.revisadoPor = concluida ? acceso.userName : (null as any);
     revision.revisadoAt = concluida ? new Date() : (null as any);
+    if (decision === 'APROBADO' && firma) {
+      revision.datos = { ...(revision.datos ?? {}), firma };
+    }
     await em.save(ProcesoActividad, revision);
   }
 
@@ -1166,6 +1203,119 @@ export class EstudioPrevioService {
       });
 
       return documento;
+    });
+  }
+
+  /**
+   * Retira un documento adjuntado al estudio previo.
+   *
+   * Se borra la fila y no se marca como anulada: la traza ya deja constancia
+   * de que se cargó y de que se retiró, con quién y cuándo. El archivo en
+   * disco se conserva —el expediente debe poder probar qué se entregó—.
+   */
+  async retirarAdjunto(procesoId: string, documentoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const actividad = await this.obtenerActividad(em, procesoId);
+      if (actividad.estado === 'EN_REVISION') {
+        throw new ConflictException('El estudio previo ya fue enviado; no admite retirar adjuntos');
+      }
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const documento = await em.findOne(Documento, {
+        where: { id: documentoId, expedienteId: expediente.id },
+      });
+      if (!documento) throw new NotFoundException('El documento no está en este expediente');
+
+      if (documento.numeral !== NUMERAL_ESTUDIO_PREVIO) {
+        throw new BadRequestException('El documento no pertenece al estudio previo');
+      }
+
+      // El snapshot del formulario no es un adjunto que alguien pueda quitar:
+      // es la copia de lo que se envió a revisión, y sin ella la revisión no
+      // prueba nada.
+      if (documento.tipo !== 'ADJUNTO') {
+        throw new BadRequestException(
+          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+        );
+      }
+
+      await this.traza(em, procesoId, 'documento', documento.id, 'ANULAR', acceso, {
+        nombre: documento.archivoNombreOriginal ?? documento.nombre,
+      });
+
+      await em.getRepository(Documento).remove(documento);
+
+      return { retirado: true };
+    });
+  }
+
+  /**
+   * Reemplaza un documento adjuntado al estudio previo por otro.
+   *
+   * Es retirar y volver a adjuntar en una sola operación, no dos sueltas: dos
+   * filas de traza (ANULAR y ADJUNTAR) no dicen que fueron la misma acción, y
+   * quien revisa el expediente después tiene que adivinar que uno reemplazó
+   * al otro. Aquí queda una sola fila, con el documento que salió y el que
+   * entró en su lugar. El archivo retirado se conserva en disco, igual que en
+   * `retirarAdjunto`: el expediente debe poder probar qué se entregó antes.
+   */
+  async reemplazarAdjunto(
+    procesoId: string,
+    documentoId: string,
+    archivo: { filename: string; originalname: string; mimetype: string; size: number; buffer?: Buffer; path?: string },
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const actividad = await this.obtenerActividad(em, procesoId);
+      if (actividad.estado === 'EN_REVISION') {
+        throw new ConflictException('El estudio previo ya fue enviado; no admite reemplazar adjuntos');
+      }
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const anterior = await em.findOne(Documento, {
+        where: { id: documentoId, expedienteId: expediente.id },
+      });
+      if (!anterior) throw new NotFoundException('El documento no está en este expediente');
+
+      if (anterior.numeral !== NUMERAL_ESTUDIO_PREVIO) {
+        throw new BadRequestException('El documento no pertenece al estudio previo');
+      }
+
+      // El snapshot del formulario no es un adjunto que alguien pueda
+      // reemplazar: es la copia de lo que se envió a revisión.
+      if (anterior.tipo !== 'ADJUNTO') {
+        throw new BadRequestException(
+          'Este registro no es un adjunto: es la copia de lo que se envió a revisión',
+        );
+      }
+
+      const nuevo = await em.save(Documento, {
+        expedienteId: expediente.id,
+        numeral: NUMERAL_ESTUDIO_PREVIO,
+        tipo: 'ADJUNTO',
+        nombre: archivo.originalname,
+        archivoUrl: `hiring/files/${archivo.filename}`,
+        archivoNombreOriginal: archivo.originalname,
+        archivoMimeType: archivo.mimetype,
+        archivoTamano: archivo.size,
+        hashSha256: hash,
+        subidoPor: acceso.userName,
+      } as Partial<Documento>);
+
+      await this.traza(em, procesoId, 'documento', nuevo.id, 'REEMPLAZAR', acceso, {
+        nombre: archivo.originalname,
+        reemplaza: anterior.id,
+        nombreAnterior: anterior.archivoNombreOriginal ?? anterior.nombre,
+      });
+
+      await em.getRepository(Documento).remove(anterior);
+
+      return nuevo;
     });
   }
 

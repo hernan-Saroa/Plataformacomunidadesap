@@ -4,7 +4,7 @@
  * y carga obligatoria de plantilla .docx
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, AlertCircle, Info, Save, Loader, Upload, FileText,
@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
-import { type TipoAuto } from './SeccionPlantillasAutosUnificada';
+import {
+  type TipoAuto,
+  canonicalizarEtapaId,
+  getEtapaProcesoConfig,
+  ETAPAS_PROCESO,
+} from './SeccionPlantillasAutosUnificada';
 
 // ─── Tipos de acción disponibles ───────────────────────────────────────────
 export type TipoAccion = 'NORMAL' | 'APERTURA' | 'ARCHIVO' | 'PRORROGA' | 'PLIEGO' | 'INHIBITORIO';
@@ -73,7 +78,7 @@ const TIPOS_ACCION: {
   {
     id: 'PLIEGO',
     label: 'Pliego de Cargos',
-    descripcion: 'Formula el pliego de cargos al investigado',
+    descripcion: 'Formula el pliego de cargos y traslada el proceso a la etapa seleccionada (por defecto Cargos)',
     conAccion: true,
   },
   {
@@ -146,41 +151,156 @@ export function ModalNuevoTipoAuto({
     }
   }, [isOpen]);
 
+  // Etapas dinámicas basadas en la configuración de la BD (stage_configuration)
+  const etapasOpciones = useMemo(() => {
+    let opciones: Array<{ id: string; etapa: string; nombre: string; orden: number }> = [];
+
+    if (stages && stages.length > 0) {
+      opciones = [...stages]
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+        .map((s) => ({
+          id: s.id,
+          etapa: s.etapa,
+          nombre: s.etapa,
+          orden: s.orden ?? 0,
+        }));
+    } else {
+      // Fallback solo si aún no cargaron los stages de la BD
+      opciones = Object.entries(ETAPAS_PROCESO)
+        .filter(([k]) => k !== 'ARCHIVO' && k !== 'INHIBITORIO')
+        .map(([key, val]) => ({
+          id: key,
+          etapa: key,
+          nombre: val.nombre,
+          orden: val.orden,
+        }));
+    }
+
+    return opciones;
+  }, [stages]);
+
+  // Sincronizar etapa inicial cuando cargan los stages
+  useEffect(() => {
+    if (stages.length > 0 && etapasOpciones.length > 0) {
+      setFormData((prev) => {
+        // Si ya tiene una etapa que existe en etapasOpciones, conservarla
+        if (prev.etapa && etapasOpciones.some((s) => s.etapa === prev.etapa)) {
+          return prev;
+        }
+        if (prev.tipoAccion === 'PLIEGO') {
+          const stageCargosOEvaluacion = etapasOpciones.find((s) => {
+            const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return norm.includes('CARGO') || norm.includes('PLIEGO') || norm.includes('EVALUAC');
+          });
+          if (stageCargosOEvaluacion) {
+            return { ...prev, etapa: stageCargosOEvaluacion.etapa };
+          }
+        }
+        // Si la etapa actual coincide de forma flexible con alguna etapa real
+        const coincidencia = etapasOpciones.find((s) => {
+          const normA = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const normB = (prev.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return normA === normB || normA.includes(normB) || normB.includes(normA);
+        });
+        if (coincidencia) {
+          return { ...prev, etapa: coincidencia.etapa };
+        }
+        // Por defecto, buscar la etapa de investigación o la primera real
+        const stageInvestigacion = etapasOpciones.find((s) =>
+          (s.etapa || '').toUpperCase().includes('INVESTIGAC')
+        );
+        return { ...prev, etapa: stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? '') };
+      });
+    }
+  }, [stages, etapasOpciones]);
+
   // Cargar datos si estamos editando
   useEffect(() => {
     if (tipoEdicion) {
-      // Para tipos dinámicos de apertura, extraer la etapa del tipo
       let etapa = tipoEdicion.etapa;
-      let tipoAccion = mapBackendToTipoAccion(tipoEdicion.tipo || '');
+      const tipoAccion = mapBackendToTipoAccion(tipoEdicion.tipo || '');
 
-      // Si es tipo dinámico de apertura y no hay etapa específica, extraerla del tipo.
-      // El sufijo del tipo ya viene con guiones bajos, igual que el value de las
-      // opciones del <select> de etapas (ej. AUTO_APERTURA_SEGUNDA_INSTANCIA -> SEGUNDA_INSTANCIA);
-      // no se debe convertir a espacios o el <select> no encuentra la opción.
       if (tipoEdicion.tipo?.startsWith('AUTO_APERTURA_') && tipoEdicion.tipo !== 'AUTO_APERTURA') {
         const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '');
-        etapa = etapaFromTipo;
+        const stageEncontrado = etapasOpciones.find((s) =>
+          s.etapa === tipoEdicion.etapa ||
+          s.etapa.toUpperCase().replace(/\s+/g, '_') === etapaFromTipo
+        );
+        if (stageEncontrado) {
+          etapa = stageEncontrado.etapa;
+        }
+      } else if (tipoAccion === 'PLIEGO') {
+        const stageExistente = etapasOpciones.find((s) => s.etapa === etapa);
+        if (!stageExistente) {
+          const stageCargosOEvaluacion = etapasOpciones.find((s) => {
+            const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return norm.includes('CARGO') || norm.includes('PLIEGO') || norm.includes('EVALUAC');
+          });
+          if (stageCargosOEvaluacion) {
+            etapa = stageCargosOEvaluacion.etapa;
+          } else if (etapasOpciones.length > 0) {
+            etapa = etapasOpciones[0].etapa;
+          }
+        }
       }
 
       setFormData({
         nombre: tipoEdicion.nombre,
-        etapa: etapa,
+        etapa: etapa || (etapasOpciones[0]?.etapa ?? ''),
         activo: tipoEdicion.activo,
         orden: tipoEdicion.orden,
         tipoAccion: tipoAccion,
         plantillaFile: undefined,
       });
     } else {
+      const stageInvestigacion = etapasOpciones.find((s) =>
+        (s.etapa || '').toUpperCase().includes('INVESTIGAC')
+      );
       setFormData({
         nombre: '',
-        etapa: stages.length > 0 ? stages[0].etapa : 'INVESTIGACION',
+        etapa: stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? ''),
         activo: true,
         orden: 1,
         tipoAccion: 'NORMAL',
         plantillaFile: undefined,
       });
     }
-  }, [tipoEdicion, isOpen, stages]);
+  }, [tipoEdicion, isOpen, stages, etapasOpciones]);
+
+  const handleSelectTipoAccion = (tipoId: TipoAccion) => {
+    setFormData((prev) => {
+      let nuevaEtapa = prev.etapa;
+      if (tipoId === 'PLIEGO') {
+        const stageCargos = etapasOpciones.find((o) => {
+          const norm = (o.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return norm.includes('CARGO') || norm.includes('PLIEGO');
+        });
+        if (stageCargos) {
+          nuevaEtapa = stageCargos.etapa;
+        } else {
+          const stageEvaluacion = etapasOpciones.find((o) => {
+            const norm = (o.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return norm.includes('EVALUAC');
+          });
+          if (stageEvaluacion) {
+            nuevaEtapa = stageEvaluacion.etapa;
+          } else if (!etapasOpciones.some((o) => o.etapa === prev.etapa)) {
+            nuevaEtapa = etapasOpciones[0]?.etapa ?? '';
+          }
+        }
+      } else if (tipoId === 'APERTURA' && (!prev.etapa || !etapasOpciones.some((o) => o.etapa === prev.etapa))) {
+        const stageInvestigacion = etapasOpciones.find((o) =>
+          (o.etapa || '').toUpperCase().includes('INVESTIGAC')
+        );
+        nuevaEtapa = stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? '');
+      }
+      return {
+        ...prev,
+        tipoAccion: tipoId,
+        etapa: nuevaEtapa,
+      };
+    });
+  };
 
   const esConAccion = TIPOS_ACCION.find((t) => t.id === formData.tipoAccion)?.conAccion ?? false;
 
@@ -228,7 +348,7 @@ export function ModalNuevoTipoAuto({
         orden: formData.orden,
         tipoAccion: formData.tipoAccion,
         plantillaFile: formData.plantillaFile,
-
+        plantilla: null,
       };
 
       const resultado = await onGuardar(data);
@@ -338,14 +458,14 @@ export function ModalNuevoTipoAuto({
                 <label className="block text-xs font-bold text-gray-700 mb-2">
                   Tipo de Acción <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {TIPOS_ACCION.map((tipo) => {
                     const selected = formData.tipoAccion === tipo.id;
                     return (
                       <button
                         key={tipo.id}
                         type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, tipoAccion: tipo.id }))}
+                        onClick={() => handleSelectTipoAccion(tipo.id)}
                         disabled={guardando}
                         className={`relative flex flex-col items-center p-3 rounded-xl border-2 text-center transition-all ${
                           selected
@@ -422,9 +542,9 @@ export function ModalNuevoTipoAuto({
                 )}
               </AnimatePresence>
 
-              {/* Etapa — solo si tipoAccion es APERTURA */}
+              {/* Etapa — si tipoAccion es APERTURA o PLIEGO */}
               <AnimatePresence>
-                {formData.tipoAccion === 'APERTURA' && (
+                {(formData.tipoAccion === 'APERTURA' || formData.tipoAccion === 'PLIEGO') && (
                   <motion.div
                     key="etapa-selector"
                     initial={{ opacity: 0, height: 0 }}
@@ -434,7 +554,8 @@ export function ModalNuevoTipoAuto({
                   >
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Etapa que Abre <span className="text-red-500">*</span>
+                        {formData.tipoAccion === 'PLIEGO' ? 'Etapa a la que avanza el proceso' : 'Etapa que Abre'}{' '}
+                        <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={formData.etapa}
@@ -450,24 +571,18 @@ export function ModalNuevoTipoAuto({
                         {loadingStages ? (
                           <option disabled>Cargando etapas...</option>
                         ) : (
-                          <>
-                            {formData.etapa &&
-                              !stages.some((stage) => stage.etapa === formData.etapa) && (
-                                <option value={formData.etapa}>{formData.etapa}</option>
-                              )}
-                            {[...stages]
-                              .sort((a, b) => a.orden - b.orden)
-                              .map((stage) => (
-                                <option key={stage.id} value={stage.etapa}>
-                                  {stage.etapa}
-                                </option>
-                              ))}
-                          </>
+                          etapasOpciones.map((opcion) => (
+                            <option key={opcion.id} value={opcion.etapa}>
+                              {opcion.nombre}
+                            </option>
+                          ))
                         )}
                       </select>
                       <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
                         <Info className="w-3 h-3" />
-                        Etapa a la que pasará el proceso al aprobar este auto
+                        {formData.tipoAccion === 'PLIEGO'
+                          ? 'Etapa a la que pasará el proceso al aprobar este auto de pliego (por defecto Cargos)'
+                          : 'Etapa a la que pasará el proceso al aprobar este auto'}
                       </p>
                     </div>
                   </motion.div>
@@ -488,7 +603,12 @@ export function ModalNuevoTipoAuto({
                   <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-300 rounded-lg">
                     <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-green-800 truncate">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 bg-green-100 text-green-800 rounded">
+                          Nuevo archivo seleccionado
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-green-800 truncate mt-0.5">
                         {formData.plantillaFile.name}
                       </p>
                       <p className="text-xs text-green-600">
@@ -501,9 +621,40 @@ export function ModalNuevoTipoAuto({
                         setFormData((prev) => ({ ...prev, plantillaFile: undefined }))
                       }
                       disabled={guardando}
-                      className="p-1 rounded hover:bg-green-100 text-green-700"
+                      title="Revertir cambio de archivo"
+                      className="p-1.5 rounded hover:bg-green-100 text-green-700 transition-colors"
                     >
                       <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : tipoEdicion?.plantilla ? (
+                  <div className="flex items-center justify-between p-3.5 bg-blue-50/60 border border-blue-200 rounded-xl">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900 truncate">
+                            {tipoEdicion.plantilla.nombre || tipoEdicion.plantilla.nombreArchivo}
+                          </p>
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                            v{tipoEdicion.plantilla.version || '1.0'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 truncate">
+                          {tipoEdicion.plantilla.nombreArchivo || 'plantilla.docx'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={guardando}
+                      className="ml-3 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1.5 flex-shrink-0"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Cambiar archivo
                     </button>
                   </div>
                 ) : (

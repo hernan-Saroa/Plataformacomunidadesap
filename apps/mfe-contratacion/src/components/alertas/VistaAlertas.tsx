@@ -14,9 +14,8 @@ import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
 import { AlertaVencimiento } from '../../types';
 import { fechaLarga } from '../shared/fechas';
-
-/** Cuántos días antes se avisa. Los cortes que un gestor usa de verdad. */
-const ANTICIPACIONES = [15, 30, 60, 90];
+import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { ParametrosAlertas } from './ParametrosAlertas';
 
 const RASGOS: Record<
   AlertaVencimiento['tipo'],
@@ -37,6 +36,11 @@ const RASGOS: Record<
   // Mismo ámbar y por lo mismo: nada ha vencido, pero el proceso está parado
   // porque no hay quien resuelva su revisión.
   SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
+  // Sin rasgo propio la fila se rompía: la alerta llegaba y la pantalla no la
+  // sabía dibujar.
+  CDP_SIN_ATENDER: { etiqueta: 'CDP sin atender', icono: Landmark, color: '#D97706' },
+  // Rojo como un vencimiento, porque lo es: el de una actividad del proceso.
+  PLAZO_ACTIVIDAD: { etiqueta: 'Plazo', icono: Timer, color: '#DC2626' },
 };
 
 /**
@@ -56,21 +60,29 @@ interface Props {
 
 export function VistaAlertas({ onAbrir }: Props = {}) {
   const [alertas, setAlertas] = useState<AlertaVencimiento[]>([]);
-  const [dias, setDias] = useState(30);
+  /**
+   * Pendientes para todos; la configuración, solo para quien la administra.
+   *
+   * La anticipación ya no se elige aquí con botones de 15, 30, 60 o 90 días:
+   * la fija la Dirección para cada tipo de vencimiento, y dos formas de decir
+   * lo mismo hacían dudar de cuál mandaba.
+   */
+  const [pestana, setPestana] = useState<'pendientes' | 'configuracion'>('pendientes');
+  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setCargando(true);
     contratacionService
-      .alertas(dias)
+      .alertas()
       .then((a) => {
         setAlertas(a);
         setError(null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setCargando(false));
-  }, [dias]);
+  }, []);
 
   const vencidas = alertas.filter((a) => a.estado === 'VENCIDO');
   const porVencer = alertas.filter((a) => a.estado === 'POR_VENCER');
@@ -97,26 +109,37 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
           </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold text-slate-500">Avisar con</span>
-          {ANTICIPACIONES.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDias(d)}
-              aria-pressed={dias === d}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]/40 ${
-                  dias === d
-                    ? 'bg-[#DC2626]/10 border-[#DC2626]/30 text-[#DC2626]'
-                    : 'bg-white border-gray-200 text-slate-600 hover:border-slate-300'
-                }`}
-            >
-              {d} días
-            </button>
-          ))}
-        </div>
+        {puedeConfigurar && (
+          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            {(
+              [
+                ['pendientes', 'Pendientes'],
+                ['configuracion', 'Configuración'],
+              ] as const
+            ).map(([id, etiqueta]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPestana(id)}
+                aria-pressed={pestana === id}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-[#DC2626]/40 ${
+                    pestana === id
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-slate-300'
+                  }`}
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {pestana === 'configuracion' && puedeConfigurar ? (
+        <ParametrosAlertas puedeEditar />
+      ) : (
+      <>
 
       {/* Lo vencido primero y aparte: no es lo mismo «se acerca» que «se pasó». */}
       {!cargando && !error && (
@@ -128,7 +151,7 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
             icono={ShieldAlert}
           />
           <Resumen
-            etiqueta={`Vencen en ${dias} días o menos`}
+            etiqueta="Por vencer"
             cuantas={porVencer.length}
             color="#D97706"
             icono={Timer}
@@ -146,7 +169,7 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
             <FileCheck2 className="w-8 h-8 mx-auto text-emerald-300 mb-2" aria-hidden="true" />
             <p className="text-[12.5px] font-bold text-slate-700 m-0">Nada pendiente</p>
             <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">
-              No tienes actividades por aprobar, y nada vence en los próximos {dias} días.
+              No tienes actividades por aprobar, y nada está por vencer.
             </p>
           </div>
         ) : (
@@ -157,6 +180,8 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
           </ul>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
@@ -204,13 +229,18 @@ function Fila({
    * tercera avisa de un proceso que nadie ha tomado a su cargo.
    */
   const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_ABOGADO';
+  /** El plazo de una actividad: se cuenta en días hábiles y lleva a la actividad. */
+  const esPlazoActividad = a.tipo === 'PLAZO_ACTIVIDAD';
 
   // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
   // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
   // La devolución la trae igual, y llevar a quien corrige hasta la actividad
   // —no hasta el proceso— es justamente lo que le ahorra buscarla. «Sin
   // abogado» abre con la 3.4, que es la actividad que está trancada.
-  const numeral = sinPlazo ? a.descripcion.split('·')[0].trim() : undefined;
+  const numeral = sinPlazo || esPlazoActividad ? a.descripcion.split('·')[0].trim() : undefined;
+  /** «1 día hábil», «3 días hábiles»: en el plazo se dice el número bien dicho. */
+  const dias = (n: number) =>
+    esPlazoActividad ? (Math.abs(n) === 1 ? 'día hábil' : 'días hábiles') : 'días';
 
   return (
     <li
@@ -245,9 +275,11 @@ function Fila({
           {/* En la devuelta el nombre es de quien la devolvió, no de un
               responsable: decir «sin responsable asignado» sobre una actividad
               que es tuya no significaría nada. */}
+          {/* El plazo de una actividad no tiene «responsable» en la alerta: le
+              llega a quien le toca, configurado en la ficha. */}
           {a.responsable
             ? ` · ${esDevolucion ? `la devolvió ${a.responsable}` : a.responsable}`
-            : esDevolucion
+            : esDevolucion || esPlazoActividad
               ? ''
               : ' · sin responsable asignado'}
         </p>
@@ -278,10 +310,10 @@ function Fila({
               ? 'Esperando desde hoy'
               : `Esperando ${Math.abs(a.diasRestantes)} días`
             : vencido
-              ? `Venció hace ${Math.abs(a.diasRestantes)} días`
+              ? `Venció hace ${Math.abs(a.diasRestantes)} ${dias(a.diasRestantes)}`
               : a.diasRestantes === 0
                 ? 'Vence hoy'
-                : `En ${a.diasRestantes} días`}
+                : `En ${a.diasRestantes} ${dias(a.diasRestantes)}`}
         </span>
         <span className="block text-[10.5px] text-slate-400 tabular-nums">
           {fechaLarga(a.vence.slice(0, 10))}

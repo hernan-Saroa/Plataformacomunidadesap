@@ -53,6 +53,7 @@ import {
   PERMISO_DESIGNACION_ORDENAR,
   PERMISO_EVALUACION_REGISTRAR,
   PERMISO_EXPEDIENTE_ARCHIVAR,
+  PERMISO_PLAZO_TERMINAR,
   PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_REPORTE_VER,
   PERMISO_SUPERVISION_AVALAR,
@@ -371,6 +372,14 @@ export const CATALOGO_PERMISOS: PermisoDelCatalogo[] = [
     columna: 'Archivar',
   },
   {
+    codigo: PERMISO_PLAZO_TERMINAR,
+    nombre: 'Terminar un plazo (pruebas)',
+    descripcion:
+      'Dar por vencido el término de publicidad o el de subsanaciones para poder probar el flujo sin esperar los días hábiles',
+    recurso: 'plazo',
+    columna: null,
+  },
+  {
     codigo: PERMISO_ALERTA_VER,
     nombre: 'Consultar alertas de vencimiento',
     descripcion: 'Ver los vencimientos próximos y cumplidos de pólizas, respaldo y liquidación',
@@ -591,7 +600,7 @@ export const CATALOGO_ROLES: RolDelCatalogo[] = [
  */
 export const ROLES_TRANSVERSALES = [ROL_SUPER_ADMIN];
 
-// ------------------------------------------- los cuatro perfiles por defecto --
+// -------------------------------------------- los perfiles por defecto --
 
 /**
  * Un perfil: la combinación de roles que se entrega armada (EFDS-1183).
@@ -601,9 +610,9 @@ export const ROLES_TRANSVERSALES = [ROL_SUPER_ADMIN];
  * alta a un funcionario le llega como un formulario de treinta y cinco casillas que
  * no sabe responder, y el resultado previsible es que marque de más.
  *
- * Estos cuatro cubren el recorrido real de un proceso. No sustituyen a nada: es
- * una respuesta a «¿qué le pongo a esta persona?» que no obliga a construirla
- * desde cero.
+ * Cubren el recorrido real de un proceso. No sustituyen a nada: son una
+ * respuesta a «¿qué le pongo a esta persona?» que no obliga a construirla desde
+ * cero.
  */
 export interface PerfilPorDefecto {
   codigo: string;
@@ -617,10 +626,11 @@ export interface PerfilPorDefecto {
 }
 
 /**
- * Los cuatro, en el orden en que un proceso pasa por ellos.
+ * En el orden en que un proceso pasa por ellos.
  *
- * Tres son un solo rol y no una mezcla, que es la señal de que el catálogo
- * estaba bien dibujado: lo que faltaba no eran roles, era decir cuál usar.
+ * Casi todos son un solo rol y no una mezcla, que es la señal de que el
+ * catálogo estaba bien dibujado: lo que faltaba no eran roles, era decir cuál
+ * usar.
  */
 export const PERFILES_POR_DEFECTO: PerfilPorDefecto[] = [
   {
@@ -646,6 +656,21 @@ export const PERFILES_POR_DEFECTO: PerfilPorDefecto[] = [
       'Revisa lo que el área entregó y decide: aprueba, devuelve para corrección o niega. Después aprueba lo que Contratación va cargando.',
     quienLoEjerce: 'Abogados revisores de la Dirección de Contratación',
     roles: [ROL_REVISOR_CONTRATACION],
+  },
+  {
+    codigo: 'FINANCIERA',
+    nombre: 'Financiera',
+    descripcion:
+      'Atiende la solicitud de CDP que nace al cerrar la etapa 3: verifica la disponibilidad, expide el CDP y el RP, tramita los pagos avalados y cierra financieramente el contrato.',
+    quienLoEjerce: 'Profesionales de la Dirección Financiera',
+    // Un solo rol, como los tres primeros. `presupuesto.gestionar` reúne las
+    // cuatro actuaciones presupuestales —CDP, RP, pago y cierre financiero—
+    // porque son la misma competencia, comprometer plata de la entidad, en
+    // cuatro momentos del contrato; y el rol trae además `proceso.view` y
+    // `alerta.ver`, sin los cuales entraría por la bandeja de solicitudes sin
+    // atender y le fallaría cada consulta del proceso al que se las escribe
+    // (migración 072).
+    roles: [ROL_ESTRUCTURADOR_FINANCIERO],
   },
   {
     codigo: 'CONSULTA',

@@ -969,6 +969,7 @@ export async function resolverSolicitudPTA(
     horasPtaOriginal?: number;
     horasPtaNuevo?: number;
     resueltoPor?: string;
+    componentes?: string[];
   },
 ) {
   try {
