@@ -40,6 +40,7 @@ import {
   GuardarValoracionCompletaDto,
   ConfirmarRecepcionInsumosDto,
 } from './dto/create-mantenimiento.dto.js';
+import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
@@ -503,6 +504,37 @@ export class MantenimientoController {
   })
   listarValoraciones(@Param('idSolicitud') idSolicitud: string) {
     return this.mantenimientoService.listarValoraciones(idSolicitud, null, null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1736 RF-INF-007: Cierre Técnico de Ejecución
+  // Declaradas ANTES de wildcard :id para evitar colisiones.
+  // ---------------------------------------------------------------------------
+  @Get(':idSolicitud/cierre-tecnico')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1736 RF-INF-007: Resumen del cierre técnico de la solicitud (estado COMPLETADA). Si no hay cierre retorna {cerrado:false}. Campos: fecha, técnico, trabajo realizado, costo final, evidencias, seguimiento.',
+  })
+  obtenerCierreTecnico(@Param('idSolicitud') idSolicitud: string, @Req() req: any) {
+    return this.mantenimientoService.obtenerCierreTecnico(idSolicitud, req?.user);
+  }
+
+  @Post(':idSolicitud/cerrar-tecnicamente')
+  @ApiOperation({
+    summary:
+      'EFDS-1736 RF-INF-007: Cierre técnico oficial de la ejecución. Estado EN_PROGRESO → COMPLETADA. Requiere mínimo 1 evidencia fotográfica, trabajo realizado min 15 chars. Guardia usuarioPuedeOperarComoTecnicoAsignado (403), Guardia CS_002 no multipropósito en eléctrica (403), Guardia transición sólo EN_PROGRESO (409). SUPER_ADMIN bypass total.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud pasa a COMPLETADA. CIERRE_TECNICO registrado en JSONB asignaciones.' })
+  @ApiResponse({ status: 400, description: 'Validación: evidencias < 1, trabajo < 15 chars, costo < 0.' })
+  @ApiResponse({ status: 403, description: 'Usuario no técnico asignado o Multipropósito en CS_002.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está EN_PROGRESO.' })
+  cerrarTecnicamente(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: CerrarTecnicamenteDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.cerrarTecnicamente(idSolicitud, dto, req?.user);
   }
 
   @Post()

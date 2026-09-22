@@ -162,6 +162,50 @@ export class SolicitudMantenimiento {
   })
   diasExtendidosPorInsumos: number;
 
+  // ----- EFDS-1736 RF-INF-007 Cierre Técnico Ejecución y Evidencia -----
+  @Column({ type: 'timestamptz', name: 'fecha_cierre_tecnico', nullable: true })
+  fechaCierreTecnico?: Date;
+
+  @Column({ type: 'uuid', name: 'usuario_cierre_tecnico_id', nullable: true })
+  usuarioCierreTecnicoId?: string;
+
+  @Column({
+    type: 'varchar',
+    length: 200,
+    name: 'responsable_cierre_display',
+    nullable: true,
+  })
+  responsableCierreDisplay?: string;
+
+  @Column({
+    type: 'simple-json',
+    default: () => "'[]'",
+    name: 'evidencias_cierre',
+  })
+  evidenciasCierre?: Array<Record<string, any>>;
+
+  @Column({
+    type: 'numeric',
+    precision: 15,
+    scale: 2,
+    name: 'costo_final_efectivo_cop',
+    default: 0,
+  })
+  costoFinalEfectivoCop: number;
+
+  @Column({ type: 'text', name: 'trabajo_realizado', nullable: true })
+  trabajoRealizado?: string;
+
+  @Column({ type: 'text', name: 'observaciones_cierre', nullable: true })
+  observacionesCierre?: string;
+
+  @Column({
+    type: 'boolean',
+    name: 'requiere_seguimiento',
+    default: false,
+  })
+  requiereSeguimiento: boolean;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
 import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
+import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
@@ -1032,7 +1033,8 @@ export class MantenimientoService implements OnModuleInit {
         | 'EXTENSION_SLA_POR_INSUMOS'
         | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
         | 'EDICION_VALORACION_POR_ENCARGADO'
-        | 'INICIO_EJECUCION_DIRECTA';
+        | 'INICIO_EJECUCION_DIRECTA'
+        | 'CIERRE_TECNICO';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       motivo?: string | null;
@@ -1646,6 +1648,88 @@ export class MantenimientoService implements OnModuleInit {
       user: user as AuthUser,
     });
     return this.mantenimientoRepo.save(solicitud);
+  }
+
+  async obtenerCierreTecnico(
+    idSolicitud: string,
+    _user: AuthUser | null | undefined,
+  ): Promise<CierreTecnicoResponse> {
+    const solicitud = await this.findById(idSolicitud);
+    return {
+      cerrado: !!solicitud.fechaCierreTecnico,
+      idSolicitud: solicitud.idSolicitud,
+      consecutivo: solicitud.consecutivo,
+      fechaCierreTecnico: solicitud.fechaCierreTecnico,
+      usuarioCierreTecnicoId: solicitud.usuarioCierreTecnicoId,
+      responsableCierreDisplay: solicitud.responsableCierreDisplay,
+      trabajoRealizado: solicitud.trabajoRealizado,
+      observacionesCierre: solicitud.observacionesCierre,
+      costoFinalEfectivoCop: Number(solicitud.costoFinalEfectivoCop || 0),
+      evidenciasCierre: Array.isArray(solicitud.evidenciasCierre) ? solicitud.evidenciasCierre : [],
+      requiereSeguimiento: !!solicitud.requiereSeguimiento,
+    };
+  }
+
+  async cerrarTecnicamente(
+    idSolicitud: string,
+    dto: CerrarTecnicamenteDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    const solicitud = await this.findById(idSolicitud);
+    const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
+    if (esTI) {
+      throw new BadRequestException('Las solicitudes TI no pasan por cierre técnico físico UMI.');
+    }
+    const per = await this.usuarioPuedeOperarComoTecnicoAsignado(solicitud, user);
+    if (!per.puede) {
+      throw new ForbiddenException('No está autorizado para cerrar técnicamente esta solicitud.');
+    }
+    await this.validarEspecializacionCS002(solicitud, per, user);
+    if (solicitud.estado !== 'EN_PROGRESO') {
+      throw new ConflictException(
+        `La solicitud debe estar en estado EN_PROGRESO para cerrar técnicamente. Estado actual: ${solicitud.estado}`,
+      );
+    }
+
+    const ahora = new Date();
+    const costo = Number(dto.costoFinalEfectivoCop || 0);
+    const nEvidencias = Array.isArray(dto.evidencias) ? dto.evidencias.length : 0;
+    const displayTecnico =
+      per.tecnicoCodigo && per.tecnicoNombre
+        ? `${per.tecnicoCodigo} · ${per.tecnicoNombre}`
+        : per.tecnicoNombre || user?.username || 'Usuario sin nombre';
+
+    solicitud.estado = 'COMPLETADA';
+    solicitud.fechaCierreTecnico = ahora;
+    solicitud.usuarioCierreTecnicoId = user?.userId || undefined;
+    solicitud.responsableCierreDisplay = displayTecnico;
+    solicitud.trabajoRealizado = dto.trabajoRealizado;
+    solicitud.observacionesCierre = dto.observaciones ?? undefined;
+    solicitud.costoFinalEfectivoCop = costo;
+    solicitud.evidenciasCierre = Array.isArray(dto.evidencias) ? dto.evidencias.map((e: any) => ({ ...e })) : [];
+    solicitud.requiereSeguimiento = !!dto.requiereSeguimiento;
+    solicitud.fechaEjecucion = solicitud.fechaEjecucion ?? ahora.toISOString().slice(0, 10);
+
+    const costoTxt = `$${Math.round(costo).toLocaleString('es-CO')} COP`;
+    const motivoResumen = `Cierre técnico registrado. ${nEvidencias} evidencia(s) adjunta(s). Costo final ${costoTxt}.`;
+    const obsTxt = [
+      dto.observaciones ? `Obs: ${dto.observaciones}` : null,
+      dto.requiereSeguimiento ? 'Marcado con requerimiento de seguimiento futuro.' : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    this.pushAsignacion(solicitud, {
+      accion: 'CIERRE_TECNICO',
+      tecnicoCodigo: per.tecnicoCodigo ?? null,
+      tecnicoNombreDisplay: per.tecnicoNombre ?? null,
+      motivo: motivoResumen,
+      observaciones: obsTxt || null,
+      user: user as AuthUser,
+    });
+
+    await this.mantenimientoRepo.save(solicitud);
+    return this.findById(idSolicitud);
   }
 
   async listarValoraciones(

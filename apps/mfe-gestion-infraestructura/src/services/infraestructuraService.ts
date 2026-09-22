@@ -121,6 +121,15 @@ export interface SolicitudMantenimiento {
   fechaLimiteOriginalAntesExtension?: string | null;
   diasExtendidosPorInsumos?: number;
   valoraciones?: SolicitudValoracion[];
+  // ----- EFDS-1736 RF-INF-007 -----
+  fechaCierreTecnico?: string | null;
+  usuarioCierreTecnicoId?: string | null;
+  responsableCierreDisplay?: string | null;
+  evidenciasCierre?: Array<Record<string, any>>;
+  costoFinalEfectivoCop?: number;
+  trabajoRealizado?: string | null;
+  observacionesCierre?: string | null;
+  requiereSeguimiento?: boolean;
 }
 
 export interface HistoricoAsignacionEntry {
@@ -136,7 +145,8 @@ export interface HistoricoAsignacionEntry {
     | 'EXTENSION_SLA_POR_INSUMOS'
     | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
     | 'EDICION_VALORACION_POR_ENCARGADO'
-    | 'INICIO_EJECUCION_DIRECTA';
+    | 'INICIO_EJECUCION_DIRECTA'
+    | 'CIERRE_TECNICO';
   tecnico_codigo: string | null;
   tecnico_nombre_display: string | null;
   motivo: string | null;
@@ -219,6 +229,37 @@ export interface GuardarValoracionCompletaPayload {
 
 export interface ConfirmarRecepcionInsumosPayload {
   observaciones?: string;
+}
+
+export interface EvidenciaCierreFoto {
+  name: string;
+  size: number;
+  type: string;
+  url: string;
+  bucket?: string;
+  key?: string;
+}
+
+export interface CierreTecnicoPayload {
+  evidencias: EvidenciaCierreFoto[];
+  trabajoRealizado: string;
+  observaciones?: string;
+  costoFinalEfectivoCop: number;
+  requiereSeguimiento: boolean;
+}
+
+export interface CierreTecnicoResponse {
+  cerrado: boolean;
+  idSolicitud: string;
+  consecutivo?: string;
+  fechaCierreTecnico?: string | null;
+  usuarioCierreTecnicoId?: string | null;
+  responsableCierreDisplay?: string | null;
+  trabajoRealizado?: string | null;
+  observacionesCierre?: string | null;
+  costoFinalEfectivoCop: number;
+  evidenciasCierre: EvidenciaCierreFoto[];
+  requiereSeguimiento: boolean;
 }
 
 export interface CreateMantenimientoPayload {
@@ -1330,5 +1371,39 @@ export const infraestructuraService = {
       console.warn('[infra] listarMisValoracionesAsignadas falló:', err);
       return [];
     }
+  },
+
+  async obtenerCierreTecnico(idSolicitud: string): Promise<CierreTecnicoResponse> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/cierre-tecnico`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error consultando resumen del cierre técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async cerrarTecnicamente(
+    idSolicitud: string,
+    payload: CierreTecnicoPayload,
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/cerrar-tecnicamente`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!res.ok) {
+      let m = 'Error registrando el cierre técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
   },
 };
