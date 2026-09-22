@@ -983,6 +983,82 @@ describe('TravelExpensesService', () => {
       expect(solicitudRepo.save).toHaveBeenCalled();
     });
 
+    it('debe crear solicitud con campos adicionales dinámicos y días de comisión decimales', async () => {
+      const comisionado = {
+        ...mockComisionado,
+        autorizacionHabeasData: true,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
+
+      let entidadCapturada: any = null;
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn().mockImplementation((dto) => {
+          entidadCapturada = dto;
+          return { id: 'sol-decimal-01', ...dto };
+        }),
+        save: jest.fn().mockImplementation((ent) => Promise.resolve(ent)),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ max: 'COM-2026-0005' }),
+              }),
+            }),
+          };
+          return cb(manager);
+        }),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Leticia',
+        destinoDepartamento: 'Amazonas',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-16',
+        objetoComision: 'Acompañamiento a comunidades territoriales',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'C-0102',
+        requiereTiquetes: true,
+        diasComision: 1.5,
+        montoViaticos: 450000,
+        montoGastosViaje: 100000,
+        creadoPorUsuarioId: 'user-001',
+        camposAdicionales: {
+          centroCostos: 'CC-Amazonas-01',
+          contactoEmergencia: '3129876543',
+        },
+      });
+
+      expect(result).toBeDefined();
+      expect(entidadCapturada.diasComision).toBe(1.5);
+      expect(entidadCapturada.camposAdicionales).toEqual({
+        centroCostos: 'CC-Amazonas-01',
+        contactoEmergencia: '3129876543',
+      });
+      expect(result.camposAdicionales.centroCostos).toBe('CC-Amazonas-01');
+    });
+
     it('debe lanzar 400 si fecha fin es anterior a fecha inicio', async () => {
       const comisionado = {
         ...mockComisionado,

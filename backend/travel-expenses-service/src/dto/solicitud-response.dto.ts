@@ -19,4 +19,5 @@ export class SolicitudResponseDto {
   warningMessage?: string;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  camposAdicionales?: Record<string, any>;
 }

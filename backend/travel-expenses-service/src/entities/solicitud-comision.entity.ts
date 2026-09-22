@@ -382,6 +382,13 @@ export class SolicitudComisionEntity {
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
 
+  @Column({
+    name: 'campos_adicionales',
+    type: 'jsonb',
+    default: () => "'{}'::jsonb",
+  })
+  camposAdicionales: Record<string, any>;
+
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
   documentosSoporte: DocumentoSoporteEntity[];
 }

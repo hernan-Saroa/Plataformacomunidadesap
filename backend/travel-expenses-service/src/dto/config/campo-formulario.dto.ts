@@ -57,6 +57,11 @@ export class UpdateCampoFormularioDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(Object.values(TipoCampoFormulario))
+  tipoCampo?: TipoCampoFormulario;
+
+  @IsOptional()
+  @IsString()
   @Length(0, 200)
   placeholder?: string;
 

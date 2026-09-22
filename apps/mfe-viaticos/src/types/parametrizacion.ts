@@ -68,6 +68,7 @@ export interface CrearCampoFormularioDTO {
 
 export interface ActualizarCampoFormularioDTO {
   etiqueta?: string;
+  tipoCampo?: TipoCampoFormulario;
   placeholder?: string;
   opciones?: Array<{ value: string; label: string }>;
   grupo?: GrupoCampoFormulario;

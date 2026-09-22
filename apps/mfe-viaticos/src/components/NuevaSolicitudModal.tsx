@@ -35,7 +35,7 @@ import {
   TicketValidationResult,
   TipoTransporteTiquete,
 } from '../types/viaticos';
-import { ConfigTipoComisionado } from '../types/parametrizacion';
+import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
@@ -91,6 +91,25 @@ interface UsuarioContexto {
 }
 
 const PASOS = ['Comisionado', 'Objeto y Destino', 'Documentos', 'Confirmación'];
+
+const camposEstandar = new Set([
+  'documentoComisionado',
+  'objetoComision',
+  'destinoCiudad',
+  'destinoDepartamento',
+  'fechaInicio',
+  'fechaFin',
+  'prioridad',
+  'rubroPresupuestal',
+  'requiereTiquetes',
+  'montoViaticos',
+  'montoGastosViaje',
+  'diasComision',
+  'salarioBasico',
+  'costoEstimadoTiquete',
+  'tipoComision',
+  'esInternacional',
+]);
 
 /**
  * Detecta por rol si el usuario es SUPER_ADMIN (o variantes normalizadas
@@ -148,6 +167,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [esSuperAdminViaticos, setEsSuperAdminViaticos] = useState(false);
   const [cargandoUsuario, setCargandoUsuario] = useState(false);
   const [parametrizacion, setParametrizacion] = useState<ConfigTipoComisionado | null>(null);
+  const [camposCatalogo, setCamposCatalogo] = useState<CampoFormulario[]>([]);
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
@@ -311,9 +331,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setCargandoParametrizacion(true);
     try {
       const data = await viaticosService.obtenerParametrizacionFormulario();
-      if (data && comisionado?.tipoComisionado) {
-        const config = data.configuraciones?.[comisionado.tipoComisionado];
-        setParametrizacion(config ?? data.configuraciones?.DEFAULT ?? null);
+      if (data) {
+        if (data.campos) {
+          setCamposCatalogo(data.campos);
+        }
+        if (comisionado?.tipoComisionado) {
+          const config = data.configuraciones?.[comisionado.tipoComisionado];
+          setParametrizacion(config ?? data.configuraciones?.DEFAULT ?? null);
+        }
       }
     } catch (e) {
       console.error('Error cargando parametrización:', e);
@@ -385,6 +410,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
+      camposAdicionales: (solicitud as any).camposAdicionales || {},
     });
     if (solicitud.comisionado) {
       setComisionado(solicitud.comisionado);
@@ -437,6 +463,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setSoporteExcepcionPdf(null);
       setErrorExcepcion(null);
       void cargarDepartamentos();
+      void cargarParametrizacion();
       // La carga de dependencias depende del rol: primero resolvemos el
       // usuario y su dependencia asociada. El usuario elevado —superadmin
       // según el backend de viáticos (el mismo flag que usa
@@ -477,17 +504,38 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setForm((prev) => ({ ...prev, [campo]: valor }));
   };
 
+  const actualizarCampoAdicional = (clave: string, valor: any) => {
+    setForm((prev) => ({
+      ...prev,
+      camposAdicionales: {
+        ...(prev.camposAdicionales || {}),
+        [clave]: valor,
+      },
+    }));
+  };
+
+  const esCampoActivo = (clave: string): boolean => {
+    const definido = camposCatalogo.find((c) => c.clave === clave);
+    if (definido && definido.activo === false) {
+      return false;
+    }
+    return true;
+  };
+
   const esCampoObligatorio = (clave: string): boolean => {
+    if (!esCampoActivo(clave)) return false;
     if (!parametrizacion) return true;
     return parametrizacion.camposObligatorios.includes(clave);
   };
 
   const esCampoOpcional = (clave: string): boolean => {
+    if (!esCampoActivo(clave)) return false;
     if (!parametrizacion) return false;
     return parametrizacion.camposOpcionales.includes(clave);
   };
 
   const esCampoOculto = (clave: string): boolean => {
+    if (!esCampoActivo(clave)) return true;
     if (!parametrizacion) return false;
     return parametrizacion.camposOcultos.includes(clave);
   };
@@ -857,6 +905,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             costoEstimadoTiquete: form.costoEstimadoTiquete,
             tipoComision: form.esInternacional ? 'INTERNACIONAL' : (form.tipoComision || 'TERRESTRE'),
             esInternacional: Boolean(form.esInternacional),
+            camposAdicionales: form.camposAdicionales ?? {},
           },
         );
         setSolicitudBorrador({
@@ -1859,6 +1908,149 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                  </div>
                )}
 
+                {/* ============================================================== */}
+                {/* CAMPOS ADICIONALES DINÁMICOS (Configurables vía Parametrización) */}
+                {/* ============================================================== */}
+                {(() => {
+                  const camposAdicionalesConfigurados = camposCatalogo
+                    .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
+                    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+
+                  if (camposAdicionalesConfigurados.length === 0) return null;
+
+                  return (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-slate-500" />
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Información Adicional de la Comisión
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {camposAdicionalesConfigurados.map((campo) => {
+                          const valorActual = form.camposAdicionales?.[campo.clave] ?? '';
+                          const obligatorio = esCampoObligatorio(campo.clave);
+
+                          if (campo.tipoCampo === 'TEXTAREA') {
+                            return (
+                              <div key={campo.clave} className="col-span-1 sm:col-span-2">
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <textarea
+                                  id={`campo_${campo.clave}`}
+                                  required={obligatorio}
+                                  rows={2}
+                                  placeholder={campo.placeholder || `Ingrese ${campo.etiqueta.toLowerCase()}...`}
+                                  value={valorActual}
+                                  onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
+                                  className={inputCls}
+                                />
+                              </div>
+                            );
+                          }
+
+                          if (campo.tipoCampo === 'SELECT') {
+                            const opciones = campo.opciones || [];
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <SearchableSelect
+                                  id={`campo_${campo.clave}`}
+                                  options={opciones}
+                                  value={valorActual}
+                                  onChange={(val) => actualizarCampoAdicional(campo.clave, val)}
+                                  placeholder={campo.placeholder || 'Seleccione una opción...'}
+                                />
+                              </div>
+                            );
+                          }
+
+                          if (campo.tipoCampo === 'BOOLEAN') {
+                            return (
+                              <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
+                                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                                  <input
+                                    id={`campo_${campo.clave}`}
+                                    type="checkbox"
+                                    checked={Boolean(valorActual)}
+                                    onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.checked)}
+                                    className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
+                                  />
+                                  {campo.etiqueta} {obligatorio && <span className="text-red-500">*</span>}
+                                </label>
+                              </div>
+                            );
+                          }
+
+                          if (campo.tipoCampo === 'DATE') {
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <input
+                                  id={`campo_${campo.clave}`}
+                                  type="date"
+                                  required={obligatorio}
+                                  value={valorActual}
+                                  onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
+                                  className={inputCls}
+                                />
+                              </div>
+                            );
+                          }
+
+                          if (campo.tipoCampo === 'NUMBER' || campo.tipoCampo === 'CURRENCY') {
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <div className="relative">
+                                  {campo.tipoCampo === 'CURRENCY' && (
+                                    <span className="absolute left-3 top-2 text-slate-400 font-bold text-xs">$</span>
+                                  )}
+                                  <input
+                                    id={`campo_${campo.clave}`}
+                                    type="number"
+                                    step="any"
+                                    required={obligatorio}
+                                    placeholder={campo.placeholder || '0'}
+                                    value={valorActual}
+                                    onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value === '' ? '' : Number(e.target.value))}
+                                    className={`${inputCls} ${campo.tipoCampo === 'CURRENCY' ? 'pl-7 text-right' : ''}`}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={campo.clave}>
+                              <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                {renderLabel(campo.clave, campo.etiqueta)}
+                              </label>
+                              <input
+                                id={`campo_${campo.clave}`}
+                                type="text"
+                                required={obligatorio}
+                                placeholder={campo.placeholder || ''}
+                                value={valorActual}
+                                onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
+                                className={inputCls}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
                  <input
                    type="checkbox"
@@ -2172,6 +2364,30 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <p className="bg-slate-50 rounded-lg p-2.5 text-slate-700 leading-relaxed">{form.objetoComision}</p>
                   </div>
                 )}
+                {/* Campos adicionales configurados */}
+                {camposCatalogo
+                  .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
+                  .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+                  .map((campo) => {
+                    const val = form.camposAdicionales?.[campo.clave];
+                    if (val === undefined || val === null || val === '') return null;
+                    let displayVal = String(val);
+                    if (typeof val === 'boolean') {
+                      displayVal = val ? 'Sí' : 'No';
+                    } else if (campo.tipoCampo === 'CURRENCY' && typeof val === 'number') {
+                      displayVal = formatearMoneda(val);
+                    } else if (campo.tipoCampo === 'SELECT' && campo.opciones) {
+                      const matched = campo.opciones.find((o) => o.value === String(val));
+                      if (matched) displayVal = matched.label;
+                    }
+
+                    return (
+                      <div key={campo.clave} className="flex justify-between px-4 py-2.5">
+                        <span className="text-slate-400 font-bold">{campo.etiqueta}</span>
+                        <span className="font-semibold text-slate-800">{displayVal}</span>
+                      </div>
+                    );
+                  })}
                 <div className="px-4 py-2.5">
                   <span className="text-slate-400 font-bold block mb-1">Soportes obligatorios</span>
                   <div className="flex flex-wrap gap-1.5">

@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsNumber,
   IsInt,
+  IsObject,
   Min,
 } from 'class-validator';
 
@@ -84,4 +85,8 @@ export class UpdateSolicitudDto {
   @IsOptional()
   @IsBoolean()
   esInternacional?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  camposAdicionales?: Record<string, any>;
 }

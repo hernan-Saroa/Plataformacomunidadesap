@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsNumber,
   IsInt,
+  IsObject,
   Min,
 } from 'class-validator';
 
@@ -112,4 +113,8 @@ export class CreateSolicitudDto {
   @IsNumber()
   @Min(0)
   idDependencia?: number;
+
+  @IsOptional()
+  @IsObject()
+  camposAdicionales?: Record<string, any>;
 }

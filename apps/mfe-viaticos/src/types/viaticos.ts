@@ -63,6 +63,7 @@ export interface FormNuevaSolicitud {
   documentos?: DocumentoFormItem[];
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  camposAdicionales?: Record<string, any>;
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -192,6 +193,7 @@ export interface SolicitudComisionResponse {
     porcentajeUso: number;
     semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
   };
+  camposAdicionales?: Record<string, any>;
 }
 
 /**
@@ -226,6 +228,7 @@ export interface CreateSolicitudRequest {
     urlRepositorio: string;
     tipoMime?: string;
   }[];
+  camposAdicionales?: Record<string, any>;
 }
 
 /**

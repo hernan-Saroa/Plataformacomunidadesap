@@ -379,6 +379,7 @@ export class TravelExpensesService {
       observacionesPago: (s as any).observacionesPago ?? null,
       pagadoPorId: (s as any).pagadoPorId ?? null,
       fechaRegistroPago: (s as any).fechaRegistroPago?.toISOString?.() ?? (s as any).fechaRegistroPago ?? null,
+      camposAdicionales: (s as any).camposAdicionales ?? {},
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
@@ -508,6 +509,7 @@ export class TravelExpensesService {
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
+      camposAdicionales: (s as any).camposAdicionales ?? {},
       };
     });
 
@@ -1242,6 +1244,7 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos,
       montoGastosViaje: dto.montoGastosViaje,
       diasComision: dto.diasComision,
+      ...(dto.camposAdicionales || {}),
     };
 
     const { camposFaltantes } = await this.validarCamposObligatorios(
@@ -1370,6 +1373,7 @@ export class TravelExpensesService {
         ? 'INTERNACIONAL'
         : (dto.tipoComision ?? 'TERRESTRE'),
       creadoPorUsuarioId: dto.creadoPorUsuarioId,
+      camposAdicionales: dto.camposAdicionales ?? {},
     });
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -1482,6 +1486,12 @@ export class TravelExpensesService {
     }
     if (dto.esInternacional !== undefined) {
       solicitud.esInternacional = dto.esInternacional;
+    }
+    if (dto.camposAdicionales !== undefined) {
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        ...dto.camposAdicionales,
+      };
     }
 
     return this.solicitudRepo.save(solicitud);

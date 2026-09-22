@@ -38,6 +38,7 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     aceptaHabeasData: false,
     tipoComision: 'TERRESTRE',
     esInternacional: false,
+    camposAdicionales: {},
   };
 }
 
@@ -273,6 +274,7 @@ export function mapearARequestCreacion(
     tipoComision: form.esInternacional ? 'INTERNACIONAL' : (tipoComision || 'TERRESTRE'),
     esInternacional: Boolean(form.esInternacional),
     documentos,
+    camposAdicionales: form.camposAdicionales ?? {},
   };
 }
 
