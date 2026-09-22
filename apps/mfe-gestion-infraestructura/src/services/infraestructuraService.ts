@@ -130,6 +130,14 @@ export interface SolicitudMantenimiento {
   trabajoRealizado?: string | null;
   observacionesCierre?: string | null;
   requiereSeguimiento?: boolean;
+  // ----- EFDS-1737 RF-INF-008 -----
+  fechaConformidad?: string | null;
+  usuarioConformidadId?: string | null;
+  responsableConformidadDisplay?: string | null;
+  resultadoConformidad?: 'CONFIRMADA' | 'SIN_RESPUESTA' | 'RECHAZADA_Y_REABIERTA' | null;
+  observacionesConformidad?: string | null;
+  fechaLimiteConformidad?: string | null;
+  conteoReaperturasConformidad?: number;
 }
 
 export interface HistoricoAsignacionEntry {
@@ -146,7 +154,10 @@ export interface HistoricoAsignacionEntry {
     | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
     | 'EDICION_VALORACION_POR_ENCARGADO'
     | 'INICIO_EJECUCION_DIRECTA'
-    | 'CIERRE_TECNICO';
+    | 'CIERRE_TECNICO'
+    | 'CONFORMIDAD_CONFIRMADA'
+    | 'CONFORMIDAD_SIN_RESPUESTA'
+    | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA';
   tecnico_codigo: string | null;
   tecnico_nombre_display: string | null;
   motivo: string | null;
@@ -1401,6 +1412,70 @@ export const infraestructuraService = {
     );
     if (!res.ok) {
       let m = 'Error registrando el cierre técnico';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008 Conformidad del área solicitante
+  // ---------------------------------------------------------------------------
+
+  async confirmarConformidad(
+    idSolicitud: string,
+    payload: { observacionesConformidad?: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/conformidad/confirmar`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!res.ok) {
+      let m = 'Error confirmando conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async rechazarConformidad(
+    idSolicitud: string,
+    payload: { observacionesConformidad: string },
+  ): Promise<SolicitudMantenimiento> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/conformidad/rechazar`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!res.ok) {
+      let m = 'Error devolviendo conformidad';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async ejecutarCierresSinRespuesta(): Promise<{ actualizadas: number; ids: string[] }> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/ejecutar-cierres-sin-respuesta`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+    );
+    if (!res.ok) {
+      let m = 'Error ejecutando cierres automáticos sin respuesta';
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
