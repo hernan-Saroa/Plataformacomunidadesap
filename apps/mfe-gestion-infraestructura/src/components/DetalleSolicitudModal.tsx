@@ -7,6 +7,8 @@ import {
   Eye, Monitor, GitBranch, Send, AlertCircle, Wand2, Users,
   ChevronDown, Zap, ChevronUp, ThumbsUp, Ban as IconRechazar,
   Repeat as RedistribuirIcon, CheckCircle2, ThumbsDown, RotateCcw,
+  BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge,
+  ScrollText
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -17,6 +19,7 @@ import {
   SolicitudValoracion,
 } from '../services/infraestructuraService';
 import { DetalleValoracionForm } from './DetalleValoracionForm';
+import { DetalleCierreEjecucionForm } from './DetalleCierreEjecucionForm';
 import { Play as PlayIcon, ClipboardCheck as ClipboarCheckIcon, PackageX, Truck } from 'lucide-react';
 
 interface DetalleSolicitudModalProps {
@@ -102,6 +105,46 @@ const dedupeEvidencias = (listas: SolicitudEvidencia[][]): SolicitudEvidencia[] 
   return Array.from(porId.values()).sort((a, b) => (a.orden || 0) - (b.orden || 0));
 };
 
+const parseJsonSeguro = (valor: string | null | undefined): Record<string, any> | null => {
+  if (!valor) return null;
+  const s = String(valor).trim();
+  if (!s.startsWith('{') && !s.startsWith('[')) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+};
+
+const resumirExtensionSLA = (obj: Record<string, any>): string | null => {
+  const dias = Number(obj.diasAdicionales || obj.dias || 0);
+  const fechaOrig = obj.fechaOriginal;
+  const fechaNueva = obj.fechaNueva;
+  if (!dias && !fechaOrig) return null;
+  const parts: string[] = [];
+  if (dias) parts.push(`+${dias} día(s) adicionales`);
+  if (fechaOrig) parts.push(`tope original: ${new Date(fechaOrig).toLocaleDateString('es-CO', { day:'numeric', month:'short' })}`);
+  if (fechaNueva) parts.push(`nuevo tope: ${new Date(fechaNueva).toLocaleDateString('es-CO', { day:'numeric', month:'short' })}`);
+  return parts.join(' · ');
+};
+
+const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; icon: React.ComponentType<any> }> = {
+  APROBADA_Y_ASIGNADA:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',     dot: 'bg-emerald-500', icon: BadgeCheck },
+  RECHAZADA:                { badge: 'bg-rose-100 text-rose-800 border-rose-200',              dot: 'bg-rose-500',    icon: XCircle },
+  REDISTRIBUIDA:            { badge: 'bg-indigo-100 text-indigo-800 border-indigo-200',          dot: 'bg-indigo-500',  icon: Users },
+  INICIO_VALORACION:        { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-500',     icon: ClipboardList },
+  FINALIZA_VALORACION_CON_DISPONIBLES: { badge: 'bg-teal-100 text-teal-800 border-teal-200',     dot: 'bg-teal-600',    icon: CheckCircle2 },
+  FINALIZA_VALORACION_EN_ESPERA:       { badge: 'bg-amber-100 text-amber-800 border-amber-200',   dot: 'bg-amber-500',   icon: PackageX },
+  EXTENSION_SLA_POR_INSUMOS:{ badge: 'bg-orange-100 text-orange-800 border-orange-200',          dot: 'bg-orange-500',  icon: Clock },
+  RECEPCION_MATERIALES_Y_PASO_A_EJECUCION: { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-600', icon: Truck },
+  EDICION_VALORACION_POR_ENCARGADO:    { badge: 'bg-slate-100 text-slate-800 border-slate-200',  dot: 'bg-slate-500',   icon: FileBadge },
+  INICIO_EJECUCION_DIRECTA: { badge: 'bg-green-100 text-green-800 border-green-200',             dot: 'bg-green-500',   icon: PlayIcon },
+  CIERRE_TECNICO:           { badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',       dot: 'bg-emerald-700',  icon: ClipboarCheckIcon },
+  REMITIDA_TI:              { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-600',     icon: Monitor },
+  RECHAZO_REMISION_TI:      { badge: 'bg-rose-100 text-rose-800 border-rose-200',                dot: 'bg-rose-600',    icon: Ban },
+  APROBADA_REMISION_TI:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
+};
+
 export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   open,
   idSolicitud,
@@ -166,6 +209,19 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [errorRecepcion, setErrorRecepcion] = useState<string>('');
 
   const [valoracionesAbierto, setValoracionesAbierto] = useState<boolean>(true);
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1736 RF-INF-007: Cierre técnico ejecución + evidencia
+  // ---------------------------------------------------------------------------
+  const [openCierre, setOpenCierre] = useState<boolean>(false);
+
+  const handleCierreSaved = async (resp: any) => {
+    if (resp && typeof resp === 'object' && (resp.idSolicitud || resp.estado)) {
+      setDetalle(resp);
+    }
+    await recargarDetalle();
+    await onCambioExitoso?.();
+  };
 
   useEffect(() => {
     let cancelado = false;
@@ -277,6 +333,61 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const evidenciasFinales = useMemo<SolicitudEvidencia[]>(() => {
     return dedupeEvidencias([evidenciasEndpoint, detalle?.evidencias || []]);
   }, [evidenciasEndpoint, detalle]);
+
+  type GrupoEvidencias = {
+    key: 'radicacion' | 'valoracion' | 'cierre' | 'otras';
+    label: string;
+    icon: React.ComponentType<any>;
+    claseBadge: string;
+    items: SolicitudEvidencia[];
+  };
+
+  const evidenciasAgrupadas = useMemo<GrupoEvidencias[]>(() => {
+    const idsValoracion = new Set<string>();
+    (detalle?.valoraciones || []).forEach((v) => {
+      (v.evidencias || []).forEach((e) => e?.idEvidencia && idsValoracion.add(e.idEvidencia));
+    });
+    const idsCierre = new Set<string>();
+    const arrCierre = (detalle?.evidenciasCierre || []);
+    for (const it of arrCierre) {
+      if (it?.idEvidencia) idsCierre.add(String(it.idEvidencia));
+      if (it?.key) idsCierre.add(String(it.key));
+      if (it?.rutaObjeto) idsCierre.add(String(it.rutaObjeto));
+    }
+    const evRadArr: SolicitudEvidencia[] = [];
+    const evValArr: SolicitudEvidencia[] = [];
+    const evCieArr: SolicitudEvidencia[] = [];
+    const evOtrArr: SolicitudEvidencia[] = [];
+
+    for (const e of evidenciasFinales) {
+      const idMatch = e.idEvidencia;
+      const ruta = (e.rutaObjeto || '').toLowerCase();
+      if (idsCierre.has(idMatch) || ruta.includes('/cierre-tecnico') || ruta.includes('cierre_tecnico')) {
+        evCieArr.push(e);
+      } else if (idsValoracion.has(idMatch) || ruta.includes('/valoracion') || ruta.includes('valoracion_') || (e.notas || '').toLowerCase().includes('valor')) {
+        evValArr.push(e);
+      } else if (evRadArr.length === 0 && (
+        (e.orden === 1) ||
+        (detalle?.evidenciaInicialUrl && (e.urlPublica === detalle.evidenciaInicialUrl || e.urlPresigned?.startsWith(detalle.evidenciaInicialUrl.split('?')[0]))) ||
+        ruta.includes('/mantenimiento/2026') || ruta.endsWith(`/${e.nombreAlmacenado}`)
+      )) {
+        evRadArr.push(e);
+      } else {
+        evOtrArr.push(e);
+      }
+    }
+    const grupos: GrupoEvidencias[] = [
+      { key: 'radicacion', label: 'Radicación inicial', icon: FileText,     claseBadge: 'bg-slate-100 text-slate-700 border border-slate-200',           items: evRadArr },
+      { key: 'valoracion', label: 'Valoración en campo', icon: ClipboardList, claseBadge: 'bg-sky-100 text-sky-800 border border-sky-200',              items: evValArr },
+      { key: 'cierre',     label: 'Cierre técnico',       icon: ClipboarCheckIcon, claseBadge: 'bg-emerald-100 text-emerald-800 border border-emerald-200', items: evCieArr },
+      { key: 'otras',      label: 'Otras evidencias',     icon: Paperclip,   claseBadge: 'bg-indigo-100 text-indigo-800 border border-indigo-200',        items: evOtrArr },
+    ];
+    return grupos;
+  }, [evidenciasFinales, detalle]);
+
+  const [evAbierto, setEvAbierto] = useState<Record<string, boolean>>({
+    radicacion: true, valoracion: true, cierre: true, otras: false,
+  });
 
   const claseEstado = (estado: string): string => {
     const it = mapEstado.get((estado || '').toUpperCase());
@@ -490,6 +601,71 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     return renderIcono(it?.metadata?.icon, size, 'clock');
   };
 
+  const renderThumbnailEvidencia = (e: SolicitudEvidencia) => {
+    const esImagen = !!e.mimeType && e.mimeType.startsWith('image/');
+    const esPdf = !!e.mimeType && e.mimeType === 'application/pdf';
+    const url = e.urlPresigned || e.urlPublica || '#';
+    if (esImagen) {
+      return (
+        <a
+          key={e.idEvidencia}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group relative block rounded-2xl overflow-hidden border border-slate-200 bg-white aspect-square hover:ring-2 hover:ring-amber-400/60 transition-all shadow-sm hover:shadow-md"
+          title={e.nombreOriginal}
+        >
+          <img
+            src={url}
+            alt={e.nombreOriginal}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={(ev) => {
+              const img = ev.currentTarget;
+              if (e.urlPublica && img.src !== e.urlPublica && e.urlPresigned !== e.urlPublica) {
+                img.src = e.urlPublica;
+                return;
+              }
+              const container = img.parentElement;
+              if (!container) return;
+              const fallback = document.createElement('div');
+              fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-500 gap-1.5';
+              fallback.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-9 h-9 text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                <div class="text-[10px] font-bold px-2 text-center truncate w-full">${(e.nombreOriginal || 'imagen').replace(/[\"'<>]/g, ' ').slice(0, 22)}</div>
+              `;
+              img.replaceWith(fallback);
+            }}
+          />
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/75 to-transparent text-white text-[10px] font-semibold truncate">
+            {e.nombreOriginal}
+          </div>
+        </a>
+      );
+    }
+    const IconComp = esPdf ? FileText : Image;
+    return (
+      <a
+        key={e.idEvidencia}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-amber-300 hover:shadow-sm transition-all text-center"
+        title={e.nombreOriginal}
+      >
+        <IconComp className={`w-10 h-10 ${esPdf ? 'text-rose-500' : 'text-slate-500'}`} />
+        <div className="text-[11px] font-semibold text-slate-700 line-clamp-2 leading-tight w-full break-words">
+          {e.nombreOriginal}
+        </div>
+        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+          <Download className="w-3 h-3" />
+          {formatearTamano(e.tamanoBytes)}
+        </div>
+      </a>
+    );
+  };
+
   const renderEvidencias = () => {
     if (cargando) {
       return (
@@ -499,7 +675,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         </div>
       );
     }
-    if (!evidenciasFinales || evidenciasFinales.length === 0) {
+    const total = evidenciasFinales?.length || 0;
+    if (total === 0) {
       return (
         <div className="text-xs text-slate-500 py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
           No hay evidencias adjuntas registradas para esta solicitud
@@ -507,69 +684,43 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       );
     }
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {evidenciasFinales.map((e) => {
-          const esImagen = !!e.mimeType && e.mimeType.startsWith('image/');
-          const esPdf = !!e.mimeType && e.mimeType === 'application/pdf';
-          const url = e.urlPresigned || e.urlPublica || '#';
-          if (esImagen) {
-            return (
-              <a
-                key={e.idEvidencia}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative block rounded-2xl overflow-hidden border border-slate-200 bg-white aspect-square hover:ring-2 hover:ring-amber-400/60 transition-all shadow-sm hover:shadow-md"
-                title={e.nombreOriginal}
-              >
-                <img
-                  src={url}
-                  alt={e.nombreOriginal}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  onError={(ev) => {
-                    const img = ev.currentTarget;
-                    if (e.urlPublica && img.src !== e.urlPublica && e.urlPresigned !== e.urlPublica) {
-                      img.src = e.urlPublica;
-                      return;
-                    }
-                    const container = img.parentElement;
-                    if (!container) return;
-                    const fallback = document.createElement('div');
-                    fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-500 gap-1.5';
-                    fallback.innerHTML = `
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-9 h-9 text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-                      <div class="text-[10px] font-bold px-2 text-center truncate w-full">${(e.nombreOriginal || 'imagen').replace(/[\"'<>]/g, ' ').slice(0, 22)}</div>
-                    `;
-                    img.replaceWith(fallback);
-                  }}
-                />
-                <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/75 to-transparent text-white text-[10px] font-semibold truncate">
-                  {e.nombreOriginal}
-                </div>
-              </a>
-            );
-          }
-          const IconComp = esPdf ? FileText : Image;
+      <div className="space-y-3">
+        {evidenciasAgrupadas.map((grupo) => {
+          if (!grupo.items || grupo.items.length === 0) return null;
+          const Icono = grupo.icon;
+          const abierto = !!evAbierto[grupo.key];
           return (
-            <a
-              key={e.idEvidencia}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-amber-300 hover:shadow-sm transition-all text-center"
-              title={e.nombreOriginal}
-            >
-              <IconComp className={`w-10 h-10 ${esPdf ? 'text-rose-500' : 'text-slate-500'}`} />
-              <div className="text-[11px] font-semibold text-slate-700 line-clamp-2 leading-tight w-full break-words">
-                {e.nombreOriginal}
-              </div>
-              <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                <Download className="w-3 h-3" />
-                {formatearTamano(e.tamanoBytes)}
-              </div>
-            </a>
+            <div key={grupo.key} className="rounded-2xl border border-slate-200 bg-slate-50/40 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setEvAbierto((prev) => ({ ...prev, [grupo.key]: !prev[grupo.key] }))}
+                className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-slate-100/70 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-xl flex items-center justify-center border ${grupo.claseBadge}`}>
+                    <Icono className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-700">
+                    {grupo.label}
+                  </span>
+                  <span className={`text-[10px] font-black rounded-full px-2.5 py-0.5 border ${grupo.claseBadge}`}>
+                    {grupo.items.length}
+                  </span>
+                </div>
+                {abierto ? (
+                  <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                )}
+              </button>
+              {abierto && (
+                <div className="px-4 pb-4 pt-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {grupo.items.map((e) => renderThumbnailEvidencia(e))}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -685,7 +836,11 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeRedistribuir =
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual);
+    estadoActual === 'ASIGNADA';
+
+  // Visibilidad caja Motor sugerencia + reasignación manual (EFDS-1734 / 1735 / 1736):
+  // Sólo tiene sentido durante aprobación inicial o reasignación en ASIGNADA; nunca en ejecución / finales.
+  const puedeVerMotorAsignacion = !!(puedeAprobarAsignarUMI || estadoActual === 'ASIGNADA');
 
   const puedeIniciarEjecOValoracion =
     detalle &&
@@ -694,6 +849,18 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const puedeConfirmarRecepcionMateriales =
     detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS';
   const esCategoriaElectricas48 = Number(detalle?.idCategoria) === 48;
+
+  // EFDS-1736 helpers footer
+  const yaCerradoTecnicamente = !!(detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION');
+  const puedeCerrarTecnicamente =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    estadoActual === 'EN_PROGRESO' &&
+    !yaCerradoTecnicamente;
+  const puedeVerCierreTecnico =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    yaCerradoTecnicamente;
 
   if (!open) return null;
   const bloqueado =
@@ -707,6 +874,15 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
 
   return (
     <>
+      {detalle && idSolicitud && (
+        <DetalleCierreEjecucionForm
+          open={openCierre}
+          onClose={() => setOpenCierre(false)}
+          idSolicitud={idSolicitud}
+          solicitud={detalle}
+          onSaved={handleCierreSaved}
+        />
+      )}
       <div
         style={{
           position: 'fixed',
@@ -1040,6 +1216,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                           </div>
                         </div>
                       );
+                    }
+                    if (!puedeVerMotorAsignacion) {
+                      return null;
                     }
                     return (
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
@@ -1497,7 +1676,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   className="w-full text-left flex items-center justify-between gap-3 border-b border-slate-100 pb-2 hover:bg-slate-50/40 -mx-1 px-1 rounded-lg transition-colors"
                 >
                   <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
-                    <ClipboardList className="w-3.5 h-3.5" />
+                    <ScrollText className="w-3.5 h-3.5" />
                     Histórico Asignaciones
                     <span className="ml-1 px-2.5 py-0.5 text-[10px] font-black rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-normal">
                       {Array.isArray((detalle as any)?.asignaciones) ? (detalle as any).asignaciones.length : 0}
@@ -1519,86 +1698,144 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                       </div>
                     );
                   }
-                  const accionColor: Record<string, string> = {
-                    APROBAR_Y_ASIGNAR: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                    RECHAZAR: 'bg-rose-100 text-rose-800 border-rose-200',
-                    REDISTRIBUIR: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-                  };
                   return (
-                    <ol className="relative border-l-2 border-slate-200 ml-3 space-y-4 py-1">
-                      {arr.slice().sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || ''))).map((entry, i) => {
-                        const acc = String(entry.accion || 'DESCONOCIDA');
-                        const color = accionColor[acc] || 'bg-slate-100 text-slate-700 border-slate-200';
-                        return (
-                          <li key={entry.id || `hist-${i}`} className="ml-5">
-                            <span className={`absolute -left-[13px] flex items-center justify-center w-6 h-6 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200 ${
-                              acc.includes('APROBAR') ? 'bg-emerald-500' : acc.includes('RECHAZAR') ? 'bg-rose-500' : 'bg-indigo-500'
-                            }`}>
-                              <span className="text-[9px] font-black text-white">
-                                {i + 1}
+                    <ol className="relative border-l border-slate-200 ml-3.5 space-y-5 py-1.5">
+                      {arr.slice()
+                        .sort((a, b) => {
+                          const da = new Date(a.fecha || 0).getTime();
+                          const db = new Date(b.fecha || 0).getTime();
+                          return isFinite(db) && isFinite(da) ? db - da : String(b.fecha || '').localeCompare(String(a.fecha || ''));
+                        })
+                        .map((entry, i) => {
+                          const acc = String(entry.accion || 'DESCONOCIDA');
+                          const style = HISTORICO_ACCION_STYLE[acc] || {
+                            badge: 'bg-slate-100 text-slate-700 border-slate-200',
+                            dot: 'bg-slate-500',
+                            icon: ClipboardList,
+                          };
+                          const IconoAccion = style.icon;
+                          const obsJson = parseJsonSeguro(entry.observaciones);
+                          const resumenSLA = (acc === 'EXTENSION_SLA_POR_INSUMOS' && obsJson) ? resumirExtensionSLA(obsJson) : null;
+                          return (
+                            <li key={entry.id || `hist-${i}`} className="ml-6 relative">
+                              <span
+                                className={`absolute -left-[17px] -top-0.5 flex items-center justify-center w-7 h-7 rounded-full border-[3px] border-white shadow-md ring-1 ring-slate-200 ${style.dot}`}
+                                title={acc}
+                              >
+                                <IconoAccion className="w-3.5 h-3.5 text-white" />
                               </span>
-                            </span>
-                            <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm space-y-2">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${color}`}>
-                                    {acc.replace(/_/g, ' · ')}
-                                  </span>
-                                  {entry.tecnico_codigo && (
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                      <User className="w-3 h-3" />
-                                      <span className="font-mono">{entry.tecnico_codigo}</span>
-                                      {entry.tecnico_nombre_display && <span>· {String(entry.tecnico_nombre_display).split(' · ').pop() || entry.tecnico_nombre_display}</span>}
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-[0.08em] border shadow-[0_1px_0_rgba(0,0,0,0.04)] ${style.badge}`}>
+                                      <IconoAccion className="w-3 h-3" />
+                                      {acc.replace(/_/g, ' · ')}
                                     </span>
-                                  )}
-                                </div>
-                                <div className="text-[11px] font-mono text-slate-500">
-                                  {formatearFecha(entry.fecha)}
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-                                {entry.motivo && (
-                                  <div className="md:col-span-2 flex items-start gap-1.5">
-                                    <span className="font-bold text-slate-500 shrink-0 mt-0.5">Motivo:</span>
-                                    <span className="text-slate-700 leading-snug whitespace-pre-wrap font-medium bg-slate-50 px-2 py-1 rounded-md border border-slate-200 flex-1">
-                                      {String(entry.motivo)}
-                                    </span>
-                                  </div>
-                                )}
-                                {entry.observaciones && (
-                                  <div className="md:col-span-2 flex items-start gap-1.5">
-                                    <span className="font-bold text-slate-500 shrink-0 mt-0.5">Observaciones:</span>
-                                    <span className="text-slate-600 leading-snug whitespace-pre-wrap">
-                                      {String(entry.observaciones)}
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
-                                  <span className="font-semibold text-slate-700">
-                                    {entry.usuario_email || 'Sistema'}
-                                  </span>
-                                  {entry.usuario_id && (
-                                    <span className="text-slate-400 font-mono truncate max-w-[120px]" title={String(entry.usuario_id)}>
-                                      (id: {String(entry.usuario_id).slice(0, 10)}…)
-                                    </span>
-                                  )}
-                                </div>
-                                {entry.usuario_roles && (
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    <span className="font-bold text-slate-500 shrink-0">Roles:</span>
-                                    {(String(entry.usuario_roles).split(',').filter(Boolean) || []).map((rol, j) => (
-                                      <span key={j} className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                        {rol.trim()}
+                                    {entry.tecnico_codigo && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-50 text-slate-700 border border-slate-200">
+                                        <User className="w-3 h-3 text-slate-500" />
+                                        <span className="font-mono text-slate-700">{entry.tecnico_codigo}</span>
+                                        {entry.tecnico_nombre_display && (
+                                          <span className="text-slate-600">· {String(entry.tecnico_nombre_display).split(' · ').pop() || entry.tecnico_nombre_display}</span>
+                                        )}
                                       </span>
-                                    ))}
+                                    )}
                                   </div>
-                                )}
+                                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                                    <Calendar className="w-3 h-3 text-slate-400" />
+                                    {formatearFecha(entry.fecha)}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {entry.motivo && (
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-slate-100">
+                                        Motivo
+                                      </span>
+                                      <span className="text-slate-700 leading-relaxed whitespace-pre-wrap font-medium bg-slate-50/70 px-3 py-2 rounded-xl border border-slate-200 flex-1 text-[12px]">
+                                        {String(entry.motivo)}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {(resumenSLA || (!obsJson && entry.observaciones)) && (
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0 mt-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-100">
+                                        {resumenSLA ? 'Ajuste SLA' : 'Observaciones'}
+                                      </span>
+                                      <span className="text-slate-600 leading-relaxed whitespace-pre-wrap flex-1 text-[12px]">
+                                        {resumenSLA || String(entry.observaciones)}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {obsJson && (acc === 'EXTENSION_SLA_POR_INSUMOS') && (
+                                    <div className="grid grid-cols-3 gap-2 text-[11px] ml-10 border-l-2 border-orange-200 pl-3">
+                                      {obsJson.diasAdicionales != null && (
+                                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-2 text-center">
+                                          <div className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">Días extra</div>
+                                          <div className="text-orange-800 font-black text-base leading-none mt-1">+{Number(obsJson.diasAdicionales)}</div>
+                                        </div>
+                                      )}
+                                      {obsJson.fechaOriginal && (
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-center">
+                                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tope original</div>
+                                          <div className="text-slate-800 font-bold text-[11px] leading-snug mt-1">
+                                            {new Date(obsJson.fechaOriginal).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {obsJson.fechaNueva && (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+                                          <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Nuevo tope</div>
+                                          <div className="text-emerald-900 font-bold text-[11px] leading-snug mt-1">
+                                            {new Date(obsJson.fechaNueva).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 mt-2 border-t border-dashed border-slate-200">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px]">
+                                      <User className="w-3 h-3 text-slate-400" />
+                                      <span className="font-bold text-slate-500 shrink-0">Usuario:</span>
+                                      <span className="font-semibold text-slate-700">
+                                        {entry.usuario_email || 'Sistema'}
+                                      </span>
+                                      {entry.usuario_id && (
+                                        <span className="text-slate-400 font-mono text-[10px]" title={String(entry.usuario_id)}>
+                                          id·{String(entry.usuario_id).slice(0, 8)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {entry.usuario_roles && (
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-slate-500">Rol activo:</span>
+                                      {(String(entry.usuario_roles).split(',').filter(Boolean) || []).map((rol, j) => {
+                                        const rolClean = rol.trim();
+                                        const rolColor =
+                                          rolClean === 'SUPER_ADMIN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                          rolClean === 'USER'        ? 'bg-slate-50 text-slate-700 border-slate-200' :
+                                          rolClean === 'ADMIN'       ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                          'bg-slate-50 text-slate-700 border-slate-200';
+                                        return (
+                                          <span key={j} className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl border ${rolColor}`}>
+                                            {rolClean}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </li>
-                        );
-                      })}
+                            </li>
+                          );
+                        })}
                     </ol>
                   );
                 })()}
@@ -1781,9 +2018,32 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 )}
               </>
             )}
+            {puedeCerrarTecnicamente && (
+              <button
+                type="button"
+                onClick={() => setOpenCierre(true)}
+                disabled={bloqueado}
+                title="Cerrar técnicamente la ejecución: registrar trabajo realizado, costo final y evidencias fotográficas mínimas (1). Estado pasa a COMPLETADA."
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Cierre Técnico
+              </button>
+            )}
+            {puedeVerCierreTecnico && (
+              <button
+                type="button"
+                onClick={() => setOpenCierre(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+                title="Ver el resumen de cierre técnico ya ejecutado (modo lectura)."
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Ver cierre técnico
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">
-            {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && (
+            {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
               <button
                 type="button"
                 onClick={abrirRemitir}

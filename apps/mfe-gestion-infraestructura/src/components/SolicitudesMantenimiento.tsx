@@ -82,13 +82,10 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     let cancelado = false;
     const cargar = async () => {
       try {
-        console.debug('[UMI-DEBUG sesionUmi]', JSON.stringify(sesionUmi));
         const tecnicos = await infraestructuraService.getTecnicos(false);
-        console.debug('[UMI-DEBUG tecnicos length]', tecnicos?.length ?? 0, 'primeros 3:', tecnicos?.slice?.(0, 3) ?? []);
         if (cancelado) return;
         setCatalogoTecnicos(Array.isArray(tecnicos) ? tecnicos : []);
         const cods = await listarCodigosTecnicosDeSesionUMI(sesionUmi, Array.isArray(tecnicos) ? tecnicos : []);
-        console.debug('[UMI-DEBUG codigosTecnicosSesion]', cods);
         if (cancelado) return;
         setCodigosTecnicosSesion(cods);
       } catch (err) {
@@ -120,7 +117,6 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
       if (userId && lower.includes(userId)) return true;
       return false;
     });
-    console.debug('[UMI-DEBUG asignadasMi]', result.length, 'de', mantenimientos.length, '; codigosSet=', Array.from(codigosSet), '; sesion=', sesionUmi);
     return result;
   }, [mantenimientos, codigosTecnicosSesion, sesionUmi]);
   const lista =
@@ -356,7 +352,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                 {vista === 'remitidasTI'
                   ? 'Cuando radique una solicitud clasificada como TECNOLÓGICA, aparecerá aquí para seguimiento.'
                   : vista === 'asignadasMi'
-                  ? `Sesión: ${sesionUmi.email ?? sesionUmi.username ?? 'sin email'} · Códigos técnicos vinculados: ${codigosTecnicosSesion.join(', ') || '(ninguno detectado)'} · Técnicos catálogo: ${catalogoTecnicos.length}`
+                  ? 'Las solicitudes asignadas a tus códigos de técnico vinculados aparecerán aquí automáticamente.'
                   : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
               </p>
             </div>
