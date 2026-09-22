@@ -126,12 +126,31 @@ export class AutoService {
         }
       }
 
+      let etapaDestino = createAutoDto.etapaDestino;
+      if (!etapaDestino && createAutoDto.tipoAuto?.startsWith('AUTO_APERTURA_')) {
+        etapaDestino = createAutoDto.tipoAuto.replace(/^AUTO_APERTURA_/, '');
+      }
+      if (!etapaDestino && createAutoDto.autoConfigurationId) {
+        try {
+          const config = await this.autosConfigurationService.findById(createAutoDto.autoConfigurationId);
+          if (config?.stage) {
+            etapaDestino = config.stage;
+          }
+        } catch (e) {
+          // ignore error fetching config
+        }
+      }
+      if (!etapaDestino && (createAutoDto.tipoAuto === AutoType.PLIEGO_CARGOS || createAutoDto.tipoAuto === AutoType.AUTO_FORMULACION_PLIEGO)) {
+        etapaDestino = 'CARGOS';
+      }
+
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
         tipo: createAutoDto.tipoAuto,
         autoConfigurationId: createAutoDto.autoConfigurationId ?? null,
         numero: createAutoDto.numero,
         contenido: createAutoDto.contenidoHtml ?? '',
+        processId: createAutoDto.processId,
         process: { id: createAutoDto.processId },
         estado: AutoStatus.BORRADOR,
         documentUrl: createAutoDto.documentUrl,
@@ -139,9 +158,7 @@ export class AutoService {
         documentType: createAutoDto.documentType,
         documentSize: createAutoDto.documentSize,
         comentarios: createAutoDto.comentarios,
-        etapaDestino: createAutoDto.etapaDestino || (createAutoDto.tipoAuto?.startsWith('AUTO_APERTURA_')
-          ? createAutoDto.tipoAuto.replace(/^AUTO_APERTURA_/, '')
-          : undefined),
+        etapaDestino,
         prorrogaMeses: createAutoDto.prorrogaMeses ?? null,
       });
 
@@ -304,12 +321,27 @@ export class AutoService {
         );
       }
 
-      // Si es Pliego de Cargos, transicionar el proceso a Juzgamiento y notificar
-      // al Radicador para que pueda enviarlo a la Oficina Jurídica
+      // Si es Pliego de Cargos, transicionar el proceso a la etapa configurada (o CARGOS) y notificar
+      // al Radicador para que pueda posteriormente trasladarlo a Juzgamiento
       if (auto.tipo === AutoType.PLIEGO_CARGOS || auto.tipo === AutoType.AUTO_FORMULACION_PLIEGO) {
+        let etapaDestino = auto.etapaDestino;
+        if (!etapaDestino && auto.autoConfigurationId) {
+          try {
+            const config = await this.autosConfigurationService.findById(auto.autoConfigurationId);
+            if (config?.stage) {
+              etapaDestino = config.stage;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        if (!etapaDestino) {
+          etapaDestino = 'CARGOS';
+        }
+
         await this.processService.changeStageByAutoApertura(
           auto.processId,
-          ProcessStage.JUZGAMIENTO,
+          etapaDestino,
           new Date(),
           aprobadoPorId,
           aprobadoPorNombre,
@@ -319,7 +351,7 @@ export class AutoService {
         const procesoPliego = auto.process;
         if (procesoPliego) {
           const asuntoPliego = `Pliego de Cargos Aprobado - Proceso ${procesoPliego.radicadoProceso}`;
-          const mensajePliego = `El pliego de cargos del proceso ${procesoPliego.radicadoProceso} fue aprobado y el proceso pasó a Juzgamiento. Debe enviarlo a la Oficina Jurídica.`;
+          const mensajePliego = `El pliego de cargos del proceso ${procesoPliego.radicadoProceso} fue aprobado y el proceso pasó a la etapa ${etapaDestino}. El Secretario/Radicador podrá trasladarlo a Juzgamiento cuando corresponda.`;
           await this.notificarRadicadores(
             procesoPliego,
             auto,

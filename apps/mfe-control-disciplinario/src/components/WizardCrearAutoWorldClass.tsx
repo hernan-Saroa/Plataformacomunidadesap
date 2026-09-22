@@ -612,7 +612,22 @@ export function WizardCrearAutoWorldClass({
       return;
     }
 
-    const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
+    const esPliego =
+      tipoSeleccionado?.tipo === 'AUTO_FORMULACION_PLIEGO' ||
+      tipoSeleccionado?.tipo === 'PLIEGO_CARGOS' ||
+      Boolean(
+        tipoSeleccionado?.nombre &&
+        (tipoSeleccionado.nombre.toLowerCase().includes('pliego') ||
+         tipoSeleccionado.nombre.toLowerCase().includes('cargo'))
+      );
+
+    const tieneCambioEtapa = Boolean(
+      tipoSeleccionado?.tipo && (
+        tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_') ||
+        esPliego ||
+        (tipoSeleccionado.etapa && tieneAccion(tipoSeleccionado.tipo))
+      )
+    );
 
     try {
       setGuardando(true);
@@ -675,7 +690,7 @@ export function WizardCrearAutoWorldClass({
         documentName: archivoAdjunto.name,
         documentType: archivoAdjunto.type,
         documentSize: archivoAdjunto.size,
-        etapaDestino: esApertura ? (tipoSeleccionado.etapa || undefined) : undefined,
+        etapaDestino: tieneCambioEtapa ? (tipoSeleccionado.etapa || (esPliego ? 'CARGOS' : undefined)) : undefined,
         prorrogaMeses: prorrogaMeses || undefined,
       });
 

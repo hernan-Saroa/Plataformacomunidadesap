@@ -1238,12 +1238,13 @@ export class ProcessService {
    */
   // Orden real del flujo procesal (coincide con el orden ya usado en el frontend,
   // ModalCambiarEtapaProcesoDisciplinario.tsx). No es el orden de declaración del enum.
-  private static readonly ORDEN_ETAPAS: Partial<Record<ProcessStage, number>> = {
+  private static readonly ORDEN_ETAPAS: Partial<Record<ProcessStage | string, number>> = {
     [ProcessStage.RECEPCION]: 1,
     [ProcessStage.VALORACION]: 2,
     [ProcessStage.INDAGACION_PREVIA]: 3,
     [ProcessStage.INVESTIGACION]: 4,
     [ProcessStage.EVALUACION]: 5,
+    [ProcessStage.CARGOS]: 5.5,
     [ProcessStage.JUZGAMIENTO]: 6,
     [ProcessStage.INDAGACION]: 7,
     [ProcessStage.FALLO]: 8,
@@ -1299,7 +1300,9 @@ export class ProcessService {
     const ordenAnterior = stageAnteriorConfig?.orden ?? ProcessService.ORDEN_ETAPAS[etapaAnterior as ProcessStage];
     const ordenNuevo = newStageConfig?.orden ?? ProcessService.ORDEN_ETAPAS[nuevaEtapa as ProcessStage];
 
-    if (ordenAnterior !== undefined && ordenNuevo !== undefined && ordenNuevo <= ordenAnterior) {
+    const esAvanceCargos = this.isCargosStage(nuevaEtapa) && !this.isCargosStage(etapaAnterior) && !this.isJuzgamientoStage(etapaAnterior);
+
+    if (!esAvanceCargos && ordenAnterior !== undefined && ordenNuevo !== undefined && ordenNuevo <= ordenAnterior) {
       console.warn(
         `[ProcessService] changeStageByAutoApertura: se ignora transición a ${nuevaEtapa} en proceso ${id} porque ya está en ${etapaAnterior} (etapa igual o posterior).`,
       );

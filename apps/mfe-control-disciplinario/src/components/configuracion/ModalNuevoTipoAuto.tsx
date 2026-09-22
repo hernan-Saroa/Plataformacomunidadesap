@@ -78,7 +78,7 @@ const TIPOS_ACCION: {
   {
     id: 'PLIEGO',
     label: 'Pliego de Cargos',
-    descripcion: 'Formula el pliego de cargos al investigado',
+    descripcion: 'Formula el pliego de cargos y traslada el proceso a la etapa seleccionada (por defecto Cargos)',
     conAccion: true,
   },
   {
@@ -153,8 +153,10 @@ export function ModalNuevoTipoAuto({
 
   // Etapas dinámicas basadas en la configuración de la BD (stage_configuration)
   const etapasOpciones = useMemo(() => {
+    let opciones: Array<{ id: string; etapa: string; nombre: string; orden: number }> = [];
+
     if (stages && stages.length > 0) {
-      return [...stages]
+      opciones = [...stages]
         .sort((a, b) => (a.orden || 0) - (b.orden || 0))
         .map((s) => ({
           id: s.id,
@@ -162,29 +164,62 @@ export function ModalNuevoTipoAuto({
           nombre: s.etapa,
           orden: s.orden ?? 0,
         }));
+    } else {
+      // Fallback solo si aún no cargaron los stages de la BD
+      opciones = Object.entries(ETAPAS_PROCESO)
+        .filter(([k]) => k !== 'ARCHIVO' && k !== 'INHIBITORIO')
+        .map(([key, val]) => ({
+          id: key,
+          etapa: key,
+          nombre: val.nombre,
+          orden: val.orden,
+        }));
     }
 
-    // Fallback solo si aún no cargaron los stages de la BD
-    return Object.entries(ETAPAS_PROCESO)
-      .filter(([k]) => k !== 'ARCHIVO' && k !== 'INHIBITORIO')
-      .map(([key, val]) => ({
-        id: key,
-        etapa: key,
-        nombre: val.nombre,
-        orden: val.orden,
-      }));
+    // Asegurar que la opción CARGOS siempre esté disponible para selección (especialmente útil para autos de pliego)
+    const tieneCargos = opciones.some((op) => {
+      const n = (op.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return n.includes('CARGO') || n.includes('PLIEGO');
+    });
+
+    if (!tieneCargos) {
+      const idxJuzgamiento = opciones.findIndex((op) =>
+        (op.etapa || '').toUpperCase().includes('JUZG')
+      );
+      const ordenJuzgamiento = idxJuzgamiento >= 0 ? opciones[idxJuzgamiento].orden : 6;
+      const opcionCargos = {
+        id: 'CARGOS',
+        etapa: 'CARGOS',
+        nombre: 'CARGOS (Formulación de Cargos)',
+        orden: ordenJuzgamiento - 0.5,
+      };
+      if (idxJuzgamiento >= 0) {
+        opciones.splice(idxJuzgamiento, 0, opcionCargos);
+      } else {
+        opciones.push(opcionCargos);
+      }
+    }
+
+    return opciones;
   }, [stages]);
 
   // Sincronizar etapa inicial cuando cargan los stages
   useEffect(() => {
     if (stages.length > 0) {
       setFormData((prev) => {
-        // Si ya tiene una etapa que existe en stages, conservarla
-        if (prev.etapa && stages.some((s) => s.etapa === prev.etapa)) {
+        // Si ya tiene una etapa que existe en etapasOpciones, conservarla
+        if (prev.etapa && etapasOpciones.some((s) => s.etapa === prev.etapa)) {
           return prev;
         }
-        // Si la etapa actual coincide de forma flexible con alguna (ej. INVESTIGACION con INVESTIGACION DISCIPLINARIA)
-        const coincidencia = stages.find((s) => {
+        if (prev.tipoAccion === 'PLIEGO') {
+          const stageCargos = etapasOpciones.find((s) => {
+            const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return norm.includes('CARGO') || norm.includes('PLIEGO');
+          });
+          return { ...prev, etapa: stageCargos ? stageCargos.etapa : 'CARGOS' };
+        }
+        // Si la etapa actual coincide de forma flexible con alguna
+        const coincidencia = etapasOpciones.find((s) => {
           const normA = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           const normB = (prev.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           return normA === normB || normA.includes(normB) || normB.includes(normA);
@@ -193,13 +228,13 @@ export function ModalNuevoTipoAuto({
           return { ...prev, etapa: coincidencia.etapa };
         }
         // Por defecto, buscar la etapa de investigación o la primera
-        const stageInvestigacion = stages.find((s) =>
+        const stageInvestigacion = etapasOpciones.find((s) =>
           (s.etapa || '').toUpperCase().includes('INVESTIGAC')
         );
-        return { ...prev, etapa: stageInvestigacion ? stageInvestigacion.etapa : stages[0].etapa };
+        return { ...prev, etapa: stageInvestigacion ? stageInvestigacion.etapa : etapasOpciones[0].etapa };
       });
     }
-  }, [stages]);
+  }, [stages, etapasOpciones]);
 
   // Cargar datos si estamos editando
   useEffect(() => {
@@ -209,38 +244,67 @@ export function ModalNuevoTipoAuto({
 
       if (tipoEdicion.tipo?.startsWith('AUTO_APERTURA_') && tipoEdicion.tipo !== 'AUTO_APERTURA') {
         const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '');
-        // Si la etapa viene en el tipo con guiones bajos, buscar coincidencia en stages
-        const stageEncontrado = stages.find((s) =>
+        const stageEncontrado = etapasOpciones.find((s) =>
           s.etapa === tipoEdicion.etapa ||
           s.etapa.toUpperCase().replace(/\s+/g, '_') === etapaFromTipo
         );
         if (stageEncontrado) {
           etapa = stageEncontrado.etapa;
         }
+      } else if (tipoAccion === 'PLIEGO') {
+        // Si es pliego y no tiene etapa o tiene recepción/otra, verificar si coincide con cargos
+        const stageCargos = etapasOpciones.find((s) => {
+          const norm = (s.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return norm.includes('CARGO') || norm.includes('PLIEGO');
+        });
+        etapa = etapa || stageCargos?.etapa || 'CARGOS';
       }
 
       setFormData({
         nombre: tipoEdicion.nombre,
-        etapa: etapa || (stages[0]?.etapa ?? 'INVESTIGACION'),
+        etapa: etapa || (etapasOpciones[0]?.etapa ?? 'INVESTIGACION'),
         activo: tipoEdicion.activo,
         orden: tipoEdicion.orden,
         tipoAccion: tipoAccion,
         plantillaFile: undefined,
       });
     } else {
-      const stageInvestigacion = stages.find((s) =>
+      const stageInvestigacion = etapasOpciones.find((s) =>
         (s.etapa || '').toUpperCase().includes('INVESTIGAC')
       );
       setFormData({
         nombre: '',
-        etapa: stageInvestigacion ? stageInvestigacion.etapa : (stages[0]?.etapa ?? 'INVESTIGACION'),
+        etapa: stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? 'INVESTIGACION'),
         activo: true,
         orden: 1,
         tipoAccion: 'NORMAL',
         plantillaFile: undefined,
       });
     }
-  }, [tipoEdicion, isOpen, stages]);
+  }, [tipoEdicion, isOpen, stages, etapasOpciones]);
+
+  const handleSelectTipoAccion = (tipoId: TipoAccion) => {
+    setFormData((prev) => {
+      let nuevaEtapa = prev.etapa;
+      if (tipoId === 'PLIEGO') {
+        const stageCargos = etapasOpciones.find((o) => {
+          const norm = (o.etapa || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return norm.includes('CARGO') || norm.includes('PLIEGO');
+        });
+        nuevaEtapa = stageCargos ? stageCargos.etapa : 'CARGOS';
+      } else if (tipoId === 'APERTURA' && (!prev.etapa || prev.etapa === 'CARGOS')) {
+        const stageInvestigacion = etapasOpciones.find((o) =>
+          (o.etapa || '').toUpperCase().includes('INVESTIGAC')
+        );
+        nuevaEtapa = stageInvestigacion ? stageInvestigacion.etapa : (etapasOpciones[0]?.etapa ?? 'INVESTIGACION');
+      }
+      return {
+        ...prev,
+        tipoAccion: tipoId,
+        etapa: nuevaEtapa,
+      };
+    });
+  };
 
   const esConAccion = TIPOS_ACCION.find((t) => t.id === formData.tipoAccion)?.conAccion ?? false;
 
@@ -288,7 +352,7 @@ export function ModalNuevoTipoAuto({
         orden: formData.orden,
         tipoAccion: formData.tipoAccion,
         plantillaFile: formData.plantillaFile,
-
+        plantilla: null,
       };
 
       const resultado = await onGuardar(data);
@@ -398,14 +462,14 @@ export function ModalNuevoTipoAuto({
                 <label className="block text-xs font-bold text-gray-700 mb-2">
                   Tipo de Acción <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {TIPOS_ACCION.map((tipo) => {
                     const selected = formData.tipoAccion === tipo.id;
                     return (
                       <button
                         key={tipo.id}
                         type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, tipoAccion: tipo.id }))}
+                        onClick={() => handleSelectTipoAccion(tipo.id)}
                         disabled={guardando}
                         className={`relative flex flex-col items-center p-3 rounded-xl border-2 text-center transition-all ${
                           selected
@@ -482,9 +546,9 @@ export function ModalNuevoTipoAuto({
                 )}
               </AnimatePresence>
 
-              {/* Etapa — solo si tipoAccion es APERTURA */}
+              {/* Etapa — si tipoAccion es APERTURA o PLIEGO */}
               <AnimatePresence>
-                {formData.tipoAccion === 'APERTURA' && (
+                {(formData.tipoAccion === 'APERTURA' || formData.tipoAccion === 'PLIEGO') && (
                   <motion.div
                     key="etapa-selector"
                     initial={{ opacity: 0, height: 0 }}
@@ -494,7 +558,8 @@ export function ModalNuevoTipoAuto({
                   >
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Etapa que Abre <span className="text-red-500">*</span>
+                        {formData.tipoAccion === 'PLIEGO' ? 'Etapa a la que avanza el proceso' : 'Etapa que Abre'}{' '}
+                        <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={formData.etapa}
@@ -519,7 +584,9 @@ export function ModalNuevoTipoAuto({
                       </select>
                       <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
                         <Info className="w-3 h-3" />
-                        Etapa a la que pasará el proceso al aprobar este auto
+                        {formData.tipoAccion === 'PLIEGO'
+                          ? 'Etapa a la que pasará el proceso al aprobar este auto de pliego (por defecto Cargos)'
+                          : 'Etapa a la que pasará el proceso al aprobar este auto'}
                       </p>
                     </div>
                   </motion.div>

@@ -286,11 +286,16 @@ export function ConfiguracionPlantillasAutos() {
               : `${auto.nombre_plantilla}.docx`;
         }
 
+        let etapaAuto = auto.stage;
+        if (!etapaAuto && (auto.tipo === 'AUTO_FORMULACION_PLIEGO' || auto.tipo === 'PLIEGO_CARGOS')) {
+          etapaAuto = 'CARGOS';
+        }
+
         return {
           id: auto.id,
           nombre: auto.nombre,
           descripcion: `Auto: ${auto.tipo}`,
-          etapa: (auto.stage || 'INDAGACION') as TipoAuto['etapa'],
+          etapa: (etapaAuto || 'INDAGACION') as TipoAuto['etapa'],
           plantilla:
             auto.plantilla || auto.nombre_plantilla
               ? {
