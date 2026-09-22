@@ -88,6 +88,7 @@ import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionApertura
 import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
+import { SeccionResultadosAuditoria } from './SeccionResultadosAuditoria';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 
 // Servicio API
@@ -789,6 +790,15 @@ export function ExpedienteAuditoriaCompleto({
           // Checklist de actividades del proceso
           checklistCompletados: data.checklistCompletados || {},
         };
+        if(auditoriaBackend.normatividadAplicable?.length == 0) {
+          auditoriaBackend.normatividadAplicable = data.programaAnualMetadata.normatividadAplicable || []
+        }
+        if(auditoriaBackend.riesgosIdentificados?.length == 0) {
+          auditoriaBackend.riesgosIdentificados = data.programaAnualMetadata.riesgosIdentificados || []
+        }
+        if(auditoriaBackend.controlesAplicar?.length == 0) {
+          auditoriaBackend.controlesAplicar = data.programaAnualMetadata.controlesAplicar || []
+        }
 
         if (cancelled) return;
         setAuditoria(auditoriaBackend);
@@ -3460,6 +3470,13 @@ function TabEjecucion({
           )}
         </div>
       </div>
+
+      {/* 4. RESULTADOS DE LA AUDITORÍA (EFDS-1636) */}
+      <SeccionResultadosAuditoria
+        auditoriaId={auditoria.id}
+        hallazgos={hallazgosPrecargados as any}
+        readOnly={readOnly}
+      />
 
       {/* 5. DOCUMENTOS DE EJECUCIÓN */}
       <SeccionDocumentosPorEtapa

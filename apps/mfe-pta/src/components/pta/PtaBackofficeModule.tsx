@@ -65,6 +65,7 @@ import {
   PTA_COMPONENT_KEYS,
   PTA_COMPONENT_PERMISSION,
   PTA_APPROVE_ALL_PERMISSION,
+  PTA_DOCENCIA_COMPONENT_KEYS,
   PTA_EXTENSION_COMPONENT_KEYS,
   PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   PTA_BULK_APPROVAL_GROUPS,
@@ -730,7 +731,12 @@ function normalizeComponenteSeguimiento(value: unknown): string {
 
 function getResumenHorasSeguimiento(pta: any, componente: string) {
   const total = Math.max(0, Number(pta?.[`horas_${componente}`]) || 0);
-  const aprobadas = Math.max(0, (Array.isArray(pta?.evidencias) ? pta.evidencias : [])
+  const resumenServidor = pta?.seguimiento_resumen?.[componente];
+  const horasAprobadasServidor = resumenServidor?.horas_aprobadas ?? resumenServidor?.horasAprobadas;
+  const tieneResumenServidor = horasAprobadasServidor !== null
+    && horasAprobadasServidor !== undefined
+    && Number.isFinite(Number(horasAprobadasServidor));
+  const aprobadasDesdeEvidencias = (Array.isArray(pta?.evidencias) ? pta.evidencias : [])
     .filter((evidencia: any) =>
       normalizeComponenteSeguimiento(
         evidencia?.componente_pta ?? evidencia?.componentePta,
@@ -739,7 +745,11 @@ function getResumenHorasSeguimiento(pta: any, componente: string) {
       (suma: number, evidencia: any) =>
         suma + Math.max(0, Number(evidencia?.horas_avance ?? evidencia?.horasAvance) || 0),
       0,
-    ));
+    );
+  const aprobadas = Math.max(
+    0,
+    tieneResumenServidor ? Number(horasAprobadasServidor) : aprobadasDesdeEvidencias,
+  );
   const faltantes = Math.max(total - aprobadas, 0);
   const porcentaje = total > 0
     ? Math.min(Math.round((aprobadas / total) * 100), 100)
@@ -755,7 +765,64 @@ function formatHorasSeguimiento(value: number) {
   return HORAS_SEGUIMIENTO_FORMATTER.format(value);
 }
 
-function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
+type ResumenSeguimiento = ReturnType<typeof getResumenHorasSeguimiento>;
+
+function getResumenTotalSeguimiento(resumenes: ResumenSeguimiento[]) {
+  const total = resumenes.reduce((suma, resumen) => suma + resumen.total, 0);
+  // El avance visual nunca supera las horas requeridas de cada componente.
+  const aprobadas = resumenes.reduce(
+    (suma, resumen) => suma + Math.min(resumen.aprobadas, resumen.total),
+    0,
+  );
+  const faltantes = Math.max(total - aprobadas, 0);
+  const porcentaje = total > 0 ? Math.min(Math.round((aprobadas / total) * 100), 100) : 0;
+  return { total, aprobadas, faltantes, porcentaje };
+}
+
+function getVisualSeguimiento(
+  resumen: ReturnType<typeof getResumenTotalSeguimiento>,
+  pendientesRevision: number,
+) {
+  if (resumen.total <= 0) {
+    return { label: 'Sin horas por justificar', color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', progress: '#94A3B8' };
+  }
+  if (resumen.faltantes <= 0) {
+    return { label: 'Soportes completos', color: '#047857', bg: '#ECFDF5', border: '#6EE7B7', progress: '#10B981' };
+  }
+  if (pendientesRevision > 0) {
+    return {
+      label: `${pendientesRevision} soporte${pendientesRevision === 1 ? '' : 's'} por revisar`,
+      color: '#92400E', bg: '#FFFBEB', border: '#FCD34D', progress: '#F59E0B',
+    };
+  }
+  if (resumen.aprobadas <= 0) {
+    return { label: 'Soportes pendientes', color: '#B91C1C', bg: '#FEF2F2', border: '#FCA5A5', progress: '#EF4444' };
+  }
+  return { label: 'Seguimiento en curso', color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', progress: '#F59E0B' };
+}
+
+function getVisualComponenteSeguimiento(resumen: ResumenSeguimiento) {
+  if (resumen.total <= 0) {
+    return { label: 'No aplica', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0', progress: '#CBD5E1' };
+  }
+  if (resumen.faltantes <= 0) {
+    return { label: 'Completo', color: '#047857', bg: '#ECFDF5', border: '#A7F3D0', progress: '#10B981' };
+  }
+  if (resumen.aprobadas <= 0) {
+    return { label: 'Sin avance', color: '#B91C1C', bg: '#FEF2F2', border: '#FECACA', progress: '#EF4444' };
+  }
+  return { label: 'En curso', color: '#B45309', bg: '#FFFBEB', border: '#FDE68A', progress: '#F59E0B' };
+}
+
+function SeguimientoDocumentosAdmin({
+  aprobadorNombre,
+  rolLabel,
+  periodo,
+}: {
+  aprobadorNombre: string;
+  rolLabel: string;
+  periodo: string;
+}) {
   // Autorización POR COMPONENTE basada EXCLUSIVAMENTE en los 7 permisos granulares
   // pta.approve.<componente> (+ pta.approve.all y superuser). No se usa
   // permisos.componentesAprobables porque muchos roles mapean a 'admin' por defecto y
@@ -766,29 +833,42 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {
+    // Docencia, Extensión y Complementarias son rótulos agrupados. Cada uno
+    // debe aparecer cuando el usuario tenga al menos uno de sus permisos
+    // granulares, incluso si todavía no existen evidencias u horas cargadas.
+    if (compKey === 'docencia') return PTA_DOCENCIA_COMPONENT_KEYS.some(isComponentAuthorized);
     if (compKey === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(isComponentAuthorized);
+    if (compKey === 'complementarias') return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(isComponentAuthorized);
     const key = componentKeyForEvidencia(compKey, null);
     return key ? isComponentAuthorized(key) : false;
   };
   const [ptasData, setPtasData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtroPeriodo, setFiltroPeriodo] = useState('');
   const [filtroEstadoRev, setFiltroEstadoRev] = useState('');
   const [selectedPtaId, setSelectedPtaId] = useState<string | null>(null);
   const [procesando, setProcesando] = useState<string | null>(null);
   const [comentario, setComentario] = useState<Record<string, string>>({});
   const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
+  const loadRequestRef = useRef(0);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
+    if (!periodo) {
+      setPtasData([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const res = await getAllPtasConEvidencias(filtroPeriodo || undefined);
+    const res = await getAllPtasConEvidencias(periodo);
+    if (requestId !== loadRequestRef.current) return;
     if (res.success) setPtasData(res.data || []);
     setLoading(false);
-  };
+  }, [periodo]);
 
-  useEffect(() => { load(); }, [filtroPeriodo]);
-
-  const periodos = useMemo(() => [...new Set(ptasData.map((p: any) => p.periodo))].sort().reverse(), [ptasData]);
+  useEffect(() => {
+    void load();
+    return () => { ++loadRequestRef.current; };
+  }, [load]);
 
   // Revisa una justificación completa: el documento principal y sus soportes
   // adjuntos reciben la misma decisión (los adjuntos son 0h — no afectan avance).
@@ -820,6 +900,9 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   };
 
   const filteredPtas = ptasData.filter((p: any) => {
+    // Defensa adicional frente a respuestas cacheadas o implementaciones antiguas
+    // del API: Seguimiento siempre debe respetar el mismo período global que Gestión.
+    if (String(p?.periodo || '') !== periodo) return false;
     if (!aplicaSeguimiento(p)) return false;
     if (!filtroEstadoRev) return true;
     return evsAutorizadas(p).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
@@ -851,17 +934,27 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}
-          style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: '0.78rem', background: 'white', outline: 'none', color: '#374151' }}>
-          <option value="">Todos los periodos</option>
-          {periodos.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
+        <span style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #BFDBFE', fontSize: '0.78rem', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600 }}>
+          Período: {periodo || 'Sin período seleccionado'}
+        </span>
         {(['', 'pendiente', 'aprobado', 'rechazado'] as const).map(est => (
           <button key={est} onClick={() => setFiltroEstadoRev(est)}
             style={{ padding: '5px 12px', borderRadius: 7, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', border: filtroEstadoRev === est ? '1.5px solid #003DA5' : '1px solid #E5E7EB', background: filtroEstadoRev === est ? '#EFF6FF' : 'white', color: filtroEstadoRev === est ? '#003DA5' : '#6B7280' }}>
-            {est === '' ? 'Todos' : est === 'pendiente' ? 'Pendientes' : est === 'aprobado' ? 'Aprobados' : 'Rechazados'}
+            {est === '' ? 'Todos' : est === 'pendiente' ? 'Por revisar' : est === 'aprobado' ? 'Con aprobados' : 'Con rechazados'}
           </button>
         ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.66rem', color: '#64748B' }} aria-label="Convenciones del avance de soportes">
+          {[
+            ['#EF4444', 'Sin avance'],
+            ['#F59E0B', 'En curso'],
+            ['#10B981', 'Completo'],
+            ['#94A3B8', 'No aplica'],
+          ].map(([color, label]) => (
+            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: color }} /> {label}
+            </span>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -876,29 +969,51 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredPtas.map((pta: any) => {
             const evsPendientes = evsAutorizadas(pta).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
+            const componentesAutorizados = COMPONENTES_SEG.filter(comp => isSegComponentAuthorized(comp.key));
+            const resumenesPorComponente = componentesAutorizados.map(comp => ({
+              comp,
+              resumen: getResumenHorasSeguimiento(pta, comp.key),
+            }));
+            // El indicador principal representa el PTA completo, no solo el alcance
+            // del rol actual. Así "Soportes completos" coincide con la condición
+            // global que permite pasar el plan a Finalizado.
+            const resumenTotal = getResumenTotalSeguimiento(
+              COMPONENTES_SEG.map(comp => getResumenHorasSeguimiento(pta, comp.key)),
+            );
+            const visualSeguimiento = getVisualSeguimiento(resumenTotal, evsPendientes.length);
             const isOpen = selectedPtaId === pta.pta_id;
             return (
-              <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${evsPendientes.length > 0 ? '#FDE68A' : '#E5E7EB'}`, overflow: 'hidden' }}>
+              <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${visualSeguimiento.border}`, borderLeft: `4px solid ${visualSeguimiento.progress}`, overflow: 'hidden' }}>
                 {/* PTA header */}
                 <div
                   onClick={() => setSelectedPtaId(isOpen ? null : pta.pta_id)}
-                  style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? '#FAFAFA' : 'white', borderBottom: isOpen ? '1px solid #E5E7EB' : 'none' }}
+                  style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? visualSeguimiento.bg : 'white', borderBottom: isOpen ? '1px solid #E5E7EB' : 'none' }}
                 >
                   <div style={{ flex: '1 1 230px', minWidth: 0 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>{pta.docente_nombre}</div>
-                    <div style={{ fontSize: '0.68rem', color: '#9CA3AF', display: 'flex', gap: 8, marginTop: 2 }}>
+                    <div style={{ fontSize: '0.68rem', color: '#9CA3AF', display: 'flex', gap: 7, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span>{pta.periodo}</span>
                       <span>·</span>
                       <span>{pta.dedicacion}</span>
-                      <span>·</span>
-                      <span style={{ color: '#059669', fontWeight: 600 }}>{pta.estado}</span>
+                      <span style={{ padding: '2px 7px', borderRadius: 999, color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', fontWeight: 700 }}>
+                        PTA: {pta.estado}
+                      </span>
+                      <span style={{ padding: '2px 7px', borderRadius: 999, color: visualSeguimiento.color, background: visualSeguimiento.bg, border: `1px solid ${visualSeguimiento.border}`, fontWeight: 700 }}>
+                        {visualSeguimiento.label}
+                      </span>
+                      {resumenTotal.total > 0 && (
+                        <span style={{ color: visualSeguimiento.color, fontWeight: 750 }}>
+                          Seguimiento {resumenTotal.porcentaje}%
+                          {resumenTotal.faltantes > 0 ? ` · Faltan ${formatHorasSeguimiento(resumenTotal.faltantes)}h` : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {/* Progress pills per component */}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flex: '0 1 auto' }}>
-                    {COMPONENTES_SEG.filter(comp => isSegComponentAuthorized(comp.key)).map(comp => {
+                    {resumenesPorComponente.map(({ comp, resumen }) => {
                       // Solo los componentes que el usuario está autorizado a revisar.
-                      const resumen = getResumenHorasSeguimiento(pta, comp.key);
+                      const visualComponente = getVisualComponenteSeguimiento(resumen);
                       const aprobadasLabel = formatHorasSeguimiento(resumen.aprobadas);
                       const totalLabel = formatHorasSeguimiento(resumen.total);
                       const faltantesLabel = formatHorasSeguimiento(resumen.faltantes);
@@ -910,19 +1025,22 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                             minWidth: 112,
                             padding: '5px 8px',
                             borderRadius: 7,
-                            background: `${comp.color}0D`,
-                            border: `1px solid ${comp.color}20`,
-                            color: comp.color,
+                            background: visualComponente.bg,
+                            border: `1px solid ${visualComponente.border}`,
+                            color: visualComponente.color,
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: '0.61rem', fontWeight: 750 }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.label}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: comp.color }}>{comp.label}</span>
                             <strong style={{ fontSize: '0.64rem' }}>{resumen.porcentaje}%</strong>
+                          </div>
+                          <div style={{ height: 3, borderRadius: 999, background: '#E5E7EB', overflow: 'hidden', marginTop: 4 }}>
+                            <div style={{ width: `${resumen.porcentaje}%`, height: '100%', borderRadius: 999, background: visualComponente.progress }} />
                           </div>
                           <div style={{ marginTop: 2, display: 'flex', alignItems: 'baseline', gap: 4, fontSize: '0.58rem', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
                             <strong>{aprobadasLabel}/{totalLabel}h</strong>
-                            <span style={{ color: '#64748B', fontWeight: 600 }}>
-                              · {resumen.total === 0 ? 'Sin horas' : resumen.faltantes === 0 ? 'Completo' : `Faltan ${faltantesLabel}h`}
+                            <span style={{ color: visualComponente.color, fontWeight: 650 }}>
+                              · {visualComponente.label}{resumen.total > 0 && resumen.faltantes > 0 ? ` · Faltan ${faltantesLabel}h` : ''}
                             </span>
                           </div>
                         </div>
@@ -938,6 +1056,18 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                     <ChevronDown style={{ width: 16, height: 16, color: '#9CA3AF', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                   </div>
                 </div>
+                {resumenTotal.total > 0 && (
+                  <div
+                    role="progressbar"
+                    aria-label={`Avance total de soportes de ${pta.docente_nombre}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={resumenTotal.porcentaje}
+                    style={{ height: 4, background: '#E5E7EB' }}
+                  >
+                    <div style={{ width: `${resumenTotal.porcentaje}%`, height: '100%', background: visualSeguimiento.progress, transition: 'width 0.25s ease' }} />
+                  </div>
+                )}
 
                 {/* Evidencias expandidas */}
                 <AnimatePresence>
@@ -3196,7 +3326,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       ) : moduleView === 'solicitudes_pta' ? (
         <SolicitudesPTAAdmin aprobadorNombre={aprobadorNombre} syncCounter={syncState.lastCounter} />
       ) : moduleView === 'seguimiento_docs' ? (
-        <SeguimientoDocumentosAdmin aprobadorNombre={aprobadorNombre} rolLabel={rolLabel} />
+        <SeguimientoDocumentosAdmin
+          aprobadorNombre={aprobadorNombre}
+          rolLabel={rolLabel}
+          periodo={filtroPeriodo}
+        />
       ) : moduleView === 'programacion' ? (
         <ProgramacionAcademica />
       ) : moduleView === 'tablero' ? (

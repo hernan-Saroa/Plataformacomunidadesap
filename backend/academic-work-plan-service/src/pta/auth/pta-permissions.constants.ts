@@ -31,6 +31,13 @@ export type PTAComponentKey =
   | 'ext_fortalecimiento'
   | 'ext_gobierno';
 
+/**
+ * Permite consultar y resolver la bandeja de solicitudes que reabre componentes
+ * de un PTA ya aprobado, sin conceder administración de solicitudes de creación
+ * ni permisos de aprobación/revisión sobre los componentes del plan.
+ */
+export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
+
 /** Todas las claves de componente aprobable, en orden estable. */
 export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',

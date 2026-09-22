@@ -1362,7 +1362,7 @@ export class NewsService {
          LEFT JOIN auth.personas per ON per.id_person = u.id_person
          WHERE u.is_active = true
            AND p.code = $1`,
-        ['control-disciplinario.es_radicador'],
+        ['control-disciplinario.general.es_radicador'],
       );
       for (const r of permUsers) {
         if (r.id_user) {

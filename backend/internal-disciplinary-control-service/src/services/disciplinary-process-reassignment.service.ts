@@ -210,6 +210,20 @@ export class DisciplinaryProcessReassignmentService {
       }
     }
 
+    // Enviar correo electrónico oficial al profesional anterior cuando la reasignación es aprobada
+    if (dto.approved && result.currentProfessional?.email) {
+      this.emailService.sendReassignedFromEmail(
+        result.currentProfessional.email,
+        result.currentProfessional.nombreCompleto || 'Profesional',
+        radicadoProceso,
+        result.newProfessional?.nombreCompleto || 'Profesional',
+        result.justification,
+        dto.jefeObservations,
+      ).catch((err) => {
+        console.error(`Error al enviar correo de reasignación al profesional anterior: ${err.message}`);
+      });
+    }
+
     // Notificar a todos los radicadores del resultado de la solicitud de reasignación
     try {
       const radicadoresRows: any[] = await this.reassignmentRepo.manager.query(
