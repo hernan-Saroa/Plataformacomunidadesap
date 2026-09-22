@@ -653,20 +653,30 @@ export function FormularioAuditoriaUnificado({
   }, [open]);
 
   // El tipo se guarda por nombre (dato histórico), así que se resuelve contra el
-  // catálogo para depender del código y no del nombre, que es renombrable.
+  // catálogo. El código lo escribe una persona en Configuraciones y suele traer
+  // consecutivo ("AUD-ESP 005"), por eso se reconoce por el inicio del código y,
+  // si no cuadra, por el nombre; así el tipo sigue siendo renombrable.
   const codigoTipoAuditoria = useMemo(() => {
-    const valor = formData.tipoAuditoria?.trim().toLowerCase();
+    const normalizar = (texto?: string) =>
+      (texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+
+    const valor = normalizar(formData.tipoAuditoria);
     if (!valor) return '';
 
     const tipo = tiposAuditoria.find(
-      (t) => t.nombre?.trim().toLowerCase() === valor || t.codigo?.trim().toLowerCase() === valor
+      (t) => normalizar(t.nombre) === valor || normalizar(t.codigo) === valor
     );
-    if (tipo?.codigo) return tipo.codigo.trim().toUpperCase();
+    const codigo = normalizar(tipo?.codigo);
+    const nombre = normalizar(tipo?.nombre) || valor;
 
-    // Sin catálogo cargado, se cae al nombre para no perder el comportamiento.
-    if (valor === 'especial') return 'AUD-ESP';
-    if (valor === 'territorial') return 'AUD-TERR';
-    return '';
+    if (codigo.startsWith('aud-esp') || nombre.includes('especial')) return 'AUD-ESP';
+    if (codigo.startsWith('aud-terr') || nombre.includes('territorial')) return 'AUD-TERR';
+
+    return codigo ? codigo.toUpperCase() : '';
   }, [formData.tipoAuditoria, tiposAuditoria]);
 
   const esAuditoriaEspecial = codigoTipoAuditoria === 'AUD-ESP';
