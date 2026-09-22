@@ -15,7 +15,7 @@ import { AudienciaService } from './audiencia.service';
  * en dos actividades distintas del riel.
  */
 function servicio() {
-  return new AudienciaService({ manager: {} } as any);
+  return new AudienciaService({ manager: {} } as any, {} as any);
 }
 
 const em = (informes: any[]) =>

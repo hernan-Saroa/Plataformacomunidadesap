@@ -1,10 +1,10 @@
 import React from 'react';
 import { Calendar, Info, Search, Upload } from 'lucide-react';
 
-import { ActividadAplicable, CampoConfigurable } from '../../types';
+import { CampoConfigurable } from '../../types';
 
 interface Props {
-  actividad: ActividadAplicable;
+  actividad: { numeral: string; nombre: string; descripcion?: string | null };
   campos: CampoConfigurable[];
 }
 
@@ -46,12 +46,6 @@ export function VistaPrevia({ actividad, campos }: Props) {
           <p className="text-sm font-bold text-gray-900 m-0 mt-0.5 leading-snug">
             {actividad.nombre}
           </p>
-          {actividad.plazoDias && (
-            <p className="text-[11px] text-gray-500 m-0 mt-1">
-              Plazo: {actividad.plazoDias} día{actividad.plazoDias === 1 ? '' : 's'} hábil
-              {actividad.plazoDias === 1 ? '' : 'es'}
-            </p>
-          )}
         </div>
 
         <div className="p-4 space-y-4">

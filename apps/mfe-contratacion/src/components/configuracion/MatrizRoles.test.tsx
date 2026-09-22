@@ -176,11 +176,11 @@ describe('MatrizRoles', () => {
 });
 
 /**
- * Los cuatro perfiles por defecto (EFDS-1183).
+ * Los perfiles por defecto (EFDS-1183).
  *
  * Quien abre esta pantalla lo hace casi siempre para responder «¿qué le pongo a
  * esta persona?», y la rejilla sola contesta con treinta y cinco casillas. Los
- * perfiles contestan con cuatro nombres.
+ * perfiles contestan con un puñado de nombres.
  */
 describe('MatrizRoles · perfiles por defecto', () => {
   const PERFILES = [

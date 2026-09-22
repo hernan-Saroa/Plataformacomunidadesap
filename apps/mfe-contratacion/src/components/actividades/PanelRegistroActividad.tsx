@@ -3,7 +3,7 @@ import { CircleSlash, Eye, FilePlus2, History, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoRegistroActividad } from '../../types';
+import { EstadoRegistroActividad, EvidenciaFirmaOtp } from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -17,6 +17,7 @@ import {
 import { Permitido } from '../shared/Permitido';
 import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { FirmaOtpModal } from '../shared/FirmaOtpModal';
 
 interface Props {
   procesoId: string;
@@ -77,6 +78,9 @@ export function PanelRegistroActividad({
   const [motivo, setMotivo] = useState('');
   /** Corrigiendo lo devuelto: el formulario se abre con lo que ya había. */
   const [corrigiendo, setCorrigiendo] = useState(false);
+  /** La evidencia de la firma OTP, si la actividad la exige (EFDS-2070). */
+  const [firma, setFirma] = useState<EvidenciaFirmaOtp | null>(null);
+  const [mostrarFirma, setMostrarFirma] = useState(false);
 
   const leer = () =>
     contratacionService
@@ -117,16 +121,22 @@ export function PanelRegistroActividad({
     setArchivo(null);
   };
 
-  const registrar = async () => {
+  const registrar = async (firmaAUsar?: EvidenciaFirmaOtp | null) => {
     setGuardando(true);
     try {
-      await contratacionService.registrarActividad(procesoId, numeral, { fecha, nota }, archivo);
+      await contratacionService.registrarActividad(
+        procesoId,
+        numeral,
+        { fecha, nota, firma: firmaAUsar ?? undefined },
+        archivo,
+      );
       toast.success(
         corrigiendo
           ? `Se corrigió la actividad ${numeral} y volvió a enviarse`
           : `Se registró la actividad ${numeral}`,
       );
       setCorrigiendo(false);
+      setFirma(null);
       limpiar();
       await leer();
       onCambio?.();
@@ -135,6 +145,20 @@ export function PanelRegistroActividad({
     } finally {
       setGuardando(false);
     }
+  };
+
+  /**
+   * Si la actividad exige firma, el clic no registra directamente: primero
+   * pide el token institucional, y solo al verificarlo se envía el registro
+   * con la evidencia. Es la actividad quien decide esto, no el formulario: la
+   * matriz puede configurarla en cualquier actividad de las once.
+   */
+  const alPulsarRegistrar = () => {
+    if (estado?.exigeFirma && !firma) {
+      setMostrarFirma(true);
+      return;
+    }
+    registrar(firma);
   };
 
   const anular = async () => {
@@ -228,6 +252,12 @@ export function PanelRegistroActividad({
         <Aviso tono="aviso" titulo="El soporte se exige por criterio del equipo">
           La matriz de flujo no lo pide expresamente para esta actividad. Está pendiente de que la
           Dirección de Contratación lo confirme.
+        </Aviso>
+      )}
+
+      {estado.exigeFirma && (!registro || corrigiendo) && (
+        <Aviso tono="aviso" titulo="Esta actividad exige firma">
+          Antes de registrarla, te pedirá firmar con el token que llega a tu correo institucional.
         </Aviso>
       )}
 
@@ -396,14 +426,16 @@ export function PanelRegistroActividad({
               )}
               <Boton
                 icono={<FilePlus2 className="w-3.5 h-3.5" />}
-                onClick={registrar}
+                onClick={alPulsarRegistrar}
                 disabled={guardando || nota.trim().length < 10 || faltaSoporte}
               >
                 {corrigiendo
                   ? 'Guardar y volver a enviar'
-                  : requiereAprobacion
-                    ? 'Registrar y enviar a aprobación'
-                    : 'Registrar la actividad'}
+                  : estado.exigeFirma && !firma
+                    ? 'Firmar y registrar'
+                    : requiereAprobacion
+                      ? 'Registrar y enviar a aprobación'
+                      : 'Registrar la actividad'}
               </Boton>
             </div>
           </Permitido>
@@ -424,6 +456,17 @@ export function PanelRegistroActividad({
           ))}
         </>
       )}
+
+      <FirmaOtpModal
+        isOpen={mostrarFirma}
+        onClose={() => setMostrarFirma(false)}
+        accionDetalle={`Registrar la actividad ${numeral}`}
+        onFirmado={(evidencia) => {
+          setMostrarFirma(false);
+          setFirma(evidencia);
+          registrar(evidencia);
+        }}
+      />
     </Marco>
   );
 }

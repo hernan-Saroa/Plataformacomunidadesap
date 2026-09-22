@@ -12,7 +12,11 @@ import { AprobacionService } from './aprobacion.service';
  */
 describe('AprobacionService · formatosPendientes', () => {
   const servicio = () =>
-    new AprobacionService({} as never, { crearSolicitudSiCerroLaEtapa3: async () => null } as never);
+    new AprobacionService(
+      {} as never,
+      { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
+      {} as never,
+    );
 
   /** Llama al método privado, que nadie usa desde fuera del servicio. */
   const pendientes = (

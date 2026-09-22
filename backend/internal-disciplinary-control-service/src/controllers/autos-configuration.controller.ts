@@ -65,7 +65,6 @@ export class AutosConfigurationController {
         data: autoConfig,
       };
     } catch (error) {
-      // Re-throw to maintain HTTP status codes
       throw error;
     }
   }
@@ -216,12 +215,12 @@ export class AutosConfigurationController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowedExtensions = ['.docx', '.doc', '.dotx', '.rtf'];
+        const allowedExtensions = ['.docx', '.doc', '.dotx', '.rtf', '.pdf'];
         const ext = extname(file.originalname).toLowerCase();
         if (allowedExtensions.includes(ext)) {
           cb(null, true);
         } else {
-          cb(new BadRequestException('Solo se permiten archivos Word (.docx, .doc, .dotx, .rtf)'), false);
+          cb(new BadRequestException('Solo se permiten archivos Word (.docx, .doc, .dotx, .rtf) o PDF (.pdf)'), false);
         }
       },
       limits: {
@@ -235,6 +234,12 @@ export class AutosConfigurationController {
   async uploadPlantilla(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Body() body: {
+      nombre_plantilla?: string;
+      descripcion_plantilla?: string;
+      version_plantilla?: string;
+      estado_plantilla?: string;
+    },
   ): Promise<{ success: boolean; message: string; data?: AutoConfiguration }> {
     if (!file) {
       throw new BadRequestException('No se ha subido ningún archivo');
@@ -244,8 +249,15 @@ export class AutosConfigurationController {
       // Construir la URL del archivo
       const fileUrl = `/uploads/plantillas-autos/${file.filename}`;
 
-      // Actualizar la configuración con la URL de la plantilla
-      const autoConfig = await this.autosConfigService.updatePlantilla(id, fileUrl);
+      // Actualizar la configuración con la URL de la plantilla y los metadatos proporcionados
+      const autoConfig = await this.autosConfigService.updatePlantilla(
+        id,
+        fileUrl,
+        body?.nombre_plantilla || file.originalname,
+        body?.descripcion_plantilla,
+        body?.version_plantilla || '1.0',
+        body?.estado_plantilla || 'activo',
+      );
       return {
         success: true,
         message: 'Plantilla subida exitosamente',

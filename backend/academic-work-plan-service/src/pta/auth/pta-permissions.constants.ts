@@ -31,6 +31,13 @@ export type PTAComponentKey =
   | 'ext_fortalecimiento'
   | 'ext_gobierno';
 
+/**
+ * Habilita la pestaña, consulta y acción de la bandeja de edición. El alcance
+ * concreto de componentes continúa dependiendo de pta.review.*; este permiso no
+ * concede por sí solo ningún componente ni administra solicitudes de creación.
+ */
+export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
+
 /** Todas las claves de componente aprobable, en orden estable. */
 export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',

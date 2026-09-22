@@ -7,6 +7,7 @@ import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
 import { UpdateNotaDto } from './dto/update-nota.dto';
 import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
+import { ActualizarResultadosAuditoriaDto } from './dto/actualizar-resultados-auditoria.dto';
 import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { ObjetivoAuditoria } from './entities/objetivo-auditoria.entity';
@@ -1304,6 +1305,74 @@ export class AuditoriasService {
     serialized.planAnualAñoVal = planAnualAñoVal;
 
     return serialized;
+  }
+
+  /**
+   * Registra los resultados consolidados en Ejecución: fortalezas, recomendaciones generales
+   * y conclusiones. Los hallazgos se gestionan en su propia sección (EFDS-1636).
+   */
+  async actualizarResultados(
+    id: string,
+    dto: ActualizarResultadosAuditoriaDto,
+    usuarioId?: string,
+  ): Promise<{ fortalezas: string[]; recomendacionesGenerales: string[]; conclusiones: string | null }> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    if (auditoria.estadoKanban === EstadoKanban.FINALIZADA || auditoria.archivada) {
+      throw new BadRequestException('La auditoría está finalizada; sus resultados ya no se pueden modificar.');
+    }
+
+    const limpiarLista = (lista?: string[]) =>
+      (Array.isArray(lista) ? lista : []).map((item) => String(item ?? '').trim()).filter(Boolean);
+    const cambios: string[] = [];
+
+    if (dto.fortalezas !== undefined) {
+      auditoria.fortalezas = limpiarLista(dto.fortalezas);
+      cambios.push('fortalezas');
+    }
+    if (dto.recomendacionesGenerales !== undefined) {
+      auditoria.recomendacionesGenerales = limpiarLista(dto.recomendacionesGenerales);
+      cambios.push('recomendaciones generales');
+    }
+    if (dto.conclusiones !== undefined) {
+      auditoria.conclusiones = String(dto.conclusiones ?? '').trim() || null;
+      cambios.push('conclusiones');
+    }
+
+    await this.auditoriaRepository.update(
+      { id },
+      {
+        fortalezas: auditoria.fortalezas ?? [],
+        recomendacionesGenerales: auditoria.recomendacionesGenerales ?? [],
+        conclusiones: auditoria.conclusiones ?? null,
+      } as any,
+    );
+
+    if (cambios.length > 0) {
+      try {
+        const { fecha, hora } = getFechaHoraColombia();
+        const historial = new HistorialAuditoria();
+        historial.auditoriaId = id;
+        historial.tipoEvento = TipoEvento.ACTUALIZACION;
+        historial.fecha = fecha;
+        historial.hora = hora;
+        historial.usuarioId = await this.resolverPersonaDeUsuario(usuarioId);
+        historial.accion = 'Resultados de la auditoría actualizados';
+        historial.descripcion = `Resultados registrados en Ejecución: ${cambios.join(', ')}`;
+        historial.cambios = cambios.map((c) => ({ campo: c, valorAnterior: '', valorNuevo: '' }));
+        await this.historialRepository.save(historial);
+      } catch (histError) {
+        console.error('[AuditoriasService.actualizarResultados] Error al registrar en historial:', histError);
+      }
+    }
+
+    return {
+      fortalezas: auditoria.fortalezas ?? [],
+      recomendacionesGenerales: auditoria.recomendacionesGenerales ?? [],
+      conclusiones: auditoria.conclusiones ?? null,
+    };
   }
 
   /**

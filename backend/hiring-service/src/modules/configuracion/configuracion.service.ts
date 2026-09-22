@@ -22,6 +22,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   GuardarAprobacionDto,
+  GuardarFirmaDto,
   ActualizarCampoDto,
   CrearCampoDto,
   EstadoPlantillaDto,
@@ -567,6 +568,9 @@ export class ConfiguracionService {
         etapa: a.etapa,
         nombre: a.nombre,
         descripcion: a.descripcion,
+        // El plazo se configura en la ficha: la matriz lo lleva para abrirla con él.
+        plazoDias: a.plazoDias ?? null,
+        alertaDiasAntes: a.alertaDiasAntes ?? null,
         campos,
         celdas: (modalidades as any[]).map((m) => {
           const llave = `${a.numeral}::${m.codigo}`;
@@ -836,6 +840,64 @@ export class ConfiguracionService {
     });
   }
 
+  // ---------------------------------------------------- firma de la actividad ---
+
+  /**
+   * Si la actividad exige que quien la trabaja la firme con el token
+   * institucional antes de darse por terminada.
+   *
+   * Regla propia y no un campo junto a `requiereAprobacion`: la firma no
+   * tiene a quién elegir —la pone quien registra, no un tercero— así que no
+   * comparte forma con la aprobación, y separarla evita que una consulta a
+   * la aprobación traiga una firma que nadie pidió, o al revés.
+   */
+  async firmaDe(numeral: string) {
+    const regla = await this.dataSource.getRepository(ReglaActividad).findOne({
+      where: { numeral, tipo: 'EXIGE_FIRMA', vigenteHasta: IsNull() },
+    });
+
+    return { requiereFirma: regla !== null };
+  }
+
+  /**
+   * Fija si la actividad exige firma, o retira la exigencia.
+   *
+   * Misma derogación que la aprobación: la regla anterior se cierra con
+   * `vigenteHasta` en vez de borrarse, para que un proceso ya cerrado siga
+   * auditándose con la regla que tenía vigente entonces.
+   */
+  async guardarFirma(numeral: string, dto: GuardarFirmaDto) {
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ReglaActividad);
+
+      const vigente = await repo.findOne({
+        where: { numeral, tipo: 'EXIGE_FIRMA', vigenteHasta: IsNull() },
+      });
+
+      if (vigente) {
+        vigente.vigenteHasta = new Date();
+        await repo.save(vigente);
+      }
+
+      if (!dto.requiereFirma) {
+        return { requiereFirma: false };
+      }
+
+      await repo.save(
+        repo.create({
+          numeral,
+          modalidad: null,
+          tipo: 'EXIGE_FIRMA',
+          config: {},
+          mensaje: 'Esta actividad requiere firma con el token institucional antes de darse por terminada',
+          orden: 100,
+        } as Partial<ReglaActividad>),
+      );
+
+      return { requiereFirma: true };
+    });
+  }
+
   /**
    * Roles que pueden aparecer como aprobadores.
    *
@@ -847,6 +909,23 @@ export class ConfiguracionService {
   rolesDelModulo(): Promise<{ code: string; name: string }[]> {
     return this.dataSource.query(
       `SELECT code, name FROM hiring.roles_del_modulo ORDER BY name`,
+    );
+  }
+
+  /**
+   * Las dependencias de la ESAP, del catálogo transversal de la plataforma.
+   *
+   * `auth.dependencias` es la tabla maestra —la misma que usan viáticos y
+   * estructura organizacional (EFDS-2065)—, y se consulta directamente en
+   * vez de duplicarla: una copia local se desactualiza en cuanto alguien crea,
+   * renombra o inactiva una dependencia desde el módulo que sí la administra.
+   */
+  dependenciasDelModulo(): Promise<{ id: string; nombre: string }[]> {
+    return this.dataSource.query(
+      `SELECT id_dependencia::text AS id, nom_dependencia AS nombre
+       FROM auth.dependencias
+       WHERE activo = true
+       ORDER BY nom_dependencia`,
     );
   }
 

@@ -40,6 +40,7 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
   };
 

@@ -33,6 +33,7 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { PERMISO_PLAZO_TERMINAR } from '../../auth/permisos';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
 
@@ -57,8 +58,8 @@ export class SubsanacionesController {
     description:
       'Subsanaciones y observaciones del informe en juego, con su soporte y si llegaron en término.',
   })
-  listar(@Param('id', ParseUUIDPipe) procesoId: string) {
-    return this.service.listar(procesoId);
+  listar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.listar(procesoId, getHiringAccess(req));
   }
 
   @Post()
@@ -167,5 +168,17 @@ export class SubsanacionesController {
     @Req() req: any,
   ) {
     return this.service.cerrar(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('plazo/terminar')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_PLAZO_TERMINAR)
+  @ApiOperation({
+    summary: 'Terminar el término de subsanaciones (pruebas)',
+    description:
+      'Mueve el vencimiento a ayer para poder recorrer el flujo sin esperar los días hábiles. Deja traza con el término original: uno acortado a mano no puede confundirse con uno cumplido.',
+  })
+  terminarPlazo(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.terminarPlazo(procesoId, getHiringAccess(req));
   }
 }

@@ -47,7 +47,8 @@ export function FormatosActividad({ numeral, modalidad, modalidades }: Props) {
   // Licitación. Lista vacía de modalidades significa que vale para todas.
   const vigentes = formatos.filter(
     (f) =>
-      f.activo && (f.modalidades.length === 0 || f.modalidades.includes(modalidad)),
+      f.activo &&
+      (!modalidad || f.modalidades.length === 0 || f.modalidades.includes(modalidad)),
   );
 
   return (

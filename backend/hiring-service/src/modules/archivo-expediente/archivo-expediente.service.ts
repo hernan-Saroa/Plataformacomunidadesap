@@ -39,6 +39,8 @@ import {
   PublicarActaDto,
   ReabrirExpedienteDto,
 } from './dto/archivo-expediente.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 export { NUMERAL_ARCHIVO_EXPEDIENTE };
 
@@ -68,7 +70,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class ArchivoExpedienteService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -288,7 +293,7 @@ export class ArchivoExpedienteService {
       expediente.observacionesArchivo = dto.observaciones ?? null;
       await em.save(expediente);
 
-      await this.marcarActividad(em, procesoId, true, acceso);
+      await this.marcarActividad(em, procesoId, true, acceso, dto.firma);
 
       await this.traza(em, procesoId, expediente.id, 'expediente', 'ARCHIVAR', acceso, {
         actividad: NUMERAL_ARCHIVO_EXPEDIENTE,
@@ -453,30 +458,43 @@ export class ArchivoExpedienteService {
     procesoId: string,
     archivado: boolean,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    const estado = archivado ? 'APROBADO' : 'BORRADOR';
-
-    const actividad = await em
-      .getRepository(ProcesoActividad)
-      .findOne({ where: { procesoId, numeral: NUMERAL_ARCHIVO_EXPEDIENTE } });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_ARCHIVO_EXPEDIENTE,
-          estado: estado as any,
-          datos: {},
-          ...(archivado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!archivado) {
+      const actividad = await em
+        .getRepository(ProcesoActividad)
+        .findOne({ where: { procesoId, numeral: NUMERAL_ARCHIVO_EXPEDIENTE } });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_ARCHIVO_EXPEDIENTE,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = archivado ? acceso.userName : null;
-    actividad.revisadoAt = archivado ? new Date() : null;
-    await em.save(actividad);
+    if (await this.cierre.exigeFirma(em, NUMERAL_ARCHIVO_EXPEDIENTE)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_ARCHIVO_EXPEDIENTE,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

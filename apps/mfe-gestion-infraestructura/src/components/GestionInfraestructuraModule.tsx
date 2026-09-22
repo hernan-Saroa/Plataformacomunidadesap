@@ -29,7 +29,7 @@ import { AdminCategoriasServicioMini } from './AdminCategoriasServicioMini';
 import { AdminParametrosUMI } from './AdminParametrosUMI';
 
 type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias' | 'parametros';
-type VistaMantenimiento = 'todas' | 'remitidasTI';
+type VistaMantenimiento = 'todas' | 'remitidasTI' | 'asignadasMi';
 
 interface Toast {
   tipo: 'exito' | 'error';
@@ -167,6 +167,9 @@ export const GestionInfraestructuraModule: React.FC = () => {
         onClose={() => {
           setAbrirDetalle(false);
           setIdSolicitudSeleccionada(null);
+        }}
+        onCambioExitoso={async () => {
+          await fetchData();
         }}
       />
 

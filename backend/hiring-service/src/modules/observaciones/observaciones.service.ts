@@ -14,8 +14,14 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
+import {
+  PERMISO_ACTIVIDAD_EDITAR,
+  PERMISO_PLAZO_TERMINAR,
+  tienePermiso,
+} from '../../auth/permisos';
 import { PublicacionService } from '../publicacion/publicacion.service';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
   RegistrarObservacionDto,
   ResponderObservacionDto,
@@ -29,6 +35,8 @@ export class ObservacionesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly publicacion: PublicacionService,
+    /** Si la 5.3 exige firmar con el token institucional al cerrarse (EFDS-2070). */
+    private readonly cierre: CierreActividadService,
   ) {}
 
   /** Hoy en Bogotá, que es la zona en la que corren los términos. */
@@ -70,6 +78,7 @@ export class ObservacionesService {
         cumplida: false,
         puedeCerrarse: false,
         puedeGestionar,
+        puedeTerminarPlazo: false,
       };
     }
 
@@ -112,6 +121,18 @@ export class ObservacionesService {
       puedeCerrarse:
         observaciones.length === 0 && plazoVencido && publicacion !== null && !cumplida,
       puedeGestionar,
+      /**
+       * La llave de pruebas para no esperar los días hábiles del término.
+       *
+       * Vive también aquí, y no solo en el panel de la publicación, porque es
+       * en la 5.3 donde el plazo estorba: un proceso sin observaciones no se
+       * puede cerrar hasta que venza, y es justo el camino que hay que poder
+       * recorrer en una sesión de QA. El botón llama al mismo endpoint.
+       */
+      puedeTerminarPlazo:
+        tienePermiso(acceso, PERMISO_PLAZO_TERMINAR) &&
+        publicacion?.fechaVencimiento != null &&
+        publicacion.fechaVencimiento >= this.hoy(),
     };
   }
 
@@ -224,7 +245,7 @@ export class ObservacionesService {
       observacion.updatedAt = new Date();
       await em.save(observacion);
 
-      await this.sincronizarActividad(em, procesoId, acceso);
+      await this.sincronizarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, observacion.id, 'APROBAR', acceso, {
         accion: 'RESPONDER',
@@ -242,7 +263,7 @@ export class ObservacionesService {
    * pendiente eterno en el riel. Se exige que el plazo haya vencido: antes de
    * eso, que no haya ninguna no significa nada.
    */
-  async cerrarSinObservaciones(procesoId: string, acceso: HiringAccess) {
+  async cerrarSinObservaciones(procesoId: string, acceso: HiringAccess, firma?: FirmaOtpDto) {
     return this.dataSource.transaction(async (em) => {
       const estado = await this.listar(procesoId, em, acceso);
 
@@ -260,7 +281,11 @@ export class ObservacionesService {
         );
       }
 
-      await this.marcarActividad(em, procesoId, 'APROBADO', acceso);
+      if (await this.cierre.exigeFirma(em, NUMERAL_OBSERVACIONES)) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
+      await this.marcarActividad(em, procesoId, 'APROBADO', acceso, firma);
       await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
         accion: 'CERRAR_SIN_OBSERVACIONES',
       });
@@ -276,11 +301,28 @@ export class ObservacionesService {
     em: EntityManager,
     procesoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const pendientes = await em.getRepository(ObservacionPliego).count({
       where: { procesoId, respondidaAt: IsNull() },
     });
-    await this.marcarActividad(em, procesoId, pendientes === 0 ? 'APROBADO' : 'BORRADOR', acceso);
+    const cumple = pendientes === 0;
+
+    // Solo se pide firma al cerrar: si ya estaba cerrada, responder una
+    // observación que reabrió y volvió a cerrarse no debe repetir el pedido.
+    if (cumple) {
+      const actividad = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_OBSERVACIONES },
+      });
+      if (
+        (!actividad || actividad.estado !== 'APROBADO') &&
+        (await this.cierre.exigeFirma(em, NUMERAL_OBSERVACIONES))
+      ) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+    }
+
+    await this.marcarActividad(em, procesoId, cumple ? 'APROBADO' : 'BORRADOR', acceso, firma);
   }
 
   private async guardarSoporte(
@@ -321,10 +363,12 @@ export class ObservacionesService {
     procesoId: string,
     estado: 'BORRADOR' | 'APROBADO',
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const cumplida = estado === 'APROBADO';
     const revisadoPor = (cumplida ? acceso.userName : null) as any;
     const revisadoAt = (cumplida ? new Date() : null) as any;
+    const datosFirma = cumplida && firma ? { firma } : {};
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_OBSERVACIONES },
@@ -336,7 +380,7 @@ export class ObservacionesService {
           procesoId,
           numeral: NUMERAL_OBSERVACIONES,
           estado,
-          datos: {},
+          datos: datosFirma,
           revisadoPor,
           revisadoAt,
         }),
@@ -347,6 +391,9 @@ export class ObservacionesService {
     actividad.estado = estado;
     actividad.revisadoPor = revisadoPor;
     actividad.revisadoAt = revisadoAt;
+    if (cumplida && firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(actividad);
   }
 

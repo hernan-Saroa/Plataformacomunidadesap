@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { basename } from 'path';
 
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import {
   ActividadConSoporte,
@@ -17,12 +17,20 @@ import { Expediente } from '../../entities/expediente.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CdpService } from '../cdp/cdp.service';
 import { admiteRegistro, faltaParaRegistrar } from './admite-registro';
-import { AnularRegistroDto, RegistrarActividadDto } from './dto/registro-actividad.dto';
+import {
+  AnularRegistroDto,
+  FirmaOtpDto,
+  RegistrarActividadDto,
+} from './dto/registro-actividad.dto';
+
+/** Cuánto se acepta entre que se verificó el OTP y se guardó el registro. */
+const VENTANA_FIRMA_MS = 15 * 60 * 1000;
 
 interface ArchivoCargado {
   filename: string;
@@ -160,6 +168,9 @@ export class RegistroActividadService {
       numeral,
       etapa: parametro.etapa,
       exigeSoporte: conFormato ? pendientePorFormato : parametro.exigeSoporte,
+      // Si el área configuró que quien registra deba firmar con el token
+      // institucional antes de que esto se dé por terminado (EFDS-2070).
+      exigeFirma: await this.exigeFirma(em, numeral),
       /*
        * Si el soporte lo recibe el bloque de formatos en vez del formulario.
        *
@@ -254,6 +265,10 @@ export class RegistroActividadService {
       });
       if (falta) throw new BadRequestException(falta);
 
+      if (await this.exigeFirma(em, numeral)) {
+        this.exigirFirmaValida(dto.firma);
+      }
+
       const yaHay = await em.getRepository(RegistroActividad).findOne({
         where: { procesoId, numeral, estado: 'VIGENTE' },
       });
@@ -306,13 +321,13 @@ export class RegistroActividadService {
           fecha: dto.fecha,
           nota: dto.nota,
           documentoId: documento?.id ?? null,
-          datos: dto.datos ?? {},
+          datos: dto.firma ? { ...(dto.datos ?? {}), firma: dto.firma } : (dto.datos ?? {}),
           estado: 'VIGENTE',
           registradoPor: acceso.userName,
         } as Partial<RegistroActividad>),
       );
 
-      const cerro = await this.marcarActividad(
+      const { estado: estadoResultante, cierra: cerro } = await this.marcarActividad(
         em,
         procesoId,
         numeral,
@@ -325,7 +340,18 @@ export class RegistroActividadService {
         procesoId,
         registro.id,
         'GUARDAR',
-        { numeral, fecha: dto.fecha, conSoporte: documento !== null },
+        // El estado va en la traza porque registrar, donde hay aprobadores, es
+        // también enviar a aprobación: sin él, el expediente no distinguía un
+        // registro que cerró la actividad de uno que la dejó esperando visto
+        // bueno, y los avisos de «se envía a aprobación» no tenían de dónde
+        // enterarse.
+        {
+          numeral,
+          fecha: dto.fecha,
+          conSoporte: documento !== null,
+          estado: estadoResultante,
+          firmado: dto.firma !== undefined,
+        },
         acceso,
       );
 
@@ -383,6 +409,41 @@ export class RegistroActividadService {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
     if (!proceso) throw new NotFoundException('El proceso no existe');
     return proceso;
+  }
+
+  /**
+   * Si la actividad quedó configurada para exigir firma con el token
+   * institucional (EFDS-2070), sobre la misma regla `EXIGE_FIRMA` que arma el
+   * panel de configuración.
+   */
+  private async exigeFirma(em: EntityManager, numeral: string): Promise<boolean> {
+    const regla = await em.getRepository(ReglaActividad).findOne({
+      where: { numeral, tipo: 'EXIGE_FIRMA', vigenteHasta: IsNull() },
+    });
+    return regla !== null;
+  }
+
+  /**
+   * La evidencia debe existir y ser reciente.
+   *
+   * No hay como volver a validar el código OTP aquí —el auth-service ya lo
+   * consumió al verificarlo—, así que lo único que este servicio puede
+   * comprobar es que la firma se hizo poco antes de registrar. Sin la
+   * ventana, una evidencia vieja copiada de otro registro pasaría igual.
+   */
+  private exigirFirmaValida(firma: FirmaOtpDto | undefined) {
+    if (!firma) {
+      throw new BadRequestException(
+        'Esta actividad exige firmar con el token institucional antes de registrarla',
+      );
+    }
+
+    const momentoFirma = new Date(firma.fechaFirma).getTime();
+    if (Number.isNaN(momentoFirma) || Date.now() - momentoFirma > VENTANA_FIRMA_MS) {
+      throw new BadRequestException(
+        'La firma con el token institucional expiró: vuelve a firmar antes de registrar',
+      );
+    }
   }
 
   private async exigirActividad(em: EntityManager, numeral: string) {
@@ -463,10 +524,11 @@ export class RegistroActividadService {
    * una actividad con aprobador configurado se daba por buena sin que nadie la
    * mirara y el envío quedaba como un paso que ya no cambiaba nada.
    *
-   * Devuelve si la dejó cerrada, que es lo que quien llama necesita para saber
-   * si preguntar por el cierre de la etapa. Se devuelve en vez de recalcularse
-   * fuera: la condición ya está resuelta aquí, y repetirla es la forma de que
-   * las dos acaben discrepando.
+   * Devuelve el estado en que la dejó y si la cerró. El estado va a la traza,
+   * de donde se entera el aviso de «se envía a aprobación»; el cierre es lo que
+   * quien llama necesita para saber si preguntar por el cierre de la etapa. Se
+   * devuelven en vez de recalcularse fuera: la condición ya está resuelta aquí,
+   * y repetirla es la forma de que las dos acaben discrepando.
    */
   private async marcarActividad(
     em: EntityManager,
@@ -475,7 +537,7 @@ export class RegistroActividadService {
     cumplida: boolean,
     acceso: HiringAccess,
     modalidad: string | null = null,
-  ): Promise<boolean> {
+  ): Promise<{ estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO'; cierra: boolean }> {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
@@ -496,11 +558,13 @@ export class RegistroActividadService {
           numeral,
           estado: estado as any,
           datos: {},
-          ...(cumplida ? { enviadoPor: acceso.userName } : {}),
+          // Con el id y no solo el nombre: sin él la devolución no encontraba a
+          // quién avisar, igual que pasaba cuando la entidad no lo declaraba.
+          ...(cumplida ? { enviadoPor: acceso.userName, enviadoPorId: acceso.userId ?? null } : {}),
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
-      return cierra;
+      return { estado, cierra };
     }
 
     actividad.estado = estado as any;
@@ -511,7 +575,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
-    return cierra;
+    return { estado, cierra };
   }
 
   private async traza(

@@ -51,7 +51,11 @@ describe('PtaService - contacto y territoriales de solicitudes', () => {
       }),
     };
 
-    await expect(service.getSolicitudesPTA()).resolves.toEqual([
+    await expect(service.getSolicitudesPTA(undefined, {
+      userId: 'admin-1', roles: ['SUPER_ADMIN'], isSuperUser: true,
+      approvesAll: true, reviewsAll: true, permissions: new Set<string>(),
+      allowedComponents: [], allowedReviewSubsecciones: [], approvalLevels: [1, 2, 3],
+    } as any)).resolves.toEqual([
       expect.objectContaining({
         id: 'solicitud-1',
         docenteNombre: 'Docente Completo Prueba',
