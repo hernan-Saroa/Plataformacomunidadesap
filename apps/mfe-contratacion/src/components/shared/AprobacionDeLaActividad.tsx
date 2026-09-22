@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check, ClipboardCheck, Undo2, X } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
+import { useFirma } from './useFirma';
 import { HistorialRevisiones } from './HistorialRevisiones';
 
 interface Props {
@@ -96,6 +97,12 @@ export function AprobacionDeLaActividad({
   const a = usarAprobacion(procesoId, numeral, onCambio, recargarToken);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
+
+  /**
+   * La firma es de quien aprueba, no de quien envió: cada quien firma su
+   * propia acción (EFDS-2070). Devolver no la pide, porque no cierra nada.
+   */
+  const firma = useFirma(numeral, `Aprobar la actividad ${numeral}`);
 
   /**
    * Si hay algo que decidir aquí, hacia quien monta el bloque.
@@ -260,7 +267,7 @@ export function AprobacionDeLaActividad({
                 <button
                   type="button"
                   className={`${primario} justify-center w-full`}
-                  onClick={a.aprobar}
+                  onClick={() => firma.conFirma(a.aprobar)}
                   disabled={a.guardando || faltanDocumentos > 0}
                   title={
                     faltanDocumentos > 0
@@ -287,6 +294,7 @@ export function AprobacionDeLaActividad({
                 saber si ya pidió esto mismo antes y no se lo corrigieron. */}
             <HistorialRevisiones revisiones={a.revisiones} />
           </div>
+          {firma.modal}
         </div>
       );
     }

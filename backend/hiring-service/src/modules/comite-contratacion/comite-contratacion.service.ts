@@ -5,9 +5,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 
-import { Proceso } from '../../entities/proceso.entity';
+import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Smmlv } from '../../entities/smmlv.entity';
@@ -18,10 +18,16 @@ import {
 } from '../../entities/comite-contratacion.entity';
 import { EstadoActividad, ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Revision } from '../../entities/revision.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
-import { RegistrarSesionComiteDto } from './dto/comite-contratacion.dto';
+import {
+  NUMERALES_REABRIBLES_POR_COMITE,
+  RegistrarSesionComiteDto,
+} from './dto/comite-contratacion.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 3.7 de la matriz —su 3.6—: el comité de contratación. */
 export const NUMERAL_COMITE_CONTRATACION = '3.7';
@@ -80,9 +86,65 @@ export function motivoParaNoIrAlComite(
  * Observar devuelve. Es el desenlace que el registro de constancia no sabía
  * representar: cerraba en APROBADO pasara lo que pasara, así que un proceso
  * observado por el comité seguía su camino como si lo hubieran avalado.
+ *
+ * Rechazar niega, y NEGADO no es DEVUELTO por lo mismo que en la 3.4: devuelta,
+ * la actividad se corrige y se reenvía; negada, no se toca más. Con un solo
+ * estado el riel le ofrecería al abogado volver a llevar a comité un proceso
+ * que el comité ya decidió que no sale al mercado.
  */
 export function estadoTrasLaSesion(decision: DecisionComite): EstadoActividad {
-  return decision === 'OBSERVADO' ? 'DEVUELTO' : 'APROBADO';
+  if (decision === 'OBSERVADO') return 'DEVUELTO';
+  if (decision === 'RECHAZADO') return 'NEGADO';
+  return 'APROBADO';
+}
+
+/**
+ * Si la sesión termina el proceso, y con qué desenlace.
+ *
+ * Solo rechazar, y por la misma razón que negar el estudio previo: dejar el
+ * proceso EN_CURSO con su comité rechazado haría que el listado y las
+ * estadísticas contaran como vivo un expediente que nadie va a volver a tocar.
+ *
+ * Observar no lo termina: ahí el proceso sigue, corrige y vuelve a comité.
+ */
+export function desenlaceTrasLaSesion(decision: DecisionComite): EstadoProceso | null {
+  return decision === 'RECHAZADO' ? 'NEGADO' : null;
+}
+
+/**
+ * Si la sesión cierra la actividad, sea aprobando o rechazando.
+ *
+ * Lo que decide si se pide la firma y si hay etapa que pueda cerrar, que no es
+ * lo mismo: aprobar cierra la actividad **y** la etapa; rechazar cierra la
+ * actividad y termina el proceso, así que no hay CDP que radicar.
+ */
+export function laSesionCierra(decision: DecisionComite): boolean {
+  return decision !== 'OBSERVADO';
+}
+
+/**
+ * Si esta sesión tiene que decir qué objetó el comité.
+ *
+ * Observar y rechazar siempre: la primera para que haya qué corregir, la
+ * segunda porque a quien le rechazan un proceso no le queda ocasión de
+ * preguntar por qué. Y aprobar solo cuando además reabre algo, que si no le
+ * llegaría a su responsable una actividad devuelta sin decir qué validar.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function exigeObservaciones(decision: DecisionComite, reabreAlguna: boolean): boolean {
+  return decision === 'OBSERVADO' || decision === 'RECHAZADO' || reabreAlguna;
+}
+
+/**
+ * Si la sesión puede reabrir actividades anteriores.
+ *
+ * Todas menos el rechazo. Un proceso rechazado queda negado, y una actividad
+ * devuelta dentro de un expediente muerto es trabajo que se le pide a alguien
+ * para nada: si lo que procede es corregir, el desenlace era observar.
+ */
+export function laSesionAdmiteReabrir(decision: DecisionComite): boolean {
+  return decision !== 'RECHAZADO';
 }
 
 /**
@@ -94,6 +156,13 @@ export function estadoTrasLaSesion(decision: DecisionComite): EstadoActividad {
  * comité aprobó, si aprobó con condiciones —ni cuáles— o si devolvió los
  * documentos; y como el registro cerraba la actividad pasara lo que pasara, un
  * proceso observado avanzaba como si lo hubieran avalado.
+ *
+ * El «aprueba o no» son cuatro desenlaces y no tres. Al lado de la observación
+ * —que devuelve para corregir— está el **rechazo**, que es el comité diciendo
+ * que el proceso no sale al mercado: niega la actividad y termina el proceso,
+ * como negar el estudio previo en la 3.4. Y cualquiera de los cuatro puede
+ * **reabrir** actividades anteriores ya cerradas, para corregirlas cuando el
+ * comité observa o para que se las validen cuando aprueba.
  *
  * El comité sesiona en la Dirección de Contratación y es un cuerpo colegiado:
  * la plataforma no lo reemplaza, transcribe lo que decidió y guarda el acta.
@@ -108,6 +177,7 @@ export class ComiteContratacionService {
     private readonly dataSource: DataSource,
     private readonly participacion: ParticipacionService,
     private readonly cdp: CdpService,
+    private readonly cierre: CierreActividadService,
   ) {}
 
   /** Aparte para poder fijar el año en las pruebas. */
@@ -133,9 +203,17 @@ export class ComiteContratacionService {
     });
     const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
 
-    // Cerrada por una sesión que aprobó: no se registra otra. Reabrirla
-    // reescribiría una etapa que pudo cerrar y radicar el CDP.
-    const yaAprobo = estadoActual === 'APROBADO';
+    // Cerrada por una sesión que aprobó o que rechazó: no se registra otra.
+    // Reabrir una aprobación reescribiría una etapa que pudo cerrar y radicar
+    // el CDP, y reabrir un rechazo resucitaría un proceso ya negado.
+    const yaSePronuncio = estadoActual === 'APROBADO' || estadoActual === 'NEGADO';
+
+    // Qué actividades anteriores podría reabrir esta sesión. Se calculan aquí
+    // y no se dan por hechas en la pantalla: la lista fija de cuatro numerales
+    // dice cuáles son reabribles *en general*, pero solo están APROBADO las
+    // que este proceso en concreto ya cerró, y ofrecer las demás sería ofrecer
+    // un botón que el servicio va a rechazar.
+    const reabribles = await this.reabribles(em, procesoId);
 
     return {
       /** Si la matriz marca el comité en la modalidad del proceso. */
@@ -172,11 +250,19 @@ export class ComiteContratacionService {
         registradoPor: s.registradoPor,
         createdAt: s.createdAt,
       })),
+      /**
+       * Qué actividades anteriores puede reabrir esta sesión, ya filtradas por
+       * las que este proceso tiene cerradas.
+       */
+      reabribles,
       /** A quien mira le toca transcribir lo que el comité decidió. */
-      puedeRegistrar: noVa === null && motivo === null && !yaAprobo,
+      puedeRegistrar: noVa === null && motivo === null && !yaSePronuncio,
       /** Y, cuando no va, dejar constancia de por qué no fue. */
       puedeDejarConstancia:
-        noVa === 'NO_SUPERA_EL_UMBRAL' && motivo === null && estadoActual !== 'NO_APLICA',
+        noVa === 'NO_SUPERA_EL_UMBRAL' &&
+        motivo === null &&
+        estadoActual !== 'NO_APLICA' &&
+        !yaSePronuncio,
       motivoNoDecide: motivo,
       abogado: abogado
         ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre }
@@ -192,7 +278,15 @@ export class ComiteContratacionService {
    * Aprobar —con o sin condiciones— cierra la actividad, y con ella puede
    * cerrarse la etapa 3: en licitación y en las demás modalidades que pasan por
    * comité, esta es la última que aplica. Observar la devuelve, y entonces no
-   * se pregunta por el CDP porque no cerró nada.
+   * se pregunta por el CDP porque no cerró nada. Rechazar la niega y con ella
+   * el proceso, y tampoco hay etapa que celebrar: lo que terminó no es la
+   * etapa, es la contratación.
+   *
+   * Los cuatro desenlaces pueden traer actividades que reabrir. Al observar es
+   * obligatorio —una devolución sin nada editable donde aplicarla no sirve de
+   * nada—; al aprobar es opcional, y es el comité pidiendo que le validen un
+   * punto sin frenar el proceso. Al rechazar no se admite ninguna: no se
+   * reabre para corregir un expediente que acaba de quedar negado.
    */
   async registrar(
     procesoId: string,
@@ -233,6 +327,11 @@ export class ComiteContratacionService {
           'El comité ya aprobó este proceso: registrar otra sesión reescribiría una etapa que pudo cerrarse',
         );
       }
+      if (estadoActual === 'NEGADO') {
+        throw new ConflictException(
+          'El comité ya rechazó este proceso: lo que terminó no es la etapa, es la contratación',
+        );
+      }
 
       // La fecha de la sesión, no la de la transcripción: puede ser anterior,
       // nunca futura. Un comité no sesiona mañana.
@@ -242,6 +341,11 @@ export class ComiteContratacionService {
 
       const condiciones = dto.condiciones?.trim() || null;
       const observaciones = dto.observaciones?.trim() || null;
+      // Sin duplicados y en el orden de la matriz, que es como se leen después
+      // en la traza y en el expediente.
+      const numerales = NUMERALES_REABRIBLES_POR_COMITE.filter((n) =>
+        (dto.numeralesReabrir ?? []).includes(n),
+      );
 
       // Lo que hace legible cada desenlace. La base tiene los mismos CHECK; el
       // mensaje está aquí porque un error de restricción no le dice a nadie qué
@@ -251,10 +355,40 @@ export class ComiteContratacionService {
           'Di a qué queda condicionada la aprobación: sin condiciones, es una aprobación a secas',
         );
       }
-      if (dto.decision === 'OBSERVADO' && !observaciones) {
+      if (exigeObservaciones(dto.decision, numerales.length > 0) && !observaciones) {
         throw new BadRequestException(
-          'Escribe las observaciones de fondo: sin ellas el proceso queda devuelto sin saber qué corregir',
+          dto.decision === 'RECHAZADO'
+            ? 'Escribe por qué el comité rechaza el proceso: a quien se lo rechazan no le queda ocasión de preguntarlo corrigiendo'
+            : dto.decision === 'OBSERVADO'
+              ? 'Escribe las observaciones de fondo: sin ellas el proceso queda devuelto sin saber qué corregir'
+              : 'Escribe qué hay que validar: la actividad que reabres le llega a su responsable sin decirle qué mirar',
         );
+      }
+      // Qué actividades se reabren (EFDS-2068). Sin esto, observar devolvía la
+      // 3.7 pero la 3.1 y las demás seguían APROBADO: la corrección que pidió
+      // el comité no tenía dónde aplicarse.
+      if (dto.decision === 'OBSERVADO' && numerales.length === 0) {
+        throw new BadRequestException(
+          'Di a qué actividades vuelve el proceso: sin eso la corrección no tiene dónde aplicarse',
+        );
+      }
+      // Y al rechazar no se reabre nada: el proceso queda negado, y una
+      // actividad devuelta dentro de un expediente muerto es trabajo que se le
+      // pide a alguien para nada.
+      if (!laSesionAdmiteReabrir(dto.decision) && numerales.length > 0) {
+        throw new BadRequestException(
+          'Un proceso rechazado no deja actividades que corregir: si lo que procede es devolver para corregir, el desenlace es observar',
+        );
+      }
+
+      // Solo cuando la sesión cierra la actividad: observar no la cierra, y
+      // no exige la firma de quien responde por lo que quedó cerrado. Rechazar
+      // sí la exige: niega el proceso, y eso lo firma quien lo transcribe.
+      if (
+        laSesionCierra(dto.decision) &&
+        (await this.cierre.exigeFirma(em, NUMERAL_COMITE_CONTRATACION))
+      ) {
+        this.cierre.exigirFirmaValida(dto.firma);
       }
 
       const acta = await this.guardarActa(em, procesoId, archivo, hash, acceso);
@@ -268,7 +402,13 @@ export class ComiteContratacionService {
           // de una devolución no se sabría después si el comité las impuso o
           // alguien las escribió por error en el campo de al lado.
           condiciones: dto.decision === 'APROBADO_CON_CONDICIONES' ? condiciones : null,
-          observaciones: dto.decision === 'OBSERVADO' ? observaciones : null,
+          // Observar y rechazar son las dos formas de objetar, y las dos
+          // guardan aquí lo que el comité dijo; una aprobación solo lo guarda
+          // cuando reabrió algo, que es lo que esa actividad tendrá que
+          // validar.
+          observaciones: exigeObservaciones(dto.decision, numerales.length > 0)
+            ? observaciones
+            : null,
           actaDocumentoId: acta.id,
           registradoPor: acceso.userName,
           registradoPorId: acceso.userId ?? null,
@@ -276,13 +416,30 @@ export class ComiteContratacionService {
       );
 
       const estado = estadoTrasLaSesion(dto.decision);
-      await this.marcar(em, procesoId, estado, acceso);
+      await this.marcar(
+        em,
+        procesoId,
+        estado,
+        acceso,
+        laSesionCierra(dto.decision) ? dto.firma : undefined,
+      );
+
+      // La decisión sobre la 3.7 no reabre por sí sola lo que el comité
+      // señaló: sin esto, corregir «lo que hay que cambiar» —o validar lo que
+      // pidió validar— no tenía ninguna actividad editable donde hacerse.
+      for (const numeral of numerales) {
+        await this.reabrirActividad(em, procesoId, numeral, observaciones!, acceso);
+      }
 
       await this.traza(
         em,
         procesoId,
         sesion.id,
-        dto.decision === 'OBSERVADO' ? 'DEVOLVER' : 'APROBAR',
+        dto.decision === 'OBSERVADO'
+          ? 'DEVOLVER'
+          : dto.decision === 'RECHAZADO'
+            ? 'RECHAZAR'
+            : 'APROBAR',
         acceso,
         {
           actividad: NUMERAL_COMITE_CONTRATACION,
@@ -290,12 +447,20 @@ export class ComiteContratacionService {
           fecha: dto.fecha,
           condiciones,
           observaciones,
+          reabiertas: numerales,
         },
       );
 
+      // El proceso termina con la actividad cuando el comité la rechaza.
+      const desenlace = desenlaceTrasLaSesion(dto.decision);
+      if (desenlace) {
+        await em.update(Proceso, { id: procesoId }, { estado: desenlace });
+      }
+
       // Aprobar cierra la actividad, y con ella la etapa 3 en las modalidades
       // que pasan por comité: la solicitud de CDP nace ahí. Observar no cierra
-      // nada, así que no se pregunta.
+      // nada y rechazar cierra el proceso entero, así que ninguno de los dos
+      // pregunta.
       if (estado === 'APROBADO') {
         await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
       }
@@ -332,7 +497,7 @@ export class ComiteContratacionService {
       if (estadoActual === 'NO_APLICA') {
         throw new ConflictException('Ya está constando que este proceso no pasa por comité');
       }
-      if (estadoActual === 'APROBADO') {
+      if (estadoActual === 'APROBADO' || estadoActual === 'NEGADO') {
         throw new ConflictException(
           'El comité ya se pronunció sobre este proceso: no puede constar que no fue',
         );
@@ -476,17 +641,19 @@ export class ComiteContratacionService {
   /**
    * Deja la actividad en el estado que corresponda a lo que pasó.
    *
-   * Quien transcribe queda como revisor solo cuando la sesión cierra: una
-   * devolución del comité deja la actividad abierta, y sellar ahí a quien la
-   * escribió diría que él la revisó.
+   * Quien transcribe queda como revisor solo cuando la sesión cierra —aprobando
+   * o rechazando, que las dos concluyen la revisión—: una devolución del comité
+   * deja la actividad abierta, y sellar ahí a quien la escribió diría que él la
+   * revisó.
    */
   private async marcar(
     em: EntityManager,
     procesoId: string,
     estado: EstadoActividad,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    const cierra = estado === 'APROBADO';
+    const cierra = estado === 'APROBADO' || estado === 'NEGADO';
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral: NUMERAL_COMITE_CONTRATACION } });
@@ -497,7 +664,7 @@ export class ComiteContratacionService {
           procesoId,
           numeral: NUMERAL_COMITE_CONTRATACION,
           estado,
-          datos: {},
+          datos: firma ? { firma } : {},
           enviadoPor: acceso.userName,
           enviadoPorId: acceso.userId ?? null,
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
@@ -511,7 +678,90 @@ export class ComiteContratacionService {
     actividad.enviadoPorId = acceso.userId ?? null;
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
+    if (firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(ProcesoActividad, actividad);
+  }
+
+  /**
+   * Qué actividades anteriores tiene este proceso en condiciones de reabrirse.
+   *
+   * Las cuatro reabribles de la matriz, filtradas por las que este expediente
+   * ya cerró: el comité no puede reabrir lo que todavía está en curso, y
+   * ofrecerlo en la pantalla sería ofrecer algo que `reabrirActividad` va a
+   * rechazar cuando lo marquen.
+   */
+  private async reabribles(em: EntityManager, procesoId: string): Promise<string[]> {
+    const cerradas = await em.getRepository(ProcesoActividad).find({
+      where: {
+        procesoId,
+        numeral: In([...NUMERALES_REABRIBLES_POR_COMITE]),
+        estado: 'APROBADO',
+      },
+    });
+
+    // En el orden de la matriz, no en el que los devuelva la consulta: es el
+    // orden en que se leen en la pantalla y en la traza.
+    return NUMERALES_REABRIBLES_POR_COMITE.filter((n) =>
+      cerradas.some((a) => a.numeral === n),
+    );
+  }
+
+  /**
+   * Reabre una actividad anterior ya cerrada (EFDS-2068).
+   *
+   * `proceso_actividades` y `revisiones` son las mismas tablas que ya usan el
+   * estudio previo y la aprobación configurable: no hace falta un mecanismo
+   * nuevo por actividad, solo escribir en el sitio que cada pantalla ya lee.
+   * Al numeral se le exige estar APROBADO —si sigue en curso o ya fue devuelto
+   * por otro camino, no es el comité quien tiene algo que reabrir ahí—.
+   *
+   * Lo mismo sirve para corregir y para validar: en los dos casos la actividad
+   * vuelve a manos de quien la trabajó con un texto que dice qué mirar, y lo
+   * que cambia es si la 3.7 quedó devuelta o aprobada al lado.
+   */
+  private async reabrirActividad(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    observaciones: string,
+    acceso: HiringAccess,
+  ) {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral } });
+
+    if (!actividad) {
+      throw new NotFoundException(`El proceso no tiene la actividad ${numeral} para devolver`);
+    }
+    if (actividad.estado !== 'APROBADO') {
+      throw new ConflictException(
+        `La actividad ${numeral} no está aprobada: no hay nada ahí que el comité pueda devolver`,
+      );
+    }
+
+    actividad.estado = 'DEVUELTO';
+    actividad.revisadoPor = acceso.userName;
+    actividad.revisadoAt = new Date();
+    await em.save(ProcesoActividad, actividad);
+
+    await em.save(
+      em.create(Revision, {
+        procesoActividadId: actividad.id,
+        decision: 'DEVUELTO',
+        observaciones,
+        versionRevisada: actividad.version,
+        revisadoPor: acceso.userName,
+        revisadoPorId: acceso.userId,
+      } as Partial<Revision>),
+    );
+
+    await this.traza(em, procesoId, actividad.id, 'DEVOLVER', acceso, {
+      numeral,
+      observaciones,
+      origen: 'comite_contratacion',
+    });
   }
 
   private traza(

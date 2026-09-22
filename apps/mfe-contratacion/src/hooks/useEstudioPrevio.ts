@@ -5,6 +5,7 @@ import {
   CamposFaltantesError,
   ConflictoError,
   EstudioPrevio,
+  EvidenciaFirmaOtp,
 } from '../types';
 
 interface Estado {
@@ -141,7 +142,7 @@ export function useEstudioPrevio(procesoId: string | null) {
   }, [procesoId, estado.datos, guardarReintentando]);
 
   /** Guarda y envía. El 422 se traduce en la lista de faltantes marcada en pantalla. */
-  const enviar = useCallback(async () => {
+  const enviar = useCallback(async (firma?: EvidenciaFirmaOtp) => {
     if (!procesoId || !estado.datos) return;
     setEstado((e) => ({
       ...e,
@@ -153,7 +154,7 @@ export function useEstudioPrevio(procesoId: string | null) {
     }));
     try {
       await guardarReintentando(estado.datos.version);
-      await contratacionService.enviarARevision(procesoId);
+      await contratacionService.enviarARevision(procesoId, firma);
       await cargar();
       setEstado((e) => ({
         ...e,

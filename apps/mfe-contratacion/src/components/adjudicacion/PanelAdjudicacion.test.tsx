@@ -32,6 +32,7 @@ vi.mock('../../services/contratacionService', () => ({
     publicarDeclaratoriaDesierta: vi.fn(),
     revocarDeclaratoriaDesierta: vi.fn(),
     urlDescarga: (url: string) => `https://gateway${url}`,
+    firmaDeActividad: vi.fn().mockResolvedValue({ requiereFirma: false }),
   },
 }));
 

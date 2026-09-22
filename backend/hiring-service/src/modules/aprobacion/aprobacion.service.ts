@@ -17,6 +17,8 @@ import { Revision } from '../../entities/revision.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { CdpService } from '../cdp/cdp.service';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Quién puede aprobar una actividad, tal como se configuró. */
 export interface Aprobadores {
@@ -47,6 +49,8 @@ export class AprobacionService {
      * el proceso de la bandeja—, y los tres tienen que preguntarlo.
      */
     private readonly cdp: CdpService,
+    /** Si la actividad exige firmar con el token institucional al aprobarla (EFDS-2070). */
+    private readonly cierre: CierreActividadService,
   ) {}
 
   // ------------------------------------------------------ la configuración --
@@ -355,14 +359,21 @@ export class AprobacionService {
     });
   }
 
-  /** Aprueba la actividad. Las observaciones son opcionales. */
+  /**
+   * Aprueba la actividad. Las observaciones son opcionales.
+   *
+   * Quien envía y quien aprueba son dos personas y dos acciones distintas:
+   * cada una firma la suya. `firma` es la evidencia de quien aprueba, y solo
+   * se exige si la actividad quedó configurada con `EXIGE_FIRMA` (EFDS-2070).
+   */
   async aprobar(
     procesoId: string,
     numeral: string,
     observaciones: string | undefined,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    return this.decidir(procesoId, numeral, 'APROBADO', observaciones, acceso);
+    return this.decidir(procesoId, numeral, 'APROBADO', observaciones, acceso, firma);
   }
 
   /**
@@ -391,6 +402,7 @@ export class AprobacionService {
     decision: 'APROBADO' | 'DEVUELTO',
     observaciones: string | undefined,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     return this.dataSource.transaction(async (em) => {
       const { actividad, proceso } = await this.exigirActividad(em, procesoId, numeral);
@@ -447,11 +459,20 @@ export class AprobacionService {
             `Falta cargar ${faltan.join(', ')}: la actividad no puede aprobarse sin su soporte`,
           );
         }
+
+        // La firma es de quien aprueba, no de quien envió: cada uno firma su
+        // propia acción (EFDS-2070).
+        if (await this.cierre.exigeFirma(em, numeral)) {
+          this.cierre.exigirFirmaValida(firma);
+        }
       }
 
       actividad.estado = decision;
       actividad.revisadoPor = acceso.userName;
       (actividad as any).revisadoPorId = acceso.userId;
+      if (decision === 'APROBADO' && firma) {
+        actividad.datos = { ...(actividad.datos ?? {}), firmaAprobacion: firma };
+      }
       await em.save(actividad);
 
       // La versión revisada queda atada a la decisión: editar el documento

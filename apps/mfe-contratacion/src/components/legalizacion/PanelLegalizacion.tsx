@@ -15,6 +15,7 @@ import {
   AmparoDeGarantia,
   DatosArl,
   EstadoLegalizacion,
+  EvidenciaFirmaOtp,
   GarantiaDelContrato,
 } from '../../types';
 import {
@@ -30,6 +31,7 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
@@ -73,6 +75,7 @@ const ETIQUETA_ESTADO: Record<GarantiaDelContrato['estado'], string> = {
  * o no hay garantía. Mismo patrón que los miembros del comité (EFDS-1156).
  */
 export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
+  const firma = useFirma(numeral, numeral === '8.5' ? 'Registrar la ARL' : 'Aprobar la póliza');
   const [estado, setEstado] = useState<EstadoLegalizacion | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,10 +204,10 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
     }
   };
 
-  const aprobar = async (g: GarantiaDelContrato) => {
+  const aprobar = async (g: GarantiaDelContrato, firmaOtp?: EvidenciaFirmaOtp) => {
     setGuardando(true);
     try {
-      const respuesta = await contratacionService.aprobarGarantia(procesoId, g.id);
+      const respuesta = await contratacionService.aprobarGarantia(procesoId, g.id, firmaOtp);
       setEstado(respuesta);
       toast.success(
         respuesta.legalizado
@@ -243,7 +246,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
     setRegistrandoArl(false);
   };
 
-  const registrarArl = async () => {
+  const registrarArl = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!soporteArl) return;
 
     setGuardando(true);
@@ -255,6 +258,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
           administradora: arl.administradora.trim(),
           fechaAfiliacion: arl.fechaAfiliacion,
           ...(arl.numeroAfiliacion.trim() ? { numeroAfiliacion: arl.numeroAfiliacion.trim() } : {}),
+          firma: firmaOtp,
         },
         soporteArl,
       );
@@ -400,7 +404,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                       <Boton
                         icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
                         disabled={guardando}
-                        onClick={() => aprobar(g)}
+                        onClick={() => firma.conFirma((firmaOtp) => aprobar(g, firmaOtp))}
                       >
                         Aprobar la póliza
                       </Boton>
@@ -684,7 +688,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                     disabled={
                       guardando || !arl.administradora.trim() || !arl.fechaAfiliacion || !soporteArl
                     }
-                    onClick={registrarArl}
+                    onClick={() => firma.conFirma(registrarArl)}
                   >
                     Registrar la afiliación
                   </Boton>
@@ -701,6 +705,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
           ) : null}
         </>
       )}
+      {firma.modal}
     </Marco>
   );
 }

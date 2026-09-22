@@ -1,11 +1,22 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /** La modalidad que el area propone, o corrige tras una devolucion. */
 export class CambiarModalidadDto {
-  @ApiProperty({ description: 'Codigo de la modalidad del catalogo' })
+  @ApiProperty({ description: 'Código de la modalidad del catálogo' })
   @IsString()
-  @IsNotEmpty({ message: 'Elige la modalidad de contratacion' })
+  @IsNotEmpty({ message: 'Elige la modalidad de contratación' })
   @MaxLength(60)
   modalidad: string;
 }
@@ -26,10 +37,21 @@ export class DecidirModalidadDto {
   decision: 'APROBADO' | 'DEVUELTO';
 
   /** Obligatorio al devolver: sin el, el area repetiria la misma eleccion. */
-  @ApiProperty({ required: false, description: 'Que modalidad corresponde y por que' })
+  @ApiProperty({ required: false, description: 'Qué modalidad corresponde y por qué' })
   @IsOptional()
   @IsString()
   @MinLength(10, { message: 'El motivo debe explicar qué modalidad corresponde' })
   @MaxLength(1000)
   observaciones?: string;
+
+  /**
+   * Solo si la 3.5 quedó configurada con `EXIGE_FIRMA`. Ratificar sí la pide
+   * —es la decisión que cierra la actividad—; devolver no, porque no cierra
+   * nada.
+   */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }

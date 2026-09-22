@@ -50,6 +50,8 @@ import {
   SolicitarSuspensionDto,
   SolicitarTerminacionDto,
 } from './dto/modificaciones.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 export { NUMERAL_MODIFICACIONES, margenDeAdicion };
 export { intentoDeModificarObjeto, objetoCambio } from './objeto-inmutable';
@@ -97,7 +99,10 @@ export function admiteModificacion(estado: EstadoContrato): boolean {
  */
 @Injectable()
 export class ModificacionesService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -573,7 +578,7 @@ export class ModificacionesService {
       await em.save(modificacion);
       await em.save(contrato);
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, modificacion.id, 'APROBAR', acceso, {
         actividad: NUMERAL_MODIFICACIONES,
@@ -1137,40 +1142,61 @@ export class ModificacionesService {
   }
 
   /** La actividad 9.5 se cumple cuando hay al menos una modificación aprobada. */
+  /**
+   * Cumplida con la primera modificación aprobada. Aprobación y firma
+   * (EFDS-1183, EFDS-2070) solo se preguntan en esa transición: aprobar una
+   * segunda modificación, con la actividad ya cerrada, no vuelve a pedirla.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const aprobada = await em
       .getRepository(ModificacionContrato)
       .findOne({ where: { contratoId, estado: 'APROBADA' as EstadoModificacion } });
-
     const cumplida = !!aprobada;
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral: NUMERAL_MODIFICACIONES } });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_MODIFICACIONES,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_MODIFICACIONES,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+
+    if (await this.cierre.exigeFirma(em, NUMERAL_MODIFICACIONES)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_MODIFICACIONES,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private porQueNoAdmite(estado: EstadoContrato): string {

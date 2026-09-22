@@ -23,6 +23,7 @@ import {
   SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
+import { TerminarPlazo } from '../shared/TerminarPlazo';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
 interface Props {
@@ -237,6 +238,14 @@ export function PanelPublicacionPliego({ procesoId, onCambio }: Props) {
   return (
     <Marco>
       <ContadorDelPlazo estado={estado} />
+
+      <TerminarPlazo
+        visible={estado.puedeTerminarPlazo}
+        termino="El plazo de publicidad"
+        terminar={() => contratacionService.terminarPlazoPublicacion(procesoId)}
+        onTerminado={setEstado}
+        nota="Si el pliego se publicó hoy, su fecha de publicación retrocede con el término: uno no puede terminar antes de empezar."
+      />
 
       <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-1">
         <p className="text-xs text-slate-700 m-0">

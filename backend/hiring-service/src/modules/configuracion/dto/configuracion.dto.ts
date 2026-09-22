@@ -108,7 +108,7 @@ export class GuardarReglaDto {
   tipo: string;
 
   @ApiProperty({
-    description: 'Su forma depende del tipo: `codigo`, `max`, `dias`, `tipoDocumento`…',
+    description: 'Su forma depende del tipo: `código`, `max`, `días`, `tipoDocumento`…',
     example: { codigo: 'objeto_contratar' },
   })
   @IsObject()
@@ -126,13 +126,13 @@ export class GuardarReglaDto {
   orden?: number;
 
   @ApiPropertyOptional({
-    description: 'Cuando aplica: [{campo, operador, valor}]. Vacio = siempre.',
+    description: 'Cuándo aplica: [{campo, operador, valor}]. Vacío = siempre.',
   })
   @IsOptional()
   @IsArray()
   condiciones?: any[];
 
-  @ApiPropertyOptional({ description: 'Que hace: [{accion, objetivo, valor}].' })
+  @ApiPropertyOptional({ description: 'Que hace: [{acción, objetivo, valor}].' })
   @IsOptional()
   @IsArray()
   acciones?: any[];
@@ -219,7 +219,7 @@ export class CrearCampoDto {
  * identifican en el Sistema Integrado de Gestion y dicen donde aplica.
  */
 export class GuardarPlantillaDto {
-  @ApiProperty({ example: 'BS-FO-047', description: 'Codigo del formato en el SIG.' })
+  @ApiProperty({ example: 'BS-FO-047', description: 'Código del formato en el SIG.' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(40)
@@ -234,8 +234,8 @@ export class GuardarPlantillaDto {
   @ApiPropertyOptional({
     example: '3.1',
     description:
-      'Actividad en la que se ofrece. Vacio deja el formato en la biblioteca, ' +
-      'listo para asignarse despues.',
+      'Actividad en la que se ofrece. Vacío deja el formato en la biblioteca, ' +
+      'listo para asignarse después.',
   })
   @IsOptional()
   @IsString()
@@ -243,15 +243,15 @@ export class GuardarPlantillaDto {
   numeral?: string;
 
   // La version no se recibe: la calcula el servicio a partir de las que ya
-  // existen con ese codigo. Ver guardarPlantilla.
+  // existen con ese código. Ver guardarPlantilla.
 
-  @ApiPropertyOptional({ description: 'Fecha en que el SIG aprobo esta version.' })
+  @ApiPropertyOptional({ description: 'Fecha en que el SIG aprobó esta versión.' })
   @IsOptional()
   @IsString()
   fechaAprobacion?: string;
 
   @ApiPropertyOptional({
-    description: 'Modalidades a las que aplica. Vacio = todas.',
+    description: 'Modalidades a las que aplica. Vacío = todas.',
     example: ['LICITACION_PUBLICA'],
   })
   @IsOptional()
@@ -299,7 +299,7 @@ export class EstadoPlantillaDto {
 
   @ApiPropertyOptional({
     example: '3.1',
-    description: 'Actividad en la que se ofrece. Vacio lo devuelve a la biblioteca.',
+    description: 'Actividad en la que se ofrece. Vacío lo devuelve a la biblioteca.',
   })
   @IsOptional()
   @IsString()
@@ -311,7 +311,7 @@ export class EstadoPlantillaDto {
 export class AsignarPlantillaDto {
   @ApiPropertyOptional({
     example: '3.1',
-    description: 'Actividad donde se ofrecera. Vacio lo devuelve a la biblioteca.',
+    description: 'Actividad donde se ofrecera. Vacío lo devuelve a la biblioteca.',
   })
   @IsOptional()
   @IsString()
@@ -320,7 +320,7 @@ export class AsignarPlantillaDto {
 
   @ApiPropertyOptional({
     example: ['MINIMA_CUANTIA'],
-    description: 'Modalidades a las que alcanza. Lista vacia significa todas.',
+    description: 'Modalidades a las que alcanza. Lista vacía significa todas.',
   })
   @IsOptional()
   @IsArray()
@@ -349,25 +349,25 @@ export class SimularDto {
  * en vez de pedir una migracion cada vez.
  */
 export class GuardarTipologiaDto {
-  @ApiProperty({ description: 'Codigo de la tipologia. Es la llave y no se cambia.' })
+  @ApiProperty({ description: 'Código de la tipología. Es la llave y no se cambia.' })
   @IsString()
-  @IsNotEmpty({ message: 'La tipologia necesita un codigo' })
+  @IsNotEmpty({ message: 'La tipología necesita un código' })
   @MaxLength(60)
   codigo: string;
 
-  @ApiProperty({ description: 'Como se llama en el catalogo de la entidad' })
+  @ApiProperty({ description: 'Cómo se llama en el catálogo de la entidad' })
   @IsString()
-  @IsNotEmpty({ message: 'La tipologia necesita un nombre' })
+  @IsNotEmpty({ message: 'La tipología necesita un nombre' })
   @MaxLength(200)
   nombre: string;
 
-  @ApiPropertyOptional({ description: 'Que se contrata con esta tipologia' })
+  @ApiPropertyOptional({ description: 'Qué se contrata con esta tipología' })
   @IsOptional()
   @IsString()
   descripcion?: string;
 
   /** Lo consume la legalizacion (EFDS-1164) al exigir polizas. */
-  @ApiPropertyOptional({ description: 'Si los contratos de esta tipologia exigen garantias' })
+  @ApiPropertyOptional({ description: 'Si los contratos de esta tipología exigen garantias' })
   @IsOptional()
   @IsBoolean()
   exigeGarantias?: boolean;
@@ -407,4 +407,19 @@ export class GuardarAprobacionDto {
   @IsArray()
   @IsString({ each: true })
   personas?: string[];
+}
+
+/**
+ * Si la actividad exige que quien la trabaja la firme con el token
+ * institucional antes de darse por terminada.
+ *
+ * Sin aprobadores que elegir: a diferencia de la aprobación, que la da otra
+ * persona, la firma la pone quien registra la actividad —es su manera de
+ * responder por lo que entregó—, así que el único dato que hace falta es si
+ * se exige o no.
+ */
+export class GuardarFirmaDto {
+  @ApiProperty({ description: 'False retira la exigencia de firma.' })
+  @IsBoolean()
+  requiereFirma: boolean;
 }

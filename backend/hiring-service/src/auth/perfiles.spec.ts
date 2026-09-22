@@ -8,13 +8,14 @@ import {
 import {
   PERMISO_ACTIVIDAD_APROBAR,
   PERMISO_ACTIVIDAD_EDITAR,
+  PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_PROCESO_TOMAR,
   PERMISO_PROCESO_VER,
   PERMISO_PROCESO_VER_TODOS,
 } from './permisos';
 
 /**
- * Los cuatro perfiles por defecto (EFDS-1183).
+ * Los perfiles por defecto (EFDS-1183).
  *
  * Los catorce roles se combinan como se quiera, y esa flexibilidad es correcta.
  * El problema es de otro orden: a quien da de alta a un funcionario le llega
@@ -22,11 +23,14 @@ import {
  * resultado previsible es que marque de más.
  */
 describe('perfiles por defecto', () => {
-  it('son cuatro y cubren el recorrido de un proceso', () => {
+  it('van en el orden en que un proceso pasa por ellos', () => {
+    // Financiera entra entre el abogado y la consulta porque ahí es donde el
+    // proceso la encuentra: la solicitud de CDP nace al cerrar la etapa 3.
     expect(PERFILES_POR_DEFECTO.map((p) => p.codigo)).toEqual([
       'AREA_SOLICITANTE',
       'CONTRATACION',
       'ABOGADO',
+      'FINANCIERA',
       'CONSULTA',
     ]);
   });
@@ -75,6 +79,30 @@ describe('perfiles por defecto', () => {
     expect(suyos).not.toContain(PERMISO_PROCESO_VER_TODOS);
     // La Hoja1 marca esa columna con una sola X, la del Jefe de Oficina.
     expect(rolesQueOtorgan(PERMISO_PROCESO_VER_TODOS)).toEqual(['DIRECTOR_CONTRATACION']);
+  });
+
+  it('financiera mueve el presupuesto y ve el proceso, pero no lo trabaja', () => {
+    // Es la separación de la migración 072: quien certifica la disponibilidad
+    // no es quien diligencia el estudio previo. Sin `proceso.view` entraría por
+    // la bandeja de solicitudes sin atender y le fallaría cada consulta del
+    // proceso al que se las escribe.
+    const suyos = permisosDelPerfil('FINANCIERA');
+
+    expect(suyos).toContain(PERMISO_PRESUPUESTO_GESTIONAR);
+    expect(suyos).toContain(PERMISO_PROCESO_VER);
+    expect(suyos).not.toContain(PERMISO_ACTIVIDAD_EDITAR);
+    expect(suyos).not.toContain(PERMISO_ACTIVIDAD_APROBAR);
+    expect(suyos).not.toContain(PERMISO_PROCESO_TOMAR);
+  });
+
+  it('y es el único perfil que gestiona el presupuesto', () => {
+    // Si a otro se le cuela, deja de haber separación entre quien pide la plata
+    // y quien la compromete.
+    const conPresupuesto = PERFILES_POR_DEFECTO.filter((perfil) =>
+      permisosDelPerfil(perfil.codigo).includes(PERMISO_PRESUPUESTO_GESTIONAR),
+    );
+
+    expect(conPresupuesto.map((p) => p.codigo)).toEqual(['FINANCIERA']);
   });
 
   it('consulta no puede tocar nada', () => {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { CampoFormulario } from '../../types';
 import { SelectorPersona } from './SelectorPersona';
+import { SelectorDependencia } from './SelectorDependencia';
 
 /**
  * Campos que nombran a un funcionario. Va por codigo y no por tipo porque
@@ -8,6 +9,12 @@ import { SelectorPersona } from './SelectorPersona';
  * tipo nuevo obligaria a migrar el CHECK y a que el backend lo entienda.
  */
 const CAMPOS_DE_PERSONA = ['responsable_area'];
+
+/**
+ * Campos que nombran una dependencia (EFDS-2065). Mismo motivo que
+ * `CAMPOS_DE_PERSONA`: se elige del catálogo real y no se escribe a mano.
+ */
+const CAMPOS_DE_DEPENDENCIA = ['area_solicitante'];
 
 interface Props {
   campo: CampoFormulario;
@@ -54,6 +61,18 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
     if (CAMPOS_DE_PERSONA.includes(campo.codigo)) {
       return (
         <SelectorPersona
+          id={id}
+          value={valor ?? ''}
+          disabled={disabled}
+          invalido={!!error}
+          onChange={onChange}
+        />
+      );
+    }
+
+    if (CAMPOS_DE_DEPENDENCIA.includes(campo.codigo)) {
+      return (
+        <SelectorDependencia
           id={id}
           value={valor ?? ''}
           disabled={disabled}

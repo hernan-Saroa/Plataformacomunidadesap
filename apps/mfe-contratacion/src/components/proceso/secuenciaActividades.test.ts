@@ -4,6 +4,7 @@ import {
   actividadesDisponibles,
   estaTerminada,
   motivoDelBloqueo,
+  NUNCA_BLOQUEA,
   PasoDelFlujo,
 } from './secuenciaActividades';
 
@@ -97,6 +98,102 @@ describe('secuencia de actividades · el flujo va en orden', () => {
     ]);
 
     expect([...disponibles]).toEqual(['3.1', '3.2', '4.1']);
+  });
+});
+
+/**
+ * La 5.4 y la 5.5 no esperan a que cierre el plazo de observaciones (EFDS-2065,
+ * reunión de validación del modelo del 17 sep).
+ *
+ * La 5.3 puede tardar diez días hábiles en cerrar. Ni el límite a MiPyme ni la
+ * audiencia de riesgos se resuelven con lo que traigan las observaciones, así
+ * que no hay motivo de proceso para tenerlas esperando: solo necesitan que el
+ * proyecto de pliego (5.2) ya esté publicado.
+ */
+describe('actividadesDisponibles · la 5.3 no detiene a la 5.4 ni a la 5.5', () => {
+  const etapa5 = (estadoDeLa53: string | null) => [
+    paso('5.1', { estado: 'APROBADO' }),
+    paso('5.2', { estado: 'APROBADO' }),
+    paso('5.3', { estado: estadoDeLa53 }),
+    paso('5.4'),
+    paso('5.5'),
+    paso('5.6'),
+    paso('5.7'),
+  ];
+
+  it('con la 5.3 todavía corriendo, la 5.4 y la 5.5 ya se pueden trabajar', () => {
+    const disponibles = actividadesDisponibles(etapa5('BORRADOR'));
+
+    expect(disponibles.has('5.4')).toBe(true);
+    expect(disponibles.has('5.5')).toBe(true);
+  });
+
+  it('pero la 5.6 y la 5.7 siguen esperando a que la 5.3 cierre', () => {
+    const disponibles = actividadesDisponibles(etapa5('BORRADOR'));
+
+    expect(disponibles.has('5.6')).toBe(false);
+    expect(disponibles.has('5.7')).toBe(false);
+  });
+
+  it('sin publicación (5.2) todavía a medias, tampoco se abren la 5.4 ni la 5.5', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'BORRADOR' }),
+      paso('5.3'),
+      paso('5.4'),
+      paso('5.5'),
+    ];
+    const disponibles = actividadesDisponibles(flujo);
+
+    expect(disponibles.has('5.4')).toBe(false);
+    expect(disponibles.has('5.5')).toBe(false);
+  });
+
+  it('si la 5.4 no termina, sigue bloqueando lo que viene después: no es un pase libre', () => {
+    // Que se habilite antes no la exime de completarse: cerrar la 5.3 no
+    // basta si la 5.4 se quedó sin diligenciar.
+    const disponibles = actividadesDisponibles(etapa5('APROBADO'));
+
+    expect(disponibles.has('5.4')).toBe(true);
+    expect(disponibles.has('5.6')).toBe(false);
+  });
+
+  it('con todo aprobado, la cadena sigue hasta la apertura', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'APROBADO' }),
+      paso('5.3', { estado: 'APROBADO' }),
+      paso('5.4', { estado: 'APROBADO' }),
+      paso('5.5', { estado: 'APROBADO' }),
+      paso('5.6', { estado: 'APROBADO' }),
+      paso('5.7'),
+    ];
+
+    expect(actividadesDisponibles(flujo).has('5.7')).toBe(true);
+  });
+});
+
+describe('motivoDelBloqueo · con dependencia declarada', () => {
+  it('nombra la 5.2 y no la 5.3, que no le hace falta a la 5.4', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'BORRADOR' }),
+      paso('5.3'),
+      paso('5.4'),
+    ];
+
+    expect(motivoDelBloqueo('5.4', flujo)).toBe('Antes hay que terminar 5.2');
+  });
+
+  it('no da motivo cuando la 5.2 ya está aprobada, aunque la 5.3 siga corriendo', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'APROBADO' }),
+      paso('5.3', { estado: 'BORRADOR' }),
+      paso('5.4'),
+    ];
+
+    expect(motivoDelBloqueo('5.4', flujo)).toBeNull();
   });
 });
 
@@ -208,5 +305,58 @@ describe('actividadesDisponibles · la revisión no bloquea a quien la atiende',
     expect(abiertas.has('3.2')).toBe(true);
     // Y se detiene en la primera sin terminar, que ahora es la 3.2.
     expect(abiertas.has('3.3')).toBe(false);
+  });
+});
+
+/**
+ * La 9.2 (seguimiento) y la 9.3 (reasignación) duran toda la ejecución y
+ * ningún módulo del backend las marca APROBADO — la matriz las describe como
+ * algo que ocurre «en cualquier momento», no como un trámite con un primer
+ * envío que lo cierre. Tratarlas como cualquier actividad a medias encerraba
+ * la 9.4 y la 9.5 detrás de dos pasos que nunca se cierran: en la base, el
+ * cien por ciento de los contratos en ejecución tenían la 9.3 en BORRADOR.
+ */
+describe('actividadesDisponibles · la 9.2 y la 9.3 nunca bloquean lo que sigue', () => {
+  const etapa9 = (estadoDeLa92: string | null, estadoDeLa93: string | null) => [
+    paso('9.1', { estado: 'APROBADO' }),
+    paso('9.2', { estado: estadoDeLa92 }),
+    paso('9.3', { estado: estadoDeLa93 }),
+    paso('9.4'),
+    paso('9.5'),
+  ];
+
+  it('las dos en borrador, como se quedan toda la ejecución, igual se pueden abrir', () => {
+    const disponibles = actividadesDisponibles(etapa9('BORRADOR', 'BORRADOR'));
+
+    expect(disponibles.has('9.2')).toBe(true);
+    expect(disponibles.has('9.3')).toBe(true);
+  });
+
+  it('y no le impiden a la 9.4 abrirse, aunque ninguna de las dos haya cerrado', () => {
+    const disponibles = actividadesDisponibles(etapa9('BORRADOR', 'BORRADOR'));
+
+    expect(disponibles.has('9.4')).toBe(true);
+  });
+
+  it('la 9.5 sigue siendo un paso normal: solo se abre cuando la 9.4 —pagos— cierra', () => {
+    const conLa94Aprobada = [...etapa9('BORRADOR', 'BORRADOR')];
+    conLa94Aprobada[3] = paso('9.4', { estado: 'APROBADO' });
+
+    expect(actividadesDisponibles(etapa9('BORRADOR', 'BORRADOR')).has('9.5')).toBe(false);
+    expect(actividadesDisponibles(conLa94Aprobada).has('9.5')).toBe(true);
+  });
+
+  it('motivoDelBloqueo no manda a "terminar la 9.2" ni "la 9.3"', () => {
+    const flujo = etapa9('BORRADOR', 'BORRADOR');
+
+    expect(motivoDelBloqueo('9.4', flujo)).toBeNull();
+    expect(motivoDelBloqueo('9.5', flujo)).toBe('Antes hay que terminar 9.4');
+  });
+
+  it('la excepción es la 9.2 y la 9.3, no el resto de la etapa 9', () => {
+    expect(NUNCA_BLOQUEA.has('9.2')).toBe(true);
+    expect(NUNCA_BLOQUEA.has('9.3')).toBe(true);
+    expect(NUNCA_BLOQUEA.has('9.1')).toBe(false);
+    expect(NUNCA_BLOQUEA.has('9.4')).toBe(false);
   });
 });
