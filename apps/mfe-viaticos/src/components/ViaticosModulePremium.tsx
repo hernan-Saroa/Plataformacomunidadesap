@@ -253,15 +253,7 @@ export default function ViaticosModulePremium() {
 
       const esSecretarioRol =
         esSuperAdmin ||
-        authService.hasRole('SECRETARIO') ||
-        authService.hasRole('SECRETARIO_VIATICOS') ||
-        authService.hasRole('SUPERVISOR') ||
-        authService.hasAnyPermission([
-          Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
-          Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
-          Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
-          Permissions.VIATICOS_SOLICITUDES_RETURN,
-        ]);
+        authService.isSecretario();
 
       let solicitudesCombinadas = [...list];
 
@@ -300,15 +292,7 @@ export default function ViaticosModulePremium() {
         const dirNac = authService.isDireccionNacional();
         const secretario =
           superAdmin ||
-          authService.hasRole('SECRETARIO') ||
-          authService.hasRole('SECRETARIO_VIATICOS') ||
-          authService.hasRole('SUPERVISOR') ||
-          authService.hasAnyPermission([
-            Permissions.VIATICOS_SOLICITUDES_READ_INBOX,
-            Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY,
-            Permissions.VIATICOS_SOLICITUDES_ASSIGN_ANALYST,
-            Permissions.VIATICOS_SOLICITUDES_RETURN,
-          ]);
+          authService.isSecretario();
         setEsSuperAdmin(superAdmin);
         setEsSecretario(secretario);
         setEsAnalista(authService.isAnalista());
@@ -563,6 +547,7 @@ export default function ViaticosModulePremium() {
   const puedeVerSolicitudes =
     !tieneContextoAuth ||
     esSuperAdmin ||
+    authService.isSecretario() ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_SOLICITUDES_READ_OWN,
       Permissions.VIATICOS_SOLICITUDES_CREATE,
@@ -574,13 +559,17 @@ export default function ViaticosModulePremium() {
     ]) ||
     authService.isControlViaticos();
   const puedeCrearSolicitud =
-    (!tieneContextoAuth || esSuperAdmin || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE)) &&
+    (!tieneContextoAuth ||
+      esSuperAdmin ||
+      authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_CREATE) ||
+      authService.isEnlaceDependencia()) &&
     !esControlViaticos &&
     !esTesoreria &&
     !esSst;
   const puedeVerTiquetes =
     !tieneContextoAuth ||
     esSuperAdmin ||
+    authService.isResponsableTiquetes() ||
     authService.hasAnyPermission([
       Permissions.VIATICOS_TIQUETES_VIEW,
       Permissions.VIATICOS_TIQUETES_MANAGE,
