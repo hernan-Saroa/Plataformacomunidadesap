@@ -1226,16 +1226,34 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
               {comisionado && !habeasPendiente && (
                 <div className="border border-emerald-200 bg-emerald-50/60 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                      <User className="w-4 h-4" />
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-800 text-sm">{formatearNombreComisionado(comisionado)}</p>
+                        <p className="text-[11px] text-slate-500">
+                          {comisionado.tipoComisionado} · {comisionado.email}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-slate-800 text-sm">{formatearNombreComisionado(comisionado)}</p>
-                      <p className="text-[11px] text-slate-500">
-                        {comisionado.tipoComisionado} · {comisionado.email}
-                      </p>
-                    </div>
+                    {comisionado.origenDatos && (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          comisionado.origenDatos === 'HUMANO'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        }`}
+                        title={
+                          comisionado.origenDatos === 'HUMANO'
+                            ? 'Datos verificados desde Talento Humano / Nómina'
+                            : 'Datos verificados desde ESAP'
+                        }
+                      >
+                        {comisionado.origenDatos === 'HUMANO' ? 'Talento Humano' : comisionado.origenDatos}
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
                     <div>
@@ -1249,6 +1267,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </div>
                 </div>
               )}
+
 
               <div className="pt-2 flex justify-end">
                 <button

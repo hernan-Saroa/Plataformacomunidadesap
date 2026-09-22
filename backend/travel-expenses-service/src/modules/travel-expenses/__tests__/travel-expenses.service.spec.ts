@@ -15,7 +15,9 @@ import { SolicitudHistorialEstadoEntity } from '../../../entities/solicitud-hist
 import { ConfigService } from '../../config/config.service';
 import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
 import { NotificationClientService } from '../../../common/notification-client.service';
+import { HumanResourcesClientService } from '../../../common/human-resources-client.service';
 import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
+
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../../dto/segunda-revision-observaciones.dto';
 
@@ -47,6 +49,7 @@ describe('TravelExpensesService', () => {
       dataSource?: any;
       configService?: any;
       notificationClient?: any;
+      humanResourcesClient?: any;
     } = {},
   ) => {
     const {
@@ -68,6 +71,9 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+      },
+      humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
       },
       notificationClient = {
         archiveNotificacionesPorSolicitud: jest
@@ -125,9 +131,14 @@ describe('TravelExpensesService', () => {
           provide: NotificationClientService,
           useValue: notificationClient,
         },
+        {
+          provide: HumanResourcesClientService,
+          useValue: humanResourcesClient,
+        },
       ],
     }).compile();
   };
+
 
   beforeEach(async () => {
     const module = await createMockModule();
@@ -167,6 +178,66 @@ describe('TravelExpensesService', () => {
       });
       // No debe consultar auth.personas si lo encuentra localmente.
       expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe materializar comisionado desde talento humano (Oracle FNC) y persistirlo cuando existe en la vista', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn().mockImplementation(async (x) => ({
+          ...x,
+          id: 'com-fnc-001',
+          creadoEn: new Date(),
+          actualizadoEn: new Date(),
+        })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.dependencias')) {
+            return [{ id_dependencia: 15 }];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'CARLOS ALBERTO GOMEZ RESTREPO',
+          id_number: '80123456',
+          organization_department: 'DIRECCION DE CAPACITACION',
+          email: 'carlos.gomez@esap.edu.co',
+          phone: '3109876543',
+        }),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('80123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          numeroDocumento: '80123456',
+          primerNombre: 'CARLOS',
+          segundoNombre: 'ALBERTO',
+          primerApellido: 'GOMEZ',
+          segundoApellido: 'RESTREPO',
+          email: 'carlos.gomez@esap.edu.co',
+          telefonoContacto: '3109876543',
+          tipoComisionado: 'FUNCIONARIO',
+          origenDatos: 'HUMANO',
+          idDependencia: 15,
+        }),
+      );
+      expect(result).toMatchObject({
+        numeroDocumento: '80123456',
+        origenDatos: 'HUMANO',
+        idDependencia: 15,
+      });
     });
 
     it('debe materializar comisionado desde auth.personas y persistirlo cuando no existe localmente', async () => {
@@ -242,6 +313,7 @@ describe('TravelExpensesService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
     });
+
 
     it('debe lanzar BadRequestException si el documento viene vacío', async () => {
       const comisionadoRepo = {

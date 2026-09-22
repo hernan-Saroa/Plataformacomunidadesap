@@ -58,7 +58,12 @@ import {
   NotificationClientService,
   buildTravelExpenseEmailHtml,
 } from '../../common/notification-client.service';
+import {
+  HumanResourcesClientService,
+  HumanResourcesSuggestedPerson,
+} from '../../common/human-resources-client.service';
 import { LiquidationService } from '../liquidation/liquidation.service';
+
 import {
   TipoComisionadoLiquidacion,
   CategoriaInvestigador,
@@ -135,12 +140,15 @@ export class TravelExpensesService {
     private readonly configService: ConfigService,
     private readonly notificationClient: NotificationClientService,
     @Optional()
+    private readonly humanResourcesClient?: HumanResourcesClientService,
+    @Optional()
     private readonly liquidationService?: LiquidationService,
     @Optional()
     private readonly ticketsService?: TicketsService,
     @Optional()
     private readonly eventEmitter?: EventEmitter2,
   ) {}
+
 
   /**
    * Emite el evento asíncrono 'commission.disbursement_ready' para que el listener
@@ -675,7 +683,91 @@ export class TravelExpensesService {
       return existente;
     }
 
-    // 2) Búsqueda secundaria: auth.personas (origen único ESAP).
+    // 2) Búsqueda secundaria: Talento Humano / Nómina (Oracle FNC - VW_INTEGRACIONFNC).
+    //    Se consulta vía certification-service (fuente oficial en línea de talento humano).
+    if (this.humanResourcesClient) {
+      try {
+        const funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+
+        if (funcionarioFnc && funcionarioFnc.id_number) {
+          const rawName = (funcionarioFnc.full_name || '').trim();
+          const partes = rawName.split(/\s+/).filter(Boolean);
+          let primerNombre = 'SIN NOMBRE';
+          let segundoNombre: string | null = null;
+          let primerApellido = 'SIN APELLIDO';
+          let segundoApellido: string | null = null;
+
+          if (partes.length === 1) {
+            primerNombre = partes[0];
+          } else if (partes.length === 2) {
+            primerNombre = partes[0];
+            primerApellido = partes[1];
+          } else if (partes.length === 3) {
+            primerNombre = partes[0];
+            primerApellido = partes[1];
+            segundoApellido = partes[2];
+          } else if (partes.length >= 4) {
+            primerNombre = partes[0];
+            segundoNombre = partes[1];
+            primerApellido = partes[2];
+            segundoApellido = partes.slice(3).join(' ');
+          }
+
+          // Resolver ID de dependencia en auth.dependencias si el nombre de dependencia viene informado
+          let idDependenciaFnc: number | null = null;
+          const depNombre = (
+            funcionarioFnc.organization_department ||
+            funcionarioFnc.cost_center ||
+            ''
+          ).trim();
+          if (depNombre) {
+            try {
+              const depMatch = await this.dataSource.query(
+                `SELECT id_dependencia
+                   FROM auth.dependencias
+                  WHERE UPPER(nom_dependencia) = UPPER($1)
+                     OR UPPER(cod_dependencia) = UPPER($1)
+                  LIMIT 1`,
+                [depNombre],
+              );
+              if (depMatch?.[0]?.id_dependencia != null) {
+                idDependenciaFnc = Number(depMatch[0].id_dependencia);
+              }
+            } catch (err: any) {
+              this.logger.debug?.(
+                `[consultarComisionado] No se pudo mapear id_dependencia para ${depNombre}: ${err?.message}`,
+              );
+            }
+          }
+
+          const nuevoDesdeFnc = this.comisionadoRepo.create({
+            numeroDocumento: doc,
+            primerNombre,
+            segundoNombre,
+            primerApellido,
+            segundoApellido,
+            email:
+              funcionarioFnc.email ||
+              funcionarioFnc.personal_email ||
+              'sin-correo@esap.edu.co',
+            telefonoContacto: funcionarioFnc.phone || '0000000000',
+            tipoComisionado: 'FUNCIONARIO',
+            origenDatos: 'HUMANO',
+            autorizacionHabeasData: false,
+            idDependencia: idDependenciaFnc,
+          } as Partial<ComisionadoEntity>);
+
+          return await this.comisionadoRepo.save(nuevoDesdeFnc);
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[travel-expenses] Error consultando talento humano / Oracle FNC: ${err?.message || err}`,
+        );
+      }
+    }
+
+    // 3) Búsqueda terciaria (fallback): auth.personas (origen único ESAP).
     //    Ambos microservicios comparten la misma base de datos
     //    (`esap_db`), por lo que se consulta directamente vía DataSource
     //    para evitar un round-trip HTTP y mantener la latencia baja.
@@ -703,15 +795,15 @@ export class TravelExpensesService {
       });
 
     if (!persona) {
-      // 3) No existe ni en comisionados ni en auth.personas:
+      // 4) No existe ni en comisionados, ni en talento humano (Oracle FNC), ni en auth.personas:
       //    bloqueamos el flujo porque no hay un funcionario válido
       //    para asociar a la solicitud de viáticos.
       throw new NotFoundException(
-        `No se encontró un comisionado con documento ${doc} en ESAP. Verifique el número o contacte al administrador del módulo de autenticación.`,
+        `No se encontró un comisionado con documento ${doc} ni en la base de datos de talento humano ni en ESAP. Verifique el número o contacte al administrador.`,
       );
     }
 
-    // 4) Persistimos la "foto" de la persona de ESAP en
+    // 5) Persistimos la "foto" de la persona de ESAP en
     //    travel_expenses.comisionados para que las siguientes consultas
     //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
     const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
@@ -741,6 +833,50 @@ export class TravelExpensesService {
 
     return this.comisionadoRepo.save(nuevo);
   }
+
+  /**
+   * Consulta general o específica de talento humano (Oracle FNC / VW_INTEGRACIONFNC).
+   * Permite buscar por término (nombre o documento) o documento exacto.
+   */
+  async buscarTalentoHumano(
+    query?: string,
+    documento?: string,
+    limit = 20,
+  ) {
+    const doc = String(documento || '').trim();
+    if (doc) {
+      const funcionario = this.humanResourcesClient
+        ? await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc)
+        : null;
+      return {
+        ok: true,
+        source: 'talento_humano_oracle',
+        query: doc,
+        total: funcionario ? 1 : 0,
+        data: funcionario ? [funcionario] : [],
+      };
+    }
+
+    const term = String(query || '').trim();
+    if (!term || term.length < 3) {
+      throw new BadRequestException(
+        'El término de búsqueda debe tener al menos 3 caracteres.',
+      );
+    }
+
+    const funcionarios = this.humanResourcesClient
+      ? await this.humanResourcesClient.buscarFuncionariosPorTermino(term, limit)
+      : [];
+
+    return {
+      ok: true,
+      source: 'talento_humano_oracle',
+      query: term,
+      total: funcionarios.length,
+      data: funcionarios,
+    };
+  }
+
 
   async obtenerSolicitudCompleta(
     solicitudId: string,
