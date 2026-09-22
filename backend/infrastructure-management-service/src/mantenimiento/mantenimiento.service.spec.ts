@@ -29,6 +29,7 @@ function servicio({
     save: jest.fn((rows: any[]) => Promise.resolve(rows || [])),
     create: jest.fn((d: any) => d),
   } as any,
+  notificationClient = undefined as any,
 } = {}) {
   return new MantenimientoService(
     mantenimientoRepo,
@@ -38,6 +39,7 @@ function servicio({
     valoracionRepo,
     valoracionInsumoRepo,
     storage,
+    notificationClient,
   );
 }
 
@@ -2442,5 +2444,294 @@ describe('[EFDS-1737] Conformidad Área Solicitante (confirmar/rechazar/batch)',
     expect(accionesVistas).toContain('CONFORMIDAD_CONFIRMADA');
     expect(accionesVistas).toContain('CONFORMIDAD_RECHAZADA_Y_REABIERTA');
     expect(accionesVistas).toContain('CONFORMIDAD_SIN_RESPUESTA');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EFDS-1737 ST-09 Notificaciones automáticas conformidad (módulo campanita + correo)
+// ---------------------------------------------------------------------------
+describe('[EFDS-1737-ST09] Notificaciones conformidad automáticas (campanita IN-APP + email)', () => {
+  /** Recolector de disparos: push notifyUserById / sendEmail que los mocks invocan */
+  type NotifInapp = { tipo: string; titulo: string; userId: string };
+  type NotifEmail = { to: string; subject: string };
+  function mockNotifClient() {
+    const inapp: NotifInapp[] = [];
+    const emails: NotifEmail[] = [];
+    const flushers: (() => Promise<void>)[] = [];
+    const cliente: any = {
+      notifyUserById: jest.fn((userId: string, dto: any, emailOpts?: any) => {
+        inapp.push({ tipo: String(dto?.tipo_notificacion ?? ''), titulo: String(dto?.titulo ?? ''), userId });
+        if (emailOpts) emails.push({ to: userId + '+' + emailOpts.subject, subject: emailOpts.subject });
+        const p = Promise.resolve();
+        flushers.push(() => p);
+        return p;
+      }),
+      sendEmail: jest.fn((to: string, subject: string) => {
+        emails.push({ to, subject });
+        const p = Promise.resolve();
+        flushers.push(() => p);
+        return p;
+      }),
+    };
+    return {
+      cliente,
+      inapp,
+      emails,
+      esperarDisparos: async () => {
+        await new Promise((r) => setTimeout(r, 25));
+        for (const f of flushers) await f();
+      },
+    };
+  }
+  const userTecnico: any = { userId: 'uuuu-porky-1234', username: 'Porky', email: 'porky@esap.edu.co', roles: ['USER'] };
+  const userSolicitante: any = { userId: 'uuuu-ana-coord-0001', username: 'Ana Coordinadora', email: 'ana.coordinadora@esap.edu.co', roles: ['USER'] };
+  const userSuper: any = { userId: 'super-uuid', username: 'Admin', email: 'super@esap.edu.co', roles: ['SUPER_ADMIN'] };
+  const tecnicoUMI = (cod: string, emailUserAutorizado: string, userIdAutorizado: string) => ({
+    idCatalogoItem: 1, catalogo: 'TECNICO_MANTENIMIENTO', codigo: cod, nombre: 'Técnico Asignado', isActivo: true,
+    metadata: { correos: [emailUserAutorizado], usuarioIdsAutorizados: [userIdAutorizado] },
+  });
+
+  const baseSol = (id: string, estado: string): any => ({
+    idSolicitud: id, consecutivo: 'UMI-2026-0099', createdAt: new Date().toISOString(),
+    estado, idCategoria: 47, areaResponsableActual: 'UMI',
+    codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Técnico Asignado',
+    usuarioSolicitanteId: userSolicitante.userId,
+    usuarioSolicitanteEmail: userSolicitante.email,
+    asignaciones: [],
+  });
+
+  it('cerrarTecnicamente (COMPLETADA) → dispara UMI_CONFORMIDAD_CIERRE_TECNICO_PENDIENTE al solicitante (INAPP + EMAIL)', async () => {
+    const notif = mockNotifClient();
+    let saved: any = { ...baseSol('SOL-NOTIF-1', 'EN_PROGRESO') };
+    const repo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve({ ...saved })),
+      save: jest.fn().mockImplementation((d: any) => { saved = { ...d }; return Promise.resolve(saved); }),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecnicoUMI('TEC-01', userTecnico.email, userTecnico.userId);
+          if (w?.where?.catalogo === 'REGLA_ESCALAMIENTO') return null;
+          return null;
+        }),
+      } as any,
+      notificationClient: notif.cliente,
+    } as any);
+    await s.cerrarTecnicamente('SOL-NOTIF-1', {
+      trabajoRealizado: 'Trabajo finalizado 20 caracteres mínimos',
+      evidencias: [{ id: 'e1' }],
+      costoFinalEfectivoCop: 0,
+    }, userTecnico);
+    await notif.esperarDisparos();
+    const hayInapp = notif.inapp.some((x) => x.tipo === 'UMI_CONFORMIDAD_CIERRE_TECNICO_PENDIENTE');
+    const hayEmail = notif.emails.some((e) => e.subject.includes('Cierre técnico'));
+    expect(hayInapp).toBe(true);
+    expect(hayEmail).toBe(true);
+  });
+
+  it('confirmarConformidad → dispara 2 notif distintas: SOLICITANTE acuse + TÉCNICO confirmación', async () => {
+    const notif = mockNotifClient();
+    let saved: any = { ...baseSol('SOL-NOTIF-2', 'COMPLETADA') };
+    saved.fechaLimiteConformidad = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const repo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve({ ...saved })),
+      save: jest.fn().mockImplementation((d: any) => { saved = { ...d }; return Promise.resolve(saved); }),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecnicoUMI('TEC-01', userTecnico.email, userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      notificationClient: notif.cliente,
+    } as any);
+    await s.confirmarConformidad('SOL-NOTIF-2', { observacionesConformidad: '  todo correcto   ' }, userSolicitante);
+    await notif.esperarDisparos();
+    const tiposInapp = notif.inapp.map((x) => x.tipo);
+    expect(tiposInapp).toContain('UMI_CONFORMIDAD_CONFIRMADA_SOLICITANTE');
+    expect(tiposInapp).toContain('UMI_CONFORMIDAD_CONFIRMADA_TECNICO');
+  });
+
+  it('rechazarConformidadYReabrir → dispara SOLICITANTE + TECNICO_REAPERTURA (prioridad Alta ámbar)', async () => {
+    const notif = mockNotifClient();
+    let saved: any = { ...baseSol('SOL-NOTIF-3', 'COMPLETADA') };
+    saved.fechaLimiteConformidad = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const repo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve({ ...saved })),
+      save: jest.fn().mockImplementation((d: any) => { saved = { ...d }; return Promise.resolve(saved); }),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecnicoUMI('TEC-01', userTecnico.email, userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      notificationClient: notif.cliente,
+    } as any);
+    await s.rechazarConformidadYReabrir('SOL-NOTIF-3', {
+      observacionesConformidad: '  La puerta sigue desajustada y hace ruido, revisar bisagra  ',
+    }, userSolicitante);
+    await notif.esperarDisparos();
+    const tiposInapp = notif.inapp.map((x) => x.tipo);
+    expect(tiposInapp).toContain('UMI_CONFORMIDAD_RECHAZADA_Y_REABIERTA_SOLICITANTE');
+    expect(tiposInapp).toContain('UMI_CONFORMIDAD_RECHAZADA_Y_REABIERTA_TECNICO');
+    const hayReapertura = notif.emails.some((e) => e.subject.includes('Reapertura'));
+    expect(hayReapertura).toBe(true);
+  });
+
+  it('ejecutarCierresSinRespuestaVencidos 2 solicitudes → 2 notificaciones SIN_RESPUESTA al solicitante', async () => {
+    const notif = mockNotifClient();
+    const vencida1 = { ...baseSol('V-NOT-1', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString() };
+    const vencida2 = { ...baseSol('V-NOT-2', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() };
+    const mapaVivas: Record<string, any> = { 'V-NOT-1': { ...vencida1 }, 'V-NOT-2': { ...vencida2 } };
+    const repo = {
+      find: jest.fn().mockResolvedValue([mapaVivas['V-NOT-1'], mapaVivas['V-NOT-2']]),
+      findOne: jest.fn().mockImplementation((q: any) => {
+        const id = typeof q === 'string' ? q : (q as any)?.where?.idSolicitud;
+        return Promise.resolve(id && mapaVivas[id] ? { ...mapaVivas[id] } : null);
+      }),
+      save: jest.fn().mockImplementation((d: any) => {
+        if (d && d.idSolicitud) mapaVivas[d.idSolicitud] = { ...d };
+        return Promise.resolve(d);
+      }),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      notificationClient: notif.cliente,
+    } as any);
+    const r = await s.ejecutarCierresSinRespuestaVencidos(userSuper);
+    expect(r.actualizadas).toBe(2);
+    await notif.esperarDisparos();
+    const countSinRespuesta = notif.inapp.filter((x) => x.tipo === 'UMI_CONFORMIDAD_SIN_RESPUESTA_SOLICITANTE').length;
+    expect(countSinRespuesta).toBeGreaterThanOrEqual(2);
+  });
+
+  it('si NotificationClient no está inyectado (entorno Jest antiguo) → no-op, las 4 operaciones funcionan sin excepciones', async () => {
+    const sol1 = { ...baseSol('SOL-LEGACY-1', 'EN_PROGRESO'), fechaCierreTecnico: undefined };
+    const sol2 = { ...baseSol('SOL-LEGACY-2', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() + 72 * 3600 * 1000).toISOString() };
+    const sol3 = { ...baseSol('SOL-LEGACY-3', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() + 72 * 3600 * 1000).toISOString() };
+    const vencida = { ...baseSol('V-LEG-1', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() - 24 * 3600 * 1000).toISOString() };
+    const mapaMem: Record<string, any> = { 'SOL-LEGACY-1': sol1, 'SOL-LEGACY-2': sol2, 'SOL-LEGACY-3': sol3, 'V-LEG-1': vencida };
+    const repo = {
+      findOne: jest.fn().mockImplementation((q: any) => {
+        const id = typeof q === 'string' ? q : (q as any)?.where?.idSolicitud;
+        return Promise.resolve(id && mapaMem[id] ? { ...mapaMem[id] } : null);
+      }),
+      find: jest.fn().mockResolvedValue([{ ...vencida }]),
+      save: jest.fn().mockImplementation((d: any) => {
+        if (d?.idSolicitud) mapaMem[d.idSolicitud] = { ...mapaMem[d.idSolicitud], ...d };
+        return Promise.resolve(d);
+      }),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecnicoUMI('TEC-01', userTecnico.email, userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      // notificationClient = undefined — DEFAULT (simula spec antiguo)
+    } as any);
+    const a = await s.cerrarTecnicamente('SOL-LEGACY-1', { trabajoRealizado: 'abcdef 15 chars mínimos ok', evidencias: [{ id: 'x' }], costoFinalEfectivoCop: 0 }, userTecnico);
+    const b = await s.confirmarConformidad('SOL-LEGACY-2', {}, userSolicitante);
+    const c = await s.rechazarConformidadYReabrir('SOL-LEGACY-3', { observacionesConformidad: 'obs de rechazo con 20 caracteres OK 12345' }, userSolicitante);
+    const d = await s.ejecutarCierresSinRespuestaVencidos(userSuper);
+    expect(a.estado).toBe('COMPLETADA');
+    expect(b.estado).toBe('CERRADA');
+    expect(c.estado).toBe('EN_PROGRESO');
+    expect(d.actualizadas).toBe(1);
+  });
+
+  it('solicitante legacy sin usuario registrado (sólo email) → dispara SEND EMAIL directo fallback, sin notifyUserById', async () => {
+    const notif = mockNotifClient();
+    let saved: any = { ...baseSol('SOL-NOTIF-LG', 'COMPLETADA') };
+    saved.usuarioSolicitanteId = '';
+    saved.usuarioSolicitanteEmail = 'usuario.legacy@esap.edu.co';
+    saved.fechaLimiteConformidad = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const repo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve({ ...saved })),
+      save: jest.fn().mockImplementation((d: any) => { saved = { ...d }; return Promise.resolve(saved); }),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecnicoUMI('TEC-01', userTecnico.email, userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      notificationClient: notif.cliente,
+    } as any);
+    await s.confirmarConformidad('SOL-NOTIF-LG', {}, userSuper);
+    await notif.esperarDisparos();
+    const hayLegacyEmail = notif.emails.some((e) => e.to === 'usuario.legacy@esap.edu.co');
+    expect(hayLegacyEmail).toBe(true);
+  });
+
+  it('7 tipos notificación conformidad únicos emitidos en 4 eventos cierre → conformidad total cobertura tipos', async () => {
+    const notif = mockNotifClient();
+    const vencida = { ...baseSol('V-FULL-1', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() - 48 * 3600 * 1000).toISOString() };
+    const completada = () => ({ ...baseSol('FULL-1', 'COMPLETADA'), fechaLimiteConformidad: new Date(Date.now() + 72 * 3600 * 1000).toISOString() });
+    const enCurso = () => ({ ...baseSol('FULL-2', 'EN_PROGRESO') });
+    const mapa: Record<string, any> = { 'FULL-1': completada(), 'FULL-2': enCurso() };
+    const repo = {
+      find: jest.fn().mockImplementation((q: any) => {
+        if (Array.isArray(q)) return [];
+        return [vencida];
+      }),
+      findOne: jest.fn().mockImplementation((q: any) => {
+        const id = typeof q === 'string' ? q : (q as any)?.where?.idSolicitud;
+        if (id && mapa[id]) return Promise.resolve({ ...mapa[id] });
+        if (id === 'V-FULL-1') return Promise.resolve({ ...vencida });
+        return Promise.resolve(null);
+      }),
+      save: jest.fn().mockImplementation((d: any) => {
+        if (d?.idSolicitud) mapa[d.idSolicitud] = { ...d };
+        return Promise.resolve(d);
+      }),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repo,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') return tecnicoUMI('TEC-01', userTecnico.email, userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      notificationClient: notif.cliente,
+    } as any);
+
+    mapa['FULL-2'] = await s.cerrarTecnicamente('FULL-2', {
+      trabajoRealizado: 'Cierre técnico con conformidad 12345678',
+      evidencias: [{ id: 'ev1' }, { id: 'ev2' }],
+      costoFinalEfectivoCop: 80000,
+    }, userTecnico);
+    mapa['FULL-1'] = await s.rechazarConformidadYReabrir('FULL-1', { observacionesConformidad: 'motivo 20 caracteres mínimo rechazo obs' }, userSolicitante);
+    // volvemos a marcar COMPLETADA para confirmar
+    mapa['FULL-1'].estado = 'COMPLETADA';
+    mapa['FULL-1'].fechaLimiteConformidad = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+    await s.confirmarConformidad('FULL-1', {}, userSolicitante);
+    await s.ejecutarCierresSinRespuestaVencidos(userSuper);
+    await notif.esperarDisparos();
+    const tipos = new Set(notif.inapp.map((x) => x.tipo));
+    const esperados = [
+      'UMI_CONFORMIDAD_CIERRE_TECNICO_PENDIENTE',
+      'UMI_CONFORMIDAD_CONFIRMADA_SOLICITANTE',
+      'UMI_CONFORMIDAD_CONFIRMADA_TECNICO',
+      'UMI_CONFORMIDAD_RECHAZADA_Y_REABIERTA_SOLICITANTE',
+      'UMI_CONFORMIDAD_RECHAZADA_Y_REABIERTA_TECNICO',
+      'UMI_CONFORMIDAD_SIN_RESPUESTA_SOLICITANTE',
+    ];
+    esperados.forEach((t) => expect(tipos.has(t)).toBe(true));
   });
 });

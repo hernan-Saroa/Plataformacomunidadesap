@@ -9,6 +9,7 @@ import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
 import { StorageService } from './storage.service.js';
+import { NotificationClientService } from '../common/notification-client.service.js';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { StorageService } from './storage.service.js';
     ]),
   ],
   controllers: [MantenimientoController],
-  providers: [MantenimientoService, StorageService],
-  exports: [MantenimientoService, StorageService, TypeOrmModule],
+  providers: [MantenimientoService, StorageService, NotificationClientService],
+  exports: [MantenimientoService, StorageService, NotificationClientService, TypeOrmModule],
 })
 export class MantenimientoModule {}

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, OnModuleInit, Optional, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
@@ -12,6 +12,7 @@ import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
 import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
 import { StorageService } from './storage.service.js';
+import { NotificationClientService, SendNotificationDto } from '../common/notification-client.service.js';
 
 interface AuthUser {
   userId: string;
@@ -65,6 +66,7 @@ const ROLES_ASIGNADOR_PERMITIDOS: readonly string[] = ['SUPER_ADMIN', 'GESTOR_MA
 
 @Injectable()
 export class MantenimientoService implements OnModuleInit {
+  private readonly notifLogger = new Logger(`${MantenimientoService.name}.notificaciones`);
   constructor(
     @InjectRepository(SolicitudMantenimiento)
     private readonly mantenimientoRepo: Repository<SolicitudMantenimiento>,
@@ -79,6 +81,8 @@ export class MantenimientoService implements OnModuleInit {
     @InjectRepository(SolicitudValoracionInsumo)
     private readonly valoracionInsumoRepo: Repository<SolicitudValoracionInsumo>,
     private readonly storage: StorageService,
+    @Optional() @Inject(forwardRef(() => NotificationClientService))
+    private readonly notificaciones?: NotificationClientService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1678,6 +1682,197 @@ export class MantenimientoService implements OnModuleInit {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Notificaciones EFDS-1737 RF-INF-008 — módulo campanita + correo electrónico
+  // Patrón singleton fire-and-forget; si NotificationClientService no está
+  // inyectado (entorno Jest/spec) se convierte en no-op sin romper nada.
+  // ---------------------------------------------------------------------------
+
+  private readonly UMI_APP_FRONT_URL: string = (process.env.WEB_APP_URL ?? 'https://app.esap.edu.co').replace(/\/$/, '');
+
+  private solicitudAccionUrl(solicitud: SolicitudMantenimiento): string {
+    return `${this.UMI_APP_FRONT_URL}/umi/solicitudes/${encodeURIComponent(solicitud.idSolicitud)}`;
+  }
+
+  private async notificarAlSolicitante(
+    solicitud: SolicitudMantenimiento,
+    payload: {
+      tipo: string;
+      titulo: string;
+      mensaje: string;
+      icono?: string;
+      color?: string;
+      prioridad?: SendNotificationDto['prioridad'];
+      textoAccion?: string;
+      emailHtml: string;
+      emailSubject: string;
+    },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    try {
+      const destinatarioId = String(solicitud.usuarioSolicitanteId || '').trim();
+      const destinatarioEmail = String(solicitud.usuarioSolicitanteEmail ?? solicitud.solicitanteEmail ?? '').trim();
+      if (!destinatarioId && !destinatarioEmail) {
+        this.notifLogger.debug(`[${solicitud.idSolicitud}] sin solicitante para notificar evento ${payload.tipo}`);
+        return;
+      }
+      const descripcion = `Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · Radicada: ${String(solicitud.createdAt ?? '').slice(0, 10) || 'N/A'}`;
+      const url = this.solicitudAccionUrl(solicitud);
+      if (destinatarioId) {
+        const dtoApp: Omit<SendNotificationDto, 'id_usuario_destinatario'> = {
+          tipo_notificacion: payload.tipo,
+          titulo: payload.titulo,
+          mensaje: payload.mensaje,
+          descripcion_corta: descripcion,
+          icono: payload.icono ?? 'ClipboardCheck',
+          color: payload.color ?? '#0f766e',
+          prioridad: payload.prioridad ?? 'Media',
+          categoria: 'UMI-MANTENIMIENTO',
+          tiene_accion: true,
+          texto_boton_accion: payload.textoAccion ?? 'Ver solicitud',
+          url_accion: url,
+          datos_adicionales: { modulo: 'UMI', idSolicitud: solicitud.idSolicitud, estado: solicitud.estado, tipo: payload.tipo },
+        };
+        const emailOpts = destinatarioEmail ? { subject: payload.emailSubject, html: payload.emailHtml } : undefined;
+        await this.notificaciones.notifyUserById(destinatarioId, dtoApp, emailOpts);
+        this.notifLogger.verbose(`[${solicitud.idSolicitud}] notificación "${payload.tipo}" enviada a solicitante ${destinatarioId}`);
+      } else if (destinatarioEmail) {
+        // Caso legacy sin usuario registrado (sólo email)
+        await this.notificaciones.sendEmail(destinatarioEmail, payload.emailSubject, payload.emailHtml);
+        this.notifLogger.verbose(`[${solicitud.idSolicitud}] correo "${payload.tipo}" enviado a ${destinatarioEmail} (sin id_user)`);
+      }
+    } catch (err: any) {
+      this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación "${payload.tipo}" falló: ${err?.message ?? err}`);
+    }
+  }
+
+  private async notificarTecnicoAsignado(
+    solicitud: SolicitudMantenimiento,
+    args: {
+      tipo: string;
+      titulo: string;
+      mensaje: string;
+      color?: string;
+      icono?: string;
+      prioridad?: SendNotificationDto['prioridad'];
+      textoAccion?: string;
+      emailSubject: string;
+      emailHtml: string;
+    },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    try {
+      const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+      const codigoTec = (t.codigo || '').toString();
+      if (!codigoTec) return;
+      const catalogo = await this.catalogoRepo.findOne({
+        where: { catalogo: TECNICO_MANTENIMIENTO, codigo: codigoTec, isActivo: true },
+      });
+      const tecUserId: string | undefined =
+        (catalogo?.metadata as any)?.usuarioIdsAutorizados?.[0] ?? (catalogo?.metadata as any)?.usuarioIdAutorizado;
+      const tecEmail: string | undefined = (catalogo?.metadata as any)?.correos?.[0];
+      if (!tecUserId && !tecEmail) return;
+      const url = this.solicitudAccionUrl(solicitud);
+      const descripcion = `#${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} · ${solicitud.estado ?? 'N/A'}`;
+      if (tecUserId) {
+        const dto: Omit<SendNotificationDto, 'id_usuario_destinatario'> = {
+          tipo_notificacion: args.tipo,
+          titulo: args.titulo,
+          mensaje: args.mensaje,
+          descripcion_corta: descripcion,
+          icono: args.icono ?? 'Wrench',
+          color: args.color ?? '#0369a1',
+          prioridad: args.prioridad ?? 'Media',
+          categoria: 'UMI-MANTENIMIENTO',
+          tiene_accion: true,
+          texto_boton_accion: args.textoAccion ?? 'Ver solicitud',
+          url_accion: url,
+          datos_adicionales: { modulo: 'UMI', idSolicitud: solicitud.idSolicitud, estado: solicitud.estado },
+        };
+        await this.notificaciones.notifyUserById(tecUserId, dto, tecEmail ? { subject: args.emailSubject, html: args.emailHtml } : undefined);
+      } else if (tecEmail) {
+        await this.notificaciones.sendEmail(tecEmail, args.emailSubject, args.emailHtml);
+      }
+    } catch (err: any) {
+      this.notifLogger.warn(`[${solicitud.idSolicitud}] notificación técnico falló: ${err?.message ?? err}`);
+    }
+  }
+
+  private async notificarTecnicoAsignadoReapertura(
+    solicitud: SolicitudMantenimiento,
+    args: { obs: string; conteo: number; slaHoras: number },
+  ): Promise<void> {
+    if (!this.notificaciones) return;
+    const url = this.solicitudAccionUrl(solicitud);
+    const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px">Solicitud UMI reabierta tras rechazo de conformidad</h3>
+<p style="margin:0 0 8px"><strong>Solicitud:</strong> #${solicitud.consecutivo ?? solicitud.idSolicitud}</p>
+<p style="margin:0 0 8px"><strong>Motivo rechazo conformidad:</strong> ${args.obs}</p>
+<p style="margin:0 0 8px"><strong>Nuevo SLA:</strong> ${args.slaHoras} horas a partir de ahora.</p>
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#b45309;color:#fff;border-radius:6px;text-decoration:none">Ir a la solicitud</a></p>
+</div>`;
+    await this.notificarTecnicoAsignado(solicitud, {
+      tipo: 'UMI_CONFORMIDAD_RECHAZADA_Y_REABIERTA_TECNICO',
+      titulo: 'Solicitud UMI reabierta tras rechazo de conformidad',
+      mensaje: `El área solicitante rechazó el cierre técnico y la solicitud ha vuelto a EN_PROGRESO. Motivo del rechazo: ${args.obs}`,
+      icono: 'RotateCcw',
+      color: '#b45309',
+      prioridad: 'Alta',
+      textoAccion: 'Gestionar reapertura',
+      emailSubject: `[UMI] Reapertura solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} (rechazo #${args.conteo})`,
+      emailHtml: html,
+    });
+  }
+
+  private plantillaEmailCierreTecnico(solicitud: SolicitudMantenimiento, args: { displayTecnico: string; resumen: string; plazoH: number }): { subject: string; html: string } {
+    const url = this.solicitudAccionUrl(solicitud);
+    const subject = `[UMI] Cierre técnico de solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} — Plazo para conformidad ${args.plazoH}h`;
+    const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#0f766e">Cierre técnico registrado</h3>
+<p style="margin:0 0 8px"><strong>Solicitud:</strong> #${solicitud.consecutivo ?? solicitud.idSolicitud}</p>
+<p style="margin:0 0 8px"><strong>Categoría:</strong> ${(solicitud as any).categoriaNombre ?? 'Categoría UMI'} · <strong>Técnico responsable:</strong> ${args.displayTecnico}</p>
+<p style="margin:0 0 8px"><strong>Resumen:</strong> ${args.resumen}</p>
+<p style="margin:0 0 16px">Tienes <strong>${args.plazoH} horas hábiles</strong> para revisar el trabajo realizado y dar conformidad o rechazar indicando las observaciones. Vencido el plazo la solicitud se cerrará automáticamente como <em>sin respuesta del área</em>.</p>
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#0f766e;color:#fff;border-radius:6px;text-decoration:none">Revisar conformidad</a></p>
+</div>`;
+    return { subject, html };
+  }
+
+  private plantillaEmailConfirmacion(solicitud: SolicitudMantenimiento, args: { usuario: string }): { subject: string; html: string } {
+    const url = this.solicitudAccionUrl(solicitud);
+    const subject = `[UMI] Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} cerrada a satisfacción`;
+    const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#115e59">Solicitud cerrada</h3>
+<p style="margin:0 0 8px">El área solicitante (<strong>${args.usuario}</strong>) confirmó conformidad con el trabajo realizado.</p>
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#115e59;color:#fff;border-radius:6px;text-decoration:none">Ver solicitud cerrada</a></p>
+</div>`;
+    return { subject, html };
+  }
+
+  private plantillaEmailRechazoYReapertura(solicitud: SolicitudMantenimiento, args: { usuario: string; obs: string; slaH: number; conteo: number }): { subject: string; html: string } {
+    const url = this.solicitudAccionUrl(solicitud);
+    const subject = `[UMI] Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} reabierta (rechazo #${args.conteo})`;
+    const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#b45309">Conformidad rechazada — solicitud reabierta</h3>
+<p style="margin:0 0 8px"><strong>Usuario:</strong> ${args.usuario}</p>
+<p style="margin:0 0 8px"><strong>Observaciones del rechazo:</strong> ${args.obs}</p>
+<p style="margin:0 0 8px">La solicitud ha regresado al estado <strong>EN_PROGRESO</strong> con un nuevo SLA de <strong>${args.slaH} horas</strong>.</p>
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#b45309;color:#fff;border-radius:6px;text-decoration:none">Gestionar reapertura</a></p>
+</div>`;
+    return { subject, html };
+  }
+
+  private plantillaEmailSinRespuesta(solicitud: SolicitudMantenimiento): { subject: string; html: string } {
+    const url = this.solicitudAccionUrl(solicitud);
+    const subject = `[UMI] Solicitud #${solicitud.consecutivo ?? solicitud.idSolicitud.slice(0, 8)} cerrada automáticamente (sin respuesta)`;
+    const html = `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px">
+<h3 style="margin:0 0 8px;color:#475569">Cierre por vencimiento del plazo de conformidad</h3>
+<p style="margin:0 0 8px">No se recibió respuesta del área solicitante dentro del plazo establecido. La solicitud ha sido cerrada automáticamente con el resultado <strong>Sin respuesta</strong>.</p>
+<p style="margin:0 0 16px"><a href="${url}" style="display:inline-block;padding:6px 14px;background:#475569;color:#fff;border-radius:6px;text-decoration:none">Consultar solicitud cerrada</a></p>
+</div>`;
+    return { subject, html };
+  }
+
   async cerrarTecnicamente(
     idSolicitud: string,
     dto: CerrarTecnicamenteDto,
@@ -1745,7 +1940,33 @@ export class MantenimientoService implements OnModuleInit {
     });
 
     await this.mantenimientoRepo.save(solicitud);
-    return this.findById(idSolicitud);
+    const recienCerrada = await this.findById(idSolicitud);
+
+    // [NOTIFICACION EFDS-1737] Inicio plazo de conformidad: notificación campanita + correo al solicitante.
+    void (async () => {
+      try {
+        const email = this.plantillaEmailCierreTecnico(recienCerrada, {
+          displayTecnico,
+          resumen: motivoResumen,
+          plazoH: PLAZO_CONFORMIDAD_HORAS_DEFAULT,
+        });
+        await this.notificarAlSolicitante(recienCerrada, {
+          tipo: 'UMI_CONFORMIDAD_CIERRE_TECNICO_PENDIENTE',
+          titulo: 'Cierre técnico registrado — Revisa y da conformidad',
+          mensaje: `La solicitud #${recienCerrada.consecutivo ?? recienCerrada.idSolicitud.slice(0, 8)} fue marcada como COMPLETADA por ${displayTecnico}. Dispones de ${PLAZO_CONFORMIDAD_HORAS_DEFAULT}h para confirmar o rechazar la conformidad.`,
+          icono: 'ClipboardCheck',
+          color: '#0f766e',
+          prioridad: 'Alta',
+          textoAccion: 'Dar conformidad / Rechazar',
+          emailHtml: email.html,
+          emailSubject: email.subject,
+        });
+      } catch (err: any) {
+        this.notifLogger.warn(`[${recienCerrada.idSolicitud}] notificación cierre técnico falló: ${err?.message ?? err}`);
+      }
+    })();
+
+    return recienCerrada;
   }
 
   // ---------------------------------------------------------------------------
@@ -1811,7 +2032,40 @@ export class MantenimientoService implements OnModuleInit {
     });
 
     await this.mantenimientoRepo.save(solicitud);
-    return this.findById(idSolicitud);
+    const final = await this.findById(idSolicitud);
+
+    // [NOTIFICACION EFDS-1737] Confirmación: se notifica al técnico asignado + solicitante acuse recibido.
+    void (async () => {
+      try {
+        const emailSol = this.plantillaEmailConfirmacion(final, { usuario: user?.username ?? 'Solicitante' });
+        await this.notificarAlSolicitante(final, {
+          tipo: 'UMI_CONFORMIDAD_CONFIRMADA_SOLICITANTE',
+          titulo: 'Conformidad registrada — solicitud cerrada',
+          mensaje: `Confirmaste conformidad satisfactoria para la solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}.`,
+          icono: 'CheckCircle2',
+          color: '#115e59',
+          prioridad: 'Media',
+          textoAccion: 'Ver confirmación',
+          emailHtml: emailSol.html,
+          emailSubject: emailSol.subject,
+        });
+        await this.notificarTecnicoAsignado(final, {
+          tipo: 'UMI_CONFORMIDAD_CONFIRMADA_TECNICO',
+          titulo: 'Solicitud cerrada — conformidad aprobada',
+          mensaje: `El área solicitante confirmó conformidad sobre #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}. ${dto.observacionesConformidad?.trim() ? `Observaciones: ${dto.observacionesConformidad.trim()}` : 'Sin observaciones adicionales.'}`,
+          icono: 'CircleCheckBig',
+          color: '#115e59',
+          prioridad: 'Media',
+          textoAccion: 'Ver solicitud cerrada',
+          emailSubject: `[UMI] Conformidad OK solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}`,
+          emailHtml: `<div style="font-family:Segoe UI,Segoe,sans-serif;max-width:720px"><h3 style="margin:0 0 8px;color:#115e59">Conformidad confirmada</h3><p style="margin:0 0 8px">El área solicitante (<strong>${user?.username ?? 'Solicitante'}</strong>) aprobó el cierre técnico.</p><p style="margin:0 0 8px">${dto.observacionesConformidad?.trim() ? `Observaciones: ${dto.observacionesConformidad.trim()}` : 'Sin observaciones adicionales.'}</p></div>`,
+        });
+      } catch (err: any) {
+        this.notifLogger.warn(`[${final.idSolicitud}] notificación confirmación falló: ${err?.message ?? err}`);
+      }
+    })();
+
+    return final;
   }
 
   async rechazarConformidadYReabrir(
@@ -1860,7 +2114,39 @@ export class MantenimientoService implements OnModuleInit {
     });
 
     await this.mantenimientoRepo.save(solicitud);
-    return this.findById(idSolicitud);
+    const final = await this.findById(idSolicitud);
+
+    // [NOTIFICACION EFDS-1737] Rechazo + reapertura: notifica solicitante (acuse) + técnico asignado (trabajo nuevo)
+    void (async () => {
+      try {
+        const emailSol = this.plantillaEmailRechazoYReapertura(final, {
+          usuario: user?.username ?? 'Solicitante',
+          obs,
+          slaH: REAPERTURA_NUEVO_SLA_HORAS,
+          conteo: Number(final.conteoReaperturasConformidad ?? 1),
+        });
+        await this.notificarAlSolicitante(final, {
+          tipo: 'UMI_CONFORMIDAD_RECHAZADA_Y_REABIERTA_SOLICITANTE',
+          titulo: 'Rechazo de conformidad registrado — solicitud reabierta',
+          mensaje: `Registraste el rechazo y reapertura #${final.conteoReaperturasConformidad} de la solicitud #${final.consecutivo ?? final.idSolicitud.slice(0, 8)}. El equipo UMI ha sido notificado con el nuevo SLA de ${REAPERTURA_NUEVO_SLA_HORAS}h.`,
+          icono: 'AlertTriangle',
+          color: '#b45309',
+          prioridad: 'Alta',
+          textoAccion: 'Seguimiento reapertura',
+          emailHtml: emailSol.html,
+          emailSubject: emailSol.subject,
+        });
+        await this.notificarTecnicoAsignadoReapertura(final, {
+          obs,
+          conteo: Number(final.conteoReaperturasConformidad ?? 1),
+          slaHoras: REAPERTURA_NUEVO_SLA_HORAS,
+        });
+      } catch (err: any) {
+        this.notifLogger.warn(`[${final.idSolicitud}] notificación rechazo/reapertura falló: ${err?.message ?? err}`);
+      }
+    })();
+
+    return final;
   }
 
   async ejecutarCierresSinRespuestaVencidos(
@@ -1900,6 +2186,27 @@ export class MantenimientoService implements OnModuleInit {
         // pushAsignacion requiere user definido; si pasó validarRolesAsignador user no es null
       }
       await repo.save(s);
+
+      // [NOTIFICACION EFDS-1737] Cierre automático sin respuesta: notificación al solicitante.
+      void (async () => {
+        try {
+          const cerrada = await this.findById(s.idSolicitud);
+          const email = this.plantillaEmailSinRespuesta(cerrada);
+          await this.notificarAlSolicitante(cerrada, {
+            tipo: 'UMI_CONFORMIDAD_SIN_RESPUESTA_SOLICITANTE',
+            titulo: 'Solicitud cerrada automáticamente (sin respuesta)',
+            mensaje: `La solicitud #${cerrada.consecutivo ?? cerrada.idSolicitud.slice(0, 8)} alcanzó el límite de ${PLAZO_CONFORMIDAD_HORAS_DEFAULT}h sin respuesta del área y fue cerrada automáticamente.`,
+            icono: 'Clock',
+            color: '#475569',
+            prioridad: 'Media',
+            textoAccion: 'Consultar solicitud cerrada',
+            emailHtml: email.html,
+            emailSubject: email.subject,
+          });
+        } catch (err: any) {
+          this.notifLogger.warn(`[${s.idSolicitud}] notificación sin respuesta falló: ${err?.message ?? err}`);
+        }
+      })();
     }
     return { actualizadas: ids.length, ids };
   }
