@@ -206,6 +206,61 @@ export class SolicitudMantenimiento {
   })
   requiereSeguimiento: boolean;
 
+  // ----- EFDS-1737 RF-INF-008 Conformidad del Área Solicitante -----
+  @Column({
+    type: 'timestamptz',
+    name: 'fecha_conformidad',
+    nullable: true,
+  })
+  fechaConformidad?: Date;
+
+  @Column({
+    type: 'uuid',
+    name: 'usuario_conformidad_id',
+    nullable: true,
+  })
+  usuarioConformidadId?: string;
+
+  @Column({
+    type: 'varchar',
+    length: 200,
+    name: 'responsable_conformidad_display',
+    nullable: true,
+  })
+  responsableConformidadDisplay?: string;
+
+  @Column({
+    type: 'varchar',
+    length: 40,
+    name: 'resultado_conformidad',
+    nullable: true,
+  })
+  resultadoConformidad?:
+    | 'CONFIRMADA'
+    | 'SIN_RESPUESTA'
+    | 'RECHAZADA_Y_REABIERTA';
+
+  @Column({
+    type: 'text',
+    name: 'observaciones_conformidad',
+    nullable: true,
+  })
+  observacionesConformidad?: string;
+
+  @Column({
+    type: 'timestamptz',
+    name: 'fecha_limite_conformidad',
+    nullable: true,
+  })
+  fechaLimiteConformidad?: Date;
+
+  @Column({
+    type: 'smallint',
+    name: 'conteo_reaperturas_conformidad',
+    default: 0,
+  })
+  conteoReaperturasConformidad: number;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

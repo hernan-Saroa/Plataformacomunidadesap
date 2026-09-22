@@ -4,6 +4,8 @@ import { Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
 import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
+import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
+import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
@@ -25,6 +27,9 @@ function isUuid(value: unknown): value is string {
 function userIdUuidOrNull(userId: unknown): string | null {
   return isUuid(userId) ? userId : null;
 }
+
+const PLAZO_CONFORMIDAD_HORAS_DEFAULT = 72;
+const REAPERTURA_NUEVO_SLA_HORAS = 24;
 
 function nuevoItemRemision(args: {
   usuarioId?: string;
@@ -1034,7 +1039,10 @@ export class MantenimientoService implements OnModuleInit {
         | 'RECEPCION_MATERIALES_Y_PASO_A_EJECUCION'
         | 'EDICION_VALORACION_POR_ENCARGADO'
         | 'INICIO_EJECUCION_DIRECTA'
-        | 'CIERRE_TECNICO';
+        | 'CIERRE_TECNICO'
+        | 'CONFORMIDAD_CONFIRMADA'
+        | 'CONFORMIDAD_SIN_RESPUESTA'
+        | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
       motivo?: string | null;
@@ -1710,6 +1718,14 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.requiereSeguimiento = !!dto.requiereSeguimiento;
     solicitud.fechaEjecucion = solicitud.fechaEjecucion ?? ahora.toISOString().slice(0, 10);
 
+    solicitud.fechaLimiteConformidad = new Date(ahora.getTime() + PLAZO_CONFORMIDAD_HORAS_DEFAULT * 3600 * 1000);
+    solicitud.conteoReaperturasConformidad = 0;
+    solicitud.resultadoConformidad = undefined;
+    solicitud.fechaConformidad = undefined;
+    solicitud.observacionesConformidad = undefined;
+    solicitud.usuarioConformidadId = undefined;
+    solicitud.responsableConformidadDisplay = undefined;
+
     const costoTxt = `$${Math.round(costo).toLocaleString('es-CO')} COP`;
     const motivoResumen = `Cierre técnico registrado. ${nEvidencias} evidencia(s) adjunta(s). Costo final ${costoTxt}.`;
     const obsTxt = [
@@ -1730,6 +1746,162 @@ export class MantenimientoService implements OnModuleInit {
 
     await this.mantenimientoRepo.save(solicitud);
     return this.findById(idSolicitud);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008. Conformidad del Área Solicitante
+  // ---------------------------------------------------------------------------
+
+  private usuarioEsSolicitanteConforme(
+    solicitud: SolicitudMantenimiento,
+    user: AuthUser | null | undefined,
+  ): boolean {
+    if (this.usuarioEsSuperAdminOAsignador(user)) return true;
+    if (!user) return false;
+    const userEmail = String(user.email || '').toLowerCase().trim();
+    const solEmailId = String(solicitud.usuarioSolicitanteId || '').toLowerCase().trim();
+    const solEmail = String(solicitud.usuarioSolicitanteEmail || solicitud.solicitanteEmail || '').toLowerCase().trim();
+    const solUserId = String(solicitud.usuarioSolicitanteId || '').toLowerCase().trim();
+    const currentUserId = String(user.userId || '').toLowerCase().trim();
+    if (currentUserId && solUserId && currentUserId === solUserId) return true;
+    if (userEmail && solEmail && userEmail === solEmail) return true;
+    if (currentUserId && solEmailId && currentUserId === solEmailId) return true;
+    return false;
+  }
+
+  private estadoEsValidoParaConformidad(solicitud: SolicitudMantenimiento): boolean {
+    return (solicitud.estado || '').toUpperCase() === 'COMPLETADA';
+  }
+
+  async confirmarConformidad(
+    idSolicitud: string,
+    dto: ConfirmarConformidadDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    if (!user || !Array.isArray(user.roles) || user.roles.length === 0) {
+      throw new ForbiddenException('Usuario autenticado requerido para confirmar conformidad.');
+    }
+    const solicitud = await this.findById(idSolicitud);
+    if (!this.estadoEsValidoParaConformidad(solicitud)) {
+      throw new ConflictException(
+        `Sólo se puede confirmar conformidad sobre solicitudes en COMPLETADA. Estado actual: ${solicitud.estado}`,
+      );
+    }
+    if (!this.usuarioEsSolicitanteConforme(solicitud, user)) {
+      throw new ForbiddenException(
+        'No está autorizado para confirmar conformidad de esta solicitud: debe ser el área solicitante o administrador.',
+      );
+    }
+
+    const ahora = new Date();
+    solicitud.estado = 'CERRADA';
+    solicitud.fechaConformidad = ahora;
+    solicitud.usuarioConformidadId = user.userId;
+    solicitud.responsableConformidadDisplay = user.username;
+    solicitud.resultadoConformidad = 'CONFIRMADA';
+    solicitud.observacionesConformidad = dto.observacionesConformidad?.trim() || undefined;
+
+    this.pushAsignacion(solicitud, {
+      accion: 'CONFORMIDAD_CONFIRMADA',
+      tecnicoCodigo: null,
+      tecnicoNombreDisplay: null,
+      motivo: 'Solicitud cerrada a satisfacción del área solicitante.',
+      observaciones: dto.observacionesConformidad?.trim() || null,
+      user,
+    });
+
+    await this.mantenimientoRepo.save(solicitud);
+    return this.findById(idSolicitud);
+  }
+
+  async rechazarConformidadYReabrir(
+    idSolicitud: string,
+    dto: RechazarConformidadDto,
+    user: AuthUser | null | undefined,
+  ): Promise<SolicitudMantenimiento> {
+    if (!user || !Array.isArray(user.roles) || user.roles.length === 0) {
+      throw new ForbiddenException('Usuario autenticado requerido para devolver conformidad.');
+    }
+    const solicitud = await this.findById(idSolicitud);
+    if (!this.estadoEsValidoParaConformidad(solicitud)) {
+      throw new ConflictException(
+        `Sólo se puede devolver conformidad sobre solicitudes en COMPLETADA. Estado actual: ${solicitud.estado}`,
+      );
+    }
+    if (!this.usuarioEsSolicitanteConforme(solicitud, user)) {
+      throw new ForbiddenException(
+        'No está autorizado para devolver conformidad de esta solicitud: debe ser el área solicitante o administrador.',
+      );
+    }
+    const ahora = new Date();
+    const obs = dto.observacionesConformidad.trim();
+
+    solicitud.estado = 'EN_PROGRESO';
+    solicitud.fechaConformidad = ahora;
+    solicitud.usuarioConformidadId = user.userId;
+    solicitud.responsableConformidadDisplay = user.username;
+    solicitud.resultadoConformidad = 'RECHAZADA_Y_REABIERTA';
+    solicitud.observacionesConformidad = obs;
+    solicitud.conteoReaperturasConformidad = Number(solicitud.conteoReaperturasConformidad || 0) + 1;
+
+    // RELOJ NUEVO SLA 24H (project memory EFDS-1737)
+    solicitud.fechaLimiteAtencion = new Date(ahora.getTime() + REAPERTURA_NUEVO_SLA_HORAS * 3600 * 1000);
+    solicitud.fechaLimiteOriginalAntesExtension = undefined;
+    // NUNCA nulear cols de cierre técnico: fecha_cierre_tecnico, evidencias, trabajo_realizado etc.
+    // La reapertura no invalida el trabajo ejecutado.
+
+    this.pushAsignacion(solicitud, {
+      accion: 'CONFORMIDAD_RECHAZADA_Y_REABIERTA',
+      tecnicoCodigo: null,
+      tecnicoNombreDisplay: null,
+      motivo: `Solicitud devuelta por observaciones del área (reapertura #${solicitud.conteoReaperturasConformidad}). SLA reiniciado a ${REAPERTURA_NUEVO_SLA_HORAS}h.`,
+      observaciones: obs,
+      user,
+    });
+
+    await this.mantenimientoRepo.save(solicitud);
+    return this.findById(idSolicitud);
+  }
+
+  async ejecutarCierresSinRespuestaVencidos(
+    user: AuthUser | null | undefined,
+  ): Promise<{ actualizadas: number; ids: string[] }> {
+    const vr = this.validarRolesAsignador(user);
+    if (!vr.permitido) throw new ForbiddenException(vr.errorMsg);
+    const ahora = new Date();
+    const repo = this.mantenimientoRepo;
+    const rows = await repo.find({
+      where: {
+        estado: 'COMPLETADA',
+        fechaLimiteConformidad: Not(IsNull()) as any,
+      } as any,
+    });
+    const filtradas = rows.filter(
+      (s) => s.fechaLimiteConformidad && new Date(s.fechaLimiteConformidad as any).getTime() <= ahora.getTime(),
+    );
+    const ids: string[] = [];
+    for (const s of filtradas) {
+      s.estado = 'CERRADA_SIN_ATENCION';
+      s.fechaConformidad = ahora;
+      s.resultadoConformidad = 'SIN_RESPUESTA';
+      s.usuarioConformidadId = user?.userId || undefined;
+      s.responsableConformidadDisplay = user?.username || 'Cierre automático sin respuesta';
+      ids.push(s.idSolicitud);
+      try {
+        this.pushAsignacion(s, {
+          accion: 'CONFORMIDAD_SIN_RESPUESTA',
+          tecnicoCodigo: null,
+          tecnicoNombreDisplay: null,
+          motivo: 'Plazo de conformidad vencido sin respuesta del área solicitante. Cierre automático.',
+          observaciones: null,
+          user: user || (s as any).__fakeUser,
+        });
+      } catch {
+        // pushAsignacion requiere user definido; si pasó validarRolesAsignador user no es null
+      }
+      await repo.save(s);
+    }
+    return { actualizadas: ids.length, ids };
   }
 
   async listarValoraciones(

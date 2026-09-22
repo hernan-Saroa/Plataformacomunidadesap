@@ -17,9 +17,11 @@ import {
   infraestructuraService,
   clasificarSLA,
   SolicitudValoracion,
+  obtenerSesionUMI,
 } from '../services/infraestructuraService';
 import { DetalleValoracionForm } from './DetalleValoracionForm';
 import { DetalleCierreEjecucionForm } from './DetalleCierreEjecucionForm';
+import { DetalleConformidadForm, ModoConformidad } from './DetalleConformidadForm';
 import { Play as PlayIcon, ClipboardCheck as ClipboarCheckIcon, PackageX, Truck } from 'lucide-react';
 
 interface DetalleSolicitudModalProps {
@@ -140,6 +142,9 @@ const HISTORICO_ACCION_STYLE: Record<string, { badge: string; dot: string; icon:
   EDICION_VALORACION_POR_ENCARGADO:    { badge: 'bg-slate-100 text-slate-800 border-slate-200',  dot: 'bg-slate-500',   icon: FileBadge },
   INICIO_EJECUCION_DIRECTA: { badge: 'bg-green-100 text-green-800 border-green-200',             dot: 'bg-green-500',   icon: PlayIcon },
   CIERRE_TECNICO:           { badge: 'bg-emerald-200 text-emerald-900 border-emerald-300',       dot: 'bg-emerald-700',  icon: ClipboarCheckIcon },
+  CONFORMIDAD_CONFIRMADA:   { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
+  CONFORMIDAD_SIN_RESPUESTA:{ badge: 'bg-slate-100 text-slate-700 border-slate-200',              dot: 'bg-slate-500',    icon: Clock },
+  CONFORMIDAD_RECHAZADA_Y_REABIERTA: { badge: 'bg-amber-100 text-amber-800 border-amber-200',     dot: 'bg-amber-500',    icon: RotateCcw },
   REMITIDA_TI:              { badge: 'bg-sky-100 text-sky-800 border-sky-200',                   dot: 'bg-sky-600',     icon: Monitor },
   RECHAZO_REMISION_TI:      { badge: 'bg-rose-100 text-rose-800 border-rose-200',                dot: 'bg-rose-600',    icon: Ban },
   APROBADA_REMISION_TI:     { badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',       dot: 'bg-emerald-500',  icon: ThumbsUp },
@@ -216,6 +221,21 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [openCierre, setOpenCierre] = useState<boolean>(false);
 
   const handleCierreSaved = async (resp: any) => {
+    if (resp && typeof resp === 'object' && (resp.idSolicitud || resp.estado)) {
+      setDetalle(resp);
+    }
+    await recargarDetalle();
+    await onCambioExitoso?.();
+  };
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008: Conformidad del área solicitante
+  // ---------------------------------------------------------------------------
+  const [openConformidad, setOpenConformidad] = useState<boolean>(false);
+  const [modoConformidad, setModoConformidad] = useState<ModoConformidad>('confirmar');
+
+  const handleConformidadSaved = async (resp: any) => {
+    setOpenConformidad(false);
     if (resp && typeof resp === 'object' && (resp.idSolicitud || resp.estado)) {
       setDetalle(resp);
     }
@@ -862,6 +882,98 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
     yaCerradoTecnicamente;
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008 helpers conformidad
+  // ---------------------------------------------------------------------------
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+
+  const validarRolesAsignadorFE = (roles: string[]): boolean => {
+    const set = new Set((roles || []).map((r) => String(r).trim().toUpperCase()));
+    return set.has('SUPER_ADMIN') || set.has('GESTOR_MANTENIMIENTO') || set.has('ADMINISTRADOR_FUNCIONAL') || set.has('ADMIN');
+  };
+
+  const esUsuarioSolicitanteConforme = useMemo(() => {
+    if (!detalle) return false;
+    if (validarRolesAsignadorFE(sesionUmi.roles || [])) return true;
+    const userIdActual = String(sesionUmi.userId || '').trim().toLowerCase();
+    const emailActual = String(sesionUmi.email || '').trim().toLowerCase();
+    const sUserId = String((detalle as any).usuarioSolicitanteId || '').trim().toLowerCase();
+    const sEmail = String((detalle as any).usuarioSolicitanteEmail || (detalle as any).solicitanteEmail || '').trim().toLowerCase();
+    if (userIdActual && sUserId && userIdActual === sUserId) return true;
+    if (emailActual && sEmail && emailActual === sEmail) return true;
+    return false;
+  }, [detalle, sesionUmi]);
+
+  const usuarioEsSolicitanteOAsignador = !!(detalle && esUsuarioSolicitanteConforme);
+
+  const puedeConfirmarConformidad =
+    detalle &&
+    estadoActual === 'COMPLETADA' &&
+    usuarioEsSolicitanteOAsignador;
+
+  const countdownConformidad = useMemo(() => {
+    if (!detalle?.fechaLimiteConformidad) return null;
+    const d = new Date(detalle.fechaLimiteConformidad);
+    if (isNaN(d.getTime())) return null;
+    const ms = d.getTime() - Date.now();
+    const totalSeg = Math.floor(ms / 1000);
+    const dias = Math.floor(totalSeg / 86400);
+    const horas = Math.floor((totalSeg % 86400) / 3600);
+    const minutos = Math.floor((totalSeg % 3600) / 60);
+    const vencido = totalSeg < 0;
+    if (vencido) {
+      const av = Math.abs(totalSeg);
+      const dv = Math.floor(av / 86400);
+      const hv = Math.floor((av % 86400) / 3600);
+      const txt = dv > 0 ? `Vencido hace ${dv}d ${hv}h` : hv > 0 ? `Vencido hace ${hv}h` : `Vencido hace ${Math.floor(av/60)}m`;
+      return { vencido: true, dias: 0, horas: 0, minutos: 0, texto: txt };
+    }
+    if (dias > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${dias}d ${horas}h` };
+    if (horas > 0) return { vencido: false, dias, horas, minutos, texto: `Vence en ${horas}h ${minutos}m` };
+    return { vencido: false, dias, horas, minutos, texto: `Vence en ${Math.max(0, minutos)}m` };
+  }, [detalle?.fechaLimiteConformidad]);
+
+  const mostrarBannerPendienteConformidad =
+    detalle &&
+    estadoActual === 'COMPLETADA' &&
+    !usuarioEsSolicitanteOAsignador &&
+    !!detalle.fechaLimiteConformidad;
+
+  const resumenConformidadBadge = useMemo(() => {
+    if (!detalle) return null;
+    const resultado = detalle.resultadoConformidad;
+    const fecha = detalle.fechaConformidad;
+    if (!resultado) return null;
+    if (resultado === 'CONFIRMADA') {
+      return {
+        cls: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
+        icon: ThumbsUp,
+        label: `Conformidad confirmada · ${fecha ? formatearFecha(fecha) : 'Pendiente'}`,
+      };
+    }
+    if (resultado === 'SIN_RESPUESTA') {
+      return {
+        cls: 'bg-slate-100 text-slate-700 ring-slate-200',
+        icon: Clock,
+        label: `Cierre sin respuesta · ${fecha ? formatearFecha(fecha) : '—'}`,
+      };
+    }
+    if (resultado === 'RECHAZADA_Y_REABIERTA') {
+      return {
+        cls: 'bg-amber-100 text-amber-800 ring-amber-200',
+        icon: RotateCcw,
+        label: `Rechazada y reabierta · ${fecha ? formatearFecha(fecha) : '—'} · ${Number(detalle.conteoReaperturasConformidad || 0)} reintento(s)`,
+      };
+    }
+    return null;
+  }, [detalle]);
+
+  const abrirConformidad = (modo: ModoConformidad) => {
+    if (!puedeConfirmarConformidad || bloqueado) return;
+    setModoConformidad(modo);
+    setOpenConformidad(true);
+  };
+
   if (!open) return null;
   const bloqueado =
     ejecutandoAprobar ||
@@ -881,6 +993,16 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           idSolicitud={idSolicitud}
           solicitud={detalle}
           onSaved={handleCierreSaved}
+        />
+      )}
+      {detalle && idSolicitud && (
+        <DetalleConformidadForm
+          open={openConformidad}
+          onClose={() => setOpenConformidad(false)}
+          idSolicitud={idSolicitud}
+          solicitud={detalle}
+          modo={modoConformidad}
+          onSaved={handleConformidadSaved}
         />
       )}
       <div
@@ -2040,6 +2162,46 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 <Eye className="w-3.5 h-3.5" />
                 Ver cierre técnico
               </button>
+            )}
+            {puedeConfirmarConformidad && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => abrirConformidad('confirmar')}
+                  disabled={bloqueado}
+                  title="Como solicitante o responsable UMI confirma la conformidad del servicio y cierra la solicitud definitivamente (estado CERRADA)."
+                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                  Confirmar conformidad
+                </button>
+                <button
+                  type="button"
+                  onClick={() => abrirConformidad('rechazar')}
+                  disabled={bloqueado}
+                  title="Devolver la solicitud al técnico por inconsistencias. Debe detallar las observaciones (mínimo 20 caracteres). Estado retorna a EN_PROGRESO con nuevo SLA 24h."
+                  className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                  Devolver por observaciones
+                </button>
+              </>
+            )}
+            {mostrarBannerPendienteConformidad && countdownConformidad && (
+              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${countdownConformidad.vencido
+                ? 'bg-rose-50 text-rose-800 ring-rose-200'
+                : countdownConformidad.dias === 0 && countdownConformidad.horas <= 24
+                  ? 'bg-amber-50 text-amber-800 ring-amber-200'
+                  : 'bg-sky-50 text-sky-800 ring-sky-200'}`}>
+                <Clock className="w-3.5 h-3.5" />
+                Pendiente conformidad usuario solicitante · {countdownConformidad.texto}
+              </div>
+            )}
+            {resumenConformidadBadge && (
+              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl ring-1 text-[11px] font-bold whitespace-nowrap ${resumenConformidadBadge.cls}`}>
+                {(React.createElement(resumenConformidadBadge.icon, { className: 'w-3.5 h-3.5' }))}
+                {resumenConformidadBadge.label}
+              </div>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">

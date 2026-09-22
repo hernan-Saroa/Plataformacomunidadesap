@@ -41,6 +41,8 @@ import {
   ConfirmarRecepcionInsumosDto,
 } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
+import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
+import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
@@ -535,6 +537,54 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.cerrarTecnicamente(idSolicitud, dto, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008: Conformidad del Área Solicitante
+  // Declaradas ANTES de wildcard :id para evitar colisiones.
+  // ---------------------------------------------------------------------------
+  @Post('ejecutar-cierres-sin-respuesta')
+  @ApiOperation({
+    summary:
+      'EFDS-1737: Cierre automático de todas las COMPLETADAS cuyo plazo de conformidad venció. Resultado: CERRADA_SIN_ATENCION. Guardia roles SUPER_ADMIN/GESTOR. Devuelve {actualizadas, ids}.',
+  })
+  @ApiResponse({ status: 200, description: 'Proceso batch ejecutado. Retorna N y lista de IDs afectados.' })
+  @ApiResponse({ status: 403, description: 'Rol no permitido.' })
+  ejecutarCierresSinRespuesta(@Req() req: any) {
+    return this.mantenimientoService.ejecutarCierresSinRespuestaVencidos(req?.user);
+  }
+
+  @Post(':idSolicitud/conformidad/confirmar')
+  @ApiOperation({
+    summary:
+      'EFDS-1737: Confirmación positiva del área solicitante. COMPLETADA → CERRADA. Guardia usuario ES solicitante o bypass admin. Observaciones opcionales.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud CERRADA CONFIRMADA. Evento CONFORMIDAD_CONFIRMADA en historial.' })
+  @ApiResponse({ status: 403, description: 'Usuario NO es solicitante ni administrador.' })
+  @ApiResponse({ status: 409, description: 'Estado distinto de COMPLETADA.' })
+  confirmarConformidad(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: ConfirmarConformidadDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.confirmarConformidad(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/conformidad/rechazar')
+  @ApiOperation({
+    summary:
+      'EFDS-1737: Devolución por observaciones del área solicitante. COMPLETADA → EN_PROGRESO con SLA NUEVO 24h. Observaciones OBLIGATORIAS min 20 chars. No nulea cierre técnico (preservado para trazabilidad).',
+  })
+  @ApiResponse({ status: 200, description: 'Reapertura a EN_PROGRESO con SLA nuevo. Evento CONFORMIDAD_RECHAZADA_Y_REABIERTA.' })
+  @ApiResponse({ status: 400, description: 'Observaciones < 20 caracteres.' })
+  @ApiResponse({ status: 403, description: 'Usuario NO es solicitante ni administrador.' })
+  @ApiResponse({ status: 409, description: 'Estado distinto de COMPLETADA.' })
+  rechazarConformidad(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: RechazarConformidadDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.rechazarConformidadYReabrir(idSolicitud, dto, req?.user);
   }
 
   @Post()
