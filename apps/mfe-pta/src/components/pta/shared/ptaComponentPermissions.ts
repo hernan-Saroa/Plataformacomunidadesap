@@ -18,6 +18,9 @@ export type PTAComponentKey =
   | 'complementarias_territorial'
   | 'complementarias_gestion_profesoral';
 
+/** Bandeja y decisión de solicitudes que reabren componentes ya aprobados. */
+export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
+
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',

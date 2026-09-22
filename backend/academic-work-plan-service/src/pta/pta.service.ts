@@ -29,6 +29,7 @@ import {
   COMPLEMENTARIAS_COMPONENT_KEYS,
   TERRITORIAL_COMPONENT_KEYS,
   REVIEW_SUBSECCIONES_BY_COMPONENT,
+  PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
   reviewPermissionFor,
   type PTAComponentKey,
   type PTANivelDocencia,
@@ -5615,6 +5616,13 @@ export class PtaService {
     );
   }
 
+  private puedeGestionarSolicitudesEdicion(auth?: PtaAuthenticatedUser): boolean {
+    return Boolean(
+      this.puedeAdministrarSolicitudes(auth)
+      || auth?.permissions.has(PTA_MANAGE_EDIT_REQUESTS_PERMISSION),
+    );
+  }
+
   async crearSolicitudPTA(body: any, auth?: PtaAuthenticatedUser) {
     const docenteSolicitado = coalesceString(body?.docenteId, body?.docente_id) || '';
     const tipoSolicitud = coalesceString(body?.tipoSolicitud, body?.tipo_solicitud) === SOLICITUD_EDICION_TIPO
@@ -5818,12 +5826,19 @@ export class PtaService {
   }
 
   async resolverSolicitudPTA(solicitudId: string, body: any, auth?: PtaAuthenticatedUser) {
-    if (auth && !auth.isSuperUser && !auth.approvesAll && !auth.permissions.has('pta.backoffice.aprobar')) {
-      throw new ForbiddenException('No tienes permiso para resolver solicitudes del PTA.');
-    }
-
     const existing = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
     if (!existing) throw new NotFoundException('Solicitud no encontrada');
+    const esSolicitudEdicion = existing.tipoSolicitud === SOLICITUD_EDICION_TIPO;
+    const autorizado = esSolicitudEdicion
+      ? this.puedeGestionarSolicitudesEdicion(auth)
+      : this.puedeAdministrarSolicitudes(auth);
+    if (auth && !autorizado) {
+      throw new ForbiddenException(
+        esSolicitudEdicion
+          ? `No tienes el permiso ${PTA_MANAGE_EDIT_REQUESTS_PERMISSION} para resolver solicitudes de edición del PTA.`
+          : 'No tienes permiso para resolver solicitudes del PTA.',
+      );
+    }
     if (existing.estado !== 'pendiente') {
       throw new BadRequestException('Esta solicitud ya fue resuelta.');
     }
@@ -6205,10 +6220,20 @@ export class PtaService {
   }
 
   async getSolicitudesPTA(filters?: { estado?: string }, auth?: PtaAuthenticatedUser) {
-    if (auth && !this.puedeAdministrarSolicitudes(auth)) {
+    const administraTodas = this.puedeAdministrarSolicitudes(auth);
+    const gestionaEdiciones = this.puedeGestionarSolicitudesEdicion(auth);
+    if (auth && !gestionaEdiciones) {
       throw new ForbiddenException('No tienes permiso para consultar la bandeja global de solicitudes PTA.');
     }
     const qb = this.solicitudRepo.createQueryBuilder('s');
+    // El permiso funcional nuevo es deliberadamente acotado: habilita la bandeja
+    // que exige la HU, pero no expone solicitudes de creación a revisores de
+    // componentes. Los administradores históricos conservan la bandeja completa.
+    if (auth && !administraTodas) {
+      qb.andWhere('s.tipoSolicitud = :tipoSolicitud', {
+        tipoSolicitud: SOLICITUD_EDICION_TIPO,
+      });
+    }
     const estado = coalesceString(filters?.estado)?.toLowerCase();
     if (estado) {
       qb.andWhere('LOWER(s.estado) = :estado', { estado });

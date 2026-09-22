@@ -34,6 +34,7 @@ import {
   hasReviewPermission,
   PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 
@@ -95,6 +96,7 @@ export interface PermisosPTA {
  * a nombres de vistas internas del modulo PTA.
  */
 const PERMISO_TO_VISTA: Record<string, string> = {
+  [PTA_MANAGE_EDIT_REQUESTS_PERMISSION]: 'solicitudes_pta',
   'pta.backoffice.ver_gestion': 'gestion',
   'pta.backoffice.ver_detalle': 'gestion',
   'pta.backoffice.tablero_control': 'tablero',
@@ -152,7 +154,7 @@ const PERMISO_TO_VISTA: Record<string, string> = {
  * Deriva PermisosPTA desde los permisos granulares almacenados en KV.
  * Retorna null si no hay suficientes permisos PTA para derivar (fallback a hardcoded).
  */
-function deriveFromGranular(
+export function deriveFromGranular(
   allPermisos: string[],
   perfil: PerfilRolPTA,
 ): PermisosPTA | null {
