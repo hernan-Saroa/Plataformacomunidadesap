@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { LiquidacionResponse, CalcularLiquidacionRequest } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
-import { formatearMoneda } from '../utils/viaticosUtils';
+import { formatearMoneda, formatearDiasComision } from '../utils/viaticosUtils';
 
 interface LiquidacionPanelProps {
   fechaInicio: string;
@@ -234,9 +234,15 @@ export default function LiquidacionPanel({
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Total Proyectado SIIF Nación</p>
                     <p className="text-xl font-black text-blue-900">{formatearMoneda(resultado.data.valorTotalViaticos)}</p>
-                    <p className="text-[11px] text-blue-600">{resultado.data.numeroDiasNoches} día(s) a liquidar</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800">
+                        {formatearDiasComision(resultado.data.numeroDiasNoches)}
+                      </span>
+                      <span className="text-[11px] text-blue-600/90 font-medium">
+                        ({resultado.data.numeroDiasNoches} {resultado.data.numeroDiasNoches === 1 ? 'día' : 'días'}) a liquidar
+                      </span>
+                    </div>
                   </div>
                   {onAplicarValor && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
@@ -255,7 +261,12 @@ export default function LiquidacionPanel({
                   {resultado.data.desgloseCalculo.map((dia) => (
                     <div key={dia.dia} className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100">
                       <span className="text-slate-600 min-w-0">
-                        Día {dia.dia} · {dia.fecha} {dia.pernocta ? '· Pernocta' : '· Sin pernocta'}
+                        Día {dia.dia} · {dia.fecha}{' '}
+                        {dia.pernocta
+                          ? '· Con pernocta (100%)'
+                          : resultado.data.desgloseCalculo.length > 1
+                            ? '· Retorno / Medio día (50%)'
+                            : '· Sin pernocta (50%)'}
                       </span>
                       <span className="font-bold text-slate-800">{formatearMoneda(dia.valor)}</span>
                     </div>

@@ -50,6 +50,7 @@ import {
   contarDiasHabilesEntre,
   esDiaHabil,
   esPdfMime,
+  formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
   hoyISO,
@@ -1481,7 +1482,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </div>
 
                   {!esCampoOculto('diasComision') && (
-                    <div className="w-full sm:max-w-[200px]">
+                    <div className="w-full sm:max-w-[260px]">
                       <label className={labelCls} htmlFor="diasComision">
                         {renderLabel('diasComision', 'Días de comisión')}
                       </label>
@@ -1490,14 +1491,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         <input
                           id="diasComision"
                           type="text"
-                          inputMode="numeric"
+                          readOnly
+                          aria-readonly="true"
+                          title="Calculado automáticamente según las fechas del viaje (no editable)"
                           required={esCampoObligatorio('diasComision')}
-                          value={form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)}
-                          onChange={(e) => actualizar('diasComision', Number(soloNumeros(e.target.value)) || 0)}
-                          className={`${inputCls} pl-9 text-right font-bold`}
+                          value={formatearDiasComision(Number(form.diasComision ?? calcularDiasComision(form.fechaInicio, form.fechaFin)))}
+                          className={`${inputCls} pl-9 pr-14 font-bold bg-slate-100 text-slate-800 cursor-not-allowed`}
                         />
+                        <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400">
+                          ({Number(form.diasComision ?? calcularDiasComision(form.fechaInicio, form.fechaFin))} d)
+                        </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1">Se calcula automáticamente desde las fechas</p>
+                      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                        <Calculator className="w-3 h-3" /> Automático (Fechas / Autoliquidador)
+                      </span>
                     </div>
                   )}
 
@@ -2086,7 +2093,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="text-slate-400 font-bold">Fechas</span>
                     <span className="font-semibold text-slate-800">
                       {form.fechaInicio} al {form.fechaFin} ·{' '}
-                      {form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)} días
+                      {formatearDiasComision(Number(form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)))}
                     </span>
                   </div>
                 )}

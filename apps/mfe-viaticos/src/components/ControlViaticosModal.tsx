@@ -16,6 +16,7 @@ import viaticosService from '../services/api/viaticosService';
 import { SolicitudControlViaticosResponse, LiquidacionResponse } from '../types/viaticos';
 import {
   esPdfMime,
+  formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
 } from '../utils/viaticosUtils';
@@ -187,9 +188,14 @@ function LiquidacionSection({
         <span className="text-slate-500">Tarifa final aplicada/día</span>
         <span className="font-bold text-slate-800">{formatearMoneda(tarifaDiaria)}</span>
       </div>
-      <div className="flex justify-between">
-        <span className="text-slate-500">Días / Noches</span>
-        <span className="font-semibold text-slate-800">{dias}</span>
+      <div className="flex justify-between items-center">
+        <span className="text-slate-500">Días a liquidar</span>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-100">
+            {formatearDiasComision(dias)}
+          </span>
+          <span className="text-slate-500 text-[11px]">({dias})</span>
+        </div>
       </div>
       <div className="flex justify-between border-t border-slate-200 pt-2 font-bold">
         <span className="text-slate-800">Valor Total Viáticos</span>
@@ -526,9 +532,11 @@ export default function ControlViaticosModal({
                     </div>
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Fechas del viaje</label>
-                      <div className="text-slate-800">
-                        {fmtFecha(solicitud.fechaInicio)} – {fmtFecha(solicitud.fechaFin)}
-                        {' '}({solicitud.diasComision || 1} días)
+                      <div className="text-slate-800 flex items-center gap-1.5 flex-wrap">
+                        <span>{fmtFecha(solicitud.fechaInicio)} – {fmtFecha(solicitud.fechaFin)}</span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                          {formatearDiasComision(Number(solicitud.diasComision || 1))}
+                        </span>
                       </div>
                     </div>
                   </div>

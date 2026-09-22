@@ -497,7 +497,7 @@ describe('LiquidationService - unit by process', () => {
       expect(result.data.numeroDiasNoches).toBe(1);
     });
 
-    it('con pernocta cuenta diferencia de días', async () => {
+    it('con pernocta cuenta diferencia de días más medio día de retorno', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -520,12 +520,13 @@ describe('LiquidationService - unit by process', () => {
         destinoCiudad: 'Bogotá',
       });
 
-      expect(result.data.numeroDiasNoches).toBe(4);
+      // 3 noches (3.0) + medio día retorno (0.5) = 3.5 días
+      expect(result.data.numeroDiasNoches).toBe(3.5);
     });
   });
 
   describe('6) Generación de desglose diario', () => {
-    it('genera un item por día con pernocta', async () => {
+    it('genera un item por día con pernocta y medio día en retorno', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -548,6 +549,8 @@ describe('LiquidationService - unit by process', () => {
         destinoCiudad: 'Bogotá',
       });
 
+      // Del 20 al 22 son 2 noches completas + día 22 como retorno medio día (3 ítems en total, 2.5 días)
+      expect(result.data.numeroDiasNoches).toBe(2.5);
       expect(result.data.desgloseCalculo).toHaveLength(3);
       expect(result.data.desgloseCalculo[0]).toEqual({
         dia: 1,
@@ -555,8 +558,20 @@ describe('LiquidationService - unit by process', () => {
         valor: 335520,
         pernocta: true,
       });
-      expect(result.data.desgloseCalculo[1].fecha).toBe('2026-09-21');
-      expect(result.data.desgloseCalculo[2].fecha).toBe('2026-09-22');
+      expect(result.data.desgloseCalculo[1]).toEqual({
+        dia: 2,
+        fecha: '2026-09-21',
+        valor: 335520,
+        pernocta: true,
+      });
+      // Día de retorno sin pernocta al 50%
+      expect(result.data.desgloseCalculo[2]).toEqual({
+        dia: 3,
+        fecha: '2026-09-22',
+        valor: 167760,
+        pernocta: false,
+      });
+      expect(result.data.valorTotalViaticos).toBe(335520 + 335520 + 167760);
     });
 
     it('genera un solo item sin pernocta', async () => {

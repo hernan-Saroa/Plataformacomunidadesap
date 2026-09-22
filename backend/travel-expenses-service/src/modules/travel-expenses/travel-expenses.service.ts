@@ -2774,7 +2774,7 @@ export class TravelExpensesService {
       const tipoComision = (solicitud.tipoComision || 'TERRESTRE').toUpperCase().trim();
       const fechaInicioStr = sanitizeFechaPlano(solicitud.fechaInicio);
       const fechaFinStr = sanitizeFechaPlano(solicitud.fechaFin);
-      const diasComision = String(Math.max(1, Number(solicitud.diasComision || 1)));
+      const diasComision = String(Math.max(0.5, Number(solicitud.diasComision || 1)));
       const rubroSanitizado = sanitizeTextoPlano(solicitud.rubroPresupuestal || '', 100);
       const montoViaticos = sanitizeMontoPlano(solicitud.montoViaticos);
       const montoGastosViaje = sanitizeMontoPlano(solicitud.montoGastosViaje);

@@ -251,12 +251,15 @@ export class LiquidationService {
       fechaFin,
       dto.pernocta,
     );
-    const valorTotalViaticos = tarifaFinalAplicadaDia * numeroDiasNoches;
     const desglose = this.generarDesglose(
       fechaInicio,
       fechaFin,
       dto.pernocta,
       tarifaFinalAplicadaDia,
+    );
+    const valorTotalViaticos = desglose.reduce(
+      (acc, item) => acc + item.valor,
+      0,
     );
 
     return {
@@ -293,7 +296,9 @@ export class LiquidationService {
 
   /**
    * Calcula el número de días y noches de la comisión.
-   * Sin pernocta retorna 1. Con pernocta retorna la diferencia en días.
+   * - Sin pernocta (mismo día): retorna 1 (o 0.5 según pernocta).
+   * - Con pernocta: se reconocen N noches completas (1.0 cada una)
+   *   más 0.5 día por el retorno sin pernocta (ej: 01 al 02 = 1 noche + 0.5 = 1.5 días).
    */
   private calcularDiasNoches(
     fechaInicio: Date,
@@ -303,12 +308,16 @@ export class LiquidationService {
     if (!pernocta) return 1;
     const diffMs = fechaFin.getTime() - fechaInicio.getTime();
     const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
-    return Math.max(1, diffDias + 1);
+    if (diffDias <= 0) return 1;
+    // N noches completas + 0.5 día de regreso
+    return diffDias + 0.5;
   }
 
   /**
    * Genera el desglose diario de viáticos.
-   * Sin pernocta genera un solo ítem. Con pernocta genera un ítem por cada noche.
+   * - Sin pernocta: genera un solo ítem al 50% de la tarifa.
+   * - Con pernocta: genera N ítems con pernocta completa (100% tarifaDia)
+   *   y 1 ítem final en la fecha de regreso con medio día (50% tarifaDia sin pernocta).
    */
   private generarDesglose(
     fechaInicio: Date,
@@ -329,9 +338,19 @@ export class LiquidationService {
 
     const diffMs = fechaFin.getTime() - fechaInicio.getTime();
     const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
-    const noches = Math.max(1, diffDias + 1);
 
-    for (let i = 0; i < noches; i++) {
+    if (diffDias <= 0) {
+      desglose.push({
+        dia: 1,
+        fecha: this.formatearFechaISO(fechaInicio),
+        valor: valorDia,
+        pernocta: true,
+      });
+      return desglose;
+    }
+
+    // Días 1 a N con pernocta completa
+    for (let i = 0; i < diffDias; i++) {
       const fecha = new Date(fechaInicio);
       fecha.setDate(fecha.getDate() + i);
       desglose.push({
@@ -341,6 +360,17 @@ export class LiquidationService {
         pernocta: true,
       });
     }
+
+    // Día N + 1: Día de retorno (medio día, sin pernocta, 50% de valorDia)
+    const fechaRetorno = new Date(fechaInicio);
+    fechaRetorno.setDate(fechaRetorno.getDate() + diffDias);
+    desglose.push({
+      dia: diffDias + 1,
+      fecha: this.formatearFechaISO(fechaRetorno),
+      valor: Math.round(valorDia * 0.5),
+      pernocta: false,
+    });
+
     return desglose;
   }
 

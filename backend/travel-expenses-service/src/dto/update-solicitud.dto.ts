@@ -62,7 +62,7 @@ export class UpdateSolicitudDto {
   montoGastosViaje?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   diasComision?: number;
 

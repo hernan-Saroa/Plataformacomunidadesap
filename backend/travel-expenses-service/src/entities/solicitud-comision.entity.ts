@@ -87,7 +87,13 @@ export class SolicitudComisionEntity {
   })
   montoGastosViaje: number;
 
-  @Column({ name: 'dias_comision', type: 'int', default: 1 })
+  @Column({
+    name: 'dias_comision',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 1,
+  })
   diasComision: number;
 
   @Column({

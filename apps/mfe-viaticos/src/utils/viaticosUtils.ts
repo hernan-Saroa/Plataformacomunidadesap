@@ -128,7 +128,9 @@ export function formatearNombreComisionado(comisionado: Comisionado): string {
 }
 
 /**
- * Calcula los días de comisión (inclusive) entre dos fechas ISO (yyyy-mm-dd).
+ * Calcula los días de comisión entre dos fechas ISO (yyyy-mm-dd).
+ * - Mismo día (sin pernocta): 1 día.
+ * - Con pernocta: N noches + medio día (0.5) de retorno (ej. 01 al 02 = 1.5 días).
  */
 export function calcularDiasComision(fechaInicio: string, fechaFin: string): number {
   if (!fechaInicio || !fechaFin) return 0;
@@ -136,7 +138,34 @@ export function calcularDiasComision(fechaInicio: string, fechaFin: string): num
   const fin = new Date(`${fechaFin}T00:00:00`);
   if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) return 0;
   const diff = Math.round((fin.getTime() - ini.getTime()) / 86_400_000);
-  return Math.max(0, diff + 1);
+  if (diff <= 0) return 1;
+  return diff + 0.5;
+}
+
+/**
+ * Formatea el conteo de días de forma amigable al usuario.
+ * Ejemplos:
+ *  - 1.5 -> "1 día y medio"
+ *  - 2.5 -> "2 días y medio"
+ *  - 0.5 -> "Medio día"
+ *  - 1   -> "1 día"
+ *  - 3   -> "3 días"
+ */
+export function formatearDiasComision(dias: number): string {
+  if (dias === null || dias === undefined || isNaN(dias) || dias <= 0) {
+    return '0 días';
+  }
+  const entero = Math.floor(dias);
+  const decimal = Math.round((dias - entero) * 10) / 10;
+
+  if (decimal === 0.5) {
+    if (entero === 0) return 'Medio día';
+    if (entero === 1) return '1 día y medio';
+    return `${entero} días y medio`;
+  }
+
+  if (dias === 1) return '1 día';
+  return `${dias} días`;
 }
 
 import {
