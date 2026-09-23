@@ -33,7 +33,7 @@ import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
   User, Calendar, Target, FileText, Shield, Info, Users, Building2,
   ClipboardCheck, DollarSign, TrendingUp, FileCheck, MapPin, Clock,
-  AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings, Lock
+  AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings, Lock, CalendarDays
 } from 'lucide-react';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -46,6 +46,7 @@ import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso, t
 import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { CalendarioProgramacion } from './CalendarioProgramacion';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -138,6 +139,8 @@ export interface AuditoriaUnificadaFormData {
   // Campos legacy para compatibilidad
   fechaInicio?: string;
   fechaFin?: string;
+  // Lunes (YYYY-MM-DD) de las semanas sacadas del cronograma en el calendario (EFDS-2132)
+  semanasExcluidas?: string[];
   hitos: HitoAuditoria[];
   
   // 5. OBJETIVOS Y CRITERIOS
@@ -444,6 +447,7 @@ export function FormularioAuditoriaUnificado({
       fechaFinComunicacion: finC,
       fechaInicio: inicioP || formatDateForInput(data?.fechaInicio),
       fechaFin: finC || formatDateForInput(data?.fechaFin),
+      semanasExcluidas: Array.isArray(data?.semanasExcluidas) ? data!.semanasExcluidas : [],
       hitos: data?.hitos || [],
       objetivos: data?.objetivos || [],
       criteriosAuditoria: data?.criteriosAuditoria || [],
@@ -2777,10 +2781,16 @@ function Paso4Programacion({
   const maxDate = `${añoVigencia}-12-31`;
 
   // Calcular días de cada etapa
+  // Días de la etapa contando el primero y el último (4 semanas = 28 días, no 27)
   const calcularDias = (inicio: string, fin: string) => {
     if (!inicio || !fin) return 0;
-    return Math.ceil((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24));
+    return Math.round((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24)) + 1;
   };
+
+  // Las fechas salen del calendario; a mano solo se ajustan en una Especial,
+  // que puede arrancar en Ejecución o Comunicación (EFDS-1923 / EFDS-2132).
+  const fechasManuales = !!esAuditoriaEspecial;
+  const ayudaCalendario = fechasManuales ? undefined : 'Se define en el calendario de arriba';
 
   // Handlers para auto-calcular etapas del cronograma (13 Semanas: 4-4-5)
   const handleFechaInicioPlaneacionChange = (val: string) => {
@@ -2872,12 +2882,12 @@ function Paso4Programacion({
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto">
       <div className="text-center mb-6">
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Defina las fechas específicas para cada etapa. El sistema calcula automáticamente el ciclo estándar de 13 semanas (4-4-5).
+          Escoja en el calendario la semana en que inicia la auditoría. El ciclo estándar de 13 semanas (4-4-5) se completa solo, sin Semana Santa ni semana de receso.
         </p>
       </div>
 
@@ -2902,6 +2912,30 @@ function Paso4Programacion({
           </div>
         </div>
       </div>
+
+      {/* Calendario de la vigencia: festivos, Semana Santa y receso (EFDS-2132) */}
+      <Card className="p-4 border-2 border-gray-200">
+        <div className="flex items-center gap-2 mb-3">
+          <CalendarDays className="w-5 h-5 text-[#003DA5]" />
+          <h4 className="font-bold text-gray-900">Calendario {añoVigencia}</h4>
+        </div>
+        <CalendarioProgramacion
+          vigencia={añoVigencia}
+          fechas={formData}
+          semanasExcluidas={formData.semanasExcluidas || []}
+          onCambio={({ fechas, semanasExcluidas }) => {
+            onChange('semanasExcluidas', semanasExcluidas);
+            onChange('fechaInicioPlaneacion', fechas.fechaInicioPlaneacion);
+            onChange('fechaFinPlaneacion', fechas.fechaFinPlaneacion);
+            onChange('fechaInicioEjecucion', fechas.fechaInicioEjecucion);
+            onChange('fechaFinEjecucion', fechas.fechaFinEjecucion);
+            onChange('fechaInicioComunicacion', fechas.fechaInicioComunicacion);
+            onChange('fechaFinComunicacion', fechas.fechaFinComunicacion);
+            onChange('fechaInicio', fechas.fechaInicioPlaneacion);
+            onChange('fechaFin', fechas.fechaFinComunicacion);
+          }}
+        />
+      </Card>
 
       {/* ETAPA 1: PLANEACIÓN - Siempre habilitada */}
       <EquipoAuditorDisponibilidadAlert
@@ -2928,13 +2962,14 @@ function Paso4Programacion({
           <FieldWrapper
             label="Fecha de Inicio"
             required={!esAuditoriaEspecial}
-            helpText="Inicio de la etapa de Planeación"
+            helpText={ayudaCalendario || 'Inicio de la etapa de Planeación'}
           >
             <Input
               type="date"
               value={formData.fechaInicioPlaneacion || ''}
               onChange={(e) => handleFechaInicioPlaneacionChange(e.target.value)}
-              className="border-gray-300"
+              className={fechasManuales ? 'border-gray-300' : 'border-gray-300 bg-gray-100 text-gray-700'}
+              readOnly={!fechasManuales}
               min={minDate}
               max={maxDate}
             />
@@ -2943,13 +2978,14 @@ function Paso4Programacion({
           <FieldWrapper
             label="Fecha de Fin"
             required={!esAuditoriaEspecial}
-            helpText="Finalización de la etapa de Planeación"
+            helpText={ayudaCalendario || 'Finalización de la etapa de Planeación'}
           >
             <Input
               type="date"
               value={formData.fechaFinPlaneacion || ''}
               onChange={(e) => handleFechaFinPlaneacionChange(e.target.value)}
-              className="border-gray-300"
+              className={fechasManuales ? 'border-gray-300' : 'border-gray-300 bg-gray-100 text-gray-700'}
+              readOnly={!fechasManuales}
               min={formData.fechaInicioPlaneacion || minDate}
               max={maxDate}
             />
@@ -2986,32 +3022,34 @@ function Paso4Programacion({
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FieldWrapper 
-            label="Fecha de Inicio" 
+          <FieldWrapper
+            label="Fecha de Inicio"
             required={planeacionCompleta && !esAuditoriaEspecial}
-            helpText="Inicio de la etapa de Ejecución"
+            helpText={ayudaCalendario || 'Inicio de la etapa de Ejecución'}
           >
             <Input
               type="date"
               value={formData.fechaInicioEjecucion || ''}
               onChange={(e) => handleFechaInicioEjecucionChange(e.target.value)}
-              className="border-gray-300"
+              className={fechasManuales ? 'border-gray-300' : 'border-gray-300 bg-gray-100 text-gray-700'}
+              readOnly={!fechasManuales}
               disabled={!planeacionHabilitada}
               min={formData.fechaFinPlaneacion || minDate}
               max={maxDate}
             />
           </FieldWrapper>
 
-          <FieldWrapper 
-            label="Fecha de Fin" 
+          <FieldWrapper
+            label="Fecha de Fin"
             required={planeacionCompleta && !esAuditoriaEspecial}
-            helpText="Finalización de la etapa de Ejecución"
+            helpText={ayudaCalendario || 'Finalización de la etapa de Ejecución'}
           >
             <Input
               type="date"
               value={formData.fechaFinEjecucion || ''}
               onChange={(e) => handleFechaFinEjecucionChange(e.target.value)}
-              className="border-gray-300"
+              className={fechasManuales ? 'border-gray-300' : 'border-gray-300 bg-gray-100 text-gray-700'}
+              readOnly={!fechasManuales}
               disabled={!planeacionHabilitada}
               min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || minDate}
               max={maxDate}
@@ -3049,32 +3087,34 @@ function Paso4Programacion({
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FieldWrapper 
-            label="Fecha de Inicio" 
+          <FieldWrapper
+            label="Fecha de Inicio"
             required={ejecucionCompleta && !esAuditoriaEspecial}
-            helpText="Inicio de la etapa de Comunicación"
+            helpText={ayudaCalendario || 'Inicio de la etapa de Comunicación'}
           >
             <Input
               type="date"
               value={formData.fechaInicioComunicacion || ''}
               onChange={(e) => handleFechaInicioComunicacionChange(e.target.value)}
-              className="border-gray-300"
+              className={fechasManuales ? 'border-gray-300' : 'border-gray-300 bg-gray-100 text-gray-700'}
+              readOnly={!fechasManuales}
               disabled={!ejecucionHabilitada}
               min={formData.fechaFinEjecucion || minDate}
               max={maxDate}
             />
           </FieldWrapper>
 
-          <FieldWrapper 
-            label="Fecha de Fin" 
+          <FieldWrapper
+            label="Fecha de Fin"
             required={ejecucionCompleta && !esAuditoriaEspecial}
-            helpText="Finalización de la auditoría"
+            helpText={ayudaCalendario || 'Finalización de la auditoría'}
           >
             <Input
               type="date"
               value={formData.fechaFinComunicacion || ''}
               onChange={(e) => handleFechaFinComunicacionChange(e.target.value)}
-              className="border-gray-300"
+              className={fechasManuales ? 'border-gray-300' : 'border-gray-300 bg-gray-100 text-gray-700'}
+              readOnly={!fechasManuales}
               disabled={!ejecucionHabilitada}
               min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || minDate}
               max={maxDate}

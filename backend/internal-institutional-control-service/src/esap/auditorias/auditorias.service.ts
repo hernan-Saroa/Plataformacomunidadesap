@@ -137,6 +137,7 @@ export class AuditoriasService {
       fechaFinEjecucion: fecha(a.fechaFinEjecucion),
       fechaInicioComunicacion: fecha(a.fechaInicioComunicacion),
       fechaFin: fecha(a.fechaFin),
+      semanasExcluidas: [...(a.semanasExcluidas || [])].sort().join(','),
     };
   }
 
@@ -1493,6 +1494,7 @@ export class AuditoriasService {
       fechaInicioEjecucion: fechaInicioEjecucion,
       fechaFinEjecucion: fechaFinEjecucion,
       fechaInicioComunicacion: fechaInicioComunicacion,
+      semanasExcluidas: createDto.semanasExcluidas ?? [],
       fase: faseInicial,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
@@ -1846,6 +1848,9 @@ export class AuditoriasService {
       auditoria.fechaInicioComunicacion = updateDto.fechaInicioComunicacion
         ? this.parseDateOnly(updateDto.fechaInicioComunicacion)
         : undefined;
+    }
+    if (updateDto.semanasExcluidas !== undefined) {
+      auditoria.semanasExcluidas = updateDto.semanasExcluidas;
     }
     if (updateDto.periodoInicio !== undefined) {
       auditoria.periodoInicio = updateDto.periodoInicio

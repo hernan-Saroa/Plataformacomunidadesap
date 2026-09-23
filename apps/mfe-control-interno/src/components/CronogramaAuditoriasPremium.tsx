@@ -57,6 +57,7 @@ import {
   type EstadoAuditoria as EstadoAuditoriaHook,
 } from './hooks/useProgramaAnualData';
 import { esFestivo } from '../gestion-legal/utils/diasHabiles';
+import { fechaYMD, semanasDeVigencia, NOMBRE_BLOQUEO, type BloqueoSemana } from './services/calendarioVigencia';
 import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
 import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
 import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
@@ -396,6 +397,12 @@ function auditoriasEnRangoDiaLaborable(
   });
 }
 
+/** Semana Santa o receso de la semana que arranca ese lunes (EFDS-2132). */
+function bloqueoDeSemana(lunes: Date): BloqueoSemana | undefined {
+  const ymd = fechaYMD(lunes);
+  return semanasDeVigencia(lunes.getFullYear()).find((s) => s.lunes === ymd)?.bloqueo;
+}
+
 /** Estilo rojo institucional para días festivos en el calendario */
 function estiloDiaFestivo(): {
   cardClass: string;
@@ -650,6 +657,7 @@ export function CronogramaAuditoriasPremium({
         fechaInicioEjecucionRaw: a.fechaInicioEjecucion,
         fechaFinEjecucionRaw: a.fechaFinEjecucion,
         fechaInicioComunicacionRaw: a.fechaInicioComunicacion,
+        semanasExcluidas: a.semanasExcluidas || [],
         progreso: typeof a.avance === 'number' ? a.avance : 0,
         hallazgos: 0, 
         riesgo: a.riesgo || 'Bajo'
@@ -1101,15 +1109,17 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
     setVerMasEtapa((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Obtener inicio y fin de la semana
+  // La semana va de lunes a domingo, igual que en el Programa Anual (EFDS-2132)
   const inicioSemana = new Date(fecha);
-  inicioSemana.setDate(fecha.getDate() - fecha.getDay());
-  
+  inicioSemana.setDate(fecha.getDate() - ((fecha.getDay() + 6) % 7));
+
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const dia = new Date(inicioSemana);
     dia.setDate(inicioSemana.getDate() + i);
     return dia;
   });
+
+  const bloqueoSemana = bloqueoDeSemana(inicioSemana);
 
   return (
     <motion.div
@@ -1118,6 +1128,12 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-4 overflow-x-auto"
     >
+      {bloqueoSemana && (
+        <div className="flex items-center gap-2 rounded-xl border-2 border-orange-300 bg-orange-50 px-4 py-2.5 text-sm font-bold text-orange-900">
+          <CalendarOff className="w-4 h-4 shrink-0" aria-hidden />
+          {NOMBRE_BLOQUEO[bloqueoSemana]}: en esta semana no se programan auditorías
+        </div>
+      )}
       <div className="grid grid-cols-7 gap-3 min-w-[900px]">
         {diasSemana.map((dia, idx) => {
           const auditoriasDelDia = auditoriasEnRangoDiaLaborable(dia, auditorias);
@@ -2043,11 +2059,15 @@ function getTituloFecha(fecha: Date, vista: VistaCalendario): string {
   if (vista === 'dia') {
     return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
   } else if (vista === 'semana') {
+    // Semana de lunes a domingo (EFDS-2132)
     const inicioSemana = new Date(fecha);
-    inicioSemana.setDate(fecha.getDate() - fecha.getDay());
+    inicioSemana.setDate(fecha.getDate() - ((fecha.getDay() + 6) % 7));
     const finSemana = new Date(inicioSemana);
     finSemana.setDate(inicioSemana.getDate() + 6);
-    return `${inicioSemana.getDate()} - ${finSemana.getDate()} ${MESES[fecha.getMonth()]} ${fecha.getFullYear()}`;
+    const mismoMes = inicioSemana.getMonth() === finSemana.getMonth();
+    return mismoMes
+      ? `${inicioSemana.getDate()} - ${finSemana.getDate()} ${MESES[inicioSemana.getMonth()]} ${finSemana.getFullYear()}`
+      : `${inicioSemana.getDate()} ${MESES[inicioSemana.getMonth()]} - ${finSemana.getDate()} ${MESES[finSemana.getMonth()]} ${finSemana.getFullYear()}`;
   } else if (vista === 'mes') {
     return `${MESES[fecha.getMonth()]} ${fecha.getFullYear()}`;
   } else {
