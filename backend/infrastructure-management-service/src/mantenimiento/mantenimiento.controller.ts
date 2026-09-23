@@ -59,6 +59,24 @@ export class MantenimientoController {
   // ---------------------------------------------------------------------------
   // Catálogos
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Catálogo dependencias desde schema auth (cross-schema raw query)
+  // NUEVA REAJUSTE EFDS-173X: Área solicitante ya no es input de texto libre,
+  // se selecciona del catálogo auth.dependencias activo.
+  // DECLARADO ANTES del wildcard catalogos/:nombre para que NestJS matchee
+  // primero el path static y no interprete "dependencias" como valor de :nombre.
+  // ---------------------------------------------------------------------------
+  @Get('catalogos/dependencias')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Obtener el catálogo de dependencias/áreas del esquema auth (activo = true). Usado en el formulario de radicación de mantenimiento para reemplazar el input de texto libre del "Área solicitante". Retorna cod, nombre y id de sede relacionada.',
+  })
+  listarDependenciasCatalogo() {
+    return this.mantenimientoService.listarDependenciasCatalogo();
+  }
+
   @Get('catalogos/:nombre')
   @Public()
   @ApiOperation({ summary: 'Obtener un catálogo parametrizable (TIPO_MANTENIMIENTO, PRIORIDAD, TIPO_ATENCION, ESTADO_SOLICITUD, CATEGORIA_SERVICIO)' })
@@ -242,6 +260,7 @@ export class MantenimientoController {
   // EFDS-1733: Técnicos mantenimiento
   // ---------------------------------------------------------------------------
   @Get('tecnicos')
+  @Public()
   @ApiOperation({
     summary:
       'EFDS-1733: Listar técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO). Por defecto solo activos; use ?soloActivos=false para todos.',
@@ -255,6 +274,7 @@ export class MantenimientoController {
   }
 
   @Get('tecnicos/con-carga-vigente')
+  @Public()
   @ApiOperation({
     summary:
       'EFDS-1733: Listar técnicos mantenimiento con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI). Por defecto solo activos; use ?incluirInactivos=true para también listar inactivos (cargaVigente=0, soft-delete visual Admin).',
@@ -585,6 +605,62 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.rechazarConformidadYReabrir(idSolicitud, dto, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1738 RF-INF-009: Consolidados promedio calificación servicio 1-5
+  // Declarado ANTES del wildcard @Get(':id') y ANTES del @Post() radicar,
+  // para evitar que NestJS interprete "estadisticas" como UUID param / como CREATE.
+  // ---------------------------------------------------------------------------
+  @Get('estadisticas/calificaciones-consolidadas')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1738 RF-INF-009: Promedio, suma, conteo y distribución buckets 1..5 de la calificación del servicio al confirmar conformidad. Agrupación controlada por ?por=tecnico(default)|categoria|area|global. Permite 5 filtros opcionales: rango fechas calificación, idCategoria, codigoTecnico, idAreaSolicitante. Guardia roles bypass (SUPER_ADMIN/GESTOR_MANTENIMIENTO/ADMIN_FUNCIONAL); técnico USER 403.',
+  })
+  @ApiQuery({
+    name: 'por',
+    required: false,
+    type: 'string',
+    enum: ['tecnico', 'categoria', 'area', 'global'],
+    description: 'Eje de agrupación. Default=tecnico. Si valor no coincide con el enum retorna 400.',
+  })
+  @ApiQuery({ name: 'fechaDesde', required: false, type: 'string', description: 'ISO 8601 inclusivo, solo filtra calificaciones emitidas desde esta fecha.' })
+  @ApiQuery({ name: 'fechaHasta', required: false, type: 'string', description: 'ISO 8601 inclusivo, solo filtra calificaciones emitidas hasta esta fecha.' })
+  @ApiQuery({ name: 'idCategoria', required: false, type: 'number', description: 'Filtrar a una categoría servicio específica (PK catalogo CATEGORIA_SERVICIO).' })
+  @ApiQuery({ name: 'codigoTecnico', required: false, type: 'string', description: 'Filtrar un técnico por código (prefijo antes del " · " en responsableAsignado, p.ej. TEC-CAR-001).' })
+  @ApiQuery({ name: 'idAreaSolicitante', required: false, type: 'string', description: 'Filtrar consolidados de un área solicitante.' })
+  @ApiResponse({ status: 200, description: 'Array de consolidados con promedio redondeado 2 decimales y distribución 5 buckets.' })
+  @ApiResponse({ status: 400, description: 'Valor "por" inválido. Valores permitidos: tecnico, categoria, area, global.' })
+  @ApiResponse({ status: 401, description: 'JWT ausente o inválido.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente. Consolidadas sólo para SUPER_ADMIN, GESTOR_MANTENIMIENTO o ADMINISTRADOR_FUNCIONAL.' })
+  getCalificacionesConsolidadas(
+    @Query('por') por?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('idAreaSolicitante') idAreaSolicitante?: string,
+    @Req() req?: any,
+  ) {
+    const permitidos = ['tecnico', 'categoria', 'area', 'global'] as const;
+    const porLimpio = (por || '').trim().toLowerCase();
+    if (porLimpio.length > 0 && !permitidos.includes(porLimpio as (typeof permitidos)[number])) {
+      throw new BadRequestException(
+        'Parámetro "por" inválido. Valores permitidos: tecnico, categoria, area, global.',
+      );
+    }
+    return this.mantenimientoService.calificacionesConsolidadas(
+      {
+        por: porLimpio.length > 0 ? (porLimpio as any) : 'tecnico',
+        fechaDesde,
+        fechaHasta,
+        idCategoria,
+        codigoTecnico,
+        idAreaSolicitante,
+      },
+      req?.user,
+    );
   }
 
   @Post()

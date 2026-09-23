@@ -53,6 +53,17 @@ export interface CatalogoItem {
   metadata: Record<string, any>;
 }
 
+// Catálogo cross-schema auth.dependencias (usado en formulario radicación mantenimiento como "Área solicitante")
+export interface DependenciaCatalogo {
+  idDependencia: number;
+  codDependencia: string;
+  nomDependencia: string;
+  idSede: number | null;
+  sedeUmiId: string | null;
+  sedeCodigo: string | null;
+  sedeNombre: string | null;
+}
+
 export interface SolicitudEvidencia {
   idEvidencia: string;
   idSolicitud?: string;
@@ -138,6 +149,11 @@ export interface SolicitudMantenimiento {
   observacionesConformidad?: string | null;
   fechaLimiteConformidad?: string | null;
   conteoReaperturasConformidad?: number;
+  // ----- EFDS-1738 RF-INF-009 -----
+  calificacionServicio?: 1 | 2 | 3 | 4 | 5 | null;
+  fechaCalificacion?: string | null;
+  usuarioCalificacionId?: string | null;
+  responsableCalificacionDisplay?: string | null;
 }
 
 export interface HistoricoAsignacionEntry {
@@ -271,6 +287,24 @@ export interface CierreTecnicoResponse {
   costoFinalEfectivoCop: number;
   evidenciasCierre: EvidenciaCierreFoto[];
   requiereSeguimiento: boolean;
+}
+
+// EFDS-1738 RF-INF-009 Calificación servicio consolidados
+export interface DistribucionCalificacion {
+  1: number;
+  2: number;
+  3: number;
+  4: number;
+  5: number;
+}
+export interface ConsolidadoCalificacionItem {
+  tipoGrupo: 'tecnico' | 'categoria' | 'area' | 'global';
+  idGrupo: number | string | null;
+  nombreGrupo: string;
+  numeroCalificaciones: number;
+  sumaCalificaciones: number;
+  promedio: number;
+  distribucion: DistribucionCalificacion;
 }
 
 export interface CreateMantenimientoPayload {
@@ -481,24 +515,44 @@ const obtenerCatalogoTecnicosUMI = async (): Promise<CatalogoItem[]> => {
   }
   try {
     const lista = await infraestructuraService.getTecnicos(false);
-    catalogoTecnicosCache.ts = ahora;
-    catalogoTecnicosCache.data = Array.isArray(lista) ? lista : [];
-    return catalogoTecnicosCache.data;
+    const safe = Array.isArray(lista) ? lista : [];
+    if (safe.length > 0) {
+      catalogoTecnicosCache.ts = ahora;
+      catalogoTecnicosCache.data = safe;
+    } else if (catalogoTecnicosCache.data.length > 0) {
+      catalogoTecnicosCache.ts = ahora;
+    }
+    return safe.length > 0 ? safe : catalogoTecnicosCache.data;
   } catch {
     return catalogoTecnicosCache.data;
   }
 };
 
 export const tecnicoPerteneceASesionUMI = (tecnico: CatalogoItem, ses: SesionUsuarioUMI): boolean => {
+  const norm = (s: any): string => String(s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '')
+    .toLowerCase();
   const md = (tecnico?.metadata && typeof tecnico.metadata === 'object') ? (tecnico.metadata as Record<string, any>) : {};
   const correos: string[] = Array.isArray(md.correos) ? (md.correos as string[]) : [];
   if (typeof md.email === 'string' && md.email && !correos.includes(md.email)) correos.push(md.email);
   if (typeof md.correo === 'string' && md.correo && !correos.includes(md.correo)) correos.push(md.correo);
   const idsUsuarios: string[] = Array.isArray(md.usuarioIdsAutorizados) ? (md.usuarioIdsAutorizados as string[]) : [];
+  if (typeof md.usuarioIdAutorizado === 'string' && md.usuarioIdAutorizado && !idsUsuarios.includes(md.usuarioIdAutorizado)) {
+    idsUsuarios.push(md.usuarioIdAutorizado);
+  }
   const nombresAutorizados: string[] = Array.isArray(md.usuariosAutorizados) ? (md.usuariosAutorizados as string[]) : [];
+  const normSesEmail = norm(ses.email?.split('@')[0]);
+  const normSesUserId = norm(ses.userId);
+  const normSesUsername = norm(ses.username);
+  const normNombreTec = norm(tecnico?.nombre);
+  const splitNombre = String(tecnico?.nombre ?? '').split('·').map(p => p.trim());
+  const normNombreSolo = splitNombre.length > 1 ? norm(splitNombre[splitNombre.length - 1]) : normNombreTec;
   if (ses.email) {
     const needle = ses.email.trim().toLowerCase();
     if (needle && correos.some((c) => typeof c === 'string' && c.trim().toLowerCase() === needle)) return true;
+    if (normSesEmail && normNombreSolo && normNombreSolo.includes(normSesEmail)) return true;
+    if (normSesEmail && normNombreTec && normNombreTec.includes(normSesEmail)) return true;
     const nombreDisplay = String(tecnico?.nombre || '').trim().toLowerCase();
     if (nombreDisplay && needle && (nombreDisplay.includes(needle.replace(/@.*$/, '')) ||
       needle.replace(/@.*$/, '').length >= 4 && nombreDisplay.includes(needle.replace(/@.*$/, '')))) {
@@ -508,19 +562,35 @@ export const tecnicoPerteneceASesionUMI = (tecnico: CatalogoItem, ses: SesionUsu
   if (ses.userId) {
     const needle = ses.userId.trim().toLowerCase();
     if (needle && idsUsuarios.some((u) => typeof u === 'string' && u.trim().toLowerCase() === needle)) return true;
+    if (normSesUserId && normNombreTec.includes(normSesUserId)) return true;
   }
   if (ses.username) {
     const needle = ses.username.trim().toLowerCase();
     if (needle) {
+      const nU = norm(needle);
+      if (nU && (normNombreTec === nU || normNombreTec.includes(nU) || nU.includes(normNombreTec))) return true;
+      if (nU && normNombreSolo && (normNombreSolo === nU || normNombreSolo.includes(nU) || nU.includes(normNombreSolo))) return true;
       const nombreDisplay = String(tecnico?.nombre || '').trim().toLowerCase();
       if (nombreDisplay && (nombreDisplay === needle || nombreDisplay.includes(needle) || needle.includes(nombreDisplay))) return true;
-      if (nombresAutorizados.some((u) => typeof u === 'string' && u.trim().toLowerCase() === needle)) return true;
+      if (nombresAutorizados.some((u) => typeof u === 'string' && norm(u) === nU)) return true;
     }
   }
   if (ses.email && correos.length === 0) {
+    if (normSesEmail && normSesEmail.length >= 4 && normNombreSolo.includes(normSesEmail)) return true;
+    if (normSesEmail && normSesEmail.length >= 4 && normNombreTec.includes(normSesEmail)) return true;
     const nombre = String(tecnico?.nombre || '').trim().toLowerCase();
     const mail = ses.email.trim().toLowerCase().replace(/@.*$/, '');
     if (mail.length >= 4 && nombre.includes(mail)) return true;
+  }
+  if (normSesUsername && normSesUsername.length >= 4 && normNombreSolo.includes(normSesUsername)) return true;
+  if (nombresAutorizados.length > 0) {
+    const needles = new Set([normSesUsername, normSesEmail, norm(ses.username)]);
+    for (const autorizado of nombresAutorizados) {
+      const nA = norm(autorizado);
+      if (!nA) continue;
+      if (needles.has(nA)) return true;
+      for (const n of needles) if (n && (nA.includes(n) || n.includes(nA))) return true;
+    }
   }
   return false;
 };
@@ -809,6 +879,20 @@ export const infraestructuraService = {
       return await res.json();
     } catch (err) {
       console.warn('[getCategoriasServicio] falló:', err);
+      return [];
+    }
+  },
+
+  // Catálogo dependencias/áreas solicitantes desde auth.dependencias (cross-schema).
+  // Reemplaza el input de texto libre en NuevaSolicitudForm. Nunca cachear arrays vacíos.
+  async getDependenciasCatalogo(): Promise<DependenciaCatalogo[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/catalogos/dependencias`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Listar dependencias ${res.status}`);
+      const data = (await res.json()) as DependenciaCatalogo[];
+      return Array.isArray(data) && data.length > 0 ? data : [];
+    } catch (err) {
+      console.warn('[getDependenciasCatalogo] falló:', err);
       return [];
     }
   },
@@ -1424,7 +1508,11 @@ export const infraestructuraService = {
 
   async confirmarConformidad(
     idSolicitud: string,
-    payload: { observacionesConformidad?: string },
+    payload: {
+      observacionesConformidad?: string;
+      // EFDS-1738 RF-INF-009: calificación opcional 1-5 (OQ-1 default opcional)
+      calificacionServicio?: 1 | 2 | 3 | 4 | 5;
+    },
   ): Promise<SolicitudMantenimiento> {
     const res = await fetch(
       `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/conformidad/confirmar`,
@@ -1476,6 +1564,45 @@ export const infraestructuraService = {
     );
     if (!res.ok) {
       let m = 'Error ejecutando cierres automáticos sin respuesta';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1738 RF-INF-009 Consolidados promedio calificación servicio
+  // ---------------------------------------------------------------------------
+
+  async getCalificacionesConsolidadas(params?: {
+    por?: 'tecnico' | 'categoria' | 'area' | 'global';
+    fechaDesde?: string | Date | null;
+    fechaHasta?: string | Date | null;
+    idCategoria?: number | null;
+    codigoTecnico?: string | null;
+    idAreaSolicitante?: string | null;
+  }): Promise<ConsolidadoCalificacionItem[]> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('por', params?.por);
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idCategoria', params?.idCategoria);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('idAreaSolicitante', params?.idAreaSolicitante);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/calificaciones-consolidadas${qs.length ? `?${qs}` : ''}`,
+      {
+        method: 'GET',
+        credentials: 'include',
+      },
+    );
+    if (!res.ok) {
+      let m = 'Error consultando consolidados de calificación servicio';
       try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
       throw new Error(m);
     }
