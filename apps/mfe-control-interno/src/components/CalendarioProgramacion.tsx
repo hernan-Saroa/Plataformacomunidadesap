@@ -6,12 +6,9 @@
  * los festivos, la Semana Santa y la semana de receso, más la columna con el
  * número de semana.
  *
- * - Clic en una semana: ahí empieza (o termina) la etapa del campo y esa semana
- *   queda marcada; el siguiente clic cierra el rango "desde ahí hasta allá",
- *   aunque sea en otro mes.
- * - Clic en un día: la etapa empieza (o termina) ese día exacto.
- * - Arrastrando de una semana a otra: esa etapa ocupa ese rango.
- * - Clic en el número de semana: la saca del cronograma (o la devuelve).
+ * - Clic en una semana: la marca o la desmarca.
+ * - Clic en dos números de semana (S10 y luego S13): la etapa va de una a otra,
+ *   igual que arrastrando, y sirve aunque estén en meses distintos.
  * Semana Santa y la semana de receso nunca entran y el cronograma las salta.
  */
 
@@ -130,58 +127,38 @@ export function CampoFechaCalendario({
     onCambio({ fechas: resultado.fechas, semanasExcluidas: excluidas });
   };
 
-  const aplicar = (desde: number, hasta: number) => {
-    const a = Math.min(desde, hasta);
-    const b = Math.max(desde, hasta);
-    // Segundo clic: cierra el rango que se abrió con el primero
-    if (a === b && anclaje !== null && anclaje !== a) {
-      setAnclaje(null);
-      aplicarRango(Math.min(anclaje, desde), Math.max(anclaje, desde));
-      return;
-    }
-    setAnclaje(a === b ? a : null);
-    // Un clic solo mueve el extremo del campo; el rango marcado fija toda la etapa
-    if (a === b) {
-      const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
-      const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
-      if (otro === undefined) {
-        // Sin cronograma todavía: la primera selección arranca la Planeación
-        const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[a - 1].lunes, semanasExcluidas });
-        onCambio({ fechas: resultado.fechas, semanasExcluidas });
-        return;
-      }
-      const resultado = aplicarRangoEtapa(vigencia, fechas, semanasExcluidas, {
-        etapa,
-        desde: extremo === 'inicio' ? a : Math.min(otro, a),
-        hasta: extremo === 'inicio' ? Math.max(otro, a) : b,
-      });
+  /** Clic en una semana: la marca si está fuera, la desmarca si está dentro. */
+  const alternarSemana = (semana: SemanaVigencia) => {
+    const estado = porLunes.get(semana.lunes);
+    if (estado?.etapa || estado?.excluida) { alternarExclusion(semana); return; }
+
+    // Estaba fuera del cronograma: la etapa del campo se estira hasta ella
+    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
+    if (!propias.length) {
+      const resultado = calcularProgramacion({ año: vigencia, inicio: semana.lunes, semanasExcluidas });
       onCambio({ fechas: resultado.fechas, semanasExcluidas });
       return;
     }
-    aplicarRango(a, b);
+    aplicarRango(
+      Math.min(propias[0], semana.numero),
+      Math.max(propias[propias.length - 1], semana.numero),
+    );
   };
 
-  /**
-   * Clic en un día: ese día queda como inicio o fin exacto de la etapa. Primero
-   * se acomoda el rango de semanas y luego se recorta el extremo al día elegido,
-   * para poder decir "la Planeación va hasta el 18 de marzo".
-   */
-  const fijarDia = (semana: SemanaVigencia, dia: string) => {
-    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
-    const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
-    const resultado = otro === undefined
-      ? calcularProgramacion({ año: vigencia, inicio: semana.lunes, semanasExcluidas })
-      : aplicarRangoEtapa(vigencia, fechas, semanasExcluidas, {
-          etapa,
-          desde: extremo === 'inicio' ? semana.numero : Math.min(otro, semana.numero),
-          hasta: extremo === 'inicio' ? Math.max(otro, semana.numero) : semana.numero,
-        });
+  const aplicar = (desde: number, hasta: number) => {
+    const a = Math.min(desde, hasta);
+    const b = Math.max(desde, hasta);
+    if (a !== b) { setAnclaje(null); aplicarRango(a, b); return; }
+    alternarSemana(semanas[a - 1]);
+  };
 
-    const campo = extremo === 'inicio'
-      ? ({ P: 'fechaInicioPlaneacion', E: 'fechaInicioEjecucion', C: 'fechaInicioComunicacion' } as const)[etapa]
-      : ({ P: 'fechaFinPlaneacion', E: 'fechaFinEjecucion', C: 'fechaFinComunicacion' } as const)[etapa];
-
-    onCambio({ fechas: { ...resultado.fechas, [campo]: dia }, semanasExcluidas });
+  /** Clic en un número de semana: el primero abre el rango y el segundo lo cierra. */
+  const marcarExtremo = (semana: SemanaVigencia) => {
+    if (anclaje === null || anclaje === semana.numero) { setAnclaje(semana.numero); return; }
+    const a = Math.min(anclaje, semana.numero);
+    const b = Math.max(anclaje, semana.numero);
+    setAnclaje(null);
+    aplicarRango(a, b);
   };
 
   const alternarExclusion = (semana: SemanaVigencia) => {
@@ -243,21 +220,10 @@ export function CampoFechaCalendario({
         </div>
 
         <p className="mb-2 text-center text-[11px] font-semibold" style={{ color: etapa === 'P' ? '#1d4ed8' : etapa === 'E' ? '#b45309' : '#047857' }}>
-          {NOMBRE_ETAPA[etapa]} · fecha de {extremo}
+          {anclaje !== null
+            ? `Desde la semana ${anclaje}: elija hasta cuál`
+            : `${NOMBRE_ETAPA[etapa]} · fecha de ${extremo}`}
         </p>
-
-        {anclaje !== null && (
-          <p className="mb-1 rounded bg-blue-50 px-2 py-1 text-center text-[11px] text-blue-800">
-            Desde la semana {anclaje}: elija hasta qué semana va la {NOMBRE_ETAPA[etapa]}
-            <button
-              type="button"
-              onClick={() => setAnclaje(null)}
-              className="ml-1 underline hover:no-underline"
-            >
-              cancelar
-            </button>
-          </p>
-        )}
 
         <Mes
           vigencia={vigencia}
@@ -278,23 +244,13 @@ export function CampoFechaCalendario({
             setArrastre(null);
             aplicar(marca ? marca.desde : n, n);
           }}
-          onAlternarExclusion={alternarExclusion}
-          onClicDia={fijarDia}
+          onClicNumero={marcarExtremo}
         />
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gray-100 pt-2 text-[10px] text-gray-600">
-          <Leyenda color="bg-blue-500" texto="Planeación" />
-          <Leyenda color="bg-amber-500" texto="Ejecución" />
-          <Leyenda color="bg-emerald-500" texto="Comunicación" />
-          <Leyenda fondo={ROJO_FESTIVO} texto="Festivo" />
-          <Leyenda fondo={FONDO_BLOQUEADA} rayado texto="Semana Santa / Receso" />
-          <Leyenda fondo="#FFFFFF" texto="Semana que quité" />
-        </div>
-
         {!hayCronograma ? (
-          <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-[11px] leading-snug text-blue-800">
+          <p className="mt-2 flex items-start gap-1.5 rounded bg-blue-50 px-2 py-1.5 text-[11px] leading-snug text-blue-800">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-            Marque las semanas de la etapa arrastrando, o haga clic en un día para fijar esa fecha exacta. El ciclo 4-4-5 se completa solo, sin Semana Santa ni receso; pulsando el número de semana la quita o la vuelve a poner.
+            Clic en una semana para marcarla; clic en dos números (S10 y S13) para ir de una a otra.
           </p>
         ) : (
           <ResumenEtapas programadas={programadas} fechas={fechas} />
@@ -342,24 +298,21 @@ interface MesProps {
   semanas: SemanaVigencia[];
   porLunes: Map<string, SemanaProgramada>;
   etapaCampo: EtapaCronograma;
-  /** Inicio o fin: define qué fija el clic sobre un día */
-  extremo: 'inicio' | 'fin';
   /** Fecha del campo, para resaltar el día que está puesto */
   valor?: string;
   arrastre: { desde: number; hasta: number } | null;
-  /** Semana marcada con el primer clic, esperando el segundo */
+  /** Semana marcada con el primer clic en un número, esperando el segundo */
   anclaje: number | null;
   soloLectura: boolean;
   onInicioArrastre: (numero: number) => void;
   onPasarPor: (numero: number) => void;
   onSoltar: (numero: number) => void;
-  onAlternarExclusion: (semana: SemanaVigencia) => void;
-  onClicDia: (semana: SemanaVigencia, dia: string) => void;
+  onClicNumero: (semana: SemanaVigencia) => void;
 }
 
 function Mes({
-  vigencia, mes, semanas, porLunes, etapaCampo, extremo, valor, arrastre, anclaje, soloLectura,
-  onInicioArrastre, onPasarPor, onSoltar, onAlternarExclusion, onClicDia,
+  vigencia, mes, semanas, porLunes, etapaCampo, valor, arrastre, anclaje, soloLectura,
+  onInicioArrastre, onPasarPor, onSoltar, onClicNumero,
 }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
   const finMes = fechaYMD(new Date(vigencia, mes + 1, 0));
@@ -400,16 +353,12 @@ function Mes({
           // usuario queda en blanco para que se vea que no está programado.
           const estiloFila = !marcada && !excluida && bloqueada ? { backgroundImage: FONDO_BLOQUEADA } : undefined;
           const titulo = bloqueada
-            ? `${NOMBRE_BLOQUEO[semana.bloqueo!]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}): no se programa`
+            ? `${NOMBRE_BLOQUEO[semana.bloqueo!]}: no se programa`
             : excluida
-              ? `Semana ${semana.numero} fuera del cronograma`
-              : anclaje !== null
-                ? `Hasta la semana ${semana.numero} (${fechaCorta(semana.domingo)})`
-                : etapa
-                  ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]}. Clic aquí y luego en otra semana para marcar el rango`
-                  : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
-          // Pulsar el número de semana la quita del cronograma o la devuelve
-          const puedeExcluir = clickeable && (!!etapa || excluida);
+              ? `Semana ${semana.numero} desmarcada · clic para volver a marcarla`
+              : etapa
+                ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]} · clic para desmarcarla`
+                : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
 
           return (
             <tr
@@ -424,18 +373,16 @@ function Mes({
               <td className="py-0.5 pr-1 text-left">
                 <button
                   type="button"
-                  disabled={!puedeExcluir}
-                  title={
-                    puedeExcluir
-                      ? (excluida ? 'Volver a poner esta semana en el cronograma' : 'Quitar esta semana del cronograma')
-                      : undefined
-                  }
+                  disabled={!clickeable}
+                  title={anclaje === null
+                    ? `Desde la semana ${semana.numero}`
+                    : anclada ? 'Cancelar' : `De la semana ${anclaje} a la ${semana.numero}`}
                   onMouseDown={(e) => e.stopPropagation()}
                   onMouseUp={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); if (puedeExcluir) onAlternarExclusion(semana); }}
+                  onClick={(e) => { e.stopPropagation(); if (clickeable) onClicNumero(semana); }}
                   className={`rounded px-0.5 font-bold ${excluida ? 'line-through' : ''} ${
-                    bloqueada ? 'text-red-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'
-                  } ${puedeExcluir ? 'cursor-pointer hover:bg-white/80 hover:underline' : ''}`}
+                    anclada ? 'bg-[#1e5da8] text-white' : bloqueada ? 'text-red-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'
+                  } ${clickeable ? 'cursor-pointer hover:bg-white/80 hover:underline' : ''}`}
                 >
                   S{semana.numero}
                 </button>
@@ -449,14 +396,11 @@ function Mes({
                 return (
                   <td key={i} className="py-0.5 text-center">
                     <span
-                      title={festivo ? `${festivo.nombre} · festivo` : clickeable ? `Fijar el ${fecha.getDate()} como fecha de ${extremo}` : undefined}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onMouseUp={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); if (clickeable) onClicDia(semana, ymd); }}
+                      title={festivo ? `${festivo.nombre} · festivo` : undefined}
                       style={festivo ? { backgroundColor: ROJO_FESTIVO } : undefined}
                       className={`inline-flex h-5 w-5 items-center justify-center rounded ${
                         festivo ? 'font-bold text-white' : i === 6 ? 'text-gray-400' : ''
-                      } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''} ${clickeable ? 'cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
+                      } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''}`}
                     >
                       {fecha.getDate()}
                     </span>
@@ -473,7 +417,6 @@ function Mes({
 
 function ResumenEtapas({ programadas, fechas }: { programadas: SemanaProgramada[]; fechas: Partial<FechasEtapas> }) {
   const etapas: EtapaCronograma[] = ['P', 'E', 'C'];
-  // Si se fijó un día exacto, el resumen muestra ese día y no el borde de la semana
   const guardadas: Record<EtapaCronograma, { inicio?: string; fin?: string }> = {
     P: { inicio: fechas.fechaInicioPlaneacion, fin: fechas.fechaFinPlaneacion },
     E: { inicio: fechas.fechaInicioEjecucion, fin: fechas.fechaFinEjecucion },
@@ -481,28 +424,20 @@ function ResumenEtapas({ programadas, fechas }: { programadas: SemanaProgramada[
   };
 
   return (
-    <div className="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
+    <div className="mt-2 border-t border-gray-100 pt-2">
       {etapas.map((etapa) => {
         const propias = programadas.filter((p) => p.etapa === etapa);
         if (!propias.length) return null;
         const primera = propias[0].semana;
         const ultima = propias[propias.length - 1].semana;
-        const entreMedio = programadas.filter(
-          (p) => p.semana.numero > primera.numero && p.semana.numero < ultima.numero && (p.excluida || p.semana.bloqueo),
-        );
 
         return (
           <div key={etapa} className="text-[11px] leading-snug">
             <span className={`mr-1 inline-block h-2 w-2 rounded-sm ${ESTILO_ETAPA[etapa].chip}`} />
             <span className={`font-bold ${ESTILO_ETAPA[etapa].texto}`}>{NOMBRE_ETAPA[etapa]}</span>
             <span className="text-gray-700">
-              {' '}· {propias.length} sem · {fechaCorta(guardadas[etapa].inicio || primerDiaHabil(primera))} – {fechaCorta(guardadas[etapa].fin || ultima.domingo)}
+              {' '}{propias.length} sem · {fechaCorta(guardadas[etapa].inicio || primerDiaHabil(primera))} – {fechaCorta(guardadas[etapa].fin || ultima.domingo)}
             </span>
-            {entreMedio.map((p) => (
-              <span key={p.semana.lunes} className="block text-orange-700">
-                salta {p.semana.bloqueo ? NOMBRE_BLOQUEO[p.semana.bloqueo] : `la semana ${p.semana.numero}`} ({fechaCorta(p.semana.lunes)} – {fechaCorta(p.semana.domingo)})
-              </span>
-            ))}
           </div>
         );
       })}
