@@ -7509,7 +7509,11 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               ].filter(tab => tab.visible).map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setSeccion(tab.id as any)}
+                  onClick={() => {
+                    setSeccion(tab.id as any);
+                    // Si ya estaba en Seguimiento, el clic vuelve a traer el Rol 4 al día
+                    if (tab.id === 'gestion' && seccion === 'gestion') onRefetchPlan?.();
+                  }}
                   className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all relative ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
                 >
                   {tab.icon}
@@ -8305,8 +8309,11 @@ function SeccionGestionYSeguimiento({
     }
   };
 
+  // Al entrar se piden de nuevo el cumplimiento y el plan: las tareas del Rol 4
+  // salen del Programa Anual (EFDS-2133), que pudo cambiar desde Auditorías OCI
+  // mientras esta pantalla conservaba el plan que había cargado antes.
   useEffect(() => {
-    cargarCumplimiento();
+    cargarCumplimiento().then(() => onRefetchPlan?.());
   }, [vigenciaPlan]);
 
   // Refrescar cumplimiento y recargar plan (para sincronizar actividades con tipo_calculo=auditorias)
