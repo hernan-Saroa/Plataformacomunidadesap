@@ -15,6 +15,7 @@ import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { ProgramaAnualRol4TareaSyncService } from './programa-anual-rol4-tarea-sync.service';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -97,9 +98,33 @@ export class PlanAnual5RolesService {
     private readonly wizardBorradorRepository: Repository<PlanAnualWizardBorrador>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
+    private readonly rol4TareaSync: ProgramaAnualRol4TareaSyncService,
   ) {}
 
+  /**
+   * Antes de devolver un plan, el Rol 4 se pone al día con el Programa Anual de
+   * su vigencia (EFDS-2133): así refleja lo programado aunque el cambio se haya
+   * hecho desde el módulo de auditorías.
+   */
+  private async sincronizarRol4(filtro: { año?: number; planId?: string }): Promise<void> {
+    let años: number[] = filtro.año ? [filtro.año] : [];
+    if (!filtro.año) {
+      const rows: Array<{ ano: number }> = await this.dataSource
+        .query(
+          filtro.planId
+            ? `SELECT ano FROM control_interno.plan_anual_5_roles WHERE id::text = $1`
+            : `SELECT DISTINCT ano FROM control_interno.plan_anual_5_roles WHERE ano > 0`,
+          filtro.planId ? [filtro.planId] : [],
+        )
+        .catch(() => []);
+      años = rows.map((r) => Number(r.ano));
+    }
+    await this.rol4TareaSync.sincronizarVigencias(años);
+  }
+
   async findAll(year?: number, light = true): Promise<PlanAnual5Roles[]> {
+    await this.sincronizarRol4({ año: year });
+
     const query = this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
@@ -147,6 +172,8 @@ export class PlanAnual5RolesService {
   }
 
   async findOne(id: string): Promise<PlanAnual5Roles> {
+    await this.sincronizarRol4({ planId: id });
+
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
@@ -181,6 +208,8 @@ export class PlanAnual5RolesService {
   }
 
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
+    await this.sincronizarRol4({ año: year });
+
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
@@ -2377,6 +2406,8 @@ export class PlanAnual5RolesService {
       porcentajeCumplimiento: number;
     };
   }> {
+    await this.sincronizarRol4({ año });
+
     // Buscar la actividad de auditorías del Rol 4
     const actividadResult = await this.dataSource.query(`
       SELECT a.id
