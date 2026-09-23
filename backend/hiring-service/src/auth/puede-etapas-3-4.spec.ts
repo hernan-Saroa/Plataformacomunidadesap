@@ -38,9 +38,8 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   ['estudio previo', EstudioPrevioController, 'adjuntar', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'retirarAdjunto', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'reemplazarAdjunto', 'editar', '3.1'],
-  ['estudio previo', EstudioPrevioController, 'cargarDeLaLista', 'editar', '3.1'],
+  ['estudio previo', EstudioPrevioController, 'radicado', 'ver', '3.1'],
   ['estudio previo', EstudioPrevioController, 'anotarRadicado', 'editar', '3.1'],
-  ['estudio previo', EstudioPrevioController, 'anularDeLaLista', 'editar', '3.1'],
 
   ['participación', ParticipacionController, 'estado', 'ver', '3.3'],
   ['participación', ParticipacionController, 'tomar', 'editar', '3.3'],
@@ -74,6 +73,7 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   ['aprobación', AprobacionController, 'retirar', 'editar', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'estado', 'ver', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'cargar', 'editar', RUTA],
+  ['documentos de actividad', DocumentosActividadController, 'anular', 'editar', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'retirar', 'editar', RUTA],
   ['registro de actividad', RegistroActividadController, 'estado', 'ver', RUTA],
   ['registro de actividad', RegistroActividadController, 'registrar', 'editar', RUTA],

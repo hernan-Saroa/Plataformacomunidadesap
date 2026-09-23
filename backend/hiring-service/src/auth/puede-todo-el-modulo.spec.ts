@@ -46,7 +46,6 @@ const SIN_DECORADOR: Record<string, string> = {
   'EstudioPrevioController.obtener': 'participación · pendiente de decidir',
   'EstudioPrevioController.revisiones': 'participación · pendiente de decidir',
   'EstudioPrevioController.expediente': 'participación · pendiente de decidir',
-  'EstudioPrevioController.listaChequeo': 'participación · pendiente de decidir',
   // Infraestructura y lo que cada quien pregunta de sí mismo.
   'AlcanceController.mio': 'el alcance de quien pregunta',
   'FilesController.descargar': 'descarga por nombre firmado',

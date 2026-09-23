@@ -10,7 +10,6 @@ import { DataSource, EntityManager, IsNull } from 'typeorm';
 import { HiringAccess } from '../../auth/hiring-access';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { Plantilla } from '../../entities/plantilla.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';
@@ -18,6 +17,7 @@ import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { CdpService } from '../cdp/cdp.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { DocumentosActividadService } from '../documentos-actividad/documentos-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Quién puede aprobar una actividad, tal como se configuró. */
@@ -51,6 +51,8 @@ export class AprobacionService {
     private readonly cdp: CdpService,
     /** Si la actividad exige firmar con el token institucional al aprobarla (EFDS-2070). */
     private readonly cierre: CierreActividadService,
+    /** Qué documentos le faltan a la actividad, del catálogo único (EFDS-2066). */
+    private readonly catalogo: DocumentosActividadService,
   ) {}
 
   // ------------------------------------------------------ la configuración --
@@ -202,39 +204,17 @@ export class AprobacionService {
   }
 
   /**
-   * Los formatos que la actividad pide y que nadie ha entregado todavía.
+   * Los documentos obligatorios que la actividad pide y nadie ha entregado.
    *
-   * Devuelve sus códigos y no un número: «falta cargar BS-FO-101» le dice a
-   * quien aprueba qué pedir, y «falta 1 documento» no.
+   * Devuelve sus nombres y no un número: «falta cargar el memorando de
+   * solicitud» le dice a quien aprueba qué pedir, y «falta 1 documento» no.
    */
-  private async formatosPendientes(
+  private async documentosPendientes(
     em: EntityManager,
     procesoId: string,
     numeral: string,
-    modalidad: string | null,
   ): Promise<string[]> {
-    const formatos = await em.getRepository(Plantilla).find({
-      where: { numeral, activo: true },
-      order: { codigo: 'ASC' },
-    });
-
-    // Alcance vacío significa todas; es el mismo criterio con el que se listan.
-    const aplicables = formatos.filter(
-      (f) =>
-        f.modalidades.length === 0 || (modalidad !== null && f.modalidades.includes(modalidad)),
-    );
-    if (!aplicables.length) return [];
-
-    const expediente = await em.getRepository(Expediente).findOne({ where: { procesoId } });
-    if (!expediente) return aplicables.map((f) => f.codigo);
-
-    const entregados = await em.getRepository(Documento).find({
-      where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
-    });
-
-    return aplicables
-      .filter((f) => !entregados.some((d) => d.plantillaId === f.id))
-      .map((f) => f.codigo);
+    return (await this.catalogo.faltantes(procesoId, numeral, em)).map((r) => r.nombre);
   }
 
   /**
@@ -444,16 +424,17 @@ export class AprobacionService {
        */
 
       /*
-       * No se aprueba con formatos sin entregar.
+       * No se aprueba con documentos obligatorios sin entregar.
        *
        * La pantalla ya deshabilita el botón, pero eso solo protege a quien lo
-       * mira: el servicio aceptaba la aprobación de una actividad cuyo formato
-       * seguía en blanco, y el expediente quedaba dado por bueno sin el
-       * documento que lo respalda. Devolver sí sigue permitido con formatos
+       * mira: el servicio aceptaba la aprobación de una actividad cuyo
+       * documento seguía en blanco, y el expediente quedaba dado por bueno sin
+       * lo que lo respalda. Devolver sí sigue permitido con documentos
        * pendientes, porque es exactamente el caso para el que sirve devolver.
+       * Los opcionales no traban: se ofrecen, pero no se exigen.
        */
       if (decision === 'APROBADO') {
-        const faltan = await this.formatosPendientes(em, procesoId, numeral, proceso.modalidad);
+        const faltan = await this.documentosPendientes(em, procesoId, numeral);
         if (faltan.length) {
           throw new ConflictException(
             `Falta cargar ${faltan.join(', ')}: la actividad no puede aprobarse sin su soporte`,

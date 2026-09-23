@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
+import { DocumentosActividadService } from '../src/modules/documentos-actividad/documentos-actividad.service';
 import { Documento } from '../src/entities/documento.entity';
 import { Expediente } from '../src/entities/expediente.entity';
 import { CampoFormulario } from '../src/entities/campo-formulario.entity';
@@ -25,6 +26,7 @@ import { HiringAccess } from '../src/auth/hiring-access';
 describe('HU EFDS-1146 · criterios de aceptación', () => {
   let app: INestApplication;
   let service: EstudioPrevioService;
+  let catalogo: DocumentosActividadService;
   let dataSource: DataSource;
 
   const gestor: HiringAccess = {
@@ -68,19 +70,21 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
   /**
    * Remite el paquete de la lista de chequeo, que es lo que exige radicar.
    *
-   * Se lee del propio servicio en vez de listar los códigos a mano: cuáles
-   * pide cada modalidad es parámetro en base desde la 074, y fijarlos aquí
+   * Se lee del catálogo en vez de listar los códigos a mano: cuáles pide cada
+   * modalidad es parámetro en base desde la 074 —y desde EFDS-2066 incluye el
+   * estudio previo firmado, la fila de su formato—, y fijarlos aquí
    * haría que añadir un documento a la lista rompiera estas pruebas por el
    * motivo equivocado.
    */
   const remitirElPaquete = async (procesoId: string) => {
-    const paquete = await service.paqueteDeRadicacion(procesoId);
+    const paquete = await catalogo.estado(procesoId, '3.1');
 
     for (const doc of paquete.documentos) {
       if (!doc.obligatorio || doc.cargado) continue;
 
-      await service.cargarDelPaquete(
+      await catalogo.cargar(
         procesoId,
+        '3.1',
         doc.codigo,
         {
           filename: `${doc.codigo.toLowerCase()}.pdf`,
@@ -112,6 +116,7 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     await app.init();
 
     service = app.get(EstudioPrevioService);
+    catalogo = app.get(DocumentosActividadService);
     dataSource = app.get(DataSource);
   });
 

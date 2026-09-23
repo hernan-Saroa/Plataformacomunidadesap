@@ -31,8 +31,6 @@ const CONFIGURAR = { oPermiso: 'contratacion.config.manage' };
 const ESPERADO: [string, any, string, string, unknown, unknown?][] = [
   // Etapa 5 · elaboración y publicación.
   ['documentos', DocumentosController, 'estado', 'ver', '5.1'],
-  ['documentos', DocumentosController, 'cargar', 'editar', '5.1'],
-  ['documentos', DocumentosController, 'anular', 'editar', '5.1'],
   ['publicación', PublicacionController, 'estado', 'ver', '5.2'],
   ['publicación', PublicacionController, 'registrar', 'editar', '5.2'],
   ['publicación', PublicacionController, 'anular', 'editar', '5.2'],

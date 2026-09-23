@@ -52,6 +52,8 @@ describe('RegistroActividadService · con qué enlace se anuncia el soporte', ()
       { manager: em } as never,
       {} as never,
       {} as never,
+      // Sin documentos requeridos: lo que se prueba es el enlace del soporte.
+      { requeridosDe: async () => [], faltantes: async () => [] } as never,
     );
 
     const estado = await servicio.estado('proc-1', '3.2');

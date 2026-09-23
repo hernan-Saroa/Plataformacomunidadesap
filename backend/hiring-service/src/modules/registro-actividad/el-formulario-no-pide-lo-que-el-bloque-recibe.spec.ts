@@ -1,28 +1,21 @@
 import { RegistroActividadService } from './registro-actividad.service';
 
 /**
- * El formulario deja de pedir el soporte donde lo recibe el bloque de formatos.
+ * El formulario deja de pedir el soporte donde lo recibe el bloque de
+ * documentos.
  *
  * El área reportó doble carga en las catorce actividades que se cumplen por
  * registro: el formulario ofrecía «Soporte de la actividad» y el bloque de
- * documentos volvía a pedir el mismo papel. Desde que el soporte cumple el
- * formato pendiente los dos escriben el mismo adjunto, así que la pantalla
+ * documentos volvía a pedir el mismo papel. Desde que el soporte cubre el
+ * requisito pendiente los dos escriben el mismo adjunto, así que la pantalla
  * necesita saber cuál de los dos manda —eso es `tieneFormatos`—.
  */
 describe('RegistroActividadService · quién recibe el soporte de la actividad', () => {
-  const formato = (id: string, modalidades: string[] = []) => ({
-    id,
-    codigo: 'BS-FO-101',
-    nombre: 'Análisis del sector',
-    modalidades,
-    activo: true,
-  });
-
   /**
-   * El estado de una actividad de registro, con los formatos que la biblioteca
-   * le tenga asignados y lo que el expediente ya haya recibido.
+   * El estado de una actividad de registro, con lo que el catálogo le pida y
+   * lo que siga pendiente.
    */
-  const consultar = async (formatos: unknown[], entregados: unknown[]) => {
+  const consultar = async (requeridos: unknown[], faltantes: unknown[]) => {
     const porEntidad = (nombre: string) => {
       if (nombre === 'Proceso') return { modalidad: 'LICITACION_PUBLICA' };
       if (nombre === 'ActividadConSoporte') {
@@ -32,26 +25,33 @@ describe('RegistroActividadService · quién recibe el soporte de la actividad',
     };
 
     const em = {
-      // Solo lo llama `formatoPendiente`, para el expediente del proceso.
       findOne: async () => ({ id: 'exp-1' }),
       getRepository: (entidad: { name: string }) => ({
         findOne: async () => porEntidad(entidad.name),
-        find: async () => {
-          if (entidad.name === 'Plantilla') return formatos;
-          if (entidad.name === 'Documento') return entregados;
-          return [];
-        },
+        find: async () => [],
       }),
     };
 
+    const catalogo = {
+      requeridosDe: async () => requeridos,
+      faltantes: async () => faltantes,
+    };
+
     return (
-      new RegistroActividadService({ manager: em } as never, {} as never, {} as never) as unknown as {
+      new RegistroActividadService(
+        { manager: em } as never,
+        {} as never,
+        {} as never,
+        catalogo as never,
+      ) as unknown as {
         estado(procesoId: string, numeral: string): Promise<Record<string, unknown>>;
       }
     ).estado('proc-1', '3.2');
   };
 
-  it('sin formatos asignados el soporte lo sigue pidiendo el formulario', async () => {
+  const requisito = { codigo: 'BS-FO-101', nombre: 'Análisis del sector', obligatorio: true };
+
+  it('sin documentos requeridos el soporte lo sigue pidiendo el formulario', async () => {
     const estado = await consultar([], []);
 
     expect(estado.tieneFormatos).toBe(false);
@@ -59,15 +59,15 @@ describe('RegistroActividadService · quién recibe el soporte de la actividad',
     expect(estado.exigeSoporte).toBe(true);
   });
 
-  it('con un formato asignado lo recibe el bloque de documentos', async () => {
-    const estado = await consultar([formato('f1')], []);
+  it('con un documento requerido lo recibe el bloque de documentos', async () => {
+    const estado = await consultar([requisito], [requisito]);
 
     expect(estado.tieneFormatos).toBe(true);
     expect(estado.exigeSoporte).toBe(true);
   });
 
-  it('entregado el formato ya no queda nada pendiente', async () => {
-    const estado = await consultar([formato('f1')], [{ plantillaId: 'f1' }]);
+  it('entregado el documento ya no queda nada pendiente', async () => {
+    const estado = await consultar([requisito], []);
 
     // `tieneFormatos` no cambia —el bloque sigue siendo el dueño— pero la
     // exigencia se apaga: es lo que desbloquea el botón de registrar sin que
@@ -76,19 +76,13 @@ describe('RegistroActividadService · quién recibe el soporte de la actividad',
     expect(estado.exigeSoporte).toBe(false);
   });
 
-  it('el formato de otra modalidad no obliga a esta', async () => {
-    const estado = await consultar([formato('f1', ['MINIMA_CUANTIA'])], []);
-
-    expect(estado.tieneFormatos).toBe(false);
-  });
-
   /*
-   * Un formato asignado es decisión del área —alguien entró a la biblioteca y
-   * lo puso aquí—, así que la exigencia deja de ser suposición del equipo
-   * aunque la tabla siga con `confirmado` en false.
+   * Un documento requerido es decisión del área —alguien lo configuró en esta
+   * actividad—, así que la exigencia deja de ser suposición del equipo aunque
+   * la tabla siga con `confirmado` en false.
    */
-  it('el formato asignado confirma la exigencia', async () => {
+  it('el documento requerido confirma la exigencia', async () => {
     expect((await consultar([], [])).exigenciaConfirmada).toBe(false);
-    expect((await consultar([formato('f1')], [])).exigenciaConfirmada).toBe(true);
+    expect((await consultar([requisito], [])).exigenciaConfirmada).toBe(true);
   });
 });
