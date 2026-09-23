@@ -253,9 +253,62 @@ export default function LiquidacionPanel({
                 </div>
               </div>
 
+              {/* Sección 3 Oficial GF-FO-023: Liquidación de la Autorización de Desplazamiento */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                <div className="px-3 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Liquidación según Formato GF-FO-023
+                  </span>
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                    {resultado.data.decretoAplicado || 'Decreto 314 de 2026'}
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-200 text-xs">
+                  <div className="grid grid-cols-4 px-3 py-1.5 font-bold text-slate-500 text-[10px] uppercase">
+                    <span>Descripción</span>
+                    <span className="text-center">No. Días</span>
+                    <span className="text-right">Viático Diario</span>
+                    <span className="text-right">Total</span>
+                  </div>
+                  {/* Fila Pernoctados */}
+                  <div className="grid grid-cols-4 px-3 py-2 items-center bg-white text-slate-800">
+                    <span className="font-semibold text-slate-700">Pernoctados</span>
+                    <span className="text-center font-bold text-slate-600">
+                      {resultado.data.diasPernoctados ?? (esSinPernocta ? 0 : Math.floor(resultado.data.numeroDiasNoches))}
+                    </span>
+                    <span className="text-right font-medium text-slate-600">
+                      {formatearMoneda(resultado.data.tarifaDiaPernoctado ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado))}
+                    </span>
+                    <span className="text-right font-bold text-slate-800">
+                      {formatearMoneda(resultado.data.totalPernoctados ?? ((esSinPernocta ? 0 : Math.floor(resultado.data.numeroDiasNoches)) * Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado)))}
+                    </span>
+                  </div>
+                  {/* Fila No Pernoctados */}
+                  <div className="grid grid-cols-4 px-3 py-2 items-center bg-white text-slate-800">
+                    <span className="font-semibold text-slate-700">No Pernoctados</span>
+                    <span className="text-center font-bold text-slate-600">
+                      {resultado.data.diasNoPernoctados ?? 1}
+                    </span>
+                    <span className="text-right font-medium text-slate-600">
+                      {formatearMoneda(resultado.data.tarifaDiaNoPernoctado ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado * 0.5))}
+                    </span>
+                    <span className="text-right font-bold text-slate-800">
+                      {formatearMoneda(resultado.data.totalNoPernoctados ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado * 0.5))}
+                    </span>
+                  </div>
+                  {/* Fila Total Viáticos */}
+                  <div className="grid grid-cols-4 px-3 py-2 items-center bg-blue-50/70 font-bold text-blue-900 border-t border-blue-100">
+                    <span className="col-span-3">Total Viáticos</span>
+                    <span className="text-right text-sm font-black text-blue-950">
+                      {formatearMoneda(resultado.data.valorTotalViaticos)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <details className="text-xs">
                 <summary className="cursor-pointer text-slate-600 font-semibold hover:text-slate-800">
-                  Ver desglose diario
+                  Ver desglose día por día
                 </summary>
                 <div className="mt-2 space-y-1">
                   {resultado.data.desgloseCalculo.map((dia) => (

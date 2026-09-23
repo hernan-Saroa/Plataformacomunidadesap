@@ -43,10 +43,27 @@ export type PrioridadSolicitud = 'ALTA' | 'MEDIA' | 'BAJA';
  * microservicio serializa sus entidades en camelCase, por lo que el payload
  * de creación (camelCase) y las respuestas (camelCase) son consistentes.
  */
+export interface RutaItinerario {
+  id: string;
+  origenCiudad: string;
+  origenDepartamento?: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  tipoTrayecto: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+  fechaSalida: string;
+  fechaLlegada: string;
+  diasRuta: number;
+  horarioEstimadoMilitar: string; // HH:mm militar, ej: 08:30, 14:00
+  tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  requiereTiquete?: boolean;
+}
+
 export interface FormNuevaSolicitud {
   documentoComisionado: string;
   comisionadoId: string;
   objetoComision: string;
+  origenCiudad: string;
+  origenDepartamento: string;
   destinoCiudad: string;
   destinoDepartamento: string;
   fechaInicio: string;
@@ -64,6 +81,7 @@ export interface FormNuevaSolicitud {
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
   camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -194,6 +212,7 @@ export interface SolicitudComisionResponse {
     semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
   };
   camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 /**
@@ -229,6 +248,7 @@ export interface CreateSolicitudRequest {
     tipoMime?: string;
   }[];
   camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 /**
@@ -318,6 +338,7 @@ export interface SolicitudListaResponse {
   observacionesPago?: string | null;
   pagadoPorId?: string | null;
   fechaRegistroPago?: string | null;
+  itinerario?: RutaItinerario[];
 }
 
 export interface CrearObligacionDto {
@@ -524,6 +545,13 @@ export interface LiquidacionResponse {
     tarifaFinalAplicadaDia: number;
     numeroDiasNoches: number;
     valorTotalViaticos: number;
+    // Campos estructurados según Formato GF-FO-023
+    diasPernoctados?: number;
+    tarifaDiaPernoctado?: number;
+    totalPernoctados?: number;
+    diasNoPernoctados?: number;
+    tarifaDiaNoPernoctado?: number;
+    totalNoPernoctados?: number;
     desgloseCalculo: DesgloseDiaLiquidacion[];
     alertas?: string[];
   };

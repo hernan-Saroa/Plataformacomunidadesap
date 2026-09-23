@@ -96,6 +96,139 @@ export class SolicitudComisionEntity {
   })
   diasComision: number;
 
+  // ========== Autoliquidación GF-FO-023 (Decreto 314 de 2026) ==========
+  @Column({
+    name: 'dias_pernoctados',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  diasPernoctados: number | null;
+
+  @Column({
+    name: 'tarifa_dia_pernoctado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiaPernoctado: number | null;
+
+  @Column({
+    name: 'total_pernoctados',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  totalPernoctados: number | null;
+
+  @Column({
+    name: 'dias_no_pernoctados',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  diasNoPernoctados: number | null;
+
+  @Column({
+    name: 'tarifa_dia_no_pernoctado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiaNoPernoctado: number | null;
+
+  @Column({
+    name: 'total_no_pernoctados',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  totalNoPernoctados: number | null;
+
+  @Column({
+    name: 'factor_comisionado',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    default: 1.0,
+    nullable: true,
+  })
+  factorComisionado: number | null;
+
+  @Column({
+    name: 'factor_pernocta',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    default: 1.0,
+    nullable: true,
+  })
+  factorPernocta: number | null;
+
+  @Column({
+    name: 'tarifa_diaria_base',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiariaBase: number | null;
+
+  @Column({
+    name: 'tarifa_final_aplicada_dia',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaFinalAplicadaDia: number | null;
+
+  @Column({
+    name: 'salario_base_aplicado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  salarioBaseAplicado: number | null;
+
+  @Column({ name: 'decreto_aplicado', type: 'varchar', length: 100, nullable: true })
+  decretoAplicado: string | null;
+
+  @Column({
+    name: 'desglose_calculo',
+    type: 'jsonb',
+    nullable: true,
+  })
+  desgloseCalculo: Array<{
+    dia: number;
+    fecha: string;
+    valor: number;
+    pernocta: boolean;
+  }> | null;
+
+  @Column({
+    name: 'alertas_liquidacion',
+    type: 'jsonb',
+    nullable: true,
+  })
+  alertasLiquidacion: string[] | null;
+
   @Column({
     name: 'estado_solicitud',
     type: 'varchar',
@@ -388,6 +521,25 @@ export class SolicitudComisionEntity {
     default: () => "'{}'::jsonb",
   })
   camposAdicionales: Record<string, any>;
+
+  @Column({
+    name: 'itinerario',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
+  })
+  itinerario: Array<{
+    id?: string;
+    origenCiudad: string;
+    origenDepartamento?: string;
+    destinoCiudad: string;
+    destinoDepartamento: string;
+    tipoTrayecto: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+    fechaSalida: string;
+    fechaLlegada: string;
+    diasRuta: number;
+    horarioEstimadoMilitar: string;
+    tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  }>;
 
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
   documentosSoporte: DocumentoSoporteEntity[];

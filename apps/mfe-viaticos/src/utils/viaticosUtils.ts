@@ -5,6 +5,7 @@ import {
   EstadoSolicitudViatico,
   FormNuevaSolicitud,
   Geopolitica,
+  RutaItinerario,
 } from '../types/viaticos';
 
 /**
@@ -23,6 +24,8 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     documentoComisionado: '',
     comisionadoId: '',
     objetoComision: '',
+    origenCiudad: '',
+    origenDepartamento: '',
     destinoCiudad: '',
     destinoDepartamento: '',
     fechaInicio: hoyISO(),
@@ -39,6 +42,7 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     tipoComision: 'TERRESTRE',
     esInternacional: false,
     camposAdicionales: {},
+    itinerario: [],
   };
 }
 
@@ -129,8 +133,8 @@ export function formatearNombreComisionado(comisionado: Comisionado): string {
 }
 
 /**
- * Calcula los días de comisión entre dos fechas ISO (yyyy-mm-dd).
- * - Mismo día (sin pernocta): 1 día.
+ * Calcula los días de comisión entre dos fechas ISO (yyyy-mm-dd) según Formato GF-FO-023:
+ * - Mismo día (sin pernocta): 0.5 días (medio día liquidado al 50%).
  * - Con pernocta: N noches + medio día (0.5) de retorno (ej. 01 al 02 = 1.5 días).
  */
 export function calcularDiasComision(fechaInicio: string, fechaFin: string): number {
@@ -139,8 +143,92 @@ export function calcularDiasComision(fechaInicio: string, fechaFin: string): num
   const fin = new Date(`${fechaFin}T00:00:00`);
   if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) return 0;
   const diff = Math.round((fin.getTime() - ini.getTime()) / 86_400_000);
-  if (diff <= 0) return 1;
+  if (diff <= 0) return 0.5;
   return diff + 0.5;
+}
+
+/**
+ * Calcula los días de un tramo/ruta individual a partir de sus fechas.
+ * Aplica la misma lógica que calcularDiasComision (mismo día = 0.5 días, con noche = N noches + 0.5 día retorno).
+ */
+export function calcularDiasRuta(fechaSalida: string, fechaLlegada: string): number {
+  if (!fechaSalida || !fechaLlegada) return 0;
+  const ini = new Date(`${fechaSalida}T00:00:00`);
+  const fin = new Date(`${fechaLlegada}T00:00:00`);
+  if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) return 0;
+  const diff = Math.round((fin.getTime() - ini.getTime()) / 86_400_000);
+  if (diff <= 0) return 0.5;
+  return diff + 0.5;
+}
+
+/**
+ * Formatea un horario militar HH:mm de forma legible.
+ * Ej: '07:30' → '07:30 h'
+ */
+export function formatearHorarioMilitar(horario: string): string {
+  if (!horario) return '—';
+  return `${horario} h`;
+}
+
+/**
+ * Valida que una cadena tenga formato horario militar HH:mm.
+ */
+export function esHorarioMilitarValido(horario: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(horario || '');
+}
+
+/**
+ * Sincroniza los campos globales del formulario a partir del itinerario:
+ * fechaInicio (mínima fechaSalida), fechaFin (máxima fechaLlegada),
+ * diasComision (suma de diasRuta), origen/destino consolidados.
+ */
+export function sincronizarItinerarioFormulario(
+  itinerario: RutaItinerario[],
+): {
+  fechaInicio: string;
+  fechaFin: string;
+  diasComision: number;
+  origenCiudad: string;
+  origenDepartamento: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+} {
+  if (itinerario.length === 0) {
+    return {
+      fechaInicio: hoyISO(),
+      fechaFin: siguienteDiaISO(),
+      diasComision: 1,
+      origenCiudad: '',
+      origenDepartamento: '',
+      destinoCiudad: '',
+      destinoDepartamento: '',
+    };
+  }
+
+  let minFecha = new Date(itinerario[0].fechaSalida);
+  let maxFecha = new Date(itinerario[0].fechaLlegada);
+  let diasTotal = 0;
+
+  for (const ruta of itinerario) {
+    const sal = new Date(ruta.fechaSalida);
+    const leg = new Date(ruta.fechaLlegada);
+    if (!Number.isNaN(sal.getTime()) && sal < minFecha) minFecha = sal;
+    if (!Number.isNaN(leg.getTime()) && leg > maxFecha) maxFecha = leg;
+    diasTotal += ruta.diasRuta || calcularDiasRuta(ruta.fechaSalida, ruta.fechaLlegada);
+  }
+
+  const fInicio = `${minFecha.getFullYear()}-${String(minFecha.getMonth() + 1).padStart(2, '0')}-${String(minFecha.getDate()).padStart(2, '0')}`;
+  const fFin = `${maxFecha.getFullYear()}-${String(maxFecha.getMonth() + 1).padStart(2, '0')}-${String(maxFecha.getDate()).padStart(2, '0')}`;
+
+  return {
+    fechaInicio: fInicio,
+    fechaFin: fFin,
+    diasComision: diasTotal > 0 ? diasTotal : calcularDiasComision(fInicio, fFin),
+    origenCiudad: itinerario[0].origenCiudad || '',
+    origenDepartamento: itinerario[0].origenDepartamento || '',
+    destinoCiudad: itinerario[itinerario.length - 1].destinoCiudad || '',
+    destinoDepartamento: itinerario[itinerario.length - 1].destinoDepartamento || '',
+  };
 }
 
 /**
@@ -275,6 +363,7 @@ export function mapearARequestCreacion(
     esInternacional: Boolean(form.esInternacional),
     documentos,
     camposAdicionales: form.camposAdicionales ?? {},
+    itinerario: form.itinerario ?? [],
   };
 }
 

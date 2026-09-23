@@ -1,3 +1,5 @@
+import { RutaItinerarioDto } from './RutaItinerarioDto';
+
 export class SolicitudResponseDto {
   id: string;
   consecutivoUnico: string;
@@ -20,4 +22,5 @@ export class SolicitudResponseDto {
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
   camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerarioDto[];
 }

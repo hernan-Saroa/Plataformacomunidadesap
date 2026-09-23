@@ -4726,6 +4726,14 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             email: 'carlos.perez@esap.edu.co',
             telefonoContacto: '3001234567',
           },
+          diasPernoctados: 2,
+          tarifaDiaPernoctado: 300000,
+          totalPernoctados: 600000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 150000,
+          totalNoPernoctados: 150000,
+          tarifaDiariaBase: 200000,
+          decretoAplicado: 'Decreto 314 de 2026',
           documentosSoporte: [],
         };
 
@@ -4770,6 +4778,14 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             primerApellido: 'García',
             numeroDocumento: '52987654',
           },
+          diasPernoctados: 1,
+          tarifaDiaPernoctado: 250000,
+          totalPernoctados: 250000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 125000,
+          totalNoPernoctados: 125000,
+          tarifaDiariaBase: 200000,
+          decretoAplicado: 'Decreto 314 de 2026',
           documentosSoporte: [],
         };
 

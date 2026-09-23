@@ -14,6 +14,7 @@ interface Props {
   loading?: boolean;
   emptyText?: string;
   id?: string;
+  error?: string;
 }
 
 export default function SearchableSelect({
@@ -25,6 +26,7 @@ export default function SearchableSelect({
   loading = false,
   emptyText = 'Sin resultados',
   id,
+  error,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -66,7 +68,7 @@ export default function SearchableSelect({
         id={id}
         disabled={disabled || loading}
         onClick={() => !disabled && !loading && setOpen(!open)}
-        className={`${inputCls} flex items-center justify-between ${disabled || loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        className={`${inputCls} flex items-center justify-between ${disabled || loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${error ? 'border-red-300 bg-red-50' : ''}`}
       >
         <span className={selected ? 'text-slate-800' : 'text-slate-400'}>
           {selected ? selected.label : placeholder}
@@ -104,6 +106,7 @@ export default function SearchableSelect({
           </div>
         </div>
       )}
+      {error && <p className="text-[9px] text-red-600 mt-1">{error}</p>}
     </div>
   );
 }

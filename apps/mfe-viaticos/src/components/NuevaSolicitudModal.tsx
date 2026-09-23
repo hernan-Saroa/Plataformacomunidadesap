@@ -31,6 +31,7 @@ import {
   FormNuevaSolicitud,
   Geopolitica,
   ResultadoConsolidacion,
+  RutaItinerario,
   SolicitudComisionResponse,
   TicketValidationResult,
   TipoTransporteTiquete,
@@ -43,6 +44,7 @@ import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFl
 import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
+import ItinerarioBuilder from './ItinerarioBuilder';
 import { useFestivos } from '../hooks/useFestivos';
 import {
   AYUDA_OBJETO_SIIF,
@@ -59,8 +61,10 @@ import {
   mapearARequestCreacion,
   sanitizeObjetoComision,
   soloNumeros,
+  sincronizarItinerarioFormulario,
   validarAnticipacionRadicacion,
   validarFechasSolicitud,
+  siguienteDiaISO,
 } from '../utils/viaticosUtils';
 
 interface Props {
@@ -192,10 +196,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   // ========== Estado RF-LIQ-003 / RF-LIQ-004 (tiquetes y presupuesto) ==========
   const [tipoTransporte, setTipoTransporte] = useState<TipoTransporteTiquete>('AEREO');
   const [montoEstimadoTiquete, setMontoEstimadoTiquete] = useState<number>(0);
-  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá D.C.');
-  // Catálogo completo de ciudades de geopolítica para el selector de origen.
-  const [todasCiudades, setTodasCiudades] = useState<Geopolitica[]>([]);
-  const [cargandoTodasCiudades, setCargandoTodasCiudades] = useState(false);
   const [dependenciaId, setDependenciaId] = useState<string>('');
   const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
   const [validandoTiquete, setValidandoTiquete] = useState(false);
@@ -387,6 +387,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       documentoComisionado: solicitud.comisionado?.numeroDocumento || '',
       comisionadoId: solicitud.comisionadoId || solicitud.comisionado?.id || '',
       objetoComision: solicitud.objetoComision || '',
+      origenCiudad: solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
+      origenDepartamento: '',
       destinoCiudad: solicitud.destinoCiudad || '',
       destinoDepartamento: solicitud.destinoDepartamento || '',
       fechaInicio: solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : '',
@@ -411,6 +413,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         tipoMime: d.tipoMime,
       })),
       camposAdicionales: (solicitud as any).camposAdicionales || {},
+      itinerario: solicitud.itinerario || [],
     });
     if (solicitud.comisionado) {
       setComisionado(solicitud.comisionado);
@@ -453,9 +456,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setAsignacionesBasicas([]);
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
-      setOrigenCiudad('Bogotá D.C.');
-      setTodasCiudades([]);
-      setCargandoTodasCiudades(false);
       setDependenciaId('');
       setValidacionTiquete(null);
       setValidandoTiquete(false);
@@ -500,7 +500,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   if (!abierta) return null;
 
-  const actualizar = (campo: keyof FormNuevaSolicitud, valor: string | boolean | number) => {
+  const actualizar = (campo: keyof FormNuevaSolicitud, valor: string | boolean | number | RutaItinerario[]) => {
     setForm((prev) => ({ ...prev, [campo]: valor }));
   };
 
@@ -704,6 +704,31 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   }, [form.fechaInicio, form.fechaFin]);
 
+  // RF-ITIN — Sincronizar fechas y destino globales del formulario
+  // cuando el itinerario cambia (agregar/eliminar/editar tramos).
+  useEffect(() => {
+    if (form.itinerario && form.itinerario.length > 0) {
+      const sync = sincronizarItinerarioFormulario(form.itinerario);
+      setForm((prev) => {
+        const prevOrigen = prev.origenCiudad;
+        const prevDestino = prev.destinoCiudad;
+        const prevOrigenDepto = prev.origenDepartamento;
+        const prevDestinoDepto = prev.destinoDepartamento;
+        // Solo sincronizar si los campos no están poblados o provienen del itinerario
+        const nuevoOrigen = !prevOrigen || prevOrigen === prevDestino ? sync.origenCiudad : prevOrigen;
+        return {
+          ...prev,
+          origenCiudad: nuevoOrigen,
+          destinoCiudad: sync.destinoCiudad || prevDestino,
+          destinoDepartamento: sync.destinoDepartamento || prevDestinoDepto,
+          fechaInicio: sync.fechaInicio || prev.fechaInicio,
+          fechaFin: sync.fechaFin || prev.fechaFin,
+          diasComision: sync.diasComision || prev.diasComision,
+        };
+      });
+    }
+  }, [form.itinerario]);
+
   useEffect(() => {
     setForm((prev) => ({ ...prev, costoEstimadoTiquete: montoEstimadoTiquete }));
   }, [montoEstimadoTiquete]);
@@ -728,7 +753,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setValidacionTiquete(null);
       return;
     }
-    if (!form.destinoCiudad || !origenCiudad || !dependenciaId) {
+    const { origenCiudad: origenItinerario, destinoCiudad: destinoItinerario } = obtenerOrigenDestinoItinerario();
+    if (!destinoItinerario || !origenItinerario || !dependenciaId) {
       return;
     }
     if (!Number.isFinite(montoEstimadoTiquete) || montoEstimadoTiquete <= 0) {
@@ -740,8 +766,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     void viaticosService
       .validarTiquete({
         dependenciaId,
-        origenCiudad,
-        destinoCiudad: form.destinoCiudad,
+        origenCiudad: origenItinerario,
+        destinoCiudad: destinoItinerario,
         tipoTransporte,
         montoEstimadoTiquete,
       })
@@ -762,48 +788,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+}, [
     form.requiereTiquetes,
-    form.destinoCiudad,
-    origenCiudad,
+    form.itinerario,
     dependenciaId,
     tipoTransporte,
     montoEstimadoTiquete,
   ]);
-
-  // Carga el catálogo de ciudades de geopolítica para el selector de
-  // "Ciudad de origen" cuando la comisión requiere tiquetes. Por defecto el
-  // origen es la sede (Bogotá D.C.).
-  useEffect(() => {
-    if (!form.requiereTiquetes || todasCiudades.length > 0) return;
-    let activo = true;
-    setCargandoTodasCiudades(true);
-    void viaticosService
-      .obtenerTodasCiudades()
-      .then((lista) => {
-        if (!activo) return;
-        setTodasCiudades(lista || []);
-        const bogota = (lista || []).find((c) =>
-          /^bogota/i.test(String(c.nomDivGeopolitica || '').trim()),
-        );
-        if (bogota?.nomDivGeopolitica) {
-          setOrigenCiudad(bogota.nomDivGeopolitica.trim());
-        }
-      })
-      .catch((e) => {
-        if (activo) {
-          console.error('Error cargando ciudades de origen:', e);
-          setTodasCiudades([]);
-        }
-      })
-      .finally(() => {
-        if (activo) setCargandoTodasCiudades(false);
-      });
-    return () => {
-      activo = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.requiereTiquetes, todasCiudades.length]);
 
 
   const documentosObligatoriosActuales = (): string[] => {
@@ -826,10 +817,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const checklistCompleto = (): boolean =>
     documentosFaltantesActuales().length === 0 && documentosNoPdf().length === 0;
 
+  // Obtiene fechas desde el itinerario (fuente única de verdad)
+  const obtenerFechasItinerario = (): { fechaInicio: string; fechaFin: string } => {
+    if (!form.itinerario || form.itinerario.length === 0) {
+      return { fechaInicio: hoyISO(), fechaFin: siguienteDiaISO() };
+    }
+    const sync = sincronizarItinerarioFormulario(form.itinerario);
+    return { fechaInicio: sync.fechaInicio, fechaFin: sync.fechaFin };
+  };
+
+  // Obtiene origen/destino desde el itinerario
+  const obtenerOrigenDestinoItinerario = (): { origenCiudad: string; origenDepartamento: string; destinoCiudad: string; destinoDepartamento: string } => {
+    if (!form.itinerario || form.itinerario.length === 0) {
+      return { origenCiudad: '', origenDepartamento: '', destinoCiudad: '', destinoDepartamento: '' };
+    }
+    const sync = sincronizarItinerarioFormulario(form.itinerario);
+    return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
+  };
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
-      const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
+      const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+      const error = validarFechasSolicitud(fechaInicio, fechaFin);
       if (error) {
         setErrorValidacion(error);
         return;
@@ -865,7 +875,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const guardarYBorrador = async () => {
-    const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
+    const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+    const error = validarFechasSolicitud(fechaInicio, fechaFin);
     if (error) {
       setErrorValidacion(error);
       return;
@@ -877,8 +888,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setEnviando(true);
     setErrorValidacion(null);
     try {
+      const { fechaInicio, fechaFin, diasComision } = sincronizarItinerarioFormulario(form.itinerario || []);
+      const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
       const payload = mapearARequestCreacion(
-        form,
+        { ...form, fechaInicio, fechaFin, diasComision, origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento },
         comisionado,
         usuarioActual?.userId || '',
         true,
@@ -891,21 +904,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           solicitudBorrador.id,
           {
             objetoComision: form.objetoComision,
-            destinoCiudad: form.destinoCiudad,
-            destinoDepartamento: form.destinoDepartamento,
-            fechaInicio: form.fechaInicio,
-            fechaFin: form.fechaFin,
+            destinoCiudad,
+            destinoDepartamento,
+            fechaInicio,
+            fechaFin,
             rubroPresupuestal: form.rubroPresupuestal,
             prioridad: form.prioridad,
             requiereTiquetes: form.requiereTiquetes,
             montoViaticos: form.montoViaticos,
             montoGastosViaje: form.montoGastosViaje,
-            diasComision: form.diasComision,
+            diasComision,
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
             tipoComision: form.esInternacional ? 'INTERNACIONAL' : (form.tipoComision || 'TERRESTRE'),
             esInternacional: Boolean(form.esInternacional),
             camposAdicionales: form.camposAdicionales ?? {},
+            itinerario: form.itinerario ?? [],
           },
         );
         setSolicitudBorrador({
@@ -1044,7 +1058,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const finalizarSolicitud = async () => {
-    const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
+    const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+    const error = validarFechasSolicitud(fechaInicio, fechaFin);
     if (error) {
       setErrorValidacion(error);
       return;
@@ -1334,7 +1349,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           {paso === 2 && (
             <div className="space-y-4">
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
-                2. Objeto y Destino de la Comisión
+                2. Objeto e Itinerario de la Comisión
               </h4>
               {!esCampoOculto('objetoComision') && (
                 <div>
@@ -1357,137 +1372,54 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               )}
 
-              {!esCampoOculto('destinoDepartamento') && !esCampoOculto('destinoCiudad') && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls} htmlFor="destinoDepartamento">
-                      {renderLabel('destinoDepartamento', 'Departamento')}
-                    </label>
-                    <SearchableSelect
-                      id="destinoDepartamento"
-                      options={departamentos.map((d) => ({ value: d.nomDivGeopolitica, label: d.nomDivGeopolitica }))}
-                      value={form.destinoDepartamento}
-                      onChange={(nombre) => manejarCambioDepartamento(nombre)}
-                      placeholder="Seleccione un departamento..."
-                      disabled={cargandoDepartamentos}
-                      loading={cargandoDepartamentos}
-                      emptyText="No hay departamentos"
-                    />
-                    {cargandoDepartamentos && (
-                      <p className="text-[11px] text-slate-400 mt-1">Cargando departamentos...</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className={labelCls} htmlFor="destinoCiudad">
-                      {renderLabel('destinoCiudad', 'Ciudad')}
-                    </label>
-                    <SearchableSelect
-                      id="destinoCiudad"
-                      options={ciudades.map((c) => ({ value: c.nomDivGeopolitica, label: c.nomDivGeopolitica }))}
-                      value={form.destinoCiudad}
-                      onChange={(nombre) => actualizar('destinoCiudad', nombre)}
-                      placeholder="Seleccione una ciudad..."
-                      disabled={!form.destinoDepartamento || cargandoCiudades}
-                      loading={cargandoCiudades}
-                      emptyText="Primero seleccione un departamento"
-                    />
-                    {cargandoCiudades && (
-                      <p className="text-[11px] text-slate-400 mt-1">Cargando ciudades...</p>
-                    )}
-                  </div>
-                  {form.requiereTiquetes && (
-                    <div>
-                      <label className={labelCls} htmlFor="origenCiudad">
-                        {renderLabel('requiereTiquetes', 'Ciudad de origen (sede)')}
-                      </label>
-                      <SearchableSelect
-                        id="origenCiudad"
-                        options={todasCiudades.map((c) => ({
-                          value: c.nomDivGeopolitica,
-                          label: c.nomDivGeopolitica,
-                        }))}
-                        value={origenCiudad}
-                        onChange={(nombre) => setOrigenCiudad(nombre)}
-                        placeholder="Seleccione la ciudad de origen..."
-                        disabled={cargandoTodasCiudades}
-                        loading={cargandoTodasCiudades}
-                        emptyText="No hay ciudades de origen"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Ciudad desde donde inicia el viaje (sede). Por defecto Bogotá D.C.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* ========== ITINERARIO MULTIRUTA (Fuente única de fechas, ciudades y días) ========== */}
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <ItinerarioBuilder
+                  itinerario={form.itinerario || []}
+                  onChange={(itinerario) => actualizar('itinerario', itinerario)}
+                  departamentos={departamentos}
+                  ciudades={ciudades}
+                  ciudadesDepto={ciudadesDepto}
+                  cargandoCiudades={cargandoCiudades}
+                />
+              </div>
 
-              {!esCampoOculto('fechaInicio') && !esCampoOculto('fechaFin') && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {!esCampoOculto('rubroPresupuestal') && (
                   <div>
-                    <label className={labelCls} htmlFor="fechaInicio">
-                      {renderLabel('fechaInicio', 'Fecha Inicio')}
+                    <label className={labelCls} htmlFor="rubroPresupuestal">
+                      {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
                     </label>
                     <input
-                      id="fechaInicio"
-                      type="date"
-                      required={esCampoObligatorio('fechaInicio')}
-                      min={hoyISO()}
-                      value={form.fechaInicio}
-                      onChange={(e) => actualizar('fechaInicio', e.target.value)}
+                      id="rubroPresupuestal"
+                      type="text"
+                      required={esCampoObligatorio('rubroPresupuestal')}
+                      placeholder="Ej. Rubro 01"
+                      value={form.rubroPresupuestal}
+                      onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
                       className={inputCls}
                     />
                   </div>
+                )}
+                {!esCampoOculto('prioridad') && (
                   <div>
-                    <label className={labelCls} htmlFor="fechaFin">
-                      {renderLabel('fechaFin', 'Fecha Fin')}
+                    <label className={labelCls} htmlFor="prioridad">
+                      {renderLabel('prioridad', 'Prioridad')}
                     </label>
-                    <input
-                      id="fechaFin"
-                      type="date"
-                      required={esCampoObligatorio('fechaFin')}
-                      value={form.fechaFin}
-                      onChange={(e) => actualizar('fechaFin', e.target.value)}
-                      className={inputCls}
+                    <SearchableSelect
+                      id="prioridad"
+                      options={[
+                        { value: 'ALTA', label: 'Alta' },
+                        { value: 'MEDIA', label: 'Media' },
+                        { value: 'BAJA', label: 'Baja' },
+                      ]}
+                      value={form.prioridad}
+                      onChange={(valor) => actualizar('prioridad', valor)}
+                      placeholder="Seleccione prioridad"
                     />
                   </div>
-                </div>
-              )}
-
-              {!esCampoOculto('rubroPresupuestal') && (
-                <div>
-                  <label className={labelCls} htmlFor="rubroPresupuestal">
-                    {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
-                  </label>
-                  <input
-                    id="rubroPresupuestal"
-                    type="text"
-                    required={esCampoObligatorio('rubroPresupuestal')}
-                    placeholder="Ej. Rubro 01"
-                    value={form.rubroPresupuestal}
-                    onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-              )}
-
-              {!esCampoOculto('prioridad') && (
-                <div>
-                  <label className={labelCls} htmlFor="prioridad">
-                    {renderLabel('prioridad', 'Prioridad')}
-                  </label>
-                  <SearchableSelect
-                    id="prioridad"
-                    options={[
-                      { value: 'ALTA', label: 'Alta' },
-                      { value: 'MEDIA', label: 'Media' },
-                      { value: 'BAJA', label: 'Baja' },
-                    ]}
-                    value={form.prioridad}
-                    onChange={(valor) => actualizar('prioridad', valor)}
-                    placeholder="Seleccione prioridad"
-                  />
-                </div>
-              )}
+                )}
+              </div>
 
               {(!esCampoOculto('montoViaticos') || !esCampoOculto('montoGastosViaje') || !esCampoOculto('diasComision')) && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
@@ -1561,17 +1493,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           type="text"
                           readOnly
                           aria-readonly="true"
-                          title="Calculado automáticamente según las fechas del viaje (no editable)"
+                          title="Calculado automáticamente desde el itinerario (no editable)"
                           required={esCampoObligatorio('diasComision')}
-                          value={formatearDiasComision(Number(form.diasComision ?? calcularDiasComision(form.fechaInicio, form.fechaFin)))}
+                          value={formatearDiasComision(Number(form.diasComision))}
                           className={`${inputCls} pl-9 pr-14 font-bold bg-slate-100 text-slate-800 cursor-not-allowed`}
                         />
                         <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400">
-                          ({Number(form.diasComision ?? calcularDiasComision(form.fechaInicio, form.fechaFin))} d)
+                          ({Number(form.diasComision)} d)
                         </span>
                       </div>
                       <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                        <Calculator className="w-3 h-3" /> Automático (Fechas / Autoliquidador)
+                        <Calculator className="w-3 h-3" /> Automático (Itinerario)
                       </span>
                     </div>
                   )}
@@ -1606,7 +1538,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               )}
 
-              {comisionado?.tipoComisionado && !esCampoOculto('destinoDepartamento') && (
+              {comisionado?.tipoComisionado && (
                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
                   <input
                     type="checkbox"
@@ -1730,13 +1662,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                          </p>
                        </div>
 
-                       <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mb-3">
-                         <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                         <span className="text-slate-400 font-semibold">Itinerario:</span>
-                         <span className="font-bold text-slate-700">{origenCiudad || '—'}</span>
-                         <span className="text-slate-400">→</span>
-                         <span className="font-bold text-slate-700">{form.destinoCiudad || 'Ciudad de destino'}</span>
-                       </div>
+<div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mb-3">
+                          <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span className="text-slate-400 font-semibold">Itinerario:</span>
+                          <span className="font-bold text-slate-700">{obtenerOrigenDestinoItinerario().origenCiudad || '—'}</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="font-bold text-slate-700">{form.destinoCiudad || 'Ciudad de destino'}</span>
+                        </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                            {puedeElegirDependencia() ? (
@@ -2068,11 +2000,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                  </span>
                </label>
 
-               {errorValidacion && (
-                <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
-                  {errorValidacion}
-                </p>
-              )}
+{errorValidacion && (
+                  <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
+                    {errorValidacion}
+                  </p>
+                )}
 
               <div className="pt-2 flex justify-between items-center">
                 <button
@@ -2332,16 +2264,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
                   </div>
                 )}
-                {form.salarioBasico > 0 && (
+                {(form.salarioBasico ?? 0) > 0 && (
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="text-slate-400 font-bold">Salario básico mensual</span>
-                    <span className="font-semibold text-slate-800">{formatearMoneda(form.salarioBasico)}</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.salarioBasico ?? 0)}</span>
                   </div>
                 )}
-                {form.costoEstimadoTiquete > 0 && (
+                {(form.costoEstimadoTiquete ?? 0) > 0 && (
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="text-slate-400 font-bold">Costo estimado del tiquete</span>
-                    <span className="font-semibold text-slate-800">{formatearMoneda(form.costoEstimadoTiquete)}</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.costoEstimadoTiquete ?? 0)}</span>
                   </div>
                 )}
                 {!esCampoOculto('montoViaticos') && !esCampoOculto('montoGastosViaje') && (
@@ -2388,6 +2320,37 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       </div>
                     );
                   })}
+                {form.itinerario && form.itinerario.length > 0 && (
+                  <div className="px-4 py-2.5">
+                    <span className="text-slate-400 font-bold block mb-2">Itinerario — {form.itinerario.length} tramo{form.itinerario.length > 1 ? 's' : ''}</span>
+                    <div className="space-y-1.5">
+                      {form.itinerario.map((ruta, idx) => (
+                        <div key={ruta.id} className="flex flex-wrap items-center gap-1.5 text-[10px] bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5">
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#003DA5] text-white text-[8px] font-black">{idx + 1}</span>
+                          <span className="font-bold text-slate-700">{ruta.origenCiudad || 'Origen'}</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="font-bold text-slate-700">{ruta.destinoCiudad || 'Destino'}</span>
+                          <span className="text-slate-400">·</span>
+                          <span className="text-slate-600">{ruta.fechaSalida} al {ruta.fechaLlegada}</span>
+                          <span className="text-slate-400">·</span>
+                          <span className="inline-flex items-center gap-0.5 text-slate-600">
+                            ⏰ {ruta.horarioEstimadoMilitar || '—'}
+                          </span>
+                          <span className="text-slate-400">·</span>
+                          <span className="text-slate-600">{ruta.diasRuta} d</span>
+                          <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-slate-200 text-slate-600">
+                            {ruta.tipoTrayecto === 'SOLO_IDA' ? 'IDA' : 'ID/VUELTA'}
+                          </span>
+                          {ruta.tipoTransporte && (
+                            <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-blue-100 text-blue-700">
+                              {ruta.tipoTransporte}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="px-4 py-2.5">
                   <span className="text-slate-400 font-bold block mb-1">Soportes obligatorios</span>
                   <div className="flex flex-wrap gap-1.5">

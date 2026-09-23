@@ -13,6 +13,7 @@ import {
   FileText,
   Lock,
   Plane,
+  Route,
   Send,
   ShieldCheck,
   Wallet,
@@ -22,13 +23,16 @@ import {
   ResumenConsolidacion,
   ResultadoConsolidacion,
   SolicitudComisionResponse,
+  RutaItinerario,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import {
   esPdfMime,
   formatearMoneda,
   formatearNombreComisionado,
+  formatearHorarioMilitar,
   inferirTipoMime,
+  sincronizarItinerarioFormulario,
 } from '../utils/viaticosUtils';
 
 /**
@@ -265,6 +269,16 @@ export default function ConsolidacionExpediente({
         </div>
       </section>
 
+      {/* Itinerario multiruta — desglose de tramos */}
+      {(solicitud as any).itinerario && (solicitud as any).itinerario.length > 0 && (
+        <section className="border border-slate-200 rounded-xl p-4 space-y-3">
+          <SectionTitle icon={<Route className="w-4 h-4 text-[#003DA5]" />} title="Itinerario — Desglose de Tramos" />
+          <ItinerarioDesglose
+            rutas={(solicitud as any).itinerario as RutaItinerario[]}
+          />
+        </section>
+      )}
+
       {/* Tarjeta 2 — Financiera (desglose del Autoliquidador) */}
       <section className="border border-slate-200 rounded-xl p-4 space-y-3">
         <SectionTitle icon={<Wallet className="w-4 h-4" />} title="Liquidación financiera — Autoliquidador" />
@@ -474,6 +488,95 @@ function Row({
       <span className={strong ? 'font-black text-slate-800' : 'font-bold text-slate-700'}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function DesgloseGeneral({ rutas }: { rutas: RutaItinerario[] }) {
+  const sync = sincronizarItinerarioFormulario(rutas);
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 p-2.5 bg-[#003DA5]/5 border border-[#003DA5]/10 rounded-xl">
+      <div>
+        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Origen</p>
+        <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.origenCiudad || '—'}</p>
+      </div>
+      <div>
+        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Destino</p>
+        <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.destinoCiudad || '—'}</p>
+      </div>
+      <div>
+        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Fecha Inicio</p>
+        <p className="text-[11px] font-semibold text-slate-800">{sync.fechaInicio || '—'}</p>
+      </div>
+      <div>
+        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Fecha Fin</p>
+        <p className="text-[11px] font-semibold text-slate-800">{sync.fechaFin || '—'}</p>
+      </div>
+    </div>
+  );
+}
+
+function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
+  return (
+    <div>
+      <DesgloseGeneral rutas={rutas} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {rutas.map((ruta, idx) => (
+          <div
+            key={ruta.id}
+            className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-[#003DA5] text-white flex items-center justify-center text-[9px] font-black">
+                {idx + 1}
+              </div>
+              <p className="text-[11px] font-bold text-slate-800">
+                {ruta.origenCiudad || 'Origen'} → {ruta.destinoCiudad || 'Destino'}
+              </p>
+              <span className="ml-auto text-[9px] font-bold text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                Tramo {idx + 1}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+              <div>
+                <span className="text-slate-500">Fechas:</span>{' '}
+                <span className="font-semibold text-slate-700">{ruta.fechaSalida} – {ruta.fechaLlegada}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Días:</span>{' '}
+                <span className="font-semibold text-slate-700">{ruta.diasRuta} día(s)</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Horario:</span>{' '}
+                <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
+                  <span>⏰</span>
+                  {ruta.horarioEstimadoMilitar || '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Trayecto:</span>{' '}
+                <span className="font-semibold text-slate-700">
+                  {ruta.tipoTrayecto === 'SOLO_IDA' ? 'Solo Ida' : 'Ida y Vuelta'}
+                </span>
+              </div>
+              {ruta.tipoTransporte && (
+                <div className="col-span-2">
+                  <span className="text-slate-500">Transporte:</span>{' '}
+                  <span
+                    className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${
+                      ruta.tipoTransporte === 'AEREO'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {ruta.tipoTransporte}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

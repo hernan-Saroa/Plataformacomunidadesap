@@ -471,7 +471,7 @@ describe('LiquidationService - unit by process', () => {
   });
 
   describe('5) Cálculo de días/noches', () => {
-    it('sin pernocta cuenta 1 día', async () => {
+    it('sin pernocta cuenta 0.5 días según formato GF-FO-023', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -494,7 +494,10 @@ describe('LiquidationService - unit by process', () => {
         destinoCiudad: 'Bogotá',
       });
 
-      expect(result.data.numeroDiasNoches).toBe(1);
+      expect(result.data.numeroDiasNoches).toBe(0.5);
+      expect(result.data.diasPernoctados).toBe(0);
+      expect(result.data.diasNoPernoctados).toBe(1);
+      expect(result.data.totalNoPernoctados).toBe(167760);
     });
 
     it('con pernocta cuenta diferencia de días más medio día de retorno', async () => {

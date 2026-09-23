@@ -22,6 +22,13 @@ export class LiquidacionResponseDto {
     tarifaFinalAplicadaDia: number;
     numeroDiasNoches: number;
     valorTotalViaticos: number;
+    // Campos estructurados según Formato GF-FO-023
+    diasPernoctados?: number;
+    tarifaDiaPernoctado?: number;
+    totalPernoctados?: number;
+    diasNoPernoctados?: number;
+    tarifaDiaNoPernoctado?: number;
+    totalNoPernoctados?: number;
     desgloseCalculo: DesgloseDiaDto[];
     alertas?: string[];
   };

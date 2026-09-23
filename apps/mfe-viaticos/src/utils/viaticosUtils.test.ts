@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { calcularDiasComision, formatearDiasComision } from './viaticosUtils';
 
 describe('calcularDiasComision', () => {
-  it('debe retornar 1 si es el mismo día (sin pernocta)', () => {
-    expect(calcularDiasComision('2026-10-01', '2026-10-01')).toBe(1);
+  it('debe retornar 0.5 si es el mismo día (sin pernocta según formato GF-FO-023)', () => {
+    expect(calcularDiasComision('2026-10-01', '2026-10-01')).toBe(0.5);
   });
 
   it('debe retornar 1.5 si es del 01-10 al 02-10 (1 noche + medio día retorno)', () => {

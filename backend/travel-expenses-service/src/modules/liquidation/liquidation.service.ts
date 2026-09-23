@@ -243,9 +243,13 @@ export class LiquidationService {
       );
     }
 
-    const tarifaFinalAplicadaDia = Math.round(
-      tarifaDiariaBase * factorComisionado * factorPernocta,
-    );
+    const tarifaDiaPernoctado = Math.round(tarifaDiariaBase * factorComisionado);
+    const tarifaDiaNoPernoctado = Math.round(tarifaDiaPernoctado * 0.5);
+
+    const tarifaFinalAplicadaDia = dto.pernocta
+      ? tarifaDiaPernoctado
+      : tarifaDiaNoPernoctado;
+
     const numeroDiasNoches = this.calcularDiasNoches(
       fechaInicio,
       fechaFin,
@@ -262,6 +266,28 @@ export class LiquidationService {
       0,
     );
 
+    // Desglose según Formato GF-FO-023:
+    // - Pernoctados: N noches completas al 100% de la tarifa del comisionado.
+    // - No Pernoctados: 1 día al 50% de la tarifa (sea comisión de 1 solo día sin pernocta o el día de retorno con pernocta).
+    let diasPernoctados = 0;
+    let totalPernoctados = 0;
+    let diasNoPernoctados = 0;
+    let totalNoPernoctados = 0;
+
+    if (!dto.pernocta) {
+      diasPernoctados = 0;
+      totalPernoctados = 0;
+      diasNoPernoctados = 1;
+      totalNoPernoctados = tarifaDiaNoPernoctado;
+    } else {
+      const diffMs = fechaFin.getTime() - fechaInicio.getTime();
+      const diffDias = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+      diasPernoctados = diffDias;
+      totalPernoctados = diasPernoctados * tarifaDiaPernoctado;
+      diasNoPernoctados = 1; // Medio día de regreso
+      totalNoPernoctados = tarifaDiaNoPernoctado;
+    }
+
     return {
       success: true,
       data: {
@@ -273,6 +299,12 @@ export class LiquidationService {
         tarifaFinalAplicadaDia,
         numeroDiasNoches,
         valorTotalViaticos,
+        diasPernoctados,
+        tarifaDiaPernoctado,
+        totalPernoctados,
+        diasNoPernoctados,
+        tarifaDiaNoPernoctado,
+        totalNoPernoctados,
         desgloseCalculo: desglose,
         alertas: alertas.length > 0 ? alertas : undefined,
       },
@@ -295,8 +327,8 @@ export class LiquidationService {
   }
 
   /**
-   * Calcula el número de días y noches de la comisión.
-   * - Sin pernocta (mismo día): retorna 1 (o 0.5 según pernocta).
+   * Calcula el número de días y noches de la comisión según el Formato GF-FO-023:
+   * - Sin pernocta (mismo día): retorna 0.5 días (medio día liquidado al 50%).
    * - Con pernocta: se reconocen N noches completas (1.0 cada una)
    *   más 0.5 día por el retorno sin pernocta (ej: 01 al 02 = 1 noche + 0.5 = 1.5 días).
    */
@@ -305,10 +337,10 @@ export class LiquidationService {
     fechaFin: Date,
     pernocta: boolean,
   ): number {
-    if (!pernocta) return 1;
+    if (!pernocta) return 0.5;
     const diffMs = fechaFin.getTime() - fechaInicio.getTime();
     const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDias <= 0) return 1;
+    if (diffDias <= 0) return 0.5;
     // N noches completas + 0.5 día de regreso
     return diffDias + 0.5;
   }
