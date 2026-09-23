@@ -22,6 +22,7 @@ import {
   CargarPiezaAudienciaDto,
   CelebrarAudienciaDto,
 } from './dto/audiencia.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
  * Audiencia de adjudicación y apertura del sobre económico — actividades 7.1 y
@@ -37,8 +38,8 @@ import {
  */
 @Injectable()
 export class AudienciaService extends AdjudicacionBase {
-  constructor(dataSource: DataSource) {
-    super(dataSource);
+  constructor(dataSource: DataSource, cierre: CierreActividadService) {
+    super(dataSource, cierre);
   }
 
   // ------------------------------------------------------------- consulta --
@@ -146,7 +147,7 @@ export class AudienciaService extends AdjudicacionBase {
         }),
       );
 
-      await this.marcarActividad(em, procesoId, NUMERAL_AUDIENCIA, true, acceso);
+      await this.marcarActividad(em, procesoId, NUMERAL_AUDIENCIA, true, acceso, dto.firma);
       await this.traza(em, procesoId, audiencia.id, 'audiencia_adjudicacion', 'CELEBRAR', acceso, {
         actividad: NUMERAL_AUDIENCIA,
         celebradaAt: dto.celebradaAt,
@@ -299,7 +300,7 @@ export class AudienciaService extends AdjudicacionBase {
         }),
       );
 
-      await this.marcarActividad(em, procesoId, NUMERAL_SOBRE_ECONOMICO, true, acceso);
+      await this.marcarActividad(em, procesoId, NUMERAL_SOBRE_ECONOMICO, true, acceso, dto.firma);
       await this.traza(em, procesoId, sobre.id, 'sobre_economico', 'ABRIR', acceso, {
         actividad: NUMERAL_SOBRE_ECONOMICO,
         oferta: oferta.numero,

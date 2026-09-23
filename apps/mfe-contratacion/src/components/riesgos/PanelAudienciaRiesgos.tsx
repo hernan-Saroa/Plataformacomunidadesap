@@ -3,16 +3,20 @@ import { FileText, Paperclip, ShieldAlert, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoAudienciaRiesgos } from '../../types';
+import { EstadoAudienciaRiesgos, EvidenciaFirmaOtp } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Titulo } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
 import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '5.5';
 
 /**
  * Actividad 5.5 · Audiencia de asignación de riesgos (EFDS-1153).
@@ -23,6 +27,8 @@ interface Props {
  * llegue a la 5.7 y se encuentre bloqueado sin saber por qué.
  */
 export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Registrar la audiencia de asignación de riesgos');
   const [estado, setEstado] = useState<EstadoAudienciaRiesgos | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +54,7 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
     leer();
   }, [procesoId]);
 
-  const registrar = async () => {
+  const registrar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!fecha || !acta || !matriz) return;
 
     setGuardando(true);
@@ -59,6 +65,7 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
           { fechaCelebracion: fecha, observaciones: observaciones.trim() || undefined },
           acta,
           matriz,
+          firmaOtp,
         ),
       );
       setActa(null);
@@ -74,7 +81,12 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
   };
 
   const anular = async () => {
-    const motivo = window.prompt('¿Por qué se anula la audiencia registrada?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Anular la audiencia de riesgos',
+      etiqueta: 'Motivo de la anulación',
+      confirmar: 'Anular la audiencia',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -252,11 +264,13 @@ export function PanelAudienciaRiesgos({ procesoId, onCambio }: Props) {
         <Boton
           icono={<ShieldAlert className="w-3.5 h-3.5" />}
           disabled={!listo || guardando}
-          onClick={registrar}
+          onClick={() => firma.conFirma(registrar)}
         >
           {guardando ? 'Registrando…' : 'Registrar la audiencia'}
         </Boton>
       </Permitido>
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

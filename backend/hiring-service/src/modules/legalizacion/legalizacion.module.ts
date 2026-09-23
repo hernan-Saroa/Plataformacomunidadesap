@@ -13,6 +13,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Documento,
       Expediente,
     ]),
+    CierreActividadModule,
   ],
   controllers: [LegalizacionController],
   providers: [LegalizacionService],

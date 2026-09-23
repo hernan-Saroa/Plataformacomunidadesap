@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoParticipacion, EstadoRespaldo } from '../../types';
 import { momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 import {
   Aviso,
   Boton,
@@ -47,6 +48,7 @@ function aNumero(texto: string): number | null {
  * otra daría igual y el usuario no sabría dónde está parado.
  */
 export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props) {
+  const firma = useFirma(numeral, `Actividad ${numeral} del CDP`);
   const [respaldo, setRespaldo] = useState<EstadoRespaldo | null>(null);
   /**
    * Quién lleva la solicitud, que no vive en el estado del respaldo.
@@ -259,9 +261,11 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
           <Boton
             disabled={trabajando || !rubro.trim()}
             onClick={() =>
-              ejecutar(
-                () => contratacionService.verificarCdp(procesoId, rubro.trim()),
-                'Disponibilidad verificada',
+              firma.conFirma((firmaOtp) =>
+                ejecutar(
+                  () => contratacionService.verificarCdp(procesoId, rubro.trim(), firmaOtp),
+                  'Disponibilidad verificada',
+                ),
               )
             }
             icono={<Landmark className="w-3.5 h-3.5" />}
@@ -291,6 +295,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
             Rechazar solicitud
           </BotonSecundario>
         </div>
+        {firma.modal}
       </Marco>
     );
   }
@@ -379,21 +384,25 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
         <Boton
           disabled={trabajando || !numero.trim() || !rubro.trim() || aNumero(valorTexto) === null}
           onClick={() =>
-            ejecutar(
-              () =>
-                contratacionService.expedirCdp(procesoId, {
-                  numero: numero.trim(),
-                  valor: aNumero(valorTexto)!,
-                  fechaExpedicion: fecha,
-                  rubro: rubro.trim(),
-                }),
-              'CDP expedido',
+            firma.conFirma((firmaOtp) =>
+              ejecutar(
+                () =>
+                  contratacionService.expedirCdp(procesoId, {
+                    numero: numero.trim(),
+                    valor: aNumero(valorTexto)!,
+                    fechaExpedicion: fecha,
+                    rubro: rubro.trim(),
+                    firma: firmaOtp,
+                  }),
+                'CDP expedido',
+              ),
             )
           }
           icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
         >
           Registrar expedición
         </Boton>
+        {firma.modal}
       </Marco>
     );
   }
@@ -423,13 +432,16 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
         type="file"
         className="hidden"
         accept=".pdf,.doc,.docx,.xls,.xlsx"
-        onChange={(e) =>
-          e.target.files?.[0] &&
-          ejecutar(
-            () => contratacionService.adjuntarCdp(procesoId, e.target.files![0]),
-            'Soporte del CDP adjuntado',
-          )
-        }
+        onChange={(e) => {
+          const archivo = e.target.files?.[0];
+          if (!archivo) return;
+          firma.conFirma((firmaOtp) =>
+            ejecutar(
+              () => contratacionService.adjuntarCdp(procesoId, archivo, firmaOtp),
+              'Soporte del CDP adjuntado',
+            ),
+          );
+        }}
       />
       <button
         type="button"
@@ -440,6 +452,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
         <Paperclip className="w-3.5 h-3.5" />
         Seleccionar archivo
       </button>
+      {firma.modal}
     </Marco>
   );
 }

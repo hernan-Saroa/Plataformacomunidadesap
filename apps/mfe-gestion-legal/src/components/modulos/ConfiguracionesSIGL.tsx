@@ -3824,6 +3824,8 @@ export function ConfiguracionesSIGL() {
                             index={index}
                             onUpdate={actualizarEstado}
                             onDelete={solicitarEliminarEstado}
+                            roles={roles}
+                            usuarios={usuarios}
                           />
                         ))}
                       </div>
@@ -5593,7 +5595,7 @@ export function ConfiguracionesSIGL() {
 
 // ============ COMPONENTE ESTADO SORTABLE ============
 
-function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoKanban, index: number, onUpdate: (estadoId: string, cambios: Partial<EstadoKanban>) => void, onDelete: (estadoId: string) => void }) {
+function EstadoSortable({ estado, index, onUpdate, onDelete, roles = [], usuarios = [] }: { estado: EstadoKanban, index: number, onUpdate: (estadoId: string, cambios: Partial<EstadoKanban>) => void, onDelete: (estadoId: string) => void, roles?: any[], usuarios?: any[] }) {
   const {
     attributes,
     listeners,
@@ -5654,6 +5656,71 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
             <Trash2 className="w-4 h-4" />
           </button>
         )}
+      </div>
+
+      {/* Fila 2: quién aprueba/firma en esta etapa.
+          Es la misma parametrización que ya existía en los tableros por tipo de proceso, pero
+          faltaba aquí: Juzgamiento Disciplinario y Asesoría Jurídica usan este Kanban General,
+          así que sin este control no había forma de definir quién firma en esas etapas. */}
+      <div className="flex flex-wrap items-end gap-2 sm:gap-3 mt-3 pt-3 border-t border-gray-200/80">
+        <div className="flex flex-col gap-1" style={{ flex: '1.2 1 160px', minWidth: '140px' }}>
+          <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Aprobación / Firma</label>
+          <select
+            disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+            value={estado.aprobacionTipo || 'ninguno'}
+            onChange={(e) => {
+              const val = e.target.value as EstadoKanban['aprobacionTipo'];
+              onUpdate(estado.id, {
+                aprobacionTipo: val,
+                aprobacionRol: val === 'rol' ? (roles[0]?.code || roles[0]?.name || '') : undefined,
+                aprobacionUsuario: val === 'usuario' ? (usuarios[0]?.id || '') : undefined
+              });
+            }}
+            className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
+            style={{ height: '32px' }}
+          >
+            <option value="ninguno">Ninguna (no requiere firma)</option>
+            <option value="rol">Por Rol</option>
+            <option value="usuario">Por Usuario</option>
+          </select>
+        </div>
+
+        {estado.aprobacionTipo === 'rol' && (
+          <div className="flex flex-col gap-1" style={{ flex: '1.5 1 180px', minWidth: '150px' }}>
+            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Rol que Firma</label>
+            <select
+              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+              value={estado.aprobacionRol || ''}
+              onChange={(e) => onUpdate(estado.id, { aprobacionRol: e.target.value })}
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
+              style={{ height: '32px' }}
+            >
+              <option value="">Seleccione un Rol...</option>
+              {roles.map((r: any) => (
+                <option key={r.id} value={r.code || r.name}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {estado.aprobacionTipo === 'usuario' && (
+          <div className="flex flex-col gap-1" style={{ flex: '1.5 1 180px', minWidth: '150px' }}>
+            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Usuario que Firma</label>
+            <SearchableUserSelect
+              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+              selectedValue={estado.aprobacionUsuario || ''}
+              onChange={(val) => onUpdate(estado.id, { aprobacionUsuario: val })}
+              usuarios={usuarios}
+            />
+          </div>
+        )}
+
+        <p className="text-[10px] text-gray-500 flex-1 min-w-[180px]">
+          Si se deja en "Ninguna", esta etapa no exige firma y el botón de firmar no se muestra a
+          ningún rol.
+        </p>
       </div>
     </div>
   );

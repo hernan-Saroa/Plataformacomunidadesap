@@ -1,9 +1,25 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { HiringAccess } from '../../auth/hiring-access';
-import { ParticipacionService } from '../participacion/participacion.service';
+import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
+import { Campana } from '../notificaciones/campana';
+import { ParticipacionService } from '../participacion/participacion.service';
+import { plazoDeActividad } from './plazos-actividad';
+import {
+  ClaveParametroAlerta,
+  PARAMETROS_POR_DEFECTO,
+  ParametrosAlertaService,
+} from './parametros-alerta.service';
+
+/** De qué parámetro sale la anticipación de cada vencimiento. */
+const ANTICIPACION_DE: Record<string, ClaveParametroAlerta> = {
+  AMPARO: 'anticipacion_amparo',
+  CDP: 'anticipacion_cdp',
+  REGISTRO_PRESUPUESTAL: 'anticipacion_rp',
+  LIQUIDACION: 'anticipacion_liquidacion',
+};
 
 /** Cuántos días antes se avisa, si nadie lo dice. */
 export const ANTICIPACION_POR_DEFECTO = 30;
@@ -81,7 +97,26 @@ export type TipoAlerta =
    * `notificar` la expande a una por cada cuenta que pueda resolverla, en vez
    * de descartarla como al resto de lo que llega sin destinatario.
    */
-  | 'CDP_SIN_ATENDER';
+  | 'CDP_SIN_ATENDER'
+  /**
+   * Una actividad con plazo que está por vencer o ya se venció (EFDS-1183).
+   *
+   * Sus días se cuentan hábiles, no calendario como los demás: así se acordó
+   * para los plazos de las actividades.
+   */
+  | 'PLAZO_ACTIVIDAD';
+
+/** Una actividad cuyo plazo aprieta o ya pasó. */
+export interface PlazoDeActividad {
+  procesoId: string;
+  radicado: string | null;
+  numeral: string;
+  nombre: string;
+  vence: string;
+  /** Días hábiles; negativo cuando ya se venció. */
+  restantes: number;
+  estado: 'VENCIDO' | 'POR_VENCER';
+}
 
 /**
  * Días que faltan para la fecha. Negativo si ya pasó.
@@ -169,20 +204,37 @@ export class AlertasService {
      * sitio, o el aviso y la bandeja acabarán discrepando sobre lo mismo.
      */
     private readonly participacion: ParticipacionService,
+    @Optional() private readonly parametros?: ParametrosAlertaService,
   ) {}
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   }
 
+  /** Los plazos configurados, o los de siempre si no hay servicio de parámetros. */
+  private async plazos(): Promise<Record<ClaveParametroAlerta, number>> {
+    if (this.parametros) return this.parametros.valores();
+    return Object.fromEntries(PARAMETROS_POR_DEFECTO.map((p) => [p.clave, p.valor])) as Record<
+      ClaveParametroAlerta,
+      number
+    >;
+  }
+
   /**
-   * Todo lo que vence dentro de la anticipación pedida, y lo ya vencido.
+   * Todo lo que vence dentro de la anticipación, y lo ya vencido.
+   *
+   * `anticipacion` en `null` usa la configurada para cada tipo de vencimiento;
+   * con un número, la pantalla la fija igual para todos, que es lo que hace el
+   * selector de 15, 30, 60 o 90 días.
    *
    * Una sola consulta por tipo y no una por proceso: quien vigila los
    * vencimientos los mira todos juntos, no proceso por proceso.
    */
-  async listar(anticipacion: number, acceso: HiringAccess): Promise<Alerta[]> {
+  async listar(anticipacion: number | null, acceso: HiringAccess): Promise<Alerta[]> {
     const hoy = this.hoy();
+    const plazos = await this.plazos();
+    const anticipacionDe = (tipo: string) =>
+      anticipacion ?? plazos[ANTICIPACION_DE[tipo]] ?? ANTICIPACION_POR_DEFECTO;
 
     const [
       amparos,
@@ -192,15 +244,31 @@ export class AlertasService {
       devueltas,
       sinAbogado,
       cdpSinAtender,
+      plazosActividad,
     ] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
       this.liquidacionesPendientes(),
       this.aprobacionesPendientes(acceso),
       this.devueltasParaCorregir(acceso),
-      this.procesosSinAbogado(hoy),
+      this.procesosSinAbogado(hoy, plazos.tolerancia_sin_abogado, acceso),
       this.solicitudesDeCdpSinAtender(hoy),
+      this.plazosDeActividades(acceso),
     ]);
+
+    const conPlazo: Alerta[] = plazosActividad.map((p) => ({
+      tipo: 'PLAZO_ACTIVIDAD' as const,
+      procesoId: p.procesoId,
+      radicado: p.radicado,
+      contrato: null,
+      descripcion: `${p.numeral} · ${p.nombre}`,
+      vence: p.vence,
+      diasRestantes: p.restantes,
+      estado: p.estado,
+      responsable: null,
+      responsableEmail: null,
+      responsableId: null,
+    }));
 
     const vencimientos = [...amparos, ...presupuestales, ...liquidaciones]
       .map((fila) => {
@@ -210,11 +278,16 @@ export class AlertasService {
             ? fila.vence.slice(0, 10)
             : new Date(fila.vence).toISOString().slice(0, 10);
         const diasRestantes = diasParaVencer(vence, hoy);
-        return { ...fila, vence, diasRestantes, estado: estadoAlerta(diasRestantes, anticipacion) };
+        return {
+          ...fila,
+          vence,
+          diasRestantes,
+          estado: estadoAlerta(diasRestantes, anticipacionDe(fila.tipo)),
+        };
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinAbogado, ...cdpSinAtender, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinAbogado, ...cdpSinAtender, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -383,6 +456,68 @@ export class AlertasService {
    * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
    * adición tiene su propio trámite y no es este.
    */
+  /**
+   * Las actividades con plazo que están por vencer o ya se vencieron.
+   *
+   * El plazo corre desde que la actividad se habilitó —cuando le tocó a
+   * alguien— y solo mientras nadie la ha entregado: en borrador o devuelta.
+   * Enviada a aprobación ya se entregó, y lo que tarde quien aprueba no es
+   * plazo de quien la hizo.
+   *
+   * Cada usuario ve las de los procesos donde participa; quien ve todos los
+   * procesos, todas. Sin usuario —el aviso diario— se traen todas, porque cada
+   * aviso sale después a quien corresponde.
+   */
+  async plazosDeActividades(acceso?: HiringAccess): Promise<PlazoDeActividad[]> {
+    const hoy = this.hoy();
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+
+    let filas: any[];
+    try {
+      filas = await this.dataSource.query(
+        `SELECT h.proceso_id::text AS "procesoId",
+                p.radicado,
+                a.numeral,
+                a.nombre,
+                a.plazo_dias AS "plazoDias",
+                a.alerta_dias_antes AS "avisarAntes",
+                to_char(h.avisado_at AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD') AS desde
+           FROM hiring.avisos_habilitacion h
+           JOIN hiring.actividades a ON a.numeral = h.numeral AND a.plazo_dias > 0
+           JOIN hiring.procesos p ON p.id = h.proceso_id AND p.estado = 'EN_CURSO'
+           LEFT JOIN hiring.proceso_actividades pa
+                  ON pa.proceso_id = h.proceso_id AND pa.numeral = h.numeral
+          WHERE COALESCE(pa.estado, 'BORRADOR') IN ('BORRADOR', 'DEVUELTO')
+            AND ($1 = true OR EXISTS (
+                  SELECT 1 FROM hiring.participaciones_proceso pp
+                   WHERE pp.proceso_id = p.id
+                     AND pp.estado = 'VIGENTE'
+                     AND pp.usuario_id::text = $2))`,
+        [todos, acceso?.userId ?? ''],
+      );
+    } catch (error: any) {
+      // Sin la tabla de habilitaciones no hay desde cuándo contar: la lista
+      // sigue sin los plazos, en vez de caerse entera.
+      this.logger.warn(`Plazos de actividades no disponibles: ${error.message}`);
+      return [];
+    }
+
+    return filas
+      .map((f) => ({
+        procesoId: f.procesoId,
+        radicado: f.radicado ?? null,
+        numeral: f.numeral,
+        nombre: f.nombre,
+        ...plazoDeActividad(
+          f.desde,
+          Number(f.plazoDias),
+          f.avisarAntes === null || f.avisarAntes === undefined ? null : Number(f.avisarAntes),
+          hoy,
+        ),
+      }))
+      .filter((p): p is PlazoDeActividad => p.estado !== 'VIGENTE');
+  }
+
   private async solicitudesDeCdpSinAtender(hoy: string): Promise<Alerta[]> {
     const filas = await this.dataSource.query(
       `SELECT p.id            AS proceso_id,
@@ -450,10 +585,26 @@ export class AlertasService {
    * los días restantes y el estado se calculan como en el resto de la lista, en
    * vez de inventar una segunda forma de ordenar lo urgente.
    */
-  private async procesosSinAbogado(hoy: string): Promise<Alerta[]> {
+  private async procesosSinAbogado(
+    hoy: string,
+    tolerancia: number = TOLERANCIA_SIN_ABOGADO,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    /*
+     * Solo a quien le toca repartirlo, y a quien ve todos los procesos.
+     *
+     * Antes lo veía cualquiera con permiso de alertas: el supervisor de un
+     * contrato o Financiera recibían en su lista el reparto pendiente de toda
+     * la Dirección, que no pueden resolver. Sin usuario —el aviso diario— se
+     * traen todos, porque cada uno se envía después a su propio destinatario.
+     */
+    const todos =
+      !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+
     const filas = await this.dataSource.query(
       `SELECT p.id       AS proceso_id,
               p.radicado AS radicado,
+              c.usuario_id::text AS responsable_id,
               c.nombre   AS responsable,
               c.email    AS responsable_email,
               GREATEST(
@@ -473,14 +624,16 @@ export class AlertasService {
             SELECT 1 FROM hiring.participaciones_proceso a
              WHERE a.proceso_id = p.id AND a.papel = 'ABOGADO' AND a.estado = 'VIGENTE'
           )
+          AND ($1 = true OR c.usuario_id::text = $2)
         ORDER BY desde ASC`,
+      [todos, acceso?.userId ?? ''],
     );
 
     return filas
       .map((f: any) => {
         const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
         const limite = new Date(desde);
-        limite.setDate(limite.getDate() + TOLERANCIA_SIN_ABOGADO);
+        limite.setDate(limite.getDate() + tolerancia);
         const vence = limite.toISOString().slice(0, 10);
         const diasRestantes = diasParaVencer(vence, hoy);
 
@@ -492,11 +645,13 @@ export class AlertasService {
           descripcion: '3.4 · el proceso no tiene abogado que lo revise',
           vence,
           diasRestantes,
-          estado: estadoAlerta(diasRestantes, TOLERANCIA_SIN_ABOGADO),
+          estado: estadoAlerta(diasRestantes, tolerancia),
           // A quien hay que reclamarle es a quien lo recibió: el reparto es suyo.
           responsable: f.responsable ?? null,
           responsableEmail: f.responsable_email ?? null,
-          responsableId: null,
+          // Con su cuenta: antes iba en null y el aviso se descartaba sin
+          // destinatario, así que el proceso parado no se lo contaba a nadie.
+          responsableId: f.responsable_id ?? null,
         };
       })
       // Dentro de la tolerancia no se avisa: es el hueco normal entre recibir
@@ -681,8 +836,10 @@ export class AlertasService {
    * alertas se siguen viendo en pantalla y no se pierde el aviso, solo el
    * correo.
    */
-  async notificar(anticipacion: number, acceso: HiringAccess) {
-    const brutas = await this.listar(anticipacion, acceso);
+  async notificar(anticipacion: number | null, acceso: HiringAccess) {
+    // Los plazos de actividad avisan por el motor de avisos, que sabe a quién le
+    // toca cada una y si va por correo; aquí saldrían sin destinatario.
+    const brutas = (await this.listar(anticipacion, acceso)).filter((a) => a.tipo !== 'PLAZO_ACTIVIDAD');
 
     /**
      * La solicitud que nadie ha tomado se le avisa a todo el equipo.
@@ -718,6 +875,20 @@ export class AlertasService {
       return { alertas: alertas.length, notificadas: 0, sinDestinatario: alertas.length };
     }
 
+    /*
+     * A la cuenta, no a la persona.
+     *
+     * El supervisor de un contrato se guarda con su id de persona, pero la
+     * campana consulta por cuenta: el aviso de una póliza por vencer quedaba
+     * guardado sin que nadie lo viera. Lo que no se reconoce se conserva, porque
+     * puede ser ya una cuenta.
+     */
+    const campana = new Campana(this.dataSource, this.logger);
+    for (const alerta of conDestinatario) {
+      const [cuenta] = await campana.cuentasDe([alerta.responsableId as string]);
+      if (cuenta) alerta.responsableId = cuenta;
+    }
+
     // Un mensaje por tipo y no uno solo: ni la aprobación ni la devolución son
     // vencimientos, y con el texto compartido el aprobador leía «vence en -3
     // días» sobre algo que no vence. Además cada una pide algo distinto —una
@@ -750,6 +921,15 @@ export class AlertasService {
             mensaje: `${a.descripcion} del proceso ${a.radicado} fue devuelta${
               a.responsable ? ` por ${a.responsable}` : ''
             }. Corrígela y vuelve a enviarla.`,
+          }
+        : a.tipo === 'SIN_ABOGADO'
+        ? {
+            // Tenía que tener su propio texto: caía en el de vencimientos y
+            // decía «vence en N días del contrato» sobre un proceso sin contrato.
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_sin_abogado',
+            titulo: 'Un proceso sigue sin abogado',
+            mensaje: `El proceso ${a.radicado} lleva ${Math.abs(a.diasRestantes)} días sin abogado asignado. Repártelo en la 3.4.`,
           }
         : a.tipo === 'APROBACION_PENDIENTE'
         ? {

@@ -3,16 +3,20 @@ import { CalendarClock, FilePlus2, FileText, Paperclip, Send, Undo2 } from 'luci
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { Adenda, EstadoAdendas } from '../../types';
+import { Adenda, EstadoAdendas, EvidenciaFirmaOtp } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
 import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '5.6';
 
 const ETIQUETA_TIPO = {
   FONDO: 'Requisitos de fondo',
@@ -34,6 +38,8 @@ const TONO_ESTADO = {
  * el panel lo dice antes y lo confirma después.
  */
 export function PanelAdendas({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Publicar o anular la adenda');
   const [estado, setEstado] = useState<EstadoAdendas | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +101,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
     }
   };
 
-  const publicar = async (adenda: Adenda, evidencia: File) => {
+  const publicar = async (adenda: Adenda, evidencia: File, firmaOtp?: EvidenciaFirmaOtp) => {
     setGuardando(true);
     try {
       const tras = await contratacionService.publicarAdenda(
@@ -103,6 +109,7 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
         adenda.id,
         hoyEnBogota(),
         evidencia,
+        firmaOtp,
       );
       setEstado(tras);
 
@@ -120,13 +127,20 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
     }
   };
 
-  const anular = async (adenda: Adenda) => {
-    const motivo = window.prompt(`¿Por qué se anula la adenda ${adenda.numero}?`)?.trim();
+  const anular = async (adenda: Adenda, firmaOtp?: EvidenciaFirmaOtp) => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: `Anular la adenda ${adenda.numero}`,
+      descripcion: 'La adenda anulada se conserva en el expediente con el motivo: lo publicado no se borra.',
+      etiqueta: 'Motivo de la anulación',
+      placeholder: 'Se publicó con la fecha de cierre equivocada…',
+      confirmar: 'Anular la adenda',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
     try {
-      setEstado(await contratacionService.anularAdenda(procesoId, adenda.id, motivo));
+      setEstado(await contratacionService.anularAdenda(procesoId, adenda.id, motivo, firmaOtp));
       toast.success('Adenda anulada');
       onCambio?.();
     } catch (err: any) {
@@ -180,8 +194,8 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
               key={adenda.id}
               adenda={adenda}
               ocupada={guardando}
-              onPublicar={(archivo) => publicar(adenda, archivo)}
-              onAnular={() => anular(adenda)}
+              onPublicar={(archivo) => firma.conFirma((firmaOtp) => publicar(adenda, archivo, firmaOtp))}
+              onAnular={() => firma.conFirma((firmaOtp) => anular(adenda, firmaOtp))}
             />
           ))}
         </div>
@@ -289,6 +303,8 @@ export function PanelAdendas({ procesoId, onCambio }: Props) {
           </Boton>
         </Permitido>
       )}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

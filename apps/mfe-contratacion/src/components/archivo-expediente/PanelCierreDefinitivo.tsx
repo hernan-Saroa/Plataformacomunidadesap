@@ -19,6 +19,7 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
@@ -39,6 +40,7 @@ const VACIO = { fechaCierre: hoyEnBogota(), observaciones: '' };
  * falta por vencer y cuándo**: es lo que explica la espera, y puede ser de años.
  */
 export function PanelCierreDefinitivo({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoCierreDefinitivo | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,13 @@ export function PanelCierreDefinitivo({ procesoId, onCambio }: Props) {
   };
 
   const revertir = async () => {
-    const motivo = window.prompt('¿Por qué se revierte el cierre definitivo?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Revertir el cierre definitivo',
+      descripcion: 'El contrato vuelve a quedar abierto. La reversión queda en el expediente con su motivo.',
+      etiqueta: 'Motivo de la reversión',
+      confirmar: 'Revertir el cierre',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -304,6 +312,7 @@ export function PanelCierreDefinitivo({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {dialogo.elemento}
     </>
   );
 }

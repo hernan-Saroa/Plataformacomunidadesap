@@ -27,6 +27,8 @@ import {
   AnularInformeFinalDto,
   ElaborarInformeFinalDto,
 } from './dto/informe-final.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 export { NUMERAL_INFORME_FINAL };
 
@@ -77,7 +79,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class InformeFinalService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -215,7 +220,7 @@ export class InformeFinalService {
         } as Partial<InformeFinal>),
       );
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
         actividad: NUMERAL_INFORME_FINAL,
@@ -390,10 +395,17 @@ export class InformeFinalService {
     return 'el contrato todavía no está legalizado';
   }
 
+  /**
+   * Incluye al super admin, igual que `exigirSupervisor`: si aquí no lo
+   * contara, el botón para elaborar el informe nunca se le mostraría aunque
+   * la petición real se la fuera a aceptar (EFDS-1170, mismo caso en
+   * `pagos.service.ts`).
+   */
   private esElSupervisor(
     supervisor: SupervisionContrato | null,
     acceso: HiringAccess,
   ): boolean {
+    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
     if (!supervisor) return false;
     return supervisor.personaId === acceso.userId || supervisor.nombre === acceso.userName;
   }
@@ -482,37 +494,54 @@ export class InformeFinalService {
     return contrato;
   }
 
-  /** La actividad se cumple cuando hay informe vigente. */
+  /**
+   * La actividad se cumple cuando hay informe vigente. Aprobación y firma
+   * (EFDS-1183, EFDS-2070) se preguntan ahí; anular la devuelve a BORRADOR.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const cumplida = !!(await this.informeVigente(contratoId, em));
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_INFORME_FINAL },
-    });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_INFORME_FINAL,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      const actividad = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_INFORME_FINAL },
+      });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_INFORME_FINAL,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    if (await this.cierre.exigeFirma(em, NUMERAL_INFORME_FINAL)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_INFORME_FINAL,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

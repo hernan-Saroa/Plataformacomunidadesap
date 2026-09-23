@@ -1061,6 +1061,19 @@ export function VisorDocumentoModal({
               const isDocx = !isPdf && (extension === 'docx' || archivo.toLowerCase().includes('.docx') || nombreParaExtension.includes('.docx'));
               const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
 
+              // ¿El sello ya está dentro del archivo? Sólo los PDF reales se re-estampan con
+              // pdf-lib (stampPdf). Firmas anteriores a `estampadoEnArchivo` no guardaban el dato:
+              // para ellas se asume incrustado cuando el archivo es un PDF real.
+              const firmaIncrustadaEnArchivo = parsedSignature
+                ? (parsedSignature.estampadoEnArchivo === undefined
+                    ? (isPdf && !isMockFile)
+                    : parsedSignature.estampadoEnArchivo === true)
+                : false;
+              // Regla única para todos los formatos: el overlay HTML se pinta sólo cuando el sello
+              // NO quedó incrustado en el archivo. Evita la doble firma en pantalla (bug QA) sin
+              // perder la firma en los formatos que pdf-lib no puede re-estampar (DOCX, imágenes).
+              const mostrarSelloSuperpuesto = !!parsedSignature && !firmaIncrustadaEnArchivo;
+
               if (isMockFile && isPdf) {
                 return (
                   <div
@@ -1152,7 +1165,7 @@ export function VisorDocumentoModal({
                       </div>
 
                       {modoUbicacionActive && renderSignatureStamp(true)}
-                      {parsedSignature && renderSignatureStamp(false)}
+                      {mostrarSelloSuperpuesto && renderSignatureStamp(false)}
                     </div>
                   </div>
                 );
@@ -1202,7 +1215,7 @@ export function VisorDocumentoModal({
                         />
 
                         {modoUbicacionActive && renderSignatureStamp(true)}
-                        {parsedSignature && renderSignatureStamp(false)}
+                        {mostrarSelloSuperpuesto && renderSignatureStamp(false)}
                       </div>
                     </div>
                   </div>
@@ -1245,11 +1258,11 @@ export function VisorDocumentoModal({
                       onError={handleIframeError}
                     />
 
-                    {/* No se superpone renderSignatureStamp aquí: para un PDF real ya firmado,
-                        stampPdf() incrustó el sello directamente en los bytes del archivo, y el
-                        iframe ya lo está mostrando. Pintarlo de nuevo duplicaba la firma en pantalla
-                        (bug reportado en QA), aunque la descarga del archivo crudo siempre mostró
-                        una sola firma. */}
+                    {/* Para un PDF firmado, stampPdf() incrustó el sello en los bytes del archivo y
+                        el iframe ya lo muestra: repetirlo aquí duplicaba la firma en pantalla (bug
+                        QA), aunque la descarga siempre trajo una sola. Sólo se superpone cuando el
+                        estampado falló (`estampadoEnArchivo === false`), para no perder la firma. */}
+                    {mostrarSelloSuperpuesto && renderSignatureStamp(false)}
                   </div>
                 );
               } else if (isVideo) {
@@ -1294,7 +1307,7 @@ export function VisorDocumentoModal({
                       />
 
                       {modoUbicacionActive && renderSignatureStamp(true)}
-                      {parsedSignature && renderSignatureStamp(false)}
+                      {mostrarSelloSuperpuesto && renderSignatureStamp(false)}
                     </div>
                   </div>
                 );
@@ -1385,6 +1398,11 @@ export function VisorDocumentoModal({
                   console.error('Error al estampar PDF:', err);
                   toast.error('⚠️ Error al integrar la firma en el PDF.', { id: 'estampado-pdf' });
                 }
+
+                // Si el archivo pudo re-estamparse, el sello ya vive dentro de sus bytes y el
+                // visor NO debe superponerlo (si no, se ve la firma dos veces en pantalla y una
+                // sola al descargar). Si no se pudo, el overlay es la única firma visible.
+                completeFirmaData.estampadoEnArchivo = !!pdfFile;
 
                 await onSignComplete(docId, completeFirmaData, pdfFile);
               }

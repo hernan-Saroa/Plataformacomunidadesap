@@ -16,14 +16,14 @@ export class CargarSeguimientoDto {
     enum: ['INFORME', 'ACTA', 'SOPORTE'],
   })
   @IsIn(['INFORME', 'ACTA', 'SOPORTE'], {
-    message: 'El soporte es un informe, un acta u otro documento de la ejecucion',
+    message: 'El soporte es un informe, un acta u otro documento de la ejecución',
   })
   tipo: 'INFORME' | 'ACTA' | 'SOPORTE';
 
   @ApiProperty({ description: 'Que acredita el soporte' })
   @IsString()
-  @IsNotEmpty({ message: 'Describe que acredita el soporte' })
-  @MinLength(5, { message: 'La descripcion debe decir que es, no una palabra suelta' })
+  @IsNotEmpty({ message: 'Describe qué acredita el soporte' })
+  @MinLength(5, { message: 'La descripción debe decir qué es, no una palabra suelta' })
   @MaxLength(1000)
   descripcion: string;
 

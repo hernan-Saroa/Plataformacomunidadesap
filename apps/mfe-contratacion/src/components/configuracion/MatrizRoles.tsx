@@ -235,12 +235,12 @@ export function MatrizRoles() {
         )}
       </div>
 
-      {/* Los cuatro perfiles, antes de la rejilla (EFDS-1183).
+      {/* Los perfiles, antes de la rejilla (EFDS-1183).
 
           Quien abre esta pantalla lo hace casi siempre para responder «¿qué le
           pongo a esta persona?», y la rejilla sola contesta con treinta y cinco
-          casillas. Los perfiles contestan con cuatro nombres; la rejilla queda
-          debajo para quien necesite el detalle o un reparto distinto. */}
+          casillas. Los perfiles contestan con un puñado de nombres; la rejilla
+          queda debajo para quien necesite el detalle o un reparto distinto. */}
       {datos.perfiles && datos.perfiles.length > 0 && (
         <div className="space-y-2">
           <p className="m-0 text-[11.5px] font-bold uppercase tracking-wide text-gray-500">

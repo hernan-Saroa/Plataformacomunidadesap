@@ -3,7 +3,7 @@ import { CalendarCheck, Eye, Paperclip, PlayCircle, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DatosActaInicio, EstadoActaInicio } from '../../types';
+import { DatosActaInicio, EstadoActaInicio, EvidenciaFirmaOtp } from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -15,11 +15,14 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '9.1';
 
 const VACIO = {
   fechaInicio: hoyEnBogota(),
@@ -37,6 +40,7 @@ const VACIO = {
  * que se decide en el formulario.
  */
 export function PanelActaInicio({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Suscribir el acta de inicio');
   const [estado, setEstado] = useState<EstadoActaInicio | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,12 +71,13 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
     setRegistrando(false);
   };
 
-  const suscribir = async () => {
+  const suscribir = async (firmaOtp?: EvidenciaFirmaOtp) => {
     const cuerpo: DatosActaInicio = {
       fechaInicio: datos.fechaInicio,
       temasTratados: datos.temasTratados.trim(),
       actaPactada: datos.actaPactada,
       ...(datos.asistentes.trim() ? { asistentes: datos.asistentes.trim() } : {}),
+      firma: firmaOtp,
     };
 
     setGuardando(true);
@@ -123,7 +128,10 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
       {/* Qué falta y en qué paso se resuelve, en vez de un botón apagado. */}
       {!estado.acta && estado.motivoNoPuede ? (
         <Pendiente
-          falta={estado.legalizado ? '8.2' : '8.5'}
+          // Las garantías (8.4) aplican siempre; la ARL (8.5) solo a persona
+          // natural. Mandar a la 8.5 en un contrato que no la exige deja al
+          // gestor sin saber qué hacer: ahí siempre es la 8.4 la que falta.
+          falta={estado.legalizado ? '8.2' : estado.requiereArl ? '8.5' : '8.4'}
           texto={`La ejecución empieza sobre un contrato legalizado y con supervisor: ${estado.motivoNoPuede}.`}
         />
       ) : null}
@@ -282,7 +290,7 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
             <Boton
               icono={<CalendarCheck className="w-3.5 h-3.5" />}
               disabled={!completo || guardando}
-              onClick={suscribir}
+              onClick={() => firma.conFirma(suscribir)}
             >
               {guardando ? 'Registrando…' : 'Registrar e iniciar ejecución'}
             </Boton>
@@ -296,6 +304,7 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
     </Marco>
   );
 }

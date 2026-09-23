@@ -112,6 +112,7 @@ import { BorradoresCorreosService } from './services/borradores-correos.service'
 import { CorreosSyncScheduler } from './services/correos-sync.scheduler';
 import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
+import { FirmaAutorizacionService } from './services/firma-autorizacion.service';
 import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
 import { AlertasVencimientoTerminosService } from './services/alertas-vencimiento-terminos.service';
@@ -276,6 +277,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ProcesoCoactivoService,
     // Configurations
     ConfigurationsService,
+    FirmaAutorizacionService,
     // Días Hábiles y Alertas
     DiasHabilesService,
     AlertasVencimientoService,

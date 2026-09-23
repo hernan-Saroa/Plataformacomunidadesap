@@ -8,7 +8,7 @@ import { InformeDefinitivoService } from './informe-definitivo.service';
  * resuelve al generar y se guarda, en vez de deducirse al consultar.
  */
 function servicio() {
-  return new InformeDefinitivoService({ manager: {} } as any);
+  return new InformeDefinitivoService({ manager: {} } as any, {} as any);
 }
 
 const OFERENTES = [

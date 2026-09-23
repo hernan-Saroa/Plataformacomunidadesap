@@ -170,6 +170,24 @@ export const PERMISO_SUPERVISION_AVALAR = 'contratacion.supervision.avalar';
  */
 export const PERMISO_EXPEDIENTE_ARCHIVAR = 'contratacion.expediente.archivar';
 
+/**
+ * Dar por terminado un plazo que sigue corriendo, para poder probar el flujo.
+ *
+ * Los dos términos que bloquean —el de publicidad del pliego (5.3) y el de
+ * subsanaciones (6.5)— duran días hábiles reales. Recorrer un proceso completo
+ * en una sesión de pruebas exigía esperarlos, así que en la práctica no se
+ * probaba lo que viene después de ellos.
+ *
+ * No finge que el plazo venció: mueve la fecha de vencimiento a ayer y deja
+ * traza de quién lo hizo. De ahí en adelante todo se comporta exactamente como
+ * en producción, que es justo lo que hay que poder probar.
+ *
+ * Solo el superadministrador. No es una competencia del negocio —ningún rol de
+ * la matriz acorta un término legal— sino una llave de pruebas, y por eso es el
+ * único permiso del módulo que no se le da a ningún rol funcional.
+ */
+export const PERMISO_PLAZO_TERMINAR = 'contratacion.plazo.terminar';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -398,6 +416,9 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'DIRECTOR_CONTRATACION',
     'SUPER_ADMIN',
   ],
+  // El único sin rol funcional: acortar un término no es competencia de nadie
+  // en la matriz, es una llave de pruebas.
+  [PERMISO_PLAZO_TERMINAR]: ['SUPER_ADMIN'],
 };
 
 /**
