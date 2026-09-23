@@ -61,6 +61,16 @@ export interface CambioCronograma {
   semanasExcluidas: string[];
 }
 
+/**
+ * El cambio se manda como función y no como valor: dos clics seguidos ocurrían
+ * antes de que React repintara, así que ambos partían del estado viejo y el
+ * segundo borraba el primero. Así cada uno calcula sobre lo último guardado.
+ */
+export type CalculoCronograma = (
+  fechas: Partial<FechasEtapas>,
+  semanasExcluidas: string[],
+) => CambioCronograma;
+
 interface Props {
   vigencia: number;
   /** Etapa a la que pertenece el campo */
@@ -70,7 +80,7 @@ interface Props {
   valor?: string;
   fechas: Partial<FechasEtapas>;
   semanasExcluidas: string[];
-  onCambio: (cambio: CambioCronograma) => void;
+  onCambio: (calculo: CalculoCronograma) => void;
   deshabilitado?: boolean;
   soloLectura?: boolean;
 }
@@ -121,13 +131,15 @@ export function CampoFechaCalendario({
    * Semana Santa y receso siguen fuera porque no dependen del usuario.
    */
   const aplicarRango = (a: number, b: number) => {
-    const dentro = (lunes: string) => {
-      const s = semanas.find((x) => x.lunes === lunes);
-      return !!s && s.numero >= a && s.numero <= b;
-    };
-    const excluidas = semanasExcluidas.filter((lunes) => !dentro(lunes));
-    const resultado = aplicarRangoEtapa(vigencia, fechas, excluidas, { etapa, desde: a, hasta: b });
-    onCambio({ fechas: resultado.fechas, semanasExcluidas: excluidas });
+    onCambio((fechasActuales, excluidasActuales) => {
+      const dentro = (lunes: string) => {
+        const s = semanas.find((x) => x.lunes === lunes);
+        return !!s && s.numero >= a && s.numero <= b;
+      };
+      const excluidas = excluidasActuales.filter((lunes) => !dentro(lunes));
+      const resultado = aplicarRangoEtapa(vigencia, fechasActuales, excluidas, { etapa, desde: a, hasta: b });
+      return { fechas: resultado.fechas, semanasExcluidas: excluidas };
+    });
   };
 
   /**
@@ -141,22 +153,24 @@ export function CampoFechaCalendario({
    * quitando lo que ya había quedado marcado, así que parecía que se perdía.
    */
   const alternarSemana = (semana: SemanaVigencia) => {
-    onCambio(ajustarSemanaEtapa(vigencia, fechas, semanasExcluidas, etapa, semana.numero));
+    onCambio((f, ex) => ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero));
   };
 
-  /** Rellena el ciclo estándar de 13 semanas desde donde arranca la auditoría. */
+  /** Propuesta preliminar: las 13 semanas del ciclo desde donde arranque. */
   const aplicarCicloEstandar = () => {
-    const propias = programadas.filter((p) => p.etapa === etapa);
-    // Si no hay nada marcado, arranca en la primera semana del mes que se ve
-    const desde = propias[0]?.semana
-      ?? programadas.find((p) => p.etapa)?.semana
-      ?? semanas.find((s) => s.mes === mes)
-      ?? semanas[0];
-    const arranque = extremo === 'fin' && propias.length
-      ? semanaRetrocediendo(propias[propias.length - 1].semana.numero, DURACION_ESTANDAR[etapa] - 1)
-      : desde.numero;
-    const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[arranque - 1].lunes, semanasExcluidas });
-    onCambio({ fechas: resultado.fechas, semanasExcluidas });
+    onCambio((f, ex) => {
+      const actuales = programacionDesdeFechas(vigencia, f, ex);
+      const propias = actuales.filter((p) => p.etapa === etapa);
+      const desde = propias[0]?.semana
+        ?? actuales.find((p) => p.etapa)?.semana
+        ?? semanas.find((s) => s.mes === mes)
+        ?? semanas[0];
+      const arranque = extremo === 'fin' && propias.length
+        ? semanaRetrocediendo(propias[propias.length - 1].semana.numero, DURACION_ESTANDAR[etapa] - 1)
+        : desde.numero;
+      const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[arranque - 1].lunes, semanasExcluidas: ex });
+      return { fechas: resultado.fechas, semanasExcluidas: ex };
+    });
   };
 
   /** Retrocede n semanas que cuenten (ni bloqueadas ni excluidas). */
@@ -185,23 +199,25 @@ export function CampoFechaCalendario({
    * el extremo al día elegido.
    */
   const fijarDia = (semana: SemanaVigencia, dia: string) => {
-    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
-    const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
-    const resultado = otro === undefined
-      ? calcularProgramacion({ año: vigencia, inicio: semana.lunes, semanasExcluidas })
-      : aplicarRangoEtapa(vigencia, fechas, semanasExcluidas, {
-          etapa,
-          desde: extremo === 'inicio' ? semana.numero : Math.min(otro, semana.numero),
-          hasta: extremo === 'inicio' ? Math.max(otro, semana.numero) : semana.numero,
-        });
-
-    onCambio({
-      fechas: { ...resultado.fechas, [extremo === 'inicio' ? campoInicio : campoFin]: dia },
-      semanasExcluidas,
+    onCambio((f, ex) => {
+      const actuales = programacionDesdeFechas(vigencia, f, ex);
+      const propias = actuales.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
+      const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
+      const resultado = otro === undefined
+        ? { fechas: ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero).fechas }
+        : aplicarRangoEtapa(vigencia, f, ex, {
+            etapa,
+            desde: extremo === 'inicio' ? semana.numero : Math.min(otro, semana.numero),
+            hasta: extremo === 'inicio' ? Math.max(otro, semana.numero) : semana.numero,
+          });
+      return {
+        fechas: { ...resultado.fechas, [extremo === 'inicio' ? campoInicio : campoFin]: dia },
+        semanasExcluidas: ex,
+      };
     });
   };
 
-  const limpiar = () => onCambio({ fechas: fechasVacias(), semanasExcluidas: [] });
+  const limpiar = () => onCambio(() => ({ fechas: fechasVacias(), semanasExcluidas: [] }));
 
   const textoCampo = valor ? parseYMD(valor).toLocaleDateString('es-CO') : 'dd/mm/aaaa';
 

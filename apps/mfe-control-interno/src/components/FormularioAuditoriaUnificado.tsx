@@ -46,7 +46,7 @@ import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso, t
 import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
-import { CampoFechaCalendario, type CambioCronograma } from './CalendarioProgramacion';
+import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -914,6 +914,23 @@ export function FormularioAuditoriaUnificado({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  /**
+   * Cronograma del calendario (EFDS-2132): se calcula con el estado más reciente
+   * y se guarda de una vez, para que dos clics seguidos no se pisen.
+   */
+  const aplicarCronograma = (calculo: CalculoCronograma) => {
+    setFormData(prev => {
+      const { fechas, semanasExcluidas } = calculo(prev, prev.semanasExcluidas || []);
+      return {
+        ...prev,
+        ...fechas,
+        semanasExcluidas,
+        fechaInicio: fechas.fechaInicioPlaneacion || fechas.fechaInicioEjecucion || fechas.fechaInicioComunicacion,
+        fechaFin: fechas.fechaFinComunicacion || fechas.fechaFinEjecucion || fechas.fechaFinPlaneacion,
+      };
+    });
+  };
+
   const handleAgregarObjetivo = () => {
     if (objetivoTemporal.trim().length < 10) {
       toast.error('El objetivo debe tener al menos 10 caracteres');
@@ -1344,6 +1361,7 @@ export function FormularioAuditoriaUnificado({
               disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
               validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
               esAuditoriaEspecial={esAuditoriaEspecial}
+            onAplicarCronograma={aplicarCronograma}
             />
           );
         default:
@@ -1407,6 +1425,7 @@ export function FormularioAuditoriaUnificado({
             disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
             validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
             esAuditoriaEspecial={esAuditoriaEspecial}
+          onAplicarCronograma={aplicarCronograma}
           />
         );
       case 5:
@@ -2757,6 +2776,8 @@ interface Paso4Props extends PasoProps {
   disponibilidadEquipoAuditor?: DisponibilidadEquipoAuditorResponse | null;
   validandoDisponibilidadEquipo?: boolean;
   esAuditoriaEspecial?: boolean;
+  /** Aplica el cronograma completo en una sola actualización (EFDS-2132) */
+  onAplicarCronograma: (calculo: CalculoCronograma) => void;
 }
 
 function Paso4Programacion({
@@ -2765,6 +2786,7 @@ function Paso4Programacion({
   disponibilidadEquipoAuditor,
   validandoDisponibilidadEquipo,
   esAuditoriaEspecial,
+  onAplicarCronograma,
 }: Paso4Props) {
   // Verificar si las etapas anteriores están completas (convertir a boolean)
   const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
@@ -2787,24 +2809,14 @@ function Paso4Programacion({
     return Math.round((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24)) + 1;
   };
 
-  // Cada campo de fecha abre el calendario de la vigencia (EFDS-2132): al marcar
-  // las semanas se llenan las tres etapas saltando Semana Santa y el receso.
-  const aplicarCronograma = ({ fechas, semanasExcluidas }: CambioCronograma) => {
-    onChange('semanasExcluidas', semanasExcluidas);
-    onChange('fechaInicioPlaneacion', fechas.fechaInicioPlaneacion);
-    onChange('fechaFinPlaneacion', fechas.fechaFinPlaneacion);
-    onChange('fechaInicioEjecucion', fechas.fechaInicioEjecucion);
-    onChange('fechaFinEjecucion', fechas.fechaFinEjecucion);
-    onChange('fechaInicioComunicacion', fechas.fechaInicioComunicacion);
-    onChange('fechaFinComunicacion', fechas.fechaFinComunicacion);
-    onChange('fechaInicio', fechas.fechaInicioPlaneacion);
-    onChange('fechaFin', fechas.fechaFinComunicacion);
-  };
+  // Cada campo de fecha abre el calendario de la vigencia (EFDS-2132). El cambio
+  // se aplica en un solo paso y sobre lo último guardado: con varios onChange
+  // seguidos, dos clics rápidos partían del estado viejo y se perdía el primero.
   const propiedadesCalendario = {
     vigencia: añoVigencia,
     fechas: formData,
     semanasExcluidas: formData.semanasExcluidas || [],
-    onCambio: aplicarCronograma,
+    onCambio: onAplicarCronograma,
   };
   const ayudaCalendario = 'Marque las semanas en el calendario';
 
@@ -2814,7 +2826,7 @@ function Paso4Programacion({
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Escoja en el calendario la semana en que inicia la auditoría. El ciclo estándar de 13 semanas (4-4-5) se completa solo, sin Semana Santa ni semana de receso.
+          Marque en el calendario las semanas de cada etapa. Con el botón "Ciclo 4-4-5" se propone el estándar de 13 semanas y de ahí se ajusta a mano; Semana Santa y la semana de receso nunca entran.
         </p>
       </div>
 
