@@ -169,7 +169,19 @@ export function CampoFechaCalendario({
    * - Si ya hay cronograma pero esta etapa está vacía, llena solo esta etapa.
    * - Si la etapa ya tiene semanas, marca o desmarca únicamente esa.
    */
+  /** Fuera del año de la auditoría se guarda la fecha tal cual, sin recalcular etapas. */
+  const fijarFechaSuelta = (dia: string) => {
+    onCambio((f, ex) => ({
+      fechas: { ...fechasVacias(), ...f, [extremo === 'inicio' ? campoInicio : campoFin]: dia },
+      semanasExcluidas: ex,
+    }));
+  };
+
   const alternarSemana = (semana: SemanaVigencia) => {
+    if (!esVigencia) {
+      fijarFechaSuelta(extremo === 'inicio' ? primerDiaHabil(semana) : semana.domingo);
+      return;
+    }
     onCambio((f, ex) => {
       const actuales = programacionDesdeFechas(vigencia, f, ex);
       if (actuales.some((p) => p.etapa === etapa)) {
@@ -241,6 +253,7 @@ export function CampoFechaCalendario({
    * de la etapa, cortar ahí el inicio o el fin. Nada más se mueve.
    */
   const fijarDia = (semana: SemanaVigencia, dia: string) => {
+    if (!esVigencia) { fijarFechaSuelta(dia); return; }
     onCambio((f, ex) => {
       const yaEsMia = programacionDesdeFechas(vigencia, f, ex)[semana.numero - 1]?.etapa === etapa;
       const base = yaEsMia
@@ -323,10 +336,8 @@ export function CampoFechaCalendario({
           </button>
         </div>
 
-        <p className="mb-2 text-center text-[11px] font-semibold" style={{ color: esVigencia ? (etapa === 'P' ? '#1d4ed8' : etapa === 'E' ? '#b45309' : '#047857') : '#b45309' }}>
-          {esVigencia
-            ? `${NOMBRE_ETAPA[etapa]} · fecha de ${extremo}`
-            : `${añoVista} es solo de consulta · la auditoría es de ${vigencia}`}
+        <p className="mb-2 text-center text-[11px] font-semibold" style={{ color: etapa === 'P' ? '#1d4ed8' : etapa === 'E' ? '#b45309' : '#047857' }}>
+          {NOMBRE_ETAPA[etapa]} · fecha de {extremo}
         </p>
 
         <Mes
@@ -339,7 +350,7 @@ export function CampoFechaCalendario({
           valor={valor}
           arrastre={arrastre}
           rango={{ inicio: fechas[campoInicio], fin: fechas[campoFin] }}
-          soloLectura={bloqueado || !esVigencia}
+          soloLectura={bloqueado}
           onInicioArrastre={(n) => { arrastrando.current = true; setArrastre({ desde: n, hasta: n }); }}
           onPasarPor={(n) => { if (arrastrando.current) setArrastre((a) => (a ? { ...a, hasta: n } : a)); }}
           onSoltar={(n) => {
