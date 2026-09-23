@@ -377,6 +377,87 @@ export function aplicarRangoEtapa(
   return calcularProgramacion({ año, inicio, semanasExcluidas, duraciones });
 }
 
+const CAMPOS_ETAPA: Record<EtapaCronograma, { inicio: keyof FechasEtapas; fin: keyof FechasEtapas }> = {
+  P: { inicio: 'fechaInicioPlaneacion', fin: 'fechaFinPlaneacion' },
+  E: { inicio: 'fechaInicioEjecucion', fin: 'fechaFinEjecucion' },
+  C: { inicio: 'fechaInicioComunicacion', fin: 'fechaFinComunicacion' },
+};
+
+export interface ResultadoAjuste {
+  fechas: FechasEtapas;
+  semanasExcluidas: string[];
+}
+
+/**
+ * Marca o desmarca una semana en una etapa sin tocar las demás (EFDS-2132).
+ *
+ * Antes cada clic recalculaba el ciclo completo y las otras etapas se movían,
+ * así que lo que ya estaba marcado parecía perderse. Aquí solo cambia la etapa
+ * del campo: al agregar una semana el rango se estira hasta ella, al quitar un
+ * extremo el rango se encoge y al quitar una del medio queda excluida. Si la
+ * semana era de otra etapa, esa otra se recorta para no quedar encima.
+ */
+export function ajustarSemanaEtapa(
+  año: number,
+  fechas: Partial<FechasEtapas>,
+  semanasExcluidas: string[],
+  etapa: EtapaCronograma,
+  numero: number,
+): ResultadoAjuste {
+  const semanas = semanasDeVigencia(año);
+  const objetivo = semanas[numero - 1];
+  if (!objetivo || objetivo.bloqueo) {
+    return { fechas: { ...fechasVacias(), ...fechas }, semanasExcluidas };
+  }
+
+  const programadas = programacionDesdeFechas(año, fechas, semanasExcluidas);
+  const propias = (e: EtapaCronograma) =>
+    programadas.filter((p) => p.etapa === e).map((p) => p.semana.numero);
+  const nuevasFechas: FechasEtapas = { ...fechasVacias(), ...fechas };
+  let excluidas = [...semanasExcluidas];
+
+  const ponerRango = (e: EtapaCronograma, desde: number, hasta: number) => {
+    const campos = CAMPOS_ETAPA[e];
+    if (desde > hasta) { nuevasFechas[campos.inicio] = ''; nuevasFechas[campos.fin] = ''; return; }
+    nuevasFechas[campos.inicio] = primerDiaHabil(semanas[desde - 1]);
+    nuevasFechas[campos.fin] = semanas[hasta - 1].domingo;
+  };
+
+  const mias = propias(etapa);
+  const estado = programadas[numero - 1];
+
+  // Quitar: la semana ya es de esta etapa
+  if (estado?.etapa === etapa) {
+    const quedan = mias.filter((n) => n !== numero);
+    if (!quedan.length) { ponerRango(etapa, 1, 0); return { fechas: nuevasFechas, semanasExcluidas: excluidas }; }
+    if (numero > quedan[0] && numero < quedan[quedan.length - 1]) {
+      excluidas = [...excluidas, objetivo.lunes]; // hueco en el medio
+    }
+    ponerRango(etapa, quedan[0], quedan[quedan.length - 1]);
+    return { fechas: nuevasFechas, semanasExcluidas: excluidas };
+  }
+
+  // Poner: estaba excluida o pertenecía a otra etapa
+  excluidas = excluidas.filter((l) => l !== objetivo.lunes);
+  if (!mias.length) {
+    ponerRango(etapa, numero, numero);
+  } else {
+    ponerRango(etapa, Math.min(mias[0], numero), Math.max(mias[mias.length - 1], numero));
+  }
+
+  // La etapa que tuviera esa semana se recorta para no quedar encima
+  const otra = estado?.etapa;
+  if (otra && otra !== etapa) {
+    const suyas = propias(otra).filter((n) => n !== numero);
+    if (!suyas.length) ponerRango(otra, 1, 0);
+    else if (numero <= suyas[0]) ponerRango(otra, suyas[0], suyas[suyas.length - 1]);
+    else if (numero >= suyas[suyas.length - 1]) ponerRango(otra, suyas[0], suyas[suyas.length - 1]);
+    else ponerRango(otra, suyas[0], numero - 1);
+  }
+
+  return { fechas: nuevasFechas, semanasExcluidas: excluidas };
+}
+
 /**
  * Pinta las semanas a partir de las fechas guardadas de cada etapa, sin
  * recalcular nada: sirve para mostrar una auditoría existente tal cual quedó.

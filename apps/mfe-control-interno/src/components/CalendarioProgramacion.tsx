@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Eraser, Info } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/popover';
 import {
+  ajustarSemanaEtapa,
   aplicarRangoEtapa,
   calcularProgramacion,
   DURACION_ESTANDAR,
@@ -111,6 +112,8 @@ export function CampoFechaCalendario({
   }, []);
 
   const bloqueado = !!soloLectura || !!deshabilitado;
+  const campoInicio = ({ P: 'fechaInicioPlaneacion', E: 'fechaInicioEjecucion', C: 'fechaInicioComunicacion' } as const)[etapa];
+  const campoFin = ({ P: 'fechaFinPlaneacion', E: 'fechaFinEjecucion', C: 'fechaFinComunicacion' } as const)[etapa];
 
   /**
    * Marcar un rango es decir "esta etapa va desde aquí hasta allá", así que las
@@ -133,14 +136,8 @@ export function CampoFechaCalendario({
    * calendario (fecha de inicio o fecha de fin).
    */
   const alternarSemana = (semana: SemanaVigencia) => {
-    const estado = porLunes.get(semana.lunes);
-    // Solo se desmarca lo que es de esta etapa; si es de otra, pasa a esta
-    if (estado?.etapa === etapa || estado?.excluida) { alternarExclusion(semana); return; }
-
-    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
-    if (!propias.length) {
-      // Todavía no hay cronograma: desde el campo de fin, la etapa termina en
-      // esa semana; desde el de inicio, empieza ahí.
+    // Sin cronograma todavía, el primer clic propone el ciclo 4-4-5 completo
+    if (!hayCronograma) {
       const arranque = extremo === 'fin'
         ? semanaRetrocediendo(semana.numero, DURACION_ESTANDAR[etapa] - 1)
         : semana.numero;
@@ -148,13 +145,10 @@ export function CampoFechaCalendario({
       onCambio({ fechas: resultado.fechas, semanasExcluidas });
       return;
     }
-    const primera = propias[0];
-    const ultima = propias[propias.length - 1];
-    if (extremo === 'inicio') {
-      aplicarRango(semana.numero, Math.max(semana.numero, ultima));
-    } else {
-      aplicarRango(Math.min(semana.numero, primera), semana.numero);
-    }
+    // Después, cada clic solo marca o desmarca esa semana en la etapa del campo:
+    // las demás etapas no se mueven y no se pierde lo ya marcado.
+    const resultado = ajustarSemanaEtapa(vigencia, fechas, semanasExcluidas, etapa, semana.numero);
+    onCambio(resultado);
   };
 
   /** Retrocede n semanas que cuenten (ni bloqueadas ni excluidas). */
@@ -169,17 +163,6 @@ export function CampoFechaCalendario({
     return numero;
   };
 
-  /**
-   * Límites del campo: desde "fecha de fin" no se puede elegir algo anterior al
-   * inicio de la etapa, y al revés. Evita cronogramas al revés.
-   */
-  const limites = (() => {
-    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
-    if (!propias.length) return {};
-    return extremo === 'inicio'
-      ? { hasta: propias[propias.length - 1] }
-      : { desde: propias[0] };
-  })();
 
   const aplicar = (desde: number, hasta: number) => {
     const a = Math.min(desde, hasta);
@@ -204,22 +187,10 @@ export function CampoFechaCalendario({
           hasta: extremo === 'inicio' ? Math.max(otro, semana.numero) : semana.numero,
         });
 
-    const campo = extremo === 'inicio'
-      ? ({ P: 'fechaInicioPlaneacion', E: 'fechaInicioEjecucion', C: 'fechaInicioComunicacion' } as const)[etapa]
-      : ({ P: 'fechaFinPlaneacion', E: 'fechaFinEjecucion', C: 'fechaFinComunicacion' } as const)[etapa];
-
-    onCambio({ fechas: { ...resultado.fechas, [campo]: dia }, semanasExcluidas });
-  };
-
-  const alternarExclusion = (semana: SemanaVigencia) => {
-    const estado = porLunes.get(semana.lunes);
-    const excluidas = estado?.excluida
-      ? semanasExcluidas.filter((l) => l !== semana.lunes)
-      : [...semanasExcluidas, semana.lunes];
-    const inicio = fechas.fechaInicioPlaneacion || fechas.fechaInicioEjecucion || fechas.fechaInicioComunicacion;
-    if (!inicio) { onCambio({ fechas: fechasVacias(), semanasExcluidas: excluidas }); return; }
-    const resultado = calcularProgramacion({ año: vigencia, inicio, semanasExcluidas: excluidas });
-    onCambio({ fechas: resultado.fechas, semanasExcluidas: excluidas });
+    onCambio({
+      fechas: { ...resultado.fechas, [extremo === 'inicio' ? campoInicio : campoFin]: dia },
+      semanasExcluidas,
+    });
   };
 
   const limpiar = () => onCambio({ fechas: fechasVacias(), semanasExcluidas: [] });
@@ -282,7 +253,7 @@ export function CampoFechaCalendario({
           extremo={extremo}
           valor={valor}
           arrastre={arrastre}
-          limites={limites}
+          rango={{ inicio: fechas[campoInicio], fin: fechas[campoFin] }}
           soloLectura={bloqueado}
           onInicioArrastre={(n) => { arrastrando.current = true; setArrastre({ desde: n, hasta: n }); }}
           onPasarPor={(n) => { if (arrastrando.current) setArrastre((a) => (a ? { ...a, hasta: n } : a)); }}
@@ -352,8 +323,8 @@ interface MesProps {
   /** Fecha del campo, para resaltar el día que está puesto */
   valor?: string;
   arrastre: { desde: number; hasta: number } | null;
-  /** Semanas que este campo no puede elegir, para no invertir la etapa */
-  limites: { desde?: number; hasta?: number };
+  /** Fechas reales de la etapa, para apagar los días que quedan fuera del corte */
+  rango: { inicio?: string; fin?: string };
   soloLectura: boolean;
   onInicioArrastre: (numero: number) => void;
   onPasarPor: (numero: number) => void;
@@ -363,7 +334,7 @@ interface MesProps {
 }
 
 function Mes({
-  vigencia, mes, semanas, porLunes, etapaCampo, extremo, valor, arrastre, limites, soloLectura,
+  vigencia, mes, semanas, porLunes, etapaCampo, extremo, valor, arrastre, rango, soloLectura,
   onInicioArrastre, onPasarPor, onSoltar, onClicNumero, onClicDia,
 }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
@@ -389,10 +360,7 @@ function Mes({
           const bloqueada = !!semana.bloqueo;
           const etapa = estado?.etapa;
           const excluida = !!estado?.excluida;
-          const fueraDeLimite =
-            (limites.desde !== undefined && semana.numero < limites.desde) ||
-            (limites.hasta !== undefined && semana.numero > limites.hasta);
-          const clickeable = !soloLectura && !bloqueada && !fueraDeLimite;
+          const clickeable = !soloLectura && !bloqueada;
           const marcada = enArrastre(semana.numero);
           const claseFila = marcada
             ? `${ESTILO_ETAPA[etapaCampo].fila} ring-2 ring-inset ring-[#1e5da8]`
@@ -408,9 +376,7 @@ function Mes({
           const estiloFila = !marcada && !excluida && bloqueada ? { backgroundImage: FONDO_BLOQUEADA } : undefined;
           const titulo = bloqueada
             ? `${NOMBRE_BLOQUEO[semana.bloqueo!]}: no se programa`
-            : fueraDeLimite
-              ? `La ${NOMBRE_ETAPA[etapaCampo]} no puede ${extremo === 'fin' ? 'terminar antes de empezar' : 'empezar después de terminar'}`
-              : excluida
+            : excluida
               ? `Semana ${semana.numero} desmarcada · clic para volver a marcarla`
               : etapa
                 ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]} · clic para desmarcarla`
@@ -424,7 +390,7 @@ function Mes({
               onMouseEnter={() => clickeable && onPasarPor(semana.numero)}
               onMouseUp={() => clickeable && onSoltar(semana.numero)}
               style={estiloFila}
-              className={`group ${claseFila} ${fueraDeLimite ? 'opacity-40' : ''} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
+              className={`group ${claseFila} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
             >
               <td className="py-0.5 pr-1 text-left">
                 <button
@@ -447,6 +413,10 @@ function Mes({
                 if (ymd < inicioMes || ymd > finMes) return <td key={i} />;
                 const festivo = semana.festivos.find((f) => f.fecha === ymd);
                 const esExtremo = valor === ymd;
+                // Días de la semana que quedan fuera por un corte a mitad de semana
+                const fueraDelCorte = !!etapa && (
+                  (!!rango.inicio && ymd < rango.inicio) || (!!rango.fin && ymd > rango.fin)
+                );
                 return (
                   <td key={i} className="py-0.5 text-center">
                     <span
@@ -459,7 +429,7 @@ function Mes({
                       style={festivo ? { backgroundColor: ROJO_FESTIVO } : undefined}
                       className={`inline-flex h-5 w-5 items-center justify-center rounded ${
                         festivo ? 'font-bold text-white' : i === 6 ? 'text-gray-400' : ''
-                      } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''} ${clickeable ? 'cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
+                      } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''} ${fueraDelCorte ? 'opacity-30' : ''} ${clickeable ? 'cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
                     >
                       {fecha.getDate()}
                     </span>
