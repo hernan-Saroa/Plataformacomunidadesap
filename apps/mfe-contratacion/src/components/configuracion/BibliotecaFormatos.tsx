@@ -199,9 +199,9 @@ export function BibliotecaFormatos() {
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <p className="m-0 text-xs text-gray-600 leading-relaxed min-w-0 flex-1">
-            Los formatos aprobados del Sistema Integrado de Gestión. El gestor los descarga
-            desde el documento que los pide, en su actividad. Qué documento pide cada formato se
-            configura en la actividad, pestaña Documentos.
+            Aquí están los formatos aprobados del Sistema Integrado de Gestión (SIG). El gestor los
+            descarga en cada actividad, junto al documento que los usa. Para elegir en qué
+            actividades se pide un formato, abre la actividad y ve a la pestaña Documentos.
           </p>
 
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -258,7 +258,7 @@ export function BibliotecaFormatos() {
               onClick={() => setEtapa('sin-usar')}
               cuenta={sinUsar}
               alerta
-              titulo="Están vigentes, pero ningún documento requerido los cita: el gestor no los ve"
+              titulo="Están vigentes, pero ninguna actividad los pide, así que el gestor no los ve"
             >
               Sin usar
             </Filtro>
@@ -489,7 +489,7 @@ function UsadoEn({ formato }: { formato: PlantillaFormato }) {
   if (usos.length === 0) {
     return (
       <span
-        title="Ningún documento requerido lo cita: el gestor no lo ve en ninguna actividad"
+        title="Ninguna actividad lo pide, así que el gestor no lo ve"
         className="text-[11px] font-bold text-amber-700"
       >
         En ninguna actividad
@@ -664,7 +664,7 @@ function Formulario({
       description={
         editando
           ? `${formato.codigo} · versión ${formato.version}`
-          : 'Queda en la biblioteca; se ofrece en las actividades cuyos documentos lo citen'
+          : 'Quedará en la biblioteca y aparecerá en las actividades que lo pidan'
       }
       size="large"
       icon={<FileText className="w-5 h-5" />}

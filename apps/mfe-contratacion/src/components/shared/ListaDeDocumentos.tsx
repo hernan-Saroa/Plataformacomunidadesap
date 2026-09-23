@@ -139,7 +139,7 @@ export function ListaDeDocumentos({
       await leer();
       onCambio?.();
     } catch (e: any) {
-      toast.error(e.message ?? 'No se pudo completar la acción');
+      toast.error(e.message ?? 'No pudimos completar la acción. Inténtalo de nuevo.');
       // Releer igual: si falló la segunda mitad de una sustitución, la fila
       // tiene que mostrarse pendiente y no con el archivo que ya se anuló.
       await leer();
@@ -173,7 +173,7 @@ export function ListaDeDocumentos({
         );
       },
       doc.codigo,
-      'Documento sustituido; el anterior queda en el expediente',
+      'Documento reemplazado. La versión anterior se conserva en el expediente.',
     );
 
   /**
@@ -195,8 +195,8 @@ export function ListaDeDocumentos({
     } catch (e: any) {
       toast.error(
         subidos > 0
-          ? `${e.message ?? 'No se pudo cargar el documento'} · se cargaron ${subidos} de ${archivos.length}`
-          : (e.message ?? 'No se pudo cargar el documento'),
+          ? `${e.message ?? 'No pudimos cargar el documento'}. Se alcanzaron a cargar ${subidos} de ${archivos.length}.`
+          : (e.message ?? 'No pudimos cargar el documento. Inténtalo de nuevo.'),
       );
     } finally {
       setOcupado(null);
@@ -211,7 +211,7 @@ export function ListaDeDocumentos({
     tras(
       () => contratacionService.retirarDocumentoDeActividad(procesoId, numeral, documentoId),
       documentoId,
-      'Documento retirado',
+      'Documento retirado del expediente',
     );
 
   // Sin nada que pedir ni nada cargado la lista no se pinta: la mayoría de
@@ -255,7 +255,9 @@ export function ListaDeDocumentos({
               faltan === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
             }`}
           >
-            {faltan === 0 ? 'Completos' : `Falta ${faltan} de ${obligatorios.length}`}
+            {faltan === 0
+              ? 'Obligatorios completos'
+              : `${faltan === 1 ? 'Falta' : 'Faltan'} ${faltan} de ${obligatorios.length} obligatorios`}
           </span>
         )}
       </div>
@@ -337,8 +339,8 @@ export function ListaDeDocumentos({
       {haySupuestos && (
         <p className="text-[10.5px] text-amber-700 m-0 flex items-start gap-1.5 leading-relaxed">
           <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-px" aria-hidden="true" />
-          Los documentos marcados con ◦ salen del texto del procedimiento y están pendientes de
-          contrastarse con el formato oficial de la Dirección de Contratación.
+          Los documentos marcados con ◦ se tomaron del procedimiento y la Dirección de Contratación
+          aún debe confirmarlos con el formato oficial.
         </p>
       )}
 
@@ -442,15 +444,15 @@ function FilaDocumento({
                 className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-bold text-[#003DA5] hover:underline"
               >
                 <Download className="w-3 h-3" aria-hidden="true" />
-                Descargar la plantilla · {documento.plantilla.codigo} v{documento.plantilla.version}
+                Descargar la plantilla ({documento.plantilla.codigo}, versión {documento.plantilla.version})
               </a>
             ) : (
               /* Se dice, y no se bloquea: el gestor no puede subir la plantilla
                  —eso lo hace Contratación desde la biblioteca—, así que
                  impedirle avanzar lo dejaría esperando algo ajeno. */
               <p className="text-[11px] text-amber-700 m-0 mt-1 leading-relaxed">
-                Contratación aún no ha subido la plantilla {documento.plantilla.codigo} a la
-                biblioteca. Diligéncialo por fuera y cárgalo aquí.
+                La plantilla {documento.plantilla.codigo} aún no está disponible. Puedes elaborar el
+                documento por tu cuenta y cargarlo aquí.
               </p>
             ))}
 
@@ -518,7 +520,7 @@ function FilaDocumento({
               className={`${boton} border border-amber-300 bg-white text-amber-700 hover:bg-amber-50`}
             >
               <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-              {ocupada ? 'Sustituyendo…' : 'Sustituir'}
+              {ocupada ? 'Reemplazando…' : 'Reemplazar archivo'}
             </button>
           ) : (
             <button
@@ -534,7 +536,7 @@ function FilaDocumento({
         </div>
       ) : !cargado ? (
         <p className="text-[11px] text-slate-500 m-0 mt-2">
-          {motivo ? `${motivo}.` : sinPermiso ? 'Pendiente de que el gestor lo cargue.' : null}
+          {motivo ? `${motivo}.` : sinPermiso ? 'El gestor aún no ha cargado este documento.' : null}
         </p>
       ) : null}
     </div>

@@ -191,11 +191,11 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
   /** Por qué la lista no se puede tocar, dicho para quien la mira. */
   const motivoBloqueo = negado
-    ? 'El proceso fue negado: no hay radicación que completar'
+    ? 'El proceso fue negado, así que no hay documentos por radicar'
     : aprobado
-      ? 'El estudio previo ya fue aprobado'
+      ? 'El estudio previo ya fue aprobado y sus documentos no se pueden cambiar'
       : enRevision
-        ? 'El estudio previo está en revisión: los documentos no se cambian mientras lo miran'
+        ? 'El estudio previo está en revisión. Si te lo devuelven, podrás cambiar los documentos'
         : null;
 
   const decidir = async (firma?: EvidenciaFirmaOtp) => {
@@ -354,8 +354,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
             titulo="Documentos para radicar"
             ayuda={
               <>
-                El estudio previo firmado y lo que la modalidad exige remitir con él. Sin los
-                obligatorios el proceso no se puede enviar a la Dirección de Contratación.
+                Carga el estudio previo firmado y los documentos que la modalidad exige enviar con
+                él. Para enviar el proceso a la Dirección de Contratación, todos los obligatorios
+                deben estar cargados.
               </>
             }
             bloqueo={motivoBloqueo}

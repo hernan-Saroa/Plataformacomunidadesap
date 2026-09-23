@@ -152,7 +152,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
       setEditando(null);
       await leer();
     } catch (e: any) {
-      toast.error(e.message ?? 'No se pudo guardar');
+      toast.error(e.message ?? 'No pudimos guardar el documento. Inténtalo de nuevo.');
     } finally {
       setOcupado(null);
     }
@@ -165,7 +165,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
       toast.success(ok);
       await leer();
     } catch (e: any) {
-      toast.error(e.message ?? 'No se pudo guardar');
+      toast.error(e.message ?? 'No pudimos guardar el cambio. Inténtalo de nuevo.');
     } finally {
       setOcupado(null);
     }
@@ -189,7 +189,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
       await contratacionService.actualizarDocumentoRequerido(b.id, { orden: a.orden });
       await leer();
     } catch (e: any) {
-      toast.error(e.message ?? 'No se pudo reordenar');
+      toast.error(e.message ?? 'No pudimos cambiar el orden. Inténtalo de nuevo.');
     } finally {
       setOcupado(null);
     }
@@ -199,9 +199,9 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
     setOcupado(fila.id);
     try {
       await contratacionService.copiarDocumentoRequerido(fila.id, destino);
-      toast.success(`Ahora también se pide en la actividad ${destino}`);
+      toast.success(`Listo: la actividad ${destino} también pedirá este documento`);
     } catch (e: any) {
-      toast.error(e.message ?? 'No se pudo copiar');
+      toast.error(e.message ?? 'No pudimos copiar el documento a esa actividad.');
     } finally {
       setOcupado(null);
     }
@@ -223,8 +223,8 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
         <div>
           <p className="text-sm font-semibold text-gray-800 m-0">Documentos que pide esta actividad</p>
           <p className="text-[11px] text-gray-500 mt-0.5 mb-0 leading-relaxed">
-            Es la lista de chequeo que verá el gestor. Los obligatorios traban el avance de la
-            actividad mientras falten; los opcionales se ofrecen, pero no se exigen.
+            Es la lista de chequeo que verá el gestor en la actividad. Los obligatorios deben estar
+            cargados para poder avanzar; los opcionales se pueden cargar si se tienen.
           </p>
         </div>
         {editando !== 'nueva' && (
@@ -255,9 +255,9 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
       {activos.length === 0 && editando !== 'nueva' ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-center">
           <FileText className="w-5 h-5 text-gray-400 mx-auto" />
-          <p className="text-sm text-gray-600 m-0 mt-1.5">Esta actividad no pide ningún documento</p>
+          <p className="text-sm text-gray-600 m-0 mt-1.5">Esta actividad todavía no pide documentos</p>
           <p className="text-[11px] text-gray-500 mt-1 mb-0">
-            Agrega los que el gestor deba entregar aquí, con su plantilla si la tiene.
+            Usa «Agregar documento» para indicar qué debe entregar el gestor y, si existe, con qué plantilla.
           </p>
         </div>
       ) : (
@@ -296,7 +296,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
                 onEditar={() => setEditando(fila.id)}
                 onSubir={() => mover(i, -1)}
                 onBajar={() => mover(i, 1)}
-                onRetirar={() => cambiar(fila, { activo: false }, 'Ya no se pide este documento')}
+                onRetirar={() => cambiar(fila, { activo: false }, 'Listo: el documento ya no se pide en esta actividad')}
                 onCopiar={(destino) => copiar(fila, destino)}
               />
             ),
@@ -313,7 +313,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
             onClick={() => setVerRetirados((v) => !v)}
             className="text-[11px] font-semibold text-gray-500 hover:text-gray-800"
           >
-            {verRetirados ? 'Ocultar' : 'Ver'} los que ya no se piden ({retirados.length})
+            {verRetirados ? 'Ocultar' : 'Ver'} documentos retirados ({retirados.length})
           </button>
           {verRetirados && (
             <ul className="m-0 mt-1.5 p-0 list-none space-y-1">
@@ -326,7 +326,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
                   <button
                     type="button"
                     disabled={ocupado === fila.id}
-                    onClick={() => cambiar(fila, { activo: true }, 'Se vuelve a pedir el documento')}
+                    onClick={() => cambiar(fila, { activo: true }, 'Listo: el documento vuelve a pedirse')}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#003DA5] hover:underline disabled:opacity-50"
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -391,7 +391,7 @@ function Fila({
           <p className="text-sm text-gray-900 m-0 leading-snug">
             {fila.nombre}
             {!fila.confirmado && (
-              <span className="text-amber-600" title="Sembrado desde el procedimiento; pendiente de confirmar">
+              <span className="text-amber-600" title="Tomado del procedimiento; falta confirmarlo con el formato oficial">
                 {' '}◦
               </span>
             )}
@@ -410,21 +410,21 @@ function Fila({
             {fila.plantillaCodigo
               ? fila.plantilla
                 ? `Plantilla ${fila.plantilla.codigo} v${fila.plantilla.version}${
-                    fila.plantilla.tieneArchivo ? '' : ' (sin archivo)'
+                    fila.plantilla.tieneArchivo ? '' : ' (aún sin archivo)'
                   }`
-                : `Plantilla ${fila.plantillaCodigo} (retirada de la biblioteca)`
+                : `Plantilla ${fila.plantillaCodigo} (ya no está en la biblioteca)`
               : 'Sin plantilla'}
             {' · '}
             {alcance}
-            {fila.tipologias.length > 0 && ` · Solo ${fila.tipologias.join(' · ')}`}
+            {fila.tipologias.length > 0 && ` · Solo para ${fila.tipologias.join(' · ')}`}
           </p>
         </div>
 
         <div className="flex items-center">
-          <button type="button" title="Subir" disabled={primera || ocupada} onClick={onSubir} className={BOTON_ICONO}>
+          <button type="button" title="Mover arriba" disabled={primera || ocupada} onClick={onSubir} className={BOTON_ICONO}>
             <ArrowUp className="w-3.5 h-3.5" />
           </button>
-          <button type="button" title="Bajar" disabled={ultima || ocupada} onClick={onBajar} className={BOTON_ICONO}>
+          <button type="button" title="Mover abajo" disabled={ultima || ocupada} onClick={onBajar} className={BOTON_ICONO}>
             <ArrowDown className="w-3.5 h-3.5" />
           </button>
           <button type="button" title="Editar" disabled={ocupada} onClick={onEditar} className={BOTON_ICONO}>
@@ -441,7 +441,7 @@ function Fila({
           </button>
           <button
             type="button"
-            title="Dejar de pedirlo"
+            title="Quitar de la lista"
             disabled={ocupada}
             onClick={onRetirar}
             className="flex-shrink-0 rounded-md p-1.5 text-gray-400 transition-colors hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40"
@@ -459,7 +459,7 @@ function Fila({
             onChange={(e) => setDestino(e.target.value)}
             className={CLASE_ENTRADA}
           >
-            <option value="">Elige la actividad…</option>
+            <option value="">Elige a qué actividad copiarlo…</option>
             {actividades
               .filter((a) => a.numeral !== numeral)
               .map((a) => (
@@ -526,7 +526,7 @@ function Formulario({
   const subir = async (fichero: File) => {
     const codigo = codigoNuevo.trim();
     if (!codigo) {
-      toast.error('Escribe el código del formato en el SIG antes de subirlo');
+      toast.error('Antes de subir el archivo, escribe el código del formato en el SIG (ej.: BS-FO-047)');
       return;
     }
     setSubiendo(true);
@@ -539,9 +539,9 @@ function Formulario({
       await onPlantillaSubida();
       setB((x) => ({ ...x, plantillaCodigo: codigo }));
       setCodigoNuevo('');
-      toast.success(`Formato ${codigo} subido a la biblioteca`);
+      toast.success(`Listo: el formato ${codigo} quedó en la biblioteca y ya está elegido`);
     } catch (e: any) {
-      toast.error(e.message ?? 'No se pudo subir el formato');
+      toast.error(e.message ?? 'No pudimos subir el formato. Inténtalo de nuevo.');
     } finally {
       setSubiendo(false);
     }
@@ -555,20 +555,20 @@ function Formulario({
           className={CLASE_ENTRADA}
           value={b.nombre}
           onChange={(e) => setB({ ...b, nombre: e.target.value })}
-          placeholder="Memorando de solicitud firmado"
+          placeholder="Ej.: Memorando de solicitud firmado"
         />
       </label>
 
       <label className="block">
         <span className="text-[11px] font-semibold text-gray-600">
-          Qué debe contener o para qué sirve
+          Qué debe contener o para qué sirve (opcional)
         </span>
         <textarea
           className={CLASE_ENTRADA}
           rows={2}
           value={b.descripcion}
           onChange={(e) => setB({ ...b, descripcion: e.target.value })}
-          placeholder="Lo lee el gestor en la lista, antes de cargarlo."
+          placeholder="El gestor verá este texto en la lista antes de cargar el documento."
         />
       </label>
 
@@ -605,7 +605,7 @@ function Formulario({
             className={CLASE_ENTRADA}
             value={codigoNuevo}
             onChange={(e) => setCodigoNuevo(e.target.value)}
-            placeholder="¿No está? Código del SIG, p. ej. BS-FO-047"
+            placeholder="¿No está en la lista? Escribe su código del SIG (ej.: BS-FO-047)"
             aria-label="Código del formato nuevo"
           />
           <input
@@ -637,12 +637,12 @@ function Formulario({
           checked={b.obligatorio}
           onChange={(e) => setB({ ...b, obligatorio: e.target.checked })}
         />
-        Obligatorio: la actividad no avanza mientras falte
+        Obligatorio: la actividad no avanza sin este documento
       </label>
 
       <fieldset className="m-0 p-0 border-0">
         <legend className="text-[11px] font-semibold text-gray-600">
-          Modalidades (ninguna marcada = todas)
+          Modalidades en las que se pide (si no marcas ninguna, se pide en todas)
         </legend>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
           {modalidades.map((m) => (
@@ -661,7 +661,7 @@ function Formulario({
       {tipologias.length > 0 && (
         <fieldset className="m-0 p-0 border-0">
           <legend className="text-[11px] font-semibold text-gray-600">
-            Tipologías contractuales (ninguna marcada = todas)
+            Tipologías contractuales (si no marcas ninguna, aplica a todas)
           </legend>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
             {tipologias.map((t) => (

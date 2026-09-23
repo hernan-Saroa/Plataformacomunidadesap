@@ -38,9 +38,9 @@ export function RadicadoGestionDocumental({ procesoId, bloqueado }: Props) {
     try {
       const r = await contratacionService.anotarRadicado(procesoId, radicado.trim());
       setGuardado(r.radicadoGestionDocumental);
-      toast.success('Radicado anotado');
+      toast.success('Número de radicado guardado');
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message ?? 'No pudimos guardar el radicado. Inténtalo de nuevo.');
     } finally {
       setOcupado(false);
     }
@@ -53,8 +53,8 @@ export function RadicadoGestionDocumental({ procesoId, bloqueado }: Props) {
         <div className="min-w-0 flex-1">
           <p className="text-[12.5px] font-bold text-slate-800 m-0">Radicado de Active Document</p>
           <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
-            El consecutivo que genera el aplicativo de gestión documental al remitir el paquete.
-            Déjalo vacío si lo enviaste por correo o por carpeta compartida.
+            Es el número que asigna Active Document cuando remites los documentos. Si los enviaste
+            por correo o por carpeta compartida, déjalo vacío.
           </p>
         </div>
       </div>
@@ -62,14 +62,14 @@ export function RadicadoGestionDocumental({ procesoId, bloqueado }: Props) {
       <div className="mt-2.5">
         {bloqueado ? (
           <p className="text-[11.5px] text-slate-700 m-0 tabular-nums">
-            {guardado ?? 'Se remitió sin radicado.'}
+            {guardado ?? 'Se remitió sin número de radicado.'}
           </p>
         ) : (
           <div className="flex items-center gap-2 flex-wrap">
             <input
               value={radicado}
               onChange={(e) => setRadicado(e.target.value)}
-              placeholder="2026-EE-004512"
+              placeholder="Ej.: 2026-EE-004512"
               aria-label="Radicado de Active Document"
               className="flex-1 min-w-[10rem] rounded-md border border-gray-300 px-2.5 py-1.5
                 text-[12px] tabular-nums focus:outline-none focus:border-[#003DA5]"
@@ -82,7 +82,7 @@ export function RadicadoGestionDocumental({ procesoId, bloqueado }: Props) {
                 bg-[#003DA5] text-white hover:opacity-90 disabled:opacity-50 transition-all"
             >
               <Save className="w-3.5 h-3.5" />
-              Anotar
+              Guardar
             </button>
           </div>
         )}

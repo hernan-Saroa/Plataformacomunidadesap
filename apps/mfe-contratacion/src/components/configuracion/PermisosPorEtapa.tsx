@@ -22,12 +22,12 @@ import { NOMBRE_ETAPA } from './simbolos';
 
 const ACCIONES: { accion: AccionAlcance; nombre: string; ayuda: string }[] = [
   { accion: 'ver', nombre: 'Ver', ayuda: 'Consultar el punto, sus documentos y su historial' },
-  { accion: 'editar', nombre: 'Editar', ayuda: 'Diligenciar, adjuntar, enviar a revisión, solicitar' },
-  { accion: 'aprobar', nombre: 'Aprobar', ayuda: 'Aprobar, devolver o avalar lo que otro diligenció' },
+  { accion: 'editar', nombre: 'Editar', ayuda: 'Diligenciar formularios, adjuntar documentos, enviar a revisión y hacer solicitudes' },
+  { accion: 'aprobar', nombre: 'Aprobar', ayuda: 'Aprobar, devolver o avalar lo que diligenció otra persona' },
   {
     accion: 'decidir',
     nombre: 'Decidir',
-    ayuda: 'El acto que obliga a la entidad: adjudicar, expedir, pagar, conceder, sancionar',
+    ayuda: 'Tomar las decisiones que comprometen a la entidad: adjudicar, expedir, pagar, conceder o sancionar',
   },
 ];
 
@@ -56,24 +56,24 @@ const PERFILES = [
   {
     nombre: 'Área solicitante',
     rol: 'ESTRUCTURADOR_TECNICO',
-    queHace: 'Diligencia el estudio previo (3.1 y 3.2) y lo reenvía si se lo devuelven; después lee.',
+    queHace: 'Diligencia el estudio previo (3.1 y 3.2) y lo corrige si se lo devuelven; después solo consulta.',
   },
   {
     nombre: 'Contratación',
     rol: 'GESTOR_CONTRATACION',
-    queHace: 'Toma el proceso en la 3.3, reparte el abogado y lleva el expediente de ahí en adelante.',
+    queHace: 'Recibe el proceso en la 3.3, asigna el abogado y lleva el expediente de ahí en adelante.',
   },
   {
     nombre: 'Abogado',
     rol: 'REVISOR_CONTRATACION',
-    queHace: 'Revisa en la 3.4 —aprueba, devuelve o niega— y aprueba lo que sube Contratación.',
+    queHace: 'Revisa en la 3.4 (aprueba, devuelve o niega) y aprueba lo que carga Contratación.',
   },
   {
     nombre: 'Financiera',
     rol: 'ESTRUCTURADOR_FINANCIERO',
-    queHace: 'Atiende el CDP, el RP, los pagos avalados y el cierre financiero; ve el proceso sin trabajarlo.',
+    queHace: 'Gestiona el CDP, el RP, los pagos avalados y el cierre financiero; el resto del proceso solo lo consulta.',
   },
-  { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Ve todo y no toca nada.' },
+  { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Consulta todo el proceso sin modificar nada.' },
 ];
 
 const clave = (accion: AccionAlcance, lugar: string) => `${accion}|${lugar}`;
@@ -90,7 +90,7 @@ function cubiertoPor(marcadas: Set<string>, accion: AccionAlcance, lugar: string
   if (lugar !== 'TODO' && marcadas.has(clave(accion, 'TODO'))) return 'todo el módulo';
   const punto = /^(\d{1,2})\.\d{1,2}$/.exec(lugar);
   if (punto && marcadas.has(clave(accion, `E${Number(punto[1])}`))) {
-    return `toda la etapa ${Number(punto[1])}`;
+    return `la etapa ${Number(punto[1])} completa`;
   }
   return null;
 }
@@ -200,7 +200,7 @@ export function PermisosPorEtapa() {
       const actualizado = await contratacionService.guardarAlcanceRol(elegido.id, aLista(borrador));
       setRoles((previos) => (previos ?? []).map((r) => (r.id === actualizado.id ? actualizado : r)));
       setBorrador(new Set(actualizado.alcances.map((a) => clave(a.accion, a.lugar))));
-      setAviso('Guardado. Los cambios rigen en menos de un minuto.');
+      setAviso('Guardado. Los cambios se aplican en menos de un minuto.');
     } catch (err: any) {
       setAviso(null);
       setError(err.message);
@@ -251,11 +251,10 @@ export function PermisosPorEtapa() {
     <div className="space-y-3">
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-2">
         <p className="m-0 text-xs text-gray-600 leading-relaxed">
-          Cada rol tiene cuatro acciones posibles —<strong className="font-bold text-gray-700">ver,
-          editar, aprobar y decidir</strong>— y aquí se marca dónde aplica cada una: en una etapa
-          entera, en un punto suelto o en todo el módulo. El permiso de cada acción se da en la
-          administración de roles de la plataforma; sin él, las casillas de esa columna no tienen
-          efecto.
+          Elige un rol y marca dónde puede <strong className="font-bold text-gray-700">ver, editar,
+          aprobar o decidir</strong>: en todo el módulo, en una etapa completa o en actividades
+          puntuales. Para que una columna tenga efecto, el rol también necesita ese permiso en la
+          administración de roles de la plataforma.
         </p>
       </div>
 
@@ -279,7 +278,7 @@ export function PermisosPorEtapa() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (sucio && !window.confirm('Hay cambios sin guardar en este rol. ¿Descartarlos?')) return;
+                    if (sucio && !window.confirm('Tienes cambios sin guardar en este rol. Si cambias de rol, se perderán. ¿Quieres continuar?')) return;
                     elegir(rol);
                   }}
                   aria-pressed={rol.id === elegidoId}
@@ -291,13 +290,13 @@ export function PermisosPorEtapa() {
                   <span className="block text-[10.5px] text-gray-400">
                     {rol.acciones.length
                       ? rol.acciones.map((a) => NOMBRE_ACCION[a]).join(' · ')
-                      : 'Sin acciones del módulo'}
+                      : 'Sin permisos en Contratación'}
                   </span>
                 </button>
               </li>
             ))}
             {rolesFiltrados.length === 0 && (
-              <li className="px-2.5 py-3 text-[12.5px] text-gray-500">Ningún rol coincide.</li>
+              <li className="px-2.5 py-3 text-[12.5px] text-gray-500">Ningún rol coincide con la búsqueda.</li>
             )}
           </ul>
         </div>
@@ -315,7 +314,7 @@ export function PermisosPorEtapa() {
               )}
               {elegido.transversales.length > 0 && (
                 <p className="m-0 text-[11.5px] text-gray-500">
-                  Además, sin etapa: {elegido.transversales.join(', ')}
+                  También puede, fuera de las etapas: {elegido.transversales.join(', ')}
                 </p>
               )}
 
@@ -325,7 +324,8 @@ export function PermisosPorEtapa() {
                   <p className="m-0 text-[11.5px] text-amber-800 leading-relaxed">
                     <strong className="font-bold">Sin efecto todavía.</strong> Este rol no tiene el
                     permiso {sinPermiso.map((a) => `«${NOMBRE_ACCION[a]}»`).join(' ni ')} en la
-                    administración de roles: esas casillas no le abren nada hasta que se lo den allí.
+                    administración de roles de la plataforma. Esas casillas empezarán a funcionar
+                    cuando se lo asignen allí.
                   </p>
                 </div>
               )}
@@ -336,10 +336,10 @@ export function PermisosPorEtapa() {
                   <p className="m-0 text-[11.5px] text-amber-800 leading-relaxed">
                     <strong className="font-bold">Diligencia y aprueba lo mismo</strong> en{' '}
                     {conflictos.length > 6
-                      ? `${conflictos.slice(0, 6).join(', ')} y ${conflictos.length - 6} puntos más`
+                      ? `${conflictos.slice(0, 6).join(', ')} y ${conflictos.length - 6} actividades más`
                       : conflictos.join(', ')}
-                    . El servicio sigue impidiendo que alguien apruebe lo que él mismo envió, pero
-                    quien revisa debería ser otro rol.
+                    . El sistema no deja que una persona apruebe lo que ella misma envió, pero lo
+                    recomendable es que la revisión la haga otro rol.
                   </p>
                 </div>
               )}
@@ -353,7 +353,7 @@ export function PermisosPorEtapa() {
                 if (!disponibles.length) return null;
                 return (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11.5px] text-gray-500">Partir de un perfil:</span>
+                    <span className="text-[11.5px] text-gray-500">Copiar los permisos de un perfil:</span>
                     {disponibles.map((p) => (
                       <button
                         key={p.rol}
@@ -363,7 +363,7 @@ export function PermisosPorEtapa() {
                         onClick={() => {
                           const origen = roles.find((r) => r.codigo === p.rol)!;
                           setBorrador(new Set(origen.alcances.map((a) => clave(a.accion, a.lugar))));
-                          setAviso(`Se copió el alcance del perfil ${p.nombre}. Revísalo y guarda.`);
+                          setAviso(`Copiamos los permisos del perfil ${p.nombre}. Revísalos y pulsa «Guardar cambios».`);
                         }}
                         className="rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[11.5px] font-semibold text-slate-700 hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-40"
                       >
@@ -378,9 +378,11 @@ export function PermisosPorEtapa() {
                 <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                   <Info className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" aria-hidden />
                   <p className="m-0 text-[11.5px] text-gray-600 leading-relaxed">
-                    <strong className="font-bold">{sinRatificar} casillas sin ratificar.</strong>{' '}
-                    Reproducen lo que el rol podía hacer antes de esta matriz; quedan ratificadas al
-                    guardar el rol.
+                    <strong className="font-bold">
+                      {sinRatificar === 1 ? '1 casilla por confirmar.' : `${sinRatificar} casillas por confirmar.`}
+                    </strong>{' '}
+                    Se copiaron de lo que el rol podía hacer antes de esta pantalla. Revísalas y pulsa
+                    «Confirmar» o guarda tus cambios para dejarlas confirmadas.
                   </p>
                 </div>
               )}
@@ -391,7 +393,7 @@ export function PermisosPorEtapa() {
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-gray-50">
                     <th className="border-b border-gray-200 px-3 py-2 text-left text-[11.5px] font-bold uppercase tracking-wide text-gray-600">
-                      Dónde
+                      Etapa o actividad
                     </th>
                     {ACCIONES.map((a) => (
                       <th
@@ -459,7 +461,7 @@ export function PermisosPorEtapa() {
                     <th scope="row" className="border-b border-gray-100 px-3 py-1.5 text-left text-[12.5px] font-bold text-slate-700">
                       Incumplimiento
                       <span className="block text-[10.5px] font-normal text-gray-400">
-                        No cuelga de la etapa 9: quien reporta no instruye ni decide
+                        Se configura aparte de la etapa 9: quien reporta no es quien tramita ni decide
                       </span>
                     </th>
                     <td colSpan={4} className="border-b border-gray-100" />
@@ -497,7 +499,7 @@ export function PermisosPorEtapa() {
                 onClick={() => elegir(elegido)}
                 className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[12.5px] font-semibold text-slate-700 hover:bg-gray-50 disabled:opacity-40"
               >
-                Descartar
+                Descartar cambios
               </button>
               <button
                 type="button"
@@ -508,7 +510,7 @@ export function PermisosPorEtapa() {
                 }}
                 className="rounded-lg bg-[#003DA5] px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-blue-800 disabled:opacity-40"
               >
-                {guardando ? 'Guardando…' : sucio ? 'Guardar cambios' : 'Ratificar'}
+                {guardando ? 'Guardando…' : sucio ? 'Guardar cambios' : 'Confirmar'}
               </button>
             </div>
           </div>

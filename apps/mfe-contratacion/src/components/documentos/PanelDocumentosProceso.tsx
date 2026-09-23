@@ -55,7 +55,7 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
   if (error || !estado) {
     return (
       <Marco>
-        <Aviso tono="error" titulo="No se pudo consultar la actividad">
+        <Aviso tono="error" titulo="No pudimos cargar los documentos">
           {error ?? 'Inténtalo de nuevo en un momento.'}
         </Aviso>
       </Marco>
@@ -68,9 +68,9 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
     return (
       <Marco>
         <Titulo>Elaboración de documentos del proceso</Titulo>
-        <Aviso tono="aviso" titulo="Esta modalidad no elabora estos documentos">
+        <Aviso tono="aviso" titulo="Esta actividad no aplica a la modalidad del proceso">
           {estado.motivoNoAplica ??
-            'La matriz de flujo no exige esta actividad para la modalidad del proceso.'}
+            'Por la modalidad de contratación, este proceso no necesita elaborar estos documentos.'}
         </Aviso>
       </Marco>
     );
@@ -88,10 +88,10 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
         ayuda={
           <>
             {estado.modalidadNombre
-              ? `Lo que elabora ${estado.modalidadNombre}. `
-              : 'Lo que elabora la modalidad del proceso. '}
-            Cada uno queda en el expediente con su huella digital, que es lo que permite verificar
-            después que no se alteró.
+              ? `Los documentos que requiere la modalidad ${estado.modalidadNombre}. `
+              : 'Los documentos que requiere la modalidad del proceso. '}
+            Cada uno queda guardado en el expediente con un registro que permite comprobar más
+            adelante que no ha sido modificado.
           </>
         }
         onCambio={() => {
@@ -105,14 +105,15 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
 
       {estado.documentos.length === 0 && (
         <Aviso tono="aviso" titulo="Sin documentos configurados">
-          Configuración no ha definido qué documentos elabora esta modalidad en la actividad 5.1.
+          Aún no se han definido documentos para esta modalidad en la actividad 5.1. Un
+          administrador puede agregarlos desde Configuración.
         </Aviso>
       )}
 
       {estado.completa ? (
         <Aviso tono="ok" titulo="Documentos completos">
-          Ya está todo lo que la modalidad exige. El proyecto de pliego se publica en la actividad
-          5.2.
+          Ya cargaste todo lo que exige la modalidad. El siguiente paso es publicar el proyecto de
+          pliego en la actividad 5.2.
         </Aviso>
       ) : null}
     </Marco>

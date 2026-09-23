@@ -81,7 +81,7 @@ describe('ListaDeDocumentos', () => {
     expect(screen.getByText('Obligatorio')).toBeInTheDocument();
     expect(screen.getByText('Opcional')).toBeInTheDocument();
     // Solo cuentan los obligatorios: el anexo opcional no «falta».
-    expect(screen.getByText('Falta 1 de 1')).toBeInTheDocument();
+    expect(screen.getByText('Falta 1 de 1 obligatorios')).toBeInTheDocument();
   });
 
   it('ofrece la plantilla donde el documento tiene una', async () => {
@@ -98,7 +98,7 @@ describe('ListaDeDocumentos', () => {
       ]),
     );
 
-    expect(await screen.findByText(/Descargar la plantilla · BS-FO-047 v2/)).toBeInTheDocument();
+    expect(await screen.findByText(/Descargar la plantilla \(BS-FO-047, versión 2\)/)).toBeInTheDocument();
   });
 
   it('avisa, sin bloquear, cuando la plantilla aún no tiene archivo', async () => {
@@ -110,7 +110,7 @@ describe('ListaDeDocumentos', () => {
       ]),
     );
 
-    expect(await screen.findByText(/aún no ha subido la plantilla BS-FO-047/)).toBeInTheDocument();
+    expect(await screen.findByText(/La plantilla BS-FO-047 aún no está disponible/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Cargar documento/ })).toBeEnabled();
   });
 
@@ -139,7 +139,7 @@ describe('ListaDeDocumentos', () => {
       .spyOn(contratacionService, 'cargarDocumentoDeActividad')
       .mockResolvedValue({ id: 'd-9', nombre: 'Memorando de solicitud' });
 
-    await userEvent.click(await screen.findByRole('button', { name: /Sustituir/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Reemplazar archivo/ }));
     const archivo = new File(['y'], 'memorando-v2.pdf', { type: 'application/pdf' });
     const input = document.querySelector('input[type="file"]:not([multiple])') as HTMLInputElement;
     await userEvent.upload(input, archivo);
@@ -160,14 +160,14 @@ describe('ListaDeDocumentos', () => {
   it('sin permiso para cargar no pinta los botones que el servicio rechazaría', async () => {
     pintar(estado([documento()], { puedeCargar: false }));
 
-    expect(await screen.findByText(/Pendiente de que el gestor lo cargue/)).toBeInTheDocument();
+    expect(await screen.findByText(/El gestor aún no ha cargado este documento/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Cargar documento/ })).toBeNull();
   });
 
   it('marca lo que aún no está contrastado con el formato oficial', async () => {
     pintar(estado([documento({ confirmado: false })]));
 
-    expect(await screen.findByText(/pendientes de\s+contrastarse con el formato oficial/)).toBeInTheDocument();
+    expect(await screen.findByText(/aún debe confirmarlos con el formato oficial/)).toBeInTheDocument();
   });
 
   it('sube a quien la monta cuántos obligatorios faltan', async () => {

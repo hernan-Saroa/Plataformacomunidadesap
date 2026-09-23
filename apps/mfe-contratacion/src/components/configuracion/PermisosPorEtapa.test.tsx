@@ -134,7 +134,7 @@ describe('PermisosPorEtapa', () => {
     render(<PermisosPorEtapa />);
     await waitFor(() => expect(casilla('Ver en la etapa 3').checked).toBe(true));
 
-    expect(screen.getByRole('button', { name: 'Ratificar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
   });
   it('parte de un perfil por defecto copiando el alcance del rol que lo encarna', async () => {
     // Los cinco perfiles de la Dirección (EFDS-1183): el abogado es el revisor.

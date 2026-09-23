@@ -122,7 +122,7 @@ describe('DocumentosQuePide', () => {
       .mockResolvedValue(fila({ activo: false }));
     render(<DocumentosQuePide numeral="3.1" modalidades={modalidades} />);
 
-    await userEvent.click(await screen.findByTitle('Dejar de pedirlo'));
+    await userEvent.click(await screen.findByTitle('Quitar de la lista'));
 
     await waitFor(() => expect(actualizar).toHaveBeenCalledWith('r-1', { activo: false }));
   });
