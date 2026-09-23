@@ -40,6 +40,7 @@ import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { buscarEtapaConfigurada, usuarioPuedeFirmarEnEtapa } from '../core/aprobacionEtapa';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -178,6 +179,16 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     || authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_APROBAR_RESPUESTA);
   const esAbogadoResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL')
     || (!esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER));
+
+  // Quién firma los documentos de la consulta se lee de la etapa actual configurada en
+  // Configuraciones SIGL → Asesoría Jurídica → Estados → Aprobación. Antes el visor se abría
+  // con la firma habilitada para todos, así que el rol Resuelve también veía "Firmar Documento".
+  // Si la etapa no tiene aprobador parametrizado, no requiere firma y el botón no se muestra.
+  const etapaConfigActual = buscarEtapaConfigurada(
+    estadosActivos as any[],
+    (consulta as any)?.estado || consulta?.etapa
+  );
+  const puedeFirmarDocumentos = usuarioPuedeFirmarEnEtapa(etapaConfigActual);
 
   const handleEnviarAJefe = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
@@ -2074,7 +2085,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           asunto={docParaVisor.asunto}
           descripcion={docParaVisor.descripcion}
           docId={docParaVisor.id}
-          allowSigning={true}
+          allowSigning={puedeFirmarDocumentos}
           onSignComplete={async (docId, signedData, pdfFile) => {
             try {
               const originalDocName = docParaVisor.nombre;
@@ -2088,8 +2099,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                 }
               }
 
-              // FIX: Ensure it always has .pdf extension since the signed file is a PDF
-              if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+              // El nombre sólo pasa a .pdf cuando realmente se generó el PDF estampado; si el
+              // estampado falló, el archivo sigue siendo el original y renombrarlo rompía la
+              // previsualización (se intentaba abrir un DOCX como PDF).
+              if (pdfFile && !nuevoNombre.toLowerCase().endsWith('.pdf')) {
                 nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
               }
 
@@ -2102,7 +2115,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                 firmante: signedData.firmante,
                 cargo: signedData.cargo,
                 certificadoId: signedData.certificado_id,
-                scale: signedData.scale
+                scale: signedData.scale,
+                // Marca si el sello quedó dentro del archivo: el visor usa esto para no
+                // superponer una segunda firma sobre la que ya trae el PDF.
+                estampadoEnArchivo: !!pdfFile
               });
 
               toast.loading('✍️ Guardando firma en el documento de consulta...', { id: 'firma-documento' });

@@ -27,6 +27,7 @@ const CAMPOS_VERSIONADOS: Array<keyof FilaProgramaAnual> = [
   'fechaFinEjecucion',
   'fechaInicioComunicacion',
   'fechaFin',
+  'semanasExcluidas',
 ];
 
 export interface UsuarioVersion {
@@ -289,6 +290,7 @@ export class ProgramaAnualVersionesService {
         fechaFinEjecucion: this.aFecha(a.fechaFinEjecucion),
         fechaInicioComunicacion: this.aFecha(a.fechaInicioComunicacion),
         fechaFin: this.aFecha(a.fechaFin),
+        semanasExcluidas: Array.isArray(a.semanasExcluidas) ? [...a.semanasExcluidas].sort() : [],
       }));
   }
 
@@ -302,7 +304,8 @@ export class ProgramaAnualVersionesService {
 
   /** Valor tal como sale en el documento: la plantilla quita del nombre lo que va entre paréntesis. */
   private valorImpreso(fila: FilaProgramaAnual, campo: keyof FilaProgramaAnual): string | null {
-    const valor = (fila[campo] as string) ?? null;
+    const crudo = fila[campo] ?? null;
+    const valor = Array.isArray(crudo) ? (crudo.length ? crudo.join(',') : null) : (crudo as string | null);
     return campo === 'nombre' && valor ? valor.replace(/\([^)]*\)/g, '').trim() : valor;
   }
 

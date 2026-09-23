@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -10,9 +10,11 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 import { TipoSubsanacion } from '../../../entities/subsanacion.entity';
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 export class RegistrarSubsanacionDto {
   @ApiProperty({ description: 'Oferta a la que se refiere lo presentado' })
@@ -97,6 +99,14 @@ export class ResponderSubsanacionDto {
   @IsNotEmpty({ message: 'Escribe la respuesta: es la que se le notifica al oferente' })
   @MinLength(10, { message: 'La respuesta tiene que sustentarse, no basta con aceptar o negar' })
   respuesta: string;
+
+  /** Solo si la 6.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class CerrarTrasladoDto {
@@ -111,4 +121,11 @@ export class CerrarTrasladoDto {
   @IsString()
   @MaxLength(2000)
   nota?: string;
+
+  /** Solo si la 6.5 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }

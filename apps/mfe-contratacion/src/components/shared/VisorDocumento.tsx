@@ -10,6 +10,16 @@ export interface DocumentoVisible {
   descargaUrl: string;
   /** Quién lo subió y cuándo, si quien abre el visor lo sabe. */
   detalle?: string;
+  /**
+   * El tipo real del archivo, cuando quien abre el visor lo conoce.
+   *
+   * Cuando el documento cumple un formato, `nombre` es el título del
+   * requisito —«Memorando de solicitud firmado por el jefe del área»— y no
+   * el nombre del archivo, así que no tiene extensión que mirar. Sin el mime
+   * un PDF subido así se declaraba «se lee en Word o Excel» y nunca se podía
+   * previsualizar, aunque sí se pudiera descargar.
+   */
+  mimeType?: string | null;
 }
 
 interface Props {
@@ -19,6 +29,7 @@ interface Props {
 
 /** Lo que el navegador sabe pintar sin ayuda de nadie. */
 const SE_VEN_EN_PANTALLA = ['.pdf'];
+const MIME_SE_VEN_EN_PANTALLA = ['application/pdf'];
 
 function extension(nombre: string): string {
   const punto = nombre.lastIndexOf('.');
@@ -83,7 +94,12 @@ export function VisorDocumento({ documento, onClose }: Props) {
 
   if (!documento) return null;
 
-  const seVe = SE_VEN_EN_PANTALLA.includes(extension(documento.nombre));
+  // El mime manda cuando se conoce: es del archivo, no del título que le
+  // puso el requisito. Sin él se cae a mirar la extensión del nombre, que es
+  // lo único que hay para los adjuntos que no vienen de un formato.
+  const seVe = documento.mimeType
+    ? MIME_SE_VEN_EN_PANTALLA.includes(documento.mimeType)
+    : SE_VEN_EN_PANTALLA.includes(extension(documento.nombre));
 
   /**
    * Se baja desde el blob y no desde el enlace del gateway.

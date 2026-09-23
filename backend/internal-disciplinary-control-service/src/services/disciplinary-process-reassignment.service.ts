@@ -151,7 +151,7 @@ export class DisciplinaryProcessReassignmentService {
     // Return the saved request with relations loaded
     const result = await this.reassignmentRepo.findOne({
       where: { id: savedRequest.id },
-      relations: ['process', 'currentProfessional', 'newProfessional'],
+      relations: ['process', 'process.news', 'currentProfessional', 'newProfessional'],
     });
 
     if (!result) {
@@ -160,10 +160,23 @@ export class DisciplinaryProcessReassignmentService {
 
     const radicadoProceso = result.process?.radicadoProceso ?? 'proceso';
 
-    if (result.currentProfessionalId) {
+    // Resolver datos reales (incluyendo correo y usuario) para nuevo profesional
+    const nuevoProfInfo = await this.resolverDestinatario(result.newProfessionalId || result.newProfessional?.id);
+    const anteriorProfId = result.currentProfessionalId || result.currentProfessional?.id;
+    const anteriorProfInfo = anteriorProfId ? await this.resolverDestinatario(anteriorProfId) : null;
+
+    const nombreNuevoProf = result.newProfessional?.nombreCompleto || nuevoProfInfo.nombre || 'Profesional';
+    const emailNuevoProf = result.newProfessional?.email || nuevoProfInfo.email;
+
+    const nombreAnteriorProf = result.currentProfessional?.nombreCompleto || anteriorProfInfo?.nombre || 'Profesional';
+    const emailAnteriorProf = result.currentProfessional?.email || anteriorProfInfo?.email;
+
+    // Notificación en plataforma al profesional anterior (si existía)
+    const destinatarioAnteriorNotif = anteriorProfInfo?.userId || result.currentProfessionalId;
+    if (destinatarioAnteriorNotif) {
       const aprobado = dto.approved;
       this.notificationClient.send({
-        id_usuario_destinatario: result.currentProfessionalId,
+        id_usuario_destinatario: destinatarioAnteriorNotif,
         tipo_notificacion: aprobado ? 'REASIGNACION_APROBADA' : 'REASIGNACION_RECHAZADA',
         titulo: aprobado ? 'Solicitud de reasignación aprobada' : 'Solicitud de reasignación rechazada',
         mensaje: aprobado
@@ -180,69 +193,124 @@ export class DisciplinaryProcessReassignmentService {
       }).catch(() => {});
     }
 
-    if (dto.approved && result.newProfessional?.id) {
-      this.notificationClient.send({
-        id_usuario_destinatario: result.newProfessional.id,
-        tipo_notificacion: 'PROCESO_REASIGNADO',
-        titulo: 'Nuevo proceso asignado por reasignación',
-        mensaje: `Se te ha reasignado el proceso ${radicadoProceso}.`,
-        descripcion_corta: `Proceso ${radicadoProceso} reasignado a ti`,
-        icono: 'Briefcase',
-        color: '#2563EB',
-        prioridad: 'Alta',
-        categoria: 'DISCIPLINARIO',
-        tiene_accion: true,
-        texto_boton_accion: 'Ver proceso',
-        datos_adicionales: { solicitudId: result.id, procesoId: result.processId },
-      }).catch(() => {});
+    // Notificación y correo al nuevo profesional
+    if (dto.approved) {
+      const destinatarioNuevoNotif = nuevoProfInfo.userId || result.newProfessional?.id;
+      if (destinatarioNuevoNotif) {
+        this.notificationClient.send({
+          id_usuario_destinatario: destinatarioNuevoNotif,
+          tipo_notificacion: 'PROCESO_REASIGNADO',
+          titulo: 'Nuevo proceso asignado por reasignación',
+          mensaje: `Se te ha reasignado el proceso ${radicadoProceso}.`,
+          descripcion_corta: `Proceso ${radicadoProceso} reasignado a ti`,
+          icono: 'Briefcase',
+          color: '#2563EB',
+          prioridad: 'Alta',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { solicitudId: result.id, procesoId: result.processId },
+        }).catch(() => {});
+      }
 
-      // Enviar correo electrónico al nuevo profesional
-      if (result.newProfessional?.email) {
+      // Enviar correo electrónico al nuevo profesional (firma: to, profesionalNombre, radicadoProceso, justificacion, observacionesJefe)
+      if (emailNuevoProf) {
         this.emailService.sendReassignmentEmail(
-          result.newProfessional.email,
+          emailNuevoProf,
+          nombreNuevoProf,
           radicadoProceso,
-          result.newProfessional.nombreCompleto || 'Profesional',
           result.justification,
           dto.jefeObservations,
         ).catch((err) => {
-          console.error(`Error al enviar correo de reasignación: ${err.message}`);
+          console.error(`Error al enviar correo de reasignación al nuevo profesional (${emailNuevoProf}): ${err.message}`);
+        });
+      }
+
+      // Enviar correo electrónico oficial al profesional anterior cuando la reasignación es aprobada
+      // (firma: to, profesionalNombre, radicadoProceso, nuevoProfesionalNombre, justificacion, observacionesJefe)
+      if (emailAnteriorProf) {
+        this.emailService.sendReassignedFromEmail(
+          emailAnteriorProf,
+          nombreAnteriorProf,
+          radicadoProceso,
+          nombreNuevoProf,
+          result.justification,
+          dto.jefeObservations,
+        ).catch((err) => {
+          console.error(`Error al enviar correo de reasignación al profesional anterior (${emailAnteriorProf}): ${err.message}`);
         });
       }
     }
 
-    // Enviar correo electrónico oficial al profesional anterior cuando la reasignación es aprobada
-    if (dto.approved && result.currentProfessional?.email) {
-      this.emailService.sendReassignedFromEmail(
-        result.currentProfessional.email,
-        result.currentProfessional.nombreCompleto || 'Profesional',
-        radicadoProceso,
-        result.newProfessional?.nombreCompleto || 'Profesional',
-        result.justification,
-        dto.jefeObservations,
-      ).catch((err) => {
-        console.error(`Error al enviar correo de reasignación al profesional anterior: ${err.message}`);
-      });
-    }
-
     // Notificar a todos los radicadores del resultado de la solicitud de reasignación
     try {
-      const radicadoresRows: any[] = await this.reassignmentRepo.manager.query(
+      const radicadoresMap = new Map<string, { id: string; email: string; nombre: string }>();
+
+      // 1. Radicadores por rol o código de rol
+      const radicadoresRolesRows: any[] = await this.reassignmentRepo.manager.query(
         `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
          FROM auth.user u
          JOIN auth.user_roles ur ON ur.id_user = u.id_user
          JOIN auth.role r ON r.id = ur.id_rol
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.is_active = true
-           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
+           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO', 'RADICADOR')
                 OR UPPER(r.code) LIKE '%RADICADOR%'
                 OR UPPER(r.name) LIKE '%RADICADOR%')`,
       );
 
-      const radicadores = (radicadoresRows || []).map((r) => ({
-        id: r.id_user,
-        email: (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim(),
-        nombre: r.nom_largo || r.username || 'Radicador',
-      }));
+      for (const r of radicadoresRolesRows || []) {
+        const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+        if (r.id_user) {
+          radicadoresMap.set(r.id_user, {
+            id: r.id_user,
+            email,
+            nombre: r.nom_largo || r.username || 'Radicador',
+          });
+        }
+      }
+
+      // 2. Radicadores por permiso específico (general.is_radicador o variantes)
+      const radicadoresPermisoRows: any[] = await this.reassignmentRepo.manager.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND (
+             perm.code IN ('general.is_radicador', 'control-disciplinario.general.es_radicador', 'control-disciplinario.general.is_radicador')
+             OR perm.code LIKE '%is_radicador%'
+             OR perm.code LIKE '%es_radicador%'
+           )`,
+      );
+
+      for (const r of radicadoresPermisoRows || []) {
+        const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+        if (r.id_user) {
+          radicadoresMap.set(r.id_user, {
+            id: r.id_user,
+            email,
+            nombre: r.nom_largo || r.username || 'Radicador',
+          });
+        }
+      }
+
+      // 3. Radicador asignado a la queja/noticia del proceso si existe
+      const radicadorNoticiaId = result.process?.news?.radicadorId;
+      if (radicadorNoticiaId && !radicadoresMap.has(radicadorNoticiaId)) {
+        const radInfo = await this.resolverDestinatario(radicadorNoticiaId);
+        if (radInfo.email || radInfo.userId) {
+          radicadoresMap.set(radicadorNoticiaId, {
+            id: radInfo.userId || radicadorNoticiaId,
+            email: radInfo.email || '',
+            nombre: radInfo.nombre || 'Radicador del Proceso',
+          });
+        }
+      }
+
+      const radicadores = Array.from(radicadoresMap.values());
 
       if (radicadores.length > 0) {
         const aprobado = dto.approved;
@@ -250,7 +318,7 @@ export class DisciplinaryProcessReassignmentService {
           ? `Reasignación de proceso aprobada - ${radicadoProceso}`
           : `Reasignación de proceso rechazada - ${radicadoProceso}`;
         const mensajeRad = aprobado
-          ? `La reasignación del proceso ${radicadoProceso} ha sido aprobada. Nuevo profesional: ${result.newProfessional?.nombreCompleto || 'Asignado'}.`
+          ? `La reasignación del proceso ${radicadoProceso} ha sido aprobada. Nuevo profesional: ${nombreNuevoProf}.`
           : `La solicitud de reasignación del proceso ${radicadoProceso} ha sido rechazada.`;
 
         // Notificación en plataforma
@@ -270,13 +338,13 @@ export class DisciplinaryProcessReassignmentService {
         }));
         await this.notificationClient.sendMany(notifs).catch(() => {});
 
-        // Correo electrónico a todos los radicadores
+        // Correo electrónico a todos los radicadores que tengan email
         const detalles = [
           { label: 'Radicado del Proceso', valor: radicadoProceso },
           { label: 'Estado Solicitud', valor: aprobado ? 'APROBADA' : 'RECHAZADA' },
-          { label: 'Profesional Anterior', valor: result.currentProfessional?.nombreCompleto || 'No especificado' },
-          ...(aprobado && result.newProfessional
-            ? [{ label: 'Nuevo Profesional', valor: result.newProfessional.nombreCompleto || 'Asignado' }]
+          { label: 'Profesional Anterior', valor: nombreAnteriorProf },
+          ...(aprobado
+            ? [{ label: 'Nuevo Profesional', valor: nombreNuevoProf }]
             : []),
           ...(dto.jefeObservations
             ? [{ label: 'Observaciones del Jefe', valor: dto.jefeObservations }]
@@ -287,7 +355,7 @@ export class DisciplinaryProcessReassignmentService {
         ];
 
         await this.emailService.sendBulkNotification(
-          radicadores,
+          radicadores.filter((r) => r.email && r.email.includes('@')),
           `[REASIGNACIÓN ${aprobado ? 'APROBADA' : 'RECHAZADA'}] Proceso ${radicadoProceso}`,
           tituloRad,
           mensajeRad,
@@ -337,5 +405,88 @@ export class DisciplinaryProcessReassignmentService {
       relations: ['process', 'currentProfessional', 'newProfessional'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  private async resolverDestinatario(idOrProfId: string): Promise<{
+    userId: string | null;
+    profId: string | null;
+    nombre: string;
+    email: string | null;
+  }> {
+    if (!idOrProfId) {
+      return { userId: null, profId: null, nombre: 'Profesional', email: null };
+    }
+
+    try {
+      // 1. Verificar si es un DisciplinaryProfessional
+      const prof = await this.professionalRepo.findOne({
+        where: { id: idOrProfId },
+      });
+      if (prof) {
+        let userId = prof.idUser || null;
+        if (!userId && prof.email) {
+          try {
+            const userRows = await this.reassignmentRepo.manager.query(
+              `SELECT u.id_user FROM auth.user u
+               LEFT JOIN auth.personas p ON p.id_person = u.id_person
+               WHERE LOWER(u.username) = LOWER($1) OR LOWER(p.dir_email) = LOWER($1)
+               LIMIT 1`,
+              [prof.email],
+            );
+            if (userRows && userRows.length > 0) {
+              userId = userRows[0].id_user;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        return {
+          userId,
+          profId: prof.id,
+          nombre: prof.nombreCompleto || 'Profesional Universitario',
+          email: prof.email || null,
+        };
+      }
+
+      // 2. Verificar si es un usuario de auth.user
+      const userRows = await this.reassignmentRepo.manager.query(
+        `SELECT u.id_user, u.username, p.nom_largo, p.dir_email 
+         FROM auth.user u 
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person 
+         WHERE u.id_user = $1 
+         LIMIT 1`,
+        [idOrProfId],
+      );
+      if (userRows && userRows.length > 0) {
+        const u = userRows[0];
+        let profLinked: DisciplinaryProfessional | null = null;
+        try {
+          profLinked = await this.professionalRepo.findOne({
+            where: [{ idUser: u.id_user }, { email: u.dir_email }],
+          });
+        } catch {
+          // ignore
+        }
+        return {
+          userId: u.id_user,
+          profId: profLinked ? profLinked.id : null,
+          nombre: u.nom_largo || profLinked?.nombreCompleto || 'Usuario',
+          email:
+            u.dir_email ||
+            (u.username && u.username.includes('@') ? u.username : null) ||
+            profLinked?.email ||
+            null,
+        };
+      }
+    } catch (err) {
+      console.warn('Error resolviendo destinatario:', err);
+    }
+
+    return {
+      userId: idOrProfId,
+      profId: null,
+      nombre: 'Profesional',
+      email: null,
+    };
   }
 }

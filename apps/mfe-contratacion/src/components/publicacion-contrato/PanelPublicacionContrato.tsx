@@ -3,7 +3,7 @@ import { Check, ExternalLink, Globe, Undo2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DestinoPublicacion, EstadoPublicacionContrato } from '../../types';
+import { DestinoPublicacion, EstadoPublicacionContrato, EvidenciaFirmaOtp } from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -18,11 +18,14 @@ import {
 import { Permitido } from '../shared/Permitido';
 import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '8.8';
 
 const ETIQUETA_DESTINO: Record<DestinoPublicacion, string> = {
   SECOP_II: 'SECOP II',
@@ -37,6 +40,7 @@ const ETIQUETA_DESTINO: Record<DestinoPublicacion, string> = {
  * Registrar el sitio reconcilia las dos lecturas sin decidir por Contratación.
  */
 export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Publicar el contrato');
   const [estado, setEstado] = useState<EstadoPublicacionContrato | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +81,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
     setRegistrando(false);
   };
 
-  const publicar = async () => {
+  const publicar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!evidencia) return;
 
     setGuardando(true);
@@ -89,6 +93,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
           fechaPublicacion: datos.fechaPublicacion,
           ...(datos.secopNumero.trim() ? { secopNumero: datos.secopNumero.trim() } : {}),
           ...(datos.secopUrl.trim() ? { secopUrl: datos.secopUrl.trim() } : {}),
+          firma: firmaOtp,
         },
         evidencia,
       );
@@ -309,7 +314,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
               disabled={guardando || !datos.fechaPublicacion || !evidencia}
-              onClick={publicar}
+              onClick={() => firma.conFirma(publicar)}
             >
               Registrar
             </Boton>
@@ -323,6 +328,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
     </Marco>
   );
 }

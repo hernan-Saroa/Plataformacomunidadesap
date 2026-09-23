@@ -48,6 +48,7 @@ import {
   DatosSeguimiento,
   EstadoRegistroActividad,
   DatosRegistroActividad,
+  EvidenciaFirmaOtp,
   EstadoPagos,
   DatosPago,
   TipoSoportePago,
@@ -74,6 +75,9 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  ConfiguracionAvisos,
+  EventoAviso,
+  ParametroAlerta,
   EstadisticasGestion,
   ExpedienteAuditoria,
   EstadoIncumplimiento,
@@ -103,6 +107,7 @@ import {
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
+  Dependencia,
   EtapaConActividades,
   TipologiaConfigurable,
   GuardarTipologia,
@@ -250,7 +255,13 @@ export const contratacionService = {
 
   solicitarCdp: (
     procesoId: string,
-    datos: { rubro: string; valor: number; vigenciaFiscal?: number; observaciones?: string },
+    datos: {
+      rubro: string;
+      valor: number;
+      vigenciaFiscal?: number;
+      observaciones?: string;
+      firma?: EvidenciaFirmaOtp;
+    },
   ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
 
   /**
@@ -259,10 +270,10 @@ export const contratacionService = {
    * El rubro va vacío si la solicitud ya lo traía; el backend solo lo exige
    * cuando el CDP no tiene ninguno, que es el caso de la solicitud automática.
    */
-  verificarCdp: (procesoId: string, rubro?: string) =>
+  verificarCdp: (procesoId: string, rubro?: string, firma?: EvidenciaFirmaOtp) =>
     pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, {
       method: 'POST',
-      body: JSON.stringify({ rubro }),
+      body: JSON.stringify({ rubro, firma }),
     }),
 
   expedirCdp: (
@@ -274,6 +285,7 @@ export const contratacionService = {
       vigenciaFiscal?: number;
       /** Solo si difiere del verificado; omitirlo conserva aquel. */
       rubro?: string;
+      firma?: EvidenciaFirmaOtp;
     },
   ) =>
     pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
@@ -287,9 +299,10 @@ export const contratacionService = {
       body: JSON.stringify({ observaciones }),
     }),
 
-  adjuntarCdp: (procesoId: string, archivo: File) => {
+  adjuntarCdp: (procesoId: string, archivo: File, firma?: EvidenciaFirmaOtp) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 
@@ -322,10 +335,17 @@ export const contratacionService = {
   },
 
   /** Publica una adenda emitida; si es de cronograma, aquí se mueve el plazo. */
-  publicarAdenda: (procesoId: string, adendaId: string, fechaPublicacion: string, evidencia: File) => {
+  publicarAdenda: (
+    procesoId: string,
+    adendaId: string,
+    fechaPublicacion: string,
+    evidencia: File,
+    firma?: EvidenciaFirmaOtp,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
     cuerpo.append('fechaPublicacion', fechaPublicacion);
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas/${adendaId}/publicar`, {
       method: 'POST',
@@ -334,10 +354,10 @@ export const contratacionService = {
   },
 
   /** Anula una adenda emitida por error; una publicada ya no se puede anular. */
-  anularAdenda: (procesoId: string, adendaId: string, motivo: string) =>
+  anularAdenda: (procesoId: string, adendaId: string, motivo: string, firma?: EvidenciaFirmaOtp) =>
     pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas/${adendaId}/anular`, {
       method: 'POST',
-      body: JSON.stringify({ motivo }),
+      body: JSON.stringify({ motivo, firma }),
     }),
 
   // ------------------------ etapa 6 · recepción de ofertas (6.1) ------------
@@ -405,13 +425,14 @@ export const contratacionService = {
    */
   designarComite: (
     procesoId: string,
-    datos: { fechaDesignacion: string; miembros: MiembroPropuesto[] },
+    datos: { fechaDesignacion: string; miembros: MiembroPropuesto[]; firma?: EvidenciaFirmaOtp },
     memorando: File,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', memorando);
     cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
     cuerpo.append('miembros', JSON.stringify(datos.miembros));
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoComite>(`/procesos/${procesoId}/comite`, {
       method: 'POST',
@@ -455,10 +476,15 @@ export const contratacionService = {
   },
 
   /** Registra la aceptación del proponente, con su nombre. */
-  aceptarContrato: (procesoId: string, aceptadoPor: string, observacion?: string) =>
+  aceptarContrato: (
+    procesoId: string,
+    aceptadoPor: string,
+    observacion?: string,
+    firma?: EvidenciaFirmaOtp,
+  ) =>
     pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/aceptar`, {
       method: 'POST',
-      body: JSON.stringify({ aceptadoPor, observacion }),
+      body: JSON.stringify({ aceptadoPor, observacion, firma }),
     }),
 
   /**
@@ -520,10 +546,10 @@ export const contratacionService = {
    *
    * Con cuerpo vacío explícito: el gateway trata mal los POST sin body.
    */
-  aprobarGarantia: (procesoId: string, garantiaId: string) =>
+  aprobarGarantia: (procesoId: string, garantiaId: string, firma?: EvidenciaFirmaOtp) =>
     pedir<EstadoLegalizacion>(
       `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/aprobar`,
-      { method: 'POST', body: JSON.stringify({}) },
+      { method: 'POST', body: JSON.stringify({ firma }) },
     ),
 
   /** Devuelve una póliza con el motivo; después se carga la corregida. */
@@ -537,12 +563,14 @@ export const contratacionService = {
   registrarArl: (procesoId: string, datos: DatosArl, soporte: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', soporte);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/arl`, {
       method: 'POST',
@@ -564,12 +592,14 @@ export const contratacionService = {
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoPublicacionContrato>(`/procesos/${procesoId}/publicacion-contrato`, {
       method: 'POST',
@@ -601,12 +631,14 @@ export const contratacionService = {
   expedirRp: (procesoId: string, datos: DatosExpedicionRp, soporte: File | null) => {
     const cuerpo = new FormData();
     if (soporte) cuerpo.append('file', soporte);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoRegistroPresupuestal>(
       `/procesos/${procesoId}/registro-presupuestal/expedir`,
@@ -645,10 +677,11 @@ export const contratacionService = {
     procesoId: string,
     decision: 'APROBADO' | 'DEVUELTO',
     observaciones?: string,
+    firma?: EvidenciaFirmaOtp,
   ) =>
     pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad/decidir`, {
       method: 'POST',
-      body: JSON.stringify({ decision, observaciones }),
+      body: JSON.stringify({ decision, observaciones, firma }),
     }),
 
   // ---------------- causal de contratación · 3.6 (3.5.1 de la matriz) -------
@@ -665,10 +698,15 @@ export const contratacionService = {
     pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`),
 
   /** El abogado del proceso la elige, o rectifica la que eligió. */
-  elegirCausal: (procesoId: string, causal: string, sustento?: string) =>
+  elegirCausal: (
+    procesoId: string,
+    causal: string,
+    sustento?: string,
+    firma?: EvidenciaFirmaOtp,
+  ) =>
     pedir<EstadoCausalProceso>(`/procesos/${procesoId}/causal`, {
       method: 'PUT',
-      body: JSON.stringify({ causal, sustento }),
+      body: JSON.stringify({ causal, sustento, firma }),
     }),
 
   // --------------- comité de contratación · 3.7 (3.6 de la matriz) ----------
@@ -691,12 +729,30 @@ export const contratacionService = {
       decision: DecisionComite;
       condiciones?: string;
       observaciones?: string;
+      /**
+       * Qué actividades anteriores ya cerradas se reabren con esta sesión
+       * (EFDS-2068): obligatorio al observar, opcional al aprobar.
+       */
+      numeralesReabrir?: string[];
+      firma?: EvidenciaFirmaOtp;
     },
     acta: File,
   ) =>
     pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/sesiones`, {
       method: 'POST',
-      body: conArchivo(datos, acta),
+      // `conArchivo` hace `String(valor)` de cada campo, y eso volvería la
+      // firma «[object Object]» y los numerales «3.1,3.2»: los dos se mandan
+      // ya convertidos a JSON, que es como los lee el DTO.
+      body: conArchivo(
+        {
+          ...datos,
+          numeralesReabrir: datos.numeralesReabrir?.length
+            ? JSON.stringify(datos.numeralesReabrir)
+            : undefined,
+          firma: datos.firma ? JSON.stringify(datos.firma) : undefined,
+        },
+        acta,
+      ),
     }),
 
   /** Deja constancia de que el proceso no pasó por comité, por cuantía. */
@@ -784,12 +840,15 @@ export const contratacionService = {
   designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
+    // La firma se serializa aparte: `String({...})` la volvería «[object Object]».
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`, {
       method: 'POST',
@@ -812,12 +871,14 @@ export const contratacionService = {
   reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', acto);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/reasignar`, {
       method: 'POST',
@@ -846,12 +907,14 @@ export const contratacionService = {
   suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta?: File | null) => {
     const cuerpo = new FormData();
     if (acta) cuerpo.append('file', acta);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
       method: 'POST',
@@ -945,10 +1008,15 @@ export const contratacionService = {
     }),
 
   /** La Direccion Financiera registra que el pago se tramito. */
-  tramitarPago: (procesoId: string, pagoId: string, referenciaPago: string) =>
+  tramitarPago: (
+    procesoId: string,
+    pagoId: string,
+    referenciaPago: string,
+    firma?: EvidenciaFirmaOtp,
+  ) =>
     pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/tramitar`, {
       method: 'POST',
-      body: JSON.stringify({ referenciaPago }),
+      body: JSON.stringify({ referenciaPago, firma }),
     }),
 
   /** Anula una cuenta que no debio radicarse. */
@@ -968,12 +1036,14 @@ export const contratacionService = {
   elaborarInformeFinal: (procesoId: string, datos: DatosInformeFinal, informe: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', informe);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final`, {
       method: 'POST',
@@ -1031,12 +1101,14 @@ export const contratacionService = {
     const cuerpo = new FormData();
     cuerpo.append('acta', acta);
     if (pazYSalvoSoporte) cuerpo.append('pazYSalvoSoporte', pazYSalvoSoporte);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion`, {
       method: 'POST',
@@ -1070,12 +1142,14 @@ export const contratacionService = {
   ) => {
     const cuerpo = new FormData();
     if (soporte) cuerpo.append('file', soporte);
+    const { firma, ...resto } = datos;
 
-    for (const [clave, valor] of Object.entries(datos)) {
+    for (const [clave, valor] of Object.entries(resto)) {
       if (valor !== undefined && valor !== null && valor !== '') {
         cuerpo.append(clave, String(valor));
       }
     }
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero`, {
       method: 'POST',
@@ -1356,12 +1430,14 @@ export const contratacionService = {
     datos: { fechaCelebracion: string; observaciones?: string },
     acta: File,
     matriz: File,
+    firma?: EvidenciaFirmaOtp,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('acta', acta);
     cuerpo.append('matriz', matriz);
     cuerpo.append('fechaCelebracion', datos.fechaCelebracion);
     if (datos.observaciones) cuerpo.append('observaciones', datos.observaciones);
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos`, {
       method: 'POST',
@@ -1544,6 +1620,18 @@ export const contratacionService = {
     pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`),
 
   /**
+   * Da por terminado el plazo de publicidad, para probar sin esperar.
+   *
+   * El backend mueve la fecha de vencimiento a ayer y deja traza: no finge el
+   * vencimiento, así que todo lo que viene después se comporta como en
+   * producción. Solo lo admite quien tiene `contratacion.plazo.terminar`.
+   */
+  terminarPlazoPublicacion: (procesoId: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego/plazo/terminar`, {
+      method: 'POST',
+    }),
+
+  /**
    * Registra la publicación con su evidencia en una sola petición.
    *
    * La evidencia va aquí y no en un paso posterior porque sin ella no hay
@@ -1624,17 +1712,18 @@ export const contratacionService = {
     procesoId: string,
     observacionId: string,
     datos: { respuesta: string; modificoPliego: boolean },
+    firma?: EvidenciaFirmaOtp,
   ) =>
     pedir<EstadoObservaciones>(
       `/procesos/${procesoId}/observaciones/${observacionId}/responder`,
-      { method: 'POST', body: JSON.stringify(datos) },
+      { method: 'POST', body: JSON.stringify({ ...datos, firma }) },
     ),
 
   /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
-  cerrarSinObservaciones: (procesoId: string) =>
+  cerrarSinObservaciones: (procesoId: string, firma?: EvidenciaFirmaOtp) =>
     pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/cerrar`, {
       method: 'POST',
-      body: '{}',
+      body: JSON.stringify({ firma }),
     }),
 
   // ---------------------------------- etapa 5 · limitación a MIPYME (5.4) ---
@@ -1671,11 +1760,13 @@ export const contratacionService = {
     procesoId: string,
     datos: { limitado: boolean; motivo?: string },
     acto: File | null,
+    firma?: EvidenciaFirmaOtp,
   ) => {
     const cuerpo = new FormData();
     if (acto) cuerpo.append('file', acto);
     cuerpo.append('limitado', String(datos.limitado));
     if (datos.motivo) cuerpo.append('motivo', datos.motivo);
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/decision`, {
       method: 'POST',
@@ -1776,17 +1867,17 @@ export const contratacionService = {
    * El cuerpo `{}` es necesario: el gateway descarta la respuesta de un POST
    * sin cuerpo y la convierte en un 400 vacío, perdiendo camposFaltantes.
    */
-  enviarARevision: (procesoId: string) =>
+  enviarARevision: (procesoId: string, firma?: EvidenciaFirmaOtp) =>
     pedir<{ estado: string; enviadoPor: string; enviadoAt: string }>(
       `/procesos/${procesoId}/estudio-previo/enviar`,
-      { method: 'POST', body: '{}' },
+      { method: 'POST', body: JSON.stringify({ firma }) },
     ),
 
   /** Numeral 3.4: aprueba el estudio previo enviado a revisión. */
-  aprobar: (procesoId: string, observaciones?: string) =>
+  aprobar: (procesoId: string, observaciones?: string, firma?: EvidenciaFirmaOtp) =>
     pedir<{ estado: string; decision: string; revisadoPor: string }>(
       `/procesos/${procesoId}/estudio-previo/aprobar`,
-      { method: 'POST', body: JSON.stringify({ observaciones }) },
+      { method: 'POST', body: JSON.stringify({ observaciones, firma }) },
     ),
 
   /** Numeral 3.4: devuelve al gestor con observaciones (obligatorias). */
@@ -1820,6 +1911,35 @@ export const contratacionService = {
     return pedir<{ id: string; nombre: string }>(
       `/procesos/${procesoId}/estudio-previo/documentos`,
       { method: 'POST', body: form },
+    );
+  },
+
+  /**
+   * Retira un adjunto del estudio previo (numeral 3.1).
+   *
+   * Solo aplica mientras el estudio previo sigue editable: si ya está en
+   * revisión el backend responde 409, y si el documento es el snapshot del
+   * formulario enviado (no un adjunto suelto) responde 400.
+   */
+  retirarAdjuntoDelEstudioPrevio: (procesoId: string, documentoId: string) =>
+    pedir<{ retirado: boolean }>(
+      `/procesos/${procesoId}/estudio-previo/documentos/${documentoId}`,
+      { method: 'DELETE' },
+    ),
+
+  /**
+   * Reemplaza un adjunto del estudio previo por otro (numeral 3.1, EFDS-2067).
+   *
+   * Retira el anterior y adjunta el nuevo en una sola llamada: mismas
+   * condiciones que `retirarAdjuntoDelEstudioPrevio`, y además el archivo
+   * debe pasar el mismo filtro de tipo que `adjuntarDocumento`.
+   */
+  reemplazarAdjuntoDelEstudioPrevio: (procesoId: string, documentoId: string, archivo: File) => {
+    const form = new FormData();
+    form.append('file', archivo);
+    return pedir<{ id: string; nombre: string }>(
+      `/procesos/${procesoId}/estudio-previo/documentos/${documentoId}`,
+      { method: 'PUT', body: form },
     );
   },
 
@@ -1992,6 +2112,7 @@ export const contratacionService = {
     }
     if (datos.puntajeMaximo != null) cuerpo.append('puntajeMaximo', String(datos.puntajeMaximo));
     if (datos.valorEvaluado != null) cuerpo.append('valorEvaluado', String(datos.valorEvaluado));
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
       method: 'POST',
@@ -2051,10 +2172,16 @@ export const contratacionService = {
    * La evidencia va en la misma petición: no hay integración con SECOP II, así
    * que el soporte es lo que prueba la publicación.
    */
-  trasladarInforme: (procesoId: string, medioPublicacion: string, evidencia: File) => {
+  trasladarInforme: (
+    procesoId: string,
+    medioPublicacion: string,
+    evidencia: File,
+    firma?: EvidenciaFirmaOtp,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
     cuerpo.append('medioPublicacion', medioPublicacion);
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/trasladar`, {
       method: 'POST',
@@ -2072,6 +2199,12 @@ export const contratacionService = {
   /** Lo presentado contra el informe trasladado, con sus respuestas. */
   subsanaciones: (procesoId: string) =>
     pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`),
+
+  /** Da por terminado el término de subsanaciones, para probar sin esperar. */
+  terminarPlazoTraslado: (procesoId: string) =>
+    pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones/plazo/terminar`, {
+      method: 'POST',
+    }),
 
   /** Transcribe lo que presentó un oferente, con su soporte. */
   registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soporte: File) => {
@@ -2095,13 +2228,14 @@ export const contratacionService = {
   responderSubsanacion: (
     procesoId: string,
     subsanacionId: string,
-    datos: { aceptada: boolean; respuesta: string },
+    datos: { aceptada: boolean; respuesta: string; firma?: EvidenciaFirmaOtp },
     documento: File | null,
   ) => {
     const cuerpo = new FormData();
     if (documento) cuerpo.append('file', documento);
     cuerpo.append('aceptada', String(datos.aceptada));
     cuerpo.append('respuesta', datos.respuesta);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoSubsanaciones>(
       `/procesos/${procesoId}/traslado/subsanaciones/${subsanacionId}/responder`,
@@ -2110,10 +2244,10 @@ export const contratacionService = {
   },
 
   /** Da por agotado el término: exige plazo vencido y nada sin responder. */
-  cerrarTraslado: (procesoId: string, nota: string) =>
+  cerrarTraslado: (procesoId: string, nota: string, firma?: EvidenciaFirmaOtp) =>
     pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones/cerrar`, {
       method: 'POST',
-      body: JSON.stringify(nota.trim() ? { nota: nota.trim() } : {}),
+      body: JSON.stringify({ ...(nota.trim() ? { nota: nota.trim() } : {}), firma }),
     }),
 
 
@@ -2126,7 +2260,12 @@ export const contratacionService = {
   /** Registra que la audiencia se celebró, con su acta. */
   celebrarAudiencia: (
     procesoId: string,
-    datos: { celebradaAt: string; presididaPor: string; resumen?: string },
+    datos: {
+      celebradaAt: string;
+      presididaPor: string;
+      resumen?: string;
+      firma?: EvidenciaFirmaOtp;
+    },
     acta: File,
   ) => {
     const cuerpo = new FormData();
@@ -2134,6 +2273,7 @@ export const contratacionService = {
     cuerpo.append('celebradaAt', datos.celebradaAt);
     cuerpo.append('presididaPor', datos.presididaPor);
     if (datos.resumen?.trim()) cuerpo.append('resumen', datos.resumen.trim());
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia`, {
       method: 'POST',
@@ -2161,7 +2301,12 @@ export const contratacionService = {
   /** Abre el sobre económico de una oferta; la evidencia es opcional. */
   abrirSobreEconomico: (
     procesoId: string,
-    datos: { oferenteId: string; valorOfertado: number; observacion?: string },
+    datos: {
+      oferenteId: string;
+      valorOfertado: number;
+      observacion?: string;
+      firma?: EvidenciaFirmaOtp;
+    },
     evidencia: File | null,
   ) => {
     const cuerpo = new FormData();
@@ -2169,6 +2314,7 @@ export const contratacionService = {
     cuerpo.append('oferenteId', datos.oferenteId);
     cuerpo.append('valorOfertado', String(datos.valorOfertado));
     if (datos.observacion?.trim()) cuerpo.append('observacion', datos.observacion.trim());
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoAudienciaAdjudicacion>(
       `/procesos/${procesoId}/adjudicacion/audiencia/sobres`,
@@ -2199,10 +2345,16 @@ export const contratacionService = {
     );
   },
 
-  publicarInformeDefinitivo: (procesoId: string, medioPublicacion: string, evidencia: File) => {
+  publicarInformeDefinitivo: (
+    procesoId: string,
+    medioPublicacion: string,
+    evidencia: File,
+    firma?: EvidenciaFirmaOtp,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
     cuerpo.append('medioPublicacion', medioPublicacion);
+    if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoInformeDefinitivoProceso>(
       `/procesos/${procesoId}/adjudicacion/informe-definitivo/publicar`,
@@ -2234,6 +2386,7 @@ export const contratacionService = {
     cuerpo.append('fechaActo', datos.fechaActo);
     cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));
     if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto`, {
       method: 'POST',
@@ -2342,6 +2495,7 @@ export const contratacionService = {
     cuerpo.append('fecha', datos.fecha);
     cuerpo.append('nota', datos.nota);
     if (datos.datos) cuerpo.append('datos', JSON.stringify(datos.datos));
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
     return pedir<EstadoRegistroActividad>(
       `/procesos/${procesoId}/actividades/${numeral}/registro`,
@@ -2473,7 +2627,48 @@ export const contratacionService = {
     pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
 
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
-  alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
+  /**
+   * Sin `dias` rige la anticipación configurada de cada tipo de vencimiento;
+   * con un número, la misma para todos, que es lo que fija el selector.
+   */
+  alertas: (dias: number | null = null) =>
+    pedir<AlertaVencimiento[]>(dias === null ? '/alertas' : `/alertas?dias=${dias}`),
+
+  /** Anticipación, tolerancia y hora del aviso diario (EFDS-1183). */
+  parametrosAlerta: () => pedir<ParametroAlerta[]>('/alertas/parametros'),
+
+  guardarParametrosAlerta: (cambios: Record<string, number>) =>
+    pedir<ParametroAlerta[]>('/alertas/parametros', {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Los avisos de una actividad: si avisa de cada cosa y a quién (EFDS-1183). */
+  avisosDeActividad: (numeral: string) => pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos`),
+
+  guardarAvisoDeActividad: (
+    numeral: string,
+    evento: EventoAviso,
+    cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
+  ) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, {
+      method: 'PUT',
+      body: JSON.stringify(cambios),
+    }),
+
+  /** Enciende o apaga el correo de los avisos de una actividad. */
+  guardarCorreoDeActividad: (numeral: string, porCorreo: boolean) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/correo`, {
+      method: 'PUT',
+      body: JSON.stringify({ porCorreo }),
+    }),
+
+  /** Las dependencias de la ESAP, del catálogo de la plataforma. */
+  dependencias: () => pedir<Dependencia[]>('/configuracion/dependencias'),
+
+  /** Deshace lo cambiado en un aviso: vuelve a regir lo sugerido. */
+  restablecerAvisoDeActividad: (numeral: string, evento: EventoAviso) =>
+    pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, { method: 'DELETE' }),
 
   /** Indicadores de gestión de la contratación (EFDS-1189). */
   estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
@@ -2511,6 +2706,18 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
+  /** Si la actividad exige firma con el token institucional, para el panel de configuración. */
+  firmaDeActividad: (numeral: string) =>
+    pedir<{ requiereFirma: boolean }>(
+      `/configuracion/actividades/${encodeURIComponent(numeral)}/firma`,
+    ),
+
+  guardarFirmaDeActividad: (numeral: string, datos: { requiereFirma: boolean }) =>
+    pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/firma`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
   /** Roles que pueden aparecer como aprobadores: los que trabajan en el módulo. */
   rolesAprobadores: () =>
     pedir<{ code: string; name: string }[]>('/configuracion/roles-aprobadores'),
@@ -2539,10 +2746,15 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
-  aprobarActividad: (procesoId: string, numeral: string, observaciones?: string) =>
+  aprobarActividad: (
+    procesoId: string,
+    numeral: string,
+    observaciones?: string,
+    firma?: EvidenciaFirmaOtp,
+  ) =>
     pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/aprobar`, {
       method: 'POST',
-      body: JSON.stringify({ observaciones }),
+      body: JSON.stringify({ observaciones, firma }),
     }),
 
   devolverActividad: (procesoId: string, numeral: string, observaciones: string) =>

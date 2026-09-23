@@ -17,7 +17,7 @@ beforeAll(() => {
   })) as any;
 });
 
-const firmaGuardada = JSON.stringify({
+const firmaBase = {
   firmado: true,
   coords: { x: 50, y: 80, page: 1 },
   firmaImg: 'data:image/png;base64,AAAA',
@@ -27,7 +27,10 @@ const firmaGuardada = JSON.stringify({
   cargo: 'Jefe de Gestión Legal',
   certificadoId: 'ESAP-CERT-1',
   scale: 1,
-});
+};
+
+// Firma antigua: se guardó antes de que existiera `estampadoEnArchivo`.
+const firmaGuardada = JSON.stringify(firmaBase);
 
 describe('VisorDocumentoModal · documento ya firmado', () => {
   it('un PDF real firmado no debe duplicar el sello en pantalla (el sello ya viene incrustado en el archivo)', () => {
@@ -73,6 +76,44 @@ describe('VisorDocumentoModal · documento ya firmado', () => {
 
     // Para tipos de archivo que pdf-lib no puede re-estampar (imágenes, DOCX), el overlay
     // sigue siendo la única representación visual de la firma, así que debe conservarse una sola vez.
+    expect(document.querySelectorAll('.signature-stamp')).toHaveLength(1);
+  });
+
+  it('un PDF con estampadoEnArchivo=true no repite el sello superpuesto', () => {
+    render(
+      <VisorDocumentoModal
+        isOpen
+        onClose={vi.fn()}
+        archivo="http://localhost/api/legal/documentos/doc-3.pdf"
+        numero="doc-3.pdf"
+        asunto="Auto de trámite"
+        descripcion={JSON.stringify({ ...firmaBase, estampadoEnArchivo: true })}
+        docId="doc-3"
+        allowSigning={false}
+        onSignComplete={vi.fn()}
+      />,
+    );
+
+    expect(document.querySelectorAll('.signature-stamp')).toHaveLength(0);
+  });
+
+  it('un PDF cuyo estampado falló (estampadoEnArchivo=false) sí muestra el sello superpuesto una vez', () => {
+    render(
+      <VisorDocumentoModal
+        isOpen
+        onClose={vi.fn()}
+        archivo="http://localhost/api/legal/documentos/doc-4.pdf"
+        numero="doc-4.pdf"
+        asunto="Auto de trámite"
+        descripcion={JSON.stringify({ ...firmaBase, estampadoEnArchivo: false })}
+        docId="doc-4"
+        allowSigning={false}
+        onSignComplete={vi.fn()}
+      />,
+    );
+
+    // pdf-lib no pudo incrustar el sello en el archivo: el overlay es la única firma visible,
+    // así que debe pintarse exactamente una vez (nunca cero, nunca dos).
     expect(document.querySelectorAll('.signature-stamp')).toHaveLength(1);
   });
 });

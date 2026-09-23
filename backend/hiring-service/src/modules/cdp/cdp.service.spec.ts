@@ -91,7 +91,7 @@ describe('cdpCubreElProceso', () => {
  */
 describe('exigirCdpParaDocumentos', () => {
   const servicio = (modalidad: string, puedeAbrirse: boolean) => {
-    const service = new CdpService({ manager: {} } as any);
+    const service = new CdpService({ manager: {} } as any, {} as any);
     jest
       .spyOn(service as any, 'exigirProceso')
       .mockResolvedValue({ id: 'p1', modalidad } as any);

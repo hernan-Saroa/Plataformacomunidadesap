@@ -111,6 +111,24 @@ describe('PtaService - catálogo histórico durante la reaprobación parcial', (
     },
   );
 
+  it('no amplía la reaprobación a un componente solicitado pero denegado', async () => {
+    const { service, ds, solicitud } = setup();
+    solicitud.componentes = ['docencia', 'complementarias'];
+    (solicitud as any).decisionesComponentes = {
+      docencia: { estado: 'aprobado' },
+      complementarias: { estado: 'denegado', motivo: 'No se autoriza modificar este componente.' },
+    };
+    const datosAntes = JSON.parse(JSON.stringify(ds));
+
+    await expect(service.updatePTAStatus('pta-1', { accion: 'reenviar_corregido' }))
+      .resolves.toMatchObject({ nuevoEstado: 'Pendiente Jefatura', version: 5 });
+
+    expect(service.ptaRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      datosEstructurados: datosAntes,
+    }));
+    expect(solicitud.estado).toBe('en_aprobacion');
+  });
+
   it('registra la identidad de la sesión al reenviar sin autor ni rol en el formulario', async () => {
     const { service } = setup();
     await service.updatePTAStatus('pta-1', { accion: 'reenviar_corregido' }, { userId: 'user-1', roles: ['ROL_PORTAL'] });

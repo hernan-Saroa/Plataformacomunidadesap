@@ -18,6 +18,8 @@ import { ParticipacionService } from '../participacion/participacion.service';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { CdpService } from '../cdp/cdp.service';
 import { CambiarModalidadDto, DecidirModalidadDto } from './dto/modalidad-proceso.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 3.5 de la matriz: definir la modalidad de contratación. */
 export const NUMERAL_MODALIDAD = '3.5';
@@ -56,6 +58,7 @@ export class ModalidadProcesoService {
     private readonly participacion: ParticipacionService,
     private readonly umbrales: UmbralesService,
     private readonly cdp: CdpService,
+    private readonly cierre: CierreActividadService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -203,6 +206,12 @@ export class ModalidadProcesoService {
         throw new ConflictException('La modalidad no está en revisión');
       }
 
+      // Solo al ratificar: devolver no cierra la actividad, así que no exige
+      // la firma con la que quien decide responde por lo que cerró.
+      if (dto.decision === 'APROBADO' && (await this.cierre.exigeFirma(em, NUMERAL_MODALIDAD))) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       await em.save(Revision, {
         procesoActividadId: actividad.id,
         decision: dto.decision,
@@ -218,6 +227,7 @@ export class ModalidadProcesoService {
         estadoTrasDecidirLaModalidad(dto.decision),
         acceso,
         dto.decision === 'APROBADO',
+        dto.decision === 'APROBADO' ? dto.firma : undefined,
       );
 
       await this.traza(
@@ -299,6 +309,7 @@ export class ModalidadProcesoService {
     estado: string,
     acceso: HiringAccess,
     cierra = false,
+    firma?: FirmaOtpDto,
   ) {
     const actividad = await em
       .getRepository(ProcesoActividad)
@@ -310,7 +321,7 @@ export class ModalidadProcesoService {
           procesoId,
           numeral: NUMERAL_MODALIDAD,
           estado: estado as any,
-          datos: {},
+          datos: firma ? { firma } : {},
           enviadoPor: acceso.userName,
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         } as Partial<ProcesoActividad>),
@@ -327,6 +338,9 @@ export class ModalidadProcesoService {
     // decidido, y al devolver la actividad vuelve a estar abierta.
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
+    if (firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(ProcesoActividad, actividad);
   }
 

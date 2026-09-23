@@ -6,11 +6,14 @@ import { contratacionService } from '../../services/contratacionService';
 import { EstadoModalidadProceso, Modalidad } from '../../types';
 import { Aviso, Ayuda, Boton, BotonSecundario, Marco, Titulo, campo } from '../shared/PiezasPanel';
 import { momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '3.5';
 
 const formatoPesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -31,6 +34,7 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
  * correspondía.
  */
 export function PanelModalidad({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Ratificar la modalidad de contratación');
   const [estado, setEstado] = useState<EstadoModalidadProceso | null>(null);
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -219,9 +223,11 @@ export function PanelModalidad({ procesoId, onCambio }: Props) {
             icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
             disabled={guardando}
             onClick={() =>
-              hacer(
-                () => contratacionService.decidirModalidad(procesoId, 'APROBADO'),
-                'Modalidad ratificada',
+              firma.conFirma((firmaOtp) =>
+                hacer(
+                  () => contratacionService.decidirModalidad(procesoId, 'APROBADO', undefined, firmaOtp),
+                  'Modalidad ratificada',
+                ),
               )
             }
           >
@@ -321,6 +327,7 @@ export function PanelModalidad({ procesoId, onCambio }: Props) {
           ))}
         </ul>
       )}
+      {firma.modal}
     </Marco>
   );
 }

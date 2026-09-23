@@ -22,6 +22,8 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AnularLiquidacionDto, LiquidarDto } from './dto/liquidacion.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import { estadoDeEjecucion } from '../modificaciones/estado-de-ejecucion';
 import {
   alertaDelPlazo,
@@ -82,7 +84,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class LiquidacionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -281,7 +286,7 @@ export class LiquidacionService {
       contrato.estado = 'LIQUIDADO';
       await em.save(contrato);
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
         actividad: NUMERAL_LIQUIDACION,
@@ -460,37 +465,54 @@ export class LiquidacionService {
     return contrato;
   }
 
-  /** La actividad se cumple cuando hay acta vigente. */
+  /**
+   * La actividad se cumple cuando hay acta vigente. Aprobación y firma
+   * (EFDS-1183, EFDS-2070) se preguntan ahí; anular la devuelve a BORRADOR.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const cumplida = !!(await this.actaVigente(contratoId, em));
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_LIQUIDACION },
-    });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_LIQUIDACION,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      const actividad = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_LIQUIDACION },
+      });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_LIQUIDACION,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    if (await this.cierre.exigeFirma(em, NUMERAL_LIQUIDACION)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_LIQUIDACION,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

@@ -1,0 +1,47 @@
+-- ============================================================================
+-- 076 · La 5.12 y la 5.13 tampoco son otra cosa
+--
+-- La 070 desactivó la 5.8 porque, desde la 036, los numerales del 5.8 en
+-- adelante son los de la matriz oficial y esa celda («CDP») llegó al riel sin
+-- panel ni backend detrás. Esa misma migración dejó anotadas, a propósito, dos
+-- celdas más en la misma situación:
+--
+--   numeral   matriz oficial (030)                    equipo (016-025, 035)
+--   5.12      Audiencia riesgos y aclaración de pliegos = 5.5  Audiencia de asignación de riesgos
+--   5.13      Adendas                                    = 5.6  Adendas del proceso
+--
+-- Ninguna de las dos tiene panel ni registro propio: `TIENEN_PANEL` en
+-- `DetalleProceso.tsx` solo conoce el numeral del equipo. El riel las pinta
+-- con candado y «Pendiente de desarrollo», y como eso no es lo mismo que «no
+-- aplica», descuadran el contador de avance de la etapa igual que lo hacía la
+-- 5.8: para una Licitación Pública ninguna de las dos está excluida (030), así
+-- que un proceso con la audiencia de riesgos y las adendas ya resueltas en su
+-- 5.5 y su 5.6 se queda mostrando dos pendientes que no existen.
+--
+-- La 070 no las tocó porque ahí la pregunta no la responde el código: cuál de
+-- los dos numerales es el bueno lo decide la Dirección de Contratación, y
+-- mientras no lo diga, la fila de la matriz sigue siendo la fuente oficial.
+-- Esa pregunta sigue abierta y esta migración no la cierra. Lo que hace es lo
+-- mismo que la 070 le hizo a la 5.8: apagar el síntoma sin prejuzgar la
+-- respuesta, porque una duplicación activa en pantalla —sea cual sea el
+-- numeral correcto— sigue haciendo daño en cada demo y en cada reporte de
+-- avance mientras nadie la resuelve.
+--
+-- Se desactiva, no se borra, con el mismo mecanismo: `activa = false` saca la
+-- fila del catálogo del riel y de la instanciación de actividades nuevas sin
+-- tocar código, y las que ya se instanciaron con la 030 se quedan en
+-- `proceso_actividades` tal cual —desactivar nunca ha borrado lo recorrido, y
+-- ponerlas en NO_APLICA sería mentir: NO_APLICA es «la modalidad no la
+-- adelanta», y aquí la modalidad sí la adelanta, solo que con el numeral del
+-- equipo.
+--
+-- Vuelve con un UPDATE el día que la Dirección de Contratación diga cuál de
+-- los dos numerales es el definitivo; si es el de la matriz, ese día hay que
+-- migrar lo instanciado en 5.5/5.6 hacia 5.12/5.13 y no al revés, porque
+-- 5.1-5.7 son los que tienen panel, backend y las historias EFDS-1153 y
+-- EFDS-1154 ya cerradas contra ellos.
+-- ============================================================================
+
+UPDATE hiring.actividades
+   SET activa = false
+ WHERE numeral IN ('5.12', '5.13');

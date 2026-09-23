@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
+import { EvidenciaFirmaOtp } from '../../types';
 
 /** Una decisión ya tomada sobre la actividad. */
 export interface RevisionDeActividad {
@@ -37,7 +38,7 @@ export interface Aprobacion {
   guardando: boolean;
   enviar: () => Promise<void>;
   retirar: () => Promise<void>;
-  aprobar: () => Promise<void>;
+  aprobar: (firma?: EvidenciaFirmaOtp) => Promise<void>;
   devolver: (observaciones: string) => Promise<void>;
 }
 
@@ -155,8 +156,11 @@ export function usarAprobacion(
         () => contratacionService.retirarAprobacion(procesoId, numeral),
         'Retirada de aprobación: ya puedes corregirla',
       ),
-    aprobar: () =>
-      accion(() => contratacionService.aprobarActividad(procesoId, numeral), 'Actividad aprobada'),
+    aprobar: (firma?: EvidenciaFirmaOtp) =>
+      accion(
+        () => contratacionService.aprobarActividad(procesoId, numeral, undefined, firma),
+        'Actividad aprobada',
+      ),
     devolver: (observaciones: string) =>
       accion(
         () => contratacionService.devolverActividad(procesoId, numeral, observaciones),

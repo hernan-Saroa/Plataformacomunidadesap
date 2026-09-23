@@ -20,7 +20,12 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_ACTIVIDAD_EDITAR, PERMISO_CONFIG_ADMINISTRAR, tienePermiso } from '../../auth/permisos';
+import {
+  PERMISO_ACTIVIDAD_EDITAR,
+  PERMISO_CONFIG_ADMINISTRAR,
+  PERMISO_PLAZO_TERMINAR,
+  tienePermiso,
+} from '../../auth/permisos';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from './dias-habiles';
 import { festivosEntre } from './festivos-colombia';
 import {
@@ -252,6 +257,7 @@ export class PublicacionService {
         estadoPlazo: 'SIN_PLAZO' as const,
         advertencia: null,
         puedeRegistrar,
+        puedeTerminarPlazo: false,
       };
     }
 
@@ -274,6 +280,8 @@ export class PublicacionService {
         estadoPlazo: 'SIN_PLAZO' as const,
         advertencia: this.advertenciaDelPlazo(plazoModalidad),
         puedeRegistrar,
+        // Sin publicación no hay término corriendo que terminar.
+        puedeTerminarPlazo: false,
       };
     }
 
@@ -295,6 +303,15 @@ export class PublicacionService {
       estadoPlazo: estadoDelPlazo(restantes),
       advertencia: this.advertenciaDelPlazo(plazoModalidad),
       puedeRegistrar,
+      /**
+       * La llave de pruebas: solo a quien la tiene y solo mientras el término
+       * siga corriendo. Un plazo ya vencido no se puede volver a terminar, y
+       * ofrecer el botón ahí sería ofrecer algo que no hace nada.
+       */
+      puedeTerminarPlazo:
+        tienePermiso(acceso, PERMISO_PLAZO_TERMINAR) &&
+        !!publicacion.fechaVencimiento &&
+        publicacion.fechaVencimiento >= this.hoy(),
     };
   }
 
@@ -542,6 +559,79 @@ export class PublicacionService {
     actividad.revisadoPor = revisadoPor;
     actividad.revisadoAt = revisadoAt;
     await em.save(actividad);
+  }
+
+  /**
+   * Da por terminado el término de publicidad, para poder probar el flujo.
+   *
+   * Mueve `fecha_vencimiento` a ayer en vez de fingir que venció: el resto del
+   * módulo —la 5.3 y su «cerrar sin observaciones», el conteo de días hábiles,
+   * el `fueraDeTermino` de lo que llegue después— sigue leyendo la misma fecha
+   * de siempre y se comporta exactamente como en producción. Un atajo que
+   * fingiera el vencimiento dejaría el expediente diciendo una cosa y la
+   * pantalla otra.
+   *
+   * No toca `plazo_dias_habiles`: lo que se probó es un proceso al que se le
+   * acortó el término, y el expediente tiene que poder decir cuál era.
+   */
+  async terminarPlazo(procesoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const publicacion = await this.exigirPublicacion(em, procesoId);
+
+      if (!publicacion.fechaVencimiento) {
+        throw new ConflictException(
+          'Esta publicación no tiene término que contar: su modalidad no tiene plazo de publicidad parametrizado',
+        );
+      }
+
+      const hoy = this.hoy();
+      if (publicacion.fechaVencimiento < hoy) {
+        throw new ConflictException('El término de publicidad ya había vencido');
+      }
+
+      const vencimientoOriginal = publicacion.fechaVencimiento;
+      const publicacionOriginal = publicacion.fechaPublicacion;
+
+      const ayer = new Date();
+      ayer.setDate(ayer.getDate() - 1);
+      const nuevo = this.enBogota(ayer);
+
+      /*
+       * Un término no puede terminar antes de empezar.
+       *
+       * La base lo sostiene con `publicacion_vencimiento_posterior`
+       * (`fecha_vencimiento >= fecha_publicacion`) y tiene razón. Pero un
+       * pliego publicado hoy no tiene ningún vencimiento anterior a hoy que
+       * sea válido, así que para dejarlo vencido hay que retroceder también la
+       * publicación: en pruebas eso es exactamente lo que se quiere decir
+       * —«haz de cuenta que esto se publicó antes y el término ya corrió»— y
+       * es una fecha que el propio panel admite registrar hacia atrás, porque
+       * la publicación ocurre en SECOP II y se transcribe después.
+       *
+       * Se mueve lo mínimo: solo si la publicación es posterior al nuevo
+       * vencimiento, y solo hasta ese día.
+       */
+      if (publicacion.fechaPublicacion > nuevo) {
+        publicacion.fechaPublicacion = nuevo;
+      }
+      publicacion.fechaVencimiento = nuevo;
+      publicacion.updatedAt = new Date();
+      await em.save(publicacion);
+
+      // Queda en la trazabilidad con las fechas que tenía: un término acortado
+      // a mano no puede ser indistinguible de uno que se cumplió, y si además
+      // se movió la publicación, el expediente tiene que poder decirlo.
+      await this.traza(em, procesoId, publicacion.id, 'GUARDAR', acceso, {
+        accion: 'TERMINAR_PLAZO',
+        pruebas: true,
+        vencimientoOriginal,
+        vencimientoNuevo: publicacion.fechaVencimiento,
+        publicacionOriginal,
+        publicacionMovida: publicacion.fechaPublicacion !== publicacionOriginal,
+      });
+
+      return this.estadoPublicacion(procesoId, em, acceso);
+    });
   }
 
   private traza(
