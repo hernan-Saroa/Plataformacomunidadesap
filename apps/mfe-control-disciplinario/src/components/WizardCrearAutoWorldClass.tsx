@@ -1963,23 +1963,24 @@ export function WizardCrearAutoWorldClass({
 
               {/* Footer */}
               <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-                <Button
+                <button
                   onClick={() => setVisorDocumento({ show: false, documento: null })}
-                  variant="outline"
+                  className="px-4 py-2 rounded-xl font-bold text-sm border-2 border-gray-300 text-gray-700 hover:bg-white hover:border-gray-400 transition-all shadow-sm"
                 >
                   Cerrar
-                </Button>
-                <Button
+                </button>
+                <button
                   onClick={async () => {
                     if (!visorDocumento.documento?.documentUrl) return;
                     await descargarAutoGenerado(visorDocumento.documento);
                   }}
                   disabled={!visorDocumento.documento?.documentUrl}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  className="px-4 py-2 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: '#003DA5' }}
                 >
-                  <Download className="w-4 h-4 mr-2" />
+                  <Download className="w-4 h-4" />
                   Descargar
-                </Button>
+                </button>
               </div>
             </motion.div>
           </motion.div>
