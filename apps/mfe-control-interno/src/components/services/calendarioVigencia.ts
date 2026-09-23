@@ -439,20 +439,21 @@ export function ajustarSemanaEtapa(
 
   // Poner: estaba excluida o pertenecía a otra etapa
   excluidas = excluidas.filter((l) => l !== objetivo.lunes);
-  if (!mias.length) {
-    ponerRango(etapa, numero, numero);
-  } else {
-    ponerRango(etapa, Math.min(mias[0], numero), Math.max(mias[mias.length - 1], numero));
-  }
+  const desde = mias.length ? Math.min(mias[0], numero) : numero;
+  const hasta = mias.length ? Math.max(mias[mias.length - 1], numero) : numero;
+  ponerRango(etapa, desde, hasta);
 
-  // La etapa que tuviera esa semana se recorta para no quedar encima
-  const otra = estado?.etapa;
-  if (otra && otra !== etapa) {
-    const suyas = propias(otra).filter((n) => n !== numero);
-    if (!suyas.length) ponerRango(otra, 1, 0);
-    else if (numero <= suyas[0]) ponerRango(otra, suyas[0], suyas[suyas.length - 1]);
-    else if (numero >= suyas[suyas.length - 1]) ponerRango(otra, suyas[0], suyas[suyas.length - 1]);
-    else ponerRango(otra, suyas[0], numero - 1);
+  // Las demás etapas ceden las semanas que queden dentro del nuevo rango: la
+  // etapa crece a costa de la vecina y la auditoría no se alarga.
+  for (const otra of ['P', 'E', 'C'] as EtapaCronograma[]) {
+    if (otra === etapa) continue;
+    const suyas = propias(otra).filter((n) => n < desde || n > hasta);
+    if (!suyas.length) { ponerRango(otra, 1, 0); continue; }
+    const posteriores = suyas.filter((n) => n > hasta);
+    const anteriores = suyas.filter((n) => n < desde);
+    // Si le quedan semanas a ambos lados, se queda con el bloque más grande
+    const bloque = posteriores.length >= anteriores.length ? posteriores : anteriores;
+    ponerRango(otra, bloque[0], bloque[bloque.length - 1]);
   }
 
   return { fechas: nuevasFechas, semanasExcluidas: excluidas };
