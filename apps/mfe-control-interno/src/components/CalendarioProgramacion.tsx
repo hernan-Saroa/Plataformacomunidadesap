@@ -1,9 +1,9 @@
 /**
- * Calendario anual para programar la auditoría (EFDS-2132).
+ * Selector de cronograma con calendario (EFDS-2132).
  *
- * Reemplaza el selector de fecha del navegador: muestra el año de la vigencia
- * con los festivos, la Semana Santa y la semana de receso, y la columna "S"
- * con el número de semana para escoger cuáles entran y cuáles no.
+ * Se abre desde el campo, igual que el calendario del navegador, pero muestra
+ * el mes con los festivos, la Semana Santa y la semana de receso, y una columna
+ * con el número de semana para escoger cuáles entran en la auditoría.
  *
  * - Clic en una semana vacía: Planeación arranca ahí y el resto se llena solo (4-4-5).
  * - Clic en una semana pintada: se saca del cronograma y las demás se corren.
@@ -11,8 +11,9 @@
  * Las semanas de Semana Santa y de receso nunca entran.
  */
 
-import { useMemo } from 'react';
-import { Eraser, Info } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, Eraser, Info } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/popover';
 import {
   calcularProgramacion,
   fechaCorta,
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export function CalendarioProgramacion({ vigencia, fechas, semanasExcluidas, onCambio, soloLectura }: Props) {
+  const [abierto, setAbierto] = useState(false);
   const semanas = useMemo(() => semanasDeVigencia(vigencia), [vigencia]);
   const programadas = useMemo(
     () => programacionDesdeFechas(vigencia, fechas, semanasExcluidas),
@@ -64,8 +66,17 @@ export function CalendarioProgramacion({ vigencia, fechas, semanasExcluidas, onC
     ],
   );
   const porLunes = useMemo(() => new Map(programadas.map((p) => [p.semana.lunes, p])), [programadas]);
-  const hoy = fechaYMD(new Date());
   const hayCronograma = programadas.some((p) => p.etapa);
+
+  // El mes que se ve arranca en el de la auditoría (o en el actual si es la vigencia en curso)
+  const mesInicial = () => {
+    const inicio = fechas.fechaInicioPlaneacion || fechas.fechaInicioEjecucion || fechas.fechaInicioComunicacion;
+    if (inicio) return parseYMD(inicio).getMonth();
+    const hoy = new Date();
+    return hoy.getFullYear() === vigencia ? hoy.getMonth() : 0;
+  };
+  const [mes, setMes] = useState(mesInicial);
+  useEffect(() => { if (abierto) setMes(mesInicial()); }, [abierto]);
 
   const manejarClic = (semana: SemanaVigencia) => {
     if (soloLectura || semana.bloqueo) return;
@@ -88,61 +99,105 @@ export function CalendarioProgramacion({ vigencia, fechas, semanasExcluidas, onC
 
   const limpiar = () => onCambio({ fechas: fechasVacias(), semanasExcluidas: [] });
 
+  const resumenBoton = hayCronograma
+    ? `${fechaCorta(fechas.fechaInicioPlaneacion || fechas.fechaInicioEjecucion || fechas.fechaInicioComunicacion || '')} – ${fechaCorta(fechas.fechaFinComunicacion || fechas.fechaFinEjecucion || fechas.fechaFinPlaneacion || '', true)}`
+    : `Seleccione las semanas en el calendario ${vigencia}`;
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-600">
+    <Popover open={abierto} onOpenChange={setAbierto}>
+      <PopoverTrigger asChild disabled={soloLectura}>
+        <button
+          type="button"
+          className={`flex h-11 w-full items-center justify-between gap-2 rounded-md border border-input bg-input-background px-3 text-sm transition-colors ${
+            soloLectura ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-50'
+          }`}
+        >
+          <span className={hayCronograma ? 'font-medium text-gray-900' : 'text-muted-foreground'}>
+            {resumenBoton}
+          </span>
+          <CalendarDays className="h-4 w-4 shrink-0 text-gray-500" />
+        </button>
+      </PopoverTrigger>
+
+      {/* z alto y fondo propio: el modal del formulario va en z-[9999] */}
+      <PopoverContent className="z-[10000] w-[22rem] border-gray-200 bg-white p-3 shadow-xl" align="start">
+        <div className="mb-2 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setMes((m) => Math.max(0, m - 1))}
+            disabled={mes === 0}
+            className="rounded p-1 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-30"
+            aria-label="Mes anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <p className="text-sm font-bold text-gray-900">{MESES[mes]} {vigencia}</p>
+          <button
+            type="button"
+            onClick={() => setMes((m) => Math.min(11, m + 1))}
+            disabled={mes === 11}
+            className="rounded p-1 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-30"
+            aria-label="Mes siguiente"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        <Mes
+          vigencia={vigencia}
+          mes={mes}
+          semanas={semanas}
+          porLunes={porLunes}
+          soloLectura={!!soloLectura}
+          onClicSemana={manejarClic}
+        />
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gray-100 pt-2 text-[10px] text-gray-600">
           <Leyenda color="bg-blue-500" texto="Planeación" />
           <Leyenda color="bg-amber-500" texto="Ejecución" />
           <Leyenda color="bg-emerald-500" texto="Comunicación" />
           <Leyenda color="bg-teal-500" texto="Festivo" />
           <Leyenda color="bg-orange-300" texto="Semana Santa / Receso" />
-          <Leyenda color="bg-gray-300" texto="Semana excluida" />
+          <Leyenda color="bg-gray-300" texto="Excluida" />
         </div>
-        {!soloLectura && hayCronograma && (
+
+        {!hayCronograma ? (
+          <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-[11px] leading-snug text-blue-800">
+            <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+            Haga clic en la semana en que inicia la Planeación. El ciclo 4-4-5 se llena solo, sin Semana Santa ni receso; clic en una semana pintada la saca del cronograma.
+          </p>
+        ) : (
+          <ResumenEtapas programadas={programadas} />
+        )}
+
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {hayCronograma && !soloLectura ? (
+            <button
+              type="button"
+              onClick={limpiar}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+              Limpiar
+            </button>
+          ) : <span />}
           <button
             type="button"
-            onClick={limpiar}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+            onClick={() => setAbierto(false)}
+            className="rounded-md bg-[#1e5da8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#174a8a]"
           >
-            <Eraser className="h-3.5 w-3.5" />
-            Limpiar
+            Listo
           </button>
-        )}
-      </div>
-
-      {!hayCronograma && !soloLectura && (
-        <p className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
-          <Info className="h-4 w-4 shrink-0" />
-          Haga clic en la semana en que inicia la Planeación: el ciclo 4-4-5 se llena solo saltando Semana Santa y la semana de receso. Clic en una semana pintada la saca del cronograma.
-        </p>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {MESES.map((nombreMes, mes) => (
-          <Mes
-            key={mes}
-            vigencia={vigencia}
-            mes={mes}
-            nombre={nombreMes}
-            semanas={semanas}
-            porLunes={porLunes}
-            hoy={hoy}
-            soloLectura={!!soloLectura}
-            onClicSemana={manejarClic}
-          />
-        ))}
-      </div>
-
-      {hayCronograma && <ResumenEtapas programadas={programadas} />}
-    </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 function Leyenda({ color, texto }: { color: string; texto: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={`inline-block h-2.5 w-2.5 rounded-sm ${color}`} />
+      <span className={`inline-block h-2 w-2 rounded-sm ${color}`} />
       {texto}
     </span>
   );
@@ -151,91 +206,83 @@ function Leyenda({ color, texto }: { color: string; texto: string }) {
 interface MesProps {
   vigencia: number;
   mes: number;
-  nombre: string;
   semanas: SemanaVigencia[];
   porLunes: Map<string, SemanaProgramada>;
-  hoy: string;
   soloLectura: boolean;
   onClicSemana: (semana: SemanaVigencia) => void;
 }
 
-function Mes({ vigencia, mes, nombre, semanas, porLunes, hoy, soloLectura, onClicSemana }: MesProps) {
+function Mes({ vigencia, mes, semanas, porLunes, soloLectura, onClicSemana }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
   const finMes = fechaYMD(new Date(vigencia, mes + 1, 0));
   const filas = semanas.filter((s) => s.lunes <= finMes && s.domingo >= inicioMes);
+  const hoy = fechaYMD(new Date());
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-2">
-      <p className="mb-1 text-center text-xs font-bold text-gray-800">{nombre} {vigencia}</p>
-      <table className="w-full border-collapse text-[11px]">
-        <thead>
-          <tr className="text-[10px] font-semibold uppercase text-gray-400">
-            <th className="w-8 pb-0.5 text-left">Sem</th>
-            {DIAS.map((d) => (
-              <th key={d} className={`pb-0.5 font-semibold ${d === 'Do' ? 'text-gray-500' : ''}`}>{d}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {filas.map((semana) => {
-            const estado = porLunes.get(semana.lunes);
-            const bloqueada = !!semana.bloqueo;
-            const etapa = estado?.etapa;
-            const excluida = !!estado?.excluida;
-            const clickeable = !soloLectura && !bloqueada;
-            const claseFila = excluida
-              ? 'bg-gray-200 text-gray-400'
-              : bloqueada
-                ? 'bg-orange-100 text-orange-900'
-                : etapa
-                  ? ESTILO_ETAPA[etapa].fila
-                  : clickeable ? 'hover:bg-gray-100' : '';
-            const titulo = bloqueada
-              ? `${NOMBRE_BLOQUEO[semana.bloqueo!]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}): no se programa`
-              : excluida
-                ? `Semana ${semana.numero} excluida del cronograma. Clic para devolverla`
-                : etapa
-                  ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]}. Clic para sacarla del cronograma`
-                  : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}). Clic para iniciar aquí`;
+    <table className="w-full border-collapse text-xs">
+      <thead>
+        <tr className="text-[10px] font-semibold uppercase text-gray-400">
+          <th className="w-8 pb-1 text-left">Sem</th>
+          {DIAS.map((d) => (
+            <th key={d} className={`pb-1 font-semibold ${d === 'Do' ? 'text-gray-500' : ''}`}>{d}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map((semana) => {
+          const estado = porLunes.get(semana.lunes);
+          const bloqueada = !!semana.bloqueo;
+          const etapa = estado?.etapa;
+          const excluida = !!estado?.excluida;
+          const clickeable = !soloLectura && !bloqueada;
+          const claseFila = excluida
+            ? 'bg-gray-200 text-gray-400'
+            : bloqueada
+              ? 'bg-orange-100 text-orange-900'
+              : etapa
+                ? ESTILO_ETAPA[etapa].fila
+                : clickeable ? 'hover:bg-gray-100' : '';
+          const titulo = bloqueada
+            ? `${NOMBRE_BLOQUEO[semana.bloqueo!]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}): no se programa`
+            : excluida
+              ? `Semana ${semana.numero} excluida del cronograma. Clic para devolverla`
+              : etapa
+                ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]}. Clic para sacarla del cronograma`
+                : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}). Clic para iniciar aquí`;
 
-            return (
-              <tr
-                key={semana.lunes}
-                title={titulo}
-                onClick={() => clickeable && onClicSemana(semana)}
-                className={`${claseFila} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
-              >
-                <td className={`py-px pr-1 text-left font-bold ${excluida ? 'line-through' : ''} ${bloqueada ? 'text-orange-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'}`}>
-                  S{semana.numero}
-                </td>
-                {DIAS.map((_, i) => {
-                  const fecha = sumarDias(parseYMD(semana.lunes), i);
-                  const ymd = fechaYMD(fecha);
-                  if (ymd < inicioMes || ymd > finMes) return <td key={i} />;
-                  const festivo = semana.festivos.find((f) => f.fecha === ymd);
-                  const esHoy = ymd === hoy;
-                  const esDomingo = i === 6;
-                  return (
-                    <td key={i} className="py-px text-center">
-                      <span
-                        title={festivo?.nombre}
-                        className={`inline-flex h-5 w-5 items-center justify-center rounded ${
-                          festivo
-                            ? 'bg-teal-500 font-bold text-white'
-                            : esDomingo ? 'text-gray-400' : ''
-                        } ${esHoy ? 'ring-2 ring-orange-500' : ''} ${excluida ? 'line-through' : ''}`}
-                      >
-                        {fecha.getDate()}
-                      </span>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+          return (
+            <tr
+              key={semana.lunes}
+              title={titulo}
+              onClick={() => clickeable && onClicSemana(semana)}
+              className={`${claseFila} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
+            >
+              <td className={`py-0.5 pr-1 text-left font-bold ${excluida ? 'line-through' : ''} ${bloqueada ? 'text-orange-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'}`}>
+                S{semana.numero}
+              </td>
+              {DIAS.map((_, i) => {
+                const fecha = sumarDias(parseYMD(semana.lunes), i);
+                const ymd = fechaYMD(fecha);
+                if (ymd < inicioMes || ymd > finMes) return <td key={i} />;
+                const festivo = semana.festivos.find((f) => f.fecha === ymd);
+                return (
+                  <td key={i} className="py-0.5 text-center">
+                    <span
+                      title={festivo?.nombre}
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded ${
+                        festivo ? 'bg-teal-500 font-bold text-white' : i === 6 ? 'text-gray-400' : ''
+                      } ${ymd === hoy ? 'ring-2 ring-orange-500' : ''} ${excluida ? 'line-through' : ''}`}
+                    >
+                      {fecha.getDate()}
+                    </span>
+                  </td>
+                );
+              })}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -243,43 +290,28 @@ function ResumenEtapas({ programadas }: { programadas: SemanaProgramada[] }) {
   const etapas: EtapaCronograma[] = ['P', 'E', 'C'];
 
   return (
-    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+    <div className="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
       {etapas.map((etapa) => {
         const propias = programadas.filter((p) => p.etapa === etapa);
-        if (!propias.length) {
-          return (
-            <div key={etapa} className="rounded-lg border border-dashed border-gray-300 p-3 text-xs text-gray-500">
-              <span className={`mr-1 inline-block h-2.5 w-2.5 rounded-sm ${ESTILO_ETAPA[etapa].chip}`} />
-              {NOMBRE_ETAPA[etapa]}: sin semanas
-            </div>
-          );
-        }
+        if (!propias.length) return null;
         const primera = propias[0].semana;
         const ultima = propias[propias.length - 1].semana;
         const entreMedio = programadas.filter(
           (p) => p.semana.numero > primera.numero && p.semana.numero < ultima.numero && (p.excluida || p.semana.bloqueo),
         );
-        const festivos = propias.flatMap((p) => p.semana.festivos);
 
         return (
-          <div key={etapa} className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
-            <p className={`font-bold ${ESTILO_ETAPA[etapa].texto}`}>
-              <span className={`mr-1 inline-block h-2.5 w-2.5 rounded-sm ${ESTILO_ETAPA[etapa].chip}`} />
-              {NOMBRE_ETAPA[etapa]} · {propias.length} semana{propias.length === 1 ? '' : 's'}
-            </p>
-            <p className="mt-1 text-gray-800">
-              Semanas {primera.numero}{ultima.numero !== primera.numero ? `–${ultima.numero}` : ''}: {fechaCorta(primerDiaHabil(primera))} – {fechaCorta(ultima.domingo)}
-            </p>
+          <div key={etapa} className="text-[11px] leading-snug">
+            <span className={`mr-1 inline-block h-2 w-2 rounded-sm ${ESTILO_ETAPA[etapa].chip}`} />
+            <span className={`font-bold ${ESTILO_ETAPA[etapa].texto}`}>{NOMBRE_ETAPA[etapa]}</span>
+            <span className="text-gray-700">
+              {' '}· {propias.length} sem · {fechaCorta(primerDiaHabil(primera))} – {fechaCorta(ultima.domingo)}
+            </span>
             {entreMedio.map((p) => (
-              <p key={p.semana.lunes} className="mt-0.5 text-orange-700">
-                Salta {p.semana.bloqueo ? NOMBRE_BLOQUEO[p.semana.bloqueo] : `la semana ${p.semana.numero} (excluida)`}: {fechaCorta(p.semana.lunes)} – {fechaCorta(p.semana.domingo)}
-              </p>
+              <span key={p.semana.lunes} className="block text-orange-700">
+                salta {p.semana.bloqueo ? NOMBRE_BLOQUEO[p.semana.bloqueo] : `la semana ${p.semana.numero}`} ({fechaCorta(p.semana.lunes)} – {fechaCorta(p.semana.domingo)})
+              </span>
             ))}
-            {festivos.length > 0 && (
-              <p className="mt-0.5 text-teal-700">
-                Festivo{festivos.length === 1 ? '' : 's'}: {festivos.map((f) => `${fechaCorta(f.fecha)} (${f.nombre})`).join(', ')}
-              </p>
-            )}
           </div>
         );
       })}

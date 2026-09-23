@@ -33,7 +33,7 @@ import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
   User, Calendar, Target, FileText, Shield, Info, Users, Building2,
   ClipboardCheck, DollarSign, TrendingUp, FileCheck, MapPin, Clock,
-  AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings, Lock, CalendarDays
+  AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings, Lock
 } from 'lucide-react';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -2882,7 +2882,7 @@ function Paso4Programacion({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
@@ -2913,28 +2913,30 @@ function Paso4Programacion({
         </div>
       </div>
 
-      {/* Calendario de la vigencia: festivos, Semana Santa y receso (EFDS-2132) */}
+      {/* Selector de semanas en el calendario de la vigencia (EFDS-2132) */}
       <Card className="p-4 border-2 border-gray-200">
-        <div className="flex items-center gap-2 mb-3">
-          <CalendarDays className="w-5 h-5 text-[#003DA5]" />
-          <h4 className="font-bold text-gray-900">Calendario {añoVigencia}</h4>
-        </div>
-        <CalendarioProgramacion
-          vigencia={añoVigencia}
-          fechas={formData}
-          semanasExcluidas={formData.semanasExcluidas || []}
-          onCambio={({ fechas, semanasExcluidas }) => {
-            onChange('semanasExcluidas', semanasExcluidas);
-            onChange('fechaInicioPlaneacion', fechas.fechaInicioPlaneacion);
-            onChange('fechaFinPlaneacion', fechas.fechaFinPlaneacion);
-            onChange('fechaInicioEjecucion', fechas.fechaInicioEjecucion);
-            onChange('fechaFinEjecucion', fechas.fechaFinEjecucion);
-            onChange('fechaInicioComunicacion', fechas.fechaInicioComunicacion);
-            onChange('fechaFinComunicacion', fechas.fechaFinComunicacion);
-            onChange('fechaInicio', fechas.fechaInicioPlaneacion);
-            onChange('fechaFin', fechas.fechaFinComunicacion);
-          }}
-        />
+        <FieldWrapper
+          label={`Semanas de la auditoría · calendario ${añoVigencia}`}
+          required={!esAuditoriaEspecial}
+          helpText="Abra el calendario y elija la semana en que inicia; las etapas se completan solas"
+        >
+          <CalendarioProgramacion
+            vigencia={añoVigencia}
+            fechas={formData}
+            semanasExcluidas={formData.semanasExcluidas || []}
+            onCambio={({ fechas, semanasExcluidas }) => {
+              onChange('semanasExcluidas', semanasExcluidas);
+              onChange('fechaInicioPlaneacion', fechas.fechaInicioPlaneacion);
+              onChange('fechaFinPlaneacion', fechas.fechaFinPlaneacion);
+              onChange('fechaInicioEjecucion', fechas.fechaInicioEjecucion);
+              onChange('fechaFinEjecucion', fechas.fechaFinEjecucion);
+              onChange('fechaInicioComunicacion', fechas.fechaInicioComunicacion);
+              onChange('fechaFinComunicacion', fechas.fechaFinComunicacion);
+              onChange('fechaInicio', fechas.fechaInicioPlaneacion);
+              onChange('fechaFin', fechas.fechaFinComunicacion);
+            }}
+          />
+        </FieldWrapper>
       </Card>
 
       {/* ETAPA 1: PLANEACIÓN - Siempre habilitada */}
