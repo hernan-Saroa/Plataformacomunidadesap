@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Eraser, Info, Zap } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eraser, Info, Zap } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/popover';
 import {
   ajustarSemanaEtapa,
@@ -126,6 +126,20 @@ export function CampoFechaCalendario({
 
   const semanasVista = useMemo(() => semanasDeVigencia(añoVista), [añoVista]);
   const esVigencia = añoVista === vigencia;
+  // Las etapas se pintan por fechas, así que también se ven en otros años
+  const programadasVista = useMemo(
+    () => (esVigencia ? programadas : programacionDesdeFechas(añoVista, fechas, semanasExcluidas)),
+    [esVigencia, programadas, añoVista, fechas, semanasExcluidas],
+  );
+  const porLunesVista = useMemo(
+    () => new Map(programadasVista.map((p) => [p.semana.lunes, p])),
+    [programadasVista],
+  );
+  const [eligiendoAño, setEligiendoAño] = useState(false);
+  const añosDisponibles = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => vigencia - 3 + i),
+    [vigencia],
+  );
   const irAlMes = (paso: number) => {
     setMes((m) => {
       const siguiente = m + paso;
@@ -318,14 +332,33 @@ export function CampoFechaCalendario({
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => { setAñoVista(vigencia); setMes(mesDe(valor || fechas.fechaInicioPlaneacion)); }}
-            title={esVigencia ? undefined : `Volver a ${vigencia}`}
-            className={`text-sm font-bold ${esVigencia ? 'text-gray-900' : 'text-[#1e5da8] underline'}`}
-          >
-            {MESES[mes]} {añoVista}
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setEligiendoAño((v) => !v)}
+              title="Cambiar de año"
+              className={`inline-flex items-center gap-1 rounded px-1 text-sm font-bold hover:bg-gray-100 ${esVigencia ? 'text-gray-900' : 'text-[#1e5da8]'}`}
+            >
+              {MESES[mes]} {añoVista}
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            {eligiendoAño && (
+              <div className="absolute left-1/2 top-full z-10 mt-1 max-h-44 -translate-x-1/2 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                {añosDisponibles.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => { setAñoVista(a); setEligiendoAño(false); }}
+                    className={`block w-full px-4 py-1 text-sm hover:bg-blue-50 ${
+                      a === añoVista ? 'bg-[#1e5da8] font-bold text-white hover:bg-[#1e5da8]' : 'text-gray-700'
+                    }`}
+                  >
+                    {a}{a === vigencia ? ' ·' : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => irAlMes(1)}
@@ -344,7 +377,7 @@ export function CampoFechaCalendario({
           vigencia={añoVista}
           mes={mes}
           semanas={semanasVista}
-          porLunes={porLunes}
+          porLunes={porLunesVista}
           etapaCampo={etapa}
           extremo={extremo}
           valor={valor}
