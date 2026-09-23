@@ -6,10 +6,12 @@
  * los festivos, la Semana Santa y la semana de receso, más la columna con el
  * número de semana.
  *
- * - Clic en una semana: ahí empieza (o termina) la etapa del campo.
+ * - Clic en una semana: ahí empieza (o termina) la etapa del campo y esa semana
+ *   queda marcada; el siguiente clic cierra el rango "desde ahí hasta allá",
+ *   aunque sea en otro mes.
  * - Clic en un día: la etapa empieza (o termina) ese día exacto.
  * - Arrastrando de una semana a otra: esa etapa ocupa ese rango.
- * - Botón × de la fila: saca esa semana del cronograma (o la devuelve).
+ * - Clic en el número de semana: la saca del cronograma (o la devuelve).
  * Semana Santa y la semana de receso nunca entran y el cronograma las salta.
  */
 
@@ -94,6 +96,8 @@ export function CampoFechaCalendario({
   // Arrastre: se marca desde dónde y hasta dónde mientras el mouse está abajo
   const [arrastre, setArrastre] = useState<{ desde: number; hasta: number } | null>(null);
   const arrastrando = useRef(false);
+  // Semana marcada con el primer clic, a la espera del segundo que cierra el rango
+  const [anclaje, setAnclaje] = useState<number | null>(null);
 
   const mesDe = (fecha?: string) => {
     if (fecha) return parseYMD(fecha).getMonth();
@@ -111,10 +115,32 @@ export function CampoFechaCalendario({
 
   const bloqueado = !!soloLectura || !!deshabilitado;
 
+  /**
+   * Marcar un rango es decir "esta etapa va desde aquí hasta allá", así que las
+   * semanas que se habían quitado dentro de ese rango vuelven a entrar; las de
+   * Semana Santa y receso siguen fuera porque no dependen del usuario.
+   */
+  const aplicarRango = (a: number, b: number) => {
+    const dentro = (lunes: string) => {
+      const s = semanas.find((x) => x.lunes === lunes);
+      return !!s && s.numero >= a && s.numero <= b;
+    };
+    const excluidas = semanasExcluidas.filter((lunes) => !dentro(lunes));
+    const resultado = aplicarRangoEtapa(vigencia, fechas, excluidas, { etapa, desde: a, hasta: b });
+    onCambio({ fechas: resultado.fechas, semanasExcluidas: excluidas });
+  };
+
   const aplicar = (desde: number, hasta: number) => {
     const a = Math.min(desde, hasta);
     const b = Math.max(desde, hasta);
-    // Un clic solo mueve el extremo del campo; el arrastre fija todo el rango
+    // Segundo clic: cierra el rango que se abrió con el primero
+    if (a === b && anclaje !== null && anclaje !== a) {
+      setAnclaje(null);
+      aplicarRango(Math.min(anclaje, desde), Math.max(anclaje, desde));
+      return;
+    }
+    setAnclaje(a === b ? a : null);
+    // Un clic solo mueve el extremo del campo; el rango marcado fija toda la etapa
     if (a === b) {
       const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
       const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
@@ -132,8 +158,7 @@ export function CampoFechaCalendario({
       onCambio({ fechas: resultado.fechas, semanasExcluidas });
       return;
     }
-    const resultado = aplicarRangoEtapa(vigencia, fechas, semanasExcluidas, { etapa, desde: a, hasta: b });
-    onCambio({ fechas: resultado.fechas, semanasExcluidas });
+    aplicarRango(a, b);
   };
 
   /**
@@ -221,6 +246,19 @@ export function CampoFechaCalendario({
           {NOMBRE_ETAPA[etapa]} · fecha de {extremo}
         </p>
 
+        {anclaje !== null && (
+          <p className="mb-1 rounded bg-blue-50 px-2 py-1 text-center text-[11px] text-blue-800">
+            Desde la semana {anclaje}: elija hasta qué semana va la {NOMBRE_ETAPA[etapa]}
+            <button
+              type="button"
+              onClick={() => setAnclaje(null)}
+              className="ml-1 underline hover:no-underline"
+            >
+              cancelar
+            </button>
+          </p>
+        )}
+
         <Mes
           vigencia={vigencia}
           mes={mes}
@@ -230,6 +268,7 @@ export function CampoFechaCalendario({
           extremo={extremo}
           valor={valor}
           arrastre={arrastre}
+          anclaje={anclaje}
           soloLectura={bloqueado}
           onInicioArrastre={(n) => { arrastrando.current = true; setArrastre({ desde: n, hasta: n }); }}
           onPasarPor={(n) => { if (arrastrando.current) setArrastre((a) => (a ? { ...a, hasta: n } : a)); }}
@@ -308,6 +347,8 @@ interface MesProps {
   /** Fecha del campo, para resaltar el día que está puesto */
   valor?: string;
   arrastre: { desde: number; hasta: number } | null;
+  /** Semana marcada con el primer clic, esperando el segundo */
+  anclaje: number | null;
   soloLectura: boolean;
   onInicioArrastre: (numero: number) => void;
   onPasarPor: (numero: number) => void;
@@ -317,7 +358,7 @@ interface MesProps {
 }
 
 function Mes({
-  vigencia, mes, semanas, porLunes, etapaCampo, extremo, valor, arrastre, soloLectura,
+  vigencia, mes, semanas, porLunes, etapaCampo, extremo, valor, arrastre, anclaje, soloLectura,
   onInicioArrastre, onPasarPor, onSoltar, onAlternarExclusion, onClicDia,
 }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
@@ -345,7 +386,8 @@ function Mes({
           const excluida = !!estado?.excluida;
           const clickeable = !soloLectura && !bloqueada;
           const marcada = enArrastre(semana.numero);
-          const claseFila = marcada
+          const anclada = anclaje === semana.numero;
+          const claseFila = marcada || anclada
             ? `${ESTILO_ETAPA[etapaCampo].fila} ring-2 ring-inset ring-[#1e5da8]`
             : excluida
               ? 'bg-white text-gray-400'
@@ -361,9 +403,11 @@ function Mes({
             ? `${NOMBRE_BLOQUEO[semana.bloqueo!]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}): no se programa`
             : excluida
               ? `Semana ${semana.numero} fuera del cronograma`
-              : etapa
-                ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]}. Arrastre para marcar el rango`
-                : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
+              : anclaje !== null
+                ? `Hasta la semana ${semana.numero} (${fechaCorta(semana.domingo)})`
+                : etapa
+                  ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]}. Clic aquí y luego en otra semana para marcar el rango`
+                  : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
           // Pulsar el número de semana la quita del cronograma o la devuelve
           const puedeExcluir = clickeable && (!!etapa || excluida);
 
