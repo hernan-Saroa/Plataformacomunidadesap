@@ -115,7 +115,25 @@ export function CampoFechaCalendario({
     return hoy.getFullYear() === vigencia ? hoy.getMonth() : 0;
   };
   const [mes, setMes] = useState(() => mesDe(valor));
-  useEffect(() => { if (abierto) setMes(mesDe(valor || fechas.fechaInicioPlaneacion)); }, [abierto]);
+  // Se puede mirar cualquier año, con sus festivos; solo se marcan los de la vigencia
+  const [añoVista, setAñoVista] = useState(vigencia);
+  useEffect(() => {
+    if (!abierto) return;
+    const fecha = valor || fechas.fechaInicioPlaneacion;
+    setMes(mesDe(fecha));
+    setAñoVista(fecha ? parseYMD(fecha).getFullYear() : vigencia);
+  }, [abierto]);
+
+  const semanasVista = useMemo(() => semanasDeVigencia(añoVista), [añoVista]);
+  const esVigencia = añoVista === vigencia;
+  const irAlMes = (paso: number) => {
+    setMes((m) => {
+      const siguiente = m + paso;
+      if (siguiente < 0) { setAñoVista((a) => a - 1); return 11; }
+      if (siguiente > 11) { setAñoVista((a) => a + 1); return 0; }
+      return siguiente;
+    });
+  };
 
   useEffect(() => {
     const soltar = () => { arrastrando.current = false; };
@@ -281,40 +299,47 @@ export function CampoFechaCalendario({
         <div className="mb-1 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => setMes((m) => Math.max(0, m - 1))}
-            disabled={mes === 0}
-            className="rounded p-1 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-30"
+            onClick={() => irAlMes(-1)}
+            className="rounded p-1 text-gray-600 transition-colors hover:bg-gray-100"
             aria-label="Mes anterior"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <p className="text-sm font-bold text-gray-900">{MESES[mes]} {vigencia}</p>
           <button
             type="button"
-            onClick={() => setMes((m) => Math.min(11, m + 1))}
-            disabled={mes === 11}
-            className="rounded p-1 text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-30"
+            onClick={() => { setAñoVista(vigencia); setMes(mesDe(valor || fechas.fechaInicioPlaneacion)); }}
+            title={esVigencia ? undefined : `Volver a ${vigencia}`}
+            className={`text-sm font-bold ${esVigencia ? 'text-gray-900' : 'text-[#1e5da8] underline'}`}
+          >
+            {MESES[mes]} {añoVista}
+          </button>
+          <button
+            type="button"
+            onClick={() => irAlMes(1)}
+            className="rounded p-1 text-gray-600 transition-colors hover:bg-gray-100"
             aria-label="Mes siguiente"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        <p className="mb-2 text-center text-[11px] font-semibold" style={{ color: etapa === 'P' ? '#1d4ed8' : etapa === 'E' ? '#b45309' : '#047857' }}>
-          {NOMBRE_ETAPA[etapa]} · fecha de {extremo}
+        <p className="mb-2 text-center text-[11px] font-semibold" style={{ color: esVigencia ? (etapa === 'P' ? '#1d4ed8' : etapa === 'E' ? '#b45309' : '#047857') : '#b45309' }}>
+          {esVigencia
+            ? `${NOMBRE_ETAPA[etapa]} · fecha de ${extremo}`
+            : `${añoVista} es solo de consulta · la auditoría es de ${vigencia}`}
         </p>
 
         <Mes
-          vigencia={vigencia}
+          vigencia={añoVista}
           mes={mes}
-          semanas={semanas}
+          semanas={semanasVista}
           porLunes={porLunes}
           etapaCampo={etapa}
           extremo={extremo}
           valor={valor}
           arrastre={arrastre}
           rango={{ inicio: fechas[campoInicio], fin: fechas[campoFin] }}
-          soloLectura={bloqueado}
+          soloLectura={bloqueado || !esVigencia}
           onInicioArrastre={(n) => { arrastrando.current = true; setArrastre({ desde: n, hasta: n }); }}
           onPasarPor={(n) => { if (arrastrando.current) setArrastre((a) => (a ? { ...a, hasta: n } : a)); }}
           onSoltar={(n) => {
