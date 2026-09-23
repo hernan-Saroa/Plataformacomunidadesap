@@ -2874,6 +2874,8 @@ export class PtaService {
       categoriaEscalafon?: string | null;
       nucleoTematico?: string | null;
       territorial?: string | null;
+      tipoVinculacion?: string | null;
+      dedicacion?: string | null;
     }>();
 
     if (docenteIds.size > 0) {
@@ -2886,6 +2888,8 @@ export class PtaService {
             p.tip_identificacion AS tipo_documento,
             d.escalafon AS categoria_escalafon,
             d."nucleoTematico" AS nucleo_tematico,
+            d."tipoVinculacion" AS tipo_vinculacion,
+            d.dedicacion AS dedicacion,
             COALESCE(doc_sec.nom_seccional, sec.nom_seccional) AS territorial
           FROM academic_work_plan."Docente" d
           LEFT JOIN auth.personas p ON p.id_person::text = d."personaId"::text
@@ -2902,6 +2906,8 @@ export class PtaService {
             categoriaEscalafon: coalesceString(row.categoria_escalafon),
             nucleoTematico: coalesceString(row.nucleo_tematico),
             territorial: coalesceString(row.territorial),
+            tipoVinculacion: coalesceString(row.tipo_vinculacion),
+            dedicacion: coalesceString(row.dedicacion),
           });
         }
       } catch (err: any) {
@@ -2992,6 +2998,12 @@ export class PtaService {
       }
       if (identidad?.nucleoTematico) {
         dto.nucleo_tematico = dto.nucleo_tematico || identidad.nucleoTematico;
+      }
+      if (identidad?.tipoVinculacion) {
+        dto.tipo_vinculacion = dto.tipo_vinculacion || identidad.tipoVinculacion;
+      }
+      if (identidad?.dedicacion) {
+        dto.dedicacion = dto.dedicacion || identidad.dedicacion;
       }
 
       dto.programasAsignaturas = [...new Set(programaNames)];

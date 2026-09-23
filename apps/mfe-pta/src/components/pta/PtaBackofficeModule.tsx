@@ -3630,7 +3630,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       {moduleView === 'tablero_unificado' ? (
         <TableroControlUnificadoPTA />
       ) : moduleView === 'centro_reportes' ? (
-        <CentroReportesPTA />
+        <CentroReportesPTA periodo={filtroPeriodo} />
       ) : moduleView === 'cronograma' ? (
         <CronogramaProcesoPTA />
       ) : moduleView === 'programacion_institucional' ? (

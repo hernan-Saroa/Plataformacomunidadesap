@@ -75,6 +75,7 @@ import {
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
+import { formatPtaDedicacion, formatPtaVinculacion, ptaDato } from '../../utils/ptaInstitutionalDisplay';
 
 // ═══ TYPES ════════════════════════════════════════════════════════════
 
@@ -220,9 +221,11 @@ function puedeAprobarEstadoActual(estado: string, nivelUsuario: number, isSuperU
 }
 
 function timeAgo(d: string): string {
-  if (!d) return '';
+  if (!d) return 'Fecha no registrada';
   const now = Date.now();
   const then = new Date(d).getTime();
+  if (!Number.isFinite(then)) return 'Fecha no registrada';
+  if (then > now) return new Date(then).toLocaleDateString('es-CO');
   const mins = Math.floor((now - then) / 60000);
   if (mins < 1) return 'ahora';
   if (mins < 60) return `hace ${mins}m`;
@@ -233,16 +236,16 @@ function timeAgo(d: string): string {
 }
 
 function fmtFecha(d?: string): string {
-  if (!d) return '';
+  if (!d) return 'No registrada';
   const date = new Date(d);
-  if (isNaN(date.getTime())) return d;
+  if (isNaN(date.getTime())) return 'No registrada';
   return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function fmtFechaHora(d?: string | Date): string {
-  if (!d) return '';
+  if (!d) return 'No registrada';
   const date = new Date(d);
-  if (isNaN(date.getTime())) return String(d);
+  if (isNaN(date.getTime())) return 'No registrada';
   const dateStr = date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
   const timeStr = date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
   return `${dateStr} ${timeStr}`;
@@ -250,24 +253,27 @@ function fmtFechaHora(d?: string | Date): string {
 
 function getApprovalDuration(start: Date, end: Date): string {
   const diffMs = end.getTime() - start.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'No determinada';
   const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
   const hours = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
   if (days > 0) return `${days}d ${hours}h`;
   return `${hours}h`;
 }
 
-function CountdownTimer({ assignmentDate, isApproved }: { assignmentDate: Date; isApproved: boolean }) {
+function CountdownTimer({ assignmentDate, isApproved }: { assignmentDate: Date | null; isApproved: boolean }) {
   const [timeLeft, setTimeLeft] = useState(() => calcRemaining(assignmentDate));
 
   useEffect(() => {
-    if (isApproved) return;
+    setTimeLeft(calcRemaining(assignmentDate));
+    if (isApproved || !assignmentDate) return;
     const interval = setInterval(() => {
       setTimeLeft(calcRemaining(assignmentDate));
     }, 60000);
     return () => clearInterval(interval);
   }, [assignmentDate, isApproved]);
 
-  function calcRemaining(start: Date) {
+  function calcRemaining(start: Date | null) {
+    if (!start || !Number.isFinite(start.getTime())) return null;
     const deadline = new Date(start.getTime() + 4 * 7 * 24 * 60 * 60 * 1000); // 4 weeks
     const diff = deadline.getTime() - Date.now();
     return {
@@ -278,6 +284,24 @@ function CountdownTimer({ assignmentDate, isApproved }: { assignmentDate: Date; 
   }
 
   if (isApproved) return null;
+
+  if (!timeLeft) {
+    return (
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: '3px 8px',
+        borderRadius: '6px',
+        fontSize: '0.66rem',
+        fontWeight: 700,
+        color: '#64748B',
+        background: '#F1F5F9',
+      }}>
+        <Clock size={11} /> Plazo no determinado
+      </div>
+    );
+  }
 
   const absDiff = Math.abs(timeLeft.diff);
   const days = Math.floor(absDiff / (24 * 60 * 60 * 1000));
@@ -1954,15 +1978,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       revisionCompleta && !hayOtroComponenteDevuelto && !territorialSinPendientesPropios &&
       (estado === 'pendiente' || !!evaluandoComponente[key]);
 
-    const getAssignmentDate = () => {
+    const getAssignmentDate = (): Date | null => {
       const transition = (pta.historialEstados || []).find(
         (h: any) => ['Pendiente Jefatura', 'PENDIENTE_APROBACION'].includes(h.estadoNuevo || h.estado_nuevo || '')
       );
       if (transition && transition.createdAt) {
-        return new Date(transition.createdAt);
+        const transitionDate = new Date(transition.createdAt);
+        if (Number.isFinite(transitionDate.getTime())) return transitionDate;
       }
       const dateStr = pta.updatedAt || pta.updated_at || pta.createdAt || pta.created_at;
-      return dateStr ? new Date(dateStr) : new Date();
+      if (!dateStr) return null;
+      const fallbackDate = new Date(dateStr);
+      return Number.isFinite(fallbackDate.getTime()) ? fallbackDate : null;
     };
     const assignmentDate = getAssignmentDate();
 
@@ -2326,7 +2353,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
-                <strong style={{ color: '#14532D' }}>{approval.fechaAprobacion ? fmtFechaHora(approval.fechaAprobacion) : ''}</strong>
+                <strong style={{ color: '#14532D' }}>{approval.fechaAprobacion ? fmtFechaHora(approval.fechaAprobacion) : 'No registrada'}</strong>
               </div>
             </div>
             {approval.fechaAprobacion && (
@@ -2344,7 +2371,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 width: 'fit-content'
               }}>
                 <CheckCircle style={{ width: 12, height: 12, color: '#16A34A' }} />
-                Avalado a tiempo (duración de revisión: {getApprovalDuration(assignmentDate, new Date(approval.fechaAprobacion))})
+                {assignmentDate && Number.isFinite(new Date(approval.fechaAprobacion).getTime())
+                  ? `Duración de revisión: ${getApprovalDuration(assignmentDate, new Date(approval.fechaAprobacion))}`
+                  : 'Duración de revisión no determinada: falta una fecha válida de asignación'}
               </div>
             )}
             {approval.comentarios && (
@@ -2871,13 +2900,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // Unificar eventos: cambios de estado + aprobaciones de componentes (solo manuales)
     // + revisiones de componentes (etapa previa a la aprobación).
     type TimelineEvent =
-      | { kind: 'estado'; date: Date; data: any; idx: number }
-      | { kind: 'componente'; date: Date; data: any }
-      | { kind: 'revision'; date: Date; data: any };
+      | { kind: 'estado'; date: Date | null; data: any; idx: number }
+      | { kind: 'componente'; date: Date | null; data: any }
+      | { kind: 'revision'; date: Date | null; data: any };
+
+    const timelineDate = (value: unknown): Date | null => {
+      if (!value) return null;
+      const date = new Date(String(value));
+      return Number.isFinite(date.getTime()) ? date : null;
+    };
 
     const estadoEvents: TimelineEvent[] = historialEstados.map((h: any, i: number) => ({
       kind: 'estado' as const,
-      date: h.createdAt ? new Date(h.createdAt) : new Date(0),
+      date: timelineDate(h.createdAt ?? h.created_at ?? h.fecha),
       data: h,
       idx: i,
     }));
@@ -2886,7 +2921,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       .filter(c => c.estado !== 'pendiente' && c.aprobadorNombre !== 'Sistema' && c.fechaAprobacion)
       .map(c => ({
         kind: 'componente' as const,
-        date: new Date(c.fechaAprobacion),
+        date: timelineDate(c.fechaAprobacion),
         data: c,
       }));
 
@@ -2899,11 +2934,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       .filter(r => r.estado === 'revisado' && r.revisorNombre !== 'Sistema' && r.fechaRevision)
       .map(r => ({
         kind: 'revision' as const,
-        date: new Date(r.fechaRevision),
+        date: timelineDate(r.fechaRevision),
         data: r,
       }));
 
-    const allEvents = [...estadoEvents, ...compEvents, ...revEvents].sort((a, b) => b.date.getTime() - a.date.getTime());
+    const allEvents = [...estadoEvents, ...compEvents, ...revEvents]
+      .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
 
     if (allEvents.length === 0) {
       return (
@@ -2968,10 +3004,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </div>
                     <div style={{ fontSize: '0.67rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Calendar style={{ width: 10, height: 10, color: '#9CA3AF' }} />
-                      {event.date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {event.date ? event.date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Fecha no registrada'}
                       <Clock style={{ width: 10, height: 10, color: '#9CA3AF', marginLeft: 3 }} />
                       <span style={{ color: '#374151', fontWeight: 600 }}>
-                        {event.date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {event.date ? event.date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
                       </span>
                     </div>
                     {c.aprobadorNombre && (
@@ -3035,10 +3071,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </div>
                     <div style={{ fontSize: '0.67rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Calendar style={{ width: 10, height: 10, color: '#9CA3AF' }} />
-                      {event.date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {event.date ? event.date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Fecha no registrada'}
                       <Clock style={{ width: 10, height: 10, color: '#9CA3AF', marginLeft: 3 }} />
                       <span style={{ color: '#374151', fontWeight: 600 }}>
-                        {event.date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {event.date ? event.date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
                       </span>
                     </div>
                     {r.revisorNombre && (
@@ -3472,13 +3508,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#6B7280' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <Hash style={{ width: 11, height: 11 }} /> {pta.id?.substring(0, isMobile ? 8 : 12) || 'N/A'}
+                  <Hash style={{ width: 11, height: 11 }} /> {pta.id?.substring(0, isMobile ? 8 : 12) || 'No registrado'}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <Calendar style={{ width: 11, height: 11 }} /> {pta.periodo || '2025-2'}
+                  <Calendar style={{ width: 11, height: 11 }} /> {ptaDato(pta.periodo)}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <Award style={{ width: 11, height: 11 }} /> {pta.dedicacion || 'TC'}
+                  <Award style={{ width: 11, height: 11 }} /> {ptaDato(formatPtaDedicacion(pta.dedicacion))}
                 </span>
                 {pta.territorial && !isMobile && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -3779,11 +3815,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   ...(territorialesAsignaturas.length > 0
                     ? [{ label: 'Territoriales de las asignaturas', value: territorialesAsignaturas.join(', '), icon: MapPin }]
                     : []),
-                  { label: 'Asignaturas', value: `${pta.num_asignaturas || asignaturas.length || 0}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
-                  { label: 'Dedicación', value: pta.dedicacion || 'TC', icon: Clock },
-                  { label: 'Vinculación', value: pta.tipo_vinculacion || 'Carrera Administrativa', icon: Award },
+                  { label: 'Asignaturas', value: `${pta.num_asignaturas ?? (Array.isArray(pta.asignaturas) ? asignaturas.length : 'No registrado')}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
+                  { label: 'Dedicación', value: ptaDato(formatPtaDedicacion(pta.dedicacion)), icon: Clock },
+                  { label: 'Vinculación', value: ptaDato(formatPtaVinculacion(pta.tipo_vinculacion)), icon: Award },
                   { label: 'Escalafón', value: pta.escalafon || 'No registrado', icon: TrendingUp },
-                  { label: 'Factor Prorrateo', value: `${pta.semanas_prorrateo || 16} Semanas`, icon: Calculator },
+                  { label: 'Factor Prorrateo', value: pta.semanas_prorrateo != null ? `${pta.semanas_prorrateo} Semanas` : 'No registrado', icon: Calculator },
                 ].map(item => (
                   <div key={item.label} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
@@ -3960,7 +3996,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                                       )}
                                       <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
                                     </div>
-                                    <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos || 0}</span>
+                                    <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos ?? '—'}</span>
                                     <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
                                     <span style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#003DA5' }}>
                                       {a.total_horas || a.horas || 0}h
