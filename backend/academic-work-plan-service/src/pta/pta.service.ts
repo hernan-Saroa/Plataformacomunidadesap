@@ -3481,9 +3481,51 @@ export class PtaService {
           Object.assign(componente, { requiere_reaprobacion: true });
         }
 
+        // Estados granulares para las bandejas personales de Revisión y
+        // Aprobación. `componentes_estado` se conserva como resumen visual de
+        // cuatro grupos, pero no permite distinguir dos permisos sobre
+        // subsecciones/componentes diferentes. Estas colecciones sí mantienen
+        // la clave real y permiten filtrar sin mezclar las dos etapas.
+        const componentesRevisionEstado: Array<{
+          componente: string; subseccion: string; estado: string;
+        }> = [];
+        const componentesAprobacionEstado: Array<{
+          componente: string; estado: string; revision_completa: boolean;
+        }> = [];
+        for (const componente of Object.keys(horasPorComp)) {
+          const requiereReaprobacion = Boolean(reaprobaciones?.has(componente));
+          if (!tieneHoras(componente) && !requiereReaprobacion) continue;
+
+          const subsecciones = requeridasPorComponente(componente);
+          const revisionSatisfecha = subsecciones.every((subseccion) => {
+            if (!requiereReaprobacion && estaAprobado(componente)) return true;
+            return reviewRecs.get(`${componente}:${subseccion}`) === 'revisado';
+          });
+
+          for (const subseccion of subsecciones) {
+            let estadoRevision = reviewRecs.get(`${componente}:${subseccion}`) || 'pendiente';
+            // Una aprobación efectiva implica que su revisión previa ya fue
+            // satisfecha, incluso para registros históricos sin fila de revisión.
+            if (!requiereReaprobacion && estaAprobado(componente)) estadoRevision = 'revisado';
+            else if (esBorrador) estadoRevision = 'no_iniciado';
+            componentesRevisionEstado.push({ componente, subseccion, estado: estadoRevision });
+          }
+
+          let estadoAprobacion = recs.get(componente) || 'pendiente';
+          if (!requiereReaprobacion && estaAprobado(componente)) estadoAprobacion = 'aprobado';
+          else if (esBorrador) estadoAprobacion = 'no_iniciado';
+          componentesAprobacionEstado.push({
+            componente,
+            estado: estadoAprobacion,
+            revision_completa: revisionSatisfecha,
+          });
+        }
+
         dto.componentes_total = total;
         dto.componentes_aprobados = aprobados;
         dto.componentes_estado = componentesEstado;
+        dto.componentes_revision_estado = componentesRevisionEstado;
+        dto.componentes_aprobacion_estado = componentesAprobacionEstado;
         dto.componentes_con_datos = Object.keys(horasPorComp).filter(k => tieneHoras(k) || reaprobaciones?.has(k));
         dto.subsecciones_con_datos = dto.componentes_con_datos.flatMap((k: string) =>
           requeridasPorComponente(k).map(sub => `${k}:${sub}`));
@@ -3658,8 +3700,12 @@ export class PtaService {
 
   /** Cada PTA debe contener trabajo de un componente y alcance propios, en la misma asignatura. */
   private async filterGestionPtas(dtos: any[], rows: PlanTrabajoAcademicoEntity[], auth: PtaAuthenticatedUser) {
-    const aprobables = new Set<string>(auth.allowedComponents);
-    const revisables = new Set(auth.allowedReviewSubsecciones);
+    const todosLosComponentes = Object.keys(COMPONENT_PERMISSION);
+    const aprobables = new Set<string>(
+      auth.isSuperUser || auth.approvesAll ? todosLosComponentes : (auth.allowedComponents || []),
+    );
+    const revisaTodo = Boolean(auth.isSuperUser || auth.reviewsAll);
+    const revisables = new Set(auth.allowedReviewSubsecciones || []);
     // Los permisos funcionales de Solicitudes/Seguimiento solo abren sus propias
     // bandejas. Sin un permiso de Gestión ni alcance por componente, la consulta
     // general debe negar por defecto para no entregar PTAs ajenos al cliente.
@@ -3668,35 +3714,145 @@ export class PtaService {
       || auth.permissions?.has('pta.backoffice.ver_gestion')
       || auth.permissions?.has('pta.backoffice.ver_detalle'),
     );
-    if (auth.isSuperUser || auth.approvesAll || (!aprobables.size && !revisables.size && consultaGeneral)) return dtos;
-    if (!aprobables.size && !revisables.size) return [];
+    if (!aprobables.size && !revisables.size && !revisaTodo && consultaGeneral) return dtos;
+    if (!aprobables.size && !revisables.size && !revisaTodo) return [];
     const entities = new Map(rows.map(row => [row.id, row]));
+    // En Docencia territorial un componente puede estar repartido entre varias
+    // territoriales/niveles. La fila consolidada sigue pendiente hasta que todas
+    // terminen; para una bandeja personal necesitamos el estado de los pares que
+    // realmente pertenecen al usuario actual.
+    const ids = dtos.map(dto => dto?.id).filter(Boolean);
+    let decisionesTerritoriales: PtaTerritorialApprovalEntity[] = [];
+    let revisionesTerritoriales: PtaTerritorialReviewEntity[] = [];
+    if (ids.length && (aprobables.has('academica_territorial')
+      || revisaTodo || revisables.has('academica_territorial:general'))) {
+      const [aprobacionesResult, revisionesResult] = await Promise.allSettled([
+        this.ptaTerritorialApprovalRepo?.find
+          ? this.ptaTerritorialApprovalRepo.find({ where: { ptaId: In(ids), componente: 'academica_territorial' } })
+          : Promise.resolve([]),
+        this.ptaTerritorialReviewRepo?.find
+          ? this.ptaTerritorialReviewRepo.find({ where: { ptaId: In(ids), componente: 'academica_territorial' } })
+          : Promise.resolve([]),
+      ]);
+      if (aprobacionesResult.status === 'fulfilled') decisionesTerritoriales = aprobacionesResult.value;
+      if (revisionesResult.status === 'fulfilled') revisionesTerritoriales = revisionesResult.value;
+    }
+    const clavePar = (ptaId: string, componente: string, territorialId: string, nivel: string) =>
+      `${ptaId}::${componente}::${territorialId}::${nivel}`;
+    const aprobacionTerritorialByKey = new Map(decisionesTerritoriales.map(row => [
+      clavePar(row.ptaId, row.componente, row.territorialId, row.nivel), row,
+    ]));
+    const revisionTerritorialByKey = new Map(revisionesTerritoriales.map(row => [
+      clavePar(row.ptaId, row.componente, row.territorialId, row.nivel), row,
+    ]));
     const visibles: any[] = [];
     for (const dto of dtos) {
       const componentes = (dto.componentes_con_datos || []) as string[];
       const revisiones = (dto.subsecciones_con_datos || []) as string[];
-      const propios: string[] = [];
+      const estadosAprobacion = Array.isArray(dto.componentes_aprobacion_estado)
+        ? dto.componentes_aprobacion_estado : [];
+      const estadosRevision = Array.isArray(dto.componentes_revision_estado)
+        ? dto.componentes_revision_estado : [];
+      const estadoAprobacionBase = new Map(estadosAprobacion.map((item: any) => [
+        String(item?.componente || ''), String(item?.estado || 'pendiente'),
+      ]));
+      const estadoRevisionBase = new Map(estadosRevision.map((item: any) => [
+        `${item?.componente || ''}:${item?.subseccion || 'general'}`, String(item?.estado || 'pendiente'),
+      ]));
+      const propiosAprobacion: string[] = [];
+      const propiosRevision: string[] = [];
+      const aprobacionTerritorialUsuario: any[] = [];
+      const revisionTerritorialUsuario: any[] = [];
       for (const componente of componentes) {
         const aprobar = aprobables.has(componente);
-        const revisar = revisiones.some(key => key.startsWith(`${componente}:`) && revisables.has(key));
+        const revisionesAutorizadas = revisiones.filter(key =>
+          key.startsWith(`${componente}:`) && (revisaTodo || revisables.has(key)));
+        const revisar = revisionesAutorizadas.length > 0;
         if (!aprobar && !revisar) continue;
         if (!TERRITORIAL_COMPONENT_KEYS.includes(componente as PTAComponentKey)) {
-          propios.push(componente);
+          if (aprobar) propiosAprobacion.push(componente);
+          propiosRevision.push(...revisionesAutorizadas);
           continue;
         }
         const entity = entities.get(dto.id);
         if (!entity) continue;
-        for (const etapa of ['aprobar', 'revisar'] as const) {
-          if (etapa === 'aprobar' ? !aprobar : !revisar) continue;
+        if (aprobar) {
           try {
-            const alcance = await this.assertAlcanceTerritorial(componente, entity, auth, etapa);
-            if (alcance?.propios.length) { propios.push(componente); break; }
+            const alcance = await this.assertAlcanceTerritorial(componente, entity, auth, 'aprobar');
+            if (alcance?.propios.length) {
+              propiosAprobacion.push(componente);
+              if (componente === 'academica_territorial' && alcance.pares.length >= 2) {
+                for (const par of alcance.propios) {
+                  const row = aprobacionTerritorialByKey.get(clavePar(dto.id, componente, par.territorialId, par.nivel));
+                  aprobacionTerritorialUsuario.push({
+                    componente,
+                    territorial_id: par.territorialId,
+                    nivel: par.nivel,
+                    estado: row?.estado || estadoAprobacionBase.get(componente) || 'pendiente',
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            if (!(error instanceof ForbiddenException)) throw error;
+          }
+        }
+        if (revisar) {
+          try {
+            const alcance = await this.assertAlcanceTerritorial(componente, entity, auth, 'revisar');
+            if (alcance?.propios.length) {
+              propiosRevision.push(...revisionesAutorizadas);
+              if (componente === 'academica_territorial' && alcance.pares.length >= 2) {
+                for (const par of alcance.propios) {
+                  const row = revisionTerritorialByKey.get(clavePar(dto.id, componente, par.territorialId, par.nivel));
+                  revisionTerritorialUsuario.push({
+                    componente,
+                    subseccion: 'general',
+                    territorial_id: par.territorialId,
+                    nivel: par.nivel,
+                    estado: row?.estado || estadoRevisionBase.get(`${componente}:general`) || 'pendiente',
+                  });
+                }
+              }
+            }
           } catch (error) {
             if (!(error instanceof ForbiddenException)) throw error;
           }
         }
       }
-      if (propios.length) visibles.push({ ...dto, componentes_en_alcance: propios });
+      const componentesEnAlcance = Array.from(new Set([
+        ...propiosAprobacion,
+        ...propiosRevision.map(key => key.split(':')[0]),
+      ]));
+      if (!componentesEnAlcance.length) continue;
+
+      const aprobacionSet = new Set(propiosAprobacion);
+      const revisionSet = new Set(propiosRevision);
+      const aprobacionUsuario = estadosAprobacion.filter((item: any) =>
+        aprobacionSet.has(String(item?.componente || ''))
+          && !(item?.componente === 'academica_territorial' && aprobacionTerritorialUsuario.length));
+      const revisionUsuario = estadosRevision.filter((item: any) =>
+        revisionSet.has(`${item?.componente || ''}:${item?.subseccion || 'general'}`)
+          && !(item?.componente === 'academica_territorial' && revisionTerritorialUsuario.length));
+      const revisionConsolidadaTerritorial = estadosRevision.some((item: any) =>
+        item?.componente === 'academica_territorial'
+          && String(item?.estado || '').toLowerCase() === 'revisado');
+      visibles.push({
+        ...dto,
+        componentes_en_alcance: componentesEnAlcance,
+        componentes_aprobacion_en_alcance: propiosAprobacion,
+        componentes_revision_en_alcance: propiosRevision,
+        componentes_aprobacion_usuario: [
+          ...aprobacionUsuario,
+          ...aprobacionTerritorialUsuario.map(item => ({
+            ...item,
+            // La aprobación territorial solo queda habilitada cuando la
+            // revisión consolidada del componente está completa.
+            revision_completa: revisionConsolidadaTerritorial,
+          })),
+        ],
+        componentes_revision_usuario: [...revisionUsuario, ...revisionTerritorialUsuario],
+      });
     }
     return visibles;
   }

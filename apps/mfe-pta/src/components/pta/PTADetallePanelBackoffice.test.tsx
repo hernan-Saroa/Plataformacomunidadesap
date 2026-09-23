@@ -310,7 +310,7 @@ describe('autorización vigente del servidor', () => {
   it('no ofrece aprobar aunque el rol local o la prop indiquen que puede', async () => {
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(sinPermisos);
     render(<PTADetallePanelBackoffice {...baseProps({ isSuperUser: true })} />);
-    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    fireEvent.click(screen.getByText(/^(Aprobación|Revisión y aprobación)$/).closest('button')!);
     await waitFor(() => expect(getComponentesRevision).toHaveBeenCalled());
     expect(screen.queryByPlaceholderText('Comentario opcional al aprobar este componente...')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();

@@ -1430,6 +1430,8 @@ export function PtaBackofficeModule({ initialView }: { initialView?: string } = 
 }
 
 type ModuleView = 'gestion' | 'seguimiento_docs' | 'configuracion' | 'banco_docentes' | 'programacion' | 'concertacion' | 'tablero' | 'reporte' | 'seguimiento' | 'directivo' | 'territorial' | 'comparativo' | 'sna' | 'validador' | 'test_e2e' | 'mapa_territorial' | 'alertas' | 'indicadores' | 'acta_concertacion' | 'simulador_carga' | 'benchmarking' | 'exportador_actas' | 'comite_evaluacion' | 'calendario_academico' | 'asignador_automatico' | 'kanban' | 'metricas_sla' | 'generador_resoluciones' | 'gestion_conflictos' | 'preferencias_notificaciones' | 'workflow_visualizer' | 'verificacion_qr' | 'programacion_institucional' | 'centro_reportes' | 'cronograma' | 'mapeo_sincronizacion' | 'salud_sistema' | 'reconciliacion_masiva' | 'tablero_unificado' | 'solicitudes_pta';
+type FiltroEtapaPersonal = '' | 'revision_pendiente' | 'revision_revisado' | 'aprobacion_pendiente' | 'aprobacion_aprobado';
+type EstadoEtapaPersonal = 'sin_alcance' | 'pendiente' | 'resuelto';
 
 function normalizeEstadoKey(value?: string | null) {
   return String(value || '')
@@ -1667,6 +1669,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // La etiqueta visual del rol nunca sustituye la bandera autenticada. Esto evita
   // que un rol custom llamado "admin" eluda la segmentación por componentes.
   const isSuperUserEffective = auth.isSuperUser;
+  const tieneComponentesRevisables = (permisos.componentesRevisables || []).length > 0;
+  const tieneComponentesAprobables = (permisos.componentesAprobables || []).length > 0;
+  const tieneEtapaRevision = isSuperUserEffective
+    || tieneComponentesRevisables
+    || (!tieneComponentesAprobables && Boolean(permisos.puedeRevisar));
+  const tieneEtapaAprobacion = isSuperUserEffective
+    || tieneComponentesAprobables
+    // Compatibilidad con perfiles legacy sin matriz granular. Si ya existe una
+    // matriz de Revisión, el booleano antiguo nunca concede Aprobación por sí solo.
+    || (!tieneComponentesRevisables && Boolean(permisos.puedeAprobar));
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
     if (isSuperUserEffective) return [...PTA_COMPONENT_KEYS];
     return [...new Set([...(permisos.componentesAprobables || []),
@@ -1747,26 +1759,82 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     });
   }, [shouldRestrictByComponentPermission, claveColapsadaAutorizada]);
 
-  /**
-   * Clasifica un PTA según el estado de MIS componentes (los que puedo aprobar):
-   *  - 'sin_alcance': el PTA no tiene ningún componente que me corresponda.
-   *  - 'por_aprobar': al menos uno de mis componentes sigue pendiente/en revisión.
-   *  - 'aprobados'  : todos mis componentes ya están aprobados.
-   * Alimenta el filtro "Mis componentes", que QA pidió porque el filtro de estado
-   * existente solo mira si TODO el PTA está aprobado o pendiente en conjunto.
-   */
-  const estadoDeMisComponentes = useCallback((pta: any): 'sin_alcance' | 'por_aprobar' | 'aprobados' => {
-    const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
-    const mios = items.filter((item: any) =>
-      item?.estado !== 'no_aplica' && claveColapsadaAutorizada(String(item?.key || item?.componente || '')),
-    );
-    if (mios.length === 0) return 'sin_alcance';
-    const hayPendiente = mios.some((item: any) => {
-      const estado = String(item?.estado || 'pendiente').toLowerCase();
-      return estado !== 'aprobado' && estado !== 'no_iniciado';
-    });
-    return hayPendiente ? 'por_aprobar' : 'aprobados';
-  }, [claveColapsadaAutorizada]);
+  const componentesRevisionSet = useMemo(() => new Set(
+    (permisos.componentesRevisables || []).map(key => key.split(':')[0]),
+  ), [permisos.componentesRevisables]);
+  const componentesAprobacionSet = useMemo(() => new Set(permisos.componentesAprobables || []),
+    [permisos.componentesAprobables]);
+
+  const claveColapsadaAutorizadaPorEtapa = useCallback((key: string, etapa: 'revision' | 'aprobacion') => {
+    if (isSuperUserEffective) return true;
+    const permitidos = etapa === 'revision' ? componentesRevisionSet : componentesAprobacionSet;
+    // Un permiso legacy general sin lista granular conserva el comportamiento
+    // anterior; las cuentas granulares siempre llegan con sus claves concretas.
+    if (permitidos.size === 0) return etapa === 'aprobacion' && Boolean(permisos.puedeAprobar);
+    if (key === 'academica') return PTA_COMPONENT_KEYS
+      .filter(k => k.startsWith('academica_')).some(k => permitidos.has(k));
+    if (key === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(k => permitidos.has(k));
+    if (key === 'complementarias') return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(k => permitidos.has(k));
+    return permitidos.has(key);
+  }, [componentesAprobacionSet, componentesRevisionSet, isSuperUserEffective, permisos.puedeAprobar]);
+
+  /** Clasificación personal separada: Revisión nunca se mezcla con Aprobación. */
+  const estadoDeMiEtapa = useCallback((pta: any, etapa: 'revision' | 'aprobacion'): EstadoEtapaPersonal => {
+    const campoUsuario = etapa === 'revision'
+      ? 'componentes_revision_usuario' : 'componentes_aprobacion_usuario';
+    const campoGeneral = etapa === 'revision'
+      ? 'componentes_revision_estado' : 'componentes_aprobacion_estado';
+    let items: any[];
+
+    if (Array.isArray(pta?.[campoUsuario])) {
+      // El servidor ya aplicó componente, subsección y alcance territorial.
+      items = pta[campoUsuario];
+    } else if (Array.isArray(pta?.[campoGeneral])) {
+      items = pta[campoGeneral].filter((item: any) => {
+        const componente = String(item?.componente || '');
+        if (etapa === 'revision') {
+          const clave = `${componente}:${item?.subseccion || 'general'}`;
+          return isSuperUserEffective || (permisos.componentesRevisables || []).includes(clave);
+        }
+        return isSuperUserEffective || componentesAprobacionSet.has(componente)
+          || (componentesAprobacionSet.size === 0 && Boolean(permisos.puedeAprobar));
+      });
+    } else {
+      // Compatibilidad con respuestas anteriores: el resumen colapsado permite
+      // distinguir `en_revision` de `pendiente` aunque no tenga la granularidad
+      // nueva por subsección.
+      const resumidos = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+      items = resumidos.filter((item: any) => item?.estado !== 'no_aplica'
+        && claveColapsadaAutorizadaPorEtapa(String(item?.key || item?.componente || ''), etapa));
+      if (items.length === 0) {
+        if (etapa === 'aprobacion' && tieneEtapaAprobacion) {
+          if (isEstadoPendienteAprobacion(pta?.estado)) return 'pendiente';
+          if (normalizeEstadoKey(pta?.estado) === 'APROBADO') return 'resuelto';
+        }
+        return 'sin_alcance';
+      }
+      if (etapa === 'revision') {
+        if (items.some(item => String(item?.estado || '').toLowerCase() === 'en_revision')) return 'pendiente';
+        return items.every(item => ['pendiente', 'aprobado'].includes(String(item?.estado || '').toLowerCase()))
+          ? 'resuelto' : 'sin_alcance';
+      }
+      if (items.some(item => String(item?.estado || '').toLowerCase() === 'pendiente')) return 'pendiente';
+      return items.every(item => String(item?.estado || '').toLowerCase() === 'aprobado')
+        ? 'resuelto' : 'sin_alcance';
+    }
+
+    if (items.length === 0) return 'sin_alcance';
+    if (etapa === 'revision') {
+      if (items.some(item => String(item?.estado || 'pendiente').toLowerCase() === 'pendiente')) return 'pendiente';
+      return items.every(item => String(item?.estado || '').toLowerCase() === 'revisado')
+        ? 'resuelto' : 'sin_alcance';
+    }
+    if (items.some(item => String(item?.estado || 'pendiente').toLowerCase() === 'pendiente'
+      && item?.revision_completa !== false)) return 'pendiente';
+    return items.every(item => String(item?.estado || '').toLowerCase() === 'aprobado')
+      ? 'resuelto' : 'sin_alcance';
+  }, [claveColapsadaAutorizadaPorEtapa, componentesAprobacionSet, isSuperUserEffective,
+    permisos.componentesRevisables, permisos.puedeAprobar, tieneEtapaAprobacion]);
 
   const { addNotification } = useNotifications();
   const [ptas, setPtas] = useState<any[]>([]);
@@ -1787,11 +1855,23 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPeriodo, setFiltroPeriodo] = useState('');
   const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState('');
-  // Filtro "Mis componentes" (solo para revisores/aprobadores con alcance restringido):
-  // '' = todos | 'por_aprobar' | 'aprobados'. Es independiente del filtro de estado
-  // global del PTA, que no distingue el avance del componente propio.
-  const [filtroMisComponentes, setFiltroMisComponentes] = useState<'' | 'por_aprobar' | 'aprobados'>('');
+  // Filtro "Mis componentes": separa la etapa y el avance propios del usuario;
+  // es independiente del estado global del PTA.
+  const [filtroMisComponentes, setFiltroMisComponentes] = useState<FiltroEtapaPersonal>('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Al cambiar de rol simulado o de asignación de permisos, no conservar un
+  // filtro perteneciente a una etapa que ya no está habilitada.
+  useEffect(() => {
+    const revisionInvalida = !tieneEtapaRevision
+      && (filtroEstado.startsWith('revision_') || filtroMisComponentes.startsWith('revision_'));
+    const aprobacionInvalida = !tieneEtapaAprobacion
+      && (filtroEstado.startsWith('aprobacion_') || filtroMisComponentes.startsWith('aprobacion_'));
+    if (revisionInvalida || aprobacionInvalida) {
+      setFiltroEstado('');
+      setFiltroMisComponentes('');
+    }
+  }, [filtroEstado, filtroMisComponentes, tieneEtapaAprobacion, tieneEtapaRevision]);
 
   // ─── Periodo Académico (Selector Global) ───
   const [periodosPTA, setPeriodosPTA] = useState<any[]>([]);
@@ -2612,7 +2692,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     // ═══ Workflow Tab Filters (Estado) ═══
     if (filtroEstado) {
-      result = result.filter((p: any) => matchesEstadoWorkflowFilter(p, filtroEstado));
+      const filtrosPersonales: Record<string, ['revision' | 'aprobacion', EstadoEtapaPersonal]> = {
+        revision_pendiente: ['revision', 'pendiente'],
+        revision_revisado: ['revision', 'resuelto'],
+        aprobacion_pendiente: ['aprobacion', 'pendiente'],
+        aprobacion_aprobado: ['aprobacion', 'resuelto'],
+      };
+      const filtroPersonal = filtrosPersonales[filtroEstado];
+      result = filtroPersonal
+        ? result.filter((p: any) => estadoDeMiEtapa(p, filtroPersonal[0]) === filtroPersonal[1])
+        : result.filter((p: any) => matchesEstadoWorkflowFilter(p, filtroEstado));
     }
 
     if (filtroEstadoRegistro) {
@@ -2621,11 +2710,84 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     // ═══ Filtro por el avance de MIS componentes (revisor/aprobador) ═══
     if (filtroMisComponentes) {
-      result = result.filter((p: any) => estadoDeMisComponentes(p) === filtroMisComponentes);
+      const etapa = filtroMisComponentes.startsWith('revision_') ? 'revision' : 'aprobacion';
+      const estado = filtroMisComponentes.endsWith('_pendiente') ? 'pendiente' : 'resuelto';
+      result = result.filter((p: any) => estadoDeMiEtapa(p, etapa) === estado);
     }
 
     return result;
-  }, [scopedPtas, searchQuery, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, estadoDeMisComponentes]);
+  }, [scopedPtas, searchQuery, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, estadoDeMiEtapa]);
+
+  const workflowTabs = useMemo(() => {
+    const tabs: Array<{ id: string; label: string; color: string; count: number }> = [
+      { id: '', label: 'Todos', color: '#6B7280', count: scopedPtas.length },
+    ];
+    if (tieneEtapaRevision) {
+      tabs.push(
+        { id: 'revision_pendiente', label: 'Revisión', color: '#F59E0B', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'revision') === 'pendiente').length },
+        { id: 'revision_revisado', label: 'Revisado', color: '#10B981', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'revision') === 'resuelto').length },
+      );
+    }
+    if (tieneEtapaAprobacion) {
+      tabs.push(
+        { id: 'aprobacion_pendiente', label: 'Aprobación', color: '#F59E0B', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'aprobacion') === 'pendiente').length },
+        { id: 'aprobacion_aprobado', label: 'Aprobado', color: '#10B981', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'aprobacion') === 'resuelto').length },
+      );
+    }
+    return tabs;
+  }, [estadoDeMiEtapa, scopedPtas, tieneEtapaAprobacion, tieneEtapaRevision]);
+
+  const renderFiltroPersonal = (key: FiltroEtapaPersonal, label: string, etapa?: 'revision' | 'aprobacion') => {
+    const activo = filtroMisComponentes === key;
+    const colorActivo = etapa === 'revision' ? '#B45309'
+      : etapa === 'aprobacion' ? '#1D4ED8' : '#475569';
+    const fondoActivo = etapa === 'revision' ? '#FEF3C7'
+      : etapa === 'aprobacion' ? '#DBEAFE' : '#F1F5F9';
+    return (
+      <button
+        key={key || 'todos'}
+        type="button"
+        aria-pressed={activo}
+        onClick={() => {
+          setFiltroMisComponentes(key);
+          setFiltroEstado('');
+        }}
+        style={{
+          minHeight: 30,
+          padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+          fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap',
+          border: activo ? `1.5px solid ${colorActivo}` : '1px solid transparent',
+          background: activo ? fondoActivo : 'transparent',
+          color: activo ? colorActivo : '#64748B',
+          transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  const filtrosPersonales = (tieneEtapaRevision || tieneEtapaAprobacion) ? (
+    <div className="pta-personal-filters" role="group" aria-label="Filtrar mis componentes por etapa">
+      <div className="pta-personal-filter-group">
+        {renderFiltroPersonal('', 'Todos')}
+      </div>
+      {tieneEtapaRevision && (
+        <div className="pta-personal-filter-group pta-personal-filter-group--review">
+          <span className="pta-personal-filter-label">Revisión</span>
+          {renderFiltroPersonal('revision_pendiente', 'Por revisar', 'revision')}
+          {renderFiltroPersonal('revision_revisado', 'Revisados', 'revision')}
+        </div>
+      )}
+      {tieneEtapaAprobacion && (
+        <div className="pta-personal-filter-group pta-personal-filter-group--approval">
+          <span className="pta-personal-filter-label">Aprobación</span>
+          {renderFiltroPersonal('aprobacion_pendiente', 'Por aprobar', 'aprobacion')}
+          {renderFiltroPersonal('aprobacion_aprobado', 'Aprobados', 'aprobacion')}
+        </div>
+      )}
+    </div>
+  ) : undefined;
 
   useEffect(() => {
     const pages = Math.max(1, Math.ceil(filteredPtas.length / PAGE_SIZE));
@@ -3602,8 +3764,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           <PTAWorldClassToolbar
             estadisticas={estadisticas}
             filtroEstado={filtroEstado}
-            setFiltroEstado={setFiltroEstado}
+            setFiltroEstado={(value) => {
+              setFiltroEstado(value);
+              setFiltroMisComponentes('');
+            }}
             ptas={scopedPtas}
+            workflowTabs={workflowTabs}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             filtroPeriodo={filtroPeriodo}
@@ -3617,50 +3783,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             estadosRegistro={ESTADOS_REGISTRO_PRINCIPALES}
             vistaActual={viewMode}
             setVistaActual={setViewMode}
+            secondaryFilters={filtrosPersonales}
             additionalTools={
               <>
-                {/* ═══ Filtro "Mis componentes" (revisor/aprobador con alcance restringido) ═══
-                    El filtro de estado general solo dice si TODO el PTA está pendiente o
-                    aprobado; esto permite ver "lo que me falta por aprobar" vs "lo que ya
-                    aprobé" de MIS componentes (p. ej. Docencia). */}
-                {shouldRestrictByComponentPermission && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 4 }}>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                      Mis componentes:
-                    </span>
-                    {([
-                      { key: '' as const, label: 'Todos' },
-                      { key: 'por_aprobar' as const, label: 'Por aprobar' },
-                      { key: 'aprobados' as const, label: 'Aprobados' },
-                    ]).map(opt => {
-                      const activo = filtroMisComponentes === opt.key;
-                      return (
-                        <button
-                          key={opt.key || 'todos'}
-                          onClick={() => setFiltroMisComponentes(opt.key)}
-                          title={
-                            opt.key === 'por_aprobar'
-                              ? 'PTAs con componentes a mi cargo pendientes de revisión/aprobación'
-                              : opt.key === 'aprobados'
-                                ? 'PTAs donde ya aprobé todos los componentes a mi cargo'
-                                : 'Sin filtrar por mis componentes'
-                          }
-                          style={{
-                            padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
-                            fontSize: '0.68rem', fontWeight: 700, whiteSpace: 'nowrap',
-                            border: activo ? '1.5px solid #003DA5' : '1px solid #E5E7EB',
-                            background: activo ? '#EFF6FF' : 'white',
-                            color: activo ? '#003DA5' : '#6B7280',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
                 {/* Columns config */}
                 <div style={{ position: 'relative' }}>
                   <button

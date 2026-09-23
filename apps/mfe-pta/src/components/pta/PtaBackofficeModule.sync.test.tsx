@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION } from './shared/ptaComponentPermissions';
 
 const sync = vi.hoisted(() => ({ options: null as any, isSuperUser: false, rol: 'jefatura', allowedPermissions: null as Set<string> | null, visibleViews: null as Set<string> | null, permissions: {
-  nivelAprobacion: 1, puedeAprobar: true, componentesAprobables: [] as string[], componentesRevisables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
+  nivelAprobacion: 1, puedeAprobar: true, puedeRevisar: false, componentesAprobables: [] as string[], componentesRevisables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
 } }));
 vi.mock('../../hooks/usePTARealtimeSync', () => ({
   usePTARealtimeSync: (options: any) => { sync.options = options; return { lastSyncTime: 'sync', unreadEvents: [], unreadCount: 0 }; },
@@ -60,6 +60,8 @@ beforeEach(() => {
   sync.allowedPermissions = null;
   sync.visibleViews = null;
   sync.permissions.filtroTerritorial = undefined;
+  sync.permissions.puedeAprobar = true;
+  sync.permissions.puedeRevisar = false;
   sync.permissions.componentesAprobables = [];
   sync.permissions.componentesRevisables = [];
   vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: false, territoriales: null, programas: null, cetaps: null } });
@@ -533,16 +535,73 @@ describe('listado y contadores del backoffice', () => {
   });
 
   it('un revisor puro de docencia no ve PTA de otros componentes ni botones de aprobación masiva', async () => {
+    // La matriz granular de Revisión debe prevalecer incluso si un booleano
+    // legacy quedó en true: no puede aparecer la etapa de Aprobación.
+    sync.permissions.puedeRevisar = true;
     sync.permissions.componentesRevisables = ['academica_territorial:general'];
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
-      { ...pendientes[0], docencia_por_componente: { academica_territorial: 40 } },
+      {
+        ...pendientes[0], docencia_por_componente: { academica_territorial: 40 },
+        componentes_revision_usuario: [{ componente: 'academica_territorial', subseccion: 'general', estado: 'pendiente' }],
+      },
       { ...pendientes[1], docencia_por_componente: { academica_territorial: 0 }, horas_investigacion: 100 },
     ] });
     render(<PtaBackofficeModule />);
     await screen.findByText('Docente uno');
     expect(screen.queryByText('Docente dos')).toBeNull();
     expect(tab('Todos').textContent).toContain('1');
+    expect(tab('Revisión').textContent).toContain('1');
+    expect(screen.queryByText('Aprobación')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Por revisar' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Por aprobar' })).toBeNull();
     expect(getAllPTAs).toHaveBeenCalledWith(expect.objectContaining({ periodo: '2026-1' }), true);
+  });
+
+  it('muestra filtros separados cuando una persona puede revisar y aprobar', async () => {
+    sync.permissions.puedeRevisar = true;
+    sync.permissions.componentesRevisables = ['academica_pregrado:general'];
+    sync.permissions.componentesAprobables = ['investigacion'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
+      ...pendientes[0],
+      componentes_en_alcance: ['academica_pregrado', 'investigacion'],
+      componentes_revision_usuario: [{ componente: 'academica_pregrado', subseccion: 'general', estado: 'pendiente' }],
+      componentes_aprobacion_usuario: [{ componente: 'investigacion', estado: 'pendiente', revision_completa: true }],
+    }] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(tab('Revisión').textContent).toContain('1');
+    expect(tab('Aprobación').textContent).toContain('1');
+    expect(screen.getByRole('button', { name: 'Por revisar' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Por aprobar' })).toBeTruthy();
+  });
+
+  it('filtra Por revisar y Revisados con el estado de la tarea propia', async () => {
+    sync.permissions.puedeRevisar = true;
+    sync.permissions.componentesRevisables = ['academica_pregrado:general'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
+      {
+        ...pendientes[0], componentes_en_alcance: ['academica_pregrado'],
+        componentes_revision_usuario: [{ componente: 'academica_pregrado', subseccion: 'general', estado: 'pendiente' }],
+      },
+      {
+        ...pendientes[1], componentes_en_alcance: ['academica_pregrado'],
+        componentes_revision_usuario: [{ componente: 'academica_pregrado', subseccion: 'general', estado: 'revisado' }],
+      },
+    ] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(tab('Revisión').textContent).toContain('1');
+    expect(tab('Revisado').textContent).toContain('1');
+
+    fireEvent.click(tab('Revisión'));
+    expect(screen.getByText('Docente uno')).toBeTruthy();
+    expect(screen.queryByText('Docente dos')).toBeNull();
+
+    fireEvent.click(tab('Revisado'));
+    expect(await screen.findByText('Docente dos')).toBeTruthy();
+    expect(screen.queryByText('Docente uno')).toBeNull();
   });
 
   it('respeta un componente autorizado por el servidor sin aplicar encima el filtro de otro rol', async () => {

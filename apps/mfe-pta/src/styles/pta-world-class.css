@@ -1082,6 +1082,85 @@
   }
 }
 
+/* Bandejas personales de Revisión/Aprobación ----------------------------- */
+.pta-world-toolbar-secondary {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  padding: 8px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafbfc;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.pta-personal-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+}
+
+.pta-personal-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.pta-personal-filter-group--review {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.pta-personal-filter-group--approval {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.pta-personal-filter-label {
+  padding: 0 6px;
+  color: #64748b;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .pta-world-toolbar-primary {
+    align-items: stretch !important;
+    flex-wrap: wrap;
+    padding: 10px 12px 8px !important;
+  }
+
+  .pta-world-toolbar-tabs {
+    flex: 1 1 100% !important;
+    order: 1;
+    padding-bottom: 2px;
+  }
+
+  .pta-world-toolbar-actions {
+    width: 100%;
+    order: 2;
+    justify-content: flex-end;
+    overflow-x: auto;
+    padding-top: 4px;
+  }
+
+  .pta-world-toolbar-secondary {
+    padding: 7px 12px;
+  }
+
+  .pta-world-toolbar-search {
+    padding: 8px 12px !important;
+  }
+}
+
 .pta-empty-state {
   background: var(--pta-surface);
   border: 1px solid var(--pta-border);

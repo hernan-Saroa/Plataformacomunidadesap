@@ -1749,11 +1749,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // (aprobar/devolver/concertar), nunca a qué se muestra en esta vista de detalle.
   const componentesAprobacionVisibles = componentesAprobacion;
   const componentesPendientes = componentesAprobacionVisibles.filter(c => c.estado === 'pendiente' || !c.estado).length;
-  // Rótulo de la pestaña "Concertación" según lo que el rol puede hacer en ella:
-  // solo revisar → "Revisión"; puede aprobar (con o sin permiso de revisión también)
-  // → "Aprobación"; ninguno de los dos (p.ej. coordinador en etapa de concertación
-  // de elaboración) → se conserva "Concertación".
-  const tabComponentesLabel = puedeAprobar ? 'Aprobación' : (tieneAlgunPermisoRevision ? 'Revisión' : 'Concertación');
+  // Rótulo según las capacidades efectivas: Revisión, Aprobación o ambas;
+  // sin ninguna de ellas se conserva Concertación.
+  const tabComponentesLabel = puedeAprobar && tieneAlgunPermisoRevision
+    ? 'Revisión y aprobación'
+    : puedeAprobar ? 'Aprobación'
+      : (tieneAlgunPermisoRevision ? 'Revisión' : 'Concertación');
   const TABS = [
     { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     // "Concertación" fusiona las antiguas pestañas "Componentes" (detalle) y "Aprobación"
