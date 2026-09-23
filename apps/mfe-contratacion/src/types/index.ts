@@ -1324,6 +1324,8 @@ export interface CampoConfigurable {
   orden: number;
   activo: boolean;
   soloLectura: boolean;
+  /** Las opciones de un campo de selección, en el orden en que se ofrecen. */
+  opciones?: string[] | null;
 }
 
 export type Operador = 'ES' | 'NO_ES' | 'MAYOR_QUE' | 'MENOR_QUE' | 'ESTA_VACIO' | 'TIENE_VALOR';

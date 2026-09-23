@@ -2032,16 +2032,6 @@ export const contratacionService = {
       body: datos instanceof FormData ? datos : JSON.stringify(datos),
     }),
 
-  /**
-   * Dónde aplica un formato: en qué actividad se ofrece y a qué modalidades
-   * alcanza. Omitir `modalidades` deja el alcance como estaba.
-   */
-  asignarPlantilla: (id: string, numeral: string | null, modalidades?: string[]) =>
-    pedir<PlantillaFormato>(`/configuracion/plantillas/${id}/actividad`, {
-      method: 'PUT',
-      body: JSON.stringify(modalidades ? { numeral, modalidades } : { numeral }),
-    }),
-
   // --------------------------- documentos requeridos por actividad --------
 
   /** Los documentos que pide una actividad, activos e inactivos (EFDS-2066). */
