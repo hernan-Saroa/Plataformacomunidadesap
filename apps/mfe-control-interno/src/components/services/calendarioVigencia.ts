@@ -397,6 +397,65 @@ export interface ResultadoAjuste {
  * extremo el rango se encoge y al quitar una del medio queda excluida. Si la
  * semana era de otra etapa, esa otra se recorta para no quedar encima.
  */
+/**
+ * Deja una etapa ocupando exactamente el rango dado; las demás ceden las
+ * semanas que queden dentro, para que no queden dos etapas encima.
+ */
+export function fijarRangoEtapa(
+  año: number,
+  fechas: Partial<FechasEtapas>,
+  semanasExcluidas: string[],
+  etapa: EtapaCronograma,
+  desde: number,
+  hasta: number,
+): ResultadoAjuste {
+  const semanas = semanasDeVigencia(año);
+  const programadas = programacionDesdeFechas(año, fechas, semanasExcluidas);
+  const nuevasFechas: FechasEtapas = { ...fechasVacias(), ...fechas };
+
+  const ponerRango = (e: EtapaCronograma, a: number, b: number) => {
+    const campos = CAMPOS_ETAPA[e];
+    if (a > b) { nuevasFechas[campos.inicio] = ''; nuevasFechas[campos.fin] = ''; return; }
+    nuevasFechas[campos.inicio] = primerDiaHabil(semanas[a - 1]);
+    nuevasFechas[campos.fin] = semanas[b - 1].domingo;
+  };
+
+  ponerRango(etapa, desde, hasta);
+  for (const otra of ['P', 'E', 'C'] as EtapaCronograma[]) {
+    if (otra === etapa) continue;
+    const suyas = programadas
+      .filter((p) => p.etapa === otra)
+      .map((p) => p.semana.numero)
+      .filter((n) => n < desde || n > hasta);
+    if (!suyas.length) { ponerRango(otra, 1, 0); continue; }
+    const posteriores = suyas.filter((n) => n > hasta);
+    const anteriores = suyas.filter((n) => n < desde);
+    const bloque = posteriores.length >= anteriores.length ? posteriores : anteriores;
+    ponerRango(otra, bloque[0], bloque[bloque.length - 1]);
+  }
+
+  return { fechas: nuevasFechas, semanasExcluidas };
+}
+
+/** Semana que queda n semanas útiles más adelante (o atrás, con n negativo). */
+export function semanaDesplazada(
+  año: number,
+  semanasExcluidas: string[],
+  desde: number,
+  n: number,
+): number {
+  const semanas = semanasDeVigencia(año);
+  const paso = n >= 0 ? 1 : -1;
+  let numero = desde;
+  let faltan = Math.abs(n);
+  while (faltan > 0 && numero + paso >= 1 && numero + paso <= semanas.length) {
+    numero += paso;
+    const s = semanas[numero - 1];
+    if (s && !s.bloqueo && !semanasExcluidas.includes(s.lunes)) faltan -= 1;
+  }
+  return numero;
+}
+
 export function ajustarSemanaEtapa(
   año: number,
   fechas: Partial<FechasEtapas>,

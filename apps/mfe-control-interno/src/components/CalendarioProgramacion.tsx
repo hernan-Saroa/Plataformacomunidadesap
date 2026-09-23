@@ -20,6 +20,8 @@ import {
   ajustarSemanaEtapa,
   aplicarRangoEtapa,
   calcularProgramacion,
+  fijarRangoEtapa,
+  semanaDesplazada,
   DURACION_ESTANDAR,
   fechaCorta,
   fechaYMD,
@@ -152,8 +154,24 @@ export function CampoFechaCalendario({
    * primer clic rellenaba el ciclo 4-4-5 entero y los clics siguientes iban
    * quitando lo que ya había quedado marcado, así que parecía que se perdía.
    */
+  /**
+   * Si la etapa aún no tiene semanas, el clic la llena con su duración estándar
+   * desde ahí (o hacia atrás, si el campo es la fecha de fin). Cuando ya tiene,
+   * el clic solo agrega o quita esa semana.
+   */
   const alternarSemana = (semana: SemanaVigencia) => {
-    onCambio((f, ex) => ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero));
+    onCambio((f, ex) => {
+      const tieneSemanas = programacionDesdeFechas(vigencia, f, ex).some((p) => p.etapa === etapa);
+      if (tieneSemanas) return ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero);
+
+      const pasos = DURACION_ESTANDAR[etapa] - 1;
+      const otro = semanaDesplazada(vigencia, ex, semana.numero, extremo === 'inicio' ? pasos : -pasos);
+      return fijarRangoEtapa(
+        vigencia, f, ex, etapa,
+        Math.min(semana.numero, otro),
+        Math.max(semana.numero, otro),
+      );
+    });
   };
 
   /** Propuesta preliminar: las 13 semanas del ciclo desde donde arranque. */
