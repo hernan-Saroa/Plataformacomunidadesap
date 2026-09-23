@@ -28,6 +28,8 @@ export interface TareaSeguimientoPlan {
   descripcion: string;
   completada: boolean;
   responsables?: Array<{ id: string; nombre: string; cargo?: string }>;
+  /** Responsable que puso la sincronización, tomado de la auditoría */
+  responsablesAuditoria?: Array<{ id: string; nombre: string }>;
   fechaInicio?: string;
   fechaLimite?: string;
   fechaCompletada?: string;
@@ -47,6 +49,9 @@ interface AuditoriaProgramada {
   nombre: string | null;
   fecha_inicio: string | null;
   fecha_fin: string | null;
+  /** Quien responde por la auditoría: el auditor líder, o el asignado si no hay líder */
+  responsable_id: string | null;
+  responsable_nombre: string | null;
 }
 
 @Injectable()
@@ -81,8 +86,15 @@ export class ProgramaAnualRol4TareaSyncService {
         // arma las filas del Programa Anual y su Excel.
         `SELECT a.id, a.codigo, a.nombre,
                 to_char(a.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
-                to_char(a.fecha_fin, 'YYYY-MM-DD') AS fecha_fin
+                to_char(a.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+                COALESCE(a.auditor_lider_id, a.auditor_asignado_id)::text AS responsable_id,
+                NULLIF(TRIM(COALESCE(
+                  per.nom_largo,
+                  CONCAT_WS(' ', per.nom_tercero, per.pri_apellido, per.seg_apellido)
+                )), '') AS responsable_nombre
            FROM control_interno.auditoria a
+           LEFT JOIN auth.personas per
+             ON per.id_person::text = COALESCE(a.auditor_lider_id, a.auditor_asignado_id)::text
           WHERE a.activa = true
             AND a.archivada = false
             AND (a.plan_anual_vigencia = $1
@@ -113,8 +125,8 @@ export class ProgramaAnualRol4TareaSyncService {
         // adjuntos…) se conserva; lo que viene de la programación se actualiza.
         return {
           completada: false,
-          responsables: [],
           ...previa,
+          ...this.responsablesDeLaTarea(a, previa),
           id: `tarea-aud-${a.id}`,
           descripcion: `Realizar auditoría: ${codigo} – ${nombre}`,
           fechaInicio: a.fecha_inicio ?? `${vigencia}-01-01`,
@@ -191,5 +203,46 @@ export class ProgramaAnualRol4TareaSyncService {
       }
     }
     return [];
+  }
+
+  /**
+   * La tarea queda a cargo de quien responde por la auditoría (el auditor líder,
+   * o el asignado si no hay líder). En `responsablesAuditoria` se guarda a quién
+   * se puso automáticamente, para distinguirlo de un cambio hecho a mano:
+   * mientras nadie lo cambie, la tarea sigue a la auditoría (si cambia el líder,
+   * cambia la tarea); si en el seguimiento asignaron a otra persona, se respeta.
+   */
+  private responsablesDeLaTarea(
+    a: AuditoriaProgramada,
+    previa?: TareaSeguimientoPlan,
+  ): Pick<TareaSeguimientoPlan, 'responsables' | 'responsablesAuditoria'> {
+    const desdeAuditoria = a.responsable_id
+      ? [{ id: a.responsable_id, nombre: a.responsable_nombre || 'Auditor asignado' }]
+      : [];
+    const automatico = { responsables: desdeAuditoria, responsablesAuditoria: desdeAuditoria };
+    if (!previa) return automatico;
+
+    const actuales = Array.isArray(previa.responsables) ? (previa.responsables as unknown[]) : [];
+    if (actuales.length === 0) return automatico;
+
+    // El seguimiento guarda a veces el nombre y a veces el objeto: se compara por ambos
+    const clave = (v: string | null | undefined) => String(v ?? '').trim().toLowerCase();
+    const puestos = Array.isArray(previa.responsablesAuditoria)
+      ? (previa.responsablesAuditoria as Array<{ id?: string; nombre?: string }>)
+      : [];
+    const clavesPuestas = new Set(puestos.flatMap((r) => [clave(r.id), clave(r.nombre)]).filter(Boolean));
+    const sinCambioManual =
+      clavesPuestas.size > 0 &&
+      actuales.every((r) => {
+        const o = (typeof r === 'string' ? { id: r, nombre: r } : r) as { id?: string; nombre?: string };
+        return clavesPuestas.has(clave(o.id)) || clavesPuestas.has(clave(o.nombre));
+      });
+
+    return sinCambioManual
+      ? automatico
+      : {
+          responsables: actuales as TareaSeguimientoPlan['responsables'],
+          responsablesAuditoria: puestos as TareaSeguimientoPlan['responsablesAuditoria'],
+        };
   }
 }
