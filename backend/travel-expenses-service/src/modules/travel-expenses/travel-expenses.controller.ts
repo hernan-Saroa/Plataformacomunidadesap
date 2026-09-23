@@ -17,6 +17,7 @@ import {
   BadRequestException,
   HttpCode,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Response } from 'express';
@@ -107,6 +108,7 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
 @ApiTags('control-viaticos')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TravelExpensesController {
+  private readonly logger = new Logger(TravelExpensesController.name);
   constructor(private readonly service: TravelExpensesService) {}
 
   @Get('solicitudes')
@@ -320,7 +322,23 @@ export class TravelExpensesController {
     @Query('limit') limit?: string,
   ) {
     const parsedLimit = limit ? Number.parseInt(limit, 10) : 20;
-    return this.service.buscarTalentoHumano(query, documento, parsedLimit);
+    this.logger.log(
+      `[consultarTalentoHumano] Entrada - query: "${query}", documento: "${documento}", limit: ${parsedLimit}`,
+    );
+    const result = this.service.buscarTalentoHumano(query, documento, parsedLimit);
+    result.then(
+      (res) => {
+        this.logger.log(
+          `[consultarTalentoHumano] Respuesta - ok: ${res?.ok}, source: ${res?.source}, total: ${res?.total}`,
+        );
+      },
+      (err) => {
+        this.logger.error(
+          `[consultarTalentoHumano] Error - ${err?.message || err}`,
+        );
+      },
+    );
+    return result;
   }
 
 

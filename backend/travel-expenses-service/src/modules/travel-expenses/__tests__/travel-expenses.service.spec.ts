@@ -334,6 +334,102 @@ describe('TravelExpensesService', () => {
     });
   });
 
+  describe('buscarTalentoHumano', () => {
+    it('debe buscar por documento en talento humano (Oracle FNC) exitosamente', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+          id_number: '53062883',
+          organization_department: 'DIRECCIÓN DE TALENTO HUMANO',
+          position_name: 'Profesional Especializado',
+          email: 'dianagut8425@gmail.com',
+          phone: '3101234567',
+        }),
+        buscarFuncionariosPorTermino: jest.fn(),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.buscarTalentoHumano(undefined, '53062883');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('53062883');
+      expect(result.ok).toBe(true);
+      expect(result.source).toBe('talento_humano_oracle');
+      expect(result.total).toBe(1);
+      expect(result.data[0].id_number).toBe('53062883');
+      expect(result.data[0].full_name).toBe('DIANA MARIA GUTIERREZ RAMIREZ');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe lanzar NotFoundException si el documento no se encuentra en talento humano', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+        buscarFuncionariosPorTermino: jest.fn(),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.buscarTalentoHumano(undefined, '53062883')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('53062883');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe buscar por término en talento humano (Oracle FNC) exitosamente', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn(),
+        buscarFuncionariosPorTermino: jest.fn().mockResolvedValue([
+          {
+            full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+            id_number: '53062883',
+            organization_department: 'DIRECCIÓN DE TALENTO HUMANO',
+          },
+        ]),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.buscarTalentoHumano('diana', undefined, 20);
+
+      expect(humanResourcesClient.buscarFuncionariosPorTermino).toHaveBeenCalledWith('diana', 20);
+      expect(result.ok).toBe(true);
+      expect(result.source).toBe('talento_humano_oracle');
+      expect(result.total).toBe(1);
+      expect(result.data[0].id_number).toBe('53062883');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe lanzar NotFoundException si no se encuentran funcionarios para el término en talento humano', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn(),
+        buscarFuncionariosPorTermino: jest.fn().mockResolvedValue([]),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.buscarTalentoHumano('inexistente', undefined, 20)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar búsqueda si el término tiene menos de 3 caracteres', async () => {
+      const module = await createMockModule({});
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.buscarTalentoHumano('ab')).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('obtenerSolicitudes', () => {
     it('debe retornar la lista de solicitudes con datos del comisionado', async () => {
       const entidad = {

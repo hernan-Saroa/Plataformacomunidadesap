@@ -87,6 +87,7 @@ interface AuthPersonaRow {
   dir_email: string | null;
   tel_celular: string | null;
   id_dependencia: string | number | null;
+  nom_dependencia: string | null;
 }
 
 function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
@@ -917,8 +918,10 @@ export class TravelExpensesService {
   }
 
   /**
-   * Consulta general o específica de talento humano (Oracle FNC / VW_INTEGRACIONFNC).
-   * Permite buscar por término (nombre o documento) o documento exacto.
+   * Consulta general o específica de talento humano.
+   * Se consulta exclusivamente a través de HumanResourcesClientService (Oracle FNC / VW_INTEGRACIONFNC
+   * vía certification-service / nómina y financieros humanos) como fuente oficial única de talento humano.
+   * Si no se encuentra, arroja NotFoundException indicando que la persona no existe.
    */
   async buscarTalentoHumano(
     query?: string,
@@ -927,15 +930,45 @@ export class TravelExpensesService {
   ) {
     const doc = String(documento || '').trim();
     if (doc) {
-      const funcionario = this.humanResourcesClient
-        ? await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc)
-        : null;
+      this.logger.log(
+        `[buscarTalentoHumano] Consulta por documento: ${doc}`,
+      );
+
+      if (!this.humanResourcesClient) {
+        throw new NotFoundException(
+          `El servicio de talento humano no está disponible para consultar el documento ${doc}.`,
+        );
+      }
+
+      let funcionarioFnc: HumanResourcesSuggestedPerson | null = null;
+      try {
+        funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+      } catch (fncErr: any) {
+        this.logger.error(
+          `[buscarTalentoHumano] Error consultando talento humano para documento ${doc}: ${fncErr?.message || fncErr}`,
+        );
+        throw fncErr;
+      }
+
+      if (!funcionarioFnc || !funcionarioFnc.id_number) {
+        this.logger.warn(
+          `[buscarTalentoHumano] NO se encontró funcionario con documento ${doc} en Talento Humano / Nómina`,
+        );
+        throw new NotFoundException(
+          `No se encontró ningún funcionario con documento ${doc} en Talento Humano.`,
+        );
+      }
+
+      this.logger.log(
+        `[buscarTalentoHumano] Encontrado en talento humano: ${funcionarioFnc.full_name} (${funcionarioFnc.id_number})`,
+      );
       return {
         ok: true,
         source: 'talento_humano_oracle',
         query: doc,
-        total: funcionario ? 1 : 0,
-        data: funcionario ? [funcionario] : [],
+        total: 1,
+        data: [funcionarioFnc],
       };
     }
 
@@ -946,16 +979,49 @@ export class TravelExpensesService {
       );
     }
 
-    const funcionarios = this.humanResourcesClient
-      ? await this.humanResourcesClient.buscarFuncionariosPorTermino(term, limit)
-      : [];
+    this.logger.log(
+      `[buscarTalentoHumano] Búsqueda por término: "${term}", limit: ${limit}`,
+    );
+
+    if (!this.humanResourcesClient) {
+      throw new NotFoundException(
+        `El servicio de talento humano no está disponible para buscar el término "${term}".`,
+      );
+    }
+
+    let funcionariosFnc: HumanResourcesSuggestedPerson[] = [];
+    try {
+      funcionariosFnc =
+        await this.humanResourcesClient.buscarFuncionariosPorTermino(
+          term,
+          limit,
+        );
+    } catch (fncErr: any) {
+      this.logger.error(
+        `[buscarTalentoHumano] Error buscando en talento humano con término "${term}": ${fncErr?.message || fncErr}`,
+      );
+      throw fncErr;
+    }
+
+    if (!Array.isArray(funcionariosFnc) || funcionariosFnc.length === 0) {
+      this.logger.warn(
+        `[buscarTalentoHumano] NO se encontraron funcionarios para el término "${term}" en Talento Humano / Nómina`,
+      );
+      throw new NotFoundException(
+        `No se encontraron funcionarios coincidentes con "${term}" en Talento Humano.`,
+      );
+    }
+
+    this.logger.log(
+      `[buscarTalentoHumano] Encontrados ${funcionariosFnc.length} funcionarios en talento humano para "${term}"`,
+    );
 
     return {
       ok: true,
       source: 'talento_humano_oracle',
       query: term,
-      total: funcionarios.length,
-      data: funcionarios,
+      total: funcionariosFnc.length,
+      data: funcionariosFnc,
     };
   }
 

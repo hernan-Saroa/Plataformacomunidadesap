@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import * as http from 'http';
 import * as https from 'https';
 
@@ -45,8 +45,9 @@ export class HumanResourcesClientService {
 
   /**
    * Consulta el registro de talento humano (Oracle FNC / VW_INTEGRACIONFNC)
-   * a través de certification-service. Si el servicio no responde, falla o
-   * retorna 404/vacío, devuelve null de forma segura.
+   * a través de certification-service. Si la integración está deshabilitada
+   * o no disponible, lanza ServiceUnavailableException. Si no se encuentra
+   * el funcionario, retorna null.
    */
   async consultarFuncionarioPorDocumento(
     documento: string,
@@ -58,31 +59,48 @@ export class HumanResourcesClientService {
     const baseUrl = this.getCertificationServiceUrl();
     const endpointUrl = `${baseUrl}/certificates/integracion-fnc/documento/${encodeURIComponent(docLimpio)}?limit=1`;
 
-    try {
-      const responseData = await this.httpGet<HumanResourcesLookupResult>(
-        endpointUrl,
-        timeoutMs,
+    this.logger.log(
+      `[HumanResourcesClient] Consultando documento ${docLimpio} en ${endpointUrl}`,
+    );
+
+    const res = await this.httpGet<HumanResourcesLookupResult>(
+      endpointUrl,
+      timeoutMs,
+    );
+
+    if (res.status && res.status >= 500) {
+      const msg =
+        res.errorMsg ||
+        'El servicio de Talento Humano / Nómina no está disponible temporalmente.';
+      this.logger.error(
+        `[HumanResourcesClient] Falla en servicio de Talento Humano (HTTP ${res.status}): ${msg}`,
       );
+      throw new ServiceUnavailableException(
+        `Servicio de Talento Humano no disponible: ${msg}`,
+      );
+    }
 
-      if (!responseData || !responseData.found || !Array.isArray(responseData.rows)) {
-        return null;
-      }
-
-      const primerRegistro = responseData.rows[0];
-      const sugerido = primerRegistro?.suggested_certificate_request;
-      if (sugerido && sugerido.id_number) {
-        return sugerido;
-      }
-
-      return null;
-    } catch (error: any) {
+    const responseData = res.data;
+    if (!responseData || !responseData.found || !Array.isArray(responseData.rows)) {
       this.logger.warn(
-        `[HumanResourcesClient] No se pudo consultar talento humano para documento ${docLimpio}: ${
-          error?.message || error
-        }`,
+        `[HumanResourcesClient] Sin registros para documento ${docLimpio} (found: ${responseData?.found})`,
       );
       return null;
     }
+
+    const primerRegistro = responseData.rows[0];
+    const sugerido = primerRegistro?.suggested_certificate_request;
+    if (sugerido && sugerido.id_number) {
+      this.logger.log(
+        `[HumanResourcesClient] Documento ${docLimpio} encontrado: ${sugerido.full_name}`,
+      );
+      return sugerido;
+    }
+
+    this.logger.warn(
+      `[HumanResourcesClient] Sin id_number válido para documento ${docLimpio}`,
+    );
+    return null;
   }
 
   /**
@@ -93,7 +111,6 @@ export class HumanResourcesClientService {
     limit = 20,
     timeoutMs = 6000,
   ): Promise<HumanResourcesSuggestedPerson[]> {
-
     const termLimpio = String(termino || '').trim();
     if (termLimpio.length < 3) return [];
 
@@ -102,29 +119,43 @@ export class HumanResourcesClientService {
       termLimpio,
     )}&limit=${Math.min(limit, 50)}`;
 
-    try {
-      const responseData = await this.httpGet<{
-        ok?: boolean;
-        total?: number;
-        rows?: HumanResourcesSuggestedPerson[];
-      }>(endpointUrl, timeoutMs);
+    this.logger.log(
+      `[HumanResourcesClient] Buscando término "${termLimpio}" en ${endpointUrl}`,
+    );
 
-      if (responseData && Array.isArray(responseData.rows)) {
-        return responseData.rows;
-      }
-      return [];
-    } catch (error: any) {
-      this.logger.warn(
-        `[HumanResourcesClient] Error en búsqueda de talento humano con término "${termLimpio}": ${
-          error?.message || error
-        }`,
+    const res = await this.httpGet<{
+      ok?: boolean;
+      total?: number;
+      rows?: HumanResourcesSuggestedPerson[];
+    }>(endpointUrl, timeoutMs);
+
+    if (res.status && res.status >= 500) {
+      const msg =
+        res.errorMsg ||
+        'El servicio de Talento Humano / Nómina no está disponible temporalmente.';
+      this.logger.error(
+        `[HumanResourcesClient] Falla en servicio de Talento Humano al buscar "${termLimpio}" (HTTP ${res.status}): ${msg}`,
       );
-      return [];
+      throw new ServiceUnavailableException(
+        `Servicio de Talento Humano no disponible: ${msg}`,
+      );
     }
+
+    const responseData = res.data;
+    if (responseData && Array.isArray(responseData.rows)) {
+      this.logger.log(
+        `[HumanResourcesClient] Búsqueda "${termLimpio}" - resultados: ${responseData.rows.length}`,
+      );
+      return responseData.rows;
+    }
+
+    return [];
   }
 
-  private httpGet<T>(targetUrl: string, timeoutMs: number): Promise<T | null> {
-
+  private httpGet<T>(
+    targetUrl: string,
+    timeoutMs: number,
+  ): Promise<{ data: T | null; status?: number; errorMsg?: string }> {
     return new Promise((resolve) => {
       try {
         const parsed = new URL(targetUrl);
@@ -140,23 +171,46 @@ export class HumanResourcesClientService {
             },
           },
           (res) => {
-            if (res.statusCode && res.statusCode >= 400) {
-              resolve(null);
-              res.resume();
-              return;
-            }
-
             let data = '';
             res.setEncoding('utf8');
             res.on('data', (chunk) => {
               data += chunk;
             });
             res.on('end', () => {
+              if (res.statusCode && res.statusCode >= 400) {
+                this.logger.warn(
+                  `[HumanResourcesClient] HTTP ${res.statusCode} para ${targetUrl} - body: ${data?.substring(0, 300)}`,
+                );
+                let message: string | undefined;
+                try {
+                  const errorObj = JSON.parse(data);
+                  message = errorObj?.message || errorObj?.error;
+                } catch {
+                  message = data;
+                }
+                resolve({
+                  data: null,
+                  status: res.statusCode,
+                  errorMsg: message,
+                });
+                return;
+              }
+
               try {
                 const parsedData = JSON.parse(data) as T;
-                resolve(parsedData);
+                this.logger.log(
+                  `[HumanResourcesClient] HTTP ${res.statusCode} - body: ${JSON.stringify(parsedData)?.substring(0, 500)}`,
+                );
+                resolve({ data: parsedData, status: res.statusCode });
               } catch {
-                resolve(null);
+                this.logger.warn(
+                  `[HumanResourcesClient] HTTP ${res.statusCode} - body no JSON: ${data?.substring(0, 200)}`,
+                );
+                resolve({
+                  data: null,
+                  status: res.statusCode,
+                  errorMsg: 'Respuesta no válida del servicio de talento humano',
+                });
               }
             });
           },
@@ -164,18 +218,30 @@ export class HumanResourcesClientService {
 
         req.on('timeout', () => {
           req.destroy(new Error(`Timeout de ${timeoutMs}ms agotado`));
-          resolve(null);
+          resolve({
+            data: null,
+            status: 504,
+            errorMsg: `Timeout de ${timeoutMs}ms agotado al consultar servicio de talento humano`,
+          });
         });
 
         req.on('error', (err) => {
-          this.logger.debug?.(`Error HTTP hacia ${targetUrl}: ${err.message}`);
-          resolve(null);
+          this.logger.warn(`Error HTTP hacia ${targetUrl}: ${err.message}`);
+          resolve({
+            data: null,
+            status: 503,
+            errorMsg: `No fue posible conectar con el servicio de talento humano (${err.message})`,
+          });
         });
 
         req.end();
       } catch (err: any) {
-        this.logger.debug?.(`Error configurando request hacia ${targetUrl}: ${err.message}`);
-        resolve(null);
+        this.logger.warn(`Error configurando request hacia ${targetUrl}: ${err.message}`);
+        resolve({
+          data: null,
+          status: 500,
+          errorMsg: err.message,
+        });
       }
     });
   }
