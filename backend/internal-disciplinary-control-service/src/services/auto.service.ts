@@ -232,7 +232,112 @@ export class AutoService {
     }
 
     auto.estado = AutoStatus.REVISION_JEFE;
-    return await this.autoRepository.save(auto);
+    const savedAuto = await this.autoRepository.save(auto);
+
+    await this.notificarJefesAutoEnRevision(savedAuto).catch((err) => {
+      console.error('Error notificando a Jefes sobre auto en revisión:', err);
+    });
+
+    return savedAuto;
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con permiso de Jefe OCID (control-disciplinario.general.es_jefe_ocid)
+   */
+  private async obtenerJefesOcid(): Promise<
+    Array<{ id: string; email: string; nombre: string }>
+  > {
+    try {
+      const jefeRows: any[] = await this.autoRepository.manager.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND perm.code = 'control-disciplinario.general.es_jefe_ocid'`,
+      );
+
+      return (jefeRows || [])
+        .map((r) => ({
+          id: r.id_user,
+          email: (
+            r.dir_email ||
+            (r.username?.includes('@') ? r.username : '') ||
+            ''
+          ).trim(),
+          nombre: r.nom_largo || r.username || 'Jefe OCID',
+        }))
+        .filter((j) => j.id);
+    } catch (err) {
+      console.error(
+        'Error consultando usuarios con permiso de Jefe OCID:',
+        err,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Notifica a los Jefes OCID que un auto ha sido enviado a revisión
+   */
+  private async notificarJefesAutoEnRevision(auto: LegalAuto): Promise<void> {
+    const jefes = await this.obtenerJefesOcid();
+    if (!jefes.length) return;
+
+    const proceso = auto.process;
+    if (!proceso) return;
+
+    const tipoAutoFormateado = await this.formatearTipoAuto(auto);
+    const asunto = `Auto Pendiente de Revisión: ${tipoAutoFormateado} - Proceso ${proceso.radicadoProceso}`;
+    const mensaje = `El Profesional ha enviado a revisión el ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso}. Se encuentra pendiente de revisión y aprobación por parte del Jefe.`;
+    const baseUrl = this.getFrontendBaseUrl();
+    const urlAccion = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(proceso.id)}&radicado=${encodeURIComponent(proceso.radicadoProceso)}`;
+
+    // 1. Notificaciones en plataforma (in-app)
+    const notificaciones: import('./notification-client.service').SendNotificationDto[] =
+      jefes.map((jefe) => ({
+        id_usuario_destinatario: jefe.id,
+        tipo_notificacion: 'AUTO_EN_REVISION',
+        titulo: 'Auto pendiente de revisión',
+        mensaje,
+        descripcion_corta: `Auto en revisión - ${proceso.radicadoProceso}`,
+        icono: 'FileText',
+        color: '#2563EB',
+        prioridad: 'Alta' as const,
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Revisar auto',
+        url_accion: urlAccion,
+        datos_adicionales: {
+          processId: proceso.id,
+          radicadoProceso: proceso.radicadoProceso,
+          autoId: auto.id,
+          autoTipo: auto.tipo,
+          autoNumero: auto.numero,
+        },
+      }));
+    await this.notificationClient.sendMany(notificaciones).catch(() => {});
+
+    // 2. Correo electrónico institucional estilo ESAP
+    const html = this.buildEmailTemplateAvisoESAP(
+      asunto,
+      mensaje,
+      urlAccion,
+      'Revisar Auto',
+    );
+    await Promise.all(
+      jefes.map(async (jefe) => {
+        try {
+          if (jefe.email) {
+            await this.enviarEmailDirecto(jefe.email, asunto, html, mensaje);
+          }
+        } catch (err) {
+          console.error(`Error enviando correo a Jefe ${jefe.id}:`, err);
+        }
+      }),
+    );
   }
 
   /**

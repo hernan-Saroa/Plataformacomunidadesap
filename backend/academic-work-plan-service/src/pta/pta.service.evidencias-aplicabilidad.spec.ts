@@ -4,7 +4,7 @@ describe('Justificaciones: aplicabilidad del componente y sección', () => {
   const aprobadorExtension = {
     userId: 'user-extension', name: 'Aprobador Extensión', email: 'extension@esap.edu.co', roles: [],
     territorialIds: [], isSuperUser: false, approvesAll: false,
-    permissions: new Set(['pta.approve.extension.capacitacion']),
+    permissions: new Set(['pta.backoffice.seguimiento', 'pta.approve.extension.capacitacion']),
     allowedComponents: ['ext_capacitacion'], approvalLevels: [2], reviewsAll: false,
     allowedReviewSubsecciones: [], allowedNivelesTerritorialAprobar: [],
     allowedNivelesTerritorialRevisar: [],
@@ -18,6 +18,9 @@ describe('Justificaciones: aplicabilidad del componente y sección', () => {
       create: jest.fn((x: any) => x), save: jest.fn(async (x: any) => x),
       find: jest.fn().mockResolvedValue([]), findOne: jest.fn(),
     };
+    // Estas pruebas aíslan la aplicabilidad de horas/secciones; el alcance del
+    // PTA se cubre por separado en evidencias-permisos y gestion-alcance.
+    service.getPtaEnAlcanceSeguimiento = jest.fn().mockResolvedValue({ id: 'pta-1' });
     service.syncPtaSeguimientoEstado = jest.fn();
     return service;
   }

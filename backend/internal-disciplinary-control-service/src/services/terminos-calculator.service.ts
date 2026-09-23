@@ -32,11 +32,29 @@ export class TerminosCalculatorService {
     // default de 30 días sin importar la configuración real de la etapa.
     const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
     const configs = await this.configRepo.find();
-    const config = configs.find(c => normalizar(c.etapa) === normalizar(etapa));
+    // Búsqueda flexible: normaliza tildes/mayúsculas Y tolera sufijos como " ND"
+    // Ej: BD tiene 'RECEPCIÓN ND' y se busca 'RECEPCION' → match porque 'RECEPCION ND'.startsWith('RECEPCION')
+    const config = configs.find(c => {
+      const normC = normalizar(c.etapa);
+      const normE = normalizar(etapa);
+      return normC === normE
+        || normC.startsWith(normE + ' ')   // BD tiene sufijo extra: 'RECEPCION ND' vs 'RECEPCION'
+        || normE.startsWith(normC + ' ');  // búsqueda tiene sufijo extra (caso inverso)
+    });
 
     // Default values if not configured
     let dias = 30;
     let esDiasHabiles = true;
+
+    // Log diagnóstico detallado: muestra exactamente qué devuelve la BD y si el match funciona
+    console.log(
+      `[TerminosCalculator] calculateVencimientoEtapa: etapa="${etapa}" (len=${etapa.length}), ` +
+      `configs en BD=${configs.length}, etapas: [${configs.map(c => `"${c.etapa}"(${c.diasHabiles}d)`).join(', ')}]`,
+    );
+    console.log(
+      `[TerminosCalculator] config encontrada=${!!config}` +
+      (config ? ` (diasHabiles=${config.diasHabiles}, etapaBD="${config.etapa}")` : ` ← buscando "${normalizar(etapa)}" en [${configs.map(c => normalizar(c.etapa)).join(', ')}]`),
+    );
 
     if (config) {
       dias = config.diasHabiles;
@@ -44,6 +62,17 @@ export class TerminosCalculatorService {
     } else {
       // Fallback defaults using string literals
       switch (etapa) {
+        case 'RECEPCION':
+        case 'RECEPCIÓN':
+        case 'Recepcion':
+        case 'RECEPCIÓN ND':
+        case 'recepción nd':
+        case 'RECEPCION ND':
+          // Fallback coherente con el negocio cuando no existe fila en BD.
+          // El valor real debe provenir siempre de la tabla stage_configuration.
+          dias = 5;
+          esDiasHabiles = true;
+          break;
         case 'INDAGACIÓN':
         case 'INVESTIGACIÓN':
         case 'INVESTIGACION':

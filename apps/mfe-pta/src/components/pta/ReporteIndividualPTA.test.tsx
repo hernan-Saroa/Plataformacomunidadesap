@@ -36,3 +36,44 @@ describe('aprobaciones del reporte R-01 (vista y exportación)', () => {
     expect(within(cards).getByText('Gestión Profesoral')).toBeTruthy();
   });
 });
+
+describe('identificación institucional del reporte R-01', () => {
+  it.each([
+    ['PERIODO_DE_PRUEBA', 'Período de prueba'],
+    ['CARRERA_003', 'Carrera profesoral (Acuerdo 003 de 2018)'],
+    ['CARRERA_009', 'Carrera profesoral (Acuerdo 009 de 2004)'],
+  ])('muestra una etiqueta legible para %s', (codigo, etiqueta) => {
+    render(<ReporteIndividualPTA pta={{ tipo_vinculacion: codigo }} onClose={() => {}} />);
+    expect(screen.getByText(etiqueta)).toBeTruthy();
+    expect(screen.queryByText(codigo)).toBeNull();
+  });
+
+  it('no inventa datos institucionales cuando la ficha está incompleta', () => {
+    const { baseElement } = render(<ReporteIndividualPTA pta={{ id: 'pta-sin-datos' }} onClose={() => {}} />);
+    const texto = baseElement.textContent || '';
+
+    expect(texto).not.toContain('SEDE CENTRAL');
+    expect(texto).not.toContain('Profesor de Carrera');
+    expect(texto).not.toContain('Asociado');
+    expect(texto).not.toContain('2025-2');
+    expect(texto).not.toContain('NaN');
+    expect(texto).not.toContain('0.0%');
+    expect(texto).toContain('Total programado: — de horas base no registradas');
+    expect(screen.getAllByText('No registrado').length).toBeGreaterThanOrEqual(7);
+    expect(screen.getByText('Núcleo Temático:', { exact: false }).parentElement?.textContent).toContain('No registrado');
+  });
+
+  it('no presume créditos, modalidad, rol ni cantidades ausentes', () => {
+    const { baseElement } = render(<ReporteIndividualPTA pta={{
+      horas_asignables: 800,
+      asignaturas: [{ nombre: 'Asignatura real', total_horas: 0 }],
+      investigacion_proyecto: { nombre: 'Proyecto real' },
+      investigacion_actividades: [{ nombre: 'Actividad real', horas: 0 }],
+    }} onClose={() => {}} />);
+    const texto = baseElement.textContent || '';
+
+    expect(texto).not.toContain('PRESENCIAL');
+    expect(texto).not.toContain('Investigador');
+    expect(texto).not.toContain('Proyecto de Investigación');
+  });
+});

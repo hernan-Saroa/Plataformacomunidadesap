@@ -3,9 +3,19 @@ import { PtaAuthGuard } from './auth/pta-auth.guard';
 import { PtaController } from './pta.controller';
 
 describe('PtaController - protección de Seguimiento', () => {
-  it.each(['getPtasConEvidencias', 'revisarEvidencia', 'revisarEvidenciaAlias'])('%s exige PtaAuthGuard', method => {
+  it.each(['getPtasConEvidencias', 'getEvidenciasSeguimiento', 'revisarEvidencia', 'revisarEvidenciaAlias'])('%s exige PtaAuthGuard', method => {
     const guards = Reflect.getMetadata(GUARDS_METADATA, (PtaController.prototype as any)[method]) || [];
     expect(guards).toContain(PtaAuthGuard);
+  });
+
+  it('entrega el contexto autenticado al consultar evidencias desde el detalle administrativo', async () => {
+    const ptaService = { getEvidenciasSeguimientoPTA: jest.fn().mockResolvedValue([]) } as any;
+    const controller = new PtaController(ptaService);
+    const auth = { userId: 'user-1', allowedComponents: ['investigacion'] } as any;
+
+    await controller.getEvidenciasSeguimiento('pta-1', { ptaAuth: auth } as any);
+
+    expect(ptaService.getEvidenciasSeguimientoPTA).toHaveBeenCalledWith('pta-1', auth);
   });
 
   it('entrega el contexto autenticado al servicio al decidir una evidencia', async () => {

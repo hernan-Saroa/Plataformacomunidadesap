@@ -882,7 +882,7 @@ export async function revisarEvidenciaPTA(
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][revisarEvidenciaPTA] Error:', error);
-    return { success: false };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible guardar la decisión sobre el soporte.') };
   }
 }
 
@@ -2007,6 +2007,18 @@ export async function getBancoDocenteCabezote(id: string, periodoCarga?: string)
     return normalizeResult<any>(raw, null);
   } catch {
     return { success: false, data: null };
+  }
+}
+
+/** Consulta administrativa: el servidor aplica permiso funcional y alcance por componente. */
+export async function getEvidenciasSeguimientoPTA(ptaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`);
+    const normalized = normalizeResult<any[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.error('[mfe-pta][getEvidenciasSeguimientoPTA] Error:', error);
+    return { success: false, data: [], message: getApiErrorMessage(error, 'No fue posible consultar los soportes autorizados.') };
   }
 }
 

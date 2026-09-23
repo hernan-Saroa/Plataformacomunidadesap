@@ -25,6 +25,7 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
     fechaInicioEjecucionRaw: f.fechaInicioEjecucion,
     fechaFinEjecucionRaw: f.fechaFinEjecucion,
     fechaInicioComunicacionRaw: f.fechaInicioComunicacion,
+    semanasExcluidas: (f as any).semanasExcluidas || [],
   }));
 }
 

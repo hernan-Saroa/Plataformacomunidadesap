@@ -718,6 +718,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
               fechaFinEjecucion: data.fechaFinEjecucion,
               fechaInicioComunicacion: data.fechaInicioComunicacion,
               fechaFin: data.fechaFinComunicacion || data.fechaFin || new Date().toISOString().split('T')[0],
+              semanasExcluidas: data.semanasExcluidas ?? [],
               objetivos: data.objetivos,
               criteriosAuditoria: data.criteriosAuditoria,
               normatividadAplicable: data.normatividadAplicable,

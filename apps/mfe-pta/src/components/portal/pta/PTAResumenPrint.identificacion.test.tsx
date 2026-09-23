@@ -80,4 +80,26 @@ describe('PTAResumenPrint — identificación del docente', () => {
     expect(texto).toContain('C.C. 1098765432');
     expect(texto).not.toContain(UUID.substring(0, 12));
   });
+
+  it('no imprime el UUID interno cuando el documento no existe', () => {
+    const texto = pintar(ptaBase);
+
+    expect(texto).not.toContain(UUID);
+  });
+
+  it('traduce los códigos internos de vinculación y dedicación', () => {
+    const texto = pintar({ ...ptaBase, tipo_vinculacion: 'CARRERA_003', dedicacion: 'TC' });
+
+    expect(texto).toContain('Carrera profesoral (Acuerdo 003 de 2018)');
+    expect(texto).toContain('Tiempo completo');
+    expect(texto).not.toContain('CARRERA_003');
+  });
+
+  it('no convierte horas base ni aprobadores ausentes en datos aparentes', () => {
+    const texto = pintar({ id: 'pta-incompleto', estado: 'Aprobado' });
+
+    expect(texto).toContain('Horas disponibles no registradas');
+    expect(texto).not.toContain('0% de carga');
+    expect(texto).not.toContain('Grupo de Gestión Profesoral');
+  });
 });
