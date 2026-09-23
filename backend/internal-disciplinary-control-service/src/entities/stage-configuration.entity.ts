@@ -11,10 +11,10 @@ export class StageConfiguration {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', default: 'RECEPCIÓN' })
+  @Column({ type: 'varchar', default: 'RECEPCION' })
   etapa: string;
 
-  @Column({ name: 'diasHabiles', type: 'int', default: 30 })
+  @Column({ name: 'diasHabiles', type: 'int', default: 5 })
   diasHabiles: number;
 
   @Column({ type: 'varchar', default: '#6B7280' })
