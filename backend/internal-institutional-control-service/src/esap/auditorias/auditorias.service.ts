@@ -1696,6 +1696,17 @@ export class AuditoriasService {
       console.error('[AuditoriasService.create] Error al crear notificaciones:', notifError);
     }
 
+    // Cada auditor del equipo se entera de que quedó vinculado (EFDS-873)
+    try {
+      await this.notificarAuditoresAsignados(
+        auditoriaCompleta || auditoriaGuardada,
+        equipoAuditorPersonaIds,
+        auditoriaGuardada.auditorLiderId ? String(auditoriaGuardada.auditorLiderId) : null,
+      );
+    } catch (notifError) {
+      console.error('[AuditoriasService.create] Error al notificar a los auditores:', notifError);
+    }
+
     // ✅ Registrar evento de creación en el historial
     try {
       const { fecha, hora } = getFechaHoraColombia();
@@ -2134,7 +2145,17 @@ export class AuditoriasService {
     }
 
     // Recargar la auditoría con relaciones actualizadas
+    let auditoresQueEntran: string[] = [];
     if (updateDto.equipoAuditores !== undefined) {
+      // Quiénes estaban antes, para avisarle solo a los que entran (EFDS-873)
+      const equipoPrevio = await this.equipoRepository.find({
+        where: { auditoriaId: saved.id, activo: true },
+      });
+      const yaEstaban = new Set(equipoPrevio.map((e) => String(e.personaId)));
+      auditoresQueEntran = (equipoAuditorPersonaIdsActualizados || [])
+        .map((id) => String(id))
+        .filter((id) => !yaEstaban.has(id));
+
       await this.equipoRepository.update(
         { auditoriaId: saved.id, activo: true },
         { activo: false, fechaRetiro: new Date() },
@@ -2163,6 +2184,21 @@ export class AuditoriasService {
       where: { id: saved.id },
       relations: ['objetivos', 'criterios', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
     });
+
+    // Avisar a los auditores que entran al equipo y al líder si cambió (EFDS-873)
+    const liderActual = saved.auditorLiderId ? String(saved.auditorLiderId) : '';
+    const liderNuevo = liderActual && liderActual !== String(auditoresAntes.lider || '') ? liderActual : null;
+    if (auditoresQueEntran.length > 0 || liderNuevo) {
+      try {
+        await this.notificarAuditoresAsignados(
+          auditoriaActualizada || saved,
+          auditoresQueEntran,
+          liderNuevo,
+        );
+      } catch (notifError) {
+        console.error('[AuditoriasService.update] Error al notificar a los auditores:', notifError);
+      }
+    }
 
     // ✅ Registrar evento de actualización en el historial si hay cambios importantes
     if (cambios.length > 0) {
@@ -4686,6 +4722,65 @@ export class AuditoriasService {
         `[AuditoriasService] ⚠️ La auditoría ${auditoria.codigo} no tiene "Responsable del Área Auditada" configurado. ` +
         `No se enviará notificación al auditado.`
       );
+    }
+  }
+
+  /**
+   * Avisa a cada auditor que quedó vinculado a la auditoría (EFDS-873).
+   *
+   * Va por campana y por correo: el auditor necesita enterarse aunque no esté
+   * dentro de la plataforma. Solo se avisa a los que entran, no a los que ya
+   * estaban en el equipo, para no repetirles el mismo aviso en cada edición.
+   */
+  private async notificarAuditoresAsignados(
+    auditoria: Auditoria,
+    personaIds: string[],
+    liderPersonaId?: string | null,
+  ): Promise<void> {
+    const destinatarios = [...new Set([...(personaIds || []), ...(liderPersonaId ? [String(liderPersonaId)] : [])])]
+      .map((id) => String(id || '').trim())
+      .filter(Boolean);
+    if (destinatarios.length === 0) return;
+
+    const vigencia = auditoria.fechaInicio ? new Date(auditoria.fechaInicio).getFullYear() : new Date().getFullYear();
+    const proceso = auditoria.procesoAuditado || auditoria.areaObjetivo || auditoria.territorial || 'Sin proceso definido';
+    const periodo = [auditoria.fechaInicio, auditoria.fechaFin]
+      .map((f) => (f ? this.serializeDate(f) : null))
+      .filter(Boolean)
+      .join(' al ');
+
+    for (const personaId of destinatarios) {
+      try {
+        const usuarioId = await this.notificacionesService.resolverIdUsuario({ id: personaId });
+        if (!usuarioId) {
+          console.warn(`[AuditoriasService.notificarAuditoresAsignados] Sin usuario activo para la persona ${personaId}`);
+          continue;
+        }
+        const esLider = !!liderPersonaId && String(liderPersonaId) === personaId;
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: 'EVT-AUD-AUDITOR' as any,
+          titulo: `Fue asignado a la auditoría ${auditoria.codigo}`,
+          mensaje:
+            `Quedó vinculado como ${esLider ? 'auditor líder' : 'auditor'} de la auditoría "${auditoria.nombre}" ` +
+            `(${auditoria.codigo}) de la vigencia ${vigencia}. Proceso: ${proceso}.` +
+            `${periodo ? ` Programada del ${periodo}.` : ''}` +
+            ` Revise el expediente en Control Interno de Gestión para conocer el objetivo, el alcance y las tareas a su cargo.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.AMBOS,
+          metadata: {
+            auditoriaId: auditoria.id,
+            codigoAuditoria: auditoria.codigo,
+            nombreAuditoria: auditoria.nombre,
+            vigencia,
+            esLider,
+            accion: 'auditor_asignado',
+          },
+          accionUrl: `/control-interno/auditorias/${auditoria.id}`,
+        });
+      } catch (error) {
+        console.error(`[AuditoriasService.notificarAuditoresAsignados] Error notificando a ${personaId}:`, error.message);
+      }
     }
   }
 
