@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ConfiguracionController } from './configuracion.controller';
 import { ConfiguracionService } from './configuracion.service';
+import { DocumentosRequeridosController } from './documentos-requeridos.controller';
+import { DocumentosRequeridosService } from './documentos-requeridos.service';
 
 import {
   Actividad,
@@ -32,8 +34,8 @@ import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
       TipologiaContrato,
     ]),
   ],
-  controllers: [ConfiguracionController],
-  providers: [ConfiguracionService],
+  controllers: [ConfiguracionController, DocumentosRequeridosController],
+  providers: [ConfiguracionService, DocumentosRequeridosService],
   // El estudio previo lo usa para evaluar sus reglas al enviar.
   exports: [ConfiguracionService],
 })
