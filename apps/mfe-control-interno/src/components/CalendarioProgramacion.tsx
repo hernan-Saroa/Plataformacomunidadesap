@@ -47,13 +47,12 @@ const ESTILO_ETAPA: Record<EtapaCronograma, { fila: string; chip: string; texto:
   C: { fila: 'bg-emerald-100 hover:bg-emerald-200', chip: 'bg-emerald-600', texto: 'text-emerald-700' },
 };
 
-// Los festivos van en rojo, no en verde, para no confundirlos con Comunicación;
-// las semanas que no se trabajan llevan rayas, que se distinguen del color de etapa.
+// Rojo para lo que no se trabaja por calendario (festivos, Semana Santa y
+// receso); las semanas que el usuario saca quedan en blanco.
 const ROJO_FESTIVO = '#D32F2F';
 const rayas = (color: string, fondo: string) =>
   `repeating-linear-gradient(135deg, ${color} 0 4px, ${fondo} 4px 8px)`;
-const FONDO_EXCLUIDA = rayas('#CBD5E1', '#F1F5F9');
-const FONDO_BLOQUEADA = rayas('#FDBA74', '#FFF7ED');
+const FONDO_BLOQUEADA = rayas('#FCA5A5', '#FEF2F2');
 
 export interface CambioCronograma {
   fechas: FechasEtapas;
@@ -250,13 +249,13 @@ export function CampoFechaCalendario({
           <Leyenda color="bg-emerald-500" texto="Comunicación" />
           <Leyenda fondo={ROJO_FESTIVO} texto="Festivo" />
           <Leyenda fondo={FONDO_BLOQUEADA} rayado texto="Semana Santa / Receso" />
-          <Leyenda fondo={FONDO_EXCLUIDA} rayado texto="Semana que saqué" />
+          <Leyenda fondo="#FFFFFF" texto="Semana que quité" />
         </div>
 
         {!hayCronograma ? (
           <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-[11px] leading-snug text-blue-800">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-            Marque las semanas de la etapa arrastrando, o haga clic en un día para fijar esa fecha exacta. El ciclo 4-4-5 se completa solo, sin Semana Santa ni receso; con el botón × saca una semana del cronograma.
+            Marque las semanas de la etapa arrastrando, o haga clic en un día para fijar esa fecha exacta. El ciclo 4-4-5 se completa solo, sin Semana Santa ni receso; pulsando el número de semana la quita o la vuelve a poner.
           </p>
         ) : (
           <ResumenEtapas programadas={programadas} fechas={fechas} />
@@ -349,28 +348,23 @@ function Mes({
           const claseFila = marcada
             ? `${ESTILO_ETAPA[etapaCampo].fila} ring-2 ring-inset ring-[#1e5da8]`
             : excluida
-              ? 'text-gray-400'
+              ? 'bg-white text-gray-400'
               : bloqueada
-                ? 'text-orange-900'
+                ? 'text-red-800'
                 : etapa
                   ? ESTILO_ETAPA[etapa].fila
                   : clickeable ? 'hover:bg-gray-100' : '';
-          // Rayas para lo que no se trabaja: se distingue del color de cada etapa
-          const estiloFila = marcada
-            ? undefined
-            : excluida
-              ? { backgroundImage: FONDO_EXCLUIDA }
-              : bloqueada
-                ? { backgroundImage: FONDO_BLOQUEADA }
-                : undefined;
+          // Semana Santa y receso en rojo, igual que los festivos; lo que saca el
+          // usuario queda en blanco para que se vea que no está programado.
+          const estiloFila = !marcada && !excluida && bloqueada ? { backgroundImage: FONDO_BLOQUEADA } : undefined;
           const titulo = bloqueada
             ? `${NOMBRE_BLOQUEO[semana.bloqueo!]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)}): no se programa`
             : excluida
-              ? `Semana ${semana.numero} excluida del cronograma`
+              ? `Semana ${semana.numero} fuera del cronograma`
               : etapa
                 ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]}. Arrastre para marcar el rango`
                 : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
-          // El × solo tiene sentido en las semanas que están dentro del cronograma
+          // Pulsar el número de semana la quita del cronograma o la devuelve
           const puedeExcluir = clickeable && (!!etapa || excluida);
 
           return (
@@ -383,22 +377,24 @@ function Mes({
               style={estiloFila}
               className={`group ${claseFila} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
             >
-              <td className={`py-0.5 pr-1 text-left font-bold ${excluida ? 'line-through' : ''} ${bloqueada ? 'text-orange-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'}`}>
-                <span className="inline-flex items-center gap-0.5">
+              <td className="py-0.5 pr-1 text-left">
+                <button
+                  type="button"
+                  disabled={!puedeExcluir}
+                  title={
+                    puedeExcluir
+                      ? (excluida ? 'Volver a poner esta semana en el cronograma' : 'Quitar esta semana del cronograma')
+                      : undefined
+                  }
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onMouseUp={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); if (puedeExcluir) onAlternarExclusion(semana); }}
+                  className={`rounded px-0.5 font-bold ${excluida ? 'line-through' : ''} ${
+                    bloqueada ? 'text-red-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'
+                  } ${puedeExcluir ? 'cursor-pointer hover:bg-white/80 hover:underline' : ''}`}
+                >
                   S{semana.numero}
-                  {puedeExcluir && (
-                    <button
-                      type="button"
-                      title={excluida ? 'Devolver esta semana al cronograma' : 'Sacar esta semana del cronograma'}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onMouseUp={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); onAlternarExclusion(semana); }}
-                      className="rounded px-0.5 text-[10px] leading-none text-gray-500 opacity-0 transition-opacity hover:bg-white/70 hover:text-gray-900 group-hover:opacity-100"
-                    >
-                      {excluida ? '↺' : '×'}
-                    </button>
-                  )}
-                </span>
+                </button>
               </td>
               {DIAS.map((_, i) => {
                 const fecha = sumarDias(parseYMD(semana.lunes), i);
