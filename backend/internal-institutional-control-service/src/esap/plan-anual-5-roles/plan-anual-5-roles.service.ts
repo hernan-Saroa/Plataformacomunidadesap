@@ -1263,11 +1263,11 @@ export class PlanAnual5RolesService {
       try {
         await this.notificacionesService.create({
           usuarioId,
-          tipoNotificacion: TipoNotificacion.OTRO,
+          tipoNotificacion: 'EVT-PAI-CREADO' as any,
           titulo: `Plan Anual ${plan.año} Creado`,
-          mensaje: `Se ha creado el Plan Anual ${plan.año}. Responsable: ${plan.responsable || 'No especificado'}.`,
+          mensaje: `Se ha creado el Plan Anual de Auditoría de la vigencia ${plan.año}. Responsable: ${plan.responsable || 'No especificado'}. Revíselo en Control Interno de Gestión para completar las actividades y los responsables.`,
           prioridad: PrioridadNotificacion.ALTA,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             planAnualId: plan.id,
             año: plan.año,
@@ -1318,6 +1318,7 @@ export class PlanAnual5RolesService {
     let mensaje = '';
     let prioridad = PrioridadNotificacion.NORMAL;
     let accion = '';
+    let eventoCode = 'EVT-PAI-ESTADO';
 
     switch (nuevoEstado) {
       case 'en-revision': {
@@ -1337,6 +1338,7 @@ export class PlanAnual5RolesService {
         mensaje = `El Plan Anual de Auditoría ${plan.año} fue asignado al comité y está pendiente de su revisión y aprobación. Responsable: ${plan.responsable || 'No especificado'}.`;
         prioridad = PrioridadNotificacion.ALTA;
         accion = 'aprobar_plan_comite';
+        eventoCode = 'EVT-PAI-COMITE';
 
         for (const miembro of nuevosConTurno) {
           const idUsuario = await this.notificacionesService.resolverIdUsuario({
@@ -1367,6 +1369,7 @@ export class PlanAnual5RolesService {
         mensaje = `El comité devolvió el Plan Anual de Auditoría ${plan.año} con observaciones. ${detalle}`;
         prioridad = PrioridadNotificacion.ALTA;
         accion = 'plan_devuelto_comite';
+        eventoCode = 'EVT-PAI-DEVUELTO';
 
         const responsableDevuelto = await this.resolverUsuarioIdResponsablePlan(plan);
         if (responsableDevuelto) usuariosNotificar.push(responsableDevuelto);
@@ -1380,6 +1383,7 @@ export class PlanAnual5RolesService {
         mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido aprobado. Ya puede proceder a activarlo para iniciar la ejecución.`;
         prioridad = PrioridadNotificacion.ALTA;
         accion = 'plan_aprobado';
+        eventoCode = 'EVT-PAI-APROBADO';
 
         const responsableAprobado = await this.resolverUsuarioIdResponsablePlan(plan);
         if (responsableAprobado) usuariosNotificar.push(responsableAprobado);
@@ -1393,6 +1397,7 @@ export class PlanAnual5RolesService {
         mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido activado y está vigente. Las actividades programadas deben iniciar su ejecución.`;
         prioridad = PrioridadNotificacion.ALTA;
         accion = 'plan_activado';
+        eventoCode = 'EVT-PAI-VIGENTE';
 
         usuariosNotificar.push(...(await this.obtenerJefesControlInterno()));
         const responsableActivo = await this.resolverUsuarioIdResponsablePlan(plan);
@@ -1412,11 +1417,13 @@ export class PlanAnual5RolesService {
       try {
         await this.notificacionesService.create({
           usuarioId,
-          tipoNotificacion: TipoNotificacion.OTRO,
+          // Código de evento para poder prender o apagar el correo desde
+          // Configuraciones; si no está configurado, va por campana y correo.
+          tipoNotificacion: eventoCode as any,
           titulo,
           mensaje,
           prioridad,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             planAnualId: plan.id,
             año: plan.año,
@@ -1479,11 +1486,11 @@ export class PlanAnual5RolesService {
         try {
           await this.notificacionesService.create({
             usuarioId,
-            tipoNotificacion: TipoNotificacion.OTRO,
+            tipoNotificacion: 'EVT-PAI-TAREA' as any,
             titulo: `📌 Plan Anual ${plan.año} - Nueva tarea asignada`,
-            mensaje: `Se le asignó la tarea "${tarea.descripcion || 'Sin descripción'}" de la actividad "${actividad.nombre}" del Plan Anual de Auditoría ${plan.año}.${fechaLimite ? ` Fecha límite: ${String(fechaLimite).split('T')[0]}.` : ''}`,
+            mensaje: `Se le asignó la tarea "${tarea.descripcion || 'Sin descripción'}" de la actividad "${actividad.nombre}" del Plan Anual de Auditoría de la vigencia ${plan.año}.${fechaLimite ? ` Fecha límite: ${String(fechaLimite).split('T')[0]}.` : ''} Ingrese a Control Interno de Gestión para registrar su avance.`,
             prioridad: PrioridadNotificacion.ALTA,
-            canal: CanalNotificacion.SISTEMA,
+            canal: CanalNotificacion.AMBOS,
             metadata: {
               planAnualId: plan.id,
               año: plan.año,
@@ -1715,11 +1722,11 @@ export class PlanAnual5RolesService {
 
     await this.notificacionesService.create({
       usuarioId,
-      tipoNotificacion: TipoNotificacion.OTRO,
+      tipoNotificacion: 'EVT-PAI-ENVIO-COMITE' as any,
       titulo: `Plan Anual ${plan.año} — pendiente de tu envío al comité`,
       mensaje,
       prioridad: PrioridadNotificacion.ALTA,
-      canal: CanalNotificacion.SISTEMA,
+      canal: CanalNotificacion.AMBOS,
       metadata: {
         planAnualId: plan.id,
         año: plan.año,

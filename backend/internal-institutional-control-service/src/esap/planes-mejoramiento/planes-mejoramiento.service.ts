@@ -2287,8 +2287,78 @@ export class PlanesMejoramientoService {
     plan.estado = PlanMejoramientoEstado.COMPLETADO;
     await this.planRepository.save(plan);
 
+    // Los responsables del seguimiento se enteran de que el área terminó (EFDS-873)
+    try {
+      await this.notificarCierrePlanMejoramiento(plan, data);
+    } catch (error) {
+      console.error(`[Cierre] Error notificando el cierre del plan ${planId}:`, error.message);
+    }
+
     console.log(`[Cierre] Plan ${planId} cerrado por ${data.cerradoPorId}`);
     return saved;
+  }
+
+  /**
+   * Avisa el cierre del plan de mejoramiento por campana y por correo (EFDS-873).
+   *
+   * Va a los Jefes OCIG, que son quienes hacen el seguimiento, y al área auditada
+   * como confirmación de que su plan quedó completado.
+   */
+  private async notificarCierrePlanMejoramiento(
+    plan: PlanMejoramiento,
+    data: { cerradoPorNombre?: string; observacionesCierre?: string },
+  ): Promise<void> {
+    const auditoria = plan.auditoriaId
+      ? await this.auditoriaRepository.findOne({ where: { id: plan.auditoriaId } })
+      : null;
+    const referencia = auditoria ? `de la auditoría ${auditoria.codigo}` : 'sin auditoría asociada';
+    const cerradoPor = data.cerradoPorNombre ? ` Cerrado por ${data.cerradoPorNombre}.` : '';
+    const observaciones = data.observacionesCierre ? ` Observaciones: ${data.observacionesCierre}.` : '';
+    const totalAcciones = (plan.acciones ?? []).length;
+
+    const jefes = await this.notificacionesService.obtenerJefesOcig();
+    for (const usuarioId of jefes) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: 'EVT-PM-CIERRE' as any,
+          titulo: `Plan de mejoramiento completado — ${plan.codigo}`,
+          mensaje:
+            `El área ${plan.areaResponsable || 'auditada'} terminó el plan de mejoramiento ${plan.codigo} ${referencia}, ` +
+            `con ${totalAcciones} acción(es) registrada(s).${cerradoPor}${observaciones} ` +
+            `Revise el cierre en Control Interno de Gestión para verificarlo y archivar el expediente.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.AMBOS,
+          metadata: {
+            planMejoramientoId: plan.id,
+            planCodigo: plan.codigo,
+            auditoriaId: plan.auditoriaId ?? undefined,
+            codigoAuditoria: auditoria?.codigo,
+            accion: 'plan_mejoramiento_cerrado',
+          },
+          accionUrl: `/control-interno/planes-mejoramiento/${plan.id}`,
+        });
+      } catch (error) {
+        console.error(`[Cierre] Error notificando al jefe ${usuarioId}:`, error.message);
+      }
+    }
+
+    if (auditoria?.responsableAreaEmail) {
+      await this.notificacionesService.notificarAuditadoPortal({
+        responsableAreaEmail: auditoria.responsableAreaEmail,
+        responsableAreaNombre: auditoria.responsableAreaNombre,
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        auditoriaNombre: auditoria.nombre,
+        tipoNotificacion: 'EVT-PM-CIERRE',
+        titulo: `Su plan de mejoramiento quedó completado — ${plan.codigo}`,
+        mensaje:
+          `El plan de mejoramiento ${plan.codigo} de la auditoría ${auditoria.codigo} quedó registrado como completado.` +
+          `${observaciones} La OCI verificará el cierre y archivará el expediente.`,
+        prioridad: PrioridadNotificacion.NORMAL,
+        metadata: { planMejoramientoId: plan.id, planCodigo: plan.codigo, accion: 'plan_mejoramiento_cerrado' },
+      });
+    }
   }
 
   async archivarExpediente(
