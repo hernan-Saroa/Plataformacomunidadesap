@@ -18,6 +18,7 @@ import {
   NUMERAL_INFORME_DEFINITIVO,
 } from './adjudicacion.base';
 import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
  * Acto de adjudicación — actividad 7.4 (EFDS-1159, RF-ADJ-01).
@@ -32,8 +33,8 @@ import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
  */
 @Injectable()
 export class ActoAdjudicacionService extends AdjudicacionBase {
-  constructor(dataSource: DataSource) {
-    super(dataSource);
+  constructor(dataSource: DataSource, cierre: CierreActividadService) {
+    super(dataSource, cierre);
   }
 
   // ------------------------------------------------------------- consulta --
@@ -159,7 +160,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
         }),
       );
 
-      await this.marcarActividad(em, procesoId, NUMERAL_ACTO, true, acceso);
+      await this.marcarActividad(em, procesoId, NUMERAL_ACTO, true, acceso, dto.firma);
       // El proceso de selección terminó: lo que sigue es contrato. El estado lo
       // trajo EFDS-1160 para poder decir "desierto"; adjudicar es el otro
       // desenlace y dejarlo EN_CURSO haría que la columna mintiera.

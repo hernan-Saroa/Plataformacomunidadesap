@@ -1245,7 +1245,11 @@ export function VisorDocumentoModal({
                       onError={handleIframeError}
                     />
 
-                    {parsedSignature && renderSignatureStamp(false)}
+                    {/* No se superpone renderSignatureStamp aquí: para un PDF real ya firmado,
+                        stampPdf() incrustó el sello directamente en los bytes del archivo, y el
+                        iframe ya lo está mostrando. Pintarlo de nuevo duplicaba la firma en pantalla
+                        (bug reportado en QA), aunque la descarga del archivo crudo siempre mostró
+                        una sola firma. */}
                   </div>
                 );
               } else if (isVideo) {

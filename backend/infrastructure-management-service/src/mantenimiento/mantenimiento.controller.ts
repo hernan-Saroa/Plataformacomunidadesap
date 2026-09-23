@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -31,7 +32,17 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { MantenimientoService } from './mantenimiento.service.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto } from './dto/create-mantenimiento.dto.js';
+import {
+  CreateMantenimientoDto,
+  UpdateMantenimientoEstadoDto,
+  RemitirATIDto,
+  IniciarValoracionDto,
+  GuardarValoracionCompletaDto,
+  ConfirmarRecepcionInsumosDto,
+} from './dto/create-mantenimiento.dto.js';
+import { CerrarTecnicamenteDto } from './dto/cerrar-tecnicamente.dto.js';
+import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
+import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
 import { Public } from '../auth/public.decorator.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
@@ -349,16 +360,16 @@ export class MantenimientoController {
   @Post(':idSolicitud/aprobar-asignar')
   @ApiOperation({
     summary:
-      'EFDS-1734 RF-INF-005 AC-01: Aprobar y asignar una solicitud RECIBIDA. Pasa estado a ASIGNADA, setea responsableAsignado, limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+      'EFDS-1734 RF-INF-005 AC-01: Aprobar una solicitud. Si areaResponsableActual = TI: confirma recepción remisión a Oficina TI (tecnicoCodigo OPCIONAL). Si UMI: asigna técnico obligatorio y pasa estado ASIGNADA. Limpia motivoRechazo si la solicitud había sido previamente rechazada. Solo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
   })
-  @ApiResponse({ status: 200, description: 'Solicitud aprobada y asignada. Histórico auditoría actualizado.' })
-  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente.' })
+  @ApiResponse({ status: 200, description: 'Solicitud aprobada. Histórico auditoría actualizado.' })
+  @ApiResponse({ status: 400, description: 'Técnico inactivo/inexistente o faltante en flujo UMI físico.' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (requiere SUPER_ADMIN o GESTOR_MANTENIMIENTO).' })
   aprobarYAsignar(
     @Param('idSolicitud') idSolicitud: string,
     @Body()
     body: {
-      tecnicoCodigo: string;
+      tecnicoCodigo?: string | null;
       observaciones?: string | null;
     },
     @Req() req: any,
@@ -405,6 +416,175 @@ export class MantenimientoController {
     @Req() req: any,
   ) {
     return this.mantenimientoService.redistribuir(idSolicitud, body, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Valoración en campo y registro de insumos requeridos
+  // Rutas estaticas /valoraciones/* DECLARADAS ANTES de wildcard :id y :idSolicitud
+  // para evitar routing conflict.
+  // ---------------------------------------------------------------------------
+  @Get('valoraciones/mis-asignadas')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Listar las valoraciones pendientes asignadas al técnico autenticado. Útil para bandeja personalizada de campo.',
+  })
+  @ApiQuery({ name: 'estado', required: false, description: 'Filtrar valoraciones por estado (EN_CAMPO_VALORACION | EN_ESPERA_DE_INSUMOS).' })
+  listarMisValoracionesAsignadas(@Req() req: any, @Query('estado') estado?: string) {
+    return this.mantenimientoService.listarValoraciones(null, req?.user, estado);
+  }
+
+  @Put('valoraciones/:idValoracion')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006 AC-01..AC-03: Guardar valoración completa (diagnóstico + alcance + insumos + evidencias). Si hay materiales NO_DISPONIBLES: pasa solicitud a EN_ESPERA_DE_INSUMOS y extiende SLA automáticamente. Si cero insumos o todos DISPONIBLES: pasa a EN_PROGRESO. Sólo técnico asignado, Encargado o SUPER_ADMIN.',
+  })
+  @ApiResponse({ status: 200, description: 'Valoración guardada. Solicitud transiciona EN_PROGRESO o EN_ESPERA_DE_INSUMOS según insumos.' })
+  @ApiResponse({ status: 400, description: 'Validación fallida: diagnóstico/alcance <10 chars, tiempo <0.25h, CS_002 requiereApagado undefined, insumo NO_DISPONIBLE sin tiempoAdquisicion.' })
+  @ApiResponse({ status: 403, description: 'Usuario no es técnico asignado, o Multipropósito intentando valorar CS_002.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está EN_CAMPO_VALORACION o valoración no pertenece a solicitud.' })
+  guardarValoracionCompleta(
+    @Param('idValoracion') idValoracion: string,
+    @Body() dto: GuardarValoracionCompletaDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.guardarValoracionCompleta(idValoracion, dto, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1735 RF-INF-006: Acciones sobre una solicitud (:idSolicitud)
+  // Declaradas ANTES de :id wildcard para evitar colisiones con GET /:id.
+  // ---------------------------------------------------------------------------
+  @Post(':idSolicitud/iniciar-ejecucion-directa')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Inicio ejecución DIRECTA SIN valoración previa (alcance evidente). Estado ASIGNADA → EN_PROGRESO. Sólo técnico asignado. Multipropósito NO puede usar en CS_002 (403).',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud pasa a EN_PROGRESO. Se registra INICIO_EJECUCION_DIRECTA en historial.' })
+  @ApiResponse({ status: 403, description: 'Técnico Multipropósito en CS_002 o usuario no asignado.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está en estado ASIGNADA.' })
+  iniciarEjecucionDirecta(@Param('idSolicitud') idSolicitud: string, @Req() req: any) {
+    return this.mantenimientoService.iniciarEjecucionDirecta(idSolicitud, req?.user);
+  }
+
+  @Post(':idSolicitud/iniciar-valoracion')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Iniciar valoración previa (crea borrador SolicitudValoracion, estado solicitud pasa ASIGNADA → EN_CAMPO_VALORACION). Sólo técnico asignado o Encargado. Multipropósito 403 en CS_002.',
+  })
+  @ApiResponse({ status: 201, description: 'Borrador de valoración creado. Solicitud EN_CAMPO_VALORACION.' })
+  @ApiResponse({ status: 403, description: 'Multipropósito sobre CS_002 o usuario no autorizado.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está ASIGNADA o ya tiene valoración abierta.' })
+  iniciarValoracion(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: IniciarValoracionDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.iniciarValoracion(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/confirmar-recepcion-insumos')
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006 AC-03: Encargado UMI confirma recepción física de materiales. Estado EN_ESPERA_DE_INSUMOS → EN_PROGRESO. Sólo SUPER_ADMIN o GESTOR_MANTENIMIENTO.',
+  })
+  @ApiResponse({ status: 200, description: 'Materiales confirmados. Solicitud pasa a EN_PROGRESO.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (no Encargado/Asignador).' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está en EN_ESPERA_DE_INSUMOS.' })
+  confirmarRecepcionInsumos(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: ConfirmarRecepcionInsumosDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.confirmarRecepcionInsumos(idSolicitud, dto, req?.user);
+  }
+
+  @Get(':idSolicitud/valoraciones')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1735 RF-INF-006: Historial de valoraciones de una solicitud (ordenado fecha DESC, incluye relación insumos). Si estado=EN_CAMPO_VALORACION devuelve la valoración abierta para edición.',
+  })
+  listarValoraciones(@Param('idSolicitud') idSolicitud: string) {
+    return this.mantenimientoService.listarValoraciones(idSolicitud, null, null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1736 RF-INF-007: Cierre Técnico de Ejecución
+  // Declaradas ANTES de wildcard :id para evitar colisiones.
+  // ---------------------------------------------------------------------------
+  @Get(':idSolicitud/cierre-tecnico')
+  @Public()
+  @ApiOperation({
+    summary:
+      'EFDS-1736 RF-INF-007: Resumen del cierre técnico de la solicitud (estado COMPLETADA). Si no hay cierre retorna {cerrado:false}. Campos: fecha, técnico, trabajo realizado, costo final, evidencias, seguimiento.',
+  })
+  obtenerCierreTecnico(@Param('idSolicitud') idSolicitud: string, @Req() req: any) {
+    return this.mantenimientoService.obtenerCierreTecnico(idSolicitud, req?.user);
+  }
+
+  @Post(':idSolicitud/cerrar-tecnicamente')
+  @ApiOperation({
+    summary:
+      'EFDS-1736 RF-INF-007: Cierre técnico oficial de la ejecución. Estado EN_PROGRESO → COMPLETADA. Requiere mínimo 1 evidencia fotográfica, trabajo realizado min 15 chars. Guardia usuarioPuedeOperarComoTecnicoAsignado (403), Guardia CS_002 no multipropósito en eléctrica (403), Guardia transición sólo EN_PROGRESO (409). SUPER_ADMIN bypass total.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud pasa a COMPLETADA. CIERRE_TECNICO registrado en JSONB asignaciones.' })
+  @ApiResponse({ status: 400, description: 'Validación: evidencias < 1, trabajo < 15 chars, costo < 0.' })
+  @ApiResponse({ status: 403, description: 'Usuario no técnico asignado o Multipropósito en CS_002.' })
+  @ApiResponse({ status: 409, description: 'Solicitud no está EN_PROGRESO.' })
+  cerrarTecnicamente(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: CerrarTecnicamenteDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.cerrarTecnicamente(idSolicitud, dto, req?.user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1737 RF-INF-008: Conformidad del Área Solicitante
+  // Declaradas ANTES de wildcard :id para evitar colisiones.
+  // ---------------------------------------------------------------------------
+  @Post('ejecutar-cierres-sin-respuesta')
+  @ApiOperation({
+    summary:
+      'EFDS-1737: Cierre automático de todas las COMPLETADAS cuyo plazo de conformidad venció. Resultado: CERRADA_SIN_ATENCION. Guardia roles SUPER_ADMIN/GESTOR. Devuelve {actualizadas, ids}.',
+  })
+  @ApiResponse({ status: 200, description: 'Proceso batch ejecutado. Retorna N y lista de IDs afectados.' })
+  @ApiResponse({ status: 403, description: 'Rol no permitido.' })
+  ejecutarCierresSinRespuesta(@Req() req: any) {
+    return this.mantenimientoService.ejecutarCierresSinRespuestaVencidos(req?.user);
+  }
+
+  @Post(':idSolicitud/conformidad/confirmar')
+  @ApiOperation({
+    summary:
+      'EFDS-1737: Confirmación positiva del área solicitante. COMPLETADA → CERRADA. Guardia usuario ES solicitante o bypass admin. Observaciones opcionales.',
+  })
+  @ApiResponse({ status: 200, description: 'Solicitud CERRADA CONFIRMADA. Evento CONFORMIDAD_CONFIRMADA en historial.' })
+  @ApiResponse({ status: 403, description: 'Usuario NO es solicitante ni administrador.' })
+  @ApiResponse({ status: 409, description: 'Estado distinto de COMPLETADA.' })
+  confirmarConformidad(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: ConfirmarConformidadDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.confirmarConformidad(idSolicitud, dto, req?.user);
+  }
+
+  @Post(':idSolicitud/conformidad/rechazar')
+  @ApiOperation({
+    summary:
+      'EFDS-1737: Devolución por observaciones del área solicitante. COMPLETADA → EN_PROGRESO con SLA NUEVO 24h. Observaciones OBLIGATORIAS min 20 chars. No nulea cierre técnico (preservado para trazabilidad).',
+  })
+  @ApiResponse({ status: 200, description: 'Reapertura a EN_PROGRESO con SLA nuevo. Evento CONFORMIDAD_RECHAZADA_Y_REABIERTA.' })
+  @ApiResponse({ status: 400, description: 'Observaciones < 20 caracteres.' })
+  @ApiResponse({ status: 403, description: 'Usuario NO es solicitante ni administrador.' })
+  @ApiResponse({ status: 409, description: 'Estado distinto de COMPLETADA.' })
+  rechazarConformidad(
+    @Param('idSolicitud') idSolicitud: string,
+    @Body() dto: RechazarConformidadDto,
+    @Req() req: any,
+  ) {
+    return this.mantenimientoService.rechazarConformidadYReabrir(idSolicitud, dto, req?.user);
   }
 
   @Post()

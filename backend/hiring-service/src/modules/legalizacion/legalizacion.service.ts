@@ -11,6 +11,7 @@ import { alMenos, Contrato, EstadoContrato, TipoPersona } from '../../entities/c
 import { Garantia } from '../../entities/garantia.entity';
 import { Amparo, TipoAmparo } from '../../entities/amparo.entity';
 import { AfiliacionArl } from '../../entities/afiliacion-arl.entity';
+import { ActividadExcluida } from '../../entities/actividad.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
@@ -22,6 +23,8 @@ import {
   RechazarGarantiaDto,
   RegistrarArlDto,
 } from './dto/legalizacion.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
 
 
@@ -44,14 +47,44 @@ export function admiteLegalizacion(estado: EstadoContrato): boolean {
 }
 
 /**
- * Si el contrato exige registro de ARL.
+ * Si el contrato exige registro de ARL, por tipo de persona.
  *
  * Segundo criterio: se deriva del tipo de persona del contratista, guardado al
  * contratar. No es una casilla que el usuario marque, porque entonces la
  * exigencia dependería de que alguien se acordara de activarla.
+ *
+ * Es solo la mitad de la regla: dice si la ARL le correspondería a este
+ * contratista, no si la 8.5 existe en este proceso. Eso lo dice la matriz, y
+ * lo resuelve `aplicaArl`. Se deja aparte porque el mensaje de validación de
+ * `registrarArl` («esto es de persona natural») solo necesita esta mitad.
  */
 export function exigeArl(tipoPersona: TipoPersona): boolean {
   return tipoPersona === 'NATURAL';
+}
+
+/**
+ * Si el contrato exige registro de ARL de verdad, cruzando persona y matriz.
+ *
+ * La matriz excluye la 8.5 de casi todas las modalidades (EFDS-1183): solo la
+ * deja en contratación directa. `exigeArl` no lo sabe —mira solo el tipo de
+ * persona— así que una persona natural en licitación pública, por ejemplo,
+ * quedaba exigida de una actividad que la propia matriz dice que no existe
+ * ahí. Eso instanciaba la 8.5 en NO_APLICA y la primera sincronización la
+ * devolvía a BORRADOR sin que hubiera nada que registrar, dejando la
+ * legalización —y con ella la 8.7 y la 8.8— bloqueada para siempre.
+ */
+export async function aplicaArl(
+  em: EntityManager,
+  modalidad: string | null,
+  tipoPersona: TipoPersona,
+): Promise<boolean> {
+  if (!exigeArl(tipoPersona)) return false;
+  if (!modalidad) return true;
+
+  const excluida = await em
+    .getRepository(ActividadExcluida)
+    .findOne({ where: { numeral: NUMERAL_ARL, modalidad } });
+  return !excluida;
 }
 
 /**
@@ -130,12 +163,16 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class LegalizacionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
   async estado(procesoId: string, acceso: HiringAccess) {
     const contrato = await this.contratoDelProceso(this.dataSource.manager, procesoId);
+    const modalidad = await this.modalidadDelProceso(this.dataSource.manager, procesoId);
 
     const tipos = await this.dataSource.getRepository(TipoAmparo).find({
       where: { activo: true },
@@ -168,7 +205,7 @@ export class LegalizacionService {
       .getRepository(AfiliacionArl)
       .findOne({ where: { contratoId: contrato.id } });
 
-    const requiereArl = exigeArl(contrato.contratistaTipo);
+    const requiereArl = await aplicaArl(this.dataSource.manager, modalidad, contrato.contratistaTipo);
     const vigentes = garantiasVigentes(garantias);
     const panorama = {
       totalGarantias: vigentes.length,
@@ -294,7 +331,12 @@ export class LegalizacionService {
    * Es la revisión que pide el criterio 1: cargar no es aprobar. Con todas
    * aprobadas —y la ARL si aplica— el contrato queda legalizado.
    */
-  async aprobarGarantia(procesoId: string, garantiaId: string, acceso: HiringAccess) {
+  async aprobarGarantia(
+    procesoId: string,
+    garantiaId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoSuscrito(em, procesoId);
       const garantia = await this.exigirGarantia(em, contrato.id, garantiaId);
@@ -322,7 +364,7 @@ export class LegalizacionService {
       garantia.motivoRechazo = null;
       await em.save(garantia);
 
-      await this.sincronizar(em, procesoId, contrato, acceso);
+      await this.sincronizar(em, procesoId, contrato, acceso, { garantias: firma });
 
       await this.traza(em, procesoId, garantia.id, 'APROBAR', acceso, {
         actividad: NUMERAL_GARANTIAS,
@@ -379,10 +421,13 @@ export class LegalizacionService {
   ) {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoSuscrito(em, procesoId);
+      const modalidad = await this.modalidadDelProceso(em, procesoId);
 
-      if (!exigeArl(contrato.contratistaTipo)) {
+      if (!(await aplicaArl(em, modalidad, contrato.contratistaTipo))) {
         throw new BadRequestException(
-          'La ARL se exige a los contratistas persona natural; este contrato es con persona jurídica',
+          exigeArl(contrato.contratistaTipo)
+            ? 'La modalidad de este proceso no exige registrar la ARL'
+            : 'La ARL se exige a los contratistas persona natural; este contrato es con persona jurídica',
         );
       }
 
@@ -418,7 +463,7 @@ export class LegalizacionService {
         } as Partial<AfiliacionArl>),
       );
 
-      await this.sincronizar(em, procesoId, contrato, acceso);
+      await this.sincronizar(em, procesoId, contrato, acceso, { arl: dto.firma });
 
       await this.traza(em, procesoId, arl.id, 'CREAR', acceso, {
         actividad: NUMERAL_ARL,
@@ -478,13 +523,15 @@ export class LegalizacionService {
     procesoId: string,
     contrato: Contrato,
     acceso: HiringAccess,
+    firma?: { garantias?: FirmaOtpDto; arl?: FirmaOtpDto },
   ) {
     const garantias = await em.getRepository(Garantia).find({ where: { contratoId: contrato.id } });
     const arl = await em
       .getRepository(AfiliacionArl)
       .findOne({ where: { contratoId: contrato.id } });
 
-    const requiereArl = exigeArl(contrato.contratistaTipo);
+    const modalidad = await this.modalidadDelProceso(em, procesoId);
+    const requiereArl = await aplicaArl(em, modalidad, contrato.contratistaTipo);
     const vigentes = garantiasVigentes(garantias);
     const legalizado = estaLegalizado({
       totalGarantias: vigentes.length,
@@ -516,44 +563,81 @@ export class LegalizacionService {
     const garantiasListas =
       vigentes.length > 0 && vigentes.every((g) => g.estado === 'APROBADA');
 
-    await this.marcarActividad(em, procesoId, NUMERAL_GARANTIAS, garantiasListas, acceso);
+    await this.marcarActividad(
+      em,
+      procesoId,
+      NUMERAL_GARANTIAS,
+      garantiasListas,
+      acceso,
+      firma?.garantias,
+    );
     // La 8.5 solo se marca cuando aplica: darla por cumplida en un contrato con
-    // persona jurídica mostraría como hecha una actividad que nadie realizó.
+    // persona jurídica, o en una modalidad que la matriz excluye, mostraría
+    // como hecha —o como pendiente— una actividad que nadie tiene que hacer.
     if (requiereArl) {
-      await this.marcarActividad(em, procesoId, NUMERAL_ARL, !!arl, acceso);
+      await this.marcarActividad(em, procesoId, NUMERAL_ARL, !!arl, acceso, firma?.arl);
+    } else {
+      // Se fuerza a NO_APLICA en vez de dejarla como estaba: si antes exigía
+      // ARL (persona natural en una modalidad sin excluirla) y algo cambió, o
+      // si una versión anterior de esta regla ya la había devuelto a
+      // BORRADOR por error, aquí queda corregida en vez de perpetuar el dato
+      // malo.
+      await em
+        .getRepository(ProcesoActividad)
+        .update({ procesoId, numeral: NUMERAL_ARL }, { estado: 'NO_APLICA' as any });
     }
   }
 
+  /**
+   * Solo pregunta por aprobación o firma cuando la actividad de verdad cierra
+   * (EFDS-1183, EFDS-2070): aprobar una póliza que no es la última, o cargar
+   * la ARL antes de que las garantías estén listas, no da por cumplida la
+   * actividad, así que exigir la firma ahí sería pedirla por algo que sigue
+   * abierto.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     numeral: string,
     aprobado: boolean,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    const estado = aprobado ? 'APROBADO' : 'BORRADOR';
-
-    const actividad = await em
-      .getRepository(ProcesoActividad)
-      .findOne({ where: { procesoId, numeral } });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral,
-          estado: estado as any,
-          datos: {},
-          ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!aprobado) {
+      const actividad = await em
+        .getRepository(ProcesoActividad)
+        .findOne({ where: { procesoId, numeral } });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = aprobado ? acceso.userName : null;
-    actividad.revisadoAt = aprobado ? new Date() : null;
-    await em.save(actividad);
+    if (await this.cierre.exigeFirma(em, numeral)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      numeral,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   /** Las garantías del contrato con sus amparos, para pintarlas de una vez. */
@@ -590,6 +674,12 @@ export class LegalizacionService {
     }
 
     return salida;
+  }
+
+  /** La modalidad del proceso, que es la mitad que le falta a `exigeArl`. */
+  private async modalidadDelProceso(em: EntityManager, procesoId: string): Promise<string | null> {
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    return proceso?.modalidad ?? null;
   }
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {

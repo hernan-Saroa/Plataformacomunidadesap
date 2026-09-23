@@ -18,6 +18,7 @@ import { unlink } from 'fs/promises';
 
 import { LegalizacionService } from './legalizacion.service';
 import {
+  AprobarGarantiaDto,
   CargarGarantiaDto,
   RechazarGarantiaDto,
   RegistrarArlDto,
@@ -104,9 +105,10 @@ export class LegalizacionController {
   aprobar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Param('garantiaId', ParseUUIDPipe) garantiaId: string,
+    @Body() dto: AprobarGarantiaDto,
     @Req() req: any,
   ) {
-    return this.service.aprobarGarantia(procesoId, garantiaId, getHiringAccess(req));
+    return this.service.aprobarGarantia(procesoId, garantiaId, getHiringAccess(req), dto.firma);
   }
 
   @Post('garantias/:garantiaId/rechazar')

@@ -62,6 +62,7 @@ import {
 } from './services/pdfESAPHeader';
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
+import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -6719,22 +6720,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       };
 
       const obtenerFechaTareaExport = (tarea: any, actividad: any): string => {
-        // Prioridad: fecha real de seguimiento/evaluación de la tarea.
-        const fechaSeguimiento =
-          tarea?.fechaSeguimiento
-          || tarea?.fecha_seguimiento
-          || tarea?.fechaEvaluacion
-          || tarea?.fecha_evaluacion
-          || tarea?.fechaCompletado
-          || tarea?.fechaCompletada
-          || tarea?.fecha_completada;
-        if (fechaSeguimiento) return formatearFechaExportacion(fechaSeguimiento);
-
-        // Fallback: fecha objetivo/límite.
-        const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite || tarea?.fechaEntrega;
-        if (fechaLimite) return formatearFechaExportacion(fechaLimite);
-        const tieneDatosTarea = !!tarea && typeof tarea === 'object' && Object.keys(tarea).length > 0;
-        if (tieneDatosTarea) return '-';
+        // Mismo criterio que la exportación a Excel, para que las dos muestren la misma fecha (EFDS-1542).
+        const fecha = fechaSeguimientoTarea(actividad, tarea);
+        if (fecha) return formatearFechaExportacion(fecha);
 
         const puntosControl = actividad?.puntosControl || actividad?.puntos_control || [];
         if (Array.isArray(puntosControl) && puntosControl.length > 0) {

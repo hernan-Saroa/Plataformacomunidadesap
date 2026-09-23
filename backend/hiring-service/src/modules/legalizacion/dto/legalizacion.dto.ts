@@ -15,6 +15,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+
 export class AmparoDto {
   @ApiProperty({ description: 'Código del tipo de amparo' })
   @IsString()
@@ -94,6 +96,15 @@ export class RechazarGarantiaDto {
   motivo: string;
 }
 
+/** Solo si la 8.4 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+export class AprobarGarantiaDto {
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
 export class RegistrarArlDto {
   @ApiProperty({ description: 'Quién realizó la afiliación', enum: ['ENTIDAD', 'CONTRATISTA'] })
   @IsIn(['ENTIDAD', 'CONTRATISTA'], {
@@ -116,4 +127,12 @@ export class RegistrarArlDto {
   @ApiProperty({ description: 'Fecha de la afiliación (YYYY-MM-DD)' })
   @IsDateString({}, { message: 'La fecha de afiliación debe tener el formato YYYY-MM-DD' })
   fechaAfiliacion: string;
+
+  /** Solo si la 8.5 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }

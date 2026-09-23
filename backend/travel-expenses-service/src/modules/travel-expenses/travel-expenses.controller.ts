@@ -128,6 +128,7 @@ export class TravelExpensesController {
       normalizedRoles.some(
         (r) => r === 'CONTROL_VIATICOS' || r === 'ROL_CONTROL_VIATICOS',
       ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_control_viaticos') ||
       normalizedPermissions.includes('travel_expenses:read_siif_requested') ||
       normalizedPermissions.includes('travel_expenses:double_check_request');
 
@@ -135,6 +136,7 @@ export class TravelExpensesController {
       normalizedRoles.some(
         (r) => r === 'ANALISTA' || r === 'ANALISTA_VIATICOS',
       ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_analista_viaticos') ||
       normalizedPermissions.includes('travel_expenses:verify_request') ||
       normalizedPermissions.includes('travel_expenses:view_assigned_requests');
 
@@ -146,6 +148,7 @@ export class TravelExpensesController {
           r === 'SECRETARIO_VIATICOS' ||
           r === 'SUPERVISOR',
       ) ||
+        normalizedPermissions.includes('travel_expenses.general.es_secretario_viaticos') ||
         normalizedPermissions.includes('travel_expenses:assign_analyst') ||
         normalizedPermissions.includes('travel_expenses:set_priority') ||
         normalizedPermissions.includes('travel_expenses:read_inbox'));
@@ -160,6 +163,7 @@ export class TravelExpensesController {
           r.includes('TESORERIA') ||
           r.includes('PAGADOR'),
       ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_tesoreria') ||
       normalizedPermissions.includes('travel_expenses:process_payment') ||
       normalizedPermissions.includes('travel_expenses:read_payments') ||
       normalizedPermissions.includes('travel_expenses:register_payment');
@@ -175,6 +179,7 @@ export class TravelExpensesController {
           r.includes('SST') ||
           (r.includes('SEGURIDAD') && r.includes('TRABAJO')),
       ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_sst') ||
       normalizedPermissions.includes('travel_expenses:read_sst_logs') ||
       normalizedPermissions.includes('travel_expenses:read_sst_requests') ||
       normalizedPermissions.includes('travel_expenses:resend_sst_notification');

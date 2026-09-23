@@ -67,3 +67,13 @@ después de ella las dos historias dan el mismo esquema.
   documental del estudio previo. La tabla `documentos_proceso` la crea la
   `019_documentos_del_proceso.sql`.
 - `010_causal_normativa.sql` no es completamente idempotente: no reaplicar.
+
+## A partir de la 077, en `backend/hiring-service/db/migrations/`
+
+Esta carpeta llega hasta la **076**. Las migraciones nuevas de `hiring` se
+crean junto al microservicio, en `backend/hiring-service/db/migrations/`, para
+quedar como en los demás micrositios (`travel-expenses-service`,
+`auth-service`, etc.). Es solo dónde vive el archivo nuevo: la numeración
+sigue de corrido desde aquí y `migrate.local.sh` ya busca en las dos rutas
+para el mismo target (`hiring` o `hiring-service`), así que no hace falta
+tocarlo. Las 76 migraciones existentes se quedan aquí, sin mover.

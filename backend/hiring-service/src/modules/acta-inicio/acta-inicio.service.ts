@@ -21,9 +21,23 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { SuscribirActaInicioDto } from './dto/acta-inicio.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
+import { aplicaArl } from '../legalizacion/legalizacion.service';
 
 /** Actividad 9.1 de la matriz: la reunión de inicio. */
 export const NUMERAL_ACTA_INICIO = '9.1';
+
+/**
+ * La matriz nombra el mismo hecho dos veces: aquí, al cerrar la legalización
+ * (etapa 8), y en la 9.1 como «reunión de inicio» (etapa 9). Es un solo acto
+ * y un solo registro —la pantalla ya abre el mismo panel para las dos, ver
+ * `NUMERAL_ACTA_INICIO_LEGALIZACION` en `DetalleProceso.tsx`— así que
+ * registrar la reunión tiene que cerrar las dos casillas. Antes solo cerraba
+ * la 9.1: la 8.7 se quedaba en BORRADOR para siempre y el riel no dejaba
+ * pasar a la 8.8 aunque la reunión ya estuviera hecha.
+ */
+export const NUMERAL_ACTA_INICIO_LEGALIZACION = '8.7';
 
 /**
  * Si el contrato admite que se le registre la reunión de inicio.
@@ -60,7 +74,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class ActaInicioService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -81,6 +98,9 @@ export class ActaInicioService {
     const acta = await this.dataSource
       .getRepository(ActaInicio)
       .findOne({ where: { contratoId: contrato.id } });
+    const proceso = await this.dataSource
+      .getRepository(Proceso)
+      .findOne({ where: { id: procesoId } });
 
     const documento = acta?.actaDocumentoId
       ? await this.dataSource
@@ -95,6 +115,16 @@ export class ActaInicioService {
       tieneSupervisor: !!supervisor,
       puedeIniciar: legalizado && !!supervisor && !acta,
       motivoNoPuede: this.motivoNoPuede(contrato.estado, !!supervisor, !!acta),
+      // La ARL solo se exige a persona natural, y solo en las modalidades que
+      // la matriz no excluye (EFDS-1183, EFDS-1164): sin esto, la pantalla no
+      // tiene cómo distinguir si lo que falta son las garantías (8.4, que
+      // aplica siempre) o la ARL (8.5, que ni la persona jurídica ni una
+      // modalidad que la excluye van a pedir nunca).
+      requiereArl: await aplicaArl(
+        this.dataSource.manager,
+        proceso?.modalidad ?? null,
+        contrato.contratistaTipo,
+      ),
       contrato: {
         numero: contrato.numero,
         objeto: contrato.objeto,
@@ -152,6 +182,10 @@ export class ActaInicioService {
 
       this.validarFecha(dto.fechaInicio);
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_ACTA_INICIO)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       // Por defecto se da por pactada: es lo habitual, y suponer lo contrario
       // dejaría arrancar sin acta a quien sí debía suscribirla.
       const pactada = dto.actaPactada ?? true;
@@ -195,7 +229,7 @@ export class ActaInicioService {
       contrato.ejecucionDesde = dto.fechaInicio;
       await em.save(contrato);
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(em, procesoId, contrato.id, acceso, dto.firma);
 
       await this.traza(em, procesoId, acta.id, 'INICIAR', acceso, {
         actividad: NUMERAL_ACTA_INICIO,
@@ -287,39 +321,60 @@ export class ActaInicioService {
    *
    * No hay vuelta atrás como en la supervisión: la ejecución empieza una vez y
    * la reunión no se «desconvoca».
+   *
+   * Cierra las dos casillas de la matriz —la 8.7 y la 9.1— porque son el mismo
+   * hecho contado dos veces (ver `NUMERAL_ACTA_INICIO_LEGALIZACION`). Cerrar
+   * solo una dejaría la otra en BORRADOR sin que hubiera nada pendiente de
+   * verdad, y con eso el riel de la que quedó atrás no deja avanzar.
    */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const cumplida = !!(await em
       .getRepository(ActaInicio)
       .findOne({ where: { contratoId } }));
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_ACTA_INICIO },
-    });
+    const numerales = [NUMERAL_ACTA_INICIO_LEGALIZACION, NUMERAL_ACTA_INICIO];
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_ACTA_INICIO,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      for (const numeral of numerales) {
+        const actividad = await em.getRepository(ProcesoActividad).findOne({
+          where: { procesoId, numeral },
+        });
+        if (!actividad) {
+          await em.save(
+            em.create(ProcesoActividad, {
+              procesoId,
+              numeral,
+              estado: 'BORRADOR' as any,
+              datos: {},
+            }),
+          );
+          continue;
+        }
+        actividad.estado = 'BORRADOR' as any;
+        actividad.revisadoPor = null;
+        actividad.revisadoAt = null;
+        await em.save(actividad);
+      }
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    for (const numeral of numerales) {
+      await this.cierre.resolverCierre(
+        em,
+        procesoId,
+        numeral,
+        proceso?.modalidad ?? null,
+        acceso,
+        firma,
+      );
+    }
   }
 
   private guardarDocumento(

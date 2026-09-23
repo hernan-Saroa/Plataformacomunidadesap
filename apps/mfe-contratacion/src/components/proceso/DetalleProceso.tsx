@@ -1,5 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText, FolderOpen, ClipboardList, ListChecks, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardCheck,
+  FileText,
+  FolderOpen,
+  ClipboardList,
+  ListChecks,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
@@ -9,6 +19,7 @@ import { estadoDeActividad } from './estadoActividad';
 import {
   actividadesDisponibles,
   motivoDelBloqueo,
+  NUNCA_BLOQUEA,
   PasoDelFlujo,
 } from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
@@ -47,6 +58,7 @@ import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { AvisoSoloLectura, SoloLectura } from '../shared/SoloLectura';
+import { Modal } from '../shared/Modal';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
@@ -363,7 +375,7 @@ const ACTIVIDADES_ETAPA_3 = [
  * situación que las once y se habían quedado fuera de la cuenta, saliendo con
  * candado en el riel.
  */
-const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
+export const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   '3.2': 'Análisis del sector y estudio de mercado',
   // La 3.3 y la 3.4 salieron de aquí con EFDS-1183. Ninguna de las dos se
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
@@ -392,7 +404,7 @@ const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
  * las que la modalidad excluye. Cuando estén las sesenta y tres, esto devuelve
  * siempre true y la excepción sobra.
  */
-const TIENEN_PANEL = (numeral: string): boolean =>
+export const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
   numeral === NUMERAL_RADICACION ||
   numeral === NUMERAL_MODALIDAD ||
@@ -426,6 +438,20 @@ const TIENEN_PANEL = (numeral: string): boolean =>
  * Aplica la misma regla que el riel, con los mismos ayudantes, para que no
  * abra una actividad que el riel muestra bloqueada.
  */
+/**
+ * La actividad que alguien reabrió, si la hay.
+ *
+ * `DEVUELTO` es el único estado que pide volver atrás: el comité aprueba la
+ * 3.7 y de paso reabre la 3.2 para que se la validen, y a partir de ahí lo que
+ * sigue no es lo que viene después en la matriz, es esa. La guía del paso
+ * siguiente solo miraba hacia adelante, así que saltaba por encima y mandaba a
+ * la etapa 4.
+ *
+ * Fuera del componente para poder fijar la regla sin montar la pantalla.
+ */
+export const actividadReabierta = (flujo: PasoDelFlujo[]): PasoDelFlujo | null =>
+  flujo.find((p) => p.aplica && p.construida && p.estado === 'DEVUELTO') ?? null;
+
 export const actividadEnCurso = (
   catalogo: any[],
   estadoDelEstudio: string,
@@ -450,6 +476,11 @@ export const actividadEnCurso = (
       if (estadoDelEstudio !== 'APROBADO') return '3.1';
       continue;
     }
+
+    // La 9.2 nunca llega a "aprobada" mientras el contrato se ejecuta (dura
+    // toda la vigencia): tratarla como pendiente la dejaría fija como "la
+    // actividad en curso" para siempre, sin dejar ver qué más falta de verdad.
+    if (NUNCA_BLOQUEA.has(act.numeral)) continue;
 
     const aplica = act.aplica !== false;
     if (!aplica || !disponibles.has(act.numeral)) continue;
@@ -560,6 +591,22 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [decisionEscondida, setDecisionEscondida] = useState<string | null>(null);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
+  /**
+   * Lo que se avisa al gestor justo después de enviar una actividad.
+   *
+   * Modal y no una notificación de esquina: la primera versión usaba un toast
+   * y no se notaba —el gestor seguía sin saber qué hacer después—. Aquí hay
+   * que pararse a leer y elegir, así que se pone en medio de la pantalla y con
+   * el botón que da el siguiente paso, en vez de avanzar solo.
+   */
+  const [avisoPaso, setAvisoPaso] = useState<
+    | { tipo: 'revision' }
+    | { tipo: 'fin' }
+    | { tipo: 'bloqueado'; motivo: string }
+    | { tipo: 'siguiente'; numeral: string; nombre: string }
+    | { tipo: 'reabierta'; numeral: string; nombre: string }
+    | null
+  >(null);
 
   useEffect(() => {
     contratacionService
@@ -573,6 +620,101 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       })
       .catch(() => undefined);
   }, [procesoId, tokenExpediente]);
+
+  /** El estado de la actividad abierta la última vez que se revisó, para notar cuándo avanza. */
+  const avanceRef = useRef<{ numeral: string; estado: string | null | undefined } | null>(null);
+
+  /**
+   * Avisa a dónde sigue el proceso justo después de enviar una actividad.
+   *
+   * El módulo se sentía pesado porque enviar algo no decía qué pasaba después:
+   * tocaba ir al riel a averiguar si ya se podía seguir o a quién le tocaba
+   * ahora. Se detecta comparando el estado de la actividad abierta contra el
+   * que tenía la vez anterior que este efecto corrió —no cada carga de
+   * `tokenExpediente`, que también sube al subir un adjunto que no cierra
+   * nada— y solo cuando avanza a `EN_REVISION` o `APROBADO`.
+   *
+   * Va con los demás hooks, antes del `if (cargando)` de más abajo: el resto
+   * de esta función deja de llamar hooks después de esa condición, así que
+   * reconstruye del `catalogo` y `datos` lo mismo que el cuerpo del componente
+   * arma más abajo como `flujo`, en vez de depender de esa variable.
+   */
+  useEffect(() => {
+    if (!expandida) {
+      avanceRef.current = null;
+      return;
+    }
+
+    const flujoActual: PasoDelFlujo[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3)
+      .filter((act: any) => act.numeral !== NUMERAL_REVISION)
+      .map((act: any) => ({
+        numeral: act.numeral,
+        // La 3.1 no vive en `proceso_actividades`: su estado es el del estudio
+        // previo, igual que en el `flujo` que arma el resto del componente.
+        estado: act.numeral === '3.1' ? (datos?.estado ?? null) : act.estado,
+        aplica: act.aplica !== false,
+        construida: TIENEN_PANEL(act.numeral),
+      }));
+
+    const actual = flujoActual.find((p) => p.numeral === expandida) ?? null;
+    const anterior = avanceRef.current;
+    avanceRef.current = actual ? { numeral: actual.numeral, estado: actual.estado } : null;
+
+    // Sin base de comparación, o se cambió de actividad sin enviar nada: no
+    // hay avance que anunciar, solo una nueva base para la próxima vez.
+    if (!actual || !anterior || anterior.numeral !== actual.numeral) return;
+    if (anterior.estado === actual.estado) return;
+    if (actual.estado !== 'EN_REVISION' && actual.estado !== 'APROBADO') return;
+
+    if (actual.estado === 'EN_REVISION') {
+      setAvisoPaso({ tipo: 'revision' });
+      return;
+    }
+
+    /*
+     * Lo reabierto manda sobre lo que viene después.
+     *
+     * Una actividad DEVUELTA es la única que pide volver atrás, y puede estar
+     * antes en el flujo: el comité aprueba la 3.7 y de paso reabre la 3.2 para
+     * que se la validen. Buscando solo hacia adelante, la guía saltaba por
+     * encima y mandaba a la etapa 4 —o, con la 3.2 bloqueando, decía «debe
+     * continuar otra persona»—, que es justo lo contrario de lo que acababa de
+     * pasar.
+     */
+    const reabierta = actividadReabierta(flujoActual);
+    if (reabierta) {
+      setAvisoPaso({
+        tipo: 'reabierta',
+        numeral: reabierta.numeral,
+        nombre:
+          catalogo.find((a: any) => a.numeral === reabierta.numeral)?.nombre ?? reabierta.numeral,
+      });
+      return;
+    }
+
+    // APROBADO: se busca el siguiente paso del flujo para guiar hacia él.
+    const indice = flujoActual.findIndex((p) => p.numeral === actual.numeral);
+    const siguiente = flujoActual
+      .slice(indice + 1)
+      .find((p) => p.aplica && p.construida && p.estado !== 'APROBADO');
+
+    if (!siguiente) {
+      setAvisoPaso({ tipo: 'fin' });
+      return;
+    }
+
+    const nombreSiguiente =
+      catalogo.find((a: any) => a.numeral === siguiente.numeral)?.nombre ?? siguiente.numeral;
+
+    if (actividadesDisponibles(flujoActual).has(siguiente.numeral)) {
+      setAvisoPaso({ tipo: 'siguiente', numeral: siguiente.numeral, nombre: nombreSiguiente });
+    } else {
+      setAvisoPaso({
+        tipo: 'bloqueado',
+        motivo: motivoDelBloqueo(siguiente.numeral, flujoActual) ?? 'Debe continuar otra persona del equipo',
+      });
+    }
+  }, [tokenExpediente, expandida, catalogo, datos]);
 
   useEffect(() => {
     // Si falla se sigue con la lista de la etapa 3 que había antes: el riel no
@@ -592,6 +734,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     if (typeof suya === 'number') setEtapaElegida(suya);
   }, [expandida, catalogo]);
 
+  /*
+   * El estudio previo, que además es de donde sale el estado de la 3.1.
+   *
+   * Depende de `tokenExpediente` igual que el catálogo y los adjuntos: la 3.1
+   * no vive en `proceso_actividades` como las demás —su estado es el del
+   * estudio previo—, así que sin esto se quedaba con el que tenía al entrar. Si
+   * el comité la reabría, el riel la seguía pintando verde y la guía del
+   * siguiente paso la daba por aprobada y mandaba a la etapa 4.
+   */
   useEffect(() => {
     let vigente = true;
     contratacionService
@@ -602,7 +753,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     return () => {
       vigente = false;
     };
-  }, [procesoId]);
+  }, [procesoId, tokenExpediente]);
 
   // Se abre sola al entrar, no en cada refresco: una vez el gestor ha elegido,
   // mandar la pantalla de vuelta a la actividad en curso sería quitarle lo que
@@ -1326,6 +1477,82 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           onAbrir={() => setDecisionEscondida(null)}
         />
       ) : null}
+
+      {/* La guía paso a paso: se para a mitad de pantalla porque una esquina
+          que desaparece sola no se nota, y el gestor se queda sin saber qué
+          sigue. Avanzar es un clic, no algo que ocurra solo. */}
+      <Modal
+        isOpen={avisoPaso !== null}
+        onClose={() => setAvisoPaso(null)}
+        title="Enviado correctamente"
+        size="small"
+        icon={
+          avisoPaso?.tipo === 'siguiente' ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <ClipboardCheck className="w-5 h-5" />
+          )
+        }
+        color={avisoPaso?.tipo === 'siguiente' ? '#10B981' : '#003DA5'}
+        footer={
+          avisoPaso?.tipo === 'siguiente' || avisoPaso?.tipo === 'reabierta' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setExpandida(avisoPaso.numeral);
+                setAvisoPaso(null);
+              }}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#003DA5] px-4 py-2 text-sm font-bold text-white hover:opacity-90"
+            >
+              Ir a {avisoPaso.numeral} · {avisoPaso.nombre}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAvisoPaso(null)}
+              className="ml-auto rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              Entendido
+            </button>
+          )
+        }
+      >
+        {avisoPaso?.tipo === 'revision' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            Queda en revisión: te avisaremos aquí cuando Contratación continúe.
+          </p>
+        )}
+        {avisoPaso?.tipo === 'fin' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            Por ahora no quedan más pasos pendientes en este proceso.
+          </p>
+        )}
+        {avisoPaso?.tipo === 'bloqueado' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">{avisoPaso.motivo}.</p>
+        )}
+        {avisoPaso?.tipo === 'siguiente' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            El siguiente paso es{' '}
+            <strong className="font-bold">
+              {avisoPaso.numeral} · {avisoPaso.nombre}
+            </strong>
+            .
+          </p>
+        )}
+        {/* Volver atrás no es «el siguiente paso»: es una actividad que ya
+            estaba cerrada y que hay que diligenciar otra vez. */}
+        {avisoPaso?.tipo === 'reabierta' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            Se reabrió{' '}
+            <strong className="font-bold">
+              {avisoPaso.numeral} · {avisoPaso.nombre}
+            </strong>
+            : hay que volver a diligenciarla antes de que el proceso siga. Avisamos a quien la
+            había enviado.
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

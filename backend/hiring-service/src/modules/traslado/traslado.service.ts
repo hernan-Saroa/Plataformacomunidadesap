@@ -25,9 +25,26 @@ import { festivosEntre } from '../publicacion/festivos-colombia';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from '../publicacion/dias-habiles';
 import { congelarResultado } from './congelar-resultado';
 import { AnularInformeDto, GenerarInformeDto, TrasladarInformeDto } from './dto/traslado.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 6.4 de la matriz: publicación y traslado del informe preliminar. */
 export const NUMERAL_TRASLADO = '6.4';
+
+/**
+ * Parámetro de solo pruebas para saltar los plazos de espera (EFDS-2064).
+ *
+ * El término de subsanaciones y observaciones blinda un derecho del oferente
+ * y en producción se cuenta completo. Pero esperar los días hábiles reales
+ * hace imposible correr el flujo de punta a punta en una sesión de QA. Esta
+ * bandera no toca el cálculo del plazo —`venceEl` se sigue fijando igual—,
+ * solo hace que el sistema se comporte como si ya hubiera vencido.
+ *
+ * Exige la variable de entorno Y que NODE_ENV no sea 'production', para que
+ * un despliegue mal configurado no la deje encendida por accidente.
+ */
+export const saltarPlazosDePrueba = () =>
+  process.env.CONTRATACION_SALTAR_PLAZOS === 'true' && process.env.NODE_ENV !== 'production';
 
 export interface ArchivoCargado {
   filename: string;
@@ -57,7 +74,10 @@ export interface ArchivoCargado {
 export class TrasladoService {
   // Protegido y no privado: la actividad 6.5 (EFDS-1464) extiende este servicio
   // para reusar el proceso, el expediente, la traza y el calendario.
-  constructor(protected readonly dataSource: DataSource) {}
+  constructor(
+    protected readonly dataSource: DataSource,
+    protected readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -264,7 +284,7 @@ export class TrasladoService {
       informe.venceEl = sumarDiasHabiles(desde, plazo.diasHabiles, festivos);
       await em.save(informe);
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
       await this.traza(em, procesoId, informe.id, 'TRASLADAR', acceso, {
         actividad: NUMERAL_TRASLADO,
         numero: informe.numero,
@@ -434,33 +454,58 @@ export class TrasladoService {
   /**
    * La actividad queda cumplida cuando el informe se traslada, no cuando se
    * genera: un borrador es trabajo interno y nadie lo ha recibido.
+   *
+   * Aprobación y firma (EFDS-1183, EFDS-2070) solo se preguntan en esa
+   * transición: si ya estaba decidida, anular y volver a trasladar es lo
+   * único que la reabre.
    */
-  private async marcarActividad(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+  private async marcarActividad(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     const informe = await this.informeEnJuego(procesoId, em);
     const trasladado = informe?.estado === 'TRASLADADO' || informe?.estado === 'CERRADO';
-    const estado = trasladado ? 'APROBADO' : 'BORRADOR';
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_TRASLADO },
     });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_TRASLADO,
-          estado: estado as any,
-          datos: {},
-          ...(trasladado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!trasladado) {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_TRASLADO,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = trasladado ? acceso.userName : null;
-    actividad.revisadoAt = trasladado ? new Date() : null;
-    await em.save(actividad);
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+
+    if (await this.cierre.exigeFirma(em, NUMERAL_TRASLADO)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_TRASLADO,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   protected async guardarDocumento(
@@ -525,6 +570,17 @@ export class TrasladoService {
    */
   protected hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  }
+
+  /**
+   * Si un término ya venció, real o saltado por el parámetro de pruebas.
+   *
+   * Sin fecha de vencimiento no hay término que dar por vencido: eso lo
+   * decide quien llama, no esta función.
+   */
+  protected estaVencido(venceEl: string | null): boolean {
+    if (!venceEl) return false;
+    return this.hoy() > venceEl || saltarPlazosDePrueba();
   }
 
   protected async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {

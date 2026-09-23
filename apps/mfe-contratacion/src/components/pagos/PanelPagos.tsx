@@ -12,7 +12,13 @@ import {
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DatosPago, EstadoPago, EstadoPagos, PagoContrato, TipoSoportePago } from '../../types';
+import {
+  DatosPago,
+  EstadoPago,
+  EstadoPagos,
+  PagoContrato,
+  TipoSoportePago,
+} from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -25,11 +31,15 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '9.4';
 
 const pesos = (valor: number | null) =>
   valor == null
@@ -86,6 +96,8 @@ const VACIO = {
  * historia quería quitar, y esconderla haría creer que el problema se resolvió.
  */
 export function PanelPagos({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Tramitar el pago');
   const [estado, setEstado] = useState<EstadoPagos | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,16 +183,34 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
     if (listo) limpiarSoporte();
   };
 
-  const avalar = (pagoId: string) => {
-    const observacion = window.prompt('Observación al avalar (opcional)')?.trim();
+  const avalar = async (pagoId: string) => {
+    // Cancelar ahora cancela. Con `window.prompt`, cerrar el cuadro devolvía
+    // `undefined` y la cuenta se avalaba igual, sin observación: el aval es de
+    // lo más comprometido que firma un supervisor como para dejarlo salir de
+    // un diálogo que alguien cerró para no contestarlo.
+    const observacion = await dialogo.pedirMotivo({
+      titulo: 'Avalar la cuenta de cobro',
+      descripcion: 'El aval habilita el trámite de pago en la Dirección Financiera.',
+      etiqueta: 'Observación al avalar',
+      opcional: true,
+      confirmar: 'Avalar la cuenta',
+    });
+    if (observacion === null) return;
+
     return ejecutar(
       () => contratacionService.avalarPago(procesoId, pagoId, observacion || undefined),
       'Cuenta avalada; queda el trámite de Financiera',
     );
   };
 
-  const devolver = (pagoId: string) => {
-    const motivo = window.prompt('¿Qué debe corregir el contratista?')?.trim();
+  const devolver = async (pagoId: string) => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Devolver la cuenta de cobro',
+      descripcion: 'Vuelve al contratista para que la corrija y la radique de nuevo.',
+      etiqueta: 'Qué debe corregir el contratista',
+      placeholder: 'Falta la planilla de seguridad social del mes…',
+      confirmar: 'Devolver la cuenta',
+    });
     if (!motivo) return;
     return ejecutar(
       () => contratacionService.devolverPago(procesoId, pagoId, motivo),
@@ -188,17 +218,38 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
     );
   };
 
-  const tramitar = (pagoId: string) => {
-    const referencia = window.prompt('¿Con qué referencia se tramitó el pago?')?.trim();
-    if (!referencia) return;
-    return ejecutar(
-      () => contratacionService.tramitarPago(procesoId, pagoId, referencia),
-      'Pago tramitado',
-    );
+  const tramitar = async (pagoId: string) => {
+    const datos = await dialogo.pedirDatos({
+      titulo: 'Registrar el trámite del pago',
+      descripcion: 'La referencia es lo que permite encontrar el pago en el sistema financiero.',
+      confirmar: 'Registrar el trámite',
+      campos: [
+        {
+          nombre: 'referencia',
+          etiqueta: 'Referencia con la que se tramitó',
+          multilinea: false,
+          placeholder: 'Número de orden de pago o comprobante',
+        },
+      ],
+    });
+    if (!datos) return;
+    const { referencia } = datos;
+    return firma.conFirma(async (firmaOtp) => {
+      await ejecutar(
+        () => contratacionService.tramitarPago(procesoId, pagoId, referencia, firmaOtp),
+        'Pago tramitado',
+      );
+    });
   };
 
-  const anular = (pagoId: string) => {
-    const motivo = window.prompt('¿Por qué se anula la cuenta de cobro?')?.trim();
+  const anular = async (pagoId: string) => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Anular la cuenta de cobro',
+      descripcion: 'La cuenta anulada se conserva en el expediente con su motivo.',
+      etiqueta: 'Motivo de la anulación',
+      confirmar: 'Anular la cuenta',
+      tono: 'peligro',
+    });
     if (!motivo) return;
     return ejecutar(
       () => contratacionService.anularPago(procesoId, pagoId, motivo),
@@ -404,6 +455,8 @@ export function PanelPagos({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }
