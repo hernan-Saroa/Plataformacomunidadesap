@@ -8,7 +8,6 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
-  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -155,13 +154,6 @@ export class EstudioPrevioController {
   @ApiOperation({ summary: 'Historial de aprobaciones, devoluciones y negativas' })
   revisiones(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.revisiones(id);
-  }
-
-  @Get('plantillas/:numeral')
-  @Puede('ver')
-  @ApiOperation({ summary: 'Formatos oficiales aplicables a la actividad' })
-  plantillas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
-    return this.service.plantillas(numeral, modalidad);
   }
 
   @Get(':id/expediente')

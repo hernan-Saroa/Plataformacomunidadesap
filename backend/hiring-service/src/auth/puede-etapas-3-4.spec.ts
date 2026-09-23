@@ -34,7 +34,6 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   ['estudio previo', EstudioPrevioController, 'aprobar', 'aprobar', '3.4'],
   ['estudio previo', EstudioPrevioController, 'devolver', 'aprobar', '3.4'],
   ['estudio previo', EstudioPrevioController, 'negar', 'aprobar', '3.4'],
-  ['estudio previo', EstudioPrevioController, 'plantillas', 'ver', undefined],
   ['estudio previo', EstudioPrevioController, 'adjuntar', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'retirarAdjunto', 'editar', '3.1'],
   ['estudio previo', EstudioPrevioController, 'reemplazarAdjunto', 'editar', '3.1'],

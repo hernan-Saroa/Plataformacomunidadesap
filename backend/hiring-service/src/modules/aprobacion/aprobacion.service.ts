@@ -8,8 +8,6 @@ import {
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { HiringAccess } from '../../auth/hiring-access';
-import { Documento } from '../../entities/documento.entity';
-import { Expediente } from '../../entities/expediente.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';

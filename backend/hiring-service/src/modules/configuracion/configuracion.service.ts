@@ -1011,39 +1011,6 @@ export class ConfiguracionService {
   }
 
   /**
-   * Mueve un formato de la biblioteca a otra actividad.
-   *
-   * Se sube una vez y se asigna donde corresponda: obligar a subir el mismo
-   * archivo en cada actividad multiplicaria copias del mismo documento y las
-   * dejaria desincronizadas cuando el SIG publique una version nueva.
-   *
-   * `numeral` vacio lo devuelve a la biblioteca sin actividad asignada.
-   */
-  async asignarPlantilla(
-    id: string,
-    numeral: string | null,
-    modalidades?: string[],
-  ) {
-    const repo = this.dataSource.getRepository(Plantilla);
-    const plantilla = await repo.findOne({ where: { id } });
-    if (!plantilla) throw new NotFoundException('El formato no existe');
-
-    if (numeral) {
-      const actividad = await this.dataSource.getRepository(Actividad).findOne({
-        where: { numeral },
-      });
-      if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
-    }
-
-    plantilla.numeral = numeral ?? '';
-    // Solo se tocan si vienen: asignar actividad y cambiar el alcance son dos
-    // gestos distintos, y mover un formato de actividad no debe borrar en
-    // silencio las modalidades que ya tenia marcadas.
-    if (modalidades) plantilla.modalidades = modalidades;
-    return repo.save(plantilla);
-  }
-
-  /**
    * Registra un formato con su archivo.
    *
    * Subir el mismo codigo con otra version no reemplaza al anterior: el SIG

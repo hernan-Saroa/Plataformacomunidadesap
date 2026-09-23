@@ -8,7 +8,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, FindOptionsWhere, In, Not } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
 import { createHash } from 'crypto';
 
 import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
@@ -23,7 +23,6 @@ import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
-import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
@@ -869,32 +868,6 @@ export class EstudioPrevioService implements OnModuleInit {
     if (actividad.estado === 'NEGADO') {
       throw new ConflictException('El proceso fue negado: no hay radicación que completar');
     }
-  }
-
-  // ------------------------------------------------------------ plantillas ---
-
-  /**
-   * Formatos oficiales aplicables a una actividad. Si se indica la modalidad
-   * se devuelve solo el que corresponde: el estudio previo tiene cuatro
-   * formatos distintos según cómo se contrate.
-   */
-  async plantillas(numeral: string, modalidad?: string) {
-    const todas = await this.dataSource.getRepository(Plantilla).find({
-      where: { numeral, activo: true },
-      order: { codigo: 'ASC' },
-    });
-
-    if (!modalidad) return todas;
-
-    // La misma regla que aplica el cliente: alcance vacío significa todas, y
-    // si el formato declara modalidades, la de este proceso tiene que estar.
-    // El antiguo «si ninguna casa se devuelven todas» existía porque la
-    // siembra escribía nombres donde el filtro esperaba códigos y nada casaba
-    // nunca; la migración 034 unificó la convención y el parche sobra — y
-    // ofrecería el pliego de licitación en una contratación directa.
-    return todas.filter(
-      (p) => p.modalidades.length === 0 || p.modalidades.includes(modalidad),
-    );
   }
 
   // ------------------------------------------------------------- revisión ---

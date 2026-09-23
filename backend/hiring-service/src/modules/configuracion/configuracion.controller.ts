@@ -24,7 +24,6 @@ import {
   ActualizarActividadDto,
   ActualizarCampoDto,
   AplicabilidadDto,
-  AsignarPlantillaDto,
   CrearCampoDto,
   EstadoPlantillaDto,
   GuardarAprobacionDto,
@@ -337,26 +336,6 @@ export class ConfiguracionController {
       id,
       dto,
       file ? `/files/${file.filename}` : undefined,
-    );
-  }
-
-  @Put('plantillas/:id/actividad')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.config.manage')
-  @ApiOperation({
-    summary: 'Asignar un formato de la biblioteca a una actividad',
-    description:
-      'El archivo se sube una vez a la biblioteca y se asigna donde corresponda: ' +
-      'subirlo en cada actividad multiplicaria copias del mismo documento.',
-  })
-  asignarPlantilla(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: AsignarPlantillaDto,
-  ) {
-    return this.service.asignarPlantilla(
-      id,
-      dto.numeral?.trim() || null,
-      dto.modalidades,
     );
   }
 

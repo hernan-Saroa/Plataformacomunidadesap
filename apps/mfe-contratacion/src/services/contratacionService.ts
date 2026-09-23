@@ -1495,19 +1495,6 @@ export const contratacionService = {
     pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`),
 
   /**
-   * Formatos del SIG aplicables a una actividad, filtrados por modalidad.
-   *
-   * Es la cara del gestor de la biblioteca: los administra Configuración por
-   * /configuracion/plantillas, y aquí solo se consultan para descargarlos.
-   */
-  plantillasDeActividad: (numeral: string, modalidad?: string) =>
-    pedir<PlantillaFormato[]>(
-      `/procesos/plantillas/${encodeURIComponent(numeral)}${
-        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
-      }`,
-    ),
-
-  /**
    * La lista de chequeo de una actividad: qué documentos pide y qué ya está
    * (EFDS-2066).
    *
