@@ -1,8 +1,9 @@
 import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
-  MatrizDeRoles,
-  MisPermisos,
+  AlcanceMio,
+  AlcanceVista,
+  RolConAlcance,
   CamposFaltantesError,
   EstadoAdendas,
   EstadoApertura,
@@ -2011,22 +2012,22 @@ export const contratacionService = {
   matriz: () => pedir<Matriz>('/configuracion/matriz'),
 
   /**
-   * La matriz rol x permiso del modulo (EFDS-1183).
+   * Lo que puede hacer quien mira, y dónde (migración 083).
    *
-   * Sale del codigo del backend y no de `auth.role_permissions`: lo que
-   * autoriza mientras el token no traiga los permisos es el mapa del modulo,
-   * asi que la tabla mostraria una configuracion que no esta en vigor.
+   * Son los mismos alcances que evalúa el guard, así que la pantalla no puede
+   * ofrecer algo que la API luego niegue.
    */
-  matrizDeRoles: () => pedir<MatrizDeRoles>('/configuracion/roles'),
+  alcanceMio: () => pedir<AlcanceMio>('/alcance/mio'),
 
-  /**
-   * Lo que puede hacer quien esta mirando la pantalla.
-   *
-   * Sirve para esconder lo que va a negarse en vez de ofrecerlo y responder
-   * 403 al pulsarlo. Es la misma funcion que evalua el guard, asi que la
-   * pantalla no puede prometer algo que el backend luego niegue.
-   */
-  misPermisos: () => pedir<MisPermisos>('/configuracion/mis-permisos'),
+  /** La matriz de permisos por etapa de todos los roles del módulo. */
+  alcanceRoles: () => pedir<RolConAlcance[]>('/alcance/roles'),
+
+  /** Reemplaza el alcance de un rol; el permiso de cada acción sigue en el backoffice. */
+  guardarAlcanceRol: (rolId: string, alcances: AlcanceVista[]) =>
+    pedir<RolConAlcance>(`/alcance/roles/${rolId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ alcances: alcances.map(({ accion, lugar }) => ({ accion, lugar })) }),
+    }),
 
   /** Lo que la actividad le pide al gestor. */
   campos: (numeral: string) =>

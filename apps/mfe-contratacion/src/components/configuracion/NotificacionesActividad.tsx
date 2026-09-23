@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { AvisoEvento, ConfiguracionAvisos, PapelAviso } from '../../types';
-import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { PERMISOS } from '../../auth/permisos';
+import { useAlcance } from '../../auth/alcance';
 import { campo } from '../shared/PiezasPanel';
 
 interface Props {
@@ -43,7 +44,8 @@ export function NotificacionesActividad({ numeral }: Props) {
   const [guardando, setGuardando] = useState<string | null>(null);
   /** El aviso que alguien quiso encender sin destinatario: se enciende al elegir el primero. */
   const [porEncender, setPorEncender] = useState<string | null>(null);
-  const puedeEditar = tienePermiso(PERMISOS.configurar);
+  const { tiene } = useAlcance();
+  const puedeEditar = tiene(PERMISOS.configurar);
 
   useEffect(() => {
     setDatos(null);

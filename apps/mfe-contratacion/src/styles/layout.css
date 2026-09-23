@@ -518,3 +518,19 @@
   border: 0;
   background: rgb(248 250 252);
 }
+
+/* ------------------------------------------- permisos por etapa (083) --- */
+
+/* Los roles a la izquierda y la matriz del elegido a la derecha; apilados en
+   pantallas angostas. */
+.permisos-etapa {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+@media (min-width: 1024px) {
+  .permisos-etapa {
+    grid-template-columns: 16rem minmax(0, 1fr);
+  }
+}

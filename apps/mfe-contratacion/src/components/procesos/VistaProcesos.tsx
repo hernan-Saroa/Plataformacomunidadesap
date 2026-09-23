@@ -25,7 +25,7 @@ import { Modalidad, ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 import { PaginationPremium } from '../shared/PaginationPremium';
-import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { useAlcance } from '../../auth/alcance';
 import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
 
@@ -124,8 +124,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
     () => (localStorage.getItem('contratacion:vista') as 'lista' | 'tablero') || 'lista',
   );
 
-  /** Radicar es de quien radica: el resto solo consulta el listado. */
-  const puedeCrear = tienePermiso(PERMISOS.procesoCrear);
+  /** Radicar es empezar el estudio previo: quien edita la 3.1. El resto consulta. */
+  const { puede } = useAlcance();
+  const puedeCrear = puede('editar', '3.1');
 
   const cambiarVista = (nueva: 'lista' | 'tablero') => {
     setVista(nueva);

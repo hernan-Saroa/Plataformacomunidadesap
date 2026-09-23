@@ -64,7 +64,7 @@ import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
 import { PanelCausal } from '../causal/PanelCausal';
 import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
-import { PERMISOS, tieneAlguno, tienePermiso } from '../../auth/permisos';
+import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -102,8 +102,8 @@ const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 /**
  * Las etapas en las que interviene la Dirección Financiera.
  *
- * Son las cuatro donde se mueve el presupuesto de la entidad, que es lo que
- * `contratacion.presupuesto.gestionar` habilita: el CDP (4), el registro
+ * Son las cuatro donde se mueve el presupuesto de la entidad y donde la siembra
+ * de la 083 le da alcance: el CDP (4), el registro
  * presupuestal (8.3), el trámite del pago avalado (9.4) y el cierre financiero
  * (10.3). La 8 entra aunque casi todo lo suyo sea del gestor —la 8.3 es de la
  * Financiera y esconderla le quitaría el RP—.
@@ -534,12 +534,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    *
    * Se decide por lo que *no* tiene, igual que la sección de entrada: alguien
    * que además diligencie procesos ve las diez, porque entonces las diez son su
-   * trabajo. Y `tienePermiso` responde que sí ante una sesión incompleta, así
-   * que la duda cae del lado de enseñarlo todo.
+   * trabajo. Mientras el alcance no llega responde que no, así que la duda cae
+   * del lado de enseñarlo todo.
    */
-  const soloPresupuesto =
-    tienePermiso(PERMISOS.presupuestoGestionar) &&
-    !tieneAlguno(PERMISOS.actividadEditar, PERMISOS.procesoCrear, PERMISOS.actividadAprobar);
+  const { puede } = useAlcance();
+  const soloPresupuesto = esSoloPresupuesto(puede);
   /**
    * Y puede pedir el proceso entero.
    *

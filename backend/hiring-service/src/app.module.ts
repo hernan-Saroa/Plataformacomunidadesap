@@ -48,6 +48,7 @@ import { AprobacionModule } from './modules/aprobacion/aprobacion.module';
 import { DocumentosActividadModule } from './modules/documentos-actividad/documentos-actividad.module';
 import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
 import { AuthModule } from './auth/auth.module';
+import { AlcanceModule } from './modules/alcance/alcance.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 import { Proceso } from './entities/proceso.entity';
@@ -155,6 +156,7 @@ import {
       }),
     }),
     AuthModule,
+    AlcanceModule,
     HiringModule,
     EstudioPrevioModule,
     UmbralesModule,

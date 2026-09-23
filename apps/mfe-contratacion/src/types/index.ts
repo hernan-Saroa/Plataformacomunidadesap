@@ -3202,72 +3202,36 @@ export interface ExpedienteAuditoria {
   }[];
 }
 
-// ------------------------ matriz de roles y permisos (EFDS-1183) ----------
+// ------------------------------------- permisos por etapa, punto y acción (083)
 
-/** Una de las diez columnas de permiso del formato de roles. */
-export type ColumnaDelFormato =
-  | 'Radicar'
-  | 'Editar'
-  | 'Adjuntar'
-  | 'Visualizar todos los procesos'
-  | 'Asignar / Reasignar'
-  | 'Aprobar'
-  | 'Archivar'
-  | 'Borrar'
-  | 'Generar informes'
-  | 'Configurar';
+/** Lo que se puede hacer en un lugar del proceso. */
+export type AccionAlcance = 'ver' | 'editar' | 'aprobar' | 'decidir';
 
-/** Una columna de la rejilla: lo que se puede hacer. */
-export interface PermisoDelCatalogo {
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  /** El segmento central del código; agrupa la rejilla. */
-  recurso: string;
-  /** La columna de la Hoja1 que realiza, o `null` si el formato no la tenía. */
-  columna: ColumnaDelFormato | null;
+/** Una acción en un lugar: 'TODO', una etapa ('E3'), un punto ('7.2') o un trámite ('INC.1'). */
+export interface AlcanceVista {
+  accion: AccionAlcance;
+  lugar: string;
+  /** Si lo decidió una persona o viene de la siembra sin ratificar. */
+  confirmado?: boolean;
 }
 
-/** Una fila de la rejilla: quién puede hacerlo. */
-export interface RolDelCatalogo {
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  /** Quién lo ejerce en la ESAP, según la Hoja2 del formato. */
-  quienLoEjerce: string;
-  procedencia: 'INTERNA' | 'EXTERNA';
-  /** Si la fila sale del anexo o la fijaron las historias del módulo. */
-  origen: 'FORMATO' | 'MODULO';
-  /** Lo que el rol hace y la rejilla todavía no puede mostrar. */
-  nota?: string;
-  permisos: string[];
-}
-
-/** Una combinación de roles que se entrega armada (EFDS-1183). */
-export interface PerfilPorDefecto {
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  quienLoEjerce: string;
-  roles: string[];
-}
-
-export interface MatrizDeRoles {
-  /** Si la Dirección de Contratación ya la ratificó. */
-  confirmada: boolean;
-  /** Los cuatro que responden «¿qué le pongo a esta persona?». */
-  perfiles?: PerfilPorDefecto[];
-  permisos: PermisoDelCatalogo[];
-  roles: RolDelCatalogo[];
-  /** Los que lo otorgan todo sin ser del módulo. */
+/** Lo que puede hacer quien está mirando la pantalla, y dónde. */
+export interface AlcanceMio {
+  alcances: AlcanceVista[];
+  /** Los permisos que no son de ninguna etapa: configurar, informes, ver todos… */
   transversales: string[];
 }
 
-/** Lo que puede hacer quien está mirando la pantalla. */
-export interface MisPermisos {
-  roles: string[];
-  rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
-  permisos: string[];
+/** Un rol en la matriz de permisos por etapa. */
+export interface RolConAlcance {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  /** Las acciones cuyo permiso le dio el backoffice de roles. */
+  acciones: AccionAlcance[];
+  transversales: string[];
+  alcances: AlcanceVista[];
 }
 
 // ------------------------------------------ los plazos de las alertas (EFDS-1183)

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   BellRing,
@@ -33,7 +33,8 @@ import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
-import { PERMISOS, tieneAlguno, tienePermiso } from '../auth/permisos';
+import { PERMISOS } from '../auth/permisos';
+import { esSoloPresupuesto, useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
@@ -78,25 +79,39 @@ const SECCIONES_DE_CONFIGURACION: Seccion[] = [
  *
  * Se decide por lo que *no* tiene, y no por el rol: alguien que gestione
  * presupuesto y además diligencie procesos sigue entrando por «Procesos»,
- * porque entonces la lista sí es su trabajo. Y `tienePermiso` responde que sí
- * ante una sesión incompleta, así que la duda cae del lado de siempre.
+ * porque entonces la lista sí es su trabajo. La regla vive en `esSoloPresupuesto`,
+ * que responde que no mientras el alcance no ha llegado: ante la duda se entra
+ * por «Procesos», como siempre.
  */
 function seccionDeEntrada(): Seccion {
-  const soloPresupuesto =
-    tienePermiso(PERMISOS.presupuestoGestionar) &&
-    !tieneAlguno(PERMISOS.actividadEditar, PERMISOS.procesoCrear, PERMISOS.actividadAprobar);
-
-  return soloPresupuesto ? 'bandeja-cdp' : 'estudios-previos';
+  return esSoloPresupuesto() ? 'bandeja-cdp' : 'estudios-previos';
 }
 
 export default function ContratacionModulePremium() {
   // Solo el valor inicial: a partir de ahí manda el menú, y recalcularlo en
   // cada render devolvería al usuario a la bandeja cada vez que algo refresca.
-  const [seccion, setSeccion] = useState<Seccion>(seccionDeEntrada);
+  const [seccion, setSeccionElegida] = useState<Seccion>(seccionDeEntrada);
+  const { cargado, puede, tiene } = useAlcance();
+
+  /**
+   * La sección de entrada se decide otra vez cuando llega el alcance.
+   *
+   * Al montar todavía no se sabe qué puede hacer quien entra —el alcance viene
+   * del servicio— y sin esto la Financiera nunca aterrizaría en su bandeja. Solo
+   * si no ha navegado: sacarlo de donde ya eligió ir sería peor que el clic.
+   */
+  const navego = useRef(false);
+  const setSeccion = (nueva: Seccion) => {
+    navego.current = true;
+    setSeccionElegida(nueva);
+  };
+  useEffect(() => {
+    if (cargado && !navego.current) setSeccionElegida(seccionDeEntrada());
+  }, [cargado]);
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
-  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
+  const puedeConfigurar = tiene(PERMISOS.configurar);
   /**
    * Quien mueve el presupuesto de la entidad: la Dirección Financiera.
    *
@@ -104,18 +119,13 @@ export default function ContratacionModulePremium() {
    * CDP que esperan—, así que tiene sección propia. Nadie más la ve: para el
    * resto no hay nada que recoger en ella.
    */
-  const gestionaPresupuesto = tienePermiso(PERMISOS.presupuestoGestionar);
-  const puedeVerReportes = tienePermiso(PERMISOS.reporteVer);
+  const gestionaPresupuesto = puede('editar', '4.2');
+  const puedeVerReportes = tiene(PERMISOS.reporteVer);
   /*
-   * El expediente lo consulta quien lo audita, no cualquiera con acceso al
-   * módulo: reúne todo lo que se cargó en el proceso. Basta uno de los dos
-   * permisos —verlo o auditarlo— porque el Archivo de Gestión tiene el
-   * segundo sin el primero.
+   * El expediente lo consulta quien ve alguna parte del proceso: el servicio
+   * le enseña de cada expediente lo que su alcance cubre.
    */
-  const puedeVerExpedientes = tieneAlguno(
-    PERMISOS.expedienteVer,
-    PERMISOS.expedienteAuditar,
-  );
+  const puedeVerExpedientes = puede('ver');
 
   const grupos: MenuGroup[] = [
     {
@@ -144,7 +154,7 @@ export default function ContratacionModulePremium() {
            el gestor tenía «ver alertas de vencimiento» y aun así nunca veía la
            entrada, aunque ahí es donde le llegan sus aprobaciones pendientes.
            Va con el trabajo diario y se rige por su propio permiso. */
-        ...(!tienePermiso(PERMISOS.alertaVer)
+        ...(!puede('ver')
           ? []
           : [
               {
@@ -268,7 +278,7 @@ export default function ContratacionModulePremium() {
     // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
     // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
     // seguiría dentro de ella.
-    if (seccion === 'alertas' && !tienePermiso(PERMISOS.alertaVer)) {
+    if (seccion === 'alertas' && !puede('ver')) {
       return (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
           <p className="text-[13px] font-bold text-slate-700 m-0">No tienes acceso a las alertas</p>

@@ -15,7 +15,6 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
-import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { FirmaOtpModal } from '../shared/FirmaOtpModal';
 
@@ -324,7 +323,7 @@ export function PanelRegistroActividad({
             /* Consultar el registro es de todos; rehacerlo, de quien lo
                trabaja. Sin `quien`: el bloque de arriba ya dice qué se
                registró y quién, así que un aviso más sobraría. */
-            <Permitido permiso={PERMISOS.actividadEditar}>
+            <Permitido accion="editar" punto={numeral}>
               {/* Devuelta, corregir es la acción principal y no una salida de
                   emergencia: se la pidió quien la revisa. «Anular» describía
                   deshacer un error propio, que es otra cosa. */}
@@ -409,7 +408,7 @@ export function PanelRegistroActividad({
               aprobacion una actividad vacia, y las dos formas de cerrarla se
               ignoraban entre si. A la derecha porque es donde termina la
               lectura del formulario. */}
-          <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+          <Permitido accion="editar" punto={numeral} quien="el gestor de contratación">
             <div className="flex justify-end gap-2">
               {/* Salida sin guardar: quien entró a corregir y se arrepiente
                   volvería a ver el formulario vacío si no puede retroceder. */}
