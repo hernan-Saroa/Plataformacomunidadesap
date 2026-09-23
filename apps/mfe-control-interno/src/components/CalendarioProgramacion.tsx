@@ -339,7 +339,9 @@ function Mes({
 }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
   const finMes = fechaYMD(new Date(vigencia, mes + 1, 0));
-  const filas = semanas.filter((s) => s.lunes <= finMes && s.domingo >= inicioMes);
+  // Cada semana se muestra en un solo mes (el de su jueves, como en el Excel):
+  // si salía en los dos, marcarla desde el mes siguiente corría la fecha al anterior.
+  const filas = semanas.filter((s) => s.mes === mes);
   const hoy = fechaYMD(new Date());
   const enArrastre = (n: number) =>
     !!arrastre && n >= Math.min(arrastre.desde, arrastre.hasta) && n <= Math.max(arrastre.desde, arrastre.hasta);
@@ -410,7 +412,8 @@ function Mes({
               {DIAS.map((_, i) => {
                 const fecha = sumarDias(parseYMD(semana.lunes), i);
                 const ymd = fechaYMD(fecha);
-                if (ymd < inicioMes || ymd > finMes) return <td key={i} />;
+                // Los días del mes vecino se ven en gris, como en cualquier calendario
+                const deOtroMes = ymd < inicioMes || ymd > finMes;
                 const festivo = semana.festivos.find((f) => f.fecha === ymd);
                 const esExtremo = valor === ymd;
                 // Días de la semana que quedan fuera por un corte a mitad de semana
@@ -428,7 +431,7 @@ function Mes({
                       onClick={(e) => { e.stopPropagation(); if (clickeable) onClicDia(semana, ymd); }}
                       style={festivo ? { backgroundColor: ROJO_FESTIVO } : undefined}
                       className={`inline-flex h-5 w-5 items-center justify-center rounded ${
-                        festivo ? 'font-bold text-white' : i === 6 ? 'text-gray-400' : ''
+                        festivo ? 'font-bold text-white' : deOtroMes ? 'text-gray-300' : i === 6 ? 'text-gray-400' : ''
                       } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''} ${fueraDelCorte ? 'opacity-30' : ''} ${clickeable ? 'cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
                     >
                       {fecha.getDate()}
