@@ -142,10 +142,24 @@ export function CampoFechaCalendario({
     [programadasVista],
   );
   const [eligiendoAño, setEligiendoAño] = useState(false);
+  const cajaAño = useRef<HTMLDivElement>(null);
+  const añoActivo = useRef<HTMLButtonElement>(null);
   const añosDisponibles = useMemo(
     () => [...añosDelCalendario].filter((a) => semanas.filter((s) => s.año === a).length > 10).sort(),
     [añosDelCalendario, semanas],
   );
+  // La lista es larga, así que se abre mostrando el año en el que se está
+  // y se cierra al pulsar fuera de ella.
+  useEffect(() => {
+    if (!eligiendoAño) return;
+    añoActivo.current?.scrollIntoView({ block: 'center' });
+    const fuera = (e: MouseEvent) => {
+      if (!cajaAño.current?.contains(e.target as Node)) setEligiendoAño(false);
+    };
+    document.addEventListener('mousedown', fuera);
+    return () => document.removeEventListener('mousedown', fuera);
+  }, [eligiendoAño]);
+  useEffect(() => { if (!abierto) setEligiendoAño(false); }, [abierto]);
   const irAlMes = (paso: number) => {
     setMes((m) => {
       const siguiente = m + paso;
@@ -323,11 +337,13 @@ export function CampoFechaCalendario({
       </PopoverTrigger>
 
       {/* Ancho y z en estilo: las clases arbitrarias de Tailwind no se generan en
-          este microfrontend, y el modal del formulario va en z-[9999] */}
+          este microfrontend, y el modal del formulario va en z-[9999]. En
+          pantallas angostas el calendario se ajusta al ancho de la ventana. */}
       <PopoverContent
         className="border-gray-200 bg-white p-3 shadow-xl"
-        style={{ width: '21rem', zIndex: 10000 }}
+        style={{ width: 'min(21rem, calc(100vw - 1.5rem))', maxWidth: '21rem', zIndex: 10000 }}
         align="start"
+        collisionPadding={12}
       >
         <div className="mb-1 flex items-center justify-between">
           <button
@@ -338,30 +354,42 @@ export function CampoFechaCalendario({
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div className="relative">
+          <div className="relative" ref={cajaAño}>
             <button
               type="button"
               onClick={() => setEligiendoAño((v) => !v)}
               title="Cambiar de año"
+              aria-expanded={eligiendoAño}
               className={`inline-flex items-center gap-1 rounded px-1 text-sm font-bold hover:bg-gray-100 ${esVigencia ? 'text-gray-900' : 'text-[#1e5da8]'}`}
             >
               {MESES[mes]} {añoVista}
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${eligiendoAño ? 'rotate-180' : ''}`} />
             </button>
             {eligiendoAño && (
-              <div className="absolute left-1/2 top-full z-10 mt-1 max-h-44 -translate-x-1/2 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg">
-                {añosDisponibles.map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    onClick={() => { setAñoVista(a); setEligiendoAño(false); }}
-                    className={`block w-full px-4 py-1 text-sm hover:bg-blue-50 ${
-                      a === añoVista ? 'bg-[#1e5da8] font-bold text-white hover:bg-[#1e5da8]' : 'text-gray-700'
-                    }`}
-                  >
-                    {a}{a === vigencia ? ' ·' : ''}
-                  </button>
-                ))}
+              <div
+                className="absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 rounded-md border border-gray-200 bg-white p-1.5 shadow-lg"
+                style={{ width: '11.5rem' }}
+              >
+                <div className="grid max-h-40 grid-cols-3 gap-1 overflow-y-auto">
+                  {añosDisponibles.map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      ref={a === añoVista ? añoActivo : undefined}
+                      title={a === vigencia ? `Vigencia de la auditoría` : `Ir a ${a}`}
+                      onClick={() => { setAñoVista(a); setEligiendoAño(false); }}
+                      className={`rounded py-1 text-xs font-semibold transition-colors ${
+                        a === añoVista
+                          ? 'bg-[#1e5da8] text-white'
+                          : a === vigencia
+                            ? 'border border-[#1e5da8] text-[#1e5da8] hover:bg-blue-50'
+                            : 'text-gray-700 hover:bg-blue-50'
+                      }`}
+                    >
+                      {a}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

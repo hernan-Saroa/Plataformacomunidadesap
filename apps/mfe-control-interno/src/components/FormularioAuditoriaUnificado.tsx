@@ -2859,8 +2859,8 @@ function Paso4Programacion({
         validando={validandoDisponibilidadEquipo}
       />
 
-      <Card className="p-6 border-2 border-blue-200 bg-blue-50/30">
-        <div className="flex items-center gap-3 mb-4">
+      <Card className="p-4 sm:p-6 border-2 border-blue-200 bg-blue-50/30">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Planeación 1</h4>
@@ -2910,8 +2910,8 @@ function Paso4Programacion({
       </Card>
 
       {/* ETAPA 2: EJECUCIÓN - Se habilita al completar Planeación */}
-      <Card className={`p-6 border-2 ${planeacionHabilitada ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
-        <div className="flex items-center gap-3 mb-4">
+      <Card className={`p-4 sm:p-6 border-2 ${planeacionHabilitada ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className={`w-8 h-8 rounded-full ${planeacionHabilitada ? 'bg-amber-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>2</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Ejecución</h4>
@@ -2969,8 +2969,8 @@ function Paso4Programacion({
       </Card>
 
       {/* ETAPA 3: COMUNICACIÓN - Se habilita al completar Ejecución */}
-      <Card className={`p-6 border-2 ${ejecucionHabilitada ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
-        <div className="flex items-center gap-3 mb-4">
+      <Card className={`p-4 sm:p-6 border-2 ${ejecucionHabilitada ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className={`w-8 h-8 rounded-full ${ejecucionHabilitada ? 'bg-green-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>3</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Comunicación</h4>
