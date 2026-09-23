@@ -1,240 +1,80 @@
 import {
-  PERMISO_ACTA_INICIO_SUSCRIBIR,
-  PERMISO_INCUMPLIMIENTO_DECIDIR,
-  PERMISO_INCUMPLIMIENTO_REPORTAR,
-  PERMISO_INCUMPLIMIENTO_TRAMITAR,
-  PERMISO_INCUMPLIMIENTO_VER,
-  PERMISO_SUPERVISION_REASIGNAR,
+  PERMISOS_TRANSVERSALES,
+  PERMISO_CONFIG_ADMINISTRAR,
+  PERMISO_PLAZO_TERMINAR,
+  PERMISO_PROCESO_ASIGNAR,
+  PERMISO_PROCESO_VER_TODOS,
+  PERMISO_REPORTE_VER,
+  ROLES_QUE_OTORGAN,
   permisosDelUsuario,
   tienePermiso,
 } from './permisos';
 
 /**
- * Los permisos son del código y los roles son datos.
+ * Los cinco permisos transversales (migración 083).
  *
- * El administrador crea y renombra roles desde la plataforma, así que el módulo
- * pregunta por permisos. Mientras el token no los traiga, se deducen de los
- * roles en un único mapa; estas pruebas fijan que el día que lleguen se usen
- * ellos y el mapa deje de importar.
+ * Todo lo que es de una etapa se autoriza por acción y alcance; lo que queda
+ * con código propio es lo que no es de ninguna: ver todos los procesos,
+ * repartirlos, configurar, los informes y la llave de pruebas de los plazos.
  */
 describe('permisosDelUsuario', () => {
   it('usa los permisos del token cuando vienen', () => {
-    const permisos = permisosDelUsuario({
-      permissions: ['contratacion.acta-inicio.suscribir'],
-      roles: [],
-    });
-
-    expect(permisos).toEqual(['contratacion.acta-inicio.suscribir']);
+    expect(permisosDelUsuario({ permissions: [PERMISO_REPORTE_VER], roles: [] })).toEqual([
+      PERMISO_REPORTE_VER,
+    ]);
   });
 
   it('el token manda sobre los roles', () => {
-    // Un rol que hoy otorga el permiso no debe añadirlo si el token ya dijo
-    // qué tiene el usuario: la fuente pasa a ser la configuración real.
+    // Un rol que hoy otorga el permiso no lo añade si el token ya dijo qué
+    // tiene el usuario.
     const permisos = permisosDelUsuario({
-      permissions: ['contratacion.seguimiento.ver'],
-      roles: ['ORDENADOR_GASTO'],
+      permissions: [PERMISO_REPORTE_VER],
+      roles: ['DIRECTOR_CONTRATACION'],
     });
 
-    expect(permisos).not.toContain(PERMISO_SUPERVISION_REASIGNAR);
+    expect(permisos).not.toContain(PERMISO_PROCESO_ASIGNAR);
   });
 
   it('cae a los roles mientras el token no los traiga', () => {
-    const permisos = permisosDelUsuario({ roles: ['ORDENADOR_GASTO'] });
+    const permisos = permisosDelUsuario({ roles: ['DIRECTOR_CONTRATACION'] });
 
-    expect(permisos).toContain(PERMISO_SUPERVISION_REASIGNAR);
-    expect(permisos).toContain(PERMISO_ACTA_INICIO_SUSCRIBIR);
-  });
-
-  it('reconoce los roles vengan como objetos o en minúscula', () => {
-    // El token los ha traído de las dos formas según el servicio que lo emita.
-    expect(permisosDelUsuario({ roles: [{ code: 'ordenador_gasto' }] })).toContain(
-      PERMISO_SUPERVISION_REASIGNAR,
+    expect(permisos).toEqual(
+      expect.arrayContaining([PERMISO_PROCESO_VER_TODOS, PERMISO_PROCESO_ASIGNAR, PERMISO_CONFIG_ADMINISTRAR]),
     );
   });
 
-  it('un rol sin ese permiso no lo obtiene', () => {
-    // El revisor consulta el seguimiento, pero no reasigna la supervisión.
-    const permisos = permisosDelUsuario({ roles: ['REVISOR_CONTRATACION'] });
-
-    expect(permisos).toContain('contratacion.seguimiento.ver');
-    expect(permisos).not.toContain(PERMISO_SUPERVISION_REASIGNAR);
+  it('reconoce los roles vengan como objetos o en minúscula', () => {
+    expect(permisosDelUsuario({ roles: [{ code: 'director_contratacion' }] })).toContain(
+      PERMISO_PROCESO_ASIGNAR,
+    );
   });
 
   it('sin roles ni permisos no hay nada', () => {
     expect(permisosDelUsuario({})).toEqual([]);
-    expect(permisosDelUsuario(null)).toEqual([]);
   });
 });
 
-describe('tienePermiso', () => {
-  it('responde por un permiso concreto', () => {
-    const ordenador = { roles: ['ORDENADOR_GASTO'] };
-
-    expect(tienePermiso(ordenador, PERMISO_SUPERVISION_REASIGNAR)).toBe(true);
-    expect(tienePermiso(ordenador, 'contratacion.seguimiento.cargar')).toBe(false);
-  });
-});
-
-/**
- * RF-INC-01 le encarga el reporte al supervisor, y estas pruebas fijan que sea
- * él y nadie más quien lo tenga: es la lista más estrecha del bloque, porque
- * quien vigila la ejecución día a día es el único en condiciones de afirmar
- * que algo se incumplió.
- */
-describe('permisos del presunto incumplimiento', () => {
-  it('el supervisor puede reportar', () => {
-    expect(tienePermiso({ roles: ['SUPERVISOR_CONTRATO'] }, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(
-      true,
-    );
+describe('el respaldo en código', () => {
+  it('solo cubre los transversales', () => {
+    // Los permisos de acción no tienen respaldo a propósito: su alcance vive en
+    // la base, y un rol creado desde el backoffice tiene que funcionar sin que
+    // el código lo nombre.
+    expect(Object.keys(ROLES_QUE_OTORGAN).sort()).toEqual([...PERMISOS_TRANSVERSALES].sort());
   });
 
-  it('el gestor de contratación no reporta, aunque lleve el expediente', () => {
-    // Lleva el expediente pero no vigila la obra: no ha visto el hecho.
-    const gestor = { roles: ['GESTOR_CONTRATACION'] };
-
-    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(false);
-    // Consultarlo sí, que es lo que necesita para tramitarlo.
-    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+  it('ver todos los procesos es una sola X: la del Jefe de Oficina (068)', () => {
+    expect(tienePermiso({ roles: ['REVISOR_CONTRATACION'] }, PERMISO_PROCESO_VER_TODOS)).toBe(false);
+    expect(tienePermiso({ roles: ['DIRECTOR_CONTRATACION'] }, PERMISO_PROCESO_VER_TODOS)).toBe(true);
   });
 
-  it('el ordenador del gasto tampoco reporta', () => {
-    // Designa al supervisor, pero no hace la vigilancia él mismo.
-    expect(tienePermiso({ roles: ['ORDENADOR_GASTO'] }, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(
-      false,
-    );
+  it('el administrador configura e informa sin repartir', () => {
+    const admin = { roles: ['ADMINISTRADOR_CONTRATACION'] };
+    expect(tienePermiso(admin, PERMISO_CONFIG_ADMINISTRAR)).toBe(true);
+    expect(tienePermiso(admin, PERMISO_REPORTE_VER)).toBe(true);
+    expect(tienePermiso(admin, PERMISO_PROCESO_ASIGNAR)).toBe(false);
   });
 
-  it('el revisor consulta pero no reporta', () => {
-    const revisor = { roles: ['REVISOR_CONTRATACION'] };
-
-    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
-    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(false);
-  });
-});
-
-/**
- * RF-INC-02 encarga el trámite al área jurídica, y estas pruebas fijan la
- * separación que la migración 651 explica: instruir y decidir no son la misma
- * competencia. Reunirlas le daría a quien lleva el trámite la facultad de
- * sancionar, y el debido proceso que pide la historia es justamente que no
- * ocurra.
- */
-describe('permisos del trámite sancionatorio', () => {
-  it('el gestor de contratación instruye pero no decide', () => {
-    // Es el «abogado / profesional» de la matriz de roles: proyecta los actos
-    // administrativos del proceso. Proyectarlos no es firmarlos.
-    const gestor = { roles: ['GESTOR_CONTRATACION'] };
-
-    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(true);
-    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
-  });
-
-  it('el ordenador del gasto decide pero no instruye', () => {
-    // Declarar el incumplimiento o la caducidad compromete a la entidad frente
-    // al contratista, como el acto de adjudicación; citar audiencias no.
-    const ordenador = { roles: ['ORDENADOR_GASTO'] };
-
-    expect(tienePermiso(ordenador, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(true);
-    expect(tienePermiso(ordenador, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(false);
-  });
-
-  it('el director de contratación hace las dos cosas', () => {
-    const director = { roles: ['DIRECTOR_CONTRATACION'] };
-
-    expect(tienePermiso(director, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(true);
-    expect(tienePermiso(director, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(true);
-  });
-
-  it('el supervisor reporta y consulta, pero no tramita ni decide', () => {
-    // Constata el hecho; lo que sigue es del área jurídica, y que sea él quien
-    // lo vio no lo pone en condiciones de resolverlo.
-    const supervisor = { roles: ['SUPERVISOR_CONTRATO'] };
-
-    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(true);
-    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
-    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(false);
-    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
-  });
-
-  it('el revisor consulta y nada más', () => {
-    const revisor = { roles: ['REVISOR_CONTRATACION'] };
-
-    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
-    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(false);
-    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
-  });
-});
-
-/**
- * Criterios de EFDS-1183: el rol habilita únicamente los permisos que le
- * corresponden, y una acción no permitida se bloquea.
- */
-describe('catálogo por perfil (EFDS-1183)', () => {
-  it('el gestor diligencia pero no aprueba', () => {
-    const permisos = permisosDelUsuario({ roles: ['GESTOR_CONTRATACION'] });
-
-    expect(permisos).toContain('contratacion.actividad.edit');
-    expect(permisos).toContain('contratacion.actividad.send');
-    expect(permisos).not.toContain('contratacion.actividad.approve');
-  });
-
-  it('el revisor aprueba pero no diligencia', () => {
-    const permisos = permisosDelUsuario({ roles: ['REVISOR_CONTRATACION'] });
-
-    expect(permisos).toContain('contratacion.actividad.approve');
-    expect(permisos).not.toContain('contratacion.actividad.edit');
-  });
-
-  it('configurar etapas es de la Dirección, no del gestor', () => {
-    expect(tienePermiso({ roles: ['DIRECTOR_CONTRATACION'] }, 'contratacion.config.manage')).toBe(true);
-    expect(tienePermiso({ roles: ['GESTOR_CONTRATACION'] }, 'contratacion.config.manage')).toBe(false);
-  });
-
-  it('borrar procesos no lo otorga ningún rol operativo', () => {
-    for (const rol of ['GESTOR_CONTRATACION', 'REVISOR_CONTRATACION', 'DIRECTOR_CONTRATACION']) {
-      expect(tienePermiso({ roles: [rol] }, 'contratacion.proceso.delete')).toBe(false);
-    }
-  });
-
-  it('los permisos del token mandan sobre el mapa de roles', () => {
-    // Cuando auth-service los incluya, el rol deja de importar aquí.
-    const usuario = { roles: ['GESTOR_CONTRATACION'], permissions: ['contratacion.actividad.approve'] };
-
-    expect(tienePermiso(usuario, 'contratacion.actividad.approve')).toBe(true);
-    expect(tienePermiso(usuario, 'contratacion.actividad.edit')).toBe(false);
-  });
-});
-
-/**
- * Migración 072: la Financiera podía escribir las cuatro actividades del CDP y
- * no podía leer el proceso al que se las escribía.
- */
-describe('la Financiera lee el proceso que certifica (072)', () => {
-  const financiera = { roles: ['ESTRUCTURADOR_FINANCIERO'] };
-
-  it('puede consultar el proceso, que es lo que el panel de la 4.1 necesita', () => {
-    // El panel pide a la vez el estado del CDP y quién lleva la solicitud; el
-    // segundo exige `proceso.view` y sin él se caía el panel entero.
-    expect(tienePermiso(financiera, 'contratacion.proceso.view')).toBe(true);
-    expect(tienePermiso(financiera, 'contratacion.presupuesto.gestionar')).toBe(true);
-  });
-
-  it('sigue sin poder diligenciar el trámite que le pide el gasto', () => {
-    for (const permiso of [
-      'contratacion.actividad.edit',
-      'contratacion.actividad.send',
-      'contratacion.actividad.approve',
-      'contratacion.documento.upload',
-      'contratacion.proceso.edit',
-    ]) {
-      expect(tienePermiso(financiera, permiso)).toBe(false);
-    }
-  });
-
-  it('leer los suyos no es ver los de toda la entidad', () => {
-    // `view-all` es la única X del Jefe de Oficina (068): la Financiera llega a
-    // sus procesos por la bandeja de solicitudes sin atender, no por el permiso.
-    expect(tienePermiso(financiera, 'contratacion.proceso.view-all')).toBe(false);
-    expect(tienePermiso(financiera, 'contratacion.proceso.take')).toBe(false);
+  it('terminar un plazo es solo del superadministrador', () => {
+    expect(ROLES_QUE_OTORGAN[PERMISO_PLAZO_TERMINAR]).toEqual(['SUPER_ADMIN']);
   });
 });

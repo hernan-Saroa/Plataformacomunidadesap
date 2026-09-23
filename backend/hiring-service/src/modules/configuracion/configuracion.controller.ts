@@ -8,7 +8,6 @@ import {
   Post,
   Put,
   Query,
-  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -21,7 +20,6 @@ import { extname } from 'path';
 
 import { ConfiguracionService } from './configuracion.service';
 import { RolesGuard } from '../../auth/roles.guard';
-import { loQuePuedeHacer, matrizDeRoles } from '../../auth/matriz-roles';
 import {
   ActualizarActividadDto,
   ActualizarCampoDto,
@@ -36,6 +34,7 @@ import {
 } from './dto/configuracion.dto';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
 
@@ -82,16 +81,14 @@ export class ConfiguracionController {
   constructor(private readonly service: ConfiguracionService) {}
 
   @Get('actividades')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Las 63 actividades de la matriz, agrupadas por etapa' })
   catalogo() {
     return this.service.catalogo();
   }
 
   @Get('tipologias')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Tipologías de contrato',
     description: 'Las tipologías con las que se elabora un contrato (EFDS-1161).',
@@ -124,8 +121,7 @@ export class ConfiguracionController {
   }
 
   @Get('actividades/modalidad/:modalidad')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Actividades marcadas según apliquen o no a una modalidad',
   })
@@ -134,8 +130,7 @@ export class ConfiguracionController {
   }
 
   @Get('matriz')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'La matriz completa: cada actividad contra cada modalidad',
   })
@@ -144,8 +139,7 @@ export class ConfiguracionController {
   }
 
   @Get('flujo/:modalidad')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'El recorrido de una modalidad, etapa por etapa, con lo que se salta',
   })
@@ -154,8 +148,7 @@ export class ConfiguracionController {
   }
 
   @Get('reglas/:numeral')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Reglas vigentes de una actividad' })
   reglas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
     return this.service.reglasDe(numeral, modalidad ?? null);
@@ -188,8 +181,7 @@ export class ConfiguracionController {
   // que varia entre ellas es si la recorre, que ya resuelve la aplicabilidad.
 
   @Get('actividades/:numeral/campos')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Lo que la actividad le pide al gestor' })
   campos(@Param('numeral') numeral: string) {
     return this.service.campos(numeral);
@@ -198,8 +190,7 @@ export class ConfiguracionController {
   // ------------------------------------------ aprobación de la actividad ----
 
   @Get('actividades/:numeral/aprobacion')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Si la actividad requiere aprobación y quién la da' })
   aprobacion(@Param('numeral') numeral: string) {
     return this.service.aprobacionDe(numeral);
@@ -223,8 +214,7 @@ export class ConfiguracionController {
   // ------------------------------------------------ firma de la actividad ----
 
   @Get('actividades/:numeral/firma')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Si la actividad requiere firma con el token institucional' })
   firma(@Param('numeral') numeral: string) {
     return this.service.firmaDe(numeral);
@@ -246,8 +236,7 @@ export class ConfiguracionController {
   }
 
   @Get('roles-aprobadores')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Roles que pueden aparecer como aprobadores',
     description:
@@ -258,8 +247,7 @@ export class ConfiguracionController {
   }
 
   @Get('dependencias')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Las dependencias de la ESAP',
     description:
@@ -297,8 +285,7 @@ export class ConfiguracionController {
   // endpoints administran cual corresponde a cada actividad y modalidad.
 
   @Get('plantillas')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Formatos registrados, opcionalmente de una actividad' })
   plantillas(@Query('numeral') numeral?: string) {
     return this.service.plantillas(numeral);
@@ -373,46 +360,7 @@ export class ConfiguracionController {
     );
   }
 
-  // ------------------------------ matriz de roles y permisos (EFDS-1183) ----
-
-  /**
-   * La matriz rol × permiso que el módulo aplica hoy.
-   *
-   * Se responde desde el código y no desde `auth.role_permissions` a propósito:
-   * lo que autoriza mientras el token no traiga los permisos es el mapa del
-   * módulo, así que enseñar la tabla mostraría una configuración que no está en
-   * vigor. Las migraciones 060 y 061 siembran la misma matriz en la base para
-   * que el backoffice de roles de la plataforma la administre desde ahí.
-   */
-  @Get('roles')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.config.manage', 'contratacion.proceso.view')
-  @ApiOperation({
-    summary: 'Los catorce roles del módulo con lo que cada uno puede hacer',
-    description:
-      'Las filas son el catálogo del formato de roles y las columnas los treinta y cinco ' +
-      'permisos del módulo. Viene sin confirmar mientras la Dirección de Contratación ' +
-      'no la ratifique.',
-  })
-  rolesYPermisos() {
-    return matrizDeRoles();
-  }
-
-  /**
-   * Qué puede hacer quien pregunta.
-   *
-   * Sin `PermisosGuard`: preguntar por lo propio no necesita permiso, y
-   * exigirlo dejaría sin respuesta justo a quien no tiene ninguno —que es quien
-   * más necesita que la pantalla no le ofrezca lo que va a negarle—.
-   */
-  @Get('mis-permisos')
-  @ApiOperation({
-    summary: 'Los roles y permisos del usuario autenticado',
-    description:
-      'Lo usa el microfrontend para esconder lo que el usuario no va a poder hacer, ' +
-      'en vez de ofrecérselo y responder 403 al pulsarlo.',
-  })
-  misPermisos(@Req() req: any) {
-    return loQuePuedeHacer(req.user);
-  }
+  // La matriz rol × permiso y «mis permisos» se fueron con la 083: las
+  // reemplazan GET /alcance/roles y GET /alcance/mio, que responden con el
+  // alcance de la base y no con el catálogo de treinta y cinco códigos.
 }

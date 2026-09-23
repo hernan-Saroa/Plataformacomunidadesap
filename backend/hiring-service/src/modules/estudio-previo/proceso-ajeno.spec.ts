@@ -1,6 +1,19 @@
 import { NotFoundException } from '@nestjs/common';
 
 import { EstudioPrevioService } from './estudio-previo.service';
+import { Accion, Alcance, puede } from '../../auth/alcance';
+
+const punto = (accion: Accion, numeral: string): Alcance => ({
+  accion,
+  etapa: null,
+  numeral,
+  tramite: null,
+});
+
+const ALCANCES_DE_PRUEBA: Record<string, Alcance[]> = {
+  GESTOR_CONTRATACION: [punto('editar', '3.3')],
+  ESTRUCTURADOR_TECNICO: [punto('editar', '3.1'), punto('editar', '3.2')],
+};
 
 /**
  * A qué proceso se puede entrar con el id en la mano (EFDS-1183).
@@ -31,6 +44,17 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
       // en vez de por la regla que se está probando.
       estaEnLaBandejaFinanciera: async () => false,
     };
+    // La regla real de alcance sobre la siembra de la 083, reducida a lo que
+    // estos casos tocan: el gestor toma de la bandeja (editar 3.3) y el
+    // estructurador técnico no (solo edita la 3.1 y la 3.2).
+    const alcanceService = {
+      puedeEn: async (acceso: { roles?: string[] } | undefined, accion: Accion, destino?: string) =>
+        puede(
+          (acceso?.roles ?? []).flatMap((rol) => ALCANCES_DE_PRUEBA[rol] ?? []),
+          accion,
+          destino,
+        ),
+    };
     return new EstudioPrevioService(
       dataSource as never,
       {} as never,
@@ -41,6 +65,7 @@ describe('EstudioPrevioService · obtenerProceso de otro', () => {
       {} as never,
       {} as never,
       {} as never,
+      alcanceService as never,
     );
   };
 

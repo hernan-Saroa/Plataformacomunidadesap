@@ -1,10 +1,8 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_ACTIVIDAD_EDITAR, PERMISO_PROCESO_VER } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { AprobacionService } from './aprobacion.service';
 import { DecidirAprobacionDto } from './dto/aprobacion.dto';
@@ -23,8 +21,7 @@ export class AprobacionController {
   constructor(private readonly service: AprobacionService) {}
 
   @Get('aprobadores')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', { param: 'numeral' })
   @ApiOperation({
     summary: 'Quién aprueba esta actividad',
     description:
@@ -40,8 +37,7 @@ export class AprobacionController {
   }
 
   @Post('enviar-aprobacion')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_EDITAR)
+  @Puede('editar', { param: 'numeral' })
   @ApiOperation({ summary: 'Enviar la actividad a aprobación' })
   enviar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -52,8 +48,7 @@ export class AprobacionController {
   }
 
   @Post('retirar-aprobacion')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_EDITAR)
+  @Puede('editar', { param: 'numeral' })
   @ApiOperation({
     summary: 'Retirar la actividad de aprobación',
     description: 'Solo quien la envió, para poder corregirla mientras nadie la ha resuelto.',

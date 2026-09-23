@@ -22,10 +22,10 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
-  PERMISO_ACTIVIDAD_EDITAR,
   PERMISO_CONFIG_ADMINISTRAR,
   tienePermiso,
 } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { evaluarCondiciones } from './condiciones';
 import {
   DecidirLimitacionDto,
@@ -44,6 +44,8 @@ export class MipymeService {
     private readonly dataSource: DataSource,
     /** Si la 5.4 exige firmar con el token institucional al decidir (EFDS-2070). */
     private readonly cierre: CierreActividadService,
+    /** Quién puede gestionar la limitación a MIPYME (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   private hoy(): string {
@@ -213,7 +215,7 @@ export class MipymeService {
     const manager = em ?? this.dataSource.manager;
     const proceso = await this.exigirProceso(manager, procesoId);
 
-    const puedeGestionar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
+    const puedeGestionar = await this.alcance.puedeEn(acceso, 'editar', NUMERAL_MIPYME);
 
     if (!(await this.aplicaLimitacion(proceso.modalidad, em))) {
       return {

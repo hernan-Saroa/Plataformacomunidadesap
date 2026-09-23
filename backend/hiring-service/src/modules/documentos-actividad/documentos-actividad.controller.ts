@@ -9,7 +9,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -19,8 +18,7 @@ import { unlink } from 'fs/promises';
 
 import { DocumentosActividadService } from './documentos-actividad.service';
 import { getHiringAccess } from '../../auth/hiring-access';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
@@ -37,8 +35,7 @@ export class DocumentosActividadController {
   constructor(private readonly service: DocumentosActividadService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', { param: 'numeral' })
   @ApiOperation({
     summary: 'Documentos que pide la actividad y los que ya se entregaron',
     description:
@@ -53,8 +50,7 @@ export class DocumentosActividadController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.documento.upload')
+  @Puede('editar', { param: 'numeral' })
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -98,8 +94,7 @@ export class DocumentosActividadController {
   }
 
   @Delete(':documentoId')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.documento.upload')
+  @Puede('editar', { param: 'numeral' })
   @ApiOperation({
     summary: 'Retirar un documento de la actividad',
     description:

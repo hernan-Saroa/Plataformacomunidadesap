@@ -25,21 +25,20 @@ import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import {
-  PERMISO_ACTIVIDAD_APROBAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
-  PERMISO_PROCESO_TOMAR,
-  PERMISO_PROCESO_VER_TODOS,
-  tienePermiso,
-} from '../../auth/permisos';
+import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
+import { AlcanceService } from '../../auth/alcance.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
-import { ParticipacionService, esSuya } from '../participacion/participacion.service';
+import {
+  NUMERAL_RADICACION as NUMERAL_RADICACION_DIRECCION,
+  ParticipacionService,
+  esSuya,
+} from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
 import { ListaChequeoService } from '../lista-chequeo/lista-chequeo.service';
 
@@ -112,8 +111,8 @@ export const NUMERAL_REVISION = '3.4';
 /**
  * Si el estudio previo de este proceso es de quien intenta tocarlo (EFDS-1183).
  *
- * `contratacion.actividad.edit` dice que alguien diligencia estudios previos, no
- * que diligencie el de cualquier expediente de la entidad. Hasta ahora era lo
+ * Editar la 3.1 dice que alguien diligencia estudios previos, no que
+ * diligencie el de cualquier expediente de la entidad. Hasta ahora era lo
  * segundo: un estructurador de un área podía abrir y reescribir el estudio
  * previo que otra área había radicado.
  *
@@ -216,6 +215,11 @@ export class EstudioPrevioService {
      * regla que protege el borrador, y por eso pasa por aquí.
      */
     private readonly listaChequeo: ListaChequeoService,
+    /**
+     * Quién puede tomar de la bandeja o atender la de la Financiera (083): lo
+     * que la vista de un proceso sin dueño pregunta antes de enseñarlo.
+     */
+    private readonly alcance: AlcanceService,
   ) {}
 
   /**
@@ -256,7 +260,7 @@ export class EstudioPrevioService {
   }
 
   private quienDecide(procesoId: string, acceso: HiringAccess) {
-    return this.participacion.quienDecide(procesoId, acceso);
+    return this.participacion.quienDecide(procesoId, acceso, NUMERAL_REVISION);
   }
 
   // ------------------------------------------------------------- proceso ---
@@ -386,11 +390,11 @@ export class EstudioPrevioService {
        */
       const puedeRecibirlo =
         enElProceso ||
-        (tienePermiso(acceso, PERMISO_PROCESO_TOMAR) &&
+        ((await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) &&
           (await this.participacion.estaEnLaBandeja(procesoId))) ||
         // Y la solicitud de CDP sin atender, por lo mismo: el listado se la
         // enseña a la Financiera y al pulsarla le diría que no existe.
-        (tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR) &&
+        ((await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
           (await this.participacion.estaEnLaBandejaFinanciera(procesoId)));
 
       if (!puedeRecibirlo) {
@@ -440,7 +444,7 @@ export class EstudioPrevioService {
       mios.push({ createdBy: acceso!.userName });
 
       const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
-      if (tienePermiso(acceso!, PERMISO_PROCESO_TOMAR)) {
+      if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
       }
       /**
@@ -451,7 +455,7 @@ export class EstudioPrevioService {
        * Contratación, así que las tres vías anteriores le devuelven la lista
        * vacía aunque tenga solicitudes de CDP esperándola.
        */
-      if (tienePermiso(acceso!, PERMISO_PRESUPUESTO_GESTIONAR)) {
+      if (await this.alcance.puedeEn(acceso, 'editar', '4.2')) {
         for (const id of await this.participacion.idsEnBandejaFinanciera()) {
           alcanzables.add(id);
         }

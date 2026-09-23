@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -26,6 +25,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -34,8 +34,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Audiencia de adjudicación y sobre económico — actividades 7.1 y 7.2.
@@ -50,8 +48,7 @@ export class AudienciaController {
   constructor(private readonly service: AudienciaService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
+  @Puede('ver', '7.1')
   @ApiOperation({
     summary: 'Estado de la audiencia de adjudicación',
     description:
@@ -62,8 +59,7 @@ export class AudienciaController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -102,8 +98,7 @@ export class AudienciaController {
   }
 
   @Post('piezas')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -141,8 +136,7 @@ export class AudienciaController {
   }
 
   @Post('sobres')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -182,8 +176,7 @@ export class AudienciaController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.1')
   @ApiOperation({
     summary: 'Anular la audiencia registrada',
     description:

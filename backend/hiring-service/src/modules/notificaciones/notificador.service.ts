@@ -2,13 +2,9 @@ import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/co
 import { DataSource } from 'typeorm';
 
 import {
-  PERMISO_DESIGNACION_ORDENAR,
-  PERMISO_EXPEDIENTE_ARCHIVAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_PROCESO_ASIGNAR,
-  PERMISO_PROCESO_TOMAR,
-  PERMISO_SUPERVISION_REASIGNAR,
 } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -38,13 +34,21 @@ export class NotificadorService implements OnApplicationBootstrap {
   private readonly logger = new Logger(NotificadorService.name);
   private readonly campana: Campana;
   private readonly avisos: AvisosService;
+  private readonly alcance: AlcanceService;
 
   constructor(
     private readonly dataSource: DataSource,
     @Optional() avisos?: AvisosService,
+    /**
+     * A quién avisar de lo que aún no es de nadie (083). Opcional como los
+     * avisos, para que las pruebas que construyen el servicio a mano sigan
+     * funcionando con solo la fuente de datos.
+     */
+    @Optional() alcance?: AlcanceService,
   ) {
     this.campana = new Campana(dataSource, this.logger);
     this.avisos = avisos ?? new AvisosService(dataSource);
+    this.alcance = alcance ?? new AlcanceService(dataSource);
   }
 
   async despachar(ocurridos: EventoOcurrido[]): Promise<number> {
@@ -343,19 +347,29 @@ export class NotificadorService implements OnApplicationBootstrap {
         return [...(roles.length ? await this.cuentasConRol(roles) : []), ...personas];
       }
       case 'BANDEJA_CONTRATACION':
-        return this.cuentasConPermiso(PERMISO_PROCESO_TOMAR);
+        // Quien puede tomar de la bandeja es quien edita la 3.3, y quien
+        // atiende la solicitud de CDP, quien edita la 4.2: el mismo criterio
+        // con el que el guard y el listado deciden quién lo ve.
+        return this.alcance.cuentasQuePueden('editar', '3.3');
       case 'EQUIPO_FINANCIERO':
-        return this.cuentasConPermiso(PERMISO_PRESUPUESTO_GESTIONAR);
+        return this.alcance.cuentasQuePueden('editar', '4.2');
       // Los mismos permisos que protegen la pantalla de cada cosa: quien puede
       // hacerla es a quien le toca.
       case 'REPARTE_PROCESOS':
         return this.cuentasConPermiso(PERMISO_PROCESO_ASIGNAR);
       case 'DESIGNA_COMITE_Y_SUPERVISOR':
-        return this.cuentasConPermiso(PERMISO_DESIGNACION_ORDENAR);
+        // Designar el comité es decidir la 6.2 y designar al supervisor, la
+        // 8.2. Se fija a una de las dos y no se usa el numeral tal cual: el
+        // papel puede configurarse en el aviso de otra actividad, y ahí nadie
+        // tendría alcance.
+        return this.alcance.cuentasQuePueden(
+          'decidir',
+          ocurrido.numeral === '8.2' ? '8.2' : '6.2',
+        );
       case 'REASIGNA_SUPERVISION':
-        return this.cuentasConPermiso(PERMISO_SUPERVISION_REASIGNAR);
+        return this.alcance.cuentasQuePueden('decidir', '9.3');
       case 'ARCHIVA_EXPEDIENTE':
-        return this.cuentasConPermiso(PERMISO_EXPEDIENTE_ARCHIVAR);
+        return this.alcance.cuentasQuePueden('decidir', '10.4');
       case 'COMITE_EVALUADOR': {
         // Personas del comité vigente: la campana las traduce a sus cuentas.
         const filas = await this.dataSource.query(

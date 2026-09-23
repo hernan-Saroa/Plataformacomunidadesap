@@ -38,7 +38,6 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   const SIN_FILTROS = { vigencia: null, modalidad: null };

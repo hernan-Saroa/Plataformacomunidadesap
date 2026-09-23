@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,10 +20,9 @@ import { CargarDocumentoDto } from './dto/documentos.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Elaboración de los documentos del proceso — actividad 5.1 (EFDS-1149).
@@ -42,8 +40,7 @@ export class DocumentosController {
   constructor(private readonly service: DocumentosService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.1')
   @ApiOperation({
     summary: 'Documentos que exige la actividad y cuáles ya están cargados',
     description:
@@ -54,8 +51,7 @@ export class DocumentosController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -93,8 +89,7 @@ export class DocumentosController {
   }
 
   @Post(':documentoId/anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.1')
   @ApiOperation({
     summary: 'Sustituir un documento ya cargado',
     description:

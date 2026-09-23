@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -25,10 +24,9 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Informe final de ejecución — actividad 10.1 (EFDS-1171).
@@ -43,8 +41,7 @@ export class InformeFinalController {
   constructor(private readonly service: InformeFinalService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.seguimiento.ver')
+  @Puede('ver', '10.1')
   @ApiOperation({
     summary: 'Informe final del contrato',
     description:
@@ -55,8 +52,7 @@ export class InformeFinalController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.supervision.avalar')
+  @Puede('editar', '10.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -97,8 +93,7 @@ export class InformeFinalController {
   }
 
   @Post('entregables')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.supervision.avalar')
+  @Puede('editar', '10.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -133,8 +128,7 @@ export class InformeFinalController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.supervision.avalar')
+  @Puede('editar', '10.1')
   @ApiOperation({
     summary: 'Anular el informe vigente',
     description:

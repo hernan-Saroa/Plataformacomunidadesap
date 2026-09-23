@@ -12,7 +12,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
-import { PermisosService } from '../../auth/permisos.service';
+import { AlcanceService } from '../../auth/alcance.service';
 import { access } from 'fs/promises';
 import { basename, join } from 'path';
 import { STORAGE_PATH } from '../archivos';
@@ -34,9 +34,6 @@ export interface DocumentoDeLaActividad {
   } | null;
 }
 
-/** El permiso con el que se cargan y retiran documentos del módulo. */
-const PERMISO_CARGAR = 'contratacion.documento.upload';
-
 /**
  * Los documentos que una actividad entrega, según sus formatos (EFDS-1183).
  *
@@ -50,7 +47,8 @@ const PERMISO_CARGAR = 'contratacion.documento.upload';
 export class DocumentosActividadService {
   constructor(
     private readonly dataSource: DataSource,
-    private readonly permisos: PermisosService,
+    /** Quién puede cargar en cada actividad (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   /**
@@ -143,7 +141,8 @@ export class DocumentosActividadService {
        * a quien solo aprueba es ofrecerle un botón que el servicio va a
        * rechazarle con un 403, y el gestor no sabría por qué no pasa nada.
        */
-      puedeCargar: acceso ? await this.puedeCargar(acceso) : true,
+      // Lo mismo que exige el endpoint de carga: editar este punto.
+      puedeCargar: acceso ? await this.alcance.puedeEn(acceso, 'editar', numeral) : true,
     };
   }
 
@@ -182,14 +181,6 @@ export class DocumentosActividadService {
     } catch {
       return false;
     }
-  }
-
-  /** Si el usuario tiene el permiso de cargar documentos del módulo. */
-  private async puedeCargar(acceso: HiringAccess): Promise<boolean> {
-    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
-
-    const permisos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
-    return permisos.includes(PERMISO_CARGAR);
   }
 
   /**

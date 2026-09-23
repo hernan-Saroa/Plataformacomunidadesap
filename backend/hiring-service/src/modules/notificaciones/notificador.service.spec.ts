@@ -163,22 +163,36 @@ describe('NotificadorService · despachar', () => {
       expect(sql).toContain("s.estado = 'VIGENTE'");
     });
 
-    it('«el equipo financiero» son las cuentas con permiso de presupuesto', async () => {
+    it('«el equipo financiero» son las cuentas que pueden editar la 4.2', async () => {
+      // Por alcance (083) y no por `presupuesto.gestionar`: un rol creado
+      // desde el backoffice con editar en la 4.2 también recibe el aviso.
       fetchOk();
       const { srv, query } = conBase([]);
 
       await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral: '4.1' }]);
 
-      const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
-      expect(llamada?.[1]).toEqual(['contratacion.presupuesto.gestionar']);
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('hiring.alcances_permiso'));
+      expect(llamada?.[1]).toEqual(['editar', '4.2', 4]);
     });
 
     it.each([
+      ['6.2', '6.2'],
+      ['8.2', '8.2'],
+      ['9.3', '9.3'],
+      ['10.4', '10.4'],
+    ])('HABILITADA en la %s llega a quien puede decidir la %s, por alcance', async (numeral, decide) => {
+      fetchOk();
+      const { srv, query } = conBase([]);
+
+      await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral }]);
+
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('hiring.alcances_permiso'));
+      expect(llamada?.[1]).toEqual(['decidir', decide, Number(decide.split('.')[0])]);
+    });
+
+    // El reparto no es de ninguna etapa: sigue por el permiso transversal.
+    it.each([
       ['PROCESO_RADICADO', '3.1', 'contratacion.proceso.assign'],
-      ['HABILITADA', '6.2', 'contratacion.designacion.ordenar'],
-      ['HABILITADA', '8.2', 'contratacion.designacion.ordenar'],
-      ['HABILITADA', '9.3', 'contratacion.supervision.reasignar'],
-      ['HABILITADA', '10.4', 'contratacion.expediente.archivar'],
     ])('%s en la %s llega a las cuentas con el permiso %s, no a un rol', async (evento, numeral, permiso) => {
       fetchOk();
       const { srv, query } = conBase([], { permiso: [{ id: 'u-con-permiso' }] });

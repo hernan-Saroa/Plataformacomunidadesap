@@ -11,7 +11,6 @@ import {
   Query,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -29,17 +28,8 @@ import {
   GuardarBorradorDto,
   RevisarDto,
 } from './dto/estudio-previo.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_ACTIVIDAD_APROBAR,
-  PERMISO_ACTIVIDAD_EDITAR,
-  PERMISO_ACTIVIDAD_ENVIAR,
-  PERMISO_DOCUMENTO_ADJUNTAR,
-  PERMISO_EXPEDIENTE_VER,
-  PERMISO_PROCESO_CREAR,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
@@ -67,8 +57,7 @@ export class EstudioPrevioController {
   constructor(private readonly service: EstudioPrevioService) {}
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_CREAR)
+  @Puede('editar', '3.1')
   @ApiOperation({ summary: 'Crear proceso en etapa 3 y abrir su expediente electrónico' })
   crearProceso(@Body() dto: CrearProcesoDto, @Req() req: any) {
     return this.service.crearProceso(dto, getHiringAccess(req));
@@ -97,8 +86,7 @@ export class EstudioPrevioController {
   }
 
   @Put(':id/estudio-previo')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_EDITAR)
+  @Puede('editar', '3.1')
   @ApiOperation({ summary: 'Guardar borrador (no valida campos obligatorios)' })
   guardar(
     @Param('id', ParseUUIDPipe) id: string,
@@ -109,8 +97,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/enviar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_ENVIAR)
+  @Puede('editar', '3.1')
   @ApiOperation({
     summary: 'Enviar a revisión',
     description:
@@ -126,8 +113,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/aprobar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @Puede('aprobar', '3.4')
   @ApiOperation({
     summary: 'Aprobar el estudio previo (numeral 3.4)',
     description: 'Solo aplica si está en revisión. Tras aprobarlo no admite cambios.',
@@ -141,8 +127,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/devolver')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @Puede('aprobar', '3.4')
   @ApiOperation({
     summary: 'Devolver el estudio previo con observaciones (numeral 3.4)',
     description: 'Regresa a borrador para que el gestor corrija y lo reenvíe.',
@@ -156,8 +141,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/negar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @Puede('aprobar', '3.4')
   @ApiOperation({
     summary: 'Negar el proceso (numeral 3.4)',
     description:
@@ -174,8 +158,7 @@ export class EstudioPrevioController {
   }
 
   @Get('plantillas/:numeral')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_EXPEDIENTE_VER)
+  @Puede('ver')
   @ApiOperation({ summary: 'Formatos oficiales aplicables a la actividad' })
   plantillas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
     return this.service.plantillas(numeral, modalidad);
@@ -188,8 +171,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/documentos')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -216,8 +198,7 @@ export class EstudioPrevioController {
   }
 
   @Delete(':id/estudio-previo/documentos/:documentoId')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @ApiOperation({
     summary: 'Retirar un documento del estudio previo',
     description:
@@ -232,8 +213,7 @@ export class EstudioPrevioController {
   }
 
   @Put(':id/estudio-previo/documentos/:documentoId')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -277,8 +257,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/lista-chequeo')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -311,8 +290,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/lista-chequeo/radicado')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @ApiOperation({
     summary: 'Anotar el radicado de Active Document con el que se remitió el paquete',
     description:
@@ -331,8 +309,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/lista-chequeo/:documentoId/anular')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @ApiOperation({
     summary: 'Sustituir uno de los documentos de la lista',
     description: 'Lo deja sin efecto para poder cargar otro. No lo borra del expediente.',

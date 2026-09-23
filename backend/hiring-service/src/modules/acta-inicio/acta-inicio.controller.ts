@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -17,13 +16,8 @@ import { unlink } from 'fs/promises';
 
 import { ActaInicioService } from './acta-inicio.service';
 import { SuscribirActaInicioDto } from './dto/acta-inicio.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_ACTA_INICIO_SUSCRIBIR,
-  PERMISO_SEGUIMIENTO_VER,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
@@ -40,8 +34,7 @@ export class ActaInicioController {
   constructor(private readonly service: ActaInicioService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_SEGUIMIENTO_VER)
+  @Puede('ver', '9.1')
   @ApiOperation({
     summary: 'Reunión de inicio del contrato',
     description:
@@ -52,8 +45,7 @@ export class ActaInicioController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTA_INICIO_SUSCRIBIR)
+  @Puede('editar', '9.1')
   @UseInterceptors(
     FileInterceptor(
       'file',

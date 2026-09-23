@@ -31,7 +31,6 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   /**

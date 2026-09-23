@@ -15,8 +15,9 @@ import { AlertasService } from './alertas.service';
 import { ParametrosAlertaService } from './parametros-alerta.service';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_ALERTA_VER, PERMISO_CONFIG_ADMINISTRAR } from '../../auth/permisos';
+import { PERMISO_CONFIG_ADMINISTRAR } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * `dias` opcional: sin él rige la anticipación configurada de cada tipo.
@@ -43,8 +44,7 @@ export class AlertasController {
   ) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ALERTA_VER)
+  @Puede('ver')
   @ApiQuery({ name: 'dias', required: false, description: 'Sin valor: la anticipación configurada de cada tipo.' })
   @ApiOperation({
     summary: 'Vencimientos próximos y ya cumplidos',
@@ -56,8 +56,7 @@ export class AlertasController {
   }
 
   @Post('notificar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ALERTA_VER)
+  @Puede('ver')
   @ApiQuery({ name: 'dias', required: false })
   @ApiOperation({
     summary: 'Avisar a los responsables de cada vencimiento',
@@ -71,8 +70,7 @@ export class AlertasController {
   // --------------------------------------------------------- parámetros ----
 
   @Get('parametros')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ALERTA_VER)
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Anticipación, tolerancia y hora del aviso diario' })
   leerParametros() {
     return this.parametros.listar();
