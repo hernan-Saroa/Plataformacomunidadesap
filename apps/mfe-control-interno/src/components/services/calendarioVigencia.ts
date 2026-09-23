@@ -307,6 +307,76 @@ export function calcularProgramacion(opciones: OpcionesProgramacion): ResultadoP
   };
 }
 
+/** Semanas que sí cuentan (ni bloqueadas ni excluidas) entre dos números de semana. */
+function semanasEfectivas(
+  semanas: SemanaVigencia[],
+  desde: number,
+  hasta: number,
+  excluidas: Set<string>,
+): number {
+  let total = 0;
+  for (let n = desde; n <= hasta; n++) {
+    const semana = semanas[n - 1];
+    if (semana && !semana.bloqueo && !excluidas.has(semana.lunes)) total += 1;
+  }
+  return total;
+}
+
+export interface RangoEtapa {
+  etapa: EtapaCronograma;
+  /** Número de semana donde arranca y donde termina la etapa */
+  desde: number;
+  hasta: number;
+}
+
+/**
+ * Recalcula el cronograma cuando el usuario fija a mano el rango de una etapa
+ * (arrastrando en el calendario). Las etapas anteriores se acortan o alargan
+ * para terminar justo antes, y las siguientes se corren conservando su
+ * duración; las semanas bloqueadas o excluidas no cuentan.
+ */
+export function aplicarRangoEtapa(
+  año: number,
+  fechas: Partial<FechasEtapas>,
+  semanasExcluidas: string[],
+  rango: RangoEtapa,
+): ResultadoProgramacion {
+  const semanas = semanasDeVigencia(año);
+  const excluidas = new Set(semanasExcluidas);
+  const actual = programacionDesdeFechas(año, fechas, semanasExcluidas);
+  const cuenta = (etapa: EtapaCronograma) => actual.filter((p) => p.etapa === etapa).length;
+
+  const duraciones: Record<EtapaCronograma, number> = {
+    P: cuenta('P') || DURACION_ESTANDAR.P,
+    E: cuenta('E') || DURACION_ESTANDAR.E,
+    C: cuenta('C') || DURACION_ESTANDAR.C,
+  };
+  const propias = Math.max(1, semanasEfectivas(semanas, rango.desde, rango.hasta, excluidas));
+  duraciones[rango.etapa] = propias;
+
+  // La semana en que arranca todo el cronograma
+  let inicio = semanas[rango.desde - 1]?.lunes || '';
+  if (rango.etapa !== 'P') {
+    const primeraActual = actual.find((p) => p.etapa === 'P')?.semana
+      ?? actual.find((p) => p.etapa)?.semana;
+    const inicioPrevio = primeraActual?.numero ?? rango.desde;
+    if (inicioPrevio < rango.desde) {
+      inicio = semanas[inicioPrevio - 1].lunes;
+      // Las etapas anteriores se reparten las semanas que quedan hasta el rango fijado
+      const disponibles = semanasEfectivas(semanas, inicioPrevio, rango.desde - 1, excluidas);
+      if (rango.etapa === 'E') {
+        duraciones.P = Math.max(1, disponibles);
+      } else {
+        const previas = Math.max(2, disponibles);
+        duraciones.P = Math.max(1, previas - duraciones.E);
+        if (duraciones.P + duraciones.E !== previas) duraciones.E = Math.max(1, previas - duraciones.P);
+      }
+    }
+  }
+
+  return calcularProgramacion({ año, inicio, semanasExcluidas, duraciones });
+}
+
 /**
  * Pinta las semanas a partir de las fechas guardadas de cada etapa, sin
  * recalcular nada: sirve para mostrar una auditoría existente tal cual quedó.
