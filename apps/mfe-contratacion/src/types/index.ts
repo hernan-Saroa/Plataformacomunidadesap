@@ -739,48 +739,6 @@ export interface Expediente {
   documentos: DocumentoExpediente[];
 }
 
-/** Uno de los documentos que la actividad 5.1 exige (EFDS-1149). */
-export interface DocumentoRequerido {
-  codigo: string;
-  nombre: string;
-  descripcion: string | null;
-  obligatorio: boolean;
-  /** Null mientras no se haya cargado. */
-  cargado: {
-    id: string;
-    nombre: string;
-    archivoUrl: string;
-    cargadoPor: string | null;
-    cargadoAt: string;
-  } | null;
-}
-
-/**
- * Un documento de la lista de chequeo con la que el área radica (3.1).
- *
- * Misma forma que `DocumentoRequerido` de la 5.1 —son las mismas dos tablas—
- * más `confirmado`, que dice si el requisito sale del formato oficial o de la
- * lectura que el equipo hizo del procedimiento.
- */
-export interface DocumentoDeLaLista extends DocumentoRequerido {
-  confirmado: boolean;
-}
-
-/** El paquete de la radicación: qué exige la modalidad y qué ya está. */
-export interface EstadoListaChequeo {
-  modalidad: string | null;
-  modalidadNombre: string | null;
-  /**
-   * Consecutivo de Active Document con el que se remitió el paquete.
-   *
-   * Null cuando se remitió por correo o carpeta compartida, que el
-   * procedimiento admite y no generan radicado.
-   */
-  radicadoGestionDocumental: string | null;
-  documentos: DocumentoDeLaLista[];
-  /** Los obligatorios que todavía no están; si hay alguno, no se puede enviar. */
-  faltantes: { codigo: string; nombre: string }[];
-}
 
 /** Una adenda del proceso (actividad 5.6, EFDS-1154). */
 export interface Adenda {
@@ -895,7 +853,7 @@ export interface EstadoDocumentos {
   iniciada: boolean;
   estado: string;
   /** Los que pide esta modalidad: aviso y pliego, o acto de justificación. */
-  documentos: DocumentoRequerido[];
+  documentos: DocumentoDeLaActividad[];
   /** Todos los obligatorios están cargados. */
   completa: boolean;
 }
@@ -1053,32 +1011,109 @@ export interface DocumentoCargado {
   cargadoAt: string;
 }
 
-/** Un documento que la actividad pide, con lo que se haya entregado de él. */
-export interface DocumentoRequeridoPorFormato {
-  plantillaId: string;
+/**
+ * Un documento que la actividad pide, con lo que se haya entregado de él
+ * (EFDS-2066).
+ *
+ * Es un ítem de la lista de chequeo de la actividad: sale del catálogo que
+ * Configuración administra, no del código, y sirve igual para la 3.1, la 5.1
+ * o cualquier otra de las sesenta y tres.
+ */
+export interface DocumentoDeLaActividad {
+  requisitoId: string;
   codigo: string;
   nombre: string;
-  version: string;
-  /** Ruta del formato en blanco; null mientras Contratación no lo suba. */
-  formatoUrl: string | null;
-  cargado: DocumentoCargado | null;
+  /** Qué debe contener o para qué sirve. */
+  descripcion: string | null;
+  /** Los opcionales se ofrecen, pero no traban el avance. */
+  obligatorio: boolean;
+  /**
+   * Si la exigencia es decisión del área o lectura del procedimiento que el
+   * equipo aún no ha contrastado con el formato oficial.
+   */
+  confirmado: boolean;
+  estado: 'PENDIENTE' | 'CARGADO';
+  /** La plantilla en blanco; null si el documento no tiene. */
+  plantilla: {
+    codigo: string;
+    nombre: string;
+    version: string;
+    /** Null mientras Contratación no suba el archivo a la biblioteca. */
+    descargaUrl: string | null;
+  } | null;
+  cargado: {
+    /** La entrega: es lo que se anula para sustituirla. */
+    id: string;
+    documentoId: string;
+    nombre: string;
+    descargaUrl: string | null;
+    subidoPor: string | null;
+    cargadoAt: string;
+  } | null;
 }
 
 /**
  * Qué pide una actividad y qué se ha entregado ya.
  *
- * `requeridos` sale de los formatos asignados: cada uno es una fila que hay
- * que resolver. `adicionales` son los anexos que nadie exigió pero que el
- * gestor consideró parte del expediente.
+ * `documentos` es la lista de chequeo de la actividad. `adicionales` son los
+ * anexos que nadie exigió pero que el gestor consideró parte del expediente.
  */
 export interface EstadoDocumentosActividad {
   numeral: string;
   modalidad: string | null;
-  requeridos: DocumentoRequeridoPorFormato[];
+  tipologia: string | null;
+  documentos: DocumentoDeLaActividad[];
   adicionales: DocumentoCargado[];
+  /** Los obligatorios que todavía no están. */
+  faltantes: { codigo: string; nombre: string }[];
   completo: boolean;
   /** Si quien mira puede cargar y retirar; lo resuelve el servidor. */
   puedeCargar: boolean;
+}
+
+/**
+ * Un documento que una actividad pide, como lo administra Configuración
+ * (EFDS-2066).
+ */
+export interface DocumentoRequeridoConfig {
+  id: string;
+  numeral: string;
+  /** Lo arma el sistema al crearlo y ya no cambia: las entregas lo citan. */
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  /** Modalidades a las que se pide; vacío = todas. */
+  modalidades: string[];
+  /** Tipologías contractuales (3.1) a las que se pide; vacío = todas. */
+  tipologias: string[];
+  orden: number;
+  activo: boolean;
+  confirmado: boolean;
+  notaFuente: string | null;
+  /** Código del formato de la biblioteca que se descarga para diligenciarlo. */
+  plantillaCodigo: string | null;
+  /** La versión que se ofrece hoy; null si el código no tiene ninguna activa. */
+  plantilla: {
+    id: string;
+    codigo: string;
+    nombre: string;
+    version: string;
+    tieneArchivo: boolean;
+  } | null;
+}
+
+/** Lo que se envía al crear o corregir un documento requerido. */
+export interface DatosDocumentoRequerido {
+  numeral?: string;
+  nombre?: string;
+  descripcion?: string | null;
+  plantillaCodigo?: string | null;
+  obligatorio?: boolean;
+  modalidades?: string[];
+  tipologias?: string[];
+  orden?: number;
+  activo?: boolean;
 }
 
 export interface PlantillaFormato {
@@ -1094,6 +1129,11 @@ export interface PlantillaFormato {
   /** Ruta de descarga; null mientras no se haya subido el archivo. */
   archivoUrl?: string | null;
   activo: boolean;
+  /**
+   * Actividades cuyos documentos requeridos citan este formato (EFDS-2066).
+   * Un formato no pertenece a una actividad: lo usan las que lo piden.
+   */
+  usadaEn?: string[];
 }
 
 export interface ActividadCatalogo {

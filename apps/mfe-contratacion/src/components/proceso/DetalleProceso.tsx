@@ -53,7 +53,7 @@ import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
-import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
+import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
@@ -115,10 +115,13 @@ const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 const ETAPAS_DE_LA_FINANCIERA = [4, 8, 9, 10];
 
 /**
- * Actividades cuyo panel ya reparte sus formatos documento por documento.
- * El bloque genérico se salta ambas para no duplicarlos.
+ * Actividades cuyo panel monta la lista de documentos dentro de sí (EFDS-2066).
+ *
+ * La lista es la misma pieza en todas; estas la ponen en su sitio —la 3.1 en
+ * su pestaña de documentos, junto al radicado; la 5.1 como el cuerpo de la
+ * actividad—, y montarla además aquí la pediría dos veces.
  */
-const NUMERALES_CON_FORMATOS_PROPIOS = ['3.1', '5.1'];
+const NUMERALES_CON_LISTA_PROPIA = ['3.1', '5.1'];
 
 /**
  * Actividades cuyo panel ya tiene su propio ciclo de aprobación.
@@ -1399,25 +1402,17 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               )}
             </div>
 
-            {/* Los documentos que la actividad entrega, debajo del panel: primero
-                se trabaja, después se adjunta.
-
-                Un solo bloque, con los formatos requeridos y lo demás que quedó
-                en el expediente como dos secciones dentro del mismo marco. Antes
-                eran dos componentes apilados con estilos distintos, y había que
-                deducir cuál lista era cuál.
-
-                Donde el panel ya reparte sus formatos —3.1 y 5.1— se monta en
-                modo `soloExpediente`, para listar lo demás sin duplicarlos. */}
-            {actividadSeleccionada ? (
+            {/* La lista de documentos de la actividad, debajo del panel: primero
+                se trabaja, después se adjunta. Es la misma para las sesenta y
+                tres —sale de lo que Configuración le pide a cada una— y no se
+                pinta donde la actividad no pide ni tiene documentos. */}
+            {actividadSeleccionada &&
+            !NUMERALES_CON_LISTA_PROPIA.includes(actividadSeleccionada.numeral) ? (
               <div className="mt-3">
-                <DocumentosDeLaActividad
+                <ListaDeDocumentos
                   procesoId={procesoId}
                   numeral={actividadSeleccionada.numeral}
                   recargarToken={tokenExpediente}
-                  soloExpediente={NUMERALES_CON_FORMATOS_PROPIOS.includes(
-                    actividadSeleccionada.numeral,
-                  )}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                   onFaltantes={setFaltanFormatos}
                 />

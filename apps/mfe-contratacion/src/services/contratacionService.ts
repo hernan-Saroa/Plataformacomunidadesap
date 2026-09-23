@@ -13,8 +13,9 @@ import {
   CondicionesMipymeConfig,
   ConflictoError,
   EstadoDocumentos,
-  EstadoListaChequeo,
   EstadoDocumentosActividad,
+  DocumentoRequeridoConfig,
+  DatosDocumentoRequerido,
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
@@ -1507,11 +1508,12 @@ export const contratacionService = {
     ),
 
   /**
-   * Los documentos que una actividad entrega, según sus formatos asignados.
+   * La lista de chequeo de una actividad: qué documentos pide y qué ya está
+   * (EFDS-2066).
    *
-   * Sirve a cualquier actividad, a diferencia de `documentosProceso`, que
-   * resuelve la lista fija de la 5.1: aquí las filas salen de la biblioteca,
-   * y por eso una actividad empieza a pedir documentos sin desplegar nada.
+   * Sirve a las sesenta y tres, la 3.1 y la 5.1 incluidas: las filas salen del
+   * catálogo que Configuración administra, y por eso una actividad empieza a
+   * pedir documentos sin desplegar nada.
    */
   documentosDeActividad: (procesoId: string, numeral: string) =>
     pedir<EstadoDocumentosActividad>(
@@ -1521,18 +1523,18 @@ export const contratacionService = {
   /**
    * Carga un documento de la actividad.
    *
-   * Con `plantillaId` cumple el requisito de ese formato; sin él queda como
-   * anexo adicional, que se guarda pero no se exige.
+   * Con `codigo` cubre ese documento de la lista; sin él queda como anexo
+   * adicional, que se guarda pero no se exige.
    */
   cargarDocumentoDeActividad: (
     procesoId: string,
     numeral: string,
     archivo: File,
-    plantillaId?: string,
+    codigo?: string,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
-    if (plantillaId) cuerpo.append('plantillaId', plantillaId);
+    if (codigo) cuerpo.append('codigo', codigo);
 
     return pedir<{ id: string; nombre: string }>(
       `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos`,
@@ -1540,79 +1542,44 @@ export const contratacionService = {
     );
   },
 
-  /** Retira un documento de la actividad; la traza queda. */
+  /**
+   * Deja sin efecto la entrega de un documento de la lista para cargar otro.
+   * No lo borra: el expediente conserva la versión anterior.
+   */
+  anularDocumentoDeActividad: (procesoId: string, numeral: string, entregaId: string) =>
+    pedir<{ anulado: boolean }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${entregaId}/anular`,
+      { method: 'POST', body: '{}' },
+    ),
+
+  /** Retira un anexo adicional de la actividad; la traza queda. */
   retirarDocumentoDeActividad: (procesoId: string, numeral: string, documentoId: string) =>
     pedir<{ retirado: boolean }>(
       `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${documentoId}`,
       { method: 'DELETE' },
     ),
 
-  // ------------------------------------ lista de chequeo de la radicación --
+  // ------------------------------------------- radicado de la 3.1 --------
 
   /**
-   * El paquete con el que el área radica en la Dirección de Contratación.
-   *
-   * Se consulta aunque el estudio previo esté a medias: saber qué va a pedirse
-   * es lo que permite ir armándolo.
+   * El consecutivo de Active Document con el que se remitió el paquete de la
+   * 3.1. Los documentos del paquete van por `documentosDeActividad`.
    */
-  listaChequeo: (procesoId: string) =>
-    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`),
-
-  /** Carga uno de los documentos de la lista; el código dice cuál cubre. */
-  cargarDocumentoDeLaLista: (procesoId: string, codigo: string, archivo: File) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', archivo);
-    cuerpo.append('codigo', codigo);
-
-    return pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`, {
-      method: 'POST',
-      body: cuerpo,
-    });
-  },
-
-  /**
-   * Anota el radicado de Active Document con el que se remitió el paquete.
-   *
-   * Cadena vacía lo borra: el procedimiento admite remitir por vías que no
-   * generan consecutivo, y un número anotado por error tiene que poder
-   * quitarse, no solo cambiarse.
-   */
-  anotarRadicadoDeLaLista: (procesoId: string, radicado: string) =>
-    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo/radicado`, {
-      method: 'POST',
-      body: JSON.stringify({ radicado }),
-    }),
-
-  /** Deja uno sin efecto para poder cargar otro en su lugar. */
-  anularDocumentoDeLaLista: (procesoId: string, documentoId: string) =>
-    pedir<EstadoListaChequeo>(
-      `/procesos/${procesoId}/estudio-previo/lista-chequeo/${documentoId}/anular`,
-      { method: 'POST' },
+  radicado: (procesoId: string) =>
+    pedir<{ radicadoGestionDocumental: string | null }>(
+      `/procesos/${procesoId}/estudio-previo/radicado`,
     ),
 
   /**
-   * Carga uno de los documentos que la actividad exige.
-   *
-   * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,
-   * y ponerlo en la ruta chocaría con `/documentos/iniciar`.
+   * Anota el radicado. Cadena vacía lo borra: el procedimiento admite remitir
+   * por vías que no generan consecutivo, y un número anotado por error tiene
+   * que poder quitarse, no solo cambiarse.
    */
-  cargarDocumentoProceso: (procesoId: string, codigo: string, archivo: File) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', archivo);
-    cuerpo.append('codigo', codigo);
-
-    return pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`, {
-      method: 'POST',
-      body: cuerpo,
-    });
-  },
-
-  /** Deja sin efecto un documento cargado para sustituirlo por otro. */
-  anularDocumentoProceso: (procesoId: string, documentoId: string) =>
-    pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos/${documentoId}/anular`, {
-      method: 'POST',
-      body: '{}',
-    }),
+  anotarRadicado: (procesoId: string, radicado: string) =>
+    pedir<{ radicadoGestionDocumental: string | null }>(
+      `/procesos/${procesoId}/estudio-previo/radicado`,
+      { method: 'POST', body: JSON.stringify({ radicado }) },
+    ),
 
   // ---------------------------- etapa 5 · publicación del proyecto de pliego -
 
@@ -2073,6 +2040,37 @@ export const contratacionService = {
     pedir<PlantillaFormato>(`/configuracion/plantillas/${id}/actividad`, {
       method: 'PUT',
       body: JSON.stringify(modalidades ? { numeral, modalidades } : { numeral }),
+    }),
+
+  // --------------------------- documentos requeridos por actividad --------
+
+  /** Los documentos que pide una actividad, activos e inactivos (EFDS-2066). */
+  documentosRequeridos: (numeral?: string) =>
+    pedir<DocumentoRequeridoConfig[]>(
+      `/configuracion/documentos-requeridos${
+        numeral ? `?numeral=${encodeURIComponent(numeral)}` : ''
+      }`,
+    ),
+
+  /** Pide un documento nuevo en una actividad. */
+  crearDocumentoRequerido: (datos: DatosDocumentoRequerido & { numeral: string; nombre: string }) =>
+    pedir<DocumentoRequeridoConfig>('/configuracion/documentos-requeridos', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Corrige, reordena o deja de pedir un documento. */
+  actualizarDocumentoRequerido: (id: string, datos: DatosDocumentoRequerido) =>
+    pedir<DocumentoRequeridoConfig>(`/configuracion/documentos-requeridos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Pide el mismo documento, con su plantilla y su alcance, en otra actividad. */
+  copiarDocumentoRequerido: (id: string, numeral: string) =>
+    pedir<DocumentoRequeridoConfig>(`/configuracion/documentos-requeridos/${id}/copiar`, {
+      method: 'POST',
+      body: JSON.stringify({ numeral }),
     }),
 
   /** Cambia el texto que lee el gestor, o deja de pedir el campo. */
