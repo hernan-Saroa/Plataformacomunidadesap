@@ -114,6 +114,7 @@ export class NotificationClientService {
     }
     this.logger.warn(`[notify] FALLÓ POST ${bulkUrl} (status=${res.status ?? 'n/a'}): ${res.errMessage ?? 'n/a'}. Insertando directo en BD.`);
     try {
+      await this.dataSource.query(`CREATE SCHEMA IF NOT EXISTS notifications`);
       for (const dto of dtos) {
         await this.dataSource.query(
           `INSERT INTO notifications.notificacion
