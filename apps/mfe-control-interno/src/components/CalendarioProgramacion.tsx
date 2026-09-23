@@ -145,26 +145,29 @@ export function CampoFechaCalendario({
   };
 
   /**
-   * Clic en una semana: la desmarca si ya está en la etapa; si está fuera, pasa
-   * a ser la primera o la última según el campo desde el que se abrió el
-   * calendario (fecha de inicio o fecha de fin).
-   */
-  /**
-   * Cada clic marca o desmarca solo esa semana en la etapa del campo. Antes el
-   * primer clic rellenaba el ciclo 4-4-5 entero y los clics siguientes iban
-   * quitando lo que ya había quedado marcado, así que parecía que se perdía.
-   */
-  /**
-   * Si la etapa aún no tiene semanas, el clic la llena con su duración estándar
-   * desde ahí (o hacia atrás, si el campo es la fecha de fin). Cuando ya tiene,
-   * el clic solo agrega o quita esa semana.
+   * Clic en una semana:
+   * - Sin nada programado, arma el cronograma completo (4-4-5) de modo que la
+   *   etapa del campo empiece (o termine) en esa semana.
+   * - Si ya hay cronograma pero esta etapa está vacía, llena solo esta etapa.
+   * - Si la etapa ya tiene semanas, marca o desmarca únicamente esa.
    */
   const alternarSemana = (semana: SemanaVigencia) => {
     onCambio((f, ex) => {
-      const tieneSemanas = programacionDesdeFechas(vigencia, f, ex).some((p) => p.etapa === etapa);
-      if (tieneSemanas) return ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero);
+      const actuales = programacionDesdeFechas(vigencia, f, ex);
+      if (actuales.some((p) => p.etapa === etapa)) {
+        return ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero);
+      }
 
       const pasos = DURACION_ESTANDAR[etapa] - 1;
+      if (!actuales.some((p) => p.etapa)) {
+        // Semanas que ocupan las etapas anteriores, para que esta caiga donde se marcó
+        const previas = etapa === 'P' ? 0 : etapa === 'E' ? DURACION_ESTANDAR.P : DURACION_ESTANDAR.P + DURACION_ESTANDAR.E;
+        const atras = previas + (extremo === 'fin' ? pasos : 0);
+        const arranque = semanaDesplazada(vigencia, ex, semana.numero, -atras);
+        const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[arranque - 1].lunes, semanasExcluidas: ex });
+        return { fechas: resultado.fechas, semanasExcluidas: ex };
+      }
+
       const otro = semanaDesplazada(vigencia, ex, semana.numero, extremo === 'inicio' ? pasos : -pasos);
       return fijarRangoEtapa(
         vigencia, f, ex, etapa,
@@ -212,26 +215,41 @@ export function CampoFechaCalendario({
   };
 
   /**
-   * Clic en un día: ese día queda como inicio o fin de la etapa, para cortar a
-   * mitad de semana. Primero se acomoda el rango de semanas y después se recorta
-   * el extremo al día elegido.
+   * Clic en un día. Antes recalculaba el cronograma entero: desde el campo de
+   * inicio, un día de octubre borraba todo septiembre, y además generaba solas
+   * Ejecución y Comunicación (4 y 5 semanas) o movía las que estaban puestas a
+   * mano. Ahora el día solo hace dos cosas: meter su semana en la etapa si no
+   * estaba (igual que un clic en S) y, si esa semana es la primera o la última
+   * de la etapa, cortar ahí el inicio o el fin. Nada más se mueve.
    */
   const fijarDia = (semana: SemanaVigencia, dia: string) => {
     onCambio((f, ex) => {
-      const actuales = programacionDesdeFechas(vigencia, f, ex);
-      const propias = actuales.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
-      const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
-      const resultado = otro === undefined
-        ? { fechas: ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero).fechas }
-        : aplicarRangoEtapa(vigencia, f, ex, {
-            etapa,
-            desde: extremo === 'inicio' ? semana.numero : Math.min(otro, semana.numero),
-            hasta: extremo === 'inicio' ? Math.max(otro, semana.numero) : semana.numero,
-          });
-      return {
-        fechas: { ...resultado.fechas, [extremo === 'inicio' ? campoInicio : campoFin]: dia },
-        semanasExcluidas: ex,
-      };
+      const yaEsMia = programacionDesdeFechas(vigencia, f, ex)[semana.numero - 1]?.etapa === etapa;
+      const base = yaEsMia
+        ? { fechas: { ...fechasVacias(), ...f }, semanasExcluidas: ex }
+        : ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero);
+
+      const propias = programacionDesdeFechas(vigencia, base.fechas, base.semanasExcluidas)
+        .filter((p) => p.etapa === etapa)
+        .map((p) => p.semana.numero);
+      if (!propias.length) return base;
+      const primera = propias[0];
+      const ultima = propias[propias.length - 1];
+      const fechas = { ...base.fechas };
+
+      // Qué extremo corta el día: el de su semana si es la primera o la última;
+      // si la etapa tiene una sola semana, el del campo desde el que se abrió.
+      const corta: 'inicio' | 'fin' | null = primera === ultima
+        ? extremo
+        : semana.numero === primera ? 'inicio' : semana.numero === ultima ? 'fin' : null;
+
+      if (corta === 'inicio' && (!fechas[campoFin] || dia <= fechas[campoFin])) {
+        // Pulsar otra vez el día que ya es el inicio lo devuelve al primer día hábil.
+        fechas[campoInicio] = fechas[campoInicio] === dia ? primerDiaHabil(semana) : dia;
+      } else if (corta === 'fin' && (!fechas[campoInicio] || dia >= fechas[campoInicio])) {
+        fechas[campoFin] = fechas[campoFin] === dia ? semana.domingo : dia;
+      }
+      return { fechas, semanasExcluidas: base.semanasExcluidas };
     });
   };
 
@@ -398,6 +416,12 @@ function Mes({
   // si salía en los dos, marcarla desde el mes siguiente corría la fecha al anterior.
   const filas = semanas.filter((s) => s.mes === mes);
   const hoy = fechaYMD(new Date());
+  // Primera y última semana de la etapa del campo, en toda la vigencia
+  const numerosCampo = [...porLunes.values()]
+    .filter((p) => p.etapa === etapaCampo)
+    .map((p) => p.semana.numero);
+  const primeraCampo = numerosCampo.length ? Math.min(...numerosCampo) : undefined;
+  const ultimaCampo = numerosCampo.length ? Math.max(...numerosCampo) : undefined;
   const enArrastre = (n: number) =>
     !!arrastre && n >= Math.min(arrastre.desde, arrastre.hasta) && n <= Math.max(arrastre.desde, arrastre.hasta);
 
@@ -471,16 +495,31 @@ function Mes({
                 const deOtroMes = ymd < inicioMes || ymd > finMes;
                 const festivo = semana.festivos.find((f) => f.fecha === ymd);
                 const esExtremo = valor === ymd;
-                // Días de la semana que quedan fuera por un corte a mitad de semana
-                const fueraDelCorte = !!etapa && (
+                // Días de la semana que quedan fuera por un corte a mitad de semana.
+                // Solo en las filas de la etapa del campo: `rango` son SUS fechas, y
+                // aplicarlo a las demás apagaba enteras las filas de Ejecución y
+                // Comunicación, que parecían desmarcadas.
+                const fueraDelCorte = etapa === etapaCampo && (
                   (!!rango.inicio && ymd < rango.inicio) || (!!rango.fin && ymd > rango.fin)
                 );
+                // Lo que hará el clic en este día (ver fijarDia)
+                const esPrimera = etapa === etapaCampo && semana.numero === primeraCampo;
+                const esUltima = etapa === etapaCampo && semana.numero === ultimaCampo;
+                const ayudaDia = etapa !== etapaCampo
+                  ? `Incluir la semana ${semana.numero} en la ${NOMBRE_ETAPA[etapaCampo]}`
+                  : esPrimera && esUltima
+                    ? `${extremo === 'inicio' ? 'Empezar' : 'Terminar'} el ${fecha.getDate()}`
+                    : esPrimera
+                      ? `Empezar el ${fecha.getDate()}`
+                      : esUltima
+                        ? `Terminar el ${fecha.getDate()}`
+                        : 'Semana ya incluida; el día solo se corta en la primera o la última semana';
                 return (
                   <td key={i} className="py-0.5 text-center">
                     <span
                       title={festivo
                         ? `${festivo.nombre} · festivo`
-                        : clickeable ? `${extremo === 'inicio' ? 'Empezar' : 'Terminar'} el ${fecha.getDate()}` : undefined}
+                        : clickeable ? ayudaDia : undefined}
                       onMouseDown={(e) => e.stopPropagation()}
                       onMouseUp={(e) => e.stopPropagation()}
                       onClick={(e) => { e.stopPropagation(); if (clickeable) onClicDia(semana, ymd); }}
