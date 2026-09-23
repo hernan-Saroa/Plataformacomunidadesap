@@ -30,6 +30,7 @@ import {
   TERRITORIAL_COMPONENT_KEYS,
   REVIEW_SUBSECCIONES_BY_COMPONENT,
   PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
+  PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION,
   reviewPermissionFor,
   type PTAComponentKey,
   type PTANivelDocencia,
@@ -56,6 +57,7 @@ function isCategoriaResolucionProyecto(value: unknown): boolean {
 function isPtaHabilitadoParaSeguimientoPorEstado(value: unknown): boolean {
   return new Set([
     'APROBADO',
+    'APROBADO_DEF',
     'EN_FIRME',
     'RADICADO',
     'EN_EJECUCION',
@@ -3658,8 +3660,16 @@ export class PtaService {
   private async filterGestionPtas(dtos: any[], rows: PlanTrabajoAcademicoEntity[], auth: PtaAuthenticatedUser) {
     const aprobables = new Set<string>(auth.allowedComponents);
     const revisables = new Set(auth.allowedReviewSubsecciones);
-    // Los perfiles de consulta general conservan su listado; los especialistas se acotan.
-    if (auth.isSuperUser || (!aprobables.size && !revisables.size)) return dtos;
+    // Los permisos funcionales de Solicitudes/Seguimiento solo abren sus propias
+    // bandejas. Sin un permiso de Gestión ni alcance por componente, la consulta
+    // general debe negar por defecto para no entregar PTAs ajenos al cliente.
+    const consultaGeneral = Boolean(
+      auth.permissions?.has('pta.backoffice.aprobar')
+      || auth.permissions?.has('pta.backoffice.ver_gestion')
+      || auth.permissions?.has('pta.backoffice.ver_detalle'),
+    );
+    if (auth.isSuperUser || auth.approvesAll || (!aprobables.size && !revisables.size && consultaGeneral)) return dtos;
+    if (!aprobables.size && !revisables.size) return [];
     const entities = new Map(rows.map(row => [row.id, row]));
     const visibles: any[] = [];
     for (const dto of dtos) {
@@ -5479,9 +5489,39 @@ export class PtaService {
         ptaId,
         pta.datosEstructurados as SavePtaInput,
       );
+      await this.syncPtaSeguimientoEstado(ptaId);
     }
     const rows = await this.evidenciaRepo.find({ where: { ptaId }, order: { createdAt: 'DESC' } });
     return rows.map((row) => this.toEvidenciaDto(row));
+  }
+
+  /** Consulta administrativa protegida y limitada al alcance aprobable del actor. */
+  async getEvidenciasSeguimientoPTA(ptaId: string, auth?: PtaAuthenticatedUser) {
+    if (!this.puedeGestionarSeguimientoDocumental(auth)) {
+      throw new ForbiddenException('No tienes permiso para consultar el Seguimiento documental del PTA.');
+    }
+    const authenticated = auth as PtaAuthenticatedUser;
+    if (!authenticated.isSuperUser && !authenticated.approvesAll && !(authenticated.allowedComponents || []).length) {
+      return [];
+    }
+
+    const pta = await this.getPtaEnAlcanceSeguimiento(ptaId, authenticated);
+    if (!pta) return [];
+
+    if (
+      pta.datosEstructurados
+      && isPtaHabilitadoParaSeguimientoPorEstado(pta.estado)
+    ) {
+      await this.syncResolucionProyectoInvestigacion(
+        ptaId,
+        pta.datosEstructurados as SavePtaInput,
+      );
+      await this.syncPtaSeguimientoEstado(ptaId);
+    }
+    const rows = await this.evidenciaRepo.find({ where: { ptaId }, order: { createdAt: 'DESC' } });
+    return rows
+      .filter(row => this.puedeGestionarEvidencia(authenticated, row))
+      .map(row => this.toEvidenciaDto(row));
   }
 
   /**
@@ -5535,6 +5575,36 @@ export class PtaService {
     if (auth.isSuperUser || auth.approvesAll) return true;
     const permitidos = new Set(auth.allowedComponents || []);
     return this.componentKeysForEvidencia(evidencia).some(key => permitidos.has(key));
+  }
+
+  private puedeGestionarSeguimientoDocumental(auth?: PtaAuthenticatedUser): boolean {
+    return Boolean(
+      auth?.isSuperUser
+      || auth?.permissions?.has(PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION),
+    );
+  }
+
+  /**
+   * Comprueba el alcance real del PTA, incluido el territorial, antes de exponer
+   * o modificar sus evidencias. Se eliminan expresamente los permisos de revisión:
+   * en Seguimiento el alcance lo conceden solo los permisos de aprobación.
+   */
+  private async getPtaEnAlcanceSeguimiento(
+    ptaId: string,
+    auth: PtaAuthenticatedUser,
+  ): Promise<PlanTrabajoAcademicoEntity | null> {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!pta) throw new NotFoundException('PTA no encontrado');
+
+    const extMult = await this.getExtMultiplicadores();
+    const dtos = [this.toPtaDto(pta, extMult)];
+    await this.attachPtaReferenceDates(dtos);
+    const summaries = await this.enrichPtaSummaries(dtos);
+    const visibles = await this.filterGestionPtas(summaries, [pta], {
+      ...auth,
+      allowedReviewSubsecciones: [],
+    });
+    return visibles.length > 0 ? pta : null;
   }
 
   private assertPuedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity): void {
@@ -5647,11 +5717,13 @@ export class PtaService {
     });
 
     const saved = await this.evidenciaRepo.save(entity);
+    await this.syncPtaSeguimientoEstado(ptaId);
     return this.toEvidenciaDto(saved);
   }
 
   async eliminarEvidenciaPTA(ptaId: string, evidenciaId: string) {
     await this.evidenciaRepo.delete({ id: evidenciaId, ptaId });
+    await this.syncPtaSeguimientoEstado(ptaId);
     return { deleted: true };
   }
 
@@ -5661,17 +5733,25 @@ export class PtaService {
     body: any,
     auth?: PtaAuthenticatedUser,
   ) {
+    if (!this.puedeGestionarSeguimientoDocumental(auth)) {
+      throw new ForbiddenException('No tienes permiso para gestionar el Seguimiento documental del PTA.');
+    }
     const existing = await this.evidenciaRepo.findOne({ where: { id: evidenciaId, ptaId } });
     if (!existing) throw new NotFoundException('Evidencia no encontrada');
     this.assertPuedeGestionarEvidencia(auth, existing);
+    const ptaEnAlcance = await this.getPtaEnAlcanceSeguimiento(ptaId, auth as PtaAuthenticatedUser);
+    if (!ptaEnAlcance) {
+      throw new ForbiddenException('El PTA no pertenece al alcance territorial autorizado para esta cuenta.');
+    }
 
     const decision = coalesceString(body?.decision, body?.estado_revision, body?.estadoRevision);
+    if (!decision || !['aprobado', 'aprobada', 'rechazado', 'rechazada'].includes(decision.toLowerCase())) {
+      throw new BadRequestException('La decisión debe ser "aprobado" o "rechazado".');
+    }
     const estadoRevision =
-      decision === 'aprobado' || decision === 'aprobada'
+      decision.toLowerCase() === 'aprobado' || decision.toLowerCase() === 'aprobada'
         ? 'aprobado'
-        : decision === 'rechazado' || decision === 'rechazada'
-          ? 'rechazado'
-          : existing.estadoRevision;
+        : 'rechazado';
 
     if (estadoRevision === 'aprobado') {
       // Una evidencia histórica puede seguir consultándose/rechazándose, pero
@@ -5692,9 +5772,9 @@ export class PtaService {
     return this.toEvidenciaDto(updated);
   }
 
-  private async syncPtaSeguimientoEstado(ptaId: string): Promise<void> {
+  private async syncPtaSeguimientoEstado(ptaId: string): Promise<string | null> {
     const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
-    if (!pta) return;
+    if (!pta) return null;
 
     const extMult = await this.getExtMultiplicadores();
     const dto = this.toPtaDto(pta, extMult) as any;
@@ -5714,31 +5794,37 @@ export class PtaService {
     };
 
     for (const evidencia of evidencias) {
-      const componente = String(evidencia.componentePta || '');
-      if (!(componente in aprobadas)) continue;
+      const componente = this.grupoSeguimientoParaEvidencia(evidencia);
+      if (!componente) continue;
       if (normalizeEstadoFilter(evidencia.estado) === 'ELIMINADO') continue;
       if (normalizeEstadoFilter(evidencia.estadoRevision) !== 'APROBADO') continue;
       aprobadas[componente] += Number(evidencia.horasAvance || 0);
     }
 
     const tieneHorasRequeridas = Object.values(requeridas).some(total => total > 0);
-    const seguimientoCompleto = tieneHorasRequeridas && Object.entries(requeridas).every(([componente, total]) => {
+    const estadosRevisionResueltos = new Set(['APROBADO', 'APROBADA', 'RECHAZADO', 'RECHAZADA', 'DENEGADO', 'DENEGADA']);
+    const tienePendientes = evidencias.some(evidencia =>
+      normalizeEstadoFilter(evidencia.estado) !== 'ELIMINADO'
+      && !estadosRevisionResueltos.has(normalizeEstadoFilter(evidencia.estadoRevision)),
+    );
+    const seguimientoCompleto = tieneHorasRequeridas && !tienePendientes && Object.entries(requeridas).every(([componente, total]) => {
       if (total <= 0) return true;
       return (aprobadas[componente] || 0) >= total;
     });
 
     const estadoActual = normalizeEstadoFilter(pta.estado);
-    const estadosSeguimiento = new Set(['APROBADO', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION', 'EN_EJECUCION']);
+    const estadosSeguimiento = new Set(['APROBADO', 'APROBADO_DEF', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION']);
     if (seguimientoCompleto && estadosSeguimiento.has(estadoActual)) {
       pta.estado = 'Finalizado';
       await this.ptaRepo.save(pta);
-      return;
+      return pta.estado;
     }
 
     if (!seguimientoCompleto && estadoActual === 'FINALIZADO') {
       pta.estado = 'Aprobado';
       await this.ptaRepo.save(pta);
     }
+    return pta.estado;
   }
 
   private puedeAdministrarSolicitudes(auth?: PtaAuthenticatedUser): boolean {
@@ -6842,35 +6928,62 @@ export class PtaService {
   }
 
   async getAllPtasConEvidencias(periodo: string | undefined, auth?: PtaAuthenticatedUser) {
-    if (!auth || (!auth.isSuperUser && !auth.approvesAll && !(auth.allowedComponents || []).length)) {
-      throw new ForbiddenException('Se requiere al menos un permiso pta.approve.* para consultar Seguimiento.');
+    if (!this.puedeGestionarSeguimientoDocumental(auth)) {
+      throw new ForbiddenException('No tienes permiso para consultar el Seguimiento documental del PTA.');
+    }
+    const authenticated = auth as PtaAuthenticatedUser;
+    // El permiso funcional abre la bandeja, pero no debe ampliar el alcance. Un
+    // rol sin permisos de aprobación por componente recibe una bandeja vacía.
+    if (!authenticated.isSuperUser && !authenticated.approvesAll && !(authenticated.allowedComponents || []).length) {
+      return [];
     }
     const qb = this.ptaRepo.createQueryBuilder('pta');
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
     qb.orderBy('pta.updatedAt', 'DESC');
-    qb.take(500);
     const ptas = await qb.getMany();
     if (ptas.length === 0) return [];
-
-    await Promise.all(
-      ptas
-        .filter(pta => isPtaHabilitadoParaSeguimientoPorEstado(pta.estado))
-        .filter(pta => Boolean(
-          coalesceString((pta.datosEstructurados as any)?.investigacion_proyecto?.resolucion_archivo_url),
-        ))
-        .map(pta => this.syncResolucionProyectoInvestigacion(
-          pta.id,
-          (pta.datosEstructurados || {}) as SavePtaInput,
-        )),
-    );
 
     const extMult = await this.getExtMultiplicadores();
     const dtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
     await this.attachPtaReferenceDates(dtos);
     const summaries = await this.enrichPtaSummaries(dtos);
-    const scopedPtas = await this.filterGestionPtas(summaries, ptas, auth);
+    // Seguimiento usa exclusivamente el alcance de aprobación. Los permisos de
+    // revisión pueden convivir en el rol, pero no deben hacer visibles PTAs ni
+    // evidencias adicionales dentro de esta bandeja.
+    const scopedPtas = this.sortPtasByReferenceDate(await this.filterGestionPtas(summaries, ptas, {
+      ...authenticated,
+      allowedReviewSubsecciones: [],
+    })).slice(0, 500);
     const ids = scopedPtas.map((pta) => pta.id || pta.pta_id).filter(Boolean);
     if (ids.length === 0) return [];
+
+    // La sincronización automática se limita a los PTA que realmente quedaron
+    // dentro del alcance del usuario; consultar la bandeja no muta planes ajenos.
+    const idsSet = new Set(ids.map(String));
+    const estadosSincronizados = new Map<string, string>();
+    const resultadosSincronizacion = await Promise.all(
+      ptas
+        .filter(pta => idsSet.has(String(pta.id)))
+        .filter(pta => isPtaHabilitadoParaSeguimientoPorEstado(pta.estado))
+        .filter(pta => Boolean(
+          coalesceString((pta.datosEstructurados as any)?.investigacion_proyecto?.resolucion_archivo_url),
+        ))
+        .map(async pta => {
+          await this.syncResolucionProyectoInvestigacion(
+            pta.id,
+            (pta.datosEstructurados || {}) as SavePtaInput,
+          );
+          return [String(pta.id), await this.syncPtaSeguimientoEstado(pta.id)] as const;
+        }),
+    );
+    for (const [ptaId, estado] of resultadosSincronizacion) {
+      if (estado) estadosSincronizados.set(ptaId, estado);
+    }
+    const scopedPtasActualizados = scopedPtas.map(pta => {
+      const id = String(pta.id || pta.pta_id || '');
+      const estado = estadosSincronizados.get(id);
+      return estado ? { ...pta, estado } : pta;
+    });
 
     const evidencias = await this.evidenciaRepo
       .createQueryBuilder('ev')
@@ -6895,12 +7008,18 @@ export class PtaService {
       ) {
         resumenByPta[ev.ptaId][grupo].horas_aprobadas += Math.max(0, Number(ev.horasAvance) || 0);
       }
-      if (!this.puedeGestionarEvidencia(auth, ev)) continue;
+      if (!this.puedeGestionarEvidencia(authenticated, ev)) continue;
       evidenciasByPta[ev.ptaId] ||= [];
       evidenciasByPta[ev.ptaId].push(this.toEvidenciaDto(ev));
     }
 
-    const resultado = scopedPtas.map((pta) => ({
+    const resultado = scopedPtasActualizados
+      .filter((pta) => {
+        const id = pta.id || pta.pta_id;
+        return isPtaHabilitadoParaSeguimientoPorEstado(pta.estado)
+          || (evidenciasByPta[id] || []).length > 0;
+      })
+      .map((pta) => ({
       ...pta,
       evidencias: evidenciasByPta[pta.id || pta.pta_id] || [],
       // Agregado sin datos del archivo: mantiene correcto el avance global aun
@@ -6911,8 +7030,8 @@ export class PtaService {
         extension: { horas_aprobadas: 0 },
         complementarias: { horas_aprobadas: 0 },
       },
-    }));
-    return this.sortPtasByReferenceDate(resultado);
+      }));
+    return resultado;
   }
 
   async getConfiguracionPTAGlobal() {

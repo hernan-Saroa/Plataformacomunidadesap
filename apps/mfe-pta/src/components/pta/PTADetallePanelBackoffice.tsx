@@ -35,7 +35,7 @@ import {
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow, getBancoDocenteById } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow, getBancoDocenteById } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
@@ -53,6 +53,7 @@ import {
   PTA_COMPONENT_LEVELS,
   PTA_COMPONENT_PERMISSION,
   PTA_APPROVE_ALL_PERMISSION,
+  PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION,
   type PTAComponentKey,
   componentKeysForApprovalLevel,
   splitComplementarias,
@@ -735,6 +736,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [loadingExtras, setLoadingExtras] = useState(false);
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loadingEvidencias, setLoadingEvidencias] = useState(false);
+  const [procesandoEvidencia, setProcesandoEvidencia] = useState<string | null>(null);
+  const evidenciasRequestRef = useRef(0);
   const [previewFile, setPreviewFile] = useState<EvidencePreviewFile | null>(null);
   // Documento de Office convertido en el navegador (null = aún cargando).
   const [officeHtml, setOfficeHtml] = useState<string | null>(null);
@@ -772,6 +775,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const { permisos: permisosPta } = usePermisosPTA();
   const { puede: puedePerm } = usePermisosPTAGranulares();
   const apruebaTodo = useMemo(() => puedePerm(PTA_APPROVE_ALL_PERMISSION), [puedePerm]);
+  const puedeGestionarSeguimientoDocumental = puedePerm(PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION);
   const tieneAlgunPermisoComponente = useMemo(
     () => apruebaTodo || Object.values(COMPONENT_PERMISSION).some(p => puedePerm(p)),
     [apruebaTodo, puedePerm],
@@ -861,14 +865,33 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   // Cargar evidencias al activar el tab
   useEffect(() => {
-    if (activeTab === 'evidencias' && pta?.id) {
+    const requestId = ++evidenciasRequestRef.current;
+    if (activeTab === 'evidencias' && pta?.id && puedeGestionarSeguimientoDocumental) {
       setLoadingEvidencias(true);
-      getEvidenciasPTA(pta.id).then(res => {
+      getEvidenciasSeguimientoPTA(pta.id).then(res => {
+        if (requestId !== evidenciasRequestRef.current) return;
         if (res.success) setEvidencias(res.data || []);
+        else {
+          setEvidencias([]);
+          toast.error(res.message || 'No fue posible cargar los soportes autorizados.');
+        }
         setLoadingEvidencias(false);
-      }).catch(() => setLoadingEvidencias(false));
+      }).catch(() => {
+        if (requestId !== evidenciasRequestRef.current) return;
+        setEvidencias([]);
+        setLoadingEvidencias(false);
+      });
     }
-  }, [activeTab, pta?.id]);
+    return () => {
+      if (requestId === evidenciasRequestRef.current) ++evidenciasRequestRef.current;
+    };
+  }, [activeTab, pta?.id, puedeGestionarSeguimientoDocumental, syncVersion]);
+
+  useEffect(() => {
+    if (activeTab === 'evidencias' && !puedeGestionarSeguimientoDocumental) {
+      setActiveTab('resumen');
+    }
+  }, [activeTab, puedeGestionarSeguimientoDocumental]);
 
   const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
   const [preparandoDecision, setPreparandoDecision] = useState<'firma' | 'decision' | null>(null);
@@ -1310,16 +1333,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // se puede ver/aprobar/rechazar solo si el usuario está autorizado para el componente
   // (o la sección de extensión) al que pertenece. Superuser y pta.approve.all quedan
   // cubiertos porque isComponentAuthorized retorna true para todos en ese caso.
-  // Autorización de evidencias basada EXCLUSIVAMENTE en los 7 permisos granulares
-  // pta.approve.<componente> (+ pta.approve.all y superuser). No usa los fallbacks por
-  // nivel/rol de isComponentAuthorized, para que el filtrado sea estrictamente por permiso.
+  // La entrada exige el permiso funcional de Seguimiento y el alcance de cada
+  // evidencia se basa exclusivamente en pta.approve.<componente> (+ approve.all
+  // y superuser). No usa fallbacks por nivel/rol, para mantener el filtro estricto.
   const isEvidenciaComponentAuthorized = useCallback(
-    (key: PTAComponentKey) => apruebaTodo || puedePerm(PTA_COMPONENT_PERMISSION[key]),
+    (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puedePerm, key),
     [apruebaTodo, puedePerm],
   );
   const puedeRevisarEvidencia = useCallback(
-    (ev: any) => isEvidenciaAuthorized(ev, isEvidenciaComponentAuthorized),
-    [isEvidenciaComponentAuthorized],
+    (ev: any) => puedeGestionarSeguimientoDocumental
+      && isEvidenciaAuthorized(ev, isEvidenciaComponentAuthorized),
+    [isEvidenciaComponentAuthorized, puedeGestionarSeguimientoDocumental],
   );
   // Solo se listan las evidencias del/los componente(s) que el usuario está autorizado
   // a revisar. Superuser / pta.approve.all ven todas (isComponentAuthorized retorna true).
@@ -1327,6 +1351,31 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     () => evidencias.filter(ev => puedeRevisarEvidencia(ev)),
     [evidencias, puedeRevisarEvidencia],
   );
+
+  const resolverEvidenciaDetalle = async (
+    ev: any,
+    decision: 'aprobado' | 'rechazado',
+    observaciones?: string,
+  ) => {
+    if (procesandoEvidencia) return;
+    setProcesandoEvidencia(ev.id);
+    try {
+      const res = await revisarEvidenciaPTA(pta.id, ev.id, {
+        decision,
+        revisado_por: actorId,
+        observaciones,
+      });
+      if (!res.success) {
+        toast.error(res.message || 'No fue posible guardar la decisión sobre el soporte.');
+        return;
+      }
+      setEvidencias(prev => prev.map(item => item.id === ev.id ? { ...item, ...(res.data || {}) } : item));
+      toast.success(decision === 'aprobado' ? 'Soporte aprobado' : 'Soporte rechazado');
+      await refrescarEstadoDerivadoDelPta();
+    } finally {
+      setProcesandoEvidencia(null);
+    }
+  };
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
@@ -1712,7 +1761,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // aprueba o devuelve, con comentario del revisor. La etiqueta visible varía según
     // el rol (ver tabComponentesLabel).
     { key: 'componentes', label: tabComponentesLabel, icon: ShieldCheck, badge: componentesPendientes || undefined },
-    { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
+    ...(puedeGestionarSeguimientoDocumental
+      ? [{ key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined }]
+      : []),
     { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
     // La etapa de concertación (coordinadores, durante la elaboración del PTA) ya fue
     // ejecutada antes de que el PTA llegue a la bandeja de aprobación: la pestaña solo
@@ -4344,20 +4395,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             {ev.estadoRevision === 'pendiente' && puedeRevisarEvidencia(ev) && (
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
-                                  onClick={async () => {
-                                    await revisarEvidenciaPTA(pta.id, ev.id, { decision: 'aprobado', revisado_por: actorId });
-                                    setEvidencias(prev => prev.map(e => e.id === ev.id ? { ...e, estadoRevision: 'aprobado' } : e));
-                                  }}
-                                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', background: '#D1FAE5', color: '#059669', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}
+                                  onClick={() => resolverEvidenciaDetalle(ev, 'aprobado')}
+                                  disabled={procesandoEvidencia === ev.id}
+                                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', background: '#D1FAE5', color: '#059669', fontSize: '0.65rem', fontWeight: 700, cursor: procesandoEvidencia === ev.id ? 'wait' : 'pointer', opacity: procesandoEvidencia === ev.id ? 0.6 : 1 }}
                                 >✓ Aprobar</button>
                                 <button
-                                  onClick={async () => {
+                                  onClick={() => {
                                     const obs = prompt('Motivo de rechazo:');
                                     if (obs === null) return;
-                                    await revisarEvidenciaPTA(pta.id, ev.id, { decision: 'rechazado', revisado_por: actorId, observaciones: obs });
-                                    setEvidencias(prev => prev.map(e => e.id === ev.id ? { ...e, estadoRevision: 'rechazado', comentarioRevision: obs } : e));
+                                    void resolverEvidenciaDetalle(ev, 'rechazado', obs);
                                   }}
-                                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}
+                                  disabled={procesandoEvidencia === ev.id}
+                                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, cursor: procesandoEvidencia === ev.id ? 'wait' : 'pointer', opacity: procesandoEvidencia === ev.id ? 0.6 : 1 }}
                                 >✗ Rechazar</button>
                               </div>
                             )}

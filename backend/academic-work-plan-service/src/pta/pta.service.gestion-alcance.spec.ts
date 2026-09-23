@@ -67,9 +67,16 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
     expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id)).toEqual(['docencia']);
   });
 
-  it('conserva la consulta del superusuario y los perfiles de consulta general', async () => {
+  it('niega por defecto y conserva la consulta de perfiles con permiso general y superusuario', async () => {
     const { service, auth, rows, dtos } = setup();
+    auth.permissions = new Set();
+    expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual([]);
+    auth.permissions.add('pta.backoffice.ver_gestion');
     expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual(dtos);
+    auth.permissions.clear();
+    auth.approvesAll = true;
+    expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual(dtos);
+    auth.approvesAll = false;
     auth.isSuperUser = true;
     expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual(dtos);
   });

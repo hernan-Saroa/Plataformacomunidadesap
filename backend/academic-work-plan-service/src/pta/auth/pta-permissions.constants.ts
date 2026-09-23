@@ -38,6 +38,13 @@ export type PTAComponentKey =
  */
 export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
 
+/**
+ * Habilita la pestaña, consulta y acciones de Seguimiento documental. El alcance
+ * concreto continúa dependiendo de pta.approve.*; este permiso no concede por sí
+ * solo acceso a evidencias de ningún componente.
+ */
+export const PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION = 'pta.backoffice.seguimiento';
+
 /** Todas las claves de componente aprobable, en orden estable. */
 export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',

@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PtaBackofficeModule } from './PtaBackofficeModule';
 import {
   deletePTA, getAllPTAs, getAllPtasConEvidencias, getPTADecisionListScope,
-  getSolicitudesPTA, resolverSolicitudPTA,
+  getSolicitudesPTA, resolverSolicitudPTA, revisarEvidenciaPTA,
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
+import { PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION } from './shared/ptaComponentPermissions';
 
 const sync = vi.hoisted(() => ({ options: null as any, isSuperUser: false, rol: 'jefatura', allowedPermissions: null as Set<string> | null, visibleViews: null as Set<string> | null, permissions: {
   nivelAprobacion: 1, puedeAprobar: true, componentesAprobables: [] as string[], componentesRevisables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
@@ -33,7 +34,7 @@ vi.mock('../../services/api/supabase.service', () => ({ supabaseService: {} }));
 vi.mock('../../services/api/ptaApi', () => ({
   getAllPTAs: vi.fn(),
   getAllPtasConEvidencias: vi.fn(),
-  revisarEvidenciaPTA: vi.fn(),
+  revisarEvidenciaPTA: vi.fn().mockResolvedValue({ success: true, data: {} }),
   deletePTA: vi.fn(),
   getPTADecisionListScope: vi.fn(),
   getSolicitudesPTA: vi.fn(),
@@ -129,6 +130,39 @@ describe('listado y contadores del backoffice', () => {
     expect(await screen.findByText('Docente uno')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Solicitudes PTA' })).toBeNull();
     expect(getSolicitudesPTA).not.toHaveBeenCalled();
+  });
+
+  it('no abre Seguimiento mediante initialView cuando el rol no tiene esa vista', async () => {
+    sync.visibleViews = new Set(['gestion', 'solicitudes_pta']);
+
+    render(<PtaBackofficeModule initialView="seguimiento_docs" />);
+
+    expect(await screen.findByText('Docente uno')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Seguimiento' })).toBeNull();
+    expect(getAllPtasConEvidencias).not.toHaveBeenCalled();
+  });
+
+  it('entra directamente a Seguimiento cuando es la única vista autorizada', async () => {
+    sync.visibleViews = new Set(['seguimiento_docs']);
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION]);
+
+    render(<PtaBackofficeModule />);
+
+    expect(await screen.findByText('Sin componentes de aprobación asignados')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Seguimiento' })).toBeTruthy();
+    expect(screen.queryByText('Docente uno')).toBeNull();
+  });
+
+  it('explica que el permiso funcional no concede componentes por sí solo', async () => {
+    sync.visibleViews = new Set(['gestion', 'seguimiento_docs']);
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION]);
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+
+    expect(await screen.findByText('Sin componentes de aprobación asignados')).toBeTruthy();
+    expect(screen.getByText(/necesita al menos un permiso de aprobación por componente/)).toBeTruthy();
   });
 
   it('muestra y resuelve solamente los componentes de solicitud entregados al revisor', async () => {
@@ -239,7 +273,7 @@ describe('listado y contadores del backoffice', () => {
   });
 
   it('muestra la tarjeta agrupada de Docencia con un permiso granular aunque no haya evidencias', async () => {
-    sync.allowedPermissions = new Set(['pta.approve.academica.pregrado']);
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, 'pta.approve.academica.pregrado']);
     vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{
       id: 'pta-docencia',
       pta_id: 'pta-docencia',
@@ -265,7 +299,7 @@ describe('listado y contadores del backoffice', () => {
   });
 
   it('mantiene verdadero el avance global sin mostrar evidencias de componentes ajenos', async () => {
-    sync.allowedPermissions = new Set(['pta.approve.academica.pregrado']);
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, 'pta.approve.academica.pregrado']);
     vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{
       id: 'pta-resumen-seguro',
       pta_id: 'pta-resumen-seguro',
@@ -342,6 +376,73 @@ describe('listado y contadores del backoffice', () => {
     expect(screen.queryByText('Docente histórico')).toBeNull();
     expect(screen.queryByText('Todos los periodos')).toBeNull();
     expect(screen.getByText('Período: 2026-1')).toBeTruthy();
+  });
+
+  it('prioriza un soporte pendiente aunque las horas aprobadas ya estén completas', async () => {
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, 'pta.approve.investigacion']);
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{
+      id: 'pta-pendiente-adjunto', pta_id: 'pta-pendiente-adjunto',
+      docente_nombre: 'Docente con soporte pendiente', estado: 'Aprobado', periodo: '2026-1',
+      horas_investigacion: 100,
+      seguimiento_resumen: { investigacion: { horas_aprobadas: 100 } },
+      evidencias: [
+        { id: 'ev-main', componente_pta: 'investigacion', estado_revision: 'aprobado', horas_avance: 100, fecha_subida: '2026-09-22T10:00:00Z' },
+        { id: 'ev-adjunto', componente_pta: 'investigacion', estado_revision: 'pendiente', horas_avance: 0, descripcion: 'Adjunto 1 de 1', fecha_subida: '2026-09-22T10:00:01Z' },
+      ],
+    }] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+
+    expect(await screen.findByText('1 soporte por revisar')).toBeTruthy();
+    expect(screen.queryByText('Soportes completos')).toBeNull();
+    fireEvent.click(screen.getByText('Docente con soporte pendiente'));
+    expect(await screen.findByRole('button', { name: /Aprobar/ })).toBeTruthy();
+  });
+
+  it('no presenta una aprobación fallida como exitosa y vuelve a consultar el estado real', async () => {
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, 'pta.approve.investigacion']);
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValue({ success: true, data: [{
+      id: 'pta-fallo', pta_id: 'pta-fallo', docente_nombre: 'Docente fallo controlado',
+      estado: 'Aprobado', periodo: '2026-1', horas_investigacion: 100,
+      evidencias: [{
+        id: 'ev-fallo', componente_pta: 'investigacion', estado_revision: 'pendiente',
+        horas_avance: 100, nombre: 'soporte.pdf', fecha_subida: '2026-09-22T10:00:00Z',
+      }],
+    }] });
+    vi.mocked(revisarEvidenciaPTA).mockResolvedValue({ success: false, data: null, message: 'Permiso retirado' } as any);
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+    fireEvent.click(await screen.findByText('Docente fallo controlado'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Aprobar' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Permiso retirado'));
+    expect(toast.success).not.toHaveBeenCalledWith('Justificación aprobada');
+    await waitFor(() => expect(getAllPtasConEvidencias).toHaveBeenCalledTimes(2));
+  });
+
+  it('elimina de la vista los datos anteriores si el servidor revoca Seguimiento', async () => {
+    sync.allowedPermissions = new Set([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, 'pta.approve.investigacion']);
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValueOnce({ success: true, data: [{
+      id: 'pta-revocada', pta_id: 'pta-revocada', docente_nombre: 'Docente antes visible',
+      estado: 'Aprobado', periodo: '2026-1', horas_investigacion: 100, evidencias: [],
+    }] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+    await screen.findByText('Docente antes visible');
+
+    vi.mocked(getAllPtasConEvidencias).mockResolvedValueOnce({
+      success: false, data: [], message: 'Permiso retirado',
+    } as any);
+    fireEvent.click(screen.getByTitle('Recargar'));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Permiso retirado'));
+    expect(screen.queryByText('Docente antes visible')).toBeNull();
   });
 
   it('refresca inmediatamente después de resolver en el panel sin esperar al sondeo', async () => {

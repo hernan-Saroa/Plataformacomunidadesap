@@ -797,6 +797,8 @@ const ESTADOS_CON_DOCUMENTOS_KEYS = new Set([
   'EN_FIRME',
   'RADICADO',
   'EN_EJECUCION',
+  'FINALIZADO',
+  'TERMINADO',
 ]);
 
 type EstadoRevisionDocumento = 'pendiente' | 'aprobado' | 'rechazado';
@@ -894,17 +896,17 @@ function getVisualSeguimiento(
   resumen: ReturnType<typeof getResumenTotalSeguimiento>,
   pendientesRevision: number,
 ) {
-  if (resumen.total <= 0) {
-    return { label: 'Sin horas por justificar', color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', progress: '#94A3B8' };
-  }
-  if (resumen.faltantes <= 0) {
-    return { label: 'Soportes completos', color: '#047857', bg: '#ECFDF5', border: '#6EE7B7', progress: '#10B981' };
-  }
   if (pendientesRevision > 0) {
     return {
       label: `${pendientesRevision} soporte${pendientesRevision === 1 ? '' : 's'} por revisar`,
       color: '#92400E', bg: '#FFFBEB', border: '#FCD34D', progress: '#F59E0B',
     };
+  }
+  if (resumen.total <= 0) {
+    return { label: 'Sin horas por justificar', color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', progress: '#94A3B8' };
+  }
+  if (resumen.faltantes <= 0) {
+    return { label: 'Soportes completos', color: '#047857', bg: '#ECFDF5', border: '#6EE7B7', progress: '#10B981' };
   }
   if (resumen.aprobadas <= 0) {
     return { label: 'Soportes pendientes', color: '#B91C1C', bg: '#FEF2F2', border: '#FCA5A5', progress: '#EF4444' };
@@ -934,13 +936,15 @@ function SeguimientoDocumentosAdmin({
   rolLabel: string;
   periodo: string;
 }) {
-  // Autorización POR COMPONENTE basada EXCLUSIVAMENTE en los 7 permisos granulares
-  // pta.approve.<componente> (+ pta.approve.all y superuser). No se usa
+  // Alcance POR COMPONENTE basado exclusivamente en los permisos granulares
+  // pta.approve.<componente> (+ pta.approve.all y superuser). La entrada a esta
+  // vista ya fue autorizada aparte con el permiso funcional de Seguimiento. No se usa
   // permisos.componentesAprobables porque muchos roles mapean a 'admin' por defecto y
   // devolverían todos los componentes, ignorando los permisos reales del rol.
   const { puede } = usePermisosPTAGranulares();
   const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
   const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puede, key);
+  const tieneAlcanceSeguimiento = apruebaTodo || PTA_COMPONENT_KEYS.some(isComponentAuthorized);
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {
@@ -972,7 +976,14 @@ function SeguimientoDocumentosAdmin({
     setLoading(true);
     const res = await getAllPtasConEvidencias(periodo);
     if (requestId !== loadRequestRef.current) return;
-    if (res.success) setPtasData(res.data || []);
+    if (res.success) {
+      setPtasData(res.data || []);
+    } else {
+      // Ante revocación del permiso o una respuesta no autorizada no se deben
+      // conservar en pantalla evidencias obtenidas con una sesión anterior.
+      setPtasData([]);
+      toast.error(res.message || 'No fue posible consultar el Seguimiento documental.');
+    }
     setLoading(false);
   }, [periodo]);
 
@@ -985,17 +996,31 @@ function SeguimientoDocumentosAdmin({
   // adjuntos reciben la misma decisión (los adjuntos son 0h — no afectan avance).
   const revisar = async (ptaId: string, evidenciaId: string, decision: 'aprobado' | 'rechazado', adjuntosIds: string[] = []) => {
     setProcesando(evidenciaId);
-    const res = await revisarEvidenciaPTA(ptaId, evidenciaId, { decision, revisado_por: aprobadorNombre, comentario: comentario[evidenciaId] || '' });
-    if (res.success) {
-      for (const adjId of adjuntosIds) {
-        try {
-          await revisarEvidenciaPTA(ptaId, adjId, { decision, revisado_por: aprobadorNombre, comentario: 'Soporte de la justificación principal' });
-        } catch { /* el principal ya quedó revisado; el adjunto se puede reintentar */ }
+    try {
+      const res = await revisarEvidenciaPTA(ptaId, evidenciaId, { decision, revisado_por: aprobadorNombre, comentario: comentario[evidenciaId] || '' });
+      if (!res.success) {
+        toast.error(res.message || 'No fue posible procesar la justificación');
+        return;
       }
-      toast.success(decision === 'aprobado' ? 'Justificación aprobada' : 'Justificación rechazada');
-      load();
-    } else { toast.error('Error al procesar'); }
-    setProcesando(null);
+
+      let adjuntosFallidos = 0;
+      for (const adjId of adjuntosIds) {
+        const adjunto = await revisarEvidenciaPTA(ptaId, adjId, {
+          decision,
+          revisado_por: aprobadorNombre,
+          comentario: 'Soporte de la justificación principal',
+        });
+        if (!adjunto.success) adjuntosFallidos += 1;
+      }
+      if (adjuntosFallidos > 0) {
+        toast.error(`La decisión principal se guardó, pero ${adjuntosFallidos} soporte${adjuntosFallidos === 1 ? '' : 's'} adicional${adjuntosFallidos === 1 ? '' : 'es'} debe${adjuntosFallidos === 1 ? '' : 'n'} reintentarse.`);
+      } else {
+        toast.success(decision === 'aprobado' ? 'Justificación aprobada' : 'Justificación rechazada');
+      }
+    } finally {
+      await load();
+      setProcesando(null);
+    }
   };
 
   // Solo aplican al Seguimiento las PTAs que pueden tener documentos: aprobadas / en firme /
@@ -1021,7 +1046,9 @@ function SeguimientoDocumentosAdmin({
 
   // Los adjuntos de soporte (0h) siguen la decisión de su documento principal:
   // no se cuentan como pendientes propios. Solo se cuentan las evidencias autorizadas.
-  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + evsAutorizadas(p).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e)).length, 0);
+  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc
+    + agruparEvidenciasPorJustificacion(evsAutorizadas(p))
+      .filter(grupo => [grupo.main, ...grupo.adjuntos].some(isDocumentoPendiente)).length, 0);
 
   return (
     <div style={{ padding: '0 0 40px' }}>
@@ -1073,13 +1100,22 @@ function SeguimientoDocumentosAdmin({
       ) : filteredPtas.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, background: '#F9FAFB', borderRadius: 14 }}>
           <FolderOpen style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: '0.9rem', color: '#9CA3AF', margin: 0 }}>Sin documentos para revisar</p>
-          <p style={{ fontSize: '0.75rem', color: '#D1D5DB', margin: '4px 0 0' }}>Los docentes aún no han subido soportes a sus PTAs aprobados</p>
+          <p style={{ fontSize: '0.9rem', color: '#9CA3AF', margin: 0 }}>
+            {tieneAlcanceSeguimiento ? 'Sin documentos para revisar' : 'Sin componentes de aprobación asignados'}
+          </p>
+          <p style={{ fontSize: '0.75rem', color: '#9CA3AF', margin: '4px 0 0' }}>
+            {tieneAlcanceSeguimiento
+              ? 'Los docentes aún no han subido soportes a sus PTAs aprobados'
+              : 'El acceso a Seguimiento está activo, pero el rol necesita al menos un permiso de aprobación por componente.'}
+          </p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredPtas.map((pta: any) => {
-            const evsPendientes = evsAutorizadas(pta).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
+            const gruposEvidencias = agruparEvidenciasPorJustificacion(evsAutorizadas(pta));
+            const gruposPendientes = gruposEvidencias.filter(
+              grupo => [grupo.main, ...grupo.adjuntos].some(isDocumentoPendiente),
+            );
             const componentesAutorizados = COMPONENTES_SEG.filter(comp => isSegComponentAuthorized(comp.key));
             const resumenesPorComponente = componentesAutorizados.map(comp => ({
               comp,
@@ -1091,7 +1127,7 @@ function SeguimientoDocumentosAdmin({
             const resumenTotal = getResumenTotalSeguimiento(
               COMPONENTES_SEG.map(comp => getResumenHorasSeguimiento(pta, comp.key)),
             );
-            const visualSeguimiento = getVisualSeguimiento(resumenTotal, evsPendientes.length);
+            const visualSeguimiento = getVisualSeguimiento(resumenTotal, gruposPendientes.length);
             const isOpen = selectedPtaId === pta.pta_id;
             return (
               <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${visualSeguimiento.border}`, borderLeft: `4px solid ${visualSeguimiento.progress}`, overflow: 'hidden' }}>
@@ -1159,9 +1195,9 @@ function SeguimientoDocumentosAdmin({
                     })}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {evsPendientes.length > 0 && (
+                    {gruposPendientes.length > 0 && (
                       <span style={{ padding: '2px 8px', borderRadius: 6, background: '#FEF3C7', color: '#92400E', fontSize: '0.62rem', fontWeight: 700 }}>
-                        {evsPendientes.length} pendiente{evsPendientes.length > 1 ? 's' : ''}
+                        {gruposPendientes.length} pendiente{gruposPendientes.length > 1 ? 's' : ''}
                       </span>
                     )}
                     <ChevronDown style={{ width: 16, height: 16, color: '#9CA3AF', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
@@ -1192,10 +1228,13 @@ function SeguimientoDocumentosAdmin({
                             <p style={{ fontSize: '0.68rem', color: '#9CA3AF', margin: '2px 0 0' }}>El docente aún no ha subido evidencias para esta PTA</p>
                           </div>
                         )}
-                        {agruparEvidenciasPorJustificacion(evsAutorizadas(pta)).map((grupo: { main: any; adjuntos: any[] }) => {
+                        {gruposEvidencias.map((grupo: { main: any; adjuntos: any[] }) => {
                           const ev = grupo.main;
                           const comp = COMPONENTES_SEG.find(c => c.key === ev.componente_pta);
-                          const estadoRev = getEstadoRevisionDocumento(ev);
+                          const estadosGrupo = [ev, ...grupo.adjuntos].map(getEstadoRevisionDocumento);
+                          const estadoRev: EstadoRevisionDocumento = estadosGrupo.includes('pendiente')
+                            ? 'pendiente'
+                            : estadosGrupo.includes('rechazado') ? 'rechazado' : 'aprobado';
                           const isPendiente = estadoRev === 'pendiente';
                           return (
                             <div key={ev.id} style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px', border: `1px solid ${estadoRev === 'aprobado' ? '#6EE7B7' : estadoRev === 'rechazado' ? '#FCA5A5' : '#E5E7EB'}` }}>
@@ -1834,15 +1873,26 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [approvalObs, setApprovalObs] = useState('');
   const [devolucionMotivo, setDevolucionMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
+  const fallbackModuleView = useMemo<ModuleView>(() => {
+    if (tieneVista('gestion')) return 'gestion';
+    if (tieneVista('solicitudes_pta')) return 'solicitudes_pta';
+    if (tieneVista('seguimiento_docs')) return 'seguimiento_docs';
+    return 'gestion';
+  }, [tieneVista]);
   const initialModuleView = useMemo<ModuleView>(() => {
-    const requested = (initialView as ModuleView) || 'gestion';
-    if (requested === 'solicitudes_pta' && !tieneVista('solicitudes_pta')) return 'gestion';
-    return requested;
-  }, [initialView, tieneVista]);
+    const requested = (initialView as ModuleView) || fallbackModuleView;
+    return tieneVista(requested) ? requested : fallbackModuleView;
+  }, [initialView, tieneVista, fallbackModuleView]);
   const [moduleView, setModuleView] = useState<ModuleView>(initialModuleView);
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   const [showReporteR01, setShowReporteR01] = useState(false);
+
+  // Si los permisos cambian durante la sesión, no conservar montada una bandeja
+  // que el rol ya no puede abrir.
+  useEffect(() => {
+    if (!tieneVista(moduleView)) setModuleView(fallbackModuleView);
+  }, [moduleView, tieneVista, fallbackModuleView]);
 
   // ── Listener: abrir detalle de PTA desde una notificación (bandeja/correo) ──
   // El backend (`pta-notifications.service.ts`) emite notificaciones con
@@ -1852,7 +1902,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // (mismo patrón que Gestión Legal / Control Interno).
   useEffect(() => {
     const abrirDetallePorId = async (ptaId: string) => {
-      if (!ptaId) return;
+      if (!ptaId || !tieneVista('gestion')) return;
       setModuleView('gestion');
       const res = await getPTAById(ptaId);
       if (res.success && res.data) setSelectedPTA(res.data);
@@ -1877,7 +1927,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     }
 
     return () => window.removeEventListener('pta:open-detalle', handleOpen);
-  }, []);
+  }, [tieneVista]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<string>('fecha_orden');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
