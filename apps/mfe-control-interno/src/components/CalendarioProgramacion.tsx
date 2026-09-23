@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Eraser, Info } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Eraser, Info, Zap } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/popover';
 import {
   ajustarSemanaEtapa,
@@ -135,20 +135,28 @@ export function CampoFechaCalendario({
    * a ser la primera o la última según el campo desde el que se abrió el
    * calendario (fecha de inicio o fecha de fin).
    */
+  /**
+   * Cada clic marca o desmarca solo esa semana en la etapa del campo. Antes el
+   * primer clic rellenaba el ciclo 4-4-5 entero y los clics siguientes iban
+   * quitando lo que ya había quedado marcado, así que parecía que se perdía.
+   */
   const alternarSemana = (semana: SemanaVigencia) => {
-    // Sin cronograma todavía, el primer clic propone el ciclo 4-4-5 completo
-    if (!hayCronograma) {
-      const arranque = extremo === 'fin'
-        ? semanaRetrocediendo(semana.numero, DURACION_ESTANDAR[etapa] - 1)
-        : semana.numero;
-      const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[arranque - 1].lunes, semanasExcluidas });
-      onCambio({ fechas: resultado.fechas, semanasExcluidas });
-      return;
-    }
-    // Después, cada clic solo marca o desmarca esa semana en la etapa del campo:
-    // las demás etapas no se mueven y no se pierde lo ya marcado.
-    const resultado = ajustarSemanaEtapa(vigencia, fechas, semanasExcluidas, etapa, semana.numero);
-    onCambio(resultado);
+    onCambio(ajustarSemanaEtapa(vigencia, fechas, semanasExcluidas, etapa, semana.numero));
+  };
+
+  /** Rellena el ciclo estándar de 13 semanas desde donde arranca la auditoría. */
+  const aplicarCicloEstandar = () => {
+    const propias = programadas.filter((p) => p.etapa === etapa);
+    // Si no hay nada marcado, arranca en la primera semana del mes que se ve
+    const desde = propias[0]?.semana
+      ?? programadas.find((p) => p.etapa)?.semana
+      ?? semanas.find((s) => s.mes === mes)
+      ?? semanas[0];
+    const arranque = extremo === 'fin' && propias.length
+      ? semanaRetrocediendo(propias[propias.length - 1].semana.numero, DURACION_ESTANDAR[etapa] - 1)
+      : desde.numero;
+    const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[arranque - 1].lunes, semanasExcluidas });
+    onCambio({ fechas: resultado.fechas, semanasExcluidas });
   };
 
   /** Retrocede n semanas que cuenten (ni bloqueadas ni excluidas). */
@@ -270,23 +278,36 @@ export function CampoFechaCalendario({
         {!hayCronograma ? (
           <p className="mt-2 flex items-start gap-1.5 rounded bg-blue-50 px-2 py-1.5 text-[11px] leading-snug text-blue-800">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-            Clic en el número (S12) para la semana entera; clic en un día si la {NOMBRE_ETAPA[etapa]} {extremo === 'inicio' ? 'empieza' : 'termina'} a mitad de semana.
+            Marque las semanas de la {NOMBRE_ETAPA[etapa]} una por una, o use el ciclo 4-4-5 para llenarlas de una vez.
           </p>
         ) : (
           <ResumenEtapas programadas={programadas} fechas={fechas} />
         )}
 
         <div className="mt-2 flex items-center justify-between gap-2">
-          {hayCronograma && !bloqueado ? (
-            <button
-              type="button"
-              onClick={limpiar}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
-            >
-              <Eraser className="h-3.5 w-3.5" />
-              Limpiar
-            </button>
-          ) : <span />}
+          <div className="flex items-center gap-1.5">
+            {!bloqueado && (
+              <button
+                type="button"
+                onClick={aplicarCicloEstandar}
+                title="Llenar las 13 semanas del ciclo (4 de Planeación, 4 de Ejecución y 5 de Comunicación)"
+                className="inline-flex items-center gap-1 rounded-md border border-[#1e5da8] px-2 py-1 text-xs font-semibold text-[#1e5da8] transition-colors hover:bg-blue-50"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Ciclo 4-4-5
+              </button>
+            )}
+            {hayCronograma && !bloqueado && (
+              <button
+                type="button"
+                onClick={limpiar}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
+              >
+                <Eraser className="h-3.5 w-3.5" />
+                Limpiar
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setAbierto(false)}
