@@ -6,9 +6,10 @@
  * los festivos, la Semana Santa y la semana de receso, más la columna con el
  * número de semana.
  *
- * - Clic en una semana: la marca o la desmarca.
- * - Clic en dos números de semana (S10 y luego S13): la etapa va de una a otra,
- *   igual que arrastrando, y sirve aunque estén en meses distintos.
+ * - Clic en el número de la semana (S12): la marca o la desmarca entera, y
+ *   arrastrando de un número a otro la etapa ocupa ese rango.
+ * - Clic en un día: la etapa empieza o termina ese día exacto, para no tener que
+ *   tomar la semana completa.
  * Semana Santa y la semana de receso nunca entran y el cronograma las salta.
  */
 
@@ -18,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@esap-mfe/shared-ui/pop
 import {
   aplicarRangoEtapa,
   calcularProgramacion,
+  DURACION_ESTANDAR,
   fechaCorta,
   fechaYMD,
   fechasVacias,
@@ -93,8 +95,6 @@ export function CampoFechaCalendario({
   // Arrastre: se marca desde dónde y hasta dónde mientras el mouse está abajo
   const [arrastre, setArrastre] = useState<{ desde: number; hasta: number } | null>(null);
   const arrastrando = useRef(false);
-  // Semana marcada con el primer clic, a la espera del segundo que cierra el rango
-  const [anclaje, setAnclaje] = useState<number | null>(null);
 
   const mesDe = (fecha?: string) => {
     if (fecha) return parseYMD(fecha).getMonth();
@@ -127,38 +127,88 @@ export function CampoFechaCalendario({
     onCambio({ fechas: resultado.fechas, semanasExcluidas: excluidas });
   };
 
-  /** Clic en una semana: la marca si está fuera, la desmarca si está dentro. */
+  /**
+   * Clic en una semana: la desmarca si ya está en la etapa; si está fuera, pasa
+   * a ser la primera o la última según el campo desde el que se abrió el
+   * calendario (fecha de inicio o fecha de fin).
+   */
   const alternarSemana = (semana: SemanaVigencia) => {
     const estado = porLunes.get(semana.lunes);
-    if (estado?.etapa || estado?.excluida) { alternarExclusion(semana); return; }
+    // Solo se desmarca lo que es de esta etapa; si es de otra, pasa a esta
+    if (estado?.etapa === etapa || estado?.excluida) { alternarExclusion(semana); return; }
 
-    // Estaba fuera del cronograma: la etapa del campo se estira hasta ella
     const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
     if (!propias.length) {
-      const resultado = calcularProgramacion({ año: vigencia, inicio: semana.lunes, semanasExcluidas });
+      // Todavía no hay cronograma: desde el campo de fin, la etapa termina en
+      // esa semana; desde el de inicio, empieza ahí.
+      const arranque = extremo === 'fin'
+        ? semanaRetrocediendo(semana.numero, DURACION_ESTANDAR[etapa] - 1)
+        : semana.numero;
+      const resultado = calcularProgramacion({ año: vigencia, inicio: semanas[arranque - 1].lunes, semanasExcluidas });
       onCambio({ fechas: resultado.fechas, semanasExcluidas });
       return;
     }
-    aplicarRango(
-      Math.min(propias[0], semana.numero),
-      Math.max(propias[propias.length - 1], semana.numero),
-    );
+    const primera = propias[0];
+    const ultima = propias[propias.length - 1];
+    if (extremo === 'inicio') {
+      aplicarRango(semana.numero, Math.max(semana.numero, ultima));
+    } else {
+      aplicarRango(Math.min(semana.numero, primera), semana.numero);
+    }
   };
+
+  /** Retrocede n semanas que cuenten (ni bloqueadas ni excluidas). */
+  const semanaRetrocediendo = (desde: number, n: number) => {
+    let numero = desde;
+    let faltan = n;
+    while (faltan > 0 && numero > 1) {
+      numero -= 1;
+      const s = semanas[numero - 1];
+      if (s && !s.bloqueo && !semanasExcluidas.includes(s.lunes)) faltan -= 1;
+    }
+    return numero;
+  };
+
+  /**
+   * Límites del campo: desde "fecha de fin" no se puede elegir algo anterior al
+   * inicio de la etapa, y al revés. Evita cronogramas al revés.
+   */
+  const limites = (() => {
+    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
+    if (!propias.length) return {};
+    return extremo === 'inicio'
+      ? { hasta: propias[propias.length - 1] }
+      : { desde: propias[0] };
+  })();
 
   const aplicar = (desde: number, hasta: number) => {
     const a = Math.min(desde, hasta);
     const b = Math.max(desde, hasta);
-    if (a !== b) { setAnclaje(null); aplicarRango(a, b); return; }
+    if (a !== b) { aplicarRango(a, b); return; }
     alternarSemana(semanas[a - 1]);
   };
 
-  /** Clic en un número de semana: el primero abre el rango y el segundo lo cierra. */
-  const marcarExtremo = (semana: SemanaVigencia) => {
-    if (anclaje === null || anclaje === semana.numero) { setAnclaje(semana.numero); return; }
-    const a = Math.min(anclaje, semana.numero);
-    const b = Math.max(anclaje, semana.numero);
-    setAnclaje(null);
-    aplicarRango(a, b);
+  /**
+   * Clic en un día: ese día queda como inicio o fin de la etapa, para cortar a
+   * mitad de semana. Primero se acomoda el rango de semanas y después se recorta
+   * el extremo al día elegido.
+   */
+  const fijarDia = (semana: SemanaVigencia, dia: string) => {
+    const propias = programadas.filter((p) => p.etapa === etapa).map((p) => p.semana.numero);
+    const otro = extremo === 'inicio' ? propias[propias.length - 1] : propias[0];
+    const resultado = otro === undefined
+      ? calcularProgramacion({ año: vigencia, inicio: semana.lunes, semanasExcluidas })
+      : aplicarRangoEtapa(vigencia, fechas, semanasExcluidas, {
+          etapa,
+          desde: extremo === 'inicio' ? semana.numero : Math.min(otro, semana.numero),
+          hasta: extremo === 'inicio' ? Math.max(otro, semana.numero) : semana.numero,
+        });
+
+    const campo = extremo === 'inicio'
+      ? ({ P: 'fechaInicioPlaneacion', E: 'fechaInicioEjecucion', C: 'fechaInicioComunicacion' } as const)[etapa]
+      : ({ P: 'fechaFinPlaneacion', E: 'fechaFinEjecucion', C: 'fechaFinComunicacion' } as const)[etapa];
+
+    onCambio({ fechas: { ...resultado.fechas, [campo]: dia }, semanasExcluidas });
   };
 
   const alternarExclusion = (semana: SemanaVigencia) => {
@@ -220,9 +270,7 @@ export function CampoFechaCalendario({
         </div>
 
         <p className="mb-2 text-center text-[11px] font-semibold" style={{ color: etapa === 'P' ? '#1d4ed8' : etapa === 'E' ? '#b45309' : '#047857' }}>
-          {anclaje !== null
-            ? `Desde la semana ${anclaje}: elija hasta cuál`
-            : `${NOMBRE_ETAPA[etapa]} · fecha de ${extremo}`}
+          {NOMBRE_ETAPA[etapa]} · fecha de {extremo}
         </p>
 
         <Mes
@@ -234,7 +282,7 @@ export function CampoFechaCalendario({
           extremo={extremo}
           valor={valor}
           arrastre={arrastre}
-          anclaje={anclaje}
+          limites={limites}
           soloLectura={bloqueado}
           onInicioArrastre={(n) => { arrastrando.current = true; setArrastre({ desde: n, hasta: n }); }}
           onPasarPor={(n) => { if (arrastrando.current) setArrastre((a) => (a ? { ...a, hasta: n } : a)); }}
@@ -244,13 +292,14 @@ export function CampoFechaCalendario({
             setArrastre(null);
             aplicar(marca ? marca.desde : n, n);
           }}
-          onClicNumero={marcarExtremo}
+          onClicNumero={alternarSemana}
+          onClicDia={fijarDia}
         />
 
         {!hayCronograma ? (
           <p className="mt-2 flex items-start gap-1.5 rounded bg-blue-50 px-2 py-1.5 text-[11px] leading-snug text-blue-800">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-            Clic en una semana para marcarla; clic en dos números (S10 y S13) para ir de una a otra.
+            Clic en el número (S12) para la semana entera; clic en un día si la {NOMBRE_ETAPA[etapa]} {extremo === 'inicio' ? 'empieza' : 'termina'} a mitad de semana.
           </p>
         ) : (
           <ResumenEtapas programadas={programadas} fechas={fechas} />
@@ -298,21 +347,24 @@ interface MesProps {
   semanas: SemanaVigencia[];
   porLunes: Map<string, SemanaProgramada>;
   etapaCampo: EtapaCronograma;
+  /** Inicio o fin: lo que fija el clic sobre una semana */
+  extremo: 'inicio' | 'fin';
   /** Fecha del campo, para resaltar el día que está puesto */
   valor?: string;
   arrastre: { desde: number; hasta: number } | null;
-  /** Semana marcada con el primer clic en un número, esperando el segundo */
-  anclaje: number | null;
+  /** Semanas que este campo no puede elegir, para no invertir la etapa */
+  limites: { desde?: number; hasta?: number };
   soloLectura: boolean;
   onInicioArrastre: (numero: number) => void;
   onPasarPor: (numero: number) => void;
   onSoltar: (numero: number) => void;
   onClicNumero: (semana: SemanaVigencia) => void;
+  onClicDia: (semana: SemanaVigencia, dia: string) => void;
 }
 
 function Mes({
-  vigencia, mes, semanas, porLunes, etapaCampo, valor, arrastre, anclaje, soloLectura,
-  onInicioArrastre, onPasarPor, onSoltar, onClicNumero,
+  vigencia, mes, semanas, porLunes, etapaCampo, extremo, valor, arrastre, limites, soloLectura,
+  onInicioArrastre, onPasarPor, onSoltar, onClicNumero, onClicDia,
 }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
   const finMes = fechaYMD(new Date(vigencia, mes + 1, 0));
@@ -337,10 +389,12 @@ function Mes({
           const bloqueada = !!semana.bloqueo;
           const etapa = estado?.etapa;
           const excluida = !!estado?.excluida;
-          const clickeable = !soloLectura && !bloqueada;
+          const fueraDeLimite =
+            (limites.desde !== undefined && semana.numero < limites.desde) ||
+            (limites.hasta !== undefined && semana.numero > limites.hasta);
+          const clickeable = !soloLectura && !bloqueada && !fueraDeLimite;
           const marcada = enArrastre(semana.numero);
-          const anclada = anclaje === semana.numero;
-          const claseFila = marcada || anclada
+          const claseFila = marcada
             ? `${ESTILO_ETAPA[etapaCampo].fila} ring-2 ring-inset ring-[#1e5da8]`
             : excluida
               ? 'bg-white text-gray-400'
@@ -354,11 +408,13 @@ function Mes({
           const estiloFila = !marcada && !excluida && bloqueada ? { backgroundImage: FONDO_BLOQUEADA } : undefined;
           const titulo = bloqueada
             ? `${NOMBRE_BLOQUEO[semana.bloqueo!]}: no se programa`
-            : excluida
+            : fueraDeLimite
+              ? `La ${NOMBRE_ETAPA[etapaCampo]} no puede ${extremo === 'fin' ? 'terminar antes de empezar' : 'empezar después de terminar'}`
+              : excluida
               ? `Semana ${semana.numero} desmarcada · clic para volver a marcarla`
               : etapa
                 ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]} · clic para desmarcarla`
-                : `Semana ${semana.numero} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
+                : `Semana ${semana.numero} como ${extremo} de la ${NOMBRE_ETAPA[etapaCampo]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
 
           return (
             <tr
@@ -368,21 +424,19 @@ function Mes({
               onMouseEnter={() => clickeable && onPasarPor(semana.numero)}
               onMouseUp={() => clickeable && onSoltar(semana.numero)}
               style={estiloFila}
-              className={`group ${claseFila} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
+              className={`group ${claseFila} ${fueraDeLimite ? 'opacity-40' : ''} ${clickeable ? 'cursor-pointer' : 'cursor-not-allowed'} transition-colors`}
             >
               <td className="py-0.5 pr-1 text-left">
                 <button
                   type="button"
                   disabled={!clickeable}
-                  title={anclaje === null
-                    ? `Desde la semana ${semana.numero}`
-                    : anclada ? 'Cancelar' : `De la semana ${anclaje} a la ${semana.numero}`}
+                  title={titulo}
                   onMouseDown={(e) => e.stopPropagation()}
                   onMouseUp={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); if (clickeable) onClicNumero(semana); }}
                   className={`rounded px-0.5 font-bold ${excluida ? 'line-through' : ''} ${
-                    anclada ? 'bg-[#1e5da8] text-white' : bloqueada ? 'text-red-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'
-                  } ${clickeable ? 'cursor-pointer hover:bg-white/80 hover:underline' : ''}`}
+                    bloqueada ? 'text-red-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'
+                  } ${clickeable ? 'cursor-pointer hover:bg-white/80' : ''}`}
                 >
                   S{semana.numero}
                 </button>
@@ -396,11 +450,16 @@ function Mes({
                 return (
                   <td key={i} className="py-0.5 text-center">
                     <span
-                      title={festivo ? `${festivo.nombre} · festivo` : undefined}
+                      title={festivo
+                        ? `${festivo.nombre} · festivo`
+                        : clickeable ? `${extremo === 'inicio' ? 'Empezar' : 'Terminar'} el ${fecha.getDate()}` : undefined}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onMouseUp={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); if (clickeable) onClicDia(semana, ymd); }}
                       style={festivo ? { backgroundColor: ROJO_FESTIVO } : undefined}
                       className={`inline-flex h-5 w-5 items-center justify-center rounded ${
                         festivo ? 'font-bold text-white' : i === 6 ? 'text-gray-400' : ''
-                      } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''}`}
+                      } ${esExtremo ? 'ring-2 ring-[#1e5da8] font-bold' : ''} ${ymd === hoy && !esExtremo ? 'ring-1 ring-orange-400' : ''} ${excluida ? 'line-through' : ''} ${clickeable ? 'cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
                     >
                       {fecha.getDate()}
                     </span>
