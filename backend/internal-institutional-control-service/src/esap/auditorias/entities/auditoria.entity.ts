@@ -144,6 +144,10 @@ export class Auditoria {
   @Column({ type: 'date', name: 'fecha_fin', nullable: false })
   fechaFin: Date; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
+  // Lunes (YYYY-MM-DD) de las semanas que el usuario sacó del cronograma (EFDS-2132)
+  @Column({ type: 'jsonb', name: 'semanas_excluidas', default: () => "'[]'::jsonb" })
+  semanasExcluidas: string[];
+
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
 
