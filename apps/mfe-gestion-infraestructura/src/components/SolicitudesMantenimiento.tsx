@@ -5,7 +5,7 @@ import {
   Package, CheckCircle, Archive, Ban, XCircle, ChevronDown,
   ChevronUp, Paperclip, FileText, Image, Download,
   ShieldCheck, Home, Siren, MapPin, Monitor, GitBranch,
-  User, ThumbsDown,
+  User, ThumbsDown, Star,
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -385,8 +385,18 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                 <div className="space-y-1.5 flex-1 w-full">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono font-bold text-xs bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded">
+                    <span className="font-mono font-bold text-xs bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded inline-flex items-center gap-1.5">
                       {m.consecutivo}
+                      {/* EFDS-1738 RF-INF-009 Badge mini calificación ⭐X/5 (OQ3 default SÍ) */}
+                      {m.resultadoConformidad === 'CONFIRMADA' &&
+                        m.calificacionServicio &&
+                        m.calificacionServicio >= 1 &&
+                        m.calificacionServicio <= 5 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-50 ring-1 ring-amber-200 text-amber-700" title={`Calificación ${m.calificacionServicio}/5`}>
+                            <Star className="w-2.5 h-2.5 text-amber-500 fill-amber-400" strokeWidth={1.8} />
+                            <span className="text-[10px] font-bold leading-none">{m.calificacionServicio}/5</span>
+                          </span>
+                        )}
                     </span>
                     <span
                       className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${clasePrioridad(m.prioridad || 'MEDIA')}`}

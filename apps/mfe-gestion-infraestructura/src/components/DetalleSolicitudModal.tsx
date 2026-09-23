@@ -8,7 +8,7 @@ import {
   ChevronDown, Zap, ChevronUp, ThumbsUp, Ban as IconRechazar,
   Repeat as RedistribuirIcon, CheckCircle2, ThumbsDown, RotateCcw,
   BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge,
-  ScrollText
+  ScrollText, Star
 } from 'lucide-react';
 import {
   SolicitudMantenimiento,
@@ -2203,6 +2203,36 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                 {resumenConformidadBadge.label}
               </div>
             )}
+            {/* EFDS-1738 RF-INF-009 Vista readonly calificación servicio 1-5 */}
+            {detalle?.resultadoConformidad === 'CONFIRMADA' &&
+              detalle?.calificacionServicio &&
+              detalle.calificacionServicio >= 1 &&
+              detalle.calificacionServicio <= 5 && (
+                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-amber-200 bg-amber-50/70 text-[11px] font-bold whitespace-nowrap">
+                  <div className="inline-flex items-center gap-0.5" aria-label={`Calificación ${detalle.calificacionServicio} de 5`}>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star
+                        key={i}
+                        className={`w-3.5 h-3.5 ${
+                          i <= (detalle.calificacionServicio as 1 | 2 | 3 | 4 | 5)
+                            ? 'text-amber-500 fill-amber-400'
+                            : 'text-slate-300'
+                        }`}
+                        strokeWidth={1.8}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-amber-800">
+                    Calificación {detalle.calificacionServicio}/5
+                    {detalle.responsableCalificacionDisplay && (
+                      <> · {detalle.responsableCalificacionDisplay}</>
+                    )}
+                    {detalle.fechaCalificacion && (
+                      <> · {formatearFecha(detalle.fechaCalificacion)}</>
+                    )}
+                  </span>
+                </div>
+              )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">
             {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, OnModuleInit, Optional, Inject, forwardRef, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In, IsNull, Not } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
 import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
@@ -31,6 +31,67 @@ function userIdUuidOrNull(userId: unknown): string | null {
 
 const PLAZO_CONFORMIDAD_HORAS_DEFAULT = 72;
 const REAPERTURA_NUEVO_SLA_HORAS = 24;
+
+// ===== EFDS-1738 RF-INF-009 Calificación del Servicio Recibido =====
+// OQ-1 default: true (OPCIONAL). Si mañana se aprueba OBLIGATORIA, cambiar a false.
+const CALIFICACION_SERVICIO_OPCIONAL_DEFAULT = true as const;
+const CALIFICACIONES_VALIDAS: readonly (1 | 2 | 3 | 4 | 5)[] = [1, 2, 3, 4, 5] as const;
+type CalificacionServicioValida = (typeof CALIFICACIONES_VALIDAS)[number];
+function esCalificacionValida(v: unknown): v is CalificacionServicioValida {
+  return typeof v === 'number' && Number.isInteger(v) && CALIFICACIONES_VALIDAS.includes(v as CalificacionServicioValida);
+}
+
+// Tipos públicos para el endpoint consolidados calificaciones (EFDS-1738)
+export type AgrupacionCalificacion = 'tecnico' | 'categoria' | 'area' | 'global';
+export interface DistribucionCalificacion {
+  1: number;
+  2: number;
+  3: number;
+  4: number;
+  5: number;
+}
+export interface ConsolidadoCalificacionItem {
+  tipoGrupo: AgrupacionCalificacion;
+  idGrupo: number | string | null;
+  nombreGrupo: string;
+  numeroCalificaciones: number;
+  sumaCalificaciones: number;
+  promedio: number;
+  distribucion: DistribucionCalificacion;
+}
+export interface FiltrosConsolidadoCalificacion {
+  por?: AgrupacionCalificacion;
+  fechaDesde?: string | Date | null;
+  fechaHasta?: string | Date | null;
+  idCategoria?: number | string | null;
+  codigoTecnico?: string | null;
+  idAreaSolicitante?: string | null;
+}
+
+const ROLES_BYPASS_CALIFICACIONES: readonly string[] = [
+  'SUPER_ADMIN',
+  'GESTOR_MANTENIMIENTO',
+  'ADMINISTRADOR_FUNCIONAL',
+] as const;
+function usuarioEsBypassConsolidados(user?: AuthUser | null): boolean {
+  if (!user || !Array.isArray(user.roles) || user.roles.length === 0) return false;
+  const roles = user.roles.map((r) => String(r).toUpperCase());
+  return ROLES_BYPASS_CALIFICACIONES.some((r) => roles.includes(String(r).toUpperCase()));
+}
+function parsearFechaUTCNullable(val: unknown): Date | null {
+  if (val == null || val === '') return null;
+  try {
+    const d = new Date(val as string);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+function distribucionVacia(): DistribucionCalificacion {
+  return { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+}
+const SEPARADOR_TECNICO = ' · ';
 
 function nuevoItemRemision(args: {
   usuarioId?: string;
@@ -80,6 +141,8 @@ export class MantenimientoService implements OnModuleInit {
     private readonly valoracionRepo: Repository<SolicitudValoracion>,
     @InjectRepository(SolicitudValoracionInsumo)
     private readonly valoracionInsumoRepo: Repository<SolicitudValoracionInsumo>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     private readonly storage: StorageService,
     @Optional() @Inject(forwardRef(() => NotificationClientService))
     private readonly notificaciones?: NotificationClientService,
@@ -367,6 +430,58 @@ export class MantenimientoService implements OnModuleInit {
     const where: any = { catalogo: 'CATEGORIA_SERVICIO' };
     if (soloActivos === true) where.isActivo = true;
     return this.catalogoRepo.find({ where, order: { orden: 'ASC', idCatalogo: 'ASC' } });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Catálogo cross-schema dependencias (auth.dependencias)
+  // Se usa para seleccionar el Área/Dependencia solicitante al radicar mantenimiento.
+  // No hay entity en UMI porque pertenece al dominio auth; ejecuta query raw seguro.
+  // ---------------------------------------------------------------------------
+  async listarDependenciasCatalogo(): Promise<Array<{
+    idDependencia: number;
+    codDependencia: string;
+    nomDependencia: string;
+    idSede: number | null;
+    sedeUmiId: string | null;
+    sedeCodigo: string | null;
+    sedeNombre: string | null;
+  }>> {
+    try {
+      const rows = await this.dataSource.query<Array<{
+        id_dependencia: string | number;
+        cod_dependencia: string;
+        nom_dependencia: string;
+        id_sede: string | number | null;
+        sede_umi_id: string | null;
+        sede_codigo: string | null;
+        sede_nombre: string | null;
+      }>>(`
+        SELECT d.id_dependencia,
+               d.cod_dependencia,
+               d.nom_dependencia,
+               d.id_sede,
+               d.sede_umi_id,
+               s.codigo  AS sede_codigo,
+               s.nombre  AS sede_nombre
+        FROM auth.dependencias d
+        LEFT JOIN "infrastructure-management".sede s
+               ON s.id_sede = d.sede_umi_id
+        WHERE d.activo = TRUE
+        ORDER BY d.nom_dependencia ASC
+      `);
+      return (rows || []).map((r) => ({
+        idDependencia: typeof r.id_dependencia === 'number' ? r.id_dependencia : parseInt(String(r.id_dependencia), 10),
+        codDependencia: String(r.cod_dependencia || '').trim(),
+        nomDependencia: String(r.nom_dependencia || '').trim(),
+        idSede: r.id_sede === null || r.id_sede === undefined ? null : (typeof r.id_sede === 'number' ? r.id_sede : parseInt(String(r.id_sede), 10)),
+        sedeUmiId: r.sede_umi_id ? String(r.sede_umi_id).trim() : null,
+        sedeCodigo: r.sede_codigo ? String(r.sede_codigo).trim() : null,
+        sedeNombre: r.sede_nombre ? String(r.sede_nombre).trim() : null,
+      })).filter((r) => r.nomDependencia.length > 0);
+    } catch (err: any) {
+      this.notifLogger.warn(`[catalogos.dependencias] Falló consulta auth.dependencias: ${err?.message || String(err)}`);
+      return [];
+    }
   }
 
   async crearCategoriaServicio(data: {
@@ -2022,12 +2137,36 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.resultadoConformidad = 'CONFIRMADA';
     solicitud.observacionesConformidad = dto.observacionesConformidad?.trim() || undefined;
 
+    // ===== EFDS-1738 RF-INF-009 Calificación del Servicio Recibido 1-5 =====
+    if (esCalificacionValida(dto.calificacionServicio)) {
+      solicitud.calificacionServicio = dto.calificacionServicio;
+      solicitud.fechaCalificacion = ahora;
+      solicitud.usuarioCalificacionId = user.userId;
+      solicitud.responsableCalificacionDisplay = user.username;
+    } else if (!CALIFICACION_SERVICIO_OPCIONAL_DEFAULT) {
+      throw new BadRequestException(
+        'Calificación del servicio (1-5) es obligatoria para confirmar conformidad EFDS-1738.',
+      );
+    } else {
+      // OPCIONAL y no vino rating válido: guardar NULL para no contaminar promedios
+      solicitud.calificacionServicio = undefined;
+      solicitud.fechaCalificacion = undefined;
+      solicitud.usuarioCalificacionId = undefined;
+      solicitud.responsableCalificacionDisplay = undefined;
+    }
+    const obsPush = [
+      dto.observacionesConformidad?.trim(),
+      solicitud.calificacionServicio ? `Calificación ${solicitud.calificacionServicio}/5` : null,
+    ]
+      .filter((x): x is string => Boolean(x))
+      .join(' | ');
+
     this.pushAsignacion(solicitud, {
       accion: 'CONFORMIDAD_CONFIRMADA',
       tecnicoCodigo: null,
       tecnicoNombreDisplay: null,
       motivo: 'Solicitud cerrada a satisfacción del área solicitante.',
-      observaciones: dto.observacionesConformidad?.trim() || null,
+      observaciones: obsPush || null,
       user,
     });
 
@@ -2209,6 +2348,191 @@ export class MantenimientoService implements OnModuleInit {
       })();
     }
     return { actualizadas: ids.length, ids };
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1738 RF-INF-009: Consolidados promedio calificación de servicio
+  // 4 casos de agrupación + 5 filtros opcionales.
+  // ---------------------------------------------------------------------------
+  async calificacionesConsolidadas(
+    filtros: FiltrosConsolidadoCalificacion,
+    user: AuthUser | null | undefined,
+  ): Promise<ConsolidadoCalificacionItem[]> {
+    // OQ-2 default: solo perfiles bypass. Técnico USER retorna 403 Forbidden.
+    if (!usuarioEsBypassConsolidados(user)) {
+      throw new ForbiddenException(
+        'No está autorizado para ver consolidados de calificación servicio EFDS-1738. Requiere rol SUPER_ADMIN, GESTOR_MANTENIMIENTO o ADMINISTRADOR_FUNCIONAL.',
+      );
+    }
+    const por: AgrupacionCalificacion = ['tecnico', 'categoria', 'area', 'global'].includes(
+      (filtros.por || '').toLowerCase() as AgrupacionCalificacion,
+    )
+      ? (filtros.por!.toLowerCase() as AgrupacionCalificacion)
+      : 'tecnico';
+    const fechaDesde = parsearFechaUTCNullable(filtros.fechaDesde);
+    const fechaHasta = parsearFechaUTCNullable(filtros.fechaHasta);
+    const idCategoria =
+      filtros.idCategoria == null || filtros.idCategoria === ''
+        ? null
+        : Number.isInteger(Number(filtros.idCategoria)) && Number(filtros.idCategoria) > 0
+        ? Number(filtros.idCategoria)
+        : null;
+    const codigoTecnico =
+      typeof filtros.codigoTecnico === 'string' && filtros.codigoTecnico.trim().length > 0
+        ? filtros.codigoTecnico.trim()
+        : null;
+    const idAreaSolicitante =
+      typeof filtros.idAreaSolicitante === 'string' && filtros.idAreaSolicitante.trim().length > 0
+        ? filtros.idAreaSolicitante.trim()
+        : null;
+
+    const qb = this.mantenimientoRepo.createQueryBuilder('s');
+
+    // ============ JOINS ESPECÍFICOS SEGÚN AGRUPACIÓN ============
+    if (por === 'categoria') {
+      qb.leftJoin(CatalogoItem, 'ci', 'ci.id = s.idCategoria AND ci.catalogo = :catCatalogo', {
+        catCatalogo: 'CATEGORIA_SERVICIO',
+      });
+    }
+
+    // ============ WHERE FIJOS (siempre filtran) ============
+    qb.andWhere("s.estado IN (:...estadosCierre)", {
+      estadosCierre: ['CERRADA', 'CERRADA_SIN_ATENCION'],
+    });
+    qb.andWhere("s.resultadoConformidad = :resuConform", {
+      resuConform: 'CONFIRMADA',
+    });
+    qb.andWhere('s.calificacionServicio IS NOT NULL');
+    qb.andWhere('s.calificacion_servicio IS NOT NULL');
+
+    // ============ WHERE DINÁMICOS 5 FILTROS OPCIONALES ============
+    if (fechaDesde) {
+      qb.andWhere('s.fechaCalificacion >= :fDesde', { fDesde: fechaDesde });
+    }
+    if (fechaHasta) {
+      qb.andWhere('s.fechaCalificacion <= :fHasta', { fHasta: fechaHasta });
+    }
+    if (idCategoria != null) {
+      qb.andWhere('s.idCategoria = :idCat', { idCat: idCategoria });
+    }
+    if (codigoTecnico) {
+      // responsableAsignado formato "TEC-XXX-001 · Nombre Apellido" → prefix LIKE
+      qb.andWhere("s.responsableAsignado ILIKE :prefTec", {
+        prefTec: codigoTecnico + SEPARADOR_TECNICO + '%',
+      });
+    }
+    if (idAreaSolicitante) {
+      qb.andWhere('s.idAreaSolicitante = :idArea', {
+        idArea: idAreaSolicitante,
+      });
+    }
+
+    // ============ GROUP BY + SELECT agregados comunes
+    qb
+      .addSelect('COUNT(*)::bigint', 'numeroCalificaciones')
+      .addSelect('COALESCE(SUM(s.calificacionServicio), 0)::bigint', 'sumaCalificaciones')
+      .addSelect(
+        'ROUND(COALESCE(AVG(CASE WHEN s.calificacionServicio IS NOT NULL THEN CAST(s.calificacionServicio AS NUMERIC) END), 0), 2)',
+        'promedio',
+      )
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 1 THEN 1 ELSE 0 END), 0)::bigint",
+        'd1',
+      )
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 2 THEN 1 ELSE 0 END), 0)::bigint",
+        'd2',
+      )
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 3 THEN 1 ELSE 0 END), 0)::bigint",
+        'd3',
+      )
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 4 THEN 1 ELSE 0 END), 0)::bigint",
+        'd4',
+      )
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 5 THEN 1 ELSE 0 END), 0)::bigint",
+        'd5',
+      );
+
+    // ============ AGRUPACIÓN ESPECÍFICA Y CAMPOS GRUPO ============
+    switch (por) {
+      case 'tecnico': {
+        // Split prefix "COD · Nombre" = SPLIT_PART (Postgres). Fallback old data = '(sin técnico asignado)'.
+        qb.addSelect(
+          `COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 1), ''), '')`,
+          'idGrupo',
+        ).addSelect(
+          `CASE WHEN s.responsableAsignado IS NULL OR TRIM(s.responsableAsignado) = '' THEN :fallbackSinTec ELSE COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 2), ''), s.responsableAsignado) END`,
+          'nombreGrupo',
+        ).setParameter('sepTec', SEPARADOR_TECNICO).setParameter('fallbackSinTec', '(sin técnico asignado)');
+        qb.groupBy('1').addGroupBy('s.responsableAsignado');
+        break;
+      }
+      case 'categoria': {
+        qb.addSelect('CAST(s.idCategoria AS TEXT)', 'idGrupo').addSelect(
+          `COALESCE(NULLIF(TRIM(ci.nombre), ''), '') || CASE WHEN s.idCategoria IS NULL THEN :fallbackSinCat ELSE '' END`,
+          'nombreGrupo',
+        ).setParameter('fallbackSinCat', '(sin categoría)');
+        qb.groupBy('s.idCategoria').addGroupBy('ci.nombre');
+        break;
+      }
+      case 'area': {
+        qb.addSelect('CAST(s.idAreaSolicitante AS TEXT)', 'idGrupo').addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombreAreaSolicitante), ''), s.idAreaSolicitante, :fallbackSinArea)`,
+          'nombreGrupo',
+        ).setParameter('fallbackSinArea', '(sin área solicitante)');
+        qb.groupBy('s.idAreaSolicitante').addGroupBy('s.nombreAreaSolicitante');
+        break;
+      }
+      case 'global': {
+        qb.addSelect(':constGlobal', 'idGrupo')
+          .addSelect(':nombreGlobal', 'nombreGrupo')
+          .setParameter('constGlobal', 'GLOBAL')
+          .setParameter('nombreGlobal', 'Global consolidado total');
+        break;
+      }
+    }
+
+    qb.orderBy('promedio', 'DESC').addOrderBy('numeroCalificaciones', 'DESC');
+
+    const rawRows = await qb.getRawMany();
+
+    const resultado: ConsolidadoCalificacionItem[] = [];
+    for (const r of rawRows || []) {
+      const n = Number(r.numeroCalificaciones);
+      if (!Number.isFinite(n) || n <= 0) continue;
+      const d = distribucionVacia();
+      d[1] = Number(r.d1) || 0;
+      d[2] = Number(r.d2) || 0;
+      d[3] = Number(r.d3) || 0;
+      d[4] = Number(r.d4) || 0;
+      d[5] = Number(r.d5) || 0;
+      const suma = Number(r.sumaCalificaciones) || 0;
+      const promRaw = Number(r.promedio);
+      const promedio = Number.isFinite(promRaw) ? Math.round(promRaw * 100) / 100 : 0;
+      let idGrupo: number | string | null = r.idGrupo ?? null;
+      if (por === 'categoria' && idGrupo != null && idGrupo !== '' && Number.isInteger(Number(idGrupo))) {
+        idGrupo = Number(idGrupo);
+      }
+      const nombreGrupo =
+        typeof r.nombreGrupo === 'string' && r.nombreGrupo.trim().length > 0
+          ? r.nombreGrupo.trim()
+          : por === 'global'
+          ? 'Global consolidado total'
+          : '(sin dato)';
+      resultado.push({
+        tipoGrupo: por,
+        idGrupo: idGrupo === '' ? null : idGrupo,
+        nombreGrupo,
+        numeroCalificaciones: n,
+        sumaCalificaciones: suma,
+        promedio,
+        distribucion: d,
+      });
+    }
+    return resultado;
   }
 
   async listarValoraciones(

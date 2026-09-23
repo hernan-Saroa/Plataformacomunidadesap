@@ -27,6 +27,7 @@ import {
   SolicitudEvidencia,
   BloqueEdificio,
   EspacioFisico,
+  DependenciaCatalogo,
 } from '../services/infraestructuraService';
 
 interface NuevaSolicitudFormProps {
@@ -73,6 +74,9 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [catalogoCS, setCatalogoCS] = useState<CatalogoItem[]>([]);
   const [cargandoCatalogos, setCargandoCatalogos] = useState<boolean>(true);
 
+  const [dependencias, setDependencias] = useState<DependenciaCatalogo[]>([]);
+  const [cargandoDependencias, setCargandoDependencias] = useState<boolean>(true);
+
   const [tipoAtencion, setTipoAtencion] = useState<'FISICA' | 'TECNOLOGICA' | ''>('');
   const [idSede, setIdSede] = useState<string>('');
   const [idBloque, setIdBloque] = useState<string>('');
@@ -100,6 +104,15 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
   const [errorMensaje, setErrorMensaje] = useState<string>('');
   const [errores, setErrores] = useState<Record<string, string>>({});
 
+  const dependenciasFiltradas = useMemo(() => {
+    if (!idSede) return dependencias;
+    return dependencias.filter(
+      (d) =>
+        d.sedeUmiId === idSede ||
+        (d.sedeUmiId == null && (d.idSede == null || String(d.idSede) === '1')),
+    );
+  }, [dependencias, idSede]);
+
   const inputFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -107,14 +120,17 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       try {
         setCargandoSedes(true);
         setCargandoCatalogos(true);
-        const [listadoSedes, tm, pr, cs] = await Promise.all([
+        setCargandoDependencias(true);
+        const [listadoSedes, tm, pr, cs, deps] = await Promise.all([
           infraestructuraService.getSedesAlcanceUMI(),
           infraestructuraService.getCatalogo('TIPO_MANTENIMIENTO'),
           infraestructuraService.getCatalogo('PRIORIDAD'),
           infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
+          infraestructuraService.getDependenciasCatalogo(),
         ]);
         setSedesAlcance(listadoSedes);
         setCatalogoCS(cs.length > 0 ? cs : []);
+        setDependencias(Array.isArray(deps) && deps.length > 0 ? deps : []);
         if (listadoSedes.length === 1) {
           setIdSede(listadoSedes[0].idSede);
         }
@@ -146,6 +162,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
         setCatalogoTM(TIPOS_MANTENIMIENTO_FALLBACK);
         setCatalogoPR(PRIORIDADES_FALLBACK);
         setCatalogoCS([]);
+        setDependencias([]);
         // (EFDS-1732) En modo catch/fallback: valores default semánticamente
         // correctos, TIPO != PRIORIDAD (fix bug "Urgente" aparecía en Tipo Mto.)
         setTipoMantenimiento('CORRECTIVO');
@@ -153,6 +170,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
       } finally {
         setCargandoSedes(false);
         setCargandoCatalogos(false);
+        setCargandoDependencias(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -584,7 +602,16 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 </label>
                 <select
                   value={idSede}
-                  onChange={(e) => setIdSede(e.target.value)}
+                  onChange={(e) => {
+                    const nuevaSede = e.target.value;
+                    setIdSede(nuevaSede);
+                    if (nuevaSede && nombreAreaSolicitante) {
+                      const filtrada = dependencias.find((d) => d.nomDependencia === nombreAreaSolicitante);
+                      if (filtrada && filtrada.sedeUmiId && filtrada.sedeUmiId !== nuevaSede) {
+                        setNombreAreaSolicitante('');
+                      }
+                    }
+                  }}
                   disabled={cargandoSedes}
                   className={inputClase('idSede')}
                 >
@@ -606,13 +633,28 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                   </span>
                   <span className="text-rose-500 ml-1">*</span>
                 </label>
-                <input
-                  type="text"
+                <select
                   value={nombreAreaSolicitante}
                   onChange={(e) => setNombreAreaSolicitante(e.target.value)}
-                  placeholder="Ej: Dirección Académica, Vicerrectoría, Coordinación de Posgrados..."
+                  disabled={cargandoDependencias}
                   className={inputClase('nombreAreaSolicitante')}
-                />
+                >
+                  <option value="">
+                    {cargandoDependencias
+                      ? 'Cargando catálogo de dependencias...'
+                      : dependenciasFiltradas.length === 0
+                      ? idSede
+                        ? 'La sede seleccionada no tiene dependencias asociadas aún'
+                        : 'No hay dependencias disponibles en el catálogo'
+                      : 'Seleccione la dependencia o área solicitante'}
+                  </option>
+                  {dependenciasFiltradas.map((d) => (
+                    <option key={`dep-${d.idDependencia}`} value={d.nomDependencia}>
+                      [{d.codDependencia}] {d.nomDependencia}
+                      {d.sedeNombre ? ` · ${d.sedeNombre}` : ''}
+                    </option>
+                  ))}
+                </select>
                 {errores.nombreAreaSolicitante && (
                   <p className="mt-1 text-xs text-rose-600 font-medium">{errores.nombreAreaSolicitante}</p>
                 )}
