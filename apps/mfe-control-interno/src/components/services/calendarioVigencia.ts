@@ -20,10 +20,12 @@ export interface Festivo {
 }
 
 export interface SemanaVigencia {
-  /** Número de semana dentro de la vigencia (1..53) */
+  /** Posición de la semana en el calendario que se está usando */
   numero: number;
   lunes: string;
   domingo: string;
+  /** Año al que pertenece la semana (el del jueves) */
+  año: number;
   /** Mes (0-11) al que pertenece la semana: el del jueves, como en ISO 8601 */
   mes: number;
   /** Número de la semana dentro de ese mes (1..5) */
@@ -171,35 +173,60 @@ export function semanaRecesoDe(año: number): { lunes: string; domingo: string }
 
 const cacheSemanas = new Map<number, SemanaVigencia[]>();
 
+/**
+ * Años que el calendario abarca a cada lado del que se pide. No hay una regla
+ * que lo limite: es hasta dónde se precalculan las semanas, y con esto se cubren
+ * las vigencias viejas y las que vengan.
+ */
+export const AÑOS_ALREDEDOR = 10;
+
+/**
+ * Semanas del año pedido y de varios años alrededor: una auditoría que arranca
+ * en noviembre termina en el año entrante, y con un solo año el cronograma se
+ * cortaba el 31 de diciembre. Para las columnas del Excel se filtra por `año`.
+ */
 export function semanasDeVigencia(año: number): SemanaVigencia[] {
   const enCache = cacheSemanas.get(año);
   if (enCache) return enCache;
 
-  const festivos = festivosDeVigencia(año);
-  const santa = semanaSantaDe(año);
-  const receso = semanaRecesoDe(año);
-  const ultimoDia = new Date(año, 11, 31);
+  const desde = año - AÑOS_ALREDEDOR;
+  const hasta = año + AÑOS_ALREDEDOR;
+  const años = Array.from({ length: hasta - desde + 1 }, (_, i) => desde + i);
+  // Por fecha, para no recorrer todos los festivos en cada semana
+  const festivosPorFecha = new Map<string, Festivo>();
+  años.forEach((a) => festivosDeVigencia(a).forEach((f) => festivosPorFecha.set(f.fecha, f)));
+  const bloqueos = new Set(años.map((a) => semanaSantaDe(a).lunes));
+  const recesos = new Set(años.map((a) => semanaRecesoDe(a).lunes));
+  const ultimoDia = new Date(hasta, 11, 31);
   const semanas: SemanaVigencia[] = [];
-  const contadorMes = new Array<number>(12).fill(0);
+  const contadorMes = new Map<string, number>();
 
-  let lunes = lunesDe(new Date(año, 0, 1));
+  let lunes = lunesDe(new Date(desde, 0, 1));
   let numero = 1;
   while (lunes <= ultimoDia) {
     const domingo = sumarDias(lunes, 6);
     const jueves = sumarDias(lunes, 3);
-    // La semana partida entre dos años se queda con enero o con diciembre
-    const mes = jueves.getFullYear() < año ? 0 : jueves.getFullYear() > año ? 11 : jueves.getMonth();
-    contadorMes[mes] += 1;
+    // La semana partida entre dos años se queda con el mes de su jueves
+    const añoSemana = jueves.getFullYear();
+    const mes = jueves.getMonth();
+    const clave = `${añoSemana}-${mes}`;
+    contadorMes.set(clave, (contadorMes.get(clave) || 0) + 1);
     const lunesYMD = fechaYMD(lunes);
     const domingoYMD = fechaYMD(domingo);
+    const festivosSemana: Festivo[] = [];
+    for (let d = 0; d < 7; d++) {
+      const f = festivosPorFecha.get(fechaYMD(sumarDias(lunes, d)));
+      if (f) festivosSemana.push(f);
+    }
     semanas.push({
       numero,
       lunes: lunesYMD,
       domingo: domingoYMD,
+      año: añoSemana,
       mes,
-      numeroEnMes: contadorMes[mes],
-      bloqueo: lunesYMD === santa.lunes ? 'semana_santa' : lunesYMD === receso.lunes ? 'receso' : undefined,
-      festivos: festivos.filter((f) => f.fecha >= lunesYMD && f.fecha <= domingoYMD),
+      numeroEnMes: contadorMes.get(clave)!,
+      bloqueo: bloqueos.has(lunesYMD) ? 'semana_santa' : recesos.has(lunesYMD) ? 'receso' : undefined,
+      festivos: festivosSemana,
     });
     lunes = sumarDias(lunes, 7);
     numero += 1;

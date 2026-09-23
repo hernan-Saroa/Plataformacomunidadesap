@@ -28,13 +28,19 @@ export async function exportarAuditoriasTemplate(
     // de columnas, los meses y las semanas de Semana Santa y receso se acomodan
     // solos al año que se esté exportando.
     const añoVigencia = Number(vigenciaActiva) || new Date().getFullYear();
-    const semanasVigencia = semanasDeVigencia(añoVigencia);
+    // El helper trae varios años (para cronogramas que cruzan de año); el
+    // documento solo tiene columnas de su vigencia.
+    const semanasVigencia = semanasDeVigencia(añoVigencia).filter((s) => s.año === añoVigencia);
     const colUltimaSemana = COL_PRIMERA_SEMANA + semanasVigencia.length - 1;
     const colObsIni = colUltimaSemana + 1;
     const colObsFin = colUltimaSemana + 2;
     const totalCols = colObsFin;
-    /** Columna del Excel para una semana (1 = primera semana de la vigencia). */
-    const colDeSemana = (numero: number) => COL_PRIMERA_SEMANA + numero - 1;
+    /** Columna del Excel para una semana de la vigencia; las de otros años no tienen. */
+    const posicion = new Map(semanasVigencia.map((s, i) => [s.numero, i]));
+    const colDeSemana = (numero: number) => {
+      const i = posicion.get(numero);
+      return i === undefined ? null : COL_PRIMERA_SEMANA + i;
+    };
 
     // Cargar logo en Base64 directamente (para evitar fallos de fetch en MFE)
     try {
@@ -135,6 +141,7 @@ export async function exportarAuditoriasTemplate(
       if (!delMes.length) return;
       const desde = colDeSemana(delMes[0].numero);
       const hasta = colDeSemana(delMes[delMes.length - 1].numero);
+      if (desde === null || hasta === null) return;
       if (hasta > desde) worksheet.mergeCells(6, desde, 6, hasta);
       const cell = worksheet.getCell(6, desde);
       cell.value = label;
@@ -160,7 +167,9 @@ export async function exportarAuditoriasTemplate(
     // Fila 7: Semanas de la vigencia, con Semana Santa, receso y festivos
     worksheet.getRow(7).height = 34.5; // Aproximado para wrap
     semanasVigencia.forEach((semana) => {
-      const cell = worksheet.getCell(7, colDeSemana(semana.numero));
+      const col = colDeSemana(semana.numero);
+      if (col === null) return;
+      const cell = worksheet.getCell(7, col);
       const lineas = [`Semana ${semana.numeroEnMes}`];
       if (semana.bloqueo) {
         lineas.push(NOMBRE_BLOQUEO[semana.bloqueo]);
@@ -295,8 +304,9 @@ export async function exportarAuditoriasTemplate(
         if (esInformeOOtros && (a.fechaInicioPlaneacionRaw || a.fechaInicioRaw)) {
             const fechaVal = a.fechaInicioPlaneacionRaw || a.fechaInicioRaw;
             const semana = semanaDeFecha(fechaVal);
-            if (semana) {
-               const cell = row.getCell(colDeSemana(semana.numero));
+            const colInforme = semana ? colDeSemana(semana.numero) : null;
+            if (semana && colInforme !== null) {
+               const cell = row.getCell(colInforme);
                const d = (aYMD(fechaVal) || '').slice(8, 10);
                cell.value = `J-OCI\n${d}\nD-NAL\n${d}`;
                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD8D8D8' } };
@@ -316,9 +326,10 @@ export async function exportarAuditoriasTemplate(
               // la etapa sigue en la columna siguiente.
               const pintarEtapa = (desde: SemanaVigencia, hasta: SemanaVigencia, letra: string, color: string) => {
                 for (let n = desde.numero; n <= hasta.numero; n++) {
-                   const semana = semanasVigencia[n - 1];
-                   if (!semana || sinProgramar(semana)) continue;
-                   const cell = row.getCell(colDeSemana(n));
+                   const semana = semanasVigencia.find((s) => s.numero === n);
+                   const col = semana ? colDeSemana(n) : null;
+                   if (!semana || col === null || sinProgramar(semana)) continue;
+                   const cell = row.getCell(col);
                    cell.value = letra;
                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
                    cell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FF000000' } };
@@ -335,7 +346,7 @@ export async function exportarAuditoriasTemplate(
                  // saltando también las semanas que no se programan.
                  const disponibles: SemanaVigencia[] = [];
                  for (let n = sInicio.numero; n <= sFin.numero; n++) {
-                   const semana = semanasVigencia[n - 1];
+                   const semana = semanasVigencia.find((s) => s.numero === n);
                    if (semana && !sinProgramar(semana)) disponibles.push(semana);
                  }
                  const totalSemanas = disponibles.length;
@@ -343,7 +354,9 @@ export async function exportarAuditoriasTemplate(
                  const cuentaE = Math.max(1, Math.round(totalSemanas * 4 / 13));
 
                  disponibles.forEach((semana, idx) => {
-                   const cell = row.getCell(colDeSemana(semana.numero));
+                   const colSemana = colDeSemana(semana.numero);
+                   if (colSemana === null) return;
+                   const cell = row.getCell(colSemana);
                    if (idx < cuentaP) {
                      cell.value = 'P';
                      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBBDEFB' } };

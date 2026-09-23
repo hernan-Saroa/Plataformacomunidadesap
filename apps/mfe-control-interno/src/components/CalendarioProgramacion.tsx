@@ -124,9 +124,15 @@ export function CampoFechaCalendario({
     setAñoVista(fecha ? parseYMD(fecha).getFullYear() : vigencia);
   }, [abierto]);
 
-  const semanasVista = useMemo(() => semanasDeVigencia(añoVista), [añoVista]);
-  const esVigencia = añoVista === vigencia;
-  // Las etapas se pintan por fechas, así que también se ven en otros años
+  // El calendario cubre varios años alrededor de la vigencia, para las
+  // auditorías que cierran en enero y para consultar vigencias pasadas; más
+  // allá solo se mira y se fija la fecha suelta.
+  const añosDelCalendario = useMemo(() => new Set(semanas.map((s) => s.año)), [semanas]);
+  const esVigencia = añosDelCalendario.has(añoVista);
+  const semanasVista = useMemo(
+    () => (esVigencia ? semanas : semanasDeVigencia(añoVista)),
+    [esVigencia, semanas, añoVista],
+  );
   const programadasVista = useMemo(
     () => (esVigencia ? programadas : programacionDesdeFechas(añoVista, fechas, semanasExcluidas)),
     [esVigencia, programadas, añoVista, fechas, semanasExcluidas],
@@ -137,8 +143,8 @@ export function CampoFechaCalendario({
   );
   const [eligiendoAño, setEligiendoAño] = useState(false);
   const añosDisponibles = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => vigencia - 3 + i),
-    [vigencia],
+    () => [...añosDelCalendario].filter((a) => semanas.filter((s) => s.año === a).length > 10).sort(),
+    [añosDelCalendario, semanas],
   );
   const irAlMes = (paso: number) => {
     setMes((m) => {
@@ -483,7 +489,7 @@ function Mes({
   const finMes = fechaYMD(new Date(vigencia, mes + 1, 0));
   // Cada semana se muestra en un solo mes (el de su jueves, como en el Excel):
   // si salía en los dos, marcarla desde el mes siguiente corría la fecha al anterior.
-  const filas = semanas.filter((s) => s.mes === mes);
+  const filas = semanas.filter((s) => s.mes === mes && s.año === vigencia);
   const hoy = fechaYMD(new Date());
   // Primera y última semana de la etapa del campo, en toda la vigencia
   const numerosCampo = [...porLunes.values()]
