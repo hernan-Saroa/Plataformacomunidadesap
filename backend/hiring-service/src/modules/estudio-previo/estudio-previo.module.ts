@@ -22,6 +22,7 @@ import { UmbralesModule } from '../umbrales/umbrales.module';
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
 import { CdpModule } from '../cdp/cdp.module';
 import { ListaChequeoModule } from '../lista-chequeo/lista-chequeo.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ListaChequeoModule } from '../lista-chequeo/lista-chequeo.module';
     // el procedimiento manda remitir con él los documentos de la lista de
     // chequeo que la modalidad exija.
     ListaChequeoModule,
+    CierreActividadModule,
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],

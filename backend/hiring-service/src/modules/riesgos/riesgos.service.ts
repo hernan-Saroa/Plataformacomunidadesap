@@ -19,6 +19,8 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AnularAudienciaDto, RegistrarAudienciaDto } from './dto/riesgos.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 5.5 de la matriz: la audiencia de asignación de riesgos. */
 export const NUMERAL_AUDIENCIA = '5.5';
@@ -32,7 +34,11 @@ interface ArchivoCargado {
 
 @Injectable()
 export class RiesgosService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /** Si la 5.5 exige firmar con el token institucional al registrar (EFDS-2070). */
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------- aplicabilidad ---
 
@@ -178,6 +184,10 @@ export class RiesgosService {
         );
       }
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_AUDIENCIA)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       this.validarFecha(dto.fechaCelebracion);
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -213,7 +223,7 @@ export class RiesgosService {
 
       // La actividad se cierra de una: el registro ya trae el acta y la matriz,
       // que es todo lo que la actividad exige.
-      await this.marcarActividad(em, procesoId, 'APROBADO', acceso);
+      await this.marcarActividad(em, procesoId, 'APROBADO', acceso, dto.firma);
 
       await this.traza(em, procesoId, audiencia.id, 'APROBAR', acceso, {
         actividad: NUMERAL_AUDIENCIA,
@@ -279,12 +289,14 @@ export class RiesgosService {
     procesoId: string,
     estado: 'APROBADO' | 'BORRADOR',
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_AUDIENCIA },
     });
 
     const aprobado = estado === 'APROBADO';
+    const datosFirma = aprobado && firma ? { firma } : {};
 
     if (!actividad) {
       await em.save(
@@ -292,7 +304,7 @@ export class RiesgosService {
           procesoId,
           numeral: NUMERAL_AUDIENCIA,
           estado: estado as any,
-          datos: {},
+          datos: datosFirma,
           ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
@@ -302,6 +314,9 @@ export class RiesgosService {
     actividad.estado = estado as any;
     actividad.revisadoPor = aprobado ? acceso.userName : null;
     actividad.revisadoAt = aprobado ? new Date() : null;
+    if (aprobado && firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(actividad);
   }
 

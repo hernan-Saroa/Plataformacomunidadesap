@@ -478,8 +478,9 @@ export class PtaController {
   // Evidencias
   // ─────────────────────────────
   @Get('evidencias/ptas')
-  async getPtasConEvidencias(@Query('periodo') periodo?: string) {
-    const data = await this.ptaService.getAllPtasConEvidencias(periodo);
+  @UseGuards(PtaAuthGuard)
+  async getPtasConEvidencias(@Query('periodo') periodo: string | undefined, @Req() req: Request) {
+    const data = await this.ptaService.getAllPtasConEvidencias(periodo, req.ptaAuth);
     return { success: true, data };
   }
 
@@ -523,15 +524,17 @@ export class PtaController {
   }
 
   @Patch(':ptaId/evidencias/:evidenciaId/revision')
-  async revisarEvidencia(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any) {
-    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async revisarEvidencia(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any, @Req() req: Request) {
+    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {}, req.ptaAuth);
     return { success: true, data };
   }
 
   // Alias para compatibilidad con el frontend (PATCH /evidencias/:id).
   @Patch(':ptaId/evidencias/:evidenciaId')
-  async revisarEvidenciaAlias(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any) {
-    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async revisarEvidenciaAlias(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any, @Req() req: Request) {
+    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {}, req.ptaAuth);
     return { success: true, data };
   }
 

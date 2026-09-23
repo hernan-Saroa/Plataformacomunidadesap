@@ -170,7 +170,9 @@ describe('PtaService - solicitudes de edición parcial', () => {
     service.getComponentesAprobacion = jest.fn().mockResolvedValue(approvals);
     service.logEvento = jest.fn().mockResolvedValue(undefined);
     service.ptaNotifications = {
-      notifyProfesorSolicitudEdicionResuelta: jest.fn().mockResolvedValue(true),
+      // La decisión ya fue confirmada transaccionalmente: una caída del canal
+      // de notificaciones no debe convertir el éxito en un error irreintentable.
+      notifyProfesorSolicitudEdicionResuelta: jest.fn().mockRejectedValue(new Error('Notificaciones no disponibles')),
     };
 
     const result = await service.resolverSolicitudPTA(

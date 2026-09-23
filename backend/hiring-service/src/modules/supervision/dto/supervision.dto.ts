@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
   IsEmail,
@@ -8,7 +9,10 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Designacion del supervisor por acto administrativo (EFDS-1165).
@@ -38,23 +42,31 @@ export class DesignarSupervisorDto {
   cargo?: string;
 
   /** Para el aviso que pide la matriz en 8.2, cuando exista notificaciones. */
-  @ApiPropertyOptional({ description: 'Correo al que se le avisara de la designacion' })
+  @ApiPropertyOptional({ description: 'Correo al que se le avisará de la designación' })
   @IsOptional()
-  @IsEmail({}, { message: 'El correo del supervisor no tiene un formato valido' })
+  @IsEmail({}, { message: 'El correo del supervisor no tiene un formato válido' })
   @MaxLength(200)
   email?: string;
 
   /** La del acto, no la del registro: es cuando la entidad designo. */
   @ApiProperty({ description: 'Fecha del acto administrativo (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de designacion debe tener el formato YYYY-MM-DD' })
+  @IsDateString({}, { message: 'La fecha de designación debe tener el formato YYYY-MM-DD' })
   fechaDesignacion: string;
+
+  /** Solo si la 8.2 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 /** Relevo del supervisor vigente para designar otro. */
 export class RelevarSupervisorDto {
-  @ApiProperty({ description: 'Por que se releva al supervisor' })
+  @ApiProperty({ description: 'Por qué se releva al supervisor' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se releva al supervisor' })
+  @IsNotEmpty({ message: 'Explica por qué se releva al supervisor' })
   @MinLength(10, { message: 'El motivo debe explicar el relevo, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;
@@ -68,9 +80,9 @@ export class RelevarSupervisorDto {
  * de «reasignar», no de dos operaciones sueltas.
  */
 export class ReasignarSupervisorDto extends DesignarSupervisorDto {
-  @ApiProperty({ description: 'Por que se cambia de supervisor' })
+  @ApiProperty({ description: 'Por qué se cambia de supervisor' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se reasigna la supervision' })
+  @IsNotEmpty({ message: 'Explica por qué se reasigna la supervisión' })
   @MinLength(10, { message: 'El motivo debe explicar el cambio, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;

@@ -34,7 +34,7 @@ interface Escenario {
 }
 
 function conEscenario(opciones: Escenario = {}) {
-  const s = new DeclaratoriaDesiertaService({ manager: {} } as any) as any;
+  const s = new DeclaratoriaDesiertaService({ manager: {} } as any, {} as any) as any;
   const proceso = { id: 'p-1', modalidad: 'LICITACION_PUBLICA', estado: 'EN_CURSO' };
 
   s.exigirProceso = async () => proceso;

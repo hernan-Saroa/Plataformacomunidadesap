@@ -11,8 +11,11 @@ import {
   IsUrl,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Solicitud de adicion en dinero (EFDS-1176).
@@ -20,17 +23,17 @@ import { Type } from 'class-transformer';
  * Queda EN_TRAMITE: aprobarla exige despues el CDP y el RP expedidos.
  */
 export class SolicitarAdicionDto {
-  @ApiProperty({ description: 'Cuanto se adiciona al contrato' })
+  @ApiProperty({ description: 'Cuánto se adiciona al contrato' })
   @Type(() => Number)
-  @IsNumber({}, { message: 'El valor de la adicion debe ser un numero' })
-  @IsPositive({ message: 'El valor de la adicion debe ser mayor que cero' })
+  @IsNumber({}, { message: 'El valor de la adición debe ser un número' })
+  @IsPositive({ message: 'El valor de la adición debe ser mayor que cero' })
   valorAdicionado: number;
 
-  @ApiProperty({ description: 'Por que se adiciona el contrato' })
+  @ApiProperty({ description: 'Por qué se adiciona el contrato' })
   @IsString()
-  @IsNotEmpty({ message: 'Justifica la adicion' })
+  @IsNotEmpty({ message: 'Justifica la adición' })
   @MinLength(20, {
-    message: 'Una modificacion sin sustento es lo primero que un ente de control pregunta',
+    message: 'Una modificación sin sustento es lo primero que un ente de control pregunta',
   })
   @MaxLength(4000)
   justificacion: string;
@@ -44,11 +47,11 @@ export class SolicitarAdicionDto {
  * sustento es lo primero que un ente de control pregunta.
  */
 class ConJustificacion {
-  @ApiProperty({ description: 'Por que se modifica el contrato' })
+  @ApiProperty({ description: 'Por qué se modifica el contrato' })
   @IsString()
-  @IsNotEmpty({ message: 'Justifica la modificacion' })
+  @IsNotEmpty({ message: 'Justifica la modificación' })
   @MinLength(20, {
-    message: 'Una modificacion sin sustento es lo primero que un ente de control pregunta',
+    message: 'Una modificación sin sustento es lo primero que un ente de control pregunta',
   })
   @MaxLength(4000)
   justificacion: string;
@@ -61,10 +64,10 @@ class ConJustificacion {
  * y el CHECK de la migracion 052 lo impide tambien en la base.
  */
 export class SolicitarProrrogaDto extends ConJustificacion {
-  @ApiProperty({ description: 'Dias que se anaden al plazo del contrato' })
+  @ApiProperty({ description: 'Días que se añaden al plazo del contrato' })
   @Type(() => Number)
-  @IsInt({ message: 'Los dias de prorroga van en numeros enteros' })
-  @IsPositive({ message: 'Una prorroga de cero dias no prorroga nada' })
+  @IsInt({ message: 'Los días de prórroga van en numeros enteros' })
+  @IsPositive({ message: 'Una prórroga de cero días no prorroga nada' })
   diasProrroga: number;
 }
 
@@ -76,15 +79,15 @@ export class SolicitarCesionDto extends ConJustificacion {
   @MaxLength(40)
   cesionarioDocumento: string;
 
-  @ApiProperty({ description: 'Nombre o razon social de quien recibe el contrato' })
+  @ApiProperty({ description: 'Nombre o razón social de quien recibe el contrato' })
   @IsString()
   @IsNotEmpty({ message: 'Registra el nombre del cesionario' })
   @MaxLength(300)
   cesionarioNombre: string;
 
-  @ApiProperty({ description: 'Si el cesionario es persona natural o juridica', enum: ['NATURAL', 'JURIDICA'] })
+  @ApiProperty({ description: 'Si el cesionario es persona natural o jurídica', enum: ['NATURAL', 'JURIDICA'] })
   @IsIn(['NATURAL', 'JURIDICA'], {
-    message: 'El cesionario es persona natural o juridica',
+    message: 'El cesionario es persona natural o jurídica',
   })
   cesionarioTipo: 'NATURAL' | 'JURIDICA';
 }
@@ -100,12 +103,12 @@ export class SolicitarAclaratorioDto extends ConJustificacion {}
 
 /** Solicitud de suspension del contrato (EFDS-1178, RF-SIS-01). */
 export class SolicitarSuspensionDto extends ConJustificacion {
-  @ApiProperty({ description: 'Desde cuando queda suspendido', example: '2026-09-01' })
-  @IsDateString({}, { message: 'La fecha de suspension va en formato AAAA-MM-DD' })
+  @ApiProperty({ description: 'Desde cuándo queda suspendido', example: '2026-09-01' })
+  @IsDateString({}, { message: 'La fecha de suspensión va en formato AAAA-MM-DD' })
   suspensionDesde: string;
 
   @ApiPropertyOptional({
-    description: 'Hasta cuando se preve la suspension; se omite si es indefinida',
+    description: 'Hasta cuándo se prevé la suspensión; se omite si es indefinida',
   })
   @IsOptional()
   @IsDateString({}, { message: 'La fecha prevista va en formato AAAA-MM-DD' })
@@ -121,23 +124,23 @@ export class SolicitarSuspensionDto extends ConJustificacion {
  */
 export class SolicitarTerminacionDto extends ConJustificacion {
   @ApiProperty({
-    description: 'Por que se termina antes de tiempo',
+    description: 'Por qué se termina antes de tiempo',
     enum: ['MUTUO_ACUERDO', 'UNILATERAL'],
   })
   @IsIn(['MUTUO_ACUERDO', 'UNILATERAL'], {
-    message: 'La terminacion anticipada es por mutuo acuerdo o por decision unilateral motivada',
+    message: 'La terminación anticipada es por mutuo acuerdo o por decisión unilateral motivada',
   })
   terminacionCausal: 'MUTUO_ACUERDO' | 'UNILATERAL';
 
-  @ApiProperty({ description: 'Desde cuando el contrato deja de ejecutarse', example: '2026-09-30' })
-  @IsDateString({}, { message: 'La fecha de terminacion va en formato AAAA-MM-DD' })
+  @ApiProperty({ description: 'Desde cuándo el contrato deja de ejecutarse', example: '2026-09-30' })
+  @IsDateString({}, { message: 'La fecha de terminación va en formato AAAA-MM-DD' })
   terminacionEl: string;
 }
 
 /** Solicitud de reanudacion de una suspension vigente (EFDS-1178). */
 export class SolicitarReanudacionDto extends ConJustificacion {
-  @ApiProperty({ description: 'Desde cuando el contrato vuelve a correr', example: '2026-10-01' })
-  @IsDateString({}, { message: 'La fecha de reanudacion va en formato AAAA-MM-DD' })
+  @ApiProperty({ description: 'Desde cuándo el contrato vuelve a correr', example: '2026-10-01' })
+  @IsDateString({}, { message: 'La fecha de reanudación va en formato AAAA-MM-DD' })
   reanudadaEl: string;
 }
 
@@ -149,22 +152,30 @@ export class SolicitarReanudacionDto extends ConJustificacion {
  * probar.
  */
 export class AprobarModificacionDto {
-  @ApiProperty({ description: 'Numero del otrosi o del acto administrativo' })
+  @ApiProperty({ description: 'Número del otrosí o del acto administrativo' })
   @IsString()
-  @IsNotEmpty({ message: 'Registra el numero de la modificacion' })
+  @IsNotEmpty({ message: 'Registra el número de la modificación' })
   @MaxLength(80)
   numero: string;
 
-  @ApiProperty({ description: 'Fecha de suscripcion (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de suscripcion debe tener el formato YYYY-MM-DD' })
+  @ApiProperty({ description: 'Fecha de suscripción (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato YYYY-MM-DD' })
   fechaSuscripcion: string;
+
+  /** Solo si la 9.5 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 /** Rechazo de una modificacion en tramite. */
 export class RechazarModificacionDto {
-  @ApiProperty({ description: 'Por que se rechaza' })
+  @ApiProperty({ description: 'Por qué se rechaza' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se rechaza la modificacion' })
+  @IsNotEmpty({ message: 'Explica por qué se rechaza la modificación' })
   @MinLength(10)
   @MaxLength(1000)
   motivo: string;
@@ -172,11 +183,11 @@ export class RechazarModificacionDto {
 
 /** Revocacion de una modificacion ya aprobada. */
 export class RevocarModificacionDto {
-  @ApiProperty({ description: 'Por que se revoca' })
+  @ApiProperty({ description: 'Por qué se revoca' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se revoca la modificacion' })
+  @IsNotEmpty({ message: 'Explica por qué se revoca la modificación' })
   @MinLength(10, {
-    message: 'El valor del contrato vuelve atras: sustenta por que se revoca',
+    message: 'El valor del contrato vuelve atrás: sustenta por qué se revoca',
   })
   @MaxLength(1000)
   motivo: string;
@@ -193,20 +204,20 @@ export class SolicitarRespaldoDto {
 
 /** Expedicion del CDP o del RP de la adicion. */
 export class ExpedirRespaldoDto {
-  @ApiProperty({ description: 'Numero que asigna la Direccion Financiera' })
+  @ApiProperty({ description: 'Número que asigna la Dirección Financiera' })
   @IsString()
-  @IsNotEmpty({ message: 'Registra el numero' })
+  @IsNotEmpty({ message: 'Registra el número' })
   @MaxLength(60)
   numero: string;
 
   @ApiProperty({ description: 'Valor certificado o comprometido' })
   @Type(() => Number)
-  @IsNumber({}, { message: 'El valor debe ser un numero' })
+  @IsNumber({}, { message: 'El valor debe ser un número' })
   @IsPositive({ message: 'El valor debe ser mayor que cero' })
   valor: number;
 
-  @ApiProperty({ description: 'Fecha de expedicion (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de expedicion debe tener el formato YYYY-MM-DD' })
+  @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de expedición debe tener el formato YYYY-MM-DD' })
   fechaExpedicion: string;
 
   @ApiPropertyOptional({ description: 'Vigencia fiscal a la que se imputa' })
@@ -218,9 +229,9 @@ export class ExpedirRespaldoDto {
 
 /** Rechazo del CDP o del RP por falta de disponibilidad. */
 export class RechazarRespaldoDto {
-  @ApiProperty({ description: 'Por que no hay disponibilidad' })
+  @ApiProperty({ description: 'Por qué no hay disponibilidad' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se rechaza' })
+  @IsNotEmpty({ message: 'Explica por qué se rechaza' })
   @MinLength(10)
   @MaxLength(1000)
   observaciones: string;
@@ -228,19 +239,19 @@ export class RechazarRespaldoDto {
 
 /** Registro de la publicacion de la modificacion en SECOP II (RF-MOD-05). */
 export class PublicarModificacionDto {
-  @ApiProperty({ description: 'Fecha real de la publicacion (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de publicacion debe tener el formato YYYY-MM-DD' })
+  @ApiProperty({ description: 'Fecha real de la publicación (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
   fechaPublicacion: string;
 
-  @ApiPropertyOptional({ description: 'Numero con el que quedo publicada' })
+  @ApiPropertyOptional({ description: 'Número con el que quedó publicada' })
   @IsOptional()
   @IsString()
   @MaxLength(80)
   secopNumero?: string;
 
-  @ApiPropertyOptional({ description: 'Enlace de la publicacion' })
+  @ApiPropertyOptional({ description: 'Enlace de la publicación' })
   @IsOptional()
-  @IsUrl({}, { message: 'El enlace debe ser una URL valida' })
+  @IsUrl({}, { message: 'El enlace debe ser una URL válida' })
   @MaxLength(500)
   secopUrl?: string;
 }

@@ -68,6 +68,12 @@ export interface Persona {
   email?: string;
 }
 
+/** Dependencia de auth.dependencias, el catálogo transversal de la ESAP. */
+export interface Dependencia {
+  id: string;
+  nombre: string;
+}
+
 /**
  * Modalidad de selección: es la columna de la matriz de flujo, así que
  * determina qué actividades aplican al proceso. Se elige al crearlo.
@@ -212,6 +218,12 @@ export interface EstadoPublicacion {
   advertencia: string | null;
   /** Lo resuelve el backend con los roles del token, no el cliente. */
   puedeRegistrar: boolean;
+  /**
+   * La llave de pruebas: dar por terminado el plazo sin esperar los días
+   * hábiles. Solo llega en true a quien tiene `contratacion.plazo.terminar`
+   * —hoy, el superadministrador— y solo mientras el término siga corriendo.
+   */
+  puedeTerminarPlazo: boolean;
 }
 
 /** Plazo de publicidad configurado para una modalidad (EFDS-1387). */
@@ -276,6 +288,12 @@ export interface EstadoObservaciones {
   puedeCerrarse: boolean;
   /** Lo resuelve el backend con los roles del token, no el cliente. */
   puedeGestionar: boolean;
+  /**
+   * La llave de pruebas: dar por terminado el plazo sin esperar los días
+   * hábiles. Solo llega en true a quien tiene `contratacion.plazo.terminar`
+   * —hoy, el superadministrador— y solo mientras el término siga corriendo.
+   */
+  puedeTerminarPlazo: boolean;
 }
 
 /** Manifestación de interés de una MIPYME en participar (EFDS-1151). */
@@ -529,12 +547,17 @@ export interface EstadoCausalProceso {
 // ----------------- comité de contratación · 3.7 (3.6 de la matriz) ---------
 
 /**
- * Qué decidió el comité. Tres desenlaces, los de la matriz.
+ * Qué decidió el comité.
  *
- * No hay «no aprueba» a secas: un comité que no aprueba dice qué falta, y eso
- * es observar. Si lo que procede es no contratar, se niega en la 3.4.
+ * Los dos «no» son distintos: observar dice qué falta y el proceso vuelve
+ * corregido; rechazar dice que no sale al mercado, y ahí no hay corrección que
+ * traer —niega la actividad y con ella el proceso—.
  */
-export type DecisionComite = 'APROBADO' | 'APROBADO_CON_CONDICIONES' | 'OBSERVADO';
+export type DecisionComite =
+  | 'APROBADO'
+  | 'APROBADO_CON_CONDICIONES'
+  | 'OBSERVADO'
+  | 'RECHAZADO';
 
 /** Por qué el proceso no pasa por comité. */
 export type MotivoNoVa = 'MODALIDAD' | 'NO_SUPERA_EL_UMBRAL';
@@ -569,6 +592,14 @@ export interface EstadoComiteContratacion {
     smmlvAplicado: { anio: number; valor: number; confirmado: boolean } | null;
   } | null;
   sesiones: SesionComite[];
+  /**
+   * Qué actividades anteriores puede reabrir esta sesión.
+   *
+   * Ya filtradas por el backend con las que este proceso tiene cerradas: la
+   * pantalla no adivina cuáles están en APROBADO, porque ofrecer una que no lo
+   * está es ofrecer algo que el servicio va a rechazar al enviarlo.
+   */
+  reabribles: string[];
   puedeRegistrar: boolean;
   puedeDejarConstancia: boolean;
   motivoNoDecide: MotivoNoDecide | null;
@@ -1201,6 +1232,10 @@ export interface FilaMatriz {
   etapa: number;
   nombre: string;
   descripcion: string | null;
+  /** Días hábiles para hacerla, contados desde que le toca a alguien. */
+  plazoDias?: number | null;
+  /** Cuántos días hábiles antes del plazo empieza a avisar. */
+  alertaDiasAntes?: number | null;
   campos: number;
   celdas: CeldaMatriz[];
 }
@@ -1367,6 +1402,7 @@ export interface RegistrarResultado {
   puntajeMaximo?: number;
   valorEvaluado?: number;
   justificacion: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1488,6 +1524,18 @@ export interface EstadoSubsanaciones {
   pendientesDeRespuesta?: number;
   terminoVencido?: boolean;
   puedeCerrar?: boolean;
+  /** Si el parámetro de solo pruebas está saltando el plazo de espera (EFDS-2064). */
+  plazosSaltados?: boolean;
+  /**
+   * La llave de pruebas: dar por terminado el plazo sin esperar los días
+   * hábiles. Solo llega en true a quien tiene `contratacion.plazo.terminar`
+   * —hoy, el superadministrador— y solo mientras el término siga corriendo.
+   *
+   * Opcional como sus vecinas de este bloque, que el backend solo manda cuando
+   * hay informe en juego.
+   */
+  puedeTerminarPlazo?: boolean;
+
   /** Una subsanación aceptada puede obligar al comité a rectificar (6.3). */
   requiereRectificacion?: boolean;
   subsanaciones: Subsanacion[];
@@ -1712,6 +1760,7 @@ export interface Adjudicar {
   valorAdjudicado: number;
   /** Obligatoria solo si el adjudicatario no es la ganadora del informe. */
   justificacion?: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ---------------------------- etapa 8 · contrato electronico (8.1) ---------
@@ -1865,6 +1914,7 @@ export interface DatosArl {
   administradora: string;
   numeroAfiliacion?: string;
   fechaAfiliacion: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 /** Lo que la pantalla envia para generar el contrato. */
@@ -1948,6 +1998,7 @@ export interface DatosSupervisor {
   cargo?: string;
   email?: string;
   fechaDesignacion: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 /** Relevar al supervisor vigente y designar al nuevo en un solo acto (EFDS-1169). */
@@ -1996,6 +2047,7 @@ export interface DatosExpedicionRp {
   fechaExpedicion: string;
   rubro?: string;
   vigenciaFiscal?: number;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ---------------------- etapa 8 · publicacion del contrato (8.8) -----------
@@ -2034,6 +2086,7 @@ export interface DatosPublicacionContrato {
   fechaPublicacion: string;
   secopNumero?: string;
   secopUrl?: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
@@ -2058,6 +2111,8 @@ export interface EstadoActaInicio {
   puedeIniciar: boolean;
   /** Qué falta, dicho por el servidor y no deducido en pantalla. */
   motivoNoPuede: string | null;
+  /** Si este contrato exige ARL: solo persona natural (EFDS-1164). */
+  requiereArl: boolean;
   contrato?: {
     numero: string;
     objeto: string;
@@ -2074,6 +2129,7 @@ export interface DatosActaInicio {
   temasTratados: string;
   asistentes?: string;
   actaPactada?: boolean;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ---------------------- etapa 9 · seguimiento de la ejecución (9.2) -------
@@ -2136,7 +2192,6 @@ export interface DatosSeguimiento {
   periodoDesde?: string;
   periodoHasta?: string;
 }
-
 
 // ----------------------- etapa 9 · tramite de pagos (9.4) ------------------
 
@@ -2278,6 +2333,7 @@ export interface EstadoInformeFinal {
 export interface DatosInformeFinal {
   fechaElaboracion: string;
   conclusion: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 /** Lo que la pantalla envia al sumar un entregable. */
@@ -2367,6 +2423,7 @@ export interface DatosLiquidacion {
   fechaActa: string;
   pazYSalvo?: boolean;
   observaciones?: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ------------------- etapa 10 · cierre financiero (10.3) -------------------
@@ -2423,6 +2480,7 @@ export interface DatosCierreFinanciero {
   referenciaPagoFinal: string;
   fechaPagoFinal: string;
   observaciones?: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ------------------- etapa 10 · publicacion y archivo (10.4) ----------------
@@ -2502,6 +2560,7 @@ export interface DatosPublicacionActa {
 export interface DatosArchivoExpediente {
   radicadoActiveDocument?: string;
   observaciones?: string;
+  firma?: EvidenciaFirmaOtp;
 }
 
 // ---------------------- etapa 10 · cierre definitivo -----------------------
@@ -2605,6 +2664,8 @@ export interface EstadoRegistroActividad {
   motivoNoAplica: string | null;
   registro: RegistroActividadVigente | null;
   historial: RegistroActividadAnulado[];
+  /** Si el área configuró que quien registra deba firmar con el token institucional (EFDS-2070). */
+  exigeFirma: boolean;
 }
 
 /** Lo que la pantalla envia al dejar constancia. */
@@ -2612,6 +2673,21 @@ export interface DatosRegistroActividad {
   fecha: string;
   nota: string;
   datos?: Record<string, any>;
+  firma?: EvidenciaFirmaOtp;
+}
+
+/**
+ * Comprobante de la firma con el token institucional (EFDS-2070).
+ *
+ * No es `DatosFirma`: esa es la firma física/de evidencia de la suscripción
+ * del contrato (etapa 8), con parte y documento. Esta es la firma electrónica
+ * por OTP al correo, que el auth-service verifica bajo la sesión de quien
+ * registra la actividad.
+ */
+export interface EvidenciaFirmaOtp {
+  id: string;
+  fechaFirma: string;
+  metodo: 'OTP_EMAIL';
 }
 
 // ------------------ etapa 9 · modificaciones contractuales (9.5) -----------
@@ -2958,7 +3034,11 @@ export interface AlertaVencimiento {
     | 'APROBACION_PENDIENTE'
     | 'DEVUELTA_PARA_CORREGIR'
     /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
-    | 'SIN_ABOGADO';
+    | 'SIN_ABOGADO'
+    /** Una solicitud de CDP que la Financiera no ha tomado. */
+    | 'CDP_SIN_ATENDER'
+    /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
+    | 'PLAZO_ACTIVIDAD';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;
@@ -3189,3 +3269,77 @@ export interface MisPermisos {
   rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
   permisos: string[];
 }
+
+// ------------------------------------------ los plazos de las alertas (EFDS-1183)
+
+/** Un plazo de las alertas, con los límites que admite. */
+export interface ParametroAlerta {
+  clave: string;
+  valor: number;
+  minimo: number;
+  maximo: number;
+  descripcion: string;
+}
+
+// ---------------------------------------------- avisos a la campana (EFDS-1183)
+
+/** Lo que puede pasar en un proceso y merece un aviso. */
+export type EventoAviso =
+  | 'HABILITADA'
+  | 'VENCE_PLAZO'
+  | 'DEVUELTA'
+  | 'ENVIADA_A_APROBACION'
+  | 'APROBADA'
+  | 'RECIBIDO_EN_CONTRATACION'
+  | 'PROCESO_RADICADO'
+  | 'DOCUMENTO_ADJUNTO';
+
+/** El papel que alguien cumple en un proceso concreto. */
+export type PapelAviso =
+  | 'QUIEN_ENVIO'
+  | 'QUIEN_APRUEBA'
+  | 'ABOGADO'
+  | 'CONTRATACION'
+  | 'RADICADOR'
+  | 'BANDEJA_CONTRATACION'
+  | 'EQUIPO_FINANCIERO'
+  | 'COMITE_EVALUADOR'
+  | 'SUPERVISOR'
+  | 'REPARTE_PROCESOS'
+  | 'DESIGNA_COMITE_Y_SUPERVISOR'
+  | 'REASIGNA_SUPERVISION'
+  | 'ARCHIVA_EXPEDIENTE';
+
+/** Un aviso de una actividad: cuándo sale, si está encendido y a quién le llega. */
+export interface AvisoEvento {
+  evento: EventoAviso;
+  nombre: string;
+  ayuda: string;
+  /** Si alguien lo cambió; si no, rige lo sugerido. */
+  personalizado: boolean;
+  activo: boolean;
+  papeles: PapelAviso[];
+  roles: { code: string; name: string }[];
+  /** Personas nombradas una a una, como en Aprobación. */
+  personas: { id: string; nombre: string }[];
+  /** Dependencias de la plataforma: el aviso llega a toda su gente. */
+  dependencias: { id: string; nombre: string }[];
+}
+
+/** Un aviso que sale siempre y no se configura, con a quién le llega. */
+export interface AvisoSiempre {
+  evento: EventoAviso;
+  nombre: string;
+  ayuda: string;
+  aQuien: string[];
+}
+
+export interface ConfiguracionAvisos {
+  papeles: { codigo: PapelAviso; nombre: string }[];
+  requiereAprobacion: boolean;
+  /** Si los avisos de la actividad llegan también al correo. */
+  porCorreo: boolean;
+  siempre: AvisoSiempre[];
+  avisos: AvisoEvento[];
+}
+

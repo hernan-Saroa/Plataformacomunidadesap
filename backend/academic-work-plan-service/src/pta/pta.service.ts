@@ -29,6 +29,7 @@ import {
   COMPLEMENTARIAS_COMPONENT_KEYS,
   TERRITORIAL_COMPONENT_KEYS,
   REVIEW_SUBSECCIONES_BY_COMPONENT,
+  PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
   reviewPermissionFor,
   type PTAComponentKey,
   type PTANivelDocencia,
@@ -62,6 +63,13 @@ function isPtaHabilitadoParaSeguimientoPorEstado(value: unknown): boolean {
     'TERMINADO',
   ]).has(normalizeEstadoFilter(value));
 }
+
+const EVIDENCIA_EXTENSION_COMPONENT_KEYS: PTAComponentKey[] = [
+  'ext_capacitacion',
+  'ext_procesos',
+  'ext_fortalecimiento',
+  'ext_gobierno',
+];
 
 function resolveHorasResolucionProyecto(proyecto: any): number {
   return Math.max(0, Math.round(Number(proyecto?.horas_solicitadas) || 0));
@@ -263,6 +271,62 @@ function expandSolicitudComponentes(componentes: string[]): string[] {
   return Array.from(new Set(
     componentes.flatMap(componente => SOLICITUD_COMPONENT_APPROVAL_KEYS[componente] || []),
   ));
+}
+
+type SolicitudComponenteDecision = {
+  estado: 'pendiente' | 'aprobado' | 'denegado';
+  resueltoPorId?: string | null;
+  resueltoPor?: string | null;
+  resueltoPorRol?: string | null;
+  motivo?: string | null;
+  fecha?: string | null;
+};
+
+function normalizeSolicitudDecisiones(
+  solicitud: Pick<SolicitudPtaEntity, 'componentes' | 'estado' | 'decisionesComponentes' | 'resueltoPor' | 'resolucionMotivo' | 'resolucionFecha'>,
+): Record<string, SolicitudComponenteDecision> {
+  const raw = solicitud.decisionesComponentes && typeof solicitud.decisionesComponentes === 'object'
+    ? solicitud.decisionesComponentes
+    : {};
+  const estadoSolicitud = normalizeEstadoFilter(solicitud.estado).toLowerCase();
+  const fallback: SolicitudComponenteDecision['estado'] = estadoSolicitud === 'pendiente'
+    ? 'pendiente'
+    : estadoSolicitud === 'denegado'
+      ? 'denegado'
+      : 'aprobado';
+  return Object.fromEntries(normalizeSolicitudComponentes(solicitud.componentes).map((componente) => {
+    const current = (raw as any)[componente] || {};
+    const estado = ['pendiente', 'aprobado', 'denegado'].includes(String(current.estado || '').toLowerCase())
+      ? String(current.estado).toLowerCase() as SolicitudComponenteDecision['estado']
+      : fallback;
+    return [componente, {
+      estado,
+      resueltoPorId: coalesceString(current.resueltoPorId) || null,
+      resueltoPor: coalesceString(current.resueltoPor, solicitud.resueltoPor) || null,
+      resueltoPorRol: coalesceString(current.resueltoPorRol) || null,
+      motivo: coalesceString(current.motivo, solicitud.resolucionMotivo) || null,
+      fecha: coalesceString(current.fecha)
+        || (solicitud.resolucionFecha ? new Date(solicitud.resolucionFecha).toISOString() : null),
+    }];
+  }));
+}
+
+/**
+ * Componentes que realmente quedaron autorizados para la reapertura.
+ *
+ * `solicitud.componentes` conserva la selección original del docente para la
+ * trazabilidad. En una resolución mixta no puede usarse como alcance de la
+ * edición/reaprobación porque también contiene los componentes denegados.
+ * Las solicitudes históricas sin matriz JSON mantienen el comportamiento
+ * anterior mediante el fallback de `normalizeSolicitudDecisiones`.
+ */
+function normalizeSolicitudComponentesAprobados(
+  solicitud: Pick<SolicitudPtaEntity, 'componentes' | 'estado' | 'decisionesComponentes' | 'resueltoPor' | 'resolucionMotivo' | 'resolucionFecha'>,
+): string[] {
+  const decisiones = normalizeSolicitudDecisiones(solicitud);
+  return normalizeSolicitudComponentes(solicitud.componentes).filter(
+    componente => decisiones[componente]?.estado === 'aprobado',
+  );
 }
 
 function restoreEstadoDespuesEdicion(value: unknown): string {
@@ -1884,7 +1948,7 @@ export class PtaService {
     solicitud: SolicitudPtaEntity,
   ): Promise<Set<any>> {
     const reabiertos = new Set(expandSolicitudComponentes(
-      normalizeSolicitudComponentes(solicitud.componentes),
+      normalizeSolicitudComponentesAprobados(solicitud),
     ));
     // Ante una solicitud incompleta se conserva la validación estricta.
     if (reabiertos.size === 0) return new Set();
@@ -5420,6 +5484,71 @@ export class PtaService {
     return rows.map((row) => this.toEvidenciaDto(row));
   }
 
+  /**
+   * Traduce la clasificación amplia guardada en la evidencia a los componentes
+   * granulares que pueden revisarla. Docencia y Complementarias no guardan el
+   * nivel/subtipo en la evidencia, por eso cualquiera de sus permisos específicos
+   * habilita exclusivamente ese grupo. Extensión sí conserva la sección.
+   */
+  private componentKeysForEvidencia(evidencia: Pick<PtaEvidenciaEntity, 'componentePta' | 'seccionExtension'>): PTAComponentKey[] {
+    const componente = normalizeEstadoFilter(evidencia?.componentePta).toLowerCase();
+    if (componente === 'docencia' || componente === 'academica') {
+      return DOCENCIA_COMPONENT_KEYS;
+    }
+    if (componente === 'investigacion') return ['investigacion'];
+    if (componente === 'complementarias' || componente === 'acad_admin') {
+      return COMPLEMENTARIAS_COMPONENT_KEYS;
+    }
+    if (componente !== 'extension') return [];
+
+    const seccion = normalizeEstadoFilter(evidencia?.seccionExtension).toLowerCase();
+    const keyBySection: Record<string, PTAComponentKey> = {
+      capacitacion: 'ext_capacitacion',
+      seleccion: 'ext_procesos',
+      procesos_seleccion: 'ext_procesos',
+      fortalecimiento: 'ext_fortalecimiento',
+      laboratorio_innovacion: 'ext_fortalecimiento',
+      investigacion_aplicada: 'ext_fortalecimiento',
+      alto_gobierno: 'ext_gobierno',
+    };
+    const key = keyBySection[seccion];
+    // Compatibilidad con soportes históricos que no almacenaban sección.
+    // Una sección no vacía pero desconocida se bloquea: no debe heredar por
+    // accidente el permiso de otra sección de Extensión.
+    return key ? [key] : seccion ? [] : EVIDENCIA_EXTENSION_COMPONENT_KEYS;
+  }
+
+  private grupoSeguimientoParaEvidencia(
+    evidencia: Pick<PtaEvidenciaEntity, 'componentePta'>,
+  ): 'docencia' | 'investigacion' | 'extension' | 'complementarias' | null {
+    const componente = normalizeEstadoFilter(evidencia?.componentePta).toLowerCase();
+    if (componente === 'academica') return 'docencia';
+    if (componente === 'acad_admin') return 'complementarias';
+    if (['docencia', 'investigacion', 'extension', 'complementarias'].includes(componente)) {
+      return componente as 'docencia' | 'investigacion' | 'extension' | 'complementarias';
+    }
+    return null;
+  }
+
+  private puedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity): boolean {
+    if (!auth) return false;
+    if (auth.isSuperUser || auth.approvesAll) return true;
+    const permitidos = new Set(auth.allowedComponents || []);
+    return this.componentKeysForEvidencia(evidencia).some(key => permitidos.has(key));
+  }
+
+  private assertPuedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity): void {
+    if (this.puedeGestionarEvidencia(auth, evidencia)) return;
+    const requeridos = this.componentKeysForEvidencia(evidencia)
+      .map(key => COMPONENT_PERMISSION[key])
+      .filter(Boolean);
+    throw new ForbiddenException(
+      requeridos.length
+        ? `No tiene permiso para gestionar esta evidencia. Se requiere uno de: ${requeridos.join(', ')}.`
+        : 'La evidencia no tiene un componente PTA reconocido para su aprobación.',
+    );
+  }
+
   /** Valida la carga real, no la autoaprobación técnica de componentes vacíos. */
   private async validarComponenteJustificacion(ptaId: string, componente: string | null | undefined, seccion: string | null | undefined, permitirLegacySinSeccion = false) {
     const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
@@ -5526,9 +5655,15 @@ export class PtaService {
     return { deleted: true };
   }
 
-  async revisarEvidenciaPTA(ptaId: string, evidenciaId: string, body: any) {
+  async revisarEvidenciaPTA(
+    ptaId: string,
+    evidenciaId: string,
+    body: any,
+    auth?: PtaAuthenticatedUser,
+  ) {
     const existing = await this.evidenciaRepo.findOne({ where: { id: evidenciaId, ptaId } });
     if (!existing) throw new NotFoundException('Evidencia no encontrada');
+    this.assertPuedeGestionarEvidencia(auth, existing);
 
     const decision = coalesceString(body?.decision, body?.estado_revision, body?.estadoRevision);
     const estadoRevision =
@@ -5547,7 +5682,8 @@ export class PtaService {
     const updated = await this.evidenciaRepo.save({
       ...existing,
       estadoRevision,
-      revisadoPor: coalesceString(body?.revisado_por, body?.revisadoPor) ?? existing.revisadoPor,
+      // La identidad del aprobador proviene de la sesión verificada, no del body.
+      revisadoPor: coalesceString(auth?.name, auth?.email, auth?.userId) ?? existing.revisadoPor,
       comentarioRevision: coalesceString(body?.observaciones, body?.comentario, body?.comentarioRevision) ?? existing.comentarioRevision,
     });
 
@@ -5612,6 +5748,35 @@ export class PtaService {
       || auth?.permissions.has('pta.backoffice.aprobar')
       || auth?.permissions.has('pta.backoffice.ver_gestion')
       || auth?.permissions.has('pta.backoffice.ver_detalle'),
+    );
+  }
+
+  private puedeGestionarSolicitudesEdicion(auth?: PtaAuthenticatedUser): boolean {
+    return Boolean(
+      auth?.isSuperUser
+      || auth?.permissions.has(PTA_MANAGE_EDIT_REQUESTS_PERMISSION),
+    );
+  }
+
+  private tieneAccesoTotalSolicitudesEdicion(auth?: PtaAuthenticatedUser): boolean {
+    return Boolean(auth?.isSuperUser);
+  }
+
+  /**
+   * Áreas funcionales cubiertas por permisos de revisión. El permiso de bandeja
+   * no amplía este alcance: únicamente permite entrar, consultar y ejecutar la
+   * acción sobre los componentes que el rol ya tiene autorizados.
+   */
+  private componentesSolicitudGestionables(auth?: PtaAuthenticatedUser): string[] {
+    if (!auth) return [];
+    if (this.tieneAccesoTotalSolicitudesEdicion(auth)) return [...SOLICITUD_COMPONENT_KEYS];
+    if (auth.reviewsAll) return [...SOLICITUD_COMPONENT_KEYS];
+    const revisables = new Set(
+      (auth.allowedReviewSubsecciones || []).map(value => String(value).split(':')[0]),
+    );
+    return SOLICITUD_COMPONENT_KEYS.filter(componente =>
+      (SOLICITUD_COMPONENT_APPROVAL_KEYS[componente] || [])
+        .some(key => revisables.has(key)),
     );
   }
 
@@ -5723,6 +5888,9 @@ export class PtaService {
       body?.docente_email,
     );
 
+    const decisionesIniciales: Record<string, SolicitudComponenteDecision> | null = esEdicion
+      ? Object.fromEntries(componentes.map(componente => [componente, { estado: 'pendiente' as const }]))
+      : null;
     const entity = this.solicitudRepo.create({
       docenteId: resolvedDocenteId,
       docenteNombre,
@@ -5730,6 +5898,7 @@ export class PtaService {
       tipoSolicitud,
       ptaId: esEdicion ? ptaId : null,
       componentes: esEdicion ? componentes : null,
+      decisionesComponentes: decisionesIniciales,
       estadoPtaAnterior: esEdicion ? pta?.estado || null : null,
       caso: coalesceString(body?.caso) || (esEdicion ? 'edicion_pta' : ''),
       razon: coalesceString(body?.razon) || (esEdicion ? 'Edición de componentes del PTA' : ''),
@@ -5818,12 +5987,19 @@ export class PtaService {
   }
 
   async resolverSolicitudPTA(solicitudId: string, body: any, auth?: PtaAuthenticatedUser) {
-    if (auth && !auth.isSuperUser && !auth.approvesAll && !auth.permissions.has('pta.backoffice.aprobar')) {
-      throw new ForbiddenException('No tienes permiso para resolver solicitudes del PTA.');
-    }
-
     const existing = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
     if (!existing) throw new NotFoundException('Solicitud no encontrada');
+    const esSolicitudEdicion = existing.tipoSolicitud === SOLICITUD_EDICION_TIPO;
+    const autorizado = esSolicitudEdicion
+      ? this.puedeGestionarSolicitudesEdicion(auth)
+      : this.puedeAdministrarSolicitudes(auth);
+    if (!auth || !autorizado) {
+      throw new ForbiddenException(
+        esSolicitudEdicion
+          ? 'No tienes permisos de revisión sobre los componentes de esta solicitud.'
+          : 'No tienes permiso para resolver solicitudes del PTA.',
+      );
+    }
     if (existing.estado !== 'pendiente') {
       throw new BadRequestException('Esta solicitud ya fue resuelta.');
     }
@@ -5842,39 +6018,141 @@ export class PtaService {
 
     if (existing.tipoSolicitud === SOLICITUD_EDICION_TIPO) {
       if (!existing.ptaId) throw new BadRequestException('La solicitud de edición no tiene un PTA asociado.');
+      if (body?.componentes !== undefined && !Array.isArray(body.componentes)) {
+        throw new BadRequestException('Los componentes a resolver deben enviarse como un arreglo.');
+      }
+      const componentesRecibidos = Array.isArray(body?.componentes) ? body.componentes : [];
+      const componentesInvalidos = componentesRecibidos.filter(
+        (componente: unknown) => !SOLICITUD_COMPONENT_KEY_SET.has(String(componente || '').trim().toLowerCase()),
+      );
+      if (componentesInvalidos.length > 0) {
+        throw new BadRequestException('La solicitud contiene componentes no válidos para resolver.');
+      }
+      const componentesBody = normalizeSolicitudComponentes(componentesRecibidos);
+      const componentesIniciales = normalizeSolicitudComponentes(existing.componentes);
+      const componentesInicialesEnAlcance = this.tieneAccesoTotalSolicitudesEdicion(auth)
+        ? componentesIniciales
+        : componentesIniciales.filter(componente =>
+            this.componentesSolicitudGestionables(auth).includes(componente));
+      if (componentesBody.some(componente => !componentesInicialesEnAlcance.includes(componente))) {
+        throw new ForbiddenException('Intentaste resolver un componente fuera de tu área de revisión.');
+      }
+      if ((componentesBody.length > 0 ? componentesBody : componentesInicialesEnAlcance).length === 0) {
+        throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área de revisión.');
+      }
       const pta = await this.ptaRepo.findOne({ where: { id: existing.ptaId } });
       if (!pta) throw new NotFoundException('El PTA asociado a la solicitud ya no existe.');
+      // Serializa la decisión por componente. Así dos revisores de áreas distintas
+      // pueden responder simultáneamente sin que el último guardado borre la
+      // decisión que el primero acababa de registrar en el JSONB.
+      const decisionParcial = await this.ptaRepo.manager.transaction(async manager => {
+        const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
+        const txPtaRepo = manager.getRepository(PlanTrabajoAcademicoEntity);
+        const txHistorialRepo = manager.getRepository(HistorialEstadoPtaEntity);
+        const txSolicitud = await txSolicitudRepo.findOne({
+          where: { id: existing.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!txSolicitud) throw new NotFoundException('Solicitud no encontrada');
+        if (txSolicitud.estado !== 'pendiente') {
+          throw new BadRequestException('Esta solicitud ya fue resuelta.');
+        }
+        const txPta = await txPtaRepo.findOne({
+          where: { id: existing.ptaId! },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!txPta) throw new NotFoundException('El PTA asociado a la solicitud ya no existe.');
 
-      if (decision === 'denegado') {
-        // Misma estrategia de bloqueo que la aprobación: dos administradores no
-        // pueden aprobar y denegar simultáneamente dejando el PTA reabierto con
-        // una solicitud marcada como rechazada.
-        const deniedResult = await this.ptaRepo.manager.transaction(async manager => {
-          const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
-          const txPtaRepo = manager.getRepository(PlanTrabajoAcademicoEntity);
-          const txHistorialRepo = manager.getRepository(HistorialEstadoPtaEntity);
-          const txSolicitud = await txSolicitudRepo.findOne({
-            where: { id: existing.id },
-            lock: { mode: 'pessimistic_write' },
-          });
-          const txPta = await txPtaRepo.findOne({
-            where: { id: pta.id },
-            lock: { mode: 'pessimistic_write' },
-          });
-          if (!txSolicitud || !txPta) {
-            throw new NotFoundException('No fue posible resolver la solicitud.');
-          }
-          if (txSolicitud.estado !== 'pendiente') {
-            throw new BadRequestException('Esta solicitud ya fue resuelta.');
-          }
+        const componentesSolicitados = normalizeSolicitudComponentes(txSolicitud.componentes);
+        const componentesEnAlcance = this.tieneAccesoTotalSolicitudesEdicion(auth)
+          ? componentesSolicitados
+          : componentesSolicitados.filter(componente =>
+              this.componentesSolicitudGestionables(auth).includes(componente));
+        if (componentesBody.some(componente => !componentesEnAlcance.includes(componente))) {
+          throw new ForbiddenException('Intentaste resolver un componente fuera de tu área de revisión.');
+        }
+        const componentesObjetivo = componentesBody.length > 0
+          ? componentesBody
+          : componentesEnAlcance;
+        if (componentesObjetivo.length === 0) {
+          throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área de revisión.');
+        }
 
+        const decisionesComponentes = normalizeSolicitudDecisiones(txSolicitud);
+        const pendientesObjetivo = componentesObjetivo.filter(
+          componente => decisionesComponentes[componente]?.estado === 'pendiente',
+        );
+        if (pendientesObjetivo.length === 0) {
+          const quedanDecisionesPendientes = componentesSolicitados.some(
+            componente => decisionesComponentes[componente]?.estado === 'pendiente',
+          );
+          if (quedanDecisionesPendientes) {
+            throw new BadRequestException('Los componentes de tu área ya fueron resueltos en esta solicitud.');
+          }
+          // Recuperación idempotente: si todas las áreas alcanzaron a decidir y
+          // el proceso se interrumpió antes de consolidar, esta llamada continúa
+          // la reapertura/denegación sin modificar decisiones ya registradas.
+        }
+        const fechaDecision = new Date().toISOString();
+        for (const componente of pendientesObjetivo) {
+          decisionesComponentes[componente] = {
+            estado: decision,
+            resueltoPorId: actorId,
+            resueltoPor: actorNombre,
+            resueltoPorRol: actorRol,
+            motivo: coalesceString(body?.motivo),
+            fecha: fechaDecision,
+          };
+        }
+        const componentesPendientes = componentesSolicitados.filter(
+          componente => decisionesComponentes[componente]?.estado === 'pendiente',
+        );
+        const componentesAprobados = componentesSolicitados.filter(
+          componente => decisionesComponentes[componente]?.estado === 'aprobado',
+        );
+        const finalDenegada = componentesPendientes.length === 0 && componentesAprobados.length === 0;
+        const finalAprobada = componentesPendientes.length === 0 && componentesAprobados.length > 0;
+        // Si el PTA cambió mientras los revisores decidían, la última decisión no
+        // debe quedar confirmada en una solicitud imposible de consolidar. Al
+        // lanzar dentro de esta transacción, la decisión vuelve a pendiente y
+        // permanece visible para un reintento válido.
+        if (finalAprobada && !ptaAdmiteSolicitudEdicion(txPta.estado)) {
+          throw new BadRequestException(
+            `El PTA cambió al estado "${txPta.estado}" y ya no puede reabrirse con esta solicitud.`,
+          );
+        }
+        txSolicitud.decisionesComponentes = decisionesComponentes;
+        txSolicitud.notificacionLeida = false;
+        if (finalDenegada) {
           txSolicitud.estado = 'denegado';
           txSolicitud.resolucionMotivo = coalesceString(body?.motivo) as any;
           txSolicitud.resolucionAccion = 'denegar_edicion_componentes';
           txSolicitud.resueltoPor = actorNombre;
           txSolicitud.resolucionFecha = new Date();
-          txSolicitud.notificacionLeida = false;
-          const denied = await txSolicitudRepo.save(txSolicitud);
+        }
+        const savedSolicitud = await txSolicitudRepo.save(txSolicitud);
+
+        if (componentesPendientes.length > 0) {
+          await txHistorialRepo.save(txHistorialRepo.create({
+            ptaId: txPta.id,
+            estadoAnterior: txPta.estado,
+            estadoNuevo: txPta.estado,
+            actorId,
+            actorRol,
+            tipoAccion: 'SOLICITUD_EDICION_DECISION_PARCIAL',
+            comentarios: coalesceString(body?.motivo)
+              || `Decisión ${decision} para ${pendientesObjetivo.join(', ')}.`,
+            detallesTransicion: JSON.stringify({
+              solicitudId: savedSolicitud.id,
+              decision,
+              componentes: pendientesObjetivo,
+              componentesPendientes,
+              decisionesComponentes,
+            }),
+            snapshotPta: txPta.datosEstructurados ?? null,
+            version: txPta.version,
+          }));
+        } else if (finalDenegada) {
           await txHistorialRepo.save(txHistorialRepo.create({
             ptaId: txPta.id,
             estadoAnterior: txPta.estado,
@@ -5882,56 +6160,109 @@ export class PtaService {
             actorId,
             actorRol,
             tipoAccion: 'SOLICITUD_EDICION_DENEGADA',
-            comentarios: denied.resolucionMotivo,
+            comentarios: savedSolicitud.resolucionMotivo,
             detallesTransicion: JSON.stringify({
-              solicitudId: denied.id,
+              solicitudId: savedSolicitud.id,
               decision: 'denegado',
-              componentes: denied.componentes || [],
+              componentes: savedSolicitud.componentes || [],
+              decisionesComponentes,
               resueltoPorId: actorId,
               resueltoPor: actorNombre,
               resueltoPorRol: actorRol,
-              motivoResolucion: denied.resolucionMotivo,
+              motivoResolucion: savedSolicitud.resolucionMotivo,
             }),
             snapshotPta: txPta.datosEstructurados ?? null,
             version: txPta.version,
           }));
-          return { solicitud: denied, pta: txPta };
-        });
+        }
+
+        return {
+          solicitud: savedSolicitud,
+          pta: txPta,
+          componentesSolicitados,
+          componentesDecididos: pendientesObjetivo,
+          componentesPendientes,
+          decisionesComponentes,
+          finalDenegada,
+        };
+      });
+      Object.assign(existing, decisionParcial.solicitud);
+      Object.assign(pta, decisionParcial.pta);
+      const {
+        componentesSolicitados,
+        componentesDecididos: pendientesObjetivo,
+        componentesPendientes,
+        decisionesComponentes,
+      } = decisionParcial;
+
+      // La solicitud permanece pendiente hasta que cada área involucrada emita
+      // su decisión. Ningún componente se reabre prematuramente.
+      if (componentesPendientes.length > 0) {
         await this.logEvento({
-          ptaId: deniedResult.pta.id,
+          ptaId: pta.id,
           tipo: 'actualizacion_componente',
-          docenteId: deniedResult.pta.docenteId,
+          docenteId: pta.docenteId,
+          docenteNombre: coalesceString((pta.datosEstructurados as any)?.docente_nombre, existing.docenteNombre),
+          estadoAnterior: pta.estado,
+          estadoNuevo: pta.estado,
+          actor: actorId,
+          actorRol,
+          sistemaOrigen: 'backoffice',
+          mensaje: `Solicitud de edición: ${decision} para ${pendientesObjetivo.join(', ')}`,
+          metadata: { solicitudId: existing.id, decision, componentes: pendientesObjetivo, componentesPendientes },
+        });
+        return Object.assign(existing, {
+          resolucionParcial: true,
+          componentesPendientes,
+        });
+      }
+
+      const componentes = componentesSolicitados.filter(
+        componente => decisionesComponentes[componente]?.estado === 'aprobado',
+      );
+
+      if (componentes.length === 0) {
+        await this.logEvento({
+          ptaId: pta.id,
+          tipo: 'actualizacion_componente',
+          docenteId: pta.docenteId,
           docenteNombre: coalesceString(
-            (deniedResult.pta.datosEstructurados as any)?.docente_nombre,
-            deniedResult.solicitud.docenteNombre,
+            (pta.datosEstructurados as any)?.docente_nombre,
+            existing.docenteNombre,
           ),
-          estadoAnterior: deniedResult.pta.estado,
-          estadoNuevo: deniedResult.pta.estado,
+          estadoAnterior: pta.estado,
+          estadoNuevo: pta.estado,
           actor: actorId,
           actorRol,
           sistemaOrigen: 'backoffice',
           mensaje: 'Solicitud de edición de PTA denegada',
           metadata: {
-            solicitudId: deniedResult.solicitud.id,
-            componentes: deniedResult.solicitud.componentes || [],
+            solicitudId: existing.id,
+            componentes: existing.componentes || [],
             decision: 'denegado',
             resueltoPor: actorNombre,
             resueltoPorRol: actorRol,
-            motivoResolucion: deniedResult.solicitud.resolucionMotivo,
+            motivoResolucion: existing.resolucionMotivo,
           },
         });
-        await this.ptaNotifications?.notifyProfesorSolicitudEdicionResuelta?.({
-          solicitudId: deniedResult.solicitud.id,
-          ptaId: deniedResult.pta.id,
-          docenteId: deniedResult.pta.docenteId,
-          decision: 'denegado',
-          componentes: deniedResult.solicitud.componentes || [],
-          resueltoPor: actorNombre,
-          resueltoPorRol: actorRol,
-          motivo: deniedResult.solicitud.resolucionMotivo,
-          periodo: deniedResult.pta.periodo,
-        });
-        return deniedResult.solicitud;
+        try {
+          await this.ptaNotifications?.notifyProfesorSolicitudEdicionResuelta?.({
+            solicitudId: existing.id,
+            ptaId: pta.id,
+            docenteId: pta.docenteId,
+            decision: 'denegado',
+            componentes: existing.componentes || [],
+            resueltoPor: actorNombre,
+            resueltoPorRol: actorRol,
+            motivo: existing.resolucionMotivo,
+            periodo: pta.periodo,
+          });
+        } catch (error: any) {
+          this.logger?.warn?.(
+            `Solicitud ${existing.id} denegada, pero no fue posible notificar al docente: ${error?.message || error}`,
+          );
+        }
+        return existing;
       }
 
       if (!ptaAdmiteSolicitudEdicion(pta.estado)) {
@@ -5940,7 +6271,6 @@ export class PtaService {
         );
       }
 
-      const componentes = normalizeSolicitudComponentes(existing.componentes);
       const approvalKeys = expandSolicitudComponentes(componentes);
       if (approvalKeys.length === 0) {
         throw new BadRequestException('La solicitud no contiene componentes válidos para editar.');
@@ -6038,6 +6368,7 @@ export class PtaService {
         const savedPta = await txPtaRepo.save(txPta);
 
         txSolicitud.estado = 'aprobado';
+        txSolicitud.decisionesComponentes = decisionesComponentes;
         txSolicitud.estadoPtaAnterior = estadoAnterior;
         txSolicitud.resolucionMotivo = comentario;
         txSolicitud.resolucionAccion = 'habilitar_edicion_componentes';
@@ -6093,17 +6424,23 @@ export class PtaService {
           motivoResolucion: result.solicitud.resolucionMotivo,
         },
       });
-      await this.ptaNotifications?.notifyProfesorSolicitudEdicionResuelta?.({
-        solicitudId: result.solicitud.id,
-        ptaId: result.pta.id,
-        docenteId: result.pta.docenteId,
-        decision: 'aprobado',
-        componentes,
-        resueltoPor: actorNombre,
-        resueltoPorRol: actorRol,
-        motivo: result.solicitud.resolucionMotivo,
-        periodo: result.pta.periodo,
-      });
+      try {
+        await this.ptaNotifications?.notifyProfesorSolicitudEdicionResuelta?.({
+          solicitudId: result.solicitud.id,
+          ptaId: result.pta.id,
+          docenteId: result.pta.docenteId,
+          decision: 'aprobado',
+          componentes,
+          resueltoPor: actorNombre,
+          resueltoPorRol: actorRol,
+          motivo: result.solicitud.resolucionMotivo,
+          periodo: result.pta.periodo,
+        });
+      } catch (error: any) {
+        this.logger?.warn?.(
+          `Solicitud ${result.solicitud.id} aprobada, pero no fue posible notificar al docente: ${error?.message || error}`,
+        );
+      }
       return result.solicitud;
     }
 
@@ -6205,10 +6542,55 @@ export class PtaService {
   }
 
   async getSolicitudesPTA(filters?: { estado?: string }, auth?: PtaAuthenticatedUser) {
-    if (auth && !this.puedeAdministrarSolicitudes(auth)) {
+    // Consultar la bandeja histórica de creación exige un permiso backoffice
+    // explícito. `pta.approve.all` conserva su función sobre el PTA, pero no se
+    // convierte por esa vía en permiso para ver la pestaña de solicitudes.
+    const administraSolicitudesCreacion = Boolean(
+      auth?.isSuperUser
+      || auth?.permissions.has('pta.backoffice.aprobar')
+      || auth?.permissions.has('pta.backoffice.ver_gestion')
+      || auth?.permissions.has('pta.backoffice.ver_detalle'),
+    );
+    const gestionaEdiciones = this.puedeGestionarSolicitudesEdicion(auth);
+    if (!auth || (!gestionaEdiciones && !administraSolicitudesCreacion)) {
       throw new ForbiddenException('No tienes permiso para consultar la bandeja global de solicitudes PTA.');
     }
+    const accesoTotalEdiciones = this.tieneAccesoTotalSolicitudesEdicion(auth);
+    const areasPermitidas = new Set(this.componentesSolicitudGestionables(auth));
+    const areasPermitidasLista = [...areasPermitidas];
+    const parametrosAreas = Object.fromEntries(
+      areasPermitidasLista.map((componente, index) => [
+        `solicitudComponente${index}`,
+        JSON.stringify([componente]),
+      ]),
+    );
+    const condicionAreas = areasPermitidasLista
+      .map((_componente, index) => `s.componentes @> CAST(:solicitudComponente${index} AS jsonb)`)
+      .join(' OR ');
     const qb = this.solicitudRepo.createQueryBuilder('s');
+    // El permiso funcional nuevo es deliberadamente acotado: habilita la bandeja
+    // que exige la HU, pero no expone solicitudes de creación a revisores de
+    // componentes. Los administradores históricos conservan la bandeja completa.
+    if (!administraSolicitudesCreacion) {
+      qb.andWhere('s.tipoSolicitud = :tipoSolicitud', {
+        tipoSolicitud: SOLICITUD_EDICION_TIPO,
+      });
+    }
+    // Aplicar el alcance ANTES del límite de 500 filas. Filtrar solo después de
+    // `take()` podía ocultar solicitudes válidas cuando las filas recientes eran
+    // de otro tipo o de componentes ajenos al usuario.
+    if (!gestionaEdiciones || (!accesoTotalEdiciones && areasPermitidasLista.length === 0)) {
+      qb.andWhere('s.tipoSolicitud <> :tipoSolicitudEdicionSinAcceso', {
+        tipoSolicitudEdicionSinAcceso: SOLICITUD_EDICION_TIPO,
+      });
+    } else if (!accesoTotalEdiciones && administraSolicitudesCreacion) {
+      qb.andWhere(
+        `(s.tipoSolicitud <> :tipoSolicitudEdicionAcotada OR (s.tipoSolicitud = :tipoSolicitudEdicionAcotada AND (${condicionAreas})))`,
+        { tipoSolicitudEdicionAcotada: SOLICITUD_EDICION_TIPO, ...parametrosAreas },
+      );
+    } else if (!accesoTotalEdiciones) {
+      qb.andWhere(`(${condicionAreas})`, parametrosAreas);
+    }
     const estado = coalesceString(filters?.estado)?.toLowerCase();
     if (estado) {
       qb.andWhere('LOWER(s.estado) = :estado', { estado });
@@ -6216,7 +6598,49 @@ export class PtaService {
     qb.orderBy('s.createdAt', 'DESC');
     qb.take(500);
     const solicitudes = await qb.getMany();
-    return this.enrichSolicitudesPta(solicitudes);
+    const visibles = solicitudes
+      .filter(solicitud => {
+        if (solicitud.tipoSolicitud !== SOLICITUD_EDICION_TIPO) return administraSolicitudesCreacion;
+        // Los permisos históricos del backoffice pueden conservar la consulta de
+        // solicitudes de creación, pero nunca sustituyen la puerta funcional de
+        // edición. Incluso si ese rol también posee pta.review.*, una solicitud de
+        // edición solo se expone cuando tiene pta.requests.edit.manage.
+        return gestionaEdiciones && (
+          accesoTotalEdiciones
+          || normalizeSolicitudComponentes(solicitud.componentes).some(componente => areasPermitidas.has(componente))
+        );
+      })
+      .map((solicitud) => {
+        if (solicitud.tipoSolicitud !== SOLICITUD_EDICION_TIPO) return solicitud;
+        const componentesOriginales = normalizeSolicitudComponentes(solicitud.componentes);
+        const componentesVisibles = accesoTotalEdiciones
+          ? componentesOriginales
+          : componentesOriginales.filter(componente => areasPermitidas.has(componente));
+        const decisiones = normalizeSolicitudDecisiones(solicitud);
+        const requiereConsolidacion = normalizeEstadoFilter(solicitud.estado).toLowerCase() === 'pendiente'
+          && componentesOriginales.length > 0
+          && componentesOriginales.every(componente => decisiones[componente]?.estado !== 'pendiente')
+          && componentesOriginales.some(componente => decisiones[componente]?.estado === 'aprobado');
+        return Object.assign(Object.create(Object.getPrototypeOf(solicitud)), solicitud, {
+          componentes: componentesVisibles,
+          componentesTotal: componentesOriginales.length,
+          requiereConsolidacion,
+          decisionesComponentes: Object.fromEntries(
+            componentesVisibles.map(componente => [componente, decisiones[componente]]),
+          ),
+        });
+      })
+      .filter(solicitud => {
+        if (estado !== 'pendiente' || accesoTotalEdiciones || solicitud.tipoSolicitud !== SOLICITUD_EDICION_TIPO) {
+          return true;
+        }
+        if ((solicitud as any).requiereConsolidacion) return true;
+        const decisiones = normalizeSolicitudDecisiones(solicitud);
+        return normalizeSolicitudComponentes(solicitud.componentes).some(
+          componente => decisiones[componente]?.estado === 'pendiente',
+        );
+      });
+    return this.enrichSolicitudesPta(visibles);
   }
 
   async deletePTA(ptaId: string) {
@@ -6417,7 +6841,10 @@ export class PtaService {
     );
   }
 
-  async getAllPtasConEvidencias(periodo?: string) {
+  async getAllPtasConEvidencias(periodo: string | undefined, auth?: PtaAuthenticatedUser) {
+    if (!auth || (!auth.isSuperUser && !auth.approvesAll && !(auth.allowedComponents || []).length)) {
+      throw new ForbiddenException('Se requiere al menos un permiso pta.approve.* para consultar Seguimiento.');
+    }
     const qb = this.ptaRepo.createQueryBuilder('pta');
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
     qb.orderBy('pta.updatedAt', 'DESC');
@@ -6437,7 +6864,14 @@ export class PtaService {
         )),
     );
 
-    const ids = ptas.map((p) => p.id);
+    const extMult = await this.getExtMultiplicadores();
+    const dtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
+    await this.attachPtaReferenceDates(dtos);
+    const summaries = await this.enrichPtaSummaries(dtos);
+    const scopedPtas = await this.filterGestionPtas(summaries, ptas, auth);
+    const ids = scopedPtas.map((pta) => pta.id || pta.pta_id).filter(Boolean);
+    if (ids.length === 0) return [];
+
     const evidencias = await this.evidenciaRepo
       .createQueryBuilder('ev')
       .where('ev.ptaId IN (:...ids)', { ids })
@@ -6445,18 +6879,40 @@ export class PtaService {
       .getMany();
 
     const evidenciasByPta: Record<string, any[]> = {};
+    const resumenByPta: Record<string, Record<string, { horas_aprobadas: number }>> = {};
     for (const ev of evidencias) {
+      resumenByPta[ev.ptaId] ||= {
+        docencia: { horas_aprobadas: 0 },
+        investigacion: { horas_aprobadas: 0 },
+        extension: { horas_aprobadas: 0 },
+        complementarias: { horas_aprobadas: 0 },
+      };
+      const grupo = this.grupoSeguimientoParaEvidencia(ev);
+      if (
+        grupo
+        && normalizeEstadoFilter(ev.estado) !== 'ELIMINADO'
+        && normalizeEstadoFilter(ev.estadoRevision) === 'APROBADO'
+      ) {
+        resumenByPta[ev.ptaId][grupo].horas_aprobadas += Math.max(0, Number(ev.horasAvance) || 0);
+      }
+      if (!this.puedeGestionarEvidencia(auth, ev)) continue;
       evidenciasByPta[ev.ptaId] ||= [];
       evidenciasByPta[ev.ptaId].push(this.toEvidenciaDto(ev));
     }
 
-    const extMult = await this.getExtMultiplicadores();
-    const dtos = ptas.map((pta) => ({
-      ...this.toPtaDto(pta, extMult),
-      evidencias: evidenciasByPta[pta.id] || [],
+    const resultado = scopedPtas.map((pta) => ({
+      ...pta,
+      evidencias: evidenciasByPta[pta.id || pta.pta_id] || [],
+      // Agregado sin datos del archivo: mantiene correcto el avance global aun
+      // cuando las evidencias ajenas se ocultan por permiso.
+      seguimiento_resumen: resumenByPta[pta.id || pta.pta_id] || {
+        docencia: { horas_aprobadas: 0 },
+        investigacion: { horas_aprobadas: 0 },
+        extension: { horas_aprobadas: 0 },
+        complementarias: { horas_aprobadas: 0 },
+      },
     }));
-    await this.attachPtaReferenceDates(dtos);
-    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
+    return this.sortPtasByReferenceDate(resultado);
   }
 
   async getConfiguracionPTAGlobal() {
@@ -9284,7 +9740,7 @@ export class PtaService {
       }
       if (solicitud.estado === 'en_aprobacion') {
         const componentesAutorizados = expandSolicitudComponentes(
-          normalizeSolicitudComponentes(solicitud.componentes),
+          normalizeSolicitudComponentesAprobados(solicitud),
         );
         if (!componentesAutorizados.includes(componenteActual)) {
           throw new ForbiddenException(
@@ -9682,7 +10138,7 @@ export class PtaService {
         approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
       } else {
         const componentesScope = expandSolicitudComponentes(
-          normalizeSolicitudComponentes(solicitudScope.componentes),
+          normalizeSolicitudComponentesAprobados(solicitudScope),
         );
         if (!componentesScope.includes(componente)) {
           throw new ForbiddenException(

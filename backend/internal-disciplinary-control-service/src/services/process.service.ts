@@ -34,6 +34,49 @@ import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
 import { NotificationClientService } from './notification-client.service';
 
+export function normalizeProcessStage(stage?: string | ProcessStage): ProcessStage {
+  if (!stage) return ProcessStage.INVESTIGACION;
+  const s = String(stage)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+  if (s.includes('INVESTIGAC')) {
+    return ProcessStage.INVESTIGACION;
+  }
+  if (s.includes('INDAGAC')) {
+    return ProcessStage.INDAGACION_PREVIA;
+  }
+  if (s.includes('JUZGA')) {
+    return ProcessStage.JUZGAMIENTO;
+  }
+  if (s.includes('EVALUA')) {
+    return ProcessStage.EVALUACION;
+  }
+  if (s.includes('VALORA')) {
+    return ProcessStage.VALORACION;
+  }
+  if (s.includes('RECEP')) {
+    return ProcessStage.RECEPCION;
+  }
+  if (s.includes('FALLO')) {
+    return ProcessStage.FALLO;
+  }
+  if (s.includes('SEGUNDA')) {
+    return ProcessStage.SEGUNDA_INSTANCIA;
+  }
+  if (s.includes('INHIBIT')) {
+    return ProcessStage.INHIBITORIO;
+  }
+
+  if (Object.values(ProcessStage).includes(stage as ProcessStage)) {
+    return stage as ProcessStage;
+  }
+
+  return ProcessStage.INVESTIGACION;
+}
+
 @Injectable()
 export class ProcessService {
   constructor(
@@ -1195,12 +1238,13 @@ export class ProcessService {
    */
   // Orden real del flujo procesal (coincide con el orden ya usado en el frontend,
   // ModalCambiarEtapaProcesoDisciplinario.tsx). No es el orden de declaración del enum.
-  private static readonly ORDEN_ETAPAS: Partial<Record<ProcessStage, number>> = {
+  private static readonly ORDEN_ETAPAS: Partial<Record<ProcessStage | string, number>> = {
     [ProcessStage.RECEPCION]: 1,
     [ProcessStage.VALORACION]: 2,
     [ProcessStage.INDAGACION_PREVIA]: 3,
     [ProcessStage.INVESTIGACION]: 4,
     [ProcessStage.EVALUACION]: 5,
+    [ProcessStage.CARGOS]: 5.5,
     [ProcessStage.JUZGAMIENTO]: 6,
     [ProcessStage.INDAGACION]: 7,
     [ProcessStage.FALLO]: 8,
@@ -1209,7 +1253,7 @@ export class ProcessService {
 
   async changeStageByAutoApertura(
     id: string,
-    nuevaEtapa: ProcessStage,
+    nuevaEtapaParam: ProcessStage | string,
     fechaAprobacion: Date,
     aprobadoPorId: string,
     aprobadoPorNombre?: string,
@@ -1218,12 +1262,47 @@ export class ProcessService {
     const proceso = await this.findById(id, false);
     const etapaAnterior = proceso.etapaActual;
 
-    // Un auto de apertura (o de pliego de cargos) aprobado tarde no debe retroceder
-    // un proceso que ya avanzó más allá de su etapa destino — solo debe aplicar la
-    // transición si realmente representa un avance.
-    const ordenAnterior = ProcessService.ORDEN_ETAPAS[etapaAnterior];
-    const ordenNuevo = ProcessService.ORDEN_ETAPAS[nuevaEtapa];
-    if (ordenAnterior !== undefined && ordenNuevo !== undefined && ordenNuevo <= ordenAnterior) {
+    // 1. Cargar etapas activas de stage_configuration para respetar la configuración dinámica del entorno
+    const allActiveStages = await this.stageConfigurationRepository.find({
+      where: { activo: true },
+      order: { orden: 'ASC' },
+    });
+
+    // 2. Buscar configuración de la etapa destino
+    let newStageConfig = allActiveStages.find((s) => s.etapa === nuevaEtapaParam);
+    if (!newStageConfig && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(nuevaEtapaParam))) {
+      newStageConfig = allActiveStages.find((s) => s.id === nuevaEtapaParam);
+    }
+    if (!newStageConfig) {
+      const normInput = String(nuevaEtapaParam)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+
+      newStageConfig = allActiveStages.find((s) => {
+        const normEtapa = (s.etapa || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '');
+        return normEtapa === normInput || normEtapa.includes(normInput) || normInput.includes(normEtapa);
+      }) || undefined;
+    }
+
+    // Nombre exacto con el que está parametrizada la etapa en la base de datos
+    const nuevaEtapa = newStageConfig?.etapa || String(nuevaEtapaParam);
+
+    // 3. Validar avance de orden dinámico según stage_configuration
+    const stageAnteriorConfig = allActiveStages.find(
+      (s) => s.etapa === etapaAnterior || (proceso.kanbanStage && s.id === proceso.kanbanStage),
+    );
+    const ordenAnterior = stageAnteriorConfig?.orden ?? ProcessService.ORDEN_ETAPAS[etapaAnterior as ProcessStage];
+    const ordenNuevo = newStageConfig?.orden ?? ProcessService.ORDEN_ETAPAS[nuevaEtapa as ProcessStage];
+
+    const esAvanceCargos = this.isCargosStage(nuevaEtapa) && !this.isCargosStage(etapaAnterior) && !this.isJuzgamientoStage(etapaAnterior);
+
+    if (!esAvanceCargos && ordenAnterior !== undefined && ordenNuevo !== undefined && ordenNuevo <= ordenAnterior) {
       console.warn(
         `[ProcessService] changeStageByAutoApertura: se ignora transición a ${nuevaEtapa} en proceso ${id} porque ya está en ${etapaAnterior} (etapa igual o posterior).`,
       );
@@ -1254,13 +1333,10 @@ export class ProcessService {
       );
     }
 
-    const newStageConfig = await this.stageConfigurationRepository.findOne({
-      where: { etapa: nuevaEtapa, activo: true },
-    });
-
     const { fechaVencimiento } =
-      await this.terminosService.calculateVencimientoEtapa(nuevaEtapa);
+      await this.terminosService.calculateVencimientoEtapa(normalizeProcessStage(nuevaEtapa));
 
+    // Asignar el nombre exacto de la etapa configurada y su ID de Kanban
     proceso.etapaActual = nuevaEtapa;
     proceso.fechaInicioEtapa = fechaAprobacion;
     proceso.fechaVencimientoEtapa = fechaVencimiento;

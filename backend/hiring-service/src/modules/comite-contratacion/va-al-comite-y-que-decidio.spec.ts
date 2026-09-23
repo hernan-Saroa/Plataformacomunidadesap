@@ -1,5 +1,9 @@
 import {
+  desenlaceTrasLaSesion,
   estadoTrasLaSesion,
+  exigeObservaciones,
+  laSesionAdmiteReabrir,
+  laSesionCierra,
   motivoParaNoIrAlComite,
 } from './comite-contratacion.service';
 import { EstadoActividad } from '../../entities/proceso-actividad.entity';
@@ -84,5 +88,87 @@ describe('estadoTrasLaSesion · en qué queda la actividad', () => {
     // De esto depende que no se radique el CDP de un proceso que el comité
     // devolvió.
     expect(estadoTrasLaSesion('OBSERVADO')).not.toBe('APROBADO');
+  });
+
+  it('rechazar la niega, y NEGADO no es DEVUELTO', () => {
+    // El mismo criterio que negar el estudio previo en la 3.4: devuelta, la
+    // actividad se corrige y se reenvía; negada, no se toca más. Con un solo
+    // estado el riel le ofrecería al abogado volver a llevar a comité un
+    // proceso que el comité ya decidió que no sale al mercado.
+    expect(estadoTrasLaSesion('RECHAZADO')).toBe('NEGADO');
+    expect(estadoTrasLaSesion('RECHAZADO')).not.toBe('DEVUELTO');
+  });
+});
+
+/**
+ * Los dos «no» del comité, que no son el mismo (EFDS-2068).
+ *
+ * Observar devuelve para corregir y el proceso vuelve a comité; rechazar dice
+ * que el proceso no sale al mercado. Mientras solo existió el primero, un
+ * comité que concluía que no había que contratar tenía que mandar la decisión
+ * de vuelta a la 3.4 para que otro la firmara.
+ */
+describe('desenlaceTrasLaSesion · cuándo termina el proceso', () => {
+  it('rechazar lo niega', () => {
+    // Dejarlo EN_CURSO con su comité rechazado haría que el listado y las
+    // estadísticas contaran como vivo un expediente que nadie va a tocar.
+    expect(desenlaceTrasLaSesion('RECHAZADO')).toBe('NEGADO');
+  });
+
+  it('observar no: ahí el proceso corrige y vuelve', () => {
+    expect(desenlaceTrasLaSesion('OBSERVADO')).toBeNull();
+  });
+
+  it('aprobar, con o sin condiciones, tampoco', () => {
+    expect(desenlaceTrasLaSesion('APROBADO')).toBeNull();
+    expect(desenlaceTrasLaSesion('APROBADO_CON_CONDICIONES')).toBeNull();
+  });
+});
+
+describe('laSesionCierra · de qué depende la firma', () => {
+  it('aprobar y rechazar cierran la actividad: las dos se firman', () => {
+    // Rechazar niega el proceso entero, así que es de lo último que se firma
+    // en un expediente: menos motivo todavía para saltárselo.
+    expect(laSesionCierra('APROBADO')).toBe(true);
+    expect(laSesionCierra('APROBADO_CON_CONDICIONES')).toBe(true);
+    expect(laSesionCierra('RECHAZADO')).toBe(true);
+  });
+
+  it('observar no la cierra', () => {
+    expect(laSesionCierra('OBSERVADO')).toBe(false);
+  });
+});
+
+describe('exigeObservaciones · cuándo hay que decir qué objetó el comité', () => {
+  it('observar y rechazar siempre', () => {
+    expect(exigeObservaciones('OBSERVADO', false)).toBe(true);
+    expect(exigeObservaciones('RECHAZADO', false)).toBe(true);
+  });
+
+  it('aprobar solo si además reabre algo', () => {
+    // La actividad reabierta le llega a su responsable devuelta: sin texto no
+    // sabría qué tiene que validar.
+    expect(exigeObservaciones('APROBADO', false)).toBe(false);
+    expect(exigeObservaciones('APROBADO', true)).toBe(true);
+    expect(exigeObservaciones('APROBADO_CON_CONDICIONES', true)).toBe(true);
+  });
+
+  it('las condiciones no sirven de texto: dicen a qué queda sujeto, no qué validar', () => {
+    // Una aprobación condicionada sin reabrir nada solo pide condiciones.
+    expect(exigeObservaciones('APROBADO_CON_CONDICIONES', false)).toBe(false);
+  });
+});
+
+describe('laSesionAdmiteReabrir · qué desenlaces dejan algo abierto', () => {
+  it('rechazar no reabre nada: el expediente queda negado', () => {
+    // Una actividad devuelta dentro de un proceso muerto es trabajo que se le
+    // pide a alguien para nada.
+    expect(laSesionAdmiteReabrir('RECHAZADO')).toBe(false);
+  });
+
+  it('los demás sí, para corregir o para validar', () => {
+    expect(laSesionAdmiteReabrir('OBSERVADO')).toBe(true);
+    expect(laSesionAdmiteReabrir('APROBADO')).toBe(true);
+    expect(laSesionAdmiteReabrir('APROBADO_CON_CONDICIONES')).toBe(true);
   });
 });

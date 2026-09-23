@@ -20,7 +20,10 @@ import {
 } from '../../entities/estado-solicitud.enum';
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
-import { NotificationClientService } from '../../common/notification-client.service';
+import {
+  NotificationClientService,
+  buildTravelExpenseEmailHtml,
+} from '../../common/notification-client.service';
 import { cargarFestivosAuth, contarDiasHabiles } from '../../common/dias-habiles.util';
 
 /**
@@ -284,24 +287,55 @@ export class ConsolidacionService {
           `${estadoAnterior} -> ${expediente.estadoSolicitud}`,
       );
 
+      const consecutivo = expediente.consecutivoUnico || expediente.id;
+      const comisionadoNombre = expediente.comisionado
+        ? `${expediente.comisionado.primerNombre || ''} ${expediente.comisionado.primerApellido || ''}`.trim()
+        : '';
+      const destino = `${expediente.destinoCiudad || ''}${expediente.destinoDepartamento ? ` (${expediente.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = expediente.fechaInicio ? new Date(expediente.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = expediente.fechaFin ? new Date(expediente.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
       this.notificationClient
-        .notifyByRole('SECRETARIO', {
-          tipo_notificacion: 'VIATICOS_RADICADA',
-          titulo: `Nueva solicitud para revisión: ${expediente.consecutivoUnico}`,
-          mensaje: `El expediente ${expediente.consecutivoUnico} fue radicado y requiere revisión en la bandeja del Grupo de Viáticos.`,
-          descripcion_corta: `Solicitud ${expediente.consecutivoUnico} · ${expediente.comisionado?.numeroDocumento ?? ''}`,
-          icono: 'FileText',
-          color: '#003DA5',
-          prioridad: esExtemporanea ? 'Alta' : 'Media',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver en bandeja',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: expediente.id,
-            consecutivoUnico: expediente.consecutivoUnico,
+        .notifyByPermission(
+          'travel_expenses.general.es_secretario_viaticos',
+          {
+            tipo_notificacion: 'VIATICOS_RADICADA',
+            titulo: `Nueva solicitud para revisión: ${consecutivo}`,
+            mensaje: `El expediente ${consecutivo} (${esExtemporanea ? 'Extemporáneo' : 'Ordinario'}) fue radicado por el enlace y requiere revisión en la bandeja del Grupo de Viáticos.`,
+            descripcion_corta: `Solicitud ${consecutivo} · ${expediente.comisionado?.numeroDocumento ?? ''}`,
+            icono: 'FileText',
+            color: '#003DA5',
+            prioridad: esExtemporanea ? 'Alta' : 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver en bandeja',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: expediente.id,
+              consecutivoUnico: consecutivo,
+              esExtemporanea,
+            },
           },
-        })
+          {
+            subject: `[Viáticos ESAP] Nueva Solicitud Radicada para Revisión: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Secretaría de Viáticos',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Bandeja de Entrada — Nueva Radicación de Comisión',
+              mensajePrincipal: `Se ha radicado una nueva solicitud de comisión de servicios que se encuentra en estado <strong>${expediente.estadoSolicitud}</strong> y requiere priorización y asignación a analista:`,
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: expediente.estadoSolicitud,
+              tipoNovedad: esExtemporanea ? 'WARNING' : 'INFO',
+              textoBoton: 'Ir a la Bandeja de Entrada',
+            }),
+            text: `Se ha radicado la comisión ${consecutivo} para revisión en la bandeja del Grupo de Viáticos.`,
+          },
+          'SECRETARIO',
+        )
         .catch((err) =>
           this.logger.warn(
             `[notify] No se pudo notificar a secretarios para solicitud ${expediente.id}: ${err?.message}`,

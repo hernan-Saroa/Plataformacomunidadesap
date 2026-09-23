@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AprobacionController } from './aprobacion.controller';
 import { AprobacionService } from './aprobacion.service';
 import { CdpModule } from '../cdp/cdp.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 /**
  * Aprobación configurable de actividades (EFDS-1183).
@@ -15,7 +16,7 @@ import { CdpModule } from '../cdp/cdp.module';
   // Aprobar la última actividad abierta de la etapa 3 radica la solicitud de
   // CDP: la aprobación configurable es el tercero de los caminos por los que
   // una actividad de esa etapa queda cerrada.
-  imports: [CdpModule],
+  imports: [CdpModule, CierreActividadModule],
   controllers: [AprobacionController],
   providers: [AprobacionService],
   exports: [AprobacionService],
