@@ -455,13 +455,15 @@ function Mes({
           // Semana Santa y receso en rojo, igual que los festivos; lo que saca el
           // usuario queda en blanco para que se vea que no está programado.
           const estiloFila = !marcada && !excluida && bloqueada ? { backgroundImage: FONDO_BLOQUEADA } : undefined;
+          // Se numeran dentro del mes, igual que las columnas del Excel
+          const nombreSemana = `Semana ${semana.numeroEnMes} de ${MESES[semana.mes].toLowerCase()}`;
           const titulo = bloqueada
             ? `${NOMBRE_BLOQUEO[semana.bloqueo!]}: no se programa`
             : excluida
-              ? `Semana ${semana.numero} desmarcada · clic para volver a marcarla`
+              ? `${nombreSemana} desmarcada · clic para volver a marcarla`
               : etapa
-                ? `Semana ${semana.numero} · ${NOMBRE_ETAPA[etapa]} · clic para desmarcarla`
-                : `Semana ${semana.numero} como ${extremo} de la ${NOMBRE_ETAPA[etapaCampo]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
+                ? `${nombreSemana} · ${NOMBRE_ETAPA[etapa]} · clic para desmarcarla`
+                : `${nombreSemana} como ${extremo} de la ${NOMBRE_ETAPA[etapaCampo]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;
 
           return (
             <tr
@@ -485,7 +487,7 @@ function Mes({
                     bloqueada ? 'text-red-700' : etapa ? ESTILO_ETAPA[etapa].texto : 'text-gray-500'
                   } ${clickeable ? 'cursor-pointer hover:bg-white/80' : ''}`}
                 >
-                  S{semana.numero}
+                  S{semana.numeroEnMes}
                 </button>
               </td>
               {DIAS.map((_, i) => {
@@ -506,7 +508,7 @@ function Mes({
                 const esPrimera = etapa === etapaCampo && semana.numero === primeraCampo;
                 const esUltima = etapa === etapaCampo && semana.numero === ultimaCampo;
                 const ayudaDia = etapa !== etapaCampo
-                  ? `Incluir la semana ${semana.numero} en la ${NOMBRE_ETAPA[etapaCampo]}`
+                  ? `Incluir la ${nombreSemana.toLowerCase()} en la ${NOMBRE_ETAPA[etapaCampo]}`
                   : esPrimera && esUltima
                     ? `${extremo === 'inicio' ? 'Empezar' : 'Terminar'} el ${fecha.getDate()}`
                     : esPrimera
