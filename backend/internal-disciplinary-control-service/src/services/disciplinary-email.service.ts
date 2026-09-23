@@ -24,7 +24,10 @@ export class DisciplinaryEmailService {
     justificacion: string,
     observacionesJefe?: string,
   ): Promise<boolean> {
-    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const notificationsUrl =
+      process.env.NOTIFICATION_SERVICE_URL ||
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      'http://localhost:3009';
     const baseUrl = this.getFrontendBaseUrl();
     const urlAcceso = `${baseUrl}/?module=control-disciplinario&radicado=${encodeURIComponent(radicadoProceso)}`;
 
@@ -99,7 +102,10 @@ export class DisciplinaryEmailService {
     justificacion?: string,
     observacionesJefe?: string,
   ): Promise<boolean> {
-    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const notificationsUrl =
+      process.env.NOTIFICATION_SERVICE_URL ||
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      'http://localhost:3009';
     const baseUrl = this.getFrontendBaseUrl();
     const urlAcceso = `${baseUrl}/?module=control-disciplinario&radicado=${encodeURIComponent(radicadoProceso)}`;
 
@@ -173,7 +179,10 @@ export class DisciplinaryEmailService {
     html: string,
     text?: string,
   ): Promise<boolean> {
-    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const notificationsUrl =
+      process.env.NOTIFICATION_SERVICE_URL ||
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      'http://localhost:3009';
     try {
       await firstValueFrom(
         this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {

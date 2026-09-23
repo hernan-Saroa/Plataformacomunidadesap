@@ -430,6 +430,13 @@ export function CampoFechaCalendario({
           onClicDia={fijarDia}
         />
 
+        {/* Qué significa cada color, como en la imagen guía del ticket */}
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-gray-100 pt-1.5 text-[10px] text-gray-500">
+          <Leyenda fondo={ROJO_FESTIVO} texto="Día festivo" />
+          <Leyenda fondo={FONDO_BLOQUEADA} rayado texto="Semana Santa y receso" />
+          <Leyenda fondo="#FFFFFF" texto="Semana quitada" />
+        </div>
+
         {!hayCronograma ? (
           <p className="mt-2 flex items-start gap-1.5 rounded bg-blue-50 px-2 py-1.5 text-[11px] leading-snug text-blue-800">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
