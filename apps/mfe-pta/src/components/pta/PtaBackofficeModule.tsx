@@ -2512,7 +2512,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     setCurrentPage(1);
   }, [filtroPeriodo, periodosInicializadosPTA]);
   // Reset page when search changes
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstado, filtroEstadoRegistro]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, filtroTags, filtroPeriodo]);
 
   // ═══ Cargar personas cuando se navega al Banco de Docentes ═══
   useEffect(() => {
@@ -2666,7 +2666,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return result;
   }, [ptas, filtroPeriodo, filtroTerritorialEfectivo, filtroProgramaEfectivo, decisionListScope, shouldRestrictByComponentPermission, visibleComponentKeys]);
 
-  const filteredPtas = useMemo(() => {
+  const baseFilteredPtas = useMemo(() => {
     let result = scopedPtas;
     // Apply search query (expanded multi-field)
     if (searchQuery.trim()) {
@@ -2690,52 +2690,86 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       });
     }
 
-    // ═══ Workflow Tab Filters (Estado) ═══
-    if (filtroEstado) {
-      const filtrosPersonales: Record<string, ['revision' | 'aprobacion', EstadoEtapaPersonal]> = {
-        revision_pendiente: ['revision', 'pendiente'],
-        revision_revisado: ['revision', 'resuelto'],
-        aprobacion_pendiente: ['aprobacion', 'pendiente'],
-        aprobacion_aprobado: ['aprobacion', 'resuelto'],
-      };
-      const filtroPersonal = filtrosPersonales[filtroEstado];
-      result = filtroPersonal
-        ? result.filter((p: any) => estadoDeMiEtapa(p, filtroPersonal[0]) === filtroPersonal[1])
-        : result.filter((p: any) => matchesEstadoWorkflowFilter(p, filtroEstado));
-    }
-
     if (filtroEstadoRegistro) {
       result = result.filter((p: any) => matchesEstadoRegistroFilter(p, filtroEstadoRegistro));
     }
 
+    return result;
+  }, [scopedPtas, searchQuery, filtroTags, ptaTags, filtroEstadoRegistro]);
+
+  /**
+   * Los indicadores de etapa deben respetar también el estado real del PTA.
+   * En particular, "Aprobado(s)" nunca incluye borradores ni aprobaciones
+   * parciales aunque el usuario ya haya resuelto su propio componente.
+   */
+  const matchesPersonalStageFilter = useCallback((pta: any, filter: FiltroEtapaPersonal) => {
+    if (!filter) return true;
+    const estadoGlobal = normalizeEstadoKey(pta?.estado);
+    switch (filter) {
+      case 'revision_pendiente':
+        return estadoGlobal !== 'BORRADOR' && estadoGlobal !== 'APROBADO'
+          && estadoDeMiEtapa(pta, 'revision') === 'pendiente';
+      case 'revision_revisado':
+        return estadoGlobal !== 'BORRADOR' && estadoDeMiEtapa(pta, 'revision') === 'resuelto';
+      case 'aprobacion_pendiente':
+        return isEstadoPendienteAprobacion(pta?.estado)
+          && estadoDeMiEtapa(pta, 'aprobacion') === 'pendiente';
+      case 'aprobacion_aprobado':
+        return estadoGlobal === 'APROBADO';
+      default:
+        return true;
+    }
+  }, [estadoDeMiEtapa]);
+
+  const matchesWorkflowTab = useCallback((pta: any, filter: string) => {
+    if (!filter) return true;
+    if (filter === 'revision_pendiente' || filter === 'revision_revisado'
+      || filter === 'aprobacion_pendiente' || filter === 'aprobacion_aprobado') {
+      return matchesPersonalStageFilter(pta, filter);
+    }
+    return matchesEstadoWorkflowFilter(pta, filter);
+  }, [matchesPersonalStageFilter]);
+
+  const filteredPtas = useMemo(() => {
+    let result = baseFilteredPtas;
+
+    // Todos los filtros activos se cruzan entre sí; ninguno sustituye
+    // silenciosamente a otro.
+    if (filtroEstado) {
+      result = result.filter((p: any) => matchesWorkflowTab(p, filtroEstado));
+    }
+
     // ═══ Filtro por el avance de MIS componentes (revisor/aprobador) ═══
     if (filtroMisComponentes) {
-      const etapa = filtroMisComponentes.startsWith('revision_') ? 'revision' : 'aprobacion';
-      const estado = filtroMisComponentes.endsWith('_pendiente') ? 'pendiente' : 'resuelto';
-      result = result.filter((p: any) => estadoDeMiEtapa(p, etapa) === estado);
+      result = result.filter((p: any) => matchesPersonalStageFilter(p, filtroMisComponentes));
     }
 
     return result;
-  }, [scopedPtas, searchQuery, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, estadoDeMiEtapa]);
+  }, [baseFilteredPtas, filtroEstado, filtroMisComponentes, matchesPersonalStageFilter, matchesWorkflowTab]);
 
   const workflowTabs = useMemo(() => {
+    // Contadores facetados: incluyen los demás filtros activos, pero no el tab
+    // cuyo valor se está contando.
+    const countBase = filtroMisComponentes
+      ? baseFilteredPtas.filter((p: any) => matchesPersonalStageFilter(p, filtroMisComponentes))
+      : baseFilteredPtas;
     const tabs: Array<{ id: string; label: string; color: string; count: number }> = [
-      { id: '', label: 'Todos', color: '#6B7280', count: scopedPtas.length },
+      { id: '', label: 'Todos', color: '#6B7280', count: countBase.length },
     ];
     if (tieneEtapaRevision) {
       tabs.push(
-        { id: 'revision_pendiente', label: 'Revisión', color: '#F59E0B', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'revision') === 'pendiente').length },
-        { id: 'revision_revisado', label: 'Revisado', color: '#10B981', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'revision') === 'resuelto').length },
+        { id: 'revision_pendiente', label: 'Revisión', color: '#F59E0B', count: countBase.filter(p => matchesPersonalStageFilter(p, 'revision_pendiente')).length },
+        { id: 'revision_revisado', label: 'Revisado', color: '#10B981', count: countBase.filter(p => matchesPersonalStageFilter(p, 'revision_revisado')).length },
       );
     }
     if (tieneEtapaAprobacion) {
       tabs.push(
-        { id: 'aprobacion_pendiente', label: 'Aprobación', color: '#F59E0B', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'aprobacion') === 'pendiente').length },
-        { id: 'aprobacion_aprobado', label: 'Aprobado', color: '#10B981', count: scopedPtas.filter(p => estadoDeMiEtapa(p, 'aprobacion') === 'resuelto').length },
+        { id: 'aprobacion_pendiente', label: 'Aprobación', color: '#F59E0B', count: countBase.filter(p => matchesPersonalStageFilter(p, 'aprobacion_pendiente')).length },
+        { id: 'aprobacion_aprobado', label: 'Aprobado', color: '#10B981', count: countBase.filter(p => matchesPersonalStageFilter(p, 'aprobacion_aprobado')).length },
       );
     }
     return tabs;
-  }, [estadoDeMiEtapa, scopedPtas, tieneEtapaAprobacion, tieneEtapaRevision]);
+  }, [baseFilteredPtas, filtroMisComponentes, matchesPersonalStageFilter, tieneEtapaAprobacion, tieneEtapaRevision]);
 
   const renderFiltroPersonal = (key: FiltroEtapaPersonal, label: string, etapa?: 'revision' | 'aprobacion') => {
     const activo = filtroMisComponentes === key;
@@ -2750,7 +2784,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         aria-pressed={activo}
         onClick={() => {
           setFiltroMisComponentes(key);
-          setFiltroEstado('');
         }}
         style={{
           minHeight: 30,
@@ -3403,7 +3436,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const concertacionCount = filteredPtas.filter((p: any) => p.estado === 'EN_CONCERTACION').length;
 
   // Active filter count for mobile badge
-  const activeFilterCount = [searchQuery, filtroEstado, filtroEstadoRegistro !== ''].filter(Boolean).length;
+  const activeFilterCount = [searchQuery, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, filtroTags.length > 0].filter(Boolean).length;
 
   // ── Atención requerida ──
   return (
@@ -3764,10 +3797,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           <PTAWorldClassToolbar
             estadisticas={estadisticas}
             filtroEstado={filtroEstado}
-            setFiltroEstado={(value) => {
-              setFiltroEstado(value);
-              setFiltroMisComponentes('');
-            }}
+            setFiltroEstado={setFiltroEstado}
             ptas={scopedPtas}
             workflowTabs={workflowTabs}
             searchQuery={searchQuery}
@@ -4528,12 +4558,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     <X style={{ width: 13, height: 13 }} /> Limpiar búsqueda
                   </button>
                 )}
-                {filtroEstado && (
+                {(filtroEstado || filtroEstadoRegistro || filtroMisComponentes) && (
                   <button
-                    onClick={() => setFiltroEstado('')}
+                    onClick={() => {
+                      setFiltroEstado('');
+                      setFiltroEstadoRegistro('');
+                      setFiltroMisComponentes('');
+                    }}
                     style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
                   >
-                    <RotateCcw style={{ width: 13, height: 13 }} /> Ver todos los estados
+                    <RotateCcw style={{ width: 13, height: 13 }} /> Limpiar filtros de estado
                   </button>
                 )}
                 <button
@@ -5515,11 +5549,13 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
                 {/* ═══ World-Class Unified Footer (Feature 15 & Pagination) ═══ */}
                 {viewMode === 'table' && paginated.length > 0 && (() => {
-                  const totalHorasProg = paginated.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
-                  const totalHorasDisp = paginated.reduce((sum: number, p: any) => sum + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
+                  // El resumen representa todo el resultado filtrado, no solo la
+                  // página visible. La paginación únicamente limita las filas.
+                  const totalHorasProg = filteredPtas.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
+                  const totalHorasDisp = filteredPtas.reduce((sum: number, p: any) => sum + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
                   const avgCarga = totalHorasDisp > 0 ? Math.round((totalHorasProg / totalHorasDisp) * 100) : 0;
-                  const pendCount = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
-                  const aprobCount = paginated.filter((p: any) => p.estado === 'Aprobado').length;
+                  const pendCount = filteredPtas.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
+                  const aprobCount = filteredPtas.filter((p: any) => normalizeEstadoKey(p.estado) === 'APROBADO').length;
                   
                   return (
                     <div style={{
@@ -6336,7 +6372,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             { id: 'flt-pendientes', label: 'Filtrar: Solo pendientes', category: 'Filtro', icon: Clock, action: () => { setFiltroEstado('pendientes'); setShowCommandPalette(false); } },
             { id: 'flt-aprobados', label: 'Filtrar: Solo aprobados', category: 'Filtro', icon: CheckCircle, action: () => { setFiltroEstado('Aprobado'); setShowCommandPalette(false); } },
             { id: 'flt-rechazados', label: 'Filtrar: Solo rechazados', category: 'Filtro', icon: XCircle, action: () => { setFiltroEstado('Rechazado'); setShowCommandPalette(false); } },
-            { id: 'flt-clear', label: 'Limpiar todos los filtros', category: 'Filtro', icon: X, action: () => { setFiltroEstado(''); setSearchQuery(''); setFiltroTags([]); setShowCommandPalette(false); } },
+            { id: 'flt-clear', label: 'Limpiar todos los filtros', category: 'Filtro', icon: X, action: () => {
+              setFiltroEstado('');
+              setFiltroEstadoRegistro('');
+              setFiltroMisComponentes('');
+              setSearchQuery('');
+              setFiltroTags([]);
+              setShowCommandPalette(false);
+            } },
             { id: 'flt-tags', label: 'Filtrar por etiquetas', category: 'Filtro', icon: Tag, action: () => { setShowTagFilter(true); setShowCommandPalette(false); } },
             { id: 'act-reset-priority', label: 'Restablecer orden de prioridad', category: 'Acción', icon: GripVertical, action: () => { setPriorityOrder([]); setShowCommandPalette(false); toast('Orden restablecido'); } },
             // Tag filters in command palette

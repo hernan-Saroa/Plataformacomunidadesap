@@ -465,6 +465,7 @@ describe('listado y contadores del backoffice', () => {
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: many });
     render(<PtaBackofficeModule />);
     await screen.findByText('Docente número 0');
+    expect(screen.getByText('51 Pendientes')).toBeTruthy();
     fireEvent.click(tab('Aprobación'));
     fireEvent.click(screen.getByText('Pág 1 / 2').nextElementSibling!);
     await screen.findByText('Pág 2 / 2');
@@ -472,6 +473,7 @@ describe('listado y contadores del backoffice', () => {
     await act(async () => { await sync.options.onRefresh(); });
     expect(screen.queryByText('Pág 2 / 2')).toBeNull();
     expect(screen.getByText('Docente número 0')).toBeTruthy();
+    expect(screen.getByText('50 Pendientes')).toBeTruthy();
   });
   it('actualiza todas las pestañas y conserva el otro pendiente tras una decisión simultánea', async () => {
     render(<PtaBackofficeModule />);
@@ -602,6 +604,50 @@ describe('listado y contadores del backoffice', () => {
     fireEvent.click(tab('Revisado'));
     expect(await screen.findByText('Docente dos')).toBeTruthy();
     expect(screen.queryByText('Docente uno')).toBeNull();
+  });
+
+  it('Aprobados muestra exclusivamente PTA con estado global aprobado y cruza los filtros sin reemplazarlos', async () => {
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
+      {
+        ...pendientes[0], id: 'borrador', docente_nombre: 'Docente borrador', estado: 'Borrador',
+        componentes_aprobacion_usuario: [{ componente: 'investigacion', estado: 'aprobado' }],
+      },
+      {
+        ...pendientes[0], id: 'parcial', docente_nombre: 'Docente parcial',
+        componentes_aprobacion_usuario: [{ componente: 'investigacion', estado: 'pendiente', revision_completa: true }],
+      },
+      {
+        ...pendientes[0], id: 'aprobado', docente_nombre: 'Docente aprobado', estado: 'Aprobado',
+        componentes_aprobacion_usuario: [{ componente: 'investigacion', estado: 'aprobado' }],
+      },
+    ] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente borrador');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobados' }));
+    expect(screen.getByText('Docente aprobado')).toBeTruthy();
+    expect(screen.queryByText('Docente borrador')).toBeNull();
+    expect(screen.queryByText('Docente parcial')).toBeNull();
+    expect(tab('Todos').textContent).toContain('1');
+
+    // El tab principal y "Mis componentes" se combinan por intersección.
+    fireEvent.click(tab('Aprobación'));
+    expect(await screen.findByText('No se encontraron PTAs')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(await screen.findByText('Docente parcial')).toBeTruthy();
+    expect(screen.queryByText('Docente borrador')).toBeNull();
+    expect(screen.queryByText('Docente aprobado')).toBeNull();
+
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'Aprobado' } });
+    expect(await screen.findByText('No se encontraron PTAs')).toBeTruthy();
+
+    fireEvent.click(tab('Todos'));
+    expect(await screen.findByText('Docente aprobado')).toBeTruthy();
+    expect(screen.queryByText('Docente parcial')).toBeNull();
+    expect(screen.queryByText('Docente borrador')).toBeNull();
   });
 
   it('respeta un componente autorizado por el servidor sin aplicar encima el filtro de otro rol', async () => {
