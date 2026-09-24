@@ -32,6 +32,16 @@ const esTareaDelPrograma = (t: TareaSeguimientoPlan) =>
 const esTareaDelUniverso = (t: TareaSeguimientoPlan) =>
   t.origen === ORIGEN_TAREA_EVALUACION_UNIVERSO || String(t.id ?? '').startsWith('tarea-ev-');
 
+/** Evidencias u observaciones que alguien registró: esas tareas no se borran. */
+const tieneSeguimientoRegistrado = (t: TareaSeguimientoPlan) => {
+  const extra = t as TareaSeguimientoPlan & { adjuntosTarea?: unknown[]; observaciones?: unknown };
+  const obs = extra.observaciones;
+  return (
+    (Array.isArray(extra.adjuntosTarea) && extra.adjuntosTarea.length > 0) ||
+    (Array.isArray(obs) ? obs.length > 0 : typeof obs === 'string' && obs.trim() !== '')
+  );
+};
+
 export interface TareaSeguimientoPlan {
   id: string;
   descripcion: string;
@@ -124,8 +134,11 @@ export class ProgramaAnualRol4TareaSyncService {
           ]),
       );
 
-      // Las tareas que el usuario agregó a mano se conservan tal cual.
-      const otras = actuales.filter((t) => !esTareaDelPrograma(t) && !esTareaDelUniverso(t));
+      // Las tareas que el usuario agregó a mano se conservan tal cual. Las del universo
+      // se retiran, salvo las que ya tienen evidencias u observaciones.
+      const otras = actuales.filter(
+        (t) => !esTareaDelPrograma(t) && (!esTareaDelUniverso(t) || tieneSeguimientoRegistrado(t)),
+      );
 
       const delPrograma = auditorias.map((a): TareaSeguimientoPlan => {
         const previa = previas.get(String(a.id));
