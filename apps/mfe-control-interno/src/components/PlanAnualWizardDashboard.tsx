@@ -63,6 +63,7 @@ import {
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
+import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -728,12 +729,17 @@ function sumarAniosIso(iso: string, años: number): string {
 }
 
 /**
- * Desplaza todas las fechas de entrega para que la más temprana caiga en `vigencia`
+ * Mueve las fechas de entrega a `vigencia` con el mismo salto de años que la actividad
  * (conserva separación entre tareas, p. ej. julio vs enero siguiente).
+ *
+ * El salto sale del año en que estaba programada la actividad (`añoActividad`), no de la
+ * tarea más temprana: si todas las tareas caen en enero del año siguiente (seguimiento
+ * del corte de diciembre), deben quedarse en el año siguiente (EFDS-2142).
  */
 function alinearTareasFechasEntregaAVigencia(
   tareas: TareaSeguimiento[] | undefined,
-  vigencia: number
+  vigencia: number,
+  añoActividad?: number,
 ): TareaSeguimiento[] | undefined {
   if (!tareas?.length) return tareas;
   const años = tareas
@@ -742,12 +748,35 @@ function alinearTareasFechasEntregaAVigencia(
     .map((y) => parseInt(y, 10));
   if (años.length === 0) return tareas;
   const minAño = Math.min(...años);
-  const delta = vigencia - minAño;
+  let delta = añoActividad ? vigencia - añoActividad : vigencia - minAño;
+  // Tareas heredadas de una vigencia anterior a la actividad: se traen a la vigencia
+  if (minAño + delta < vigencia) delta = vigencia - minAño;
   if (delta === 0) return tareas;
   return tareas.map((t) => ({
     ...t,
     fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
   }));
+}
+
+/** Año en que está programada la actividad, antes de llevarla a otra vigencia. */
+function añoProgramadoActividad(act: ActividadBase): number | undefined {
+  const ref = act.fechaInicio || act.puntosControl?.[0]?.fechaProgramada || act.fechaFin;
+  return ref && /^\d{4}-/.test(ref) ? parseInt(ref.slice(0, 4), 10) : undefined;
+}
+
+/** Lleva el corte a la vigencia; su seguimiento puede quedar en enero del año siguiente. */
+function llevarPuntoControlAVigencia<T extends { fechaProgramada: string; fechaSeguimiento?: string | null }>(
+  pc: T,
+  vigencia: number,
+): T {
+  const fechaProgramada = reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia);
+  return {
+    ...pc,
+    fechaProgramada,
+    fechaSeguimiento: pc.fechaSeguimiento
+      ? seguimientoDespuesDelCorte(reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia), fechaProgramada)
+      : pc.fechaSeguimiento,
+  };
 }
 
 /** Fecha de corte mostrada: último cierre del último punto de control si existe. */
@@ -2252,12 +2281,16 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 ? reemplazarAnioEnFechaIso(act.fechaFin, año)
                 : act.fechaFin,
               fechaCorte: act.fechaCorte
-                ? reemplazarAnioEnFechaIso(act.fechaCorte, año)
+                ? seguimientoDespuesDelCorte(
+                    reemplazarAnioEnFechaIso(act.fechaCorte, año),
+                    act.fechaInicio ? reemplazarAnioEnFechaIso(act.fechaInicio, año) : undefined,
+                  )
                 : resolverFechaCorteActividad(act, vigencia),
               puntosControl: [],
               tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
                 act.tareasSeguimiento,
                 vigencia,
+                añoProgramadoActividad(act),
               ),
             };
           }
@@ -2271,13 +2304,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 fechaProgramada: cortesRegenerados[i].fechaProgramada,
                 fechaSeguimiento: cortesRegenerados[i].fechaSeguimiento,
               }))
-            : puntos.map((pc) => ({
-                ...pc,
-                fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
-                fechaSeguimiento: pc.fechaSeguimiento
-                  ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
-                  : pc.fechaSeguimiento,
-              }));
+            : puntos.map((pc) => llevarPuntoControlAVigencia(pc, año));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -2295,18 +2322,16 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               act.fechaCorte ||
               resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
-            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+              act.tareasSeguimiento,
+              vigencia,
+              añoProgramadoActividad(act),
+            ),
           };
         }),
         actividadesCustom: (rol.actividadesCustom || []).map((act) => {
           const puntos = act.puntosControl || [];
-          const nuevosPuntos = puntos.map((pc) => ({
-            ...pc,
-            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia),
-            fechaSeguimiento: pc.fechaSeguimiento
-              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia)
-              : pc.fechaSeguimiento,
-          }));
+          const nuevosPuntos = puntos.map((pc) => llevarPuntoControlAVigencia(pc, vigencia));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -2324,7 +2349,11 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               act.fechaCorte ||
               resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
-            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+              act.tareasSeguimiento,
+              vigencia,
+              añoProgramadoActividad(act),
+            ),
           };
         }),
       }))
