@@ -4790,8 +4790,10 @@ function Paso2({
 
                                 {/* Tareas de seguimiento de la actividad: antes solo se contaban en el
                                     encabezado del rol. En el Rol 4 son las auditorías del Programa
-                                    Anual (EFDS-2133), así que se listan igual que en Seguimiento. */}
-                                {seleccionada && (actividadData?.tareasSeguimiento?.length ?? 0) > 0 && (
+                                    Anual (EFDS-2133), así que se listan igual que en Seguimiento.
+                                    Al crear o editar, cada corte ya muestra sus tareas: aquí solo se
+                                    listan en consulta o si la actividad no tiene cortes. */}
+                                {(soloLectura || !(actividadData?.puntosControl?.length)) && seleccionada && (actividadData?.tareasSeguimiento?.length ?? 0) > 0 && (
                                   <div className="px-3 pb-2 pt-2 border-t border-blue-200 mt-2" onClick={(e) => e.stopPropagation()}>
                                     <div className="text-xs font-semibold text-gray-900 mb-1.5">
                                       Tareas de seguimiento ({actividadData!.tareasSeguimiento!.filter((t) => t.completada).length}/{actividadData!.tareasSeguimiento!.length} completadas)
