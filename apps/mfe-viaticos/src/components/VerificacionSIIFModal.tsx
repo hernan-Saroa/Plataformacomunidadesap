@@ -758,6 +758,10 @@ export default function VerificacionSIIFModal({
                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Rubro presupuestal</label>
                       <div className="text-slate-800 font-mono">{solicitud.rubroPresupuestal || 'N/A'}</div>
                     </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase">CDP (Disponibilidad)</label>
+                      <div className="text-slate-800 font-mono">{solicitud.numeroCdp || 'No registrado'}</div>
+                    </div>
                      <div className="flex items-center gap-2 pt-1">
                        <label className="text-[10px] font-semibold text-slate-400 uppercase">Semáforo presupuestal</label>
                        {(() => {

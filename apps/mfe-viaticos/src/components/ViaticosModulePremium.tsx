@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Plane,
   FileText,
@@ -35,6 +35,8 @@ import {
   BadgeDollarSign,
   CheckCircle2,
   ArrowRight,
+  Wallet,
+  Building2,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -55,6 +57,7 @@ import {
   DocumentoSoporte,
   ResultadoConsolidacion,
   NotificacionSstLog,
+  SaldoTiquete,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -160,6 +163,21 @@ export default function ViaticosModulePremium() {
   const [expandirSst, setExpandirSst] = useState(false);
   const [reenviandoSst, setReenviandoSst] = useState(false);
   const [mensajeSst, setMensajeSst] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
+
+  // Estados Saldo Presupuestal por Dependencia (Informativo - Sección Solicitudes)
+  const [saldosPresupuesto, setSaldosPresupuesto] = useState<SaldoTiquete[]>([]);
+  const [mostrarDetalleSaldos, setMostrarDetalleSaldos] = useState(false);
+
+  const totalesPresupuesto = useMemo(() => {
+    return saldosPresupuesto.reduce(
+      (acc, s) => ({
+        inicial: acc.inicial + (Number(s.presupuestoInicial) || 0),
+        reservado: acc.reservado + (Number(s.presupuestoReservado) || 0),
+        disponible: acc.disponible + (Number(s.presupuestoDisponible) || 0),
+      }),
+      { inicial: 0, reservado: 0, disponible: 0 },
+    );
+  }, [saldosPresupuesto]);
 
   const grupos: MenuGroup[] = [
     {
@@ -273,6 +291,15 @@ export default function ViaticosModulePremium() {
       setSolicitudes(solicitudesCombinadas);
       const res = await viaticosService.obtenerResumenEstadistico();
       setResumen(res);
+
+      try {
+        if (typeof viaticosService.obtenerSaldosTiquetes === 'function') {
+          const saldos = await viaticosService.obtenerSaldosTiquetes();
+          setSaldosPresupuesto(saldos || []);
+        }
+      } catch (e) {
+        console.error('Error cargando saldos presupuestales:', e);
+      }
     } catch (e) {
       console.error('Error cargando viáticos:', e);
     } finally {
@@ -929,6 +956,161 @@ export default function ViaticosModulePremium() {
                       <DollarSign className="w-6 h-6" />
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Panel Informativo de Saldo Presupuestal por Dependencia a nivel general */}
+              {seccion === 'solicitudes' && (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 mb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold shadow-xs">
+                        <Wallet className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm sm:text-base font-black text-slate-800">
+                            Saldo Presupuestal por Dependencia
+                          </h3>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                            Informativo Institucional
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Seguimiento de techos presupuestales, reservas y saldos disponibles por área para viáticos y transporte.
+                        </p>
+                      </div>
+                    </div>
+                    {saldosPresupuesto.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setMostrarDetalleSaldos((prev) => !prev)}
+                        className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        {mostrarDetalleSaldos ? (
+                          <>
+                            Ocultar detalle <ChevronUp className="w-4 h-4 text-slate-500" />
+                          </>
+                        ) : (
+                          <>
+                            Ver {saldosPresupuesto.length} dependencias <ChevronDown className="w-4 h-4 text-slate-500" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Resumen Global Institucional */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
+                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Presupuesto Total Techo
+                      </span>
+                      <h4 className="text-xl font-black text-slate-800 mt-0.5">
+                        {formatearMoneda(totalesPresupuesto.inicial)}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Asignación global vigente</p>
+                    </div>
+
+                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Presupuesto Total Reservado
+                      </span>
+                      <h4 className="text-xl font-black text-amber-600 mt-0.5">
+                        {formatearMoneda(totalesPresupuesto.reservado)}
+                      </h4>
+                      <p className="text-[11px] text-amber-700/80 mt-0.5">Comprometido en solicitudes</p>
+                    </div>
+
+                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Presupuesto Total Disponible
+                      </span>
+                      <h4 className={`text-xl font-black mt-0.5 ${totalesPresupuesto.disponible > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {formatearMoneda(totalesPresupuesto.disponible)}
+                      </h4>
+                      <p className="text-[11px] text-emerald-700/80 mt-0.5">Saldo libre disponible</p>
+                    </div>
+                  </div>
+
+                  {/* Desglose por dependencia */}
+                  {mostrarDetalleSaldos && (
+                    saldosPresupuesto.length > 0 ? (
+                      <div className="mt-4 pt-4 border-t border-slate-100 overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-500 font-bold uppercase tracking-wider">
+                              <th className="py-2.5 px-3">Dependencia</th>
+                              <th className="py-2.5 px-3 text-right">Techo Asignado</th>
+                              <th className="py-2.5 px-3 text-right">Reservado</th>
+                              <th className="py-2.5 px-3 text-right">Saldo Disponible</th>
+                              <th className="py-2.5 px-3 text-center">Ejecución</th>
+                              <th className="py-2.5 px-3 text-center">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {saldosPresupuesto.map((s) => {
+                              const porcentaje = s.presupuestoInicial > 0
+                                ? Math.min(100, Math.round((s.presupuestoReservado / s.presupuestoInicial) * 100))
+                                : 0;
+                              return (
+                                <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                                  <td className="py-2.5 px-3">
+                                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                      <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                      <span>{s.nombreDependencia}</span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-mono">Cód. {s.dependenciaId}</span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-medium text-slate-700">
+                                    {formatearMoneda(s.presupuestoInicial)}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-medium text-amber-700">
+                                    {formatearMoneda(s.presupuestoReservado)}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-black">
+                                    <span className={s.presupuestoDisponible > 0 ? 'text-emerald-700' : 'text-red-600'}>
+                                      {formatearMoneda(s.presupuestoDisponible)}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center">
+                                    <div className="w-24 mx-auto">
+                                      <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                                        <span>{porcentaje}%</span>
+                                      </div>
+                                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${
+                                            porcentaje >= 90 ? 'bg-red-500' : porcentaje >= 70 ? 'bg-amber-500' : 'bg-blue-600'
+                                          }`}
+                                          style={{ width: `${porcentaje}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center">
+                                    <span
+                                      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                        s.presupuestoDisponible > 0
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : 'bg-red-100 text-red-800'
+                                      }`}
+                                    >
+                                      {s.presupuestoDisponible > 0 ? 'Disponible' : 'Agotado'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500 text-center py-2">
+                        No hay registros de saldos parametrizados por dependencia.
+                      </div>
+                    )
+                  )}
                 </div>
               )}
 

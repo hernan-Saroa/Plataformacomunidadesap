@@ -66,6 +66,12 @@ export class SolicitudComisionEntity {
   @Column({ name: 'rubro_presupuestal', type: 'varchar', length: 100 })
   rubroPresupuestal: string;
 
+  @Column({ name: 'numero_cdp', type: 'varchar', length: 100, nullable: true })
+  numeroCdp: string | null;
+
+  @Column({ name: 'fecha_cdp', type: 'varchar', length: 50, nullable: true })
+  fechaCdp: string | null;
+
   @Column({ name: 'requiere_tiquetes', type: 'boolean', default: false })
   requiereTiquetes: boolean;
 

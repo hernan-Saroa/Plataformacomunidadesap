@@ -420,6 +420,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -577,6 +579,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -1507,6 +1511,8 @@ export class TravelExpensesService {
       objetoComision: objetoSanitizado,
       prioridad: dto.prioridad ?? 'BAJA',
       rubroPresupuestal: dto.rubroPresupuestal ?? '',
+      numeroCdp: dto.numeroCdp ?? null,
+      fechaCdp: dto.fechaCdp ?? null,
       requiereTiquetes: dto.requiereTiquetes ?? false,
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
@@ -1623,6 +1629,12 @@ export class TravelExpensesService {
     }
     if (dto.rubroPresupuestal !== undefined) {
       solicitud.rubroPresupuestal = dto.rubroPresupuestal ?? '';
+    }
+    if (dto.numeroCdp !== undefined) {
+      solicitud.numeroCdp = dto.numeroCdp ?? null;
+    }
+    if (dto.fechaCdp !== undefined) {
+      solicitud.fechaCdp = dto.fechaCdp ?? null;
     }
     if (dto.prioridad !== undefined) {
       solicitud.prioridad = dto.prioridad ?? 'MEDIA';
@@ -2485,7 +2497,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       drawSectionTitle('5. INFORMACIÓN FINANCIERA Y FIRMAS');
       doc.fontSize(8).font('Helvetica').fillColor('#333333');
       doc.text(
-        `El pago de la presente comisión de servicios / autorización de desplazamiento se hará con cargo a la Dependencia solicitante, del Rubro Presupuestal ${solicitud.rubroPresupuestal || 'asignado'}, según CDP y Registro Presupuestal No. ${solicitud.numeroRp || 'En trámite'}.`,
+        `El pago de la presente comisión de servicios / autorización de desplazamiento se hará con cargo a la Dependencia solicitante, del Rubro Presupuestal ${solicitud.rubroPresupuestal || 'asignado'}, según Certificado de Disponibilidad Presupuestal No. ${solicitud.numeroCdp || 'En trámite'}${solicitud.fechaCdp ? ` del ${solicitud.fechaCdp}` : ''}, y Registro Presupuestal No. ${solicitud.numeroRp || 'En trámite'}.`,
         { width: 512, align: 'justify' },
       );
       doc.moveDown(0.4);
@@ -3554,6 +3566,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -4282,6 +4296,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
         objetoComision: s.objetoComision,
         prioridad: s.prioridad,
         rubroPresupuestal: s.rubroPresupuestal,
+        numeroCdp: s.numeroCdp ?? null,
+        fechaCdp: s.fechaCdp ?? null,
         requiereTiquetes: s.requiereTiquetes,
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
@@ -4889,6 +4905,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
         objetoComision: s.objetoComision,
         prioridad: s.prioridad,
         rubroPresupuestal: s.rubroPresupuestal,
+        numeroCdp: s.numeroCdp ?? null,
+        fechaCdp: s.fechaCdp ?? null,
         requiereTiquetes: s.requiereTiquetes,
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
@@ -5754,6 +5772,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
       drawSectionTitle('3. LIQUIDACIÓN DEL GASTO AUTORIZADO');
       drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
+      drawField('Certificado de Disponibilidad Presupuestal (CDP)', solicitud.numeroCdp || 'N/A');
       drawField('Monto Viáticos', formatCurrency(Number(solicitud.montoViaticos)));
       drawField('Monto Gastos de Viaje', formatCurrency(Number(solicitud.montoGastosViaje)));
       if (solicitud.requiereTiquetes) {

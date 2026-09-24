@@ -70,4 +70,23 @@ export class CalcularLiquidacionDto {
   @IsOptional()
   @IsBoolean()
   aplicaExcepcionRegional?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  incluyeTransporteAereo?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  montoTransporteTerrestre?: number;
+
+  @IsOptional()
+  @IsArray()
+  itinerario?: Array<{
+    tipoTransporte?: 'AEREO' | 'TERRESTRE';
+    tipoTrayecto?: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+    origenCiudad?: string;
+    origenDepartamento?: string;
+    destinoCiudad?: string;
+    destinoDepartamento?: string;
+  }>;
 }

@@ -7,9 +7,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { EscalaViaticoEntity } from '../../entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from '../../entities/liquidation/tarifa-investigador.entity';
-import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
 import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
+import { TarifaTransporteTerminalEntity } from '../../entities/liquidation/tarifa-transporte-terminal.entity';
+import {
+  CreateTarifaTransporteTerminalDto,
+  UpdateTarifaTransporteTerminalDto,
+} from '../../dto/liquidation/tarifa-transporte-terminal.dto';
 import { Optional } from '@nestjs/common';
 import {
   CreateEscalaViaticoDto,
@@ -19,10 +23,6 @@ import {
   CreateTarifaInvestigadorDto,
   UpdateTarifaInvestigadorDto,
 } from '../../dto/liquidation/tarifa-investigador.dto';
-import {
-  CreateTarifaRegionalExcepcionDto,
-  UpdateTarifaRegionalExcepcionDto,
-} from '../../dto/liquidation/tarifa-regional-excepcion.dto';
 import { UpdateLiquidationParamsDto } from '../../dto/liquidation/liquidation-params.dto';
 import { LiquidationService } from './liquidation.service';
 
@@ -33,8 +33,8 @@ export class LiquidationConfigService {
     private readonly escalaRepo: Repository<EscalaViaticoEntity>,
     @InjectRepository(TarifaInvestigadorEntity)
     private readonly investigadorRepo: Repository<TarifaInvestigadorEntity>,
-    @InjectRepository(TarifaRegionalExcepcionEntity)
-    private readonly regionalRepo: Repository<TarifaRegionalExcepcionEntity>,
+    @InjectRepository(TarifaTransporteTerminalEntity)
+    private readonly terminalRepo: Repository<TarifaTransporteTerminalEntity>,
     @InjectRepository(LiquidationParamEntity)
     private readonly paramRepo: Repository<LiquidationParamEntity>,
     private readonly dataSource: DataSource,
@@ -193,21 +193,6 @@ export class LiquidationConfigService {
 
   // ==================== EXCEPCIONES REGIONALES ====================
 
-  async obtenerExcepcionesRegionales(): Promise<
-    TarifaRegionalExcepcionEntity[]
-  > {
-    return this.regionalRepo.find({
-      where: { activo: true },
-      order: { departamento: 'ASC' },
-    });
-  }
-
-  async obtenerExcepcionRegionalPorId(
-    id: number,
-  ): Promise<TarifaRegionalExcepcionEntity | null> {
-    return this.regionalRepo.findOne({ where: { id } });
-  }
-
   async obtenerCatalogoDepartamentos(): Promise<string[]> {
     return [
       'Amazonas',
@@ -243,63 +228,6 @@ export class LiquidationConfigService {
       'Vaupés',
       'Vichada',
     ];
-  }
-
-  async crearExcepcionRegional(
-    dto: CreateTarifaRegionalExcepcionDto,
-  ): Promise<TarifaRegionalExcepcionEntity> {
-    const existente = await this.regionalRepo.findOne({
-      where: { departamento: dto.departamento, activo: true },
-    });
-    if (existente) {
-      throw new BadRequestException(
-        `Ya existe una excepción regional activa para el departamento ${dto.departamento}.`,
-      );
-    }
-
-    const entity = this.regionalRepo.create({
-      ...dto,
-      activo: dto.activo ?? true,
-    });
-    return this.regionalRepo.save(entity);
-  }
-
-  async actualizarExcepcionRegional(
-    id: number,
-    dto: UpdateTarifaRegionalExcepcionDto,
-  ): Promise<TarifaRegionalExcepcionEntity> {
-    const entity = await this.regionalRepo.findOne({ where: { id } });
-    if (!entity) {
-      throw new NotFoundException(
-        `Excepción regional con id ${id} no encontrada`,
-      );
-    }
-
-    if (dto.departamento && dto.departamento !== entity.departamento) {
-      const existe = await this.regionalRepo.findOne({
-        where: { departamento: dto.departamento, activo: true },
-      });
-      if (existe) {
-        throw new BadRequestException(
-          `Ya existe una excepción regional activa para el departamento ${dto.departamento}.`,
-        );
-      }
-    }
-
-    Object.assign(entity, dto);
-    return this.regionalRepo.save(entity);
-  }
-
-  async eliminarExcepcionRegional(id: number): Promise<{ message: string }> {
-    const entity = await this.regionalRepo.findOne({ where: { id } });
-    if (!entity) {
-      throw new NotFoundException(
-        `Excepción regional con id ${id} no encontrada`,
-      );
-    }
-    entity.activo = false;
-    await this.regionalRepo.save(entity);
-    return { message: 'Excepción regional eliminada correctamente' };
   }
 
   // ==================== PARÁMETROS GLOBALES ====================
@@ -344,7 +272,22 @@ export class LiquidationConfigService {
     smmlvParam.creadoEn = new Date();
     smmlvParam.actualizadoEn = new Date();
 
-    return [smmlvParam, ...list];
+    const hasTarifaTerminal = list.some((p) => p.clave === 'TARIFA_TERMINAL_AEREO');
+    const extraParams: LiquidationParamEntity[] = [];
+    if (!hasTarifaTerminal) {
+      const tarifaParam = new LiquidationParamEntity();
+      tarifaParam.id = 0;
+      tarifaParam.clave = 'TARIFA_TERMINAL_AEREO';
+      tarifaParam.valor = '162634';
+      tarifaParam.tipo = 'NUMBER';
+      tarifaParam.descripcion =
+        'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)';
+      tarifaParam.creadoEn = new Date();
+      tarifaParam.actualizadoEn = new Date();
+      extraParams.push(tarifaParam);
+    }
+
+    return [smmlvParam, ...extraParams, ...list];
   }
 
   async actualizarParametro(
@@ -427,9 +370,101 @@ export class LiquidationConfigService {
           resultados.push(await manager.save(entity));
         }
       }
+      if (params.tarifaTerminalAereo !== undefined) {
+        const entity = await manager.findOne(LiquidationParamEntity, {
+          where: { clave: 'TARIFA_TERMINAL_AEREO' },
+        });
+        if (!entity) {
+          const nuevo = manager.create(LiquidationParamEntity, {
+            clave: 'TARIFA_TERMINAL_AEREO',
+            valor: String(params.tarifaTerminalAereo),
+            tipo: 'NUMBER',
+            descripcion:
+              'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)',
+          });
+          resultados.push(await manager.save(nuevo));
+        } else {
+          entity.valor = String(params.tarifaTerminalAereo);
+          resultados.push(await manager.save(entity));
+        }
+      }
     });
 
     await this.liquidationService.recargarParametros();
     return resultados;
   }
+
+  // ==================== TARIFAS TRANSPORTE TERMINALES AÉREOS ====================
+
+  async obtenerTarifasTransporteTerminal(): Promise<TarifaTransporteTerminalEntity[]> {
+    return this.terminalRepo.find({
+      order: { departamento: 'ASC', ciudad: 'ASC' },
+    });
+  }
+
+  async obtenerTarifaTransporteTerminalPorId(
+    id: number,
+  ): Promise<TarifaTransporteTerminalEntity | null> {
+    return this.terminalRepo.findOne({ where: { id } });
+  }
+
+  async crearTarifaTransporteTerminal(
+    dto: CreateTarifaTransporteTerminalDto,
+  ): Promise<TarifaTransporteTerminalEntity> {
+    const depto = dto.departamento || dto.ciudad || '';
+    const ciudadVal = dto.ciudad || dto.departamento || '';
+    const existente = await this.terminalRepo.findOne({
+      where: [
+        { departamento: depto, ciudadAeropuerto: dto.ciudadAeropuerto, activo: true },
+        { ciudad: ciudadVal, ciudadAeropuerto: dto.ciudadAeropuerto, activo: true },
+      ],
+    });
+    if (existente) {
+      throw new BadRequestException(
+        `Ya existe una tarifa activa para ${depto || ciudadVal} y ${dto.ciudadAeropuerto}.`,
+      );
+    }
+    const entity = this.terminalRepo.create({
+      ...dto,
+      departamento: depto,
+      ciudad: ciudadVal,
+      activo: dto.activo ?? true,
+    });
+    const guardada = await this.terminalRepo.save(entity);
+    this.liquidationService.invalidarCache();
+    return guardada;
+  }
+
+  async actualizarTarifaTransporteTerminal(
+    id: number,
+    dto: UpdateTarifaTransporteTerminalDto,
+  ): Promise<TarifaTransporteTerminalEntity> {
+    const entity = await this.terminalRepo.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(
+        `Tarifa de transporte terminal con id ${id} no encontrada`,
+      );
+    }
+    Object.assign(entity, dto);
+    const guardada = await this.terminalRepo.save(entity);
+    this.liquidationService.invalidarCache();
+    return guardada;
+  }
+
+  async eliminarTarifaTransporteTerminal(
+    id: number,
+  ): Promise<{ message: string }> {
+    const entity = await this.terminalRepo.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(
+        `Tarifa de transporte terminal con id ${id} no encontrada`,
+      );
+    }
+    await this.terminalRepo.remove(entity);
+    this.liquidationService.invalidarCache();
+    return {
+      message: `Tarifa de transporte terminal con id ${id} eliminada exitosamente`,
+    };
+  }
 }
+

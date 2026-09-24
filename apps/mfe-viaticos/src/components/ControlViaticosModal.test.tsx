@@ -16,14 +16,18 @@ vi.mock('./TicketBudgetWidget', () => ({
   default: () => <div data-testid="ticket-budget-widget" />,
 }));
 
-vi.mock('../utils/viaticosUtils', () => ({
-  esPdfMime: (mime: string) => mime === 'application/pdf',
-  formatearMoneda: (v: number) => `$${v}`,
-  formatearNombreComisionado: (c: any) =>
-    [c.primerNombre, c.segundoNombre, c.primerApellido, c.segundoApellido]
-      .filter(Boolean)
-      .join(' '),
-}));
+vi.mock('../utils/viaticosUtils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/viaticosUtils')>();
+  return {
+    ...actual,
+    esPdfMime: (mime: string) => mime === 'application/pdf',
+    formatearMoneda: (v: number) => `$${v}`,
+    formatearNombreComisionado: (c: any) =>
+      [c.primerNombre, c.segundoNombre, c.primerApellido, c.segundoApellido]
+        .filter(Boolean)
+        .join(' '),
+  };
+});
 
 import viaticosService from '../services/api/viaticosService';
 

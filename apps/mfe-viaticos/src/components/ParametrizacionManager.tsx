@@ -30,13 +30,13 @@ import {
 } from '../types/parametrizacion';
 import EscalasViaticosAdmin from './admin/EscalasViaticosAdmin';
 import TarifasInvestigadorAdmin from './admin/TarifasInvestigadorAdmin';
-import ExcepcionesRegionalesAdmin from './admin/ExcepcionesRegionalesAdmin';
+import TarifasTransporteTerminalAdmin from './admin/TarifasTransporteTerminalAdmin';
 import ParametrosLiquidacionAdmin from './admin/ParametrosLiquidacionAdmin';
 import TicketsAdminPanel from './admin/TicketsAdminPanel';
 // Dependencias se gestiona desde el shell (Configuración General > Dependencias)
 // y NO se renderiza como tab aquí para evitar duplicación con el menú global.
 
-type TabActiva = 'campos' | 'configuraciones' | 'escalas' | 'tarifas' | 'excepciones' | 'parametros' | 'tiquetes';
+type TabActiva = 'campos' | 'configuraciones' | 'escalas' | 'tarifas' | 'terminalesAereos' | 'parametros' | 'tiquetes';
 
 const TIPOS_CAMPO: TipoCampoFormulario[] = ['TEXT', 'TEXTAREA', 'SELECT', 'DATE', 'NUMBER', 'BOOLEAN', 'CURRENCY', 'DOCUMENT'];
 const GRUPOS_CAMPO: GrupoCampoFormulario[] = ['comisionado', 'comision', 'valores', 'soportes'];
@@ -451,15 +451,15 @@ export default function ParametrizacionManager() {
           </button>
           <button
             type="button"
-            onClick={() => setTabActiva('excepciones')}
+            onClick={() => setTabActiva('terminalesAereos')}
             className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
-              tabActiva === 'excepciones'
+              tabActiva === 'terminalesAereos'
                 ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            <DollarSign className="w-4 h-4" />
-            Excepciones Regionales
+            <Plane className="w-4 h-4" />
+            Transporte Terminales Aéreas
           </button>
           <button
             type="button"
@@ -707,7 +707,7 @@ export default function ParametrizacionManager() {
               
               {tabActiva === 'escalas' && <EscalasViaticosAdmin />}
               {tabActiva === 'tarifas' && <TarifasInvestigadorAdmin />}
-              {tabActiva === 'excepciones' && <ExcepcionesRegionalesAdmin />}
+              {tabActiva === 'terminalesAereos' && <TarifasTransporteTerminalAdmin />}
               {tabActiva === 'parametros' && <ParametrosLiquidacionAdmin />}
               {tabActiva === 'tiquetes' && <TicketsAdminPanel />}
             </>
