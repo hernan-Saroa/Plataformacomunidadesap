@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { WizardCreacion, DashboardPlan } from './PlanAnualWizardDashboard';
 import { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
 import { IntegracionRol4Provider } from './IntegracionRol4Context';
+import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
 import {
   ConfiguracionEvidencias,
   ObservacionHistorica,
@@ -1435,13 +1436,15 @@ function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[
     if (fp != null && fp !== '') {
       next.fechaProgramada = normalizarFechaCampoAVigencia(fp, vigencia);
     }
+    // El seguimiento y la fecha real pueden caer en el año siguiente al corte (corte de
+    // diciembre, seguimiento en enero): no se dejan antes del corte.
     const fs = pc.fechaSeguimiento ?? pc.fecha_seguimiento;
     if (fs != null && fs !== '') {
-      next.fechaSeguimiento = normalizarFechaCampoAVigencia(fs, vigencia);
+      next.fechaSeguimiento = seguimientoDespuesDelCorte(normalizarFechaCampoAVigencia(fs, vigencia), next.fechaProgramada);
     }
     const fr = pc.fechaReal ?? pc.fecha_real;
     if (fr != null && fr !== '') {
-      next.fechaReal = normalizarFechaCampoAVigencia(fr, vigencia);
+      next.fechaReal = seguimientoDespuesDelCorte(normalizarFechaCampoAVigencia(fr, vigencia), next.fechaProgramada);
     }
     return next;
   });
