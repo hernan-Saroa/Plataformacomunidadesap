@@ -3297,6 +3297,7 @@ export function GestionAuditoriasKanbanSimple() {
                 fechaFinEjecucion: data.fechaFinEjecucion,
                 fechaInicioComunicacion: data.fechaInicioComunicacion,
                 fechaFin: data.fechaFinComunicacion || data.fechaFin,
+                semanasExcluidas: data.semanasExcluidas ?? [],
                 // Objetivos y Criterios
                 objetivos: data.objetivos,
                 criterios: data.criteriosAuditoria,

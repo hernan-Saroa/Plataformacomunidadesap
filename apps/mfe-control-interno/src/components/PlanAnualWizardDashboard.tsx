@@ -4758,7 +4758,39 @@ function Paso2({
                                     )}
                                   </div>
                                 </label>
-                                
+
+                                {/* Tareas de seguimiento de la actividad: antes solo se contaban en el
+                                    encabezado del rol. En el Rol 4 son las auditorías del Programa
+                                    Anual (EFDS-2133), así que se listan igual que en Seguimiento. */}
+                                {seleccionada && (actividadData?.tareasSeguimiento?.length ?? 0) > 0 && (
+                                  <div className="px-3 pb-2 pt-2 border-t border-blue-200 mt-2" onClick={(e) => e.stopPropagation()}>
+                                    <div className="text-xs font-semibold text-gray-900 mb-1.5">
+                                      Tareas de seguimiento ({actividadData!.tareasSeguimiento!.filter((t) => t.completada).length}/{actividadData!.tareasSeguimiento!.length} completadas)
+                                    </div>
+                                    <ul className="space-y-1">
+                                      {actividadData!.tareasSeguimiento!.map((tarea: any) => {
+                                        const limite = String(tarea.fechaLimite || tarea.fecha_limite || tarea.fechaEntrega || '').split('T')[0];
+                                        const responsables = Array.isArray(tarea.responsables) ? tarea.responsables.filter(Boolean) : [];
+                                        return (
+                                          <li key={tarea.id} className="flex items-start gap-2 rounded-md bg-white px-2 py-1.5 border border-gray-100">
+                                            <span className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] ${tarea.completada ? 'bg-green-600 border-green-600 text-white' : 'border-gray-300'}`}>
+                                              {tarea.completada ? '✓' : ''}
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                              <p className={`text-xs ${tarea.completada ? 'text-gray-500 line-through' : 'text-gray-800'}`}>{tarea.descripcion}</p>
+                                              <p className="text-[10px] text-gray-500">
+                                                {limite ? `Límite: ${new Date(limite + 'T00:00:00').toLocaleDateString('es-CO')}` : 'Sin fecha límite'}
+                                                {' · '}
+                                                {responsables.length > 0 ? responsables.join(', ') : 'Sin responsable'}
+                                              </p>
+                                            </div>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </div>
+                                )}
+
                                 {/* Configuración de evidencias - Solo visible si actividad está seleccionada */}
                                 {seleccionada && (
                                   <div className="px-3 pb-3 pt-2 border-t border-blue-200 mt-2 space-y-3">
@@ -7509,7 +7541,11 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               ].filter(tab => tab.visible).map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setSeccion(tab.id as any)}
+                  onClick={() => {
+                    setSeccion(tab.id as any);
+                    // Si ya estaba en Seguimiento, el clic vuelve a traer el Rol 4 al día
+                    if (tab.id === 'gestion' && seccion === 'gestion') onRefetchPlan?.();
+                  }}
                   className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all relative ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
                 >
                   {tab.icon}
@@ -8305,8 +8341,11 @@ function SeccionGestionYSeguimiento({
     }
   };
 
+  // Al entrar se piden de nuevo el cumplimiento y el plan: las tareas del Rol 4
+  // salen del Programa Anual (EFDS-2133), que pudo cambiar desde Auditorías OCI
+  // mientras esta pantalla conservaba el plan que había cargado antes.
   useEffect(() => {
-    cargarCumplimiento();
+    cargarCumplimiento().then(() => onRefetchPlan?.());
   }, [vigenciaPlan]);
 
   // Refrescar cumplimiento y recargar plan (para sincronizar actividades con tipo_calculo=auditorias)

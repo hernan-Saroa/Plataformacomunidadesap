@@ -21,6 +21,9 @@ export type PTAComponentKey =
 /** Puerta de entrada a la bandeja; pta.review.* define los componentes gestionables. */
 export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
 
+/** Puerta de entrada a Seguimiento; pta.approve.* define los componentes gestionables. */
+export const PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION = 'pta.backoffice.seguimiento';
+
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',

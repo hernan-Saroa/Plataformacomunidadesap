@@ -1,6 +1,7 @@
 import type { jsPDF as JsPDFType } from 'jspdf';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, DOCUMENTOS_PREDEFINIDOS, getLogoESAP, type ConfiguracionDocumento } from './pdfESAPHeader';
 import { LOGO_CERTIFICACIONES_ESAP_B64 } from './logoCertificacionesESAP';
+import { nombreUnidadAuditada } from './unidadAuditada';
 
 /** Logo institucional ESAP - cargado desde modulo dedicado (base64 correcto, sin red ni CORS) */
 async function getLogoInstitucionalESAP(): Promise<string> {
@@ -40,6 +41,8 @@ export interface AuditoriaBasicaPDF {
   destinatarioNombre?: string;
   destinatarioCargo?: string;
   unidadAuditable?: string;
+  /** Territorial de la auditoría, para nombrarla como "Dirección Territorial X" (EFDS-1090) */
+  territorial?: string;
   fechaLimitePronunciamiento?: string;
   jefeOCI?: string;
   elaboro?: string;
@@ -529,7 +532,10 @@ export async function exportarPDFInformeAuditoria(
   // Si destinatarioNombre parece un ID (sin espacios y corto), usar cargo como nombre de display
   const rawDest = auditoria.destinatarioNombre || '';
   const destinatario = rawDest?.includes(' ') ? rawDest : cargoDest;
-  const unidad = auditoria.unidadAuditable || auditoria.nombre || auditoria.proceso || 'Unidad Auditada';
+  const unidad = nombreUnidadAuditada(
+    auditoria.unidadAuditable || auditoria.nombre || auditoria.proceso || 'Unidad Auditada',
+    auditoria.territorial,
+  );
   const plazoPronunc = auditoria.fechaLimitePronunciamiento || 'diez (10) días hábiles';
   // Solo usar jefeOCI si tiene un nombre real (con espacios o más de 5 chars con espacios)
   const jefeRaw = auditoria.jefeOCI || '';
@@ -587,7 +593,7 @@ export async function exportarPDFInformeAuditoria(
     doc.setFont('helvetica', 'normal');
     doc.text(cargoDest, margin, y);
     y += LH;
-    doc.text(`Dirección ${unidad.replace('Dirección Territorial ', '')}`, margin, y);
+    doc.text(unidad, margin, y);
     y += LH * 2;
 
     // Asunto

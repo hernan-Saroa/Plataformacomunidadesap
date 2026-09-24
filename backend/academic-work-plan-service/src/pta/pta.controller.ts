@@ -903,6 +903,13 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Get(':ptaId/evidencias/seguimiento')
+  @UseGuards(PtaAuthGuard)
+  async getEvidenciasSeguimiento(@Param('ptaId') ptaId: string, @Req() req: Request) {
+    const data = await this.ptaService.getEvidenciasSeguimientoPTA(ptaId, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Get(':ptaId/permisos-decision')
   @UseGuards(PtaAuthGuard)
   async getDecisionPermissions(@Param('ptaId') ptaId: string, @Req() req: Request) {

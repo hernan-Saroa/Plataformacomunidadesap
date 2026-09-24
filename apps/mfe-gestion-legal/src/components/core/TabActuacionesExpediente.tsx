@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import type { ActuacionExpediente } from './expedienteShared';
 import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
+import { etapaRequiereAprobacion, usuarioPuedeAprobarEtapa } from './aprobacionEtapa';
 import { legalService } from '../../../../services/api/legal.service';
 import { requiresSignature, isPreviewableInViewer } from '../../../../utils/fileUtils';
 import { ModalFirmaAprobacionActuacion } from '../modulos/ModalFirmaAprobacionActuacion';
@@ -453,7 +454,7 @@ export function TabActuacionesExpediente({
   };
 
   // ¿La etapa siguiente exige aprobación para entrar? (dinámico según etapa actual del expediente)
-  const requiereFirmaEtapa = !!(aprobacionEtapaActual && aprobacionEtapaActual.aprobacionTipo && aprobacionEtapaActual.aprobacionTipo !== 'ninguno');
+  const requiereFirmaEtapa = etapaRequiereAprobacion(aprobacionEtapaActual);
 
   /**
    * Estado de firma DERIVADO de la etapa actual del expediente (no congelado al crear).
@@ -490,29 +491,9 @@ export function TabActuacionesExpediente({
    * Valida si el usuario activo puede autorizar/firmar, según el rol o usuario configurado
    * en la etapa siguiente ("Aprobación para entrar"). Los super admin siempre pueden.
    */
-  const isUserAuthorizedToApprove = () => {
-    if (!requiereFirmaEtapa || !aprobacionEtapaActual) return false;
-    const currentUser = authService.getCurrentUser() as any;
-    if (!currentUser) return false;
-
-    // Super admins can always authorize
-    const rolesList = currentUser.roles || [];
-    const isSuperAdmin = rolesList.some((r: any) =>
-      typeof r === 'string' ? r === 'SUPER_ADMIN' : r.code === 'SUPER_ADMIN' || r.name === 'SUPER_ADMIN'
-    );
-    if (isSuperAdmin) return true;
-
-    if (aprobacionEtapaActual.aprobacionTipo === 'rol' && aprobacionEtapaActual.aprobacionRol) {
-      return authService.hasRole(aprobacionEtapaActual.aprobacionRol);
-    }
-
-    if (aprobacionEtapaActual.aprobacionTipo === 'usuario' && aprobacionEtapaActual.aprobacionUsuario) {
-      const currentUserId = currentUser.id || currentUser.id_user || currentUser.user?.id || currentUser.user?.id_user || currentUser.person?.id;
-      return String(currentUserId) === String(aprobacionEtapaActual.aprobacionUsuario);
-    }
-
-    return false;
-  };
+  // Delegado en el helper compartido: la misma regla parametrizable que usan Defensa Judicial,
+  // Juzgamiento Disciplinario y Asesoría Jurídica (ver core/aprobacionEtapa.ts).
+  const isUserAuthorizedToApprove = () => usuarioPuedeAprobarEtapa(aprobacionEtapaActual);
 
   const formatFechaHora = (isoString?: string) => {
     if (!isoString) return '';

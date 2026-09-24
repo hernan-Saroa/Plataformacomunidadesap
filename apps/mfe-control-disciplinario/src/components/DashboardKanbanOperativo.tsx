@@ -6681,99 +6681,96 @@ export function DashboardKanbanOperativo({
           className="w-full max-w-full bg-white rounded-2xl border border-gray-200/90 p-3.5 sm:p-4 shadow-sm overflow-hidden space-y-3"
           style={{ boxShadow: '0 2px 8px -2px rgba(0, 61, 165, 0.05), 0 1px 4px -1px rgba(0,0,0,0.06)' }}
         >
-          {/* Fila 1: Título de Vista contextual + Buscador de Procesos y Noticias */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full min-w-0">
-            {/* Título e Indicador de Vista */}
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs transition-colors"
-                style={{
-                  background: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#003DA512',
-                  border: tipoVista === 'inhibitorios' ? '1px solid #FDE68A' : '1px solid #003DA525'
-                }}
-              >
-                {tipoVista === 'archivados' ? (
-                  <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
-                ) : tipoVista === 'inhibitorios' ? (
-                  <Ban className="w-5 h-5 text-amber-700" />
-                ) : tipoVista === 'lista' ? (
-                  <List className="w-5 h-5" style={{ color: '#003DA5' }} />
-                ) : (
-                  <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2
-                    className="font-bold leading-tight truncate tracking-tight text-gray-900"
-                    style={{
-                      fontSize: containerWidth < 500 ? '1.05rem' : '1.2rem'
-                    }}
-                  >
-                    {tipoVista === 'archivados'
-                      ? 'Archivados'
-                      : tipoVista === 'inhibitorios'
-                        ? 'Inhibitorios (Art. 209)'
-                        : tipoVista === 'lista'
-                          ? 'Lista de Procesos'
-                          : 'Tablero Kanban'}
-                  </h2>
-                  <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
-                    style={{
-                      backgroundColor: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#EFF6FF',
-                      color: tipoVista === 'inhibitorios' ? '#92400E' : '#003DA5'
-                    }}
-                  >
-                    {tipoVista === 'archivados'
-                      ? `${itemsArchivadosFiltrados.length} exp.`
-                      : tipoVista === 'inhibitorios'
-                        ? `${itemsInhibitoriosFiltrados.length} exp.`
-                        : `${itemsFiltrados.length} activos`}
-                  </span>
-                </div>
-                <p className="text-[11px] text-gray-400 truncate hidden sm:block">
-                  {tipoVista === 'archivados'
-                    ? 'Expedientes archivados o cerrados'
-                    : tipoVista === 'inhibitorios'
-                      ? 'Procesos culminados por auto inhibitorio'
-                      : 'Control operativo de noticias y expedientes'}
-                </p>
-              </div>
+          {/* Fila 1: Título de Vista contextual */}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs transition-colors"
+              style={{
+                background: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#003DA512',
+                border: tipoVista === 'inhibitorios' ? '1px solid #FDE68A' : '1px solid #003DA525'
+              }}
+            >
+              {tipoVista === 'archivados' ? (
+                <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
+              ) : tipoVista === 'inhibitorios' ? (
+                <Ban className="w-5 h-5 text-amber-700" />
+              ) : tipoVista === 'lista' ? (
+                <List className="w-5 h-5" style={{ color: '#003DA5' }} />
+              ) : (
+                <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
+              )}
             </div>
 
-            {/* Buscador de procesos y noticias amigable */}
-            <div className="relative flex items-center w-full sm:w-72 md:w-80 flex-shrink-0 min-w-0">
-              <Search className="absolute left-3 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
-              <input
-                ref={busquedaInputRef}
-                type="text"
-                value={busquedaGlobal}
-                onChange={(e) => setBusquedaGlobal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setBusquedaGlobal('');
-                }}
-                placeholder="Buscar por proceso, radicado..."
-                className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
-                style={{
-                  borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
-                  backgroundColor: busquedaGlobal ? '#FFFFFF' : '#F8FAFC',
-                }}
-              />
-              {busquedaGlobal ? (
-                <button
-                  onClick={() => {
-                    setBusquedaGlobal('');
-                    busquedaInputRef.current?.focus();
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2
+                  className="font-bold leading-tight truncate tracking-tight text-gray-900"
+                  style={{
+                    fontSize: containerWidth < 500 ? '1.05rem' : '1.2rem'
                   }}
-                  className="absolute right-2.5 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
-                  title="Limpiar búsqueda"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              ) : null}
+                  {tipoVista === 'archivados'
+                    ? 'Archivados'
+                    : tipoVista === 'inhibitorios'
+                      ? 'Inhibitorios (Art. 209)'
+                      : tipoVista === 'lista'
+                        ? 'Lista de Procesos'
+                        : 'Tablero Kanban'}
+                </h2>
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+                  style={{
+                    backgroundColor: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#EFF6FF',
+                    color: tipoVista === 'inhibitorios' ? '#92400E' : '#003DA5'
+                  }}
+                >
+                  {tipoVista === 'archivados'
+                    ? `${itemsArchivadosFiltrados.length} exp.`
+                    : tipoVista === 'inhibitorios'
+                      ? `${itemsInhibitoriosFiltrados.length} exp.`
+                      : `${itemsFiltrados.length} activos`}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 truncate">
+                {tipoVista === 'archivados'
+                  ? 'Expedientes archivados o cerrados'
+                  : tipoVista === 'inhibitorios'
+                    ? 'Procesos culminados por auto inhibitorio'
+                    : 'Control operativo de noticias y expedientes'}
+              </p>
             </div>
+          </div>
+
+          {/* Fila 2: Buscador de procesos y noticias a ancho completo */}
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
+            <input
+              ref={busquedaInputRef}
+              type="text"
+              value={busquedaGlobal}
+              onChange={(e) => setBusquedaGlobal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setBusquedaGlobal('');
+              }}
+              placeholder="Buscar por proceso, radicado..."
+              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
+              style={{
+                borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
+                backgroundColor: busquedaGlobal ? '#FFFFFF' : '#F8FAFC',
+              }}
+            />
+            {busquedaGlobal ? (
+              <button
+                onClick={() => {
+                  setBusquedaGlobal('');
+                  busquedaInputRef.current?.focus();
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
 
           {/* Fila 2: Barra de herramientas y filtros con scroll horizontal estético */}
