@@ -23,6 +23,15 @@ export const ORIGEN_TAREA_PROGRAMA_ANUAL = 'programa_anual';
  */
 const ORIGEN_TAREA_EVALUACION_UNIVERSO = 'evaluacion_universo';
 
+/**
+ * Al guardar el plan desde el wizard las tareas pierden el campo `origen`, así que
+ * también se reconocen por el prefijo del id con que las crea cada sincronización.
+ */
+const esTareaDelPrograma = (t: TareaSeguimientoPlan) =>
+  t.origen === ORIGEN_TAREA_PROGRAMA_ANUAL || String(t.id ?? '').startsWith('tarea-aud-');
+const esTareaDelUniverso = (t: TareaSeguimientoPlan) =>
+  t.origen === ORIGEN_TAREA_EVALUACION_UNIVERSO || String(t.id ?? '').startsWith('tarea-ev-');
+
 export interface TareaSeguimientoPlan {
   id: string;
   descripcion: string;
@@ -108,14 +117,15 @@ export class ProgramaAnualRol4TareaSyncService {
       const actuales = this.parseTareas(actividad.tareas_seguimiento);
       const previas = new Map(
         actuales
-          .filter((t) => t.origen === ORIGEN_TAREA_PROGRAMA_ANUAL && t.auditoriaId)
-          .map((t) => [String(t.auditoriaId), t]),
+          .filter(esTareaDelPrograma)
+          .map((t): [string, TareaSeguimientoPlan] => [
+            String(t.auditoriaId ?? String(t.id).replace(/^tarea-aud-/, '')),
+            t,
+          ]),
       );
 
       // Las tareas que el usuario agregó a mano se conservan tal cual.
-      const otras = actuales.filter(
-        (t) => t.origen !== ORIGEN_TAREA_PROGRAMA_ANUAL && t.origen !== ORIGEN_TAREA_EVALUACION_UNIVERSO,
-      );
+      const otras = actuales.filter((t) => !esTareaDelPrograma(t) && !esTareaDelUniverso(t));
 
       const delPrograma = auditorias.map((a): TareaSeguimientoPlan => {
         const previa = previas.get(String(a.id));
