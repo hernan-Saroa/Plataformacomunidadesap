@@ -42,6 +42,7 @@ import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
 import { TabTrazabilidadExpediente } from '../core/TabTrazabilidadExpediente';
+import { buscarEtapaConfigurada, usuarioPuedeFirmarEnEtapa } from '../core/aprobacionEtapa';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import type {
   DocumentoExpediente,
@@ -101,6 +102,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     !esMonitoreoGestionLegal &&
     authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION);
   const canRegistrarActuacion = canEditProceso;
+
+  // Quién firma los documentos del proceso NO se decide por código: se lee de la etapa actual
+  // configurada en Configuraciones SIGL → Juzgamiento → Estados → Aprobación. Antes esta pantalla
+  // habilitaba "Firmar" para cualquier rol con acceso (el rol Resuelve incluido) aunque el
+  // aprobador configurado fuera el Jefe.
+  const etapaConfigActual = buscarEtapaConfigurada(estadosActivos as any[], proceso.etapa);
+  // Si la etapa no tiene aprobador parametrizado, esa etapa no exige firma y nadie ve el botón.
+  const puedeFirmarDocumentos = !esMonitoreoGestionLegal && usuarioPuedeFirmarEnEtapa(etapaConfigActual);
   // Rol RESUELVE puede marcar tareas como completadas (las que tiene asignadas),
   // aunque no tenga permiso de edición global del expediente.
   // const esRolResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
@@ -1628,12 +1637,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 onDownloadDocument={(doc) => handleDescargarDocumento(doc)}
                 onDownloadAll={handleDescargarTodosDocumentos}
                 onHasChanges={() => setHasChanges(true)}
-                allowSigning={true}
+                allowSigning={puedeFirmarDocumentos}
               />
             </TabsContent>
 
             {/* ==================== TAB: ACTUACIONES ==================== */}
             <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
+              {/* Nota: a este tab NO se le envía aprobacionEtapaActual a propósito. Eso encendería
+                  en Juzgamiento el flujo de autorización de actuaciones de Defensa Judicial, que
+                  aún no está completo aquí: createJuzgamientoActuacion no guarda
+                  metadata.aprobacion*, así que el backend no podría validar al aprobador en
+                  /expedientes/:id/actuaciones/:id/autorizar-por-documentos. La firma de los
+                  documentos sí queda parametrizada por etapa (ver puedeFirmarDocumentos). */}
               <TabActuacionesExpediente
                 actuaciones={actuacionesParaTab}
                 botonesAccion={[
@@ -2067,7 +2082,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             asunto={`Documento del proceso ${proceso.id}`}
             descripcion={documentoSeleccionado.descripcion}
             docId={documentoSeleccionado.id}
-            allowSigning={!visorSoloLectura}
+            allowSigning={puedeFirmarDocumentos && !visorSoloLectura}
             onSignComplete={async (docId, signedData, pdfFile) => {
               try {
                 const originalDocName = documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre || 'documento.pdf';
@@ -2081,7 +2096,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   }
                 }
 
-                if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+                // Sólo se renombra a .pdf cuando el estampado produjo realmente el PDF firmado.
+                if (pdfFile && !nuevoNombre.toLowerCase().endsWith('.pdf')) {
                   nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
                 }
 
@@ -2094,7 +2110,10 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   firmante: signedData.firmante,
                   cargo: signedData.cargo,
                   certificadoId: signedData.certificado_id,
-                  scale: signedData.scale
+                  scale: signedData.scale,
+                  // Marca si el sello quedó dentro del archivo: el visor usa esto para no
+                  // superponer una segunda firma sobre la que ya trae el PDF.
+                  estampadoEnArchivo: !!pdfFile
                 });
 
                 toast.loading('✍️ Guardando firma en el documento...', { id: 'firma-documento' });

@@ -35,6 +35,7 @@ import {
   PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
   PTA_MANAGE_EDIT_REQUESTS_PERMISSION,
+  PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 
@@ -97,6 +98,7 @@ export interface PermisosPTA {
  */
 const PERMISO_TO_VISTA: Record<string, string> = {
   [PTA_MANAGE_EDIT_REQUESTS_PERMISSION]: 'solicitudes_pta',
+  [PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION]: 'seguimiento_docs',
   'pta.backoffice.ver_gestion': 'gestion',
   'pta.backoffice.ver_detalle': 'gestion',
   'pta.backoffice.tablero_control': 'tablero',
@@ -209,12 +211,10 @@ export function deriveFromGranular(
   if (hasWildcard) {
     Object.values(PERMISO_TO_VISTA).forEach(v => vistasSet.add(v));
   }
-  // Cualquier aprobador (con al menos un pta.approve.*) accede al módulo de
-  // Seguimiento de Documentos, donde revisa las evidencias de SUS componentes
-  // (el filtrado por componente se aplica dentro del módulo). Ningún permiso mapea
-  // directamente a esta vista, por eso se deriva de la capacidad de aprobar.
+  // Los permisos pta.approve.* determinan el alcance por componente, pero no
+  // abren por sí solos la pestaña de Seguimiento. Esa entrada se concede de forma
+  // independiente con PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION (mapeado arriba).
   if (puedeAprobar) {
-    vistasSet.add('seguimiento_docs');
     vistasSet.add('gestion');
   }
   // Un revisor puro también necesita Gestión para ejecutar la preaprobación del
@@ -263,7 +263,7 @@ export function deriveFromGranular(
 
 const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = {
   admin: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','configuracion','config_reglas','programacion_institucional','cargas','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes','mapeo_sincronizacion','salud_sistema','reconciliacion_masiva','tablero_unificado'],
+    vistasPerm: ['gestion','configuracion','config_reglas','programacion_institucional','cargas','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes','mapeo_sincronizacion','salud_sistema','reconciliacion_masiva','tablero_unificado'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -283,7 +283,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     granularCount: 0,
   }),
   director: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','programacion_institucional','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','benchmarking','metricas_sla','centro_reportes','cronograma','banco_docentes'],
+    vistasPerm: ['gestion','programacion_institucional','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','benchmarking','metricas_sla','centro_reportes','cronograma','banco_docentes'],
     puedeAprobar: false,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -303,7 +303,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     granularCount: 0,
   }),
   gestion_profesoral: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','programacion_institucional','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes'],
+    vistasPerm: ['gestion','programacion_institucional','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -323,7 +323,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     granularCount: 0,
   }),
   decanatura: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','programacion_institucional','programacion','tablero','reporte','seguimiento','territorial','catalogo','comparativo','workflow_visualizer','indicadores','centro_reportes','banco_docentes'],
+    vistasPerm: ['gestion','programacion_institucional','programacion','tablero','reporte','seguimiento','territorial','catalogo','comparativo','workflow_visualizer','indicadores','centro_reportes','banco_docentes'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: false,
@@ -343,7 +343,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     granularCount: 0,
   }),
   jefatura: (perfil) => ({
-    vistasPerm: ['gestion','seguimiento_docs','programacion','tablero','seguimiento','territorial','catalogo','banco_docentes'],
+    vistasPerm: ['gestion','programacion','tablero','seguimiento','territorial','catalogo','banco_docentes'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: false,
@@ -591,7 +591,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
       const hardcoded = PERMISOS_POR_ROL['admin'](perfil);
       return {
         ...hardcoded,
-        vistasPerm: Array.from(new Set([...hardcoded.vistasPerm, 'solicitudes_pta'])),
+        vistasPerm: Array.from(new Set([...hardcoded.vistasPerm, 'solicitudes_pta', 'seguimiento_docs'])),
       };
     }
 

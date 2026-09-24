@@ -1,13 +1,21 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, getAprobacionTerritorial } from '../../services/api/ptaApi';
+import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, getAprobacionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
 import { PTADetallePanelBackoffice, ApprovalTracker } from './PTADetallePanelBackoffice';
 import { PTA_COMPONENT_KEYS } from './shared/ptaComponentPermissions';
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  permisosGranulares.clear();
+  permisosGranulares.add('pta.approve.academica.pregrado');
+});
 
-const { resultadoFirma } = vi.hoisted(() => ({ resultadoFirma: vi.fn() }));
+const { resultadoFirma, permisosGranulares } = vi.hoisted(() => ({
+  resultadoFirma: vi.fn(),
+  permisosGranulares: new Set(['pta.approve.academica.pregrado']),
+}));
 vi.mock('./FirmaDigitalPTA', () => ({
   FirmaDigitalPTA: ({ onFirmaCompleta }: any) => <button onClick={async () => {
     resultadoFirma(await onFirmaCompleta({ certificado_id: 'firma-test' }));
@@ -40,7 +48,7 @@ vi.mock('./PermisosPTAContext', () => ({
   usePermisosPTA: () => ({ permisos: { componentesAprobables: [] } }),
   usePermisosPTAGranulares: () => ({
     // Simula un Aprobador con permiso granular ÚNICAMENTE sobre Docencia - Pregrado.
-    puede: (permissionId: string) => permissionId === 'pta.approve.academica.pregrado',
+    puede: (permissionId: string) => permisosGranulares.has(permissionId),
     puedeAccion: () => false,
     puedeVista: () => true,
     sourceInfo: { source: 'test', granularCount: 1, totalPermisos: 1, ptaPermisos: 1 },
@@ -71,8 +79,8 @@ vi.mock('../../services/api/ptaApi', () => ({
   updatePTAStatus: vi.fn().mockResolvedValue({ success: true }),
   guardarFirmaDigitalPTA: vi.fn().mockResolvedValue({ success: true }),
   getAprobacionesJefatura: vi.fn().mockResolvedValue({ success: true, data: [] }),
-  getEvidenciasPTA: vi.fn().mockResolvedValue({ success: true, data: [] }),
-  revisarEvidenciaPTA: vi.fn().mockResolvedValue({ success: true }),
+  getEvidenciasSeguimientoPTA: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  revisarEvidenciaPTA: vi.fn().mockResolvedValue({ success: true, data: {} }),
   getComponentesAprobacion: vi.fn().mockResolvedValue({ success: true, data: [] }),
   aprobarComponente: vi.fn().mockResolvedValue({ success: true }),
   getComponentesRevision: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -116,6 +124,94 @@ function baseProps(overrides: Partial<React.ComponentProps<typeof PTADetallePane
 }
 
 describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-1531)', () => {
+  it('no muestra ni carga Seguimiento cuando falta su permiso funcional', () => {
+    render(<PTADetallePanelBackoffice {...baseProps()} />);
+
+    expect(screen.queryByRole('button', { name: 'Seguimiento' })).toBeNull();
+    expect(getEvidenciasSeguimientoPTA).not.toHaveBeenCalled();
+  });
+
+  it('con el permiso funcional usa la consulta protegida y no simula una decisión rechazada', async () => {
+    permisosGranulares.add('pta.backoffice.seguimiento');
+    vi.mocked(getEvidenciasSeguimientoPTA).mockResolvedValueOnce({ success: true, data: [{
+      id: 'ev-1', nombre: 'soporte-seguro.pdf', componentePta: 'docencia',
+      estadoRevision: 'pendiente', horasAvance: 10,
+    }] } as any);
+    vi.mocked(revisarEvidenciaPTA).mockResolvedValueOnce({
+      success: false, data: null, message: 'Permiso retirado',
+    } as any);
+
+    render(<PTADetallePanelBackoffice {...baseProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+    await screen.findByText('soporte-seguro.pdf');
+    fireEvent.click(screen.getByRole('button', { name: '✓ Aprobar' }));
+
+    await waitFor(() => expect(revisarEvidenciaPTA).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('pendiente')).toBeTruthy();
+    expect(getEvidenciasSeguimientoPTA).toHaveBeenCalledWith('pta-1');
+  });
+
+  it('reconoce en Seguimiento el permiso territorial granular por nivel', async () => {
+    permisosGranulares.clear();
+    permisosGranulares.add('pta.backoffice.seguimiento');
+    permisosGranulares.add('pta.approve.academica.territorial.pregrado');
+    vi.mocked(getEvidenciasSeguimientoPTA).mockResolvedValueOnce({ success: true, data: [{
+      id: 'ev-territorial', nombre: 'soporte-territorial.pdf', componentePta: 'docencia',
+      estadoRevision: 'pendiente', horasAvance: 96,
+    }] } as any);
+
+    render(<PTADetallePanelBackoffice {...baseProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+
+    expect(await screen.findByText('soporte-territorial.pdf')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '✓ Aprobar' })).toBeTruthy();
+  });
+
+  it('retira las evidencias visibles si el servidor revoca el acceso con el detalle abierto', async () => {
+    permisosGranulares.add('pta.backoffice.seguimiento');
+    vi.mocked(getEvidenciasSeguimientoPTA).mockResolvedValueOnce({ success: true, data: [{
+      id: 'ev-revocada', nombre: 'evidencia-antes-visible.pdf', componentePta: 'docencia',
+      estadoRevision: 'pendiente', horasAvance: 10,
+    }] } as any);
+    const props = baseProps({ syncVersion: 'primera' });
+    const { rerender } = render(<PTADetallePanelBackoffice {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+    await screen.findByText('evidencia-antes-visible.pdf');
+
+    vi.mocked(getEvidenciasSeguimientoPTA).mockResolvedValueOnce({
+      success: false, data: [], message: 'Permiso retirado',
+    } as any);
+    rerender(<PTADetallePanelBackoffice {...props} syncVersion="segunda" />);
+
+    await waitFor(() => expect(screen.queryByText('evidencia-antes-visible.pdf')).toBeNull());
+    expect(await screen.findByText('Sin evidencias registradas')).toBeTruthy();
+  });
+
+  it('descarta una respuesta de evidencias anterior a la sincronización vigente', async () => {
+    permisosGranulares.add('pta.backoffice.seguimiento');
+    let resolverAnterior!: (value: any) => void;
+    vi.mocked(getEvidenciasSeguimientoPTA).mockImplementationOnce(
+      () => new Promise(resolve => { resolverAnterior = resolve; }),
+    );
+    const props = baseProps({ syncVersion: 'primera' });
+    const { rerender } = render(<PTADetallePanelBackoffice {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Seguimiento' }));
+
+    vi.mocked(getEvidenciasSeguimientoPTA).mockResolvedValueOnce({ success: true, data: [{
+      id: 'ev-vigente', nombre: 'evidencia-vigente.pdf', componentePta: 'docencia',
+      estadoRevision: 'pendiente', horasAvance: 10,
+    }] } as any);
+    rerender(<PTADetallePanelBackoffice {...props} syncVersion="segunda" />);
+    await screen.findByText('evidencia-vigente.pdf');
+
+    await act(async () => resolverAnterior({ success: true, data: [{
+      id: 'ev-obsoleta', nombre: 'evidencia-obsoleta.pdf', componentePta: 'docencia',
+      estadoRevision: 'pendiente', horasAvance: 10,
+    }] }));
+    expect(screen.queryByText('evidencia-obsoleta.pdf')).toBeNull();
+    expect(screen.getByText('evidencia-vigente.pdf')).toBeTruthy();
+  });
+
   it('muestra en modo consulta las asignaturas/actividades de componentes que el actor no revisa/aprueba', async () => {
     render(<PTADetallePanelBackoffice {...baseProps()} />);
 
@@ -214,7 +310,7 @@ describe('autorización vigente del servidor', () => {
   it('no ofrece aprobar aunque el rol local o la prop indiquen que puede', async () => {
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(sinPermisos);
     render(<PTADetallePanelBackoffice {...baseProps({ isSuperUser: true })} />);
-    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    fireEvent.click(screen.getByText(/^(Aprobación|Revisión y aprobación)$/).closest('button')!);
     await waitFor(() => expect(getComponentesRevision).toHaveBeenCalled());
     expect(screen.queryByPlaceholderText('Comentario opcional al aprobar este componente...')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();

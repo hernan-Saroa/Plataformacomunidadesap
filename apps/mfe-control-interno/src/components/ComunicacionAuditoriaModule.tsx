@@ -38,6 +38,7 @@ import { configuracionesProfesionalesOCIApi } from './services/api';
 import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
 import { VisorOnlyOffice } from './VisorOnlyOffice';
 import { onlyOfficePuedeAbrir } from './services/onlyofficeVisor';
+import { esAuditoriaTerritorial, nombreDireccionTerritorial, nombreUnidadAuditada } from './services/unidadAuditada';
 
 
 // ====================================
@@ -143,6 +144,26 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
   const rApertura = reuniones.find((r: any) => r.tipo?.toLowerCase()?.includes('apertura'));
   const rCierre = reuniones.find((r: any) => r.tipo?.toLowerCase()?.includes('cierre'));
 
+  // El oficio se dirige al Responsable del Área Auditada que se registra en el
+  // paso 2 (EFDS-1090). El campo viejo "responsable" se sigue mirando de último
+  // porque en las auditorías antiguas quedó con identificadores, textos de
+  // relleno y hasta el propio auditor líder, que era lo que salía en el informe.
+  const nombreDePersona = (valor?: unknown): string => {
+    const texto = typeof valor === 'string' ? valor.trim() : '';
+    if (!texto.includes(' ')) return '';
+    if (/^(por|sin|no)\s+(asignar|asignado|asignada|registrado)$/i.test(texto)) return '';
+    return texto;
+  };
+  const responsableDelArea =
+    nombreDePersona((auditoria as any).responsableArea?.nombre) ||
+    nombreDePersona((auditoria as any).responsableAreaNombre) ||
+    nombreDePersona((auditoria as any).responsableUnidad);
+  const responsableHeredado = nombreDePersona((auditoria as any).responsable);
+  const responsableAuditado =
+    responsableDelArea ||
+    (responsableHeredado !== auditorLiderNombre ? responsableHeredado : '') ||
+    undefined;
+
   return {
     codigo: auditoria.codigo,
     nombre: auditoria.nombre,
@@ -150,9 +171,18 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     auditorLider: auditorLiderNombre,
     radicado: (auditoria as any).radicado,
     fechaOficio: informe?.fecha,
-    destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
+    destinatarioNombre: responsableAuditado,
     destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || (auditoria as any).responsableArea?.cargo || 'Director(a) Territorial',
-    unidadAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || (auditoria as any).territorial || auditoria.nombre,
+    // A quién se audita: en las auditorías de una territorial el oficio la nombra
+    // a ella, "Dirección Territorial Antioquia", y no el área genérica ni el
+    // nombre de la auditoría, que era lo que salía antes (EFDS-1090).
+    unidadAuditable: esAuditoriaTerritorial((auditoria as any).territorial)
+      ? nombreDireccionTerritorial((auditoria as any).territorial)
+      : nombreUnidadAuditada(
+          (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || auditoria.nombre,
+          (auditoria as any).territorial,
+        ),
+    territorial: (auditoria as any).territorial,
     fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
     jefeOCI: (auditoria as any).jefeOCI || (auditoria as any).reviso || jefeOCIDefault,
     // Elaboró: líder + resto del equipo
@@ -161,7 +191,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
       ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombreCompleto || a?.nombre || a?.persona?.nombre || a?.name).filter(Boolean),
     ].filter(Boolean).join(' / '),
     tituloAuditoria: auditoria.nombre,
-    responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
+    responsableUnidadAuditada: responsableAuditado,
     // Lugar de ejecución: campo explícito > sede > territorial
     lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).sede || (auditoria as any).territorial,
     // Fechas de ejecución de la auditoría (cuándo se realizó)

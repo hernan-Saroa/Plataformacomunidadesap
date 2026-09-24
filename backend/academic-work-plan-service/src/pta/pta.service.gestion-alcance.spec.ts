@@ -67,11 +67,72 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
     expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id)).toEqual(['docencia']);
   });
 
-  it('conserva la consulta del superusuario y los perfiles de consulta general', async () => {
+  it('separa el alcance y los estados personales de Revisión y Aprobación', async () => {
+    const { service, auth } = setup(['investigacion'], ['complementarias:docencia']);
+    const rows = [{ id: 'mixto' }];
+    const dtos = [{
+      id: 'mixto',
+      componentes_con_datos: ['investigacion', 'complementarias'],
+      subsecciones_con_datos: ['investigacion:general', 'complementarias:docencia', 'complementarias:academico_administrativas'],
+      componentes_aprobacion_estado: [
+        { componente: 'investigacion', estado: 'pendiente', revision_completa: true },
+        { componente: 'complementarias', estado: 'pendiente', revision_completa: false },
+      ],
+      componentes_revision_estado: [
+        { componente: 'investigacion', subseccion: 'general', estado: 'revisado' },
+        { componente: 'complementarias', subseccion: 'docencia', estado: 'pendiente' },
+        { componente: 'complementarias', subseccion: 'academico_administrativas', estado: 'pendiente' },
+      ],
+    }];
+
+    const [result] = await service.filterGestionPtas(dtos, rows, auth);
+    expect(result.componentes_aprobacion_en_alcance).toEqual(['investigacion']);
+    expect(result.componentes_revision_en_alcance).toEqual(['complementarias:docencia']);
+    expect(result.componentes_aprobacion_usuario).toEqual([
+      expect.objectContaining({ componente: 'investigacion' }),
+    ]);
+    expect(result.componentes_revision_usuario).toEqual([
+      expect.objectContaining({ componente: 'complementarias', subseccion: 'docencia' }),
+    ]);
+  });
+
+  it('usa el estado de la territorial propia en vez del consolidado de otras territoriales', async () => {
+    const { service, auth } = setup([territorial], [`${territorial}:general`]);
+    service.ptaTerritorialApprovalRepo = { find: jest.fn().mockResolvedValue([
+      { ptaId: 'mixto-territorial', componente: territorial, territorialId: 'Meta', nivel: 'pregrado', estado: 'aprobado' },
+    ]) };
+    service.ptaTerritorialReviewRepo = { find: jest.fn().mockResolvedValue([
+      { ptaId: 'mixto-territorial', componente: territorial, territorialId: 'Meta', nivel: 'pregrado', estado: 'revisado' },
+    ]) };
+    const rows = [{ id: 'mixto-territorial', subjects: [subject('Meta'), subject('Caldas')] }];
+    const dtos = [{
+      id: 'mixto-territorial', componentes_con_datos: [territorial],
+      subsecciones_con_datos: [`${territorial}:general`],
+      componentes_aprobacion_estado: [{ componente: territorial, estado: 'pendiente', revision_completa: false }],
+      componentes_revision_estado: [{ componente: territorial, subseccion: 'general', estado: 'pendiente' }],
+    }];
+
+    const [result] = await service.filterGestionPtas(dtos, rows, auth);
+    expect(result.componentes_revision_usuario).toEqual([
+      expect.objectContaining({ territorial_id: 'Meta', estado: 'revisado' }),
+    ]);
+    expect(result.componentes_aprobacion_usuario).toEqual([
+      expect.objectContaining({ territorial_id: 'Meta', estado: 'aprobado' }),
+    ]);
+  });
+
+  it('niega por defecto y conserva la consulta de perfiles con permiso general y superusuario', async () => {
     const { service, auth, rows, dtos } = setup();
+    auth.permissions = new Set();
+    expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual([]);
+    auth.permissions.add('pta.backoffice.ver_gestion');
     expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual(dtos);
+    auth.permissions.clear();
+    auth.approvesAll = true;
+    expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id)).toEqual(dtos.map(p => p.id));
+    auth.approvesAll = false;
     auth.isSuperUser = true;
-    expect(await service.filterGestionPtas(dtos, rows, auth)).toEqual(dtos);
+    expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id)).toEqual(dtos.map(p => p.id));
   });
 
   it('la ruta de gestión usa el guard y el contexto del servidor', async () => {

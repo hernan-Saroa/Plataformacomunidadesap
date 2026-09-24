@@ -698,6 +698,7 @@ export function ControlDisciplinarioFull() {
           handleLimpiarFiltroProfesional();
         }
       }}
+      showNotifications={false}
     >
       {/* Contenido Principal */}
       {currentSection === 'dashboard' && (

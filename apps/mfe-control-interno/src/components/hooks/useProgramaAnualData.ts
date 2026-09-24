@@ -473,6 +473,8 @@ export interface AuditoriaCreateData {
   fechaFinEjecucion?: string; // Fin de Ejecución
   fechaInicioComunicacion?: string; // Inicio de Comunicación
   fechaFin: string;
+  /** Lunes de las semanas sacadas del cronograma en el calendario (EFDS-2132) */
+  semanasExcluidas?: string[];
   periodicidad?: string;
   objetivos?: string[];
   criteriosAuditoria?: string[];
@@ -727,6 +729,7 @@ export function useProgramaAnualData(
         fechaFinEjecucion: data.fechaFinEjecucion,
         fechaInicioComunicacion: data.fechaInicioComunicacion,
         fechaFin: data.fechaFin,
+        semanasExcluidas: data.semanasExcluidas,
         periodicidad: data.periodicidad,
         objetivos: data.objetivos,
         criteriosAuditoria: data.criteriosAuditoria,

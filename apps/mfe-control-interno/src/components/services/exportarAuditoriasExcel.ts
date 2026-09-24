@@ -13,8 +13,9 @@
 
 import ExcelJS from 'exceljs';
 
-// Importar logo ESAP
-import logoESAP from '@/assets/cropped-favicon-32x32.png';
+// Logo institucional del formato EM-FO-008 (ESAP + Icontec + IQNET), el mismo
+// de los demás documentos exportados (EFDS-1630). Antes se usaba el favicon.
+import logoBase64 from '../../assets/esap-logo-certificaciones.b64?raw';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -50,34 +51,12 @@ const ESAP_BLUE_LIGHT = 'E3F2FD';
 const ESAP_GRAY = 'F0F4F8';
 
 // ════════════════════════════════════════════════════════════════════════════
-// CACHE DEL LOGO
+// LOGO INSTITUCIONAL
 // ════════════════════════════════════════════════════════════════════════════
 
-let _logoCache: string | null = null;
-
-async function getLogoBase64(): Promise<string> {
-  if (_logoCache) return _logoCache;
-  
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL('image/png');
-        _logoCache = dataUrl.split(',')[1]; // Solo el base64 sin prefijo
-        resolve(_logoCache);
-      } else {
-        reject(new Error('No se pudo obtener el contexto del canvas'));
-      }
-    };
-    img.onerror = reject;
-    img.src = logoESAP;
-  });
+// El logo viene embebido en base64, así que no depende de cargar una imagen por red
+function getLogoBase64(): string {
+  return logoBase64.replace(/\s/g, '');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -109,15 +88,15 @@ export async function exportarAuditoriasExcel(
     // ════════════════════════════════════════════════════════════════════════
     
     try {
-      const logoBase64 = await getLogoBase64();
       const logoImageId = workbook.addImage({
-        base64: logoBase64,
+        base64: `data:image/png;base64,${getLogoBase64()}`,
         extension: 'png',
       });
-      
+
+      // Proporción real del logo (450×171) dentro de A1:B3, sin deformarlo
       worksheet.addImage(logoImageId, {
-        tl: { col: 0.3, row: 0.3 },
-        ext: { width: 50, height: 50 }
+        tl: { col: 0.1, row: 0.1 },
+        ext: { width: 179, height: 68 }
       });
     } catch (error) {
       console.warn('No se pudo cargar el logo ESAP:', error);
