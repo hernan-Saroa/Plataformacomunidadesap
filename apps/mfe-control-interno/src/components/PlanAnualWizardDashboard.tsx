@@ -6701,16 +6701,41 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados)
-      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
+      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados).
+      // Va con el mismo margen de las tablas y se repite en cada hoja (EFDS-1629).
+      const configEncabezado = {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
         version: (plan as any).version ?? 1,
-        fecha: plan.fechaCreacion 
+        fecha: plan.fechaCreacion
           ? new Date(plan.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
           : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
-        logoImg: LOGO_ESAP_URL
-      });
-      
+        logoImg: LOGO_ESAP_URL,
+        margen: margin,
+      };
+      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, configEncabezado);
+      const paginasConEncabezado = new Set<number>([1]);
+      const encabezarPagina = () => {
+        const pagina = doc.getNumberOfPages();
+        if (paginasConEncabezado.has(pagina)) return;
+        paginasConEncabezado.add(pagina);
+        dibujarEncabezadoInstitucional(doc, configEncabezado);
+      };
+      const paginasConPie = new Set<number>();
+      const pieDePagina = () => {
+        const pagina = doc.getNumberOfPages();
+        if (paginasConPie.has(pagina)) return;
+        paginasConPie.add(pagina);
+        dibujarPieInstitucional(doc, pagina, true, margin);
+      };
+      const nuevaPagina = () => {
+        doc.addPage();
+        encabezarPagina();
+        pieDePagina();
+        return alturaEncabezado + 6;
+      };
+      // Espacio que dejan las tablas para no montarse sobre el pie de página
+      const margenInferior = 22;
+
       let currentY = alturaEncabezado + 5;
 
       // Vigencia y Título
@@ -6877,7 +6902,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         'Avance general del Plan Anual: actividades, tareas, responsables, fechas y porcentajes.'
       );
 
-      // Generar tabla principal
+      // Generar tabla principal (las columnas fijas suman 247 mm)
+      const anchoSobrante = Math.max(0, pageWidth - margin * 2 - 247);
       autoTable(doc, {
         startY: currentY,
         head: tableHead,
@@ -6898,24 +6924,23 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         },
         columnStyles: {
           0: { cellWidth: 30 }, // Rol
-          1: { cellWidth: 42 }, // Actividades
+          // Actividades y Seguimiento reparten el ancho sobrante: la tabla ocupa lo mismo que el encabezado
+          1: { cellWidth: 42 + anchoSobrante / 2 }, // Actividades
           2: { cellWidth: 15, halign: 'center' }, // Inicio
           3: { cellWidth: 15, halign: 'center' }, // Fin
           4: { cellWidth: 22 }, // Responsable
           5: { cellWidth: 20 }, // Control
           6: { cellWidth: 14, halign: 'center' }, // Avance actividad
           7: { cellWidth: 18 }, // Resp. Tarea
-          8: { cellWidth: 42 }, // Seguimiento tareas
+          8: { cellWidth: 42 + anchoSobrante / 2 }, // Seguimiento tareas
           9: { cellWidth: 15, halign: 'center' }, // Fecha
           10: { cellWidth: 14, halign: 'center' } // Avance tarea
         },
-        margin: { left: margin, right: margin, top: alturaEncabezado + 20 },
+        margin: { left: margin, right: margin, top: alturaEncabezado + 6, bottom: margenInferior },
         pageBreak: 'auto',
         rowPageBreak: 'avoid',
-        didDrawPage: (data) => {
-          // Footer en cada página
-          dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
-        }
+        willDrawPage: encabezarPagina,
+        didDrawPage: pieDePagina,
       });
 
       currentY = (doc as any).lastAutoTable.finalY + 6;
@@ -6923,9 +6948,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       // El avance global cierra la sección general; cada actividad se cuenta una sola vez.
       const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
 
-      if (currentY > pageHeight - 30) {
-        doc.addPage();
-        currentY = margin + 20;
+      if (currentY > pageHeight - margenInferior - 14) {
+        currentY = nuevaPagina();
       }
 
       doc.setFillColor(240, 240, 240);
@@ -6935,8 +6959,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       doc.setFont('helvetica', 'bold');
       doc.text(`AVANCE GLOBAL DEL PLAN: ${promedioGral}%  (Total Actividades: ${totalActividadesCount})`, margin + 5, currentY + 8);
 
-      doc.addPage();
-      currentY = margin + 5;
+      currentY = nuevaPagina();
       dibujarTituloSeccion(
         'AVANCE DE ACTIVIDADES POR ROL',
         'Los porcentajes de esta sección corresponden al avance de las actividades según cada rol.'
@@ -6953,8 +6976,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
         // El título del rol no queda solo al final de la hoja: debe caber con el encabezado y la primera fila
         if (rolIdx > 0 && currentY > pageHeight - 55) {
-          doc.addPage();
-          currentY = margin + 5;
+          currentY = nuevaPagina();
         }
 
         doc.setFontSize(11);
@@ -7015,10 +7037,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             3: { cellWidth: 30, halign: 'center' },
             4: { cellWidth: 26, halign: 'center' }
           },
-          margin: { left: margin, right: margin, bottom: 20 },
-          didDrawPage: () => {
-            dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
-          },
+          margin: { left: margin, right: margin, top: alturaEncabezado + 6, bottom: margenInferior },
+          willDrawPage: encabezarPagina,
+          didDrawPage: pieDePagina,
           didParseCell: function(data) {
             // Destacar la fila de subtotal
             if (data.row.index === actividadesData.length - 1) {
