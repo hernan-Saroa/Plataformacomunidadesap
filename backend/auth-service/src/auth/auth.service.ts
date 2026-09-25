@@ -140,6 +140,7 @@ export class AuthService {
       throw new BadRequestException('No existe un usuario asociado a ese correo');
     }
 
+    if (user.signatureOtpContext) throw new BadRequestException('El código pertenece a una firma de documento');
     const storedToken = this.normalizeResetCode(user.token);
     if (!storedToken) {
       throw new BadRequestException('No hay un código activo para este correo');
@@ -169,6 +170,7 @@ export class AuthService {
       throw new BadRequestException('No existe un usuario asociado a ese correo');
     }
 
+    if (user.signatureOtpContext) throw new BadRequestException('El código pertenece a una firma de documento');
     const storedToken = this.normalizeResetCode(user.token);
     if (!storedToken) {
       throw new BadRequestException('No hay un código activo para este correo');
@@ -217,7 +219,7 @@ export class AuthService {
     }
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-    await this.usersService.setResetToken(user.id_user, code);
+    await this.usersService.setResetToken(user.id_user, code, dto.context);
 
     try {
       await this.sendSignatureOtpEmail(
@@ -238,7 +240,7 @@ export class AuthService {
     };
   }
 
-  async verifySignatureOtp(jwtUser: AuthenticatedJwtUser, code: string) {
+  async verifySignatureOtp(jwtUser: AuthenticatedJwtUser, code: string, context?: string) {
     const user = await this.usersService.findById(jwtUser.userId, {
       allowInternalId: true,
     });
@@ -249,6 +251,9 @@ export class AuthService {
       );
     }
 
+    if ((user.signatureOtpContext ?? null) !== (context ?? null)) {
+      throw new BadRequestException('El código no corresponde a este documento');
+    }
     const storedToken = this.normalizeResetCode(user.token);
     if (!storedToken) {
       throw new BadRequestException('No hay un código OTP activo para validar');
@@ -264,7 +269,13 @@ export class AuthService {
       throw new BadRequestException('Código OTP inválido');
     }
 
-    await this.usersService.setResetToken(user.id_user, null);
+    if (context) {
+      if (!await this.usersService.consumeSignatureOtp(user.id_user, storedToken, context)) {
+        throw new BadRequestException('El código ya fue utilizado o reemplazado');
+      }
+    } else {
+      await this.usersService.setResetToken(user.id_user, null);
+    }
     const fechaFirma = new Date().toISOString();
 
     return {
@@ -272,6 +283,7 @@ export class AuthService {
       email,
       fechaFirma,
       metodo: 'OTP_EMAIL',
+      ...(context ? { context } : {}),
       id: `OTP-${user.id_user.slice(0, 8)}-${Date.now().toString(36).toUpperCase()}`,
     };
   }
