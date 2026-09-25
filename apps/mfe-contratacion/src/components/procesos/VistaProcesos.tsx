@@ -28,6 +28,7 @@ import { PaginationPremium } from '../shared/PaginationPremium';
 import { useAlcance } from '../../auth/alcance';
 import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
+import { etapaEnCurso } from './etapaEnCurso';
 
 interface Props {
   /** Abre directamente el formulario del estudio previo. */
@@ -645,9 +646,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
 
                   {/* Etapa */}
                   <div className="celda-apilada min-w-0">
-                    <StepperCompacto etapaActual={p.etapa} />
+                    <StepperCompacto etapaActual={etapaEnCurso(p)} />
                     <span className="block text-[11px] font-bold text-gray-500 tabular-nums mt-1">
-                      Etapa {p.etapa} de 10
+                      Etapa {etapaEnCurso(p)} de 10
                     </span>
                   </div>
 
