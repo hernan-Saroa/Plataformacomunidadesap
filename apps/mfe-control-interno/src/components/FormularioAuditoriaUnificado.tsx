@@ -394,15 +394,24 @@ export function FormularioAuditoriaUnificado({
   };
 
   const buildInitialState = (data?: Partial<AuditoriaUnificadaFormData>): AuditoriaUnificadaFormData => {
-    let inicioP = formatDateForInput(data?.fechaInicioPlaneacion || data?.fechaInicio);
+    // Una Especial puede no tener Planeación ni Ejecución (EFDS-1923): el inicio y el
+    // fin generales solo son de Planeación y de Comunicación si la auditoría tiene esas
+    // etapas. Antes, una Especial solo de Comunicación abría con Planeación y
+    // Ejecución inventadas (4-4-5 desde su inicio).
+    const tieneEtapas = !!(data?.fechaFinPlaneacion || data?.fechaInicioEjecucion || data?.fechaFinEjecucion || data?.fechaInicioComunicacion);
+    let inicioP = formatDateForInput(
+      data?.fechaInicioPlaneacion || (!tieneEtapas || data?.fechaFinPlaneacion ? data?.fechaInicio : ''),
+    );
     let finP = formatDateForInput(data?.fechaFinPlaneacion);
     let inicioE = formatDateForInput(data?.fechaInicioEjecucion);
     let finE = formatDateForInput(data?.fechaFinEjecucion);
     let inicioC = formatDateForInput(data?.fechaInicioComunicacion);
-    let finC = formatDateForInput(data?.fechaFinComunicacion || data?.fechaFin);
+    let finC = formatDateForInput(
+      data?.fechaFinComunicacion || (!tieneEtapas || data?.fechaInicioComunicacion ? data?.fechaFin : ''),
+    );
 
-    // Auto-calcular etapas restantes si existe inicio de planeación pero no fin de planeación
-    if (inicioP && !finP) {
+    // Auditorías viejas que solo guardan el inicio: se proponen las etapas 4-4-5
+    if (!tieneEtapas && inicioP && !finP) {
       finP = addDaysToDateString(inicioP, 27); // 4 semanas
       if (!inicioE) inicioE = addDaysToDateString(finP, 1);
       if (!finE) finE = addDaysToDateString(inicioE, 27); // 4 semanas

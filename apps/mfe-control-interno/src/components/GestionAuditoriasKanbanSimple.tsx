@@ -3361,12 +3361,17 @@ export function GestionAuditoriasKanbanSimple() {
                 equipoAuditores: auditoriaParaEditar.equipoAuditores || [],
                 supervisorAsignado: auditoriaParaEditar.supervisorAsignadoId || '',
                 auditorLider: auditoriaParaEditar.auditorLiderId || auditoriaParaEditar.auditorLider?.id || (auditoriaParaEditar.auditorLider as any)?.nombre || '',
-                fechaInicioPlaneacion: (auditoriaParaEditar as any).fechaInicioPlaneacion || auditoriaParaEditar.fechaInicio || meta.fechaInicioPlaneacion || meta.fechaInicio || '',
+                // Sin fin de Planeación, el inicio general es el de otra etapa (Especial, EFDS-1923)
+                fechaInicioPlaneacion: (auditoriaParaEditar as any).fechaInicioPlaneacion || meta.fechaInicioPlaneacion
+                  || ((auditoriaParaEditar as any).fechaFinPlaneacion || meta.fechaFinPlaneacion ? auditoriaParaEditar.fechaInicio || meta.fechaInicio : '')
+                  || '',
                 fechaFinPlaneacion: (auditoriaParaEditar as any).fechaFinPlaneacion || meta.fechaFinPlaneacion || '',
                 fechaInicioEjecucion: (auditoriaParaEditar as any).fechaInicioEjecucion || meta.fechaInicioEjecucion || '',
                 fechaFinEjecucion: (auditoriaParaEditar as any).fechaFinEjecucion || meta.fechaFinEjecucion || '',
                 fechaInicioComunicacion: (auditoriaParaEditar as any).fechaInicioComunicacion || meta.fechaInicioComunicacion || '',
-                fechaFinComunicacion: (auditoriaParaEditar as any).fechaFinComunicacion || auditoriaParaEditar.fechaFin || meta.fechaFinComunicacion || meta.fechaFin || '',
+                fechaFinComunicacion: (auditoriaParaEditar as any).fechaFinComunicacion || meta.fechaFinComunicacion
+                  || ((auditoriaParaEditar as any).fechaInicioComunicacion || meta.fechaInicioComunicacion ? auditoriaParaEditar.fechaFin || meta.fechaFin : '')
+                  || '',
                 fechaInicio: auditoriaParaEditar.fechaInicio || meta.fechaInicio || '',
                 fechaFin: auditoriaParaEditar.fechaFin || meta.fechaFin || '',
                 objetivos: (auditoriaParaEditar.objetivos || []).map((o: any) => typeof o === 'string' ? o : (o.descripcion || o.objetivo || '')).filter(Boolean),
