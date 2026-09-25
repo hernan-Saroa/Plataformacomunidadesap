@@ -9,7 +9,6 @@ import {
   Req,
   UploadedFile,
   UploadedFiles,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
@@ -29,10 +28,9 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Trámite de pagos — actividad 9.4 (EFDS-1170).
@@ -48,8 +46,7 @@ export class PagosController {
   constructor(private readonly service: PagosService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.seguimiento.ver')
+  @Puede('ver', '9.4')
   @ApiOperation({
     summary: 'Cuentas de cobro del contrato',
     description:
@@ -60,8 +57,7 @@ export class PagosController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.acta-inicio.suscribir')
+  @Puede('editar', '9.4')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -114,8 +110,7 @@ export class PagosController {
   }
 
   @Post(':pagoId/soportes')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.acta-inicio.suscribir')
+  @Puede('editar', '9.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -154,8 +149,7 @@ export class PagosController {
   }
 
   @Post(':pagoId/avalar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.supervision.avalar')
+  @Puede('aprobar', '9.4')
   @ApiOperation({
     summary: 'Avalar la cuenta de cobro',
     description:
@@ -171,8 +165,7 @@ export class PagosController {
   }
 
   @Post(':pagoId/devolver')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.supervision.avalar')
+  @Puede('aprobar', '9.4')
   @ApiOperation({
     summary: 'Devolver la cuenta para que la corrijan',
     description:
@@ -188,8 +181,7 @@ export class PagosController {
   }
 
   @Post(':pagoId/tramitar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('decidir', '9.4')
   @ApiOperation({
     summary: 'Tramitar el pago avalado',
     description:
@@ -205,8 +197,7 @@ export class PagosController {
   }
 
   @Post(':pagoId/anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.acta-inicio.suscribir')
+  @Puede('editar', '9.4')
   @ApiOperation({
     summary: 'Anular la cuenta de cobro',
     description:

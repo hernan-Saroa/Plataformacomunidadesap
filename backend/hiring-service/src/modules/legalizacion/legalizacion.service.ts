@@ -29,7 +29,7 @@ import {
 
 
 } from '../../auth/hiring-access';
-import { PERMISO_ACTIVIDAD_APROBAR, PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 
 /** Constitución de garantías (8.4) y registro de la ARL (8.5). */
 export const NUMERAL_GARANTIAS = '8.4';
@@ -166,6 +166,8 @@ export class LegalizacionService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    /** Quién carga y quién aprueba las garantías (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -181,8 +183,8 @@ export class LegalizacionService {
 
     // Qué puede hacer quien consulta, dicho por el servidor: la pantalla no
     // debe ofrecer un botón que va a responder 403.
-    const puedeCargar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
-    const puedeAprobar = tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR);
+    const puedeCargar = await this.alcance.puedeEn(acceso, 'editar', NUMERAL_GARANTIAS);
+    const puedeAprobar = await this.alcance.puedeEn(acceso, 'aprobar', NUMERAL_GARANTIAS);
 
     if (!contrato) {
       return {

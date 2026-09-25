@@ -15,9 +15,9 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
-import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { FirmaOtpModal } from '../shared/FirmaOtpModal';
+import { DocumentoVisible, VisorDocumento } from '../shared/VisorDocumento';
 
 interface Props {
   procesoId: string;
@@ -76,6 +76,7 @@ export function PanelRegistroActividad({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [anulando, setAnulando] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [viendo, setViendo] = useState<DocumentoVisible | null>(null);
   /** Corrigiendo lo devuelto: el formulario se abre con lo que ya había. */
   const [corrigiendo, setCorrigiendo] = useState(false);
   /** La evidencia de la firma OTP, si la actividad la exige (EFDS-2070). */
@@ -284,16 +285,22 @@ export function PanelRegistroActividad({
             {momento(registro.registradoAt)}.
           </Ayuda>
 
+          {/* Mirar el soporte no escribe nada, así que no usa `BotonSecundario`:
+              ese se apaga solo cuando la actividad es de solo lectura, y el
+              soporte se veía deshabilitado aunque el archivo estuviera ahí. */}
           {registro.soporte && (
-            <BotonSecundario
-              icono={<Eye className="w-3.5 h-3.5" />}
+            <button
+              type="button"
               onClick={() =>
-                window.open(contratacionService.urlDescarga(registro.soporte!.url), '_blank')
+                setViendo({ nombre: registro.soporte!.nombre, descargaUrl: registro.soporte!.url })
               }
+              className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
             >
+              <Eye className="w-3.5 h-3.5" aria-hidden="true" />
               Ver el soporte
-            </BotonSecundario>
+            </button>
           )}
+          <VisorDocumento documento={viendo} onClose={() => setViendo(null)} />
 
           {anulando ? (
             <>
@@ -324,7 +331,7 @@ export function PanelRegistroActividad({
             /* Consultar el registro es de todos; rehacerlo, de quien lo
                trabaja. Sin `quien`: el bloque de arriba ya dice qué se
                registró y quién, así que un aviso más sobraría. */
-            <Permitido permiso={PERMISOS.actividadEditar}>
+            <Permitido accion="editar" punto={numeral}>
               {/* Devuelta, corregir es la acción principal y no una salida de
                   emergencia: se la pidió quien la revisa. «Anular» describía
                   deshacer un error propio, que es otra cosa. */}
@@ -409,7 +416,7 @@ export function PanelRegistroActividad({
               aprobacion una actividad vacia, y las dos formas de cerrarla se
               ignoraban entre si. A la derecha porque es donde termina la
               lectura del formulario. */}
-          <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+          <Permitido accion="editar" punto={numeral} quien="el gestor de contratación">
             <div className="flex justify-end gap-2">
               {/* Salida sin guardar: quien entró a corregir y se arrepiente
                   volvería a ver el formulario vacío si no puede retroceder. */}

@@ -15,10 +15,10 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
-  PERMISO_ACTIVIDAD_EDITAR,
   PERMISO_PLAZO_TERMINAR,
   tienePermiso,
 } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { PublicacionService } from '../publicacion/publicacion.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
@@ -37,6 +37,8 @@ export class ObservacionesService {
     private readonly publicacion: PublicacionService,
     /** Si la 5.3 exige firmar con el token institucional al cerrarse (EFDS-2070). */
     private readonly cierre: CierreActividadService,
+    /** Quién puede gestionar las observaciones (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   /** Hoy en Bogotá, que es la zona en la que corren los términos. */
@@ -66,7 +68,7 @@ export class ObservacionesService {
     const manager = em ?? this.dataSource.manager;
     const proceso = await this.exigirProceso(manager, procesoId);
 
-    const puedeGestionar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
+    const puedeGestionar = await this.alcance.puedeEn(acceso, 'editar', NUMERAL_OBSERVACIONES);
 
     if (!(await this.aplicaObservaciones(proceso.modalidad, em))) {
       return {

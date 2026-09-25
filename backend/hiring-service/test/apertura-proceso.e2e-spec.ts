@@ -31,7 +31,6 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   const financiero: HiringAccess = {

@@ -50,6 +50,16 @@ export function sha256Archivo(ruta: string): Promise<string> {
 }
 
 /**
+ * Cómo se lee el nombre original del archivo.
+ *
+ * Multer lo decodifica como latin1 si no se le dice otra cosa, y los
+ * navegadores lo mandan en UTF-8: «Resolución de apertura.pdf» quedaba
+ * guardado como «ResoluciÃ³n de apertura.pdf», y así salía en el expediente,
+ * en la lista de chequeo y en cada panel que nombra un soporte.
+ */
+export const NOMBRE_EN_UTF8 = 'utf8';
+
+/**
  * Opciones de multer para un adjunto del expediente.
  *
  * El nombre en disco es aleatorio: el original lo elige el usuario y podría
@@ -57,6 +67,7 @@ export function sha256Archivo(ruta: string): Promise<string> {
  */
 export function opcionesDeCarga(mimePermitidos: string[], mensajeFormato: string) {
   return {
+    defParamCharset: NOMBRE_EN_UTF8,
     storage: diskStorage({
       destination: STORAGE_PATH,
       filename: (_req: any, file: any, cb: any) => {

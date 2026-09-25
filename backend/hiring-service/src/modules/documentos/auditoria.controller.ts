@@ -1,11 +1,9 @@
-import { Controller, Get, Param, ParseUUIDPipe, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_EXPEDIENTE_AUDITAR } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 
@@ -25,8 +23,7 @@ export class AuditoriaController {
   constructor(private readonly dataSource: DataSource) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_EXPEDIENTE_AUDITAR)
+  @Puede('ver', 'TODO')
   @ApiOperation({
     summary: 'Expediente completo del proceso, solo lectura',
     description:

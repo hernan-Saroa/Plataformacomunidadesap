@@ -9,7 +9,7 @@ import { ModuleHeader } from '../shared/ModuleHeader';
 
 import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
-import { MatrizRoles } from './MatrizRoles';
+import { PermisosPorEtapa } from './PermisosPorEtapa';
 import { TipologiasContrato } from './TipologiasContrato';
 import { PETICIONES, Peticion } from './peticiones';
 
@@ -28,7 +28,7 @@ const PESTANAS = [
   },
   {
     clave: 'roles' as const,
-    etiqueta: 'Roles y permisos',
+    etiqueta: 'Permisos por etapa',
     icono: ShieldCheck,
     color: '#0891B2',
   },
@@ -184,7 +184,7 @@ export function VistaConfiguracion() {
       {/* De solo lectura: los roles se administran desde la plataforma, y un
           segundo sitio donde tocarlos dejaría dos verdades sin nada que las
           mantuviera de acuerdo. Aquí se verifica la que rige. */}
-      {pestana === 'roles' && <MatrizRoles />}
+      {pestana === 'roles' && <PermisosPorEtapa />}
 
       <Modal
         isOpen={seleccion !== null}

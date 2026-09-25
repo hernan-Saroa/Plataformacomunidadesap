@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsEmail,
   IsISO8601,
   IsNotEmpty,
   IsNumber,
@@ -51,6 +52,19 @@ export class AdjudicarDto {
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor adjudicado debe ser un número' })
   @Min(0.01, { message: 'El valor adjudicado tiene que ser mayor que cero' })
   valorAdjudicado: number;
+
+  /**
+   * Correo del adjudicatario, para notificarle desde la plataforma.
+   *
+   * Es externo y no tiene cuenta: sin esto, los avisos que la Dirección dirija
+   * «al contratista» no tienen a dónde llegar.
+   */
+  @ApiPropertyOptional({ description: 'Correo del contratista adjudicatario' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsEmail({}, { message: 'El correo del contratista no es una dirección válida' })
+  @MaxLength(200)
+  correoContratista?: string;
 
   /**
    * Por qué se adjudica a una oferta distinta de la que ganó la evaluación.

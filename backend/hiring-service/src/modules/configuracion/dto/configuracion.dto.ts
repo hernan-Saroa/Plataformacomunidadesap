@@ -308,26 +308,6 @@ export class EstadoPlantillaDto {
 }
 
 /** Donde aplica un formato: en que actividad se ofrece y a que modalidades alcanza. */
-export class AsignarPlantillaDto {
-  @ApiPropertyOptional({
-    example: '3.1',
-    description: 'Actividad donde se ofrecera. Vacío lo devuelve a la biblioteca.',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  numeral?: string;
-
-  @ApiPropertyOptional({
-    example: ['MINIMA_CUANTIA'],
-    description: 'Modalidades a las que alcanza. Lista vacía significa todas.',
-  })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  modalidades?: string[];
-}
-
 /** Datos con los que simular el formulario. */
 export class SimularDto {
   @ApiProperty({ example: 'CONTRATACION_DIRECTA' })
@@ -367,7 +347,7 @@ export class GuardarTipologiaDto {
   descripcion?: string;
 
   /** Lo consume la legalizacion (EFDS-1164) al exigir polizas. */
-  @ApiPropertyOptional({ description: 'Si los contratos de esta tipología exigen garantias' })
+  @ApiPropertyOptional({ description: 'Si los contratos de esta tipología exigen garantías' })
   @IsOptional()
   @IsBoolean()
   exigeGarantias?: boolean;

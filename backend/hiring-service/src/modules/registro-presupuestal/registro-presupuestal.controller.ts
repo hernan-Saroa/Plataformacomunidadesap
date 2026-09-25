@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -20,10 +19,9 @@ import { ExpedirRpDto, RechazarRpDto, SolicitarRpDto } from './dto/registro-pres
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Registro presupuestal — actividad 8.3 (EFDS-1163).
@@ -39,8 +37,7 @@ export class RegistroPresupuestalController {
   constructor(private readonly service: RegistroPresupuestalService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '8.3')
   @ApiOperation({
     summary: 'Registro presupuestal del contrato',
     description:
@@ -51,8 +48,7 @@ export class RegistroPresupuestalController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.3')
   @ApiOperation({
     summary: 'Actividad 8.3 · Radicar la solicitud del RP',
     description: 'Solo sobre un contrato ya firmado por las dos partes.',
@@ -66,8 +62,7 @@ export class RegistroPresupuestalController {
   }
 
   @Post('verificar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('decidir', '8.3')
   @ApiOperation({
     summary: 'Verificar la disponibilidad',
     description:
@@ -78,8 +73,7 @@ export class RegistroPresupuestalController {
   }
 
   @Post('expedir')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('decidir', '8.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -120,8 +114,7 @@ export class RegistroPresupuestalController {
   }
 
   @Post('rechazar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('decidir', '8.3')
   @ApiOperation({
     summary: 'Rechazar la solicitud',
     description: 'Con el motivo: sin él, quien solicita no sabe si corregir el rubro o el valor.',

@@ -1,8 +1,9 @@
 import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
-  MatrizDeRoles,
-  MisPermisos,
+  AlcanceMio,
+  AlcanceVista,
+  RolConAlcance,
   CamposFaltantesError,
   EstadoAdendas,
   EstadoApertura,
@@ -12,8 +13,9 @@ import {
   CondicionesMipymeConfig,
   ConflictoError,
   EstadoDocumentos,
-  EstadoListaChequeo,
   EstadoDocumentosActividad,
+  DocumentoRequeridoConfig,
+  DatosDocumentoRequerido,
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
@@ -42,6 +44,7 @@ import {
   EstadoComiteContratacion,
   EstadoModalidadProceso,
   EstadoActaInicio,
+  EstadoSuscripcionActa,
   DatosActaInicio,
   DatosReasignacion,
   EstadoSeguimiento,
@@ -75,10 +78,12 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  CambiosAviso,
   ConfiguracionAvisos,
   EventoAviso,
   ParametroAlerta,
   EstadisticasGestion,
+  FiltrosEstadisticas,
   ExpedienteAuditoria,
   EstadoIncumplimiento,
   DatosIncumplimiento,
@@ -215,13 +220,11 @@ function conArchivo<T extends object>(datos: T, archivo: File): FormData {
  * ve como si algo hubiera fallado, y esta misma cadena va en el enlace de
  * descarga que el usuario tiene a la vista.
  */
-function consultaEstadisticas(filtros: {
-  vigencia?: number | null;
-  modalidad?: string | null;
-}): string {
+function consultaEstadisticas(filtros: Partial<FiltrosEstadisticas>): string {
   const partes = new URLSearchParams();
   if (filtros.vigencia) partes.set('vigencia', String(filtros.vigencia));
   if (filtros.modalidad) partes.set('modalidad', filtros.modalidad);
+  if (filtros.tipologia) partes.set('tipologia', filtros.tipologia);
 
   const consulta = partes.toString();
   return consulta ? `?${consulta}` : '';
@@ -922,6 +925,27 @@ export const contratacionService = {
     });
   },
 
+  /** El acta de inicio suscrita del contrato (8.7). */
+  actaSuscrita: (procesoId: string) =>
+    pedir<EstadoSuscripcionActa>(`/procesos/${procesoId}/acta-inicio/suscripcion`),
+
+  /** Registra el acta de inicio firmada por las dos partes y cierra la 8.7. */
+  registrarActaSuscrita: (
+    procesoId: string,
+    datos: { fechaSuscripcion: string; firma?: EvidenciaFirmaOtp },
+    acta: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acta);
+    cuerpo.append('fechaSuscripcion', datos.fechaSuscripcion);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+
+    return pedir<EstadoSuscripcionActa>(`/procesos/${procesoId}/acta-inicio/suscripcion`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
   // ------------------- etapa 9 · seguimiento de la ejecución (9.2) ---------
 
   /** Estado del contrato en ejecución, sus responsables y los soportes. */
@@ -1493,24 +1517,12 @@ export const contratacionService = {
     pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`),
 
   /**
-   * Formatos del SIG aplicables a una actividad, filtrados por modalidad.
+   * La lista de chequeo de una actividad: qué documentos pide y qué ya está
+   * (EFDS-2066).
    *
-   * Es la cara del gestor de la biblioteca: los administra Configuración por
-   * /configuracion/plantillas, y aquí solo se consultan para descargarlos.
-   */
-  plantillasDeActividad: (numeral: string, modalidad?: string) =>
-    pedir<PlantillaFormato[]>(
-      `/procesos/plantillas/${encodeURIComponent(numeral)}${
-        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
-      }`,
-    ),
-
-  /**
-   * Los documentos que una actividad entrega, según sus formatos asignados.
-   *
-   * Sirve a cualquier actividad, a diferencia de `documentosProceso`, que
-   * resuelve la lista fija de la 5.1: aquí las filas salen de la biblioteca,
-   * y por eso una actividad empieza a pedir documentos sin desplegar nada.
+   * Sirve a las sesenta y tres, la 3.1 y la 5.1 incluidas: las filas salen del
+   * catálogo que Configuración administra, y por eso una actividad empieza a
+   * pedir documentos sin desplegar nada.
    */
   documentosDeActividad: (procesoId: string, numeral: string) =>
     pedir<EstadoDocumentosActividad>(
@@ -1520,18 +1532,18 @@ export const contratacionService = {
   /**
    * Carga un documento de la actividad.
    *
-   * Con `plantillaId` cumple el requisito de ese formato; sin él queda como
-   * anexo adicional, que se guarda pero no se exige.
+   * Con `codigo` cubre ese documento de la lista; sin él queda como anexo
+   * adicional, que se guarda pero no se exige.
    */
   cargarDocumentoDeActividad: (
     procesoId: string,
     numeral: string,
     archivo: File,
-    plantillaId?: string,
+    codigo?: string,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
-    if (plantillaId) cuerpo.append('plantillaId', plantillaId);
+    if (codigo) cuerpo.append('codigo', codigo);
 
     return pedir<{ id: string; nombre: string }>(
       `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos`,
@@ -1539,79 +1551,44 @@ export const contratacionService = {
     );
   },
 
-  /** Retira un documento de la actividad; la traza queda. */
+  /**
+   * Deja sin efecto la entrega de un documento de la lista para cargar otro.
+   * No lo borra: el expediente conserva la versión anterior.
+   */
+  anularDocumentoDeActividad: (procesoId: string, numeral: string, entregaId: string) =>
+    pedir<{ anulado: boolean }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${entregaId}/anular`,
+      { method: 'POST', body: '{}' },
+    ),
+
+  /** Retira un anexo adicional de la actividad; la traza queda. */
   retirarDocumentoDeActividad: (procesoId: string, numeral: string, documentoId: string) =>
     pedir<{ retirado: boolean }>(
       `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${documentoId}`,
       { method: 'DELETE' },
     ),
 
-  // ------------------------------------ lista de chequeo de la radicación --
+  // ------------------------------------------- radicado de la 3.1 --------
 
   /**
-   * El paquete con el que el área radica en la Dirección de Contratación.
-   *
-   * Se consulta aunque el estudio previo esté a medias: saber qué va a pedirse
-   * es lo que permite ir armándolo.
+   * El consecutivo de Active Document con el que se remitió el paquete de la
+   * 3.1. Los documentos del paquete van por `documentosDeActividad`.
    */
-  listaChequeo: (procesoId: string) =>
-    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`),
-
-  /** Carga uno de los documentos de la lista; el código dice cuál cubre. */
-  cargarDocumentoDeLaLista: (procesoId: string, codigo: string, archivo: File) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', archivo);
-    cuerpo.append('codigo', codigo);
-
-    return pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo`, {
-      method: 'POST',
-      body: cuerpo,
-    });
-  },
-
-  /**
-   * Anota el radicado de Active Document con el que se remitió el paquete.
-   *
-   * Cadena vacía lo borra: el procedimiento admite remitir por vías que no
-   * generan consecutivo, y un número anotado por error tiene que poder
-   * quitarse, no solo cambiarse.
-   */
-  anotarRadicadoDeLaLista: (procesoId: string, radicado: string) =>
-    pedir<EstadoListaChequeo>(`/procesos/${procesoId}/estudio-previo/lista-chequeo/radicado`, {
-      method: 'POST',
-      body: JSON.stringify({ radicado }),
-    }),
-
-  /** Deja uno sin efecto para poder cargar otro en su lugar. */
-  anularDocumentoDeLaLista: (procesoId: string, documentoId: string) =>
-    pedir<EstadoListaChequeo>(
-      `/procesos/${procesoId}/estudio-previo/lista-chequeo/${documentoId}/anular`,
-      { method: 'POST' },
+  radicado: (procesoId: string) =>
+    pedir<{ radicadoGestionDocumental: string | null }>(
+      `/procesos/${procesoId}/estudio-previo/radicado`,
     ),
 
   /**
-   * Carga uno de los documentos que la actividad exige.
-   *
-   * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,
-   * y ponerlo en la ruta chocaría con `/documentos/iniciar`.
+   * Anota el radicado. Cadena vacía lo borra: el procedimiento admite remitir
+   * por vías que no generan consecutivo, y un número anotado por error tiene
+   * que poder quitarse, no solo cambiarse.
    */
-  cargarDocumentoProceso: (procesoId: string, codigo: string, archivo: File) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', archivo);
-    cuerpo.append('codigo', codigo);
-
-    return pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`, {
-      method: 'POST',
-      body: cuerpo,
-    });
-  },
-
-  /** Deja sin efecto un documento cargado para sustituirlo por otro. */
-  anularDocumentoProceso: (procesoId: string, documentoId: string) =>
-    pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos/${documentoId}/anular`, {
-      method: 'POST',
-      body: '{}',
-    }),
+  anotarRadicado: (procesoId: string, radicado: string) =>
+    pedir<{ radicadoGestionDocumental: string | null }>(
+      `/procesos/${procesoId}/estudio-previo/radicado`,
+      { method: 'POST', body: JSON.stringify({ radicado }) },
+    ),
 
   // ---------------------------- etapa 5 · publicación del proyecto de pliego -
 
@@ -2011,22 +1988,22 @@ export const contratacionService = {
   matriz: () => pedir<Matriz>('/configuracion/matriz'),
 
   /**
-   * La matriz rol x permiso del modulo (EFDS-1183).
+   * Lo que puede hacer quien mira, y dónde (migración 083).
    *
-   * Sale del codigo del backend y no de `auth.role_permissions`: lo que
-   * autoriza mientras el token no traiga los permisos es el mapa del modulo,
-   * asi que la tabla mostraria una configuracion que no esta en vigor.
+   * Son los mismos alcances que evalúa el guard, así que la pantalla no puede
+   * ofrecer algo que la API luego niegue.
    */
-  matrizDeRoles: () => pedir<MatrizDeRoles>('/configuracion/roles'),
+  alcanceMio: () => pedir<AlcanceMio>('/alcance/mio'),
 
-  /**
-   * Lo que puede hacer quien esta mirando la pantalla.
-   *
-   * Sirve para esconder lo que va a negarse en vez de ofrecerlo y responder
-   * 403 al pulsarlo. Es la misma funcion que evalua el guard, asi que la
-   * pantalla no puede prometer algo que el backend luego niegue.
-   */
-  misPermisos: () => pedir<MisPermisos>('/configuracion/mis-permisos'),
+  /** La matriz de permisos por etapa de todos los roles del módulo. */
+  alcanceRoles: () => pedir<RolConAlcance[]>('/alcance/roles'),
+
+  /** Reemplaza el alcance de un rol; el permiso de cada acción sigue en el backoffice. */
+  guardarAlcanceRol: (rolId: string, alcances: AlcanceVista[]) =>
+    pedir<RolConAlcance>(`/alcance/roles/${rolId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ alcances: alcances.map(({ accion, lugar }) => ({ accion, lugar })) }),
+    }),
 
   /** Lo que la actividad le pide al gestor. */
   campos: (numeral: string) =>
@@ -2064,14 +2041,35 @@ export const contratacionService = {
       body: datos instanceof FormData ? datos : JSON.stringify(datos),
     }),
 
-  /**
-   * Dónde aplica un formato: en qué actividad se ofrece y a qué modalidades
-   * alcanza. Omitir `modalidades` deja el alcance como estaba.
-   */
-  asignarPlantilla: (id: string, numeral: string | null, modalidades?: string[]) =>
-    pedir<PlantillaFormato>(`/configuracion/plantillas/${id}/actividad`, {
+  // --------------------------- documentos requeridos por actividad --------
+
+  /** Los documentos que pide una actividad, activos e inactivos (EFDS-2066). */
+  documentosRequeridos: (numeral?: string) =>
+    pedir<DocumentoRequeridoConfig[]>(
+      `/configuracion/documentos-requeridos${
+        numeral ? `?numeral=${encodeURIComponent(numeral)}` : ''
+      }`,
+    ),
+
+  /** Pide un documento nuevo en una actividad. */
+  crearDocumentoRequerido: (datos: DatosDocumentoRequerido & { numeral: string; nombre: string }) =>
+    pedir<DocumentoRequeridoConfig>('/configuracion/documentos-requeridos', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Corrige, reordena o deja de pedir un documento. */
+  actualizarDocumentoRequerido: (id: string, datos: DatosDocumentoRequerido) =>
+    pedir<DocumentoRequeridoConfig>(`/configuracion/documentos-requeridos/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(modalidades ? { numeral, modalidades } : { numeral }),
+      body: JSON.stringify(datos),
+    }),
+
+  /** Pide el mismo documento, con su plantilla y su alcance, en otra actividad. */
+  copiarDocumentoRequerido: (id: string, numeral: string) =>
+    pedir<DocumentoRequeridoConfig>(`/configuracion/documentos-requeridos/${id}/copiar`, {
+      method: 'POST',
+      body: JSON.stringify({ numeral }),
     }),
 
   /** Cambia el texto que lee el gestor, o deja de pedir el campo. */
@@ -2385,6 +2383,7 @@ export const contratacionService = {
     cuerpo.append('numeroActo', datos.numeroActo);
     cuerpo.append('fechaActo', datos.fechaActo);
     cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));
+    if (datos.correoContratista?.trim()) cuerpo.append('correoContratista', datos.correoContratista.trim());
     if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
@@ -2646,11 +2645,7 @@ export const contratacionService = {
   /** Los avisos de una actividad: si avisa de cada cosa y a quién (EFDS-1183). */
   avisosDeActividad: (numeral: string) => pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos`),
 
-  guardarAvisoDeActividad: (
-    numeral: string,
-    evento: EventoAviso,
-    cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
-  ) =>
+  guardarAvisoDeActividad: (numeral: string, evento: EventoAviso, cambios: CambiosAviso) =>
     pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, {
       method: 'PUT',
       body: JSON.stringify(cambios),
@@ -2671,7 +2666,7 @@ export const contratacionService = {
     pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, { method: 'DELETE' }),
 
   /** Indicadores de gestión de la contratación (EFDS-1189). */
-  estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
+  estadisticas: (filtros: Partial<FiltrosEstadisticas> = {}) =>
     pedir<EstadisticasGestion>(`/estadisticas${consultaEstadisticas(filtros)}`),
 
   /**
@@ -2681,7 +2676,7 @@ export const contratacionService = {
    * un enlace, que es lo que le pone el nombre al archivo y muestra la barra de
    * progreso. Traerlo con `fetch` obligaría a rearmar todo eso a mano.
    */
-  urlEstadisticasCsv: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
+  urlEstadisticasCsv: (filtros: Partial<FiltrosEstadisticas> = {}) =>
     `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/estadisticas/csv${consultaEstadisticas(filtros)}`,
 
   // ------------------------------------ aprobación de actividades (EFDS-1183)

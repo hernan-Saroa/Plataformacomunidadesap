@@ -5,12 +5,47 @@ import { HiringAccess } from '../../auth/hiring-access';
 import {
   AvisoConfigurado,
   avisoQueRige,
+  esCorreo,
   EventoAviso,
   eventosDeActividad,
   leerAviso,
+  mensajeDeAviso,
   PAPELES,
   PapelAviso,
+  VARIABLES_AVISO,
+  variablesDesconocidas,
 } from './eventos';
+
+/** Lo que se puede cambiar de un aviso; lo que no llega se conserva. */
+export interface CambiosAviso {
+  activo?: boolean;
+  roles?: string[];
+  personas?: string[];
+  dependencias?: string[];
+  /** Texto propio con variables; `null` o vacío vuelve al de siempre. */
+  titulo?: string | null;
+  mensaje?: string | null;
+  correosExternos?: string[];
+  alContratista?: boolean;
+}
+
+/**
+ * Un texto propio no puede pasarse de largo ni nombrar variables que no
+ * existen: `{actvidad}` saldría tal cual en el correo de todo el que lo reciba.
+ */
+function validarTexto(texto: string | null, que: string, maximo: number) {
+  if (!texto) return;
+  if (texto.length > maximo) {
+    throw new BadRequestException(`El ${que} del aviso admite hasta ${maximo} caracteres`);
+  }
+  const desconocidas = variablesDesconocidas(texto);
+  if (desconocidas.length) {
+    throw new BadRequestException(
+      `El ${que} usa variables que no existen: ${desconocidas.map((v) => `{${v}}`).join(', ')}. ` +
+        `Las que hay son ${VARIABLES_AVISO.map((v) => `{${v.clave}}`).join(', ')}.`,
+    );
+  }
+}
 
 /**
  * Los avisos de cada actividad (EFDS-1183).
@@ -38,8 +73,12 @@ export class AvisosService {
   private async cambiados(numeral: string): Promise<Map<string, AvisoConfigurado>> {
     try {
       const filas = await this.dataSource.query(
-        `SELECT evento, activo, papeles, roles, personas, dependencias
-           FROM hiring.avisos WHERE numeral = $1`,
+        `SELECT evento, activo, papeles, roles, personas, dependencias,
+                to_jsonb(a) -> 'titulo'           AS titulo,
+                to_jsonb(a) -> 'mensaje'          AS mensaje,
+                to_jsonb(a) -> 'correos_externos' AS correos_externos,
+                to_jsonb(a) -> 'al_contratista'   AS al_contratista
+           FROM hiring.avisos a WHERE numeral = $1`,
         [numeral],
       );
       const mapa = new Map<string, AvisoConfigurado>();
@@ -186,17 +225,42 @@ export class AvisosService {
       ...new Set(configurables.flatMap((a) => a.aviso.dependencias)),
     ]);
 
+    const [actividad] = await this.dataSource
+      .query(`SELECT nombre FROM hiring.actividades WHERE numeral = $1`, [numeral])
+      .catch(() => []);
+
     return {
       papeles: PAPELES,
       requiereAprobacion: requiere,
       porCorreo,
       siempre,
+      /** Lo que se puede escribir entre llaves en el texto de un aviso. */
+      variables: VARIABLES_AVISO,
       avisos: configurables.map(({ definicion, aviso }) => ({
         evento: definicion.codigo,
         nombre: definicion.nombre,
         ayuda: definicion.ayudaEn?.(numeral) ?? definicion.ayuda,
         personalizado: aviso.personalizado,
         activo: aviso.activo,
+        titulo: aviso.titulo,
+        mensaje: aviso.mensaje,
+        /**
+         * Cómo sale hoy, con datos de ejemplo: es lo que se ve en el campo
+         * vacío, para que quien lo reescribe sepa de qué parte.
+         */
+        textoDeSiempre: mensajeDeAviso(
+          {
+            evento: definicion.codigo,
+            numeral,
+            actorNombre: 'Ana Pérez',
+            observaciones: 'Falta el certificado de experiencia',
+            plazo: { vence: '2026-10-15', vencido: false },
+          },
+          actividad?.nombre ?? null,
+          'LP-001-2026',
+        ),
+        correosExternos: aviso.correosExternos,
+        alContratista: aviso.alContratista,
         // Los que reciben el aviso de por sí: no se eligen ni se quitan.
         papeles: aviso.papeles,
         // Lo borrado después de configurarse se muestra, para que se vea que
@@ -220,7 +284,7 @@ export class AvisosService {
   async guardar(
     numeral: string,
     evento: string,
-    cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
+    cambios: CambiosAviso,
     acceso: HiringAccess,
   ) {
     const definicion = eventosDeActividad(numeral).find((e) => e.codigo === evento);
@@ -232,33 +296,60 @@ export class AvisosService {
     }
 
     const actual = await this.queRige(numeral, definicion.codigo);
+    // `null` o vacío borra el texto propio y vuelve al de siempre; sin la
+    // clave, se conserva el que había.
+    const textoNuevo = (valor: string | null | undefined, anterior: string | null) =>
+      valor === undefined ? anterior : valor?.trim() || null;
     const siguiente = {
       activo: cambios.activo ?? actual.activo,
       roles: [...new Set(cambios.roles ?? actual.roles)],
       personas: [...new Set(cambios.personas ?? actual.personas)],
       dependencias: [...new Set((cambios.dependencias ?? actual.dependencias).map(String))],
+      titulo: textoNuevo(cambios.titulo, actual.titulo),
+      mensaje: textoNuevo(cambios.mensaje, actual.mensaje),
+      correosExternos: [
+        ...new Set((cambios.correosExternos ?? actual.correosExternos).map((c) => c.trim().toLowerCase())),
+      ].filter(Boolean),
+      alContratista: cambios.alContratista ?? actual.alContratista,
     };
+
+    validarTexto(siguiente.titulo, 'título', 120);
+    validarTexto(siguiente.mensaje, 'mensaje', 1000);
+    const invalidos = siguiente.correosExternos.filter((c) => !esCorreo(c));
+    if (invalidos.length) {
+      throw new BadRequestException(`No parece un correo válido: ${invalidos.join(', ')}`);
+    }
+    if (siguiente.correosExternos.length > 20) {
+      throw new BadRequestException('Un aviso admite hasta 20 correos externos');
+    }
 
     // Encendido sin nadie a quien avisar no avisaría nada, y diría que sí.
     const sinNadie =
       !actual.papeles.length &&
       !siguiente.roles.length &&
       !siguiente.personas.length &&
-      !siguiente.dependencias.length;
+      !siguiente.dependencias.length &&
+      !siguiente.correosExternos.length &&
+      !siguiente.alContratista;
     if (siguiente.activo && sinNadie) {
       throw new BadRequestException('Elige a quién avisar antes de encenderlo');
     }
 
     await this.dataSource.query(
       `INSERT INTO hiring.avisos
-              (numeral, evento, activo, papeles, roles, personas, dependencias, updated_at, updated_by)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, now(), $8)
+              (numeral, evento, activo, papeles, roles, personas, dependencias,
+               titulo, mensaje, correos_externos, al_contratista, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, $11, now(), $12)
        ON CONFLICT (numeral, evento) DO UPDATE
           SET activo = EXCLUDED.activo,
               papeles = EXCLUDED.papeles,
               roles = EXCLUDED.roles,
               personas = EXCLUDED.personas,
               dependencias = EXCLUDED.dependencias,
+              titulo = EXCLUDED.titulo,
+              mensaje = EXCLUDED.mensaje,
+              correos_externos = EXCLUDED.correos_externos,
+              al_contratista = EXCLUDED.al_contratista,
               updated_at = now(),
               updated_by = EXCLUDED.updated_by`,
       [
@@ -269,6 +360,10 @@ export class AvisosService {
         JSON.stringify(siguiente.roles),
         JSON.stringify(siguiente.personas),
         JSON.stringify(siguiente.dependencias),
+        siguiente.titulo,
+        siguiente.mensaje,
+        JSON.stringify(siguiente.correosExternos),
+        siguiente.alContratista,
         acceso.userName ?? null,
       ],
     );

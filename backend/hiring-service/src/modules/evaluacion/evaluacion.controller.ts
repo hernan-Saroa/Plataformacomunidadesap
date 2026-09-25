@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -25,6 +24,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -33,8 +33,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Evaluación de ofertas — actividad 6.3 (EFDS-1157).
@@ -50,8 +48,7 @@ export class EvaluacionController {
   constructor(private readonly service: EvaluacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
+  @Puede('ver', '6.3')
   @ApiOperation({
     summary: 'Estado de la evaluación del proceso',
     description:
@@ -62,8 +59,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.evaluacion.registrar')
+  @Puede('editar', '6.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -103,8 +99,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/rectificar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.evaluacion.registrar')
+  @Puede('editar', '6.3')
   @ApiOperation({
     summary: 'Rectificar el resultado registrado',
     description:
@@ -119,8 +114,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/evidencias')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.evaluacion.registrar')
+  @Puede('editar', '6.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
