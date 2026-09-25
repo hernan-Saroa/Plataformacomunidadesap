@@ -64,6 +64,11 @@ export interface DocumentoDeLaActividad {
     documentoId: string;
     nombre: string;
     descargaUrl: string | null;
+    /**
+     * El tipo del archivo. El visor lo necesita porque la fila se titula con
+     * el nombre del requisito, que no tiene extensión que mirar.
+     */
+    mimeType: string | null;
     subidoPor: string | null;
     cargadoAt: string;
   } | null;
@@ -213,6 +218,7 @@ export class DocumentosActividadService {
                 documentoId: entregado.documentoId,
                 nombre: archivo?.archivoNombreOriginal ?? archivo?.nombre ?? '',
                 descargaUrl: this.rutaDescarga(archivo?.archivoUrl),
+                mimeType: archivo?.archivoMimeType ?? null,
                 subidoPor: entregado.cargadoPor ?? null,
                 cargadoAt: entregado.createdAt.toISOString(),
               }
@@ -239,6 +245,7 @@ export class DocumentosActividadService {
         id: d.id,
         nombre: d.archivoNombreOriginal ?? d.nombre,
         descargaUrl: this.rutaDescarga(d.archivoUrl),
+        mimeType: d.archivoMimeType ?? null,
         subidoPor: d.subidoPor ?? null,
         cargadoAt: d.createdAt.toISOString(),
       }));

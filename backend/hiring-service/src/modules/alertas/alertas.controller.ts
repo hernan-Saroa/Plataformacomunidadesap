@@ -29,7 +29,7 @@ function leerDias(dias?: string): number | null {
   if (dias === undefined || dias === '') return null;
   const n = Number(dias);
   if (!Number.isInteger(n) || n < 0) {
-    throw new BadRequestException('dias debe ser un número entero no negativo');
+    throw new BadRequestException('Los días deben ser un número entero no negativo');
   }
   return n;
 }

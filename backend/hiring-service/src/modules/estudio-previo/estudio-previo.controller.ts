@@ -29,6 +29,7 @@ import {
 } from './dto/estudio-previo.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
+import { NOMBRE_EN_UTF8 } from '../archivos';
 
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
@@ -166,6 +167,7 @@ export class EstudioPrevioController {
   @Puede('editar', '3.1')
   @UseInterceptors(
     FileInterceptor('file', {
+      defParamCharset: NOMBRE_EN_UTF8,
       storage: diskStorage({
         destination: STORAGE_PATH,
         filename: (_req, file, cb) =>
@@ -208,6 +210,7 @@ export class EstudioPrevioController {
   @Puede('editar', '3.1')
   @UseInterceptors(
     FileInterceptor('file', {
+      defParamCharset: NOMBRE_EN_UTF8,
       storage: diskStorage({
         destination: STORAGE_PATH,
         filename: (_req, file, cb) =>

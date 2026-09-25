@@ -4,6 +4,7 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
+  FilePen,
   FileText,
   FolderOpen,
   ClipboardList,
@@ -23,6 +24,7 @@ import {
   PasoDelFlujo,
 } from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
+import { etapaEnCurso } from '../procesos/etapaEnCurso';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
 import { PanelCdp } from '../cdp/PanelCdp';
@@ -50,6 +52,7 @@ import { PanelSupervision } from '../supervision/PanelSupervision';
 import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
+import { PanelSuscripcionActa } from '../acta-inicio/PanelSuscripcionActa';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
@@ -216,13 +219,12 @@ const NUMERAL_GARANTIAS = '8.4';
 const NUMERAL_ARL = '8.5';
 
 /**
- * Acta de inicio, cuando el contrato la pactó (EFDS-1167), actividad 8.7.
+ * Acta de inicio suscrita, actividad 8.7 (migración 089).
  *
- * La matriz nombra el acta dos veces: aquí, al cerrar la legalización, y en la
- * 9.1 como «reunión de inicio». Es un solo hecho y un solo registro —una sola
- * acta por contrato—, así que las dos casillas abren el mismo panel en vez de
- * duplicar el trámite. Se llegue por donde se llegue, lo que se ve es el
- * estado del acta de ese contrato.
+ * Compartía panel con la reunión de inicio (9.1) y la casilla «Acta de
+ * inicio» abría una pantalla titulada «Reunión de inicio». Se separaron a
+ * pedido de la Dirección: aquí se registra el acta firmada, que cierra la
+ * legalización, y la reunión la toma de aquí.
  */
 const NUMERAL_ACTA_INICIO_LEGALIZACION = '8.7';
 
@@ -283,9 +285,6 @@ const NUMERALES_ETAPA_9 = [
 /** Los dos numerales que trabajan la supervisión: designarla y reasignarla. */
 const NUMERALES_SUPERVISION = [NUMERAL_SUPERVISOR, NUMERAL_REASIGNACION];
 
-/** Los dos numerales desde los que se llega al acta de inicio del contrato. */
-const NUMERALES_ACTA_INICIO = [NUMERAL_ACTA_INICIO_LEGALIZACION, NUMERAL_ACTA_INICIO];
-
 /**
  * Informe final de ejecucion (EFDS-1171), primera actividad de la etapa 10.
  *
@@ -324,14 +323,9 @@ const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.1',
     etapa: 3,
-    nombre: 'Elaboración de estudios previos',
-    descripcion: 'Descripción de la necesidad, fundamento jurídico y modalidad propuesta',
-  },
-  {
-    numeral: '3.2',
-    etapa: 3,
-    nombre: 'Análisis del sector y estudio de mercado',
-    descripcion: 'Consulta de proveedores y precios para estimar el valor',
+    nombre: 'Elaboración de estudios previos, análisis del sector y estudio de mercado',
+    descripcion:
+      'Descripción de la necesidad, fundamento jurídico y modalidad propuesta, con el análisis del sector y el estudio de mercado',
   },
   {
     numeral: '3.3',
@@ -379,7 +373,8 @@ const ACTIVIDADES_ETAPA_3 = [
  * candado en el riel.
  */
 export const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
-  '3.2': 'Análisis del sector y estudio de mercado',
+  // La 3.2 salió con la migración 090: el análisis del sector y el estudio de
+  // mercado se entregan en la lista de chequeo de la 3.1.
   // La 3.3 y la 3.4 salieron de aquí con EFDS-1183. Ninguna de las dos se
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
   // en la Dirección y ponerle responsable, y la 3.4 es la decisión del abogado,
@@ -445,7 +440,7 @@ export const TIENEN_PANEL = (numeral: string): boolean =>
  * La actividad que alguien reabrió, si la hay.
  *
  * `DEVUELTO` es el único estado que pide volver atrás: el comité aprueba la
- * 3.7 y de paso reabre la 3.2 para que se la validen, y a partir de ahí lo que
+ * 3.7 y de paso reabre la 3.1 para que se la validen, y a partir de ahí lo que
  * sigue no es lo que viene después en la matriz, es esa. La guía del paso
  * siguiente solo miraba hacia adelante, así que saltaba por encima y mandaba a
  * la etapa 4.
@@ -677,9 +672,9 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
      * Lo reabierto manda sobre lo que viene después.
      *
      * Una actividad DEVUELTA es la única que pide volver atrás, y puede estar
-     * antes en el flujo: el comité aprueba la 3.7 y de paso reabre la 3.2 para
+     * antes en el flujo: el comité aprueba la 3.7 y de paso reabre la 3.1 para
      * que se la validen. Buscando solo hacia adelante, la guía saltaba por
-     * encima y mandaba a la etapa 4 —o, con la 3.2 bloqueando, decía «debe
+     * encima y mandaba a la etapa 4 —o, con la 3.1 bloqueando, decía «debe
      * continuar otra persona»—, que es justo lo contrario de lo que acababa de
      * pasar.
      */
@@ -889,6 +884,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
   const actividades = delCatalogo;
 
+  /**
+   * Las modificaciones (9.5) no van en el riel.
+   *
+   * El riel cuenta una secuencia, y una prórroga, una adición o una suspensión
+   * no son un paso de ella: caben en cualquier momento de la ejecución. En el
+   * riel se leían como «lo siguiente después de los pagos», así que se abren
+   * desde su propio botón en la cabecera, igual que el expediente.
+   */
+  const modificaciones =
+    actividades.find((a) => a.numeral === NUMERAL_MODIFICACIONES && a.estado !== 'no_aplica') ??
+    null;
+  const actividadesDelRiel = actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES);
+
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
   /**
@@ -920,7 +928,23 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    * quedaría vacío sin que nada lo explicara. Se cae en la primera de las
    * suyas, que es donde esa persona tiene algo que hacer.
    */
-  const etapaDelProceso = etapaElegida ?? datos.proceso.etapa;
+  /**
+   * En qué etapa va el proceso.
+   *
+   * La misma cuenta que el listado: `procesos.etapa` se queda en 5 después de
+   * la apertura —a propósito, ver `ofertas.service.ts`—, así que un contrato
+   * en ejecución se abría en la etapa 5 y la línea del tiempo marcaba esa como
+   * la actual. Solo cuentan las que tienen fila: las del catálogo que nadie ha
+   * empezado llegan sin estado, y eso no es trabajo hecho.
+   */
+  const etapaActual = etapaEnCurso({
+    etapa: datos.proceso.etapa,
+    actividades: catalogoDelProceso
+      .filter((act: any) => act.numeral !== '3.1' && act.estado)
+      .map((act: any) => ({ numeral: act.numeral, estado: act.estado })),
+  });
+
+  const etapaDelProceso = etapaElegida ?? etapaActual;
   const etapaVista =
     recortado && !ETAPAS_DE_LA_FINANCIERA.includes(etapaDelProceso)
       ? ETAPAS_DE_LA_FINANCIERA[0]
@@ -933,8 +957,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    * modalidad: exigir las excluidas para dar una etapa por cerrada dejaría
    * etapas que nunca llegan al final.
    */
+  // Sobre lo que muestra el riel: contar la 9.5, que puede no ocurrir nunca,
+  // dejaría la etapa 9 sin llegar al final en todo contrato que no se modificó.
   const avance: Record<number, AvanceEtapa> = {};
-  for (const act of actividades) {
+  for (const act of actividadesDelRiel) {
     const numero = act.etapa ?? 3;
     if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
     if (act.estado === 'no_aplica') continue;
@@ -947,6 +973,23 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const elegirEtapa = (numero: number) => {
     setEtapaElegida(numero);
     setExpandida(null);
+  };
+
+  const abrirActividad = (numeral: string) => {
+    // Volver a pulsar la actividad abierta no reinicia nada: el riel
+    // no deselecciona, así que sería apagar la columna sin que nadie
+    // vuelva a encenderla —la pieza de aprobación no se remonta y no
+    // repite el aviso—, y la tarjeta caía al final del flujo.
+    if (numeral === expandida) return;
+
+    // Al cambiar de actividad sí: el contador de formatos y la
+    // decisión son de la anterior, y arrastrarlos bloquearía o abriría
+    // esta por documentos que no son suyos.
+    setFaltanFormatos(0);
+    setHayDecision(false);
+    setPideAprobacion(false);
+    setFueDevuelta(false);
+    setExpandida(numeral);
   };
 
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
@@ -1019,7 +1062,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <LineaDeTiempoEtapas
-              etapaActual={datos.proceso.etapa}
+              etapaActual={etapaActual}
               etapaSeleccionada={etapaVista}
               onSeleccionar={elegirEtapa}
               avance={avance}
@@ -1047,6 +1090,35 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               >
                 <ListChecks className="w-3.5 h-3.5" />
                 {verTodasLasEtapas ? 'Solo lo mío' : 'Todo el proceso'}
+              </button>
+            )}
+
+            {/* Desde que la ejecución arrancó, o mirando la etapa 9 o la 10.
+                No se pregunta por `datos.proceso.etapa`: en la base se queda
+                atrás —hay contratos en ejecución con el proceso en la 5— y el
+                botón no salía nunca. Antes de eso no hay nada que modificar.
+                Mirando la etapa 9 sin acta de inicio se abre igual, como
+                cualquier actividad del riel: el panel queda de solo lectura y
+                dice qué falta. */}
+            {modificaciones && (modificaciones.disponible || etapaVista >= 9) && (
+              <button
+                type="button"
+                onClick={() => abrirActividad(NUMERAL_MODIFICACIONES)}
+                aria-pressed={expandida === NUMERAL_MODIFICACIONES}
+                title={
+                  modificaciones.disponible
+                    ? 'Prórroga, adición, cesión, suspensión y demás modificaciones del contrato'
+                    : modificaciones.detalle ?? 'Todavía no se puede modificar el contrato'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                  border transition-colors ${
+                    expandida === NUMERAL_MODIFICACIONES
+                      ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                  }`}
+              >
+                <FilePen className="w-3.5 h-3.5" />
+                Modificaciones
               </button>
             )}
 
@@ -1108,25 +1180,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       >
         <RielActividades
           etapa={etapaVista}
-          etapaActual={datos.proceso.etapa}
-          actividades={actividades}
+          etapaActual={etapaActual}
+          actividades={actividadesDelRiel}
           seleccionada={expandida}
-          onSeleccionar={(numeral) => {
-            // Volver a pulsar la actividad abierta no reinicia nada: el riel
-            // no deselecciona, así que sería apagar la columna sin que nadie
-            // vuelva a encenderla —la pieza de aprobación no se remonta y no
-            // repite el aviso—, y la tarjeta caía al final del flujo.
-            if (numeral === expandida) return;
-
-            // Al cambiar de actividad sí: el contador de formatos y la
-            // decisión son de la anterior, y arrastrarlos bloquearía o abriría
-            // esta por documentos que no son suyos.
-            setFaltanFormatos(0);
-            setHayDecision(false);
-            setPideAprobacion(false);
-            setFueDevuelta(false);
-            setExpandida(numeral);
-          }}
+          onSeleccionar={abrirActividad}
         />
 
         <div className="min-w-0">
@@ -1275,8 +1332,12 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
-              ) : actividadSeleccionada &&
-                NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
+              ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO_LEGALIZACION ? (
+                <PanelSuscripcionActa
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
                 <PanelActaInicio
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}

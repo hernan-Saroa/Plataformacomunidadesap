@@ -12,7 +12,7 @@ import { RegistroActividadService } from './registro-actividad.service';
  */
 describe('RegistroActividadService · con qué enlace se anuncia el soporte', () => {
   const PARAMETRO = {
-    numeral: '3.2',
+    numeral: '5.10',
     etapa: 3,
     exigeSoporte: true,
     confirmado: true,
@@ -56,7 +56,7 @@ describe('RegistroActividadService · con qué enlace se anuncia el soporte', ()
       { requeridosDe: async () => [], faltantes: async () => [] } as never,
     );
 
-    const estado = await servicio.estado('proc-1', '3.2');
+    const estado = await servicio.estado('proc-1', '5.10');
     return estado.registro?.soporte;
   };
 

@@ -1007,6 +1007,8 @@ export interface DocumentoCargado {
   id: string;
   nombre: string;
   descargaUrl: string | null;
+  /** El tipo del archivo, para que el visor sepa si puede mostrarlo. */
+  mimeType?: string | null;
   subidoPor: string | null;
   cargadoAt: string;
 }
@@ -1047,6 +1049,7 @@ export interface DocumentoDeLaActividad {
     documentoId: string;
     nombre: string;
     descargaUrl: string | null;
+    mimeType?: string | null;
     subidoPor: string | null;
     cargadoAt: string;
   } | null;
@@ -1711,6 +1714,7 @@ export interface ActoAdjudicacion {
   numeroActo: string;
   fechaActo: string;
   valorAdjudicado: number;
+  correoContratista: string | null;
   acto: { id: string; nombre: string; archivoUrl: string } | null;
   evidencia: { id: string; nombre: string; archivoUrl: string } | null;
   notificadoAt: string | null;
@@ -1800,6 +1804,8 @@ export interface Adjudicar {
   numeroActo: string;
   fechaActo: string;
   valorAdjudicado: number;
+  /** Para notificarle desde la plataforma: el contratista no tiene cuenta (088). */
+  correoContratista?: string;
   /** Obligatoria solo si el adjudicatario no es la ganadora del informe. */
   justificacion?: string;
   firma?: EvidenciaFirmaOtp;
@@ -2143,7 +2149,6 @@ export interface ReunionDeInicio {
   actaPactada: boolean;
   registradoPor: string | null;
   createdAt: string;
-  documento: { nombre: string; url: string | null } | null;
 }
 
 export interface EstadoActaInicio {
@@ -2163,6 +2168,29 @@ export interface EstadoActaInicio {
   };
   supervisor: { nombre: string; cargo: string | null } | null;
   acta: ReunionDeInicio | null;
+  /** Si la modalidad suscribe acta de inicio: lo dice la matriz para la 8.7. */
+  actaAplica: boolean;
+  /** El acta suscrita en la 8.7, que la reunión toma sin volver a pedirla. */
+  suscripcion: ActaSuscrita | null;
+}
+
+/** El acta de inicio firmada por las dos partes (actividad 8.7, migración 089). */
+export interface ActaSuscrita {
+  fechaSuscripcion: string;
+  registradoPor: string | null;
+  createdAt: string;
+  documento: { nombre: string; url: string; mimeType: string | null } | null;
+}
+
+/** Lo que la 8.7 sabe del acta de inicio del contrato. */
+export interface EstadoSuscripcionActa {
+  /** Si la modalidad la suscribe, según la matriz. */
+  aplica: boolean;
+  puedeRegistrar: boolean;
+  motivoNoPuede: string | null;
+  legalizado: boolean;
+  requiereArl: boolean;
+  suscripcion: ActaSuscrita | null;
 }
 
 /** Lo que la pantalla envia al registrar la reunion. */
@@ -3118,20 +3146,79 @@ export interface ConteoValor {
   valor: number;
 }
 
+/** Lo que hay que mirar de un contrato; el informe las cuenta, no avisa. */
+export type SituacionContrato =
+  | 'POR_VENCER'
+  | 'PLAZO_VENCIDO'
+  | 'SUSPENDIDO'
+  | 'SIN_SUPERVISOR'
+  | 'POR_LIQUIDAR'
+  | 'LIQUIDACION_VENCIDA';
+
+/** Una fila del listado de contratos del reporte. */
+export interface ContratoDelReporte {
+  procesoId: string;
+  radicado: string;
+  numero: string;
+  objeto: string;
+  contratista: string;
+  tipoPersona: string;
+  modalidad: string | null;
+  tipologia: string | null;
+  estado: EstadoDeGestion;
+  estadoCiclo: string;
+  /** Valor actual, con las adiciones aprobadas. */
+  valor: number;
+  valorInicial: number;
+  pagado: number;
+  porcentajePagado: number;
+  suscritoEl: string | null;
+  inicioEl: string | null;
+  plazoDias: number | null;
+  finDelPlazo: string | null;
+  diasParaVencer: number | null;
+  modificaciones: number;
+  supervisor: string | null;
+  situaciones: SituacionContrato[];
+}
+
+/** Cuánto tarda un tramo del ciclo, en días calendario. */
+export interface ResumenDias {
+  promedio: number | null;
+  mediana: number | null;
+  muestras: number;
+}
+
+export interface FiltrosEstadisticas {
+  vigencia: number | null;
+  modalidad: string | null;
+  tipologia: string | null;
+}
+
 export interface EstadisticasGestion {
   /** Momento del corte: un informe sin fecha no se puede citar. */
   generadoEn: string;
-  filtros: { vigencia: number | null; modalidad: string | null };
+  filtros: FiltrosEstadisticas;
   contratos: {
     total: number;
     valorTotal: number;
+    valorInicial: number;
+    valorPromedio: number;
     porEstado: ConteoValor[];
     porModalidad: ConteoValor[];
     porTipologia: ConteoValor[];
+    porTipoPersona: ConteoValor[];
+    /** Suscripciones por mes, cronológicas. La clave es `AAAA-MM`. */
+    porMes: ConteoValor[];
+    contratistasDistintos: number;
+    principalesContratistas: ConteoValor[];
   };
   procesos: {
     total: number;
+    valorEstimado: number;
     porDesenlace: ConteoValor[];
+    porModalidad: ConteoValor[];
+    enCursoPorEtapa: ConteoValor[];
   };
   presupuesto: {
     contratado: number;
@@ -3139,7 +3226,30 @@ export interface EstadisticasGestion {
     porPagar: number;
     /** Porcentaje de lo contratado que ya se pagó, con un decimal. */
     porcentajeEjecutado: number;
+    /** Cuentas radicadas o avaladas: plata que está por salir. */
+    enTramite: number;
+    cuentasPorEstado: ConteoValor[];
   };
+  modificaciones: {
+    total: number;
+    contratosModificados: number;
+    porTipo: ConteoValor[];
+    valorAdicionado: number;
+    porcentajeAdicionado: number;
+    diasProrrogados: number;
+  };
+  seguimiento: {
+    porSituacion: ConteoValor[];
+    /** Solo el número: el detalle del incumplimiento está bajo reserva (EFDS-1182). */
+    incumplimientosAbiertos: number;
+    contratosConIncumplimiento: number;
+    diasDeAnticipacion: number;
+  };
+  tiempos: {
+    radicacionASuscripcion: ResumenDias;
+    suscripcionAInicio: ResumenDias;
+  };
+  contratosDelReporte: ContratoDelReporte[];
   /** Los años en que hay contratos, para que la pantalla ofrezca solo esos. */
   vigenciasDisponibles: number[];
 }
@@ -3330,6 +3440,27 @@ export interface AvisoEvento {
   personas: { id: string; nombre: string }[];
   /** Dependencias de la plataforma: el aviso llega a toda su gente. */
   dependencias: { id: string; nombre: string }[];
+  /** Texto propio con variables; `null` es el de siempre. */
+  titulo: string | null;
+  mensaje: string | null;
+  /** Cómo sale el de siempre, con datos de ejemplo. */
+  textoDeSiempre: { titulo: string; mensaje: string };
+  /** Correos de fuera de la plataforma: les llega solo por correo. */
+  correosExternos: string[];
+  /** Si llega también al correo del contratista del acto de adjudicación. */
+  alContratista: boolean;
+}
+
+/** Lo que se puede cambiar de un aviso; lo que no se manda se conserva. */
+export interface CambiosAviso {
+  activo?: boolean;
+  roles?: string[];
+  personas?: string[];
+  dependencias?: string[];
+  titulo?: string | null;
+  mensaje?: string | null;
+  correosExternos?: string[];
+  alContratista?: boolean;
 }
 
 /** Un aviso que sale siempre y no se configura, con a quién le llega. */
@@ -3346,6 +3477,8 @@ export interface ConfiguracionAvisos {
   /** Si los avisos de la actividad llegan también al correo. */
   porCorreo: boolean;
   siempre: AvisoSiempre[];
+  /** Lo que se puede escribir entre llaves en el texto de un aviso. */
+  variables: { clave: string; descripcion: string }[];
   avisos: AvisoEvento[];
 }
 

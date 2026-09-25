@@ -110,6 +110,7 @@ export function ListaDeDocumentos({
                 id: d.id,
                 nombre: d.nombre,
                 descargaUrl: d.descargaUrl ?? null,
+                mimeType: d.mimeType ?? null,
                 subidoPor: d.subidoPor ?? null,
                 cargadoAt: d.createdAt,
               })),
@@ -474,6 +475,9 @@ function FilaDocumento({
                   nombre: documento.nombre,
                   descargaUrl: cargado.descargaUrl!,
                   detalle: cargado.subidoPor ?? undefined,
+                  // La fila lleva el nombre del requisito, sin extensión: sin
+                  // el tipo, un PDF se anunciaba como «se lee en Word o Excel».
+                  mimeType: cargado.mimeType ?? null,
                 })
               }
               title={`Ver ${cargado.nombre}`}
@@ -578,10 +582,11 @@ function FilaAdicional({
                 nombre: documento.nombre,
                 descargaUrl: documento.descargaUrl!,
                 detalle: documento.subidoPor ?? undefined,
+                mimeType: documento.mimeType ?? null,
               })
             }
             title={`Ver ${documento.nombre}`}
-            className="shrink-0 p-1 rounded-md text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+            className="shrink-0 p-1 rounded-md text-[#003DA5] hover:bg-slate-50"
           >
             <Eye className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
@@ -590,7 +595,7 @@ function FilaAdicional({
             target="_blank"
             rel="noreferrer"
             title={`Descargar ${documento.nombre}`}
-            className="shrink-0 p-1 rounded-md text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+            className="shrink-0 p-1 rounded-md text-[#003DA5] hover:bg-slate-50"
           >
             <Download className="w-3.5 h-3.5" aria-hidden="true" />
           </a>

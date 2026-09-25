@@ -322,7 +322,15 @@ export default function ContratacionModulePremium() {
     // abierta.
     if (seccion === 'estadisticas') {
       return puedeVerReportes ? (
-        <VistaEstadisticas />
+        // Una fila del listado lleva a su proceso: del «hay tres vencidos» se
+        // pasa a atenderlos sin buscarlos.
+        <VistaEstadisticas
+          onAbrir={(id) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(null);
+          }}
+        />
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
           <p className="text-[13px] font-bold text-slate-700 m-0">

@@ -44,6 +44,7 @@ import {
   EstadoComiteContratacion,
   EstadoModalidadProceso,
   EstadoActaInicio,
+  EstadoSuscripcionActa,
   DatosActaInicio,
   DatosReasignacion,
   EstadoSeguimiento,
@@ -77,10 +78,12 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  CambiosAviso,
   ConfiguracionAvisos,
   EventoAviso,
   ParametroAlerta,
   EstadisticasGestion,
+  FiltrosEstadisticas,
   ExpedienteAuditoria,
   EstadoIncumplimiento,
   DatosIncumplimiento,
@@ -217,13 +220,11 @@ function conArchivo<T extends object>(datos: T, archivo: File): FormData {
  * ve como si algo hubiera fallado, y esta misma cadena va en el enlace de
  * descarga que el usuario tiene a la vista.
  */
-function consultaEstadisticas(filtros: {
-  vigencia?: number | null;
-  modalidad?: string | null;
-}): string {
+function consultaEstadisticas(filtros: Partial<FiltrosEstadisticas>): string {
   const partes = new URLSearchParams();
   if (filtros.vigencia) partes.set('vigencia', String(filtros.vigencia));
   if (filtros.modalidad) partes.set('modalidad', filtros.modalidad);
+  if (filtros.tipologia) partes.set('tipologia', filtros.tipologia);
 
   const consulta = partes.toString();
   return consulta ? `?${consulta}` : '';
@@ -919,6 +920,27 @@ export const contratacionService = {
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** El acta de inicio suscrita del contrato (8.7). */
+  actaSuscrita: (procesoId: string) =>
+    pedir<EstadoSuscripcionActa>(`/procesos/${procesoId}/acta-inicio/suscripcion`),
+
+  /** Registra el acta de inicio firmada por las dos partes y cierra la 8.7. */
+  registrarActaSuscrita: (
+    procesoId: string,
+    datos: { fechaSuscripcion: string; firma?: EvidenciaFirmaOtp },
+    acta: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acta);
+    cuerpo.append('fechaSuscripcion', datos.fechaSuscripcion);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+
+    return pedir<EstadoSuscripcionActa>(`/procesos/${procesoId}/acta-inicio/suscripcion`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -2361,6 +2383,7 @@ export const contratacionService = {
     cuerpo.append('numeroActo', datos.numeroActo);
     cuerpo.append('fechaActo', datos.fechaActo);
     cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));
+    if (datos.correoContratista?.trim()) cuerpo.append('correoContratista', datos.correoContratista.trim());
     if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
@@ -2622,11 +2645,7 @@ export const contratacionService = {
   /** Los avisos de una actividad: si avisa de cada cosa y a quién (EFDS-1183). */
   avisosDeActividad: (numeral: string) => pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos`),
 
-  guardarAvisoDeActividad: (
-    numeral: string,
-    evento: EventoAviso,
-    cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
-  ) =>
+  guardarAvisoDeActividad: (numeral: string, evento: EventoAviso, cambios: CambiosAviso) =>
     pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, {
       method: 'PUT',
       body: JSON.stringify(cambios),
@@ -2647,7 +2666,7 @@ export const contratacionService = {
     pedir<ConfiguracionAvisos>(`/configuracion/actividades/${encodeURIComponent(numeral)}/avisos/${evento}`, { method: 'DELETE' }),
 
   /** Indicadores de gestión de la contratación (EFDS-1189). */
-  estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
+  estadisticas: (filtros: Partial<FiltrosEstadisticas> = {}) =>
     pedir<EstadisticasGestion>(`/estadisticas${consultaEstadisticas(filtros)}`),
 
   /**
@@ -2657,7 +2676,7 @@ export const contratacionService = {
    * un enlace, que es lo que le pone el nombre al archivo y muestra la barra de
    * progreso. Traerlo con `fetch` obligaría a rearmar todo eso a mano.
    */
-  urlEstadisticasCsv: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
+  urlEstadisticasCsv: (filtros: Partial<FiltrosEstadisticas> = {}) =>
     `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/estadisticas/csv${consultaEstadisticas(filtros)}`,
 
   // ------------------------------------ aprobación de actividades (EFDS-1183)

@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Info, Search } from 'lucide-r
 import { puede } from '../../auth/alcance';
 import { contratacionService } from '../../services/contratacionService';
 import { AccionAlcance, AlcanceVista, EtapaConActividades, RolConAlcance } from '../../types';
+import { useDialogo } from '../shared/useDialogo';
 import { NOMBRE_ETAPA } from './simbolos';
 
 /**
@@ -105,6 +106,7 @@ export function PermisosPorEtapa() {
   const [busqueda, setBusqueda] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const dialogo = useDialogo();
 
   useEffect(() => {
     Promise.all([contratacionService.alcanceRoles(), contratacionService.catalogoActividades()])
@@ -277,8 +279,18 @@ export function PermisosPorEtapa() {
               <li key={rol.id}>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (sucio && !window.confirm('Tienes cambios sin guardar en este rol. Si cambias de rol, se perderán. ¿Quieres continuar?')) return;
+                  onClick={async () => {
+                    if (rol.id === elegidoId) return;
+                    if (
+                      sucio &&
+                      !(await dialogo.confirmar({
+                        titulo: 'Hay cambios sin guardar',
+                        descripcion: `Los permisos que marcaste para ${elegido?.nombre ?? 'este rol'} se perderán si cambias de rol.`,
+                        confirmar: 'Descartar y cambiar',
+                        tono: 'peligro',
+                      }))
+                    )
+                      return;
                     elegir(rol);
                   }}
                   aria-pressed={rol.id === elegidoId}
@@ -516,6 +528,8 @@ export function PermisosPorEtapa() {
           </div>
         )}
       </div>
+
+      {dialogo.elemento}
     </div>
   );
 }

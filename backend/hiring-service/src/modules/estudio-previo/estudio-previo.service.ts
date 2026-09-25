@@ -92,12 +92,6 @@ export function porQueNoSePuedeRadicar(
 }
 
 /**
- * Numeral 3.2: el análisis del sector, que el área entrega junto al estudio
- * previo y que la 3.4 revisa con él.
- */
-export const NUMERAL_ANALISIS_SECTOR = '3.2';
-
-/**
  * Numeral 3.4: la revisión, que se resuelve desde el estudio previo.
  *
  * No tiene panel ni tarjeta en el riel: el abogado decide leyendo la 3.1, y
@@ -977,12 +971,6 @@ export class EstudioPrevioService implements OnModuleInit {
       actividad.revisadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
 
-      // La 3.4 revisa lo que el área entregó en 3.1 **y en 3.2**, así que la
-      // decisión alcanza a las dos. Devolver solo la 3.1 dejaba al área
-      // corrigiendo el estudio previo mientras su análisis del sector seguía
-      // dado por bueno, y negar dejaba una actividad aprobada colgando de un
-      // proceso muerto.
-      await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
       await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
 
       /*
@@ -1021,34 +1009,6 @@ export class EstudioPrevioService implements OnModuleInit {
         revisadoAt: actividad.revisadoAt,
       };
     });
-  }
-
-  /**
-   * Lleva la 3.2 al mismo sitio que la 3.1 cuando la 3.4 la devuelve o la niega.
-   *
-   * Solo hacia atrás: aprobar la 3.1 no aprueba la 3.2, porque el análisis del
-   * sector tiene su propio registro y darlo por bueno desde aquí sellaría como
-   * revisado algo que nadie miró.
-   *
-   * Una 3.2 que no aplica a la modalidad se queda como está: NO_APLICA no es un
-   * estado del que se pueda devolver a nadie.
-   */
-  private async arrastrarALaDelSector(
-    em: EntityManager,
-    procesoId: string,
-    estadoDeLa31: EstadoActividad,
-  ) {
-    if (estadoDeLa31 !== 'BORRADOR' && estadoDeLa31 !== 'NEGADO') return;
-
-    const sector = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_ANALISIS_SECTOR },
-    });
-    if (!sector || sector.estado === 'NO_APLICA') return;
-
-    sector.estado = estadoDeLa31;
-    sector.revisadoPor = null as any;
-    sector.revisadoAt = null as any;
-    await em.save(ProcesoActividad, sector);
   }
 
   /**

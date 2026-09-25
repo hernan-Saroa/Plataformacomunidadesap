@@ -46,7 +46,7 @@ describe('RegistroActividadService · quién recibe el soporte de la actividad',
       ) as unknown as {
         estado(procesoId: string, numeral: string): Promise<Record<string, unknown>>;
       }
-    ).estado('proc-1', '3.2');
+    ).estado('proc-1', '5.10');
   };
 
   const requisito = { codigo: 'BS-FO-101', nombre: 'Análisis del sector', obligatorio: true };
