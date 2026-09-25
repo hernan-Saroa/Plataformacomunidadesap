@@ -5,6 +5,7 @@ import {
   sincronizarItinerarioFormulario,
   construirRutaGeneral,
   validarSecuenciaItinerario,
+  mapearARequestCreacion,
 } from './viaticosUtils';
 import { RutaItinerario } from '../types/viaticos';
 
@@ -330,6 +331,87 @@ describe('sincronizarItinerarioFormulario con transporte aéreo', () => {
     // r-3: Terrestre = 0
     // Total = 162634 + 261408 = 424042
     expect(sync.transporteTerminalesAereos).toBe(424042);
+  });
+});
+
+describe('Preservación de hora de salida y llegada en itinerario', () => {
+  it('sincronizarItinerarioFormulario incluye horaEstimadaSalida y horaEstimadaLlegada', () => {
+    const itinerario: RutaItinerario[] = [
+      {
+        id: 'r-1',
+        origenCiudad: 'Bogotá D.C.',
+        origenDepartamento: 'Bogotá D.C.',
+        destinoCiudad: 'Cartagena',
+        destinoDepartamento: 'Bolívar',
+        tipoTransporte: 'AEREO',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-01',
+        fechaLlegada: '2026-10-02',
+        diasRuta: 1.5,
+        horarioEstimadoMilitar: '07:30',
+        horaEstimadaSalida: '07:30',
+        horaEstimadaLlegada: '09:00',
+      },
+    ];
+
+    const sync = sincronizarItinerarioFormulario(itinerario);
+    expect(sync.horaEstimadaSalida).toBe('07:30');
+    expect(sync.horaEstimadaLlegada).toBe('09:00');
+    expect(sync.horaEstimadaGeneral).toBe('07:30 h → 09:00 h');
+  });
+
+  it('mapearARequestCreacion conserva horaEstimadaSalida y horaEstimadaLlegada en el payload', () => {
+    const form: any = {
+      objetoComision: 'Auditoría Territorial',
+      origenCiudad: 'Bogotá D.C.',
+      destinoCiudad: 'Medellín',
+      destinoDepartamento: 'Antioquia',
+      fechaInicio: '2026-10-10',
+      fechaFin: '2026-10-12',
+      rubroPresupuestal: '2.1.2.02.02.008',
+      prioridad: 'MEDIA',
+      requiereTiquetes: false,
+      montoViaticos: 500000,
+      montoGastosViaje: 0,
+      diasComision: 2,
+      salarioBasico: 3500000,
+      costoEstimadoTiquete: 0,
+      esInternacional: false,
+      itinerario: [
+        {
+          id: 'ruta-1',
+          origenCiudad: 'Bogotá D.C.',
+          destinoCiudad: 'Medellín',
+          destinoDepartamento: 'Antioquia',
+          tipoTrayecto: 'SOLO_IDA',
+          tipoTransporte: 'TERRESTRE',
+          fechaSalida: '2026-10-10',
+          fechaLlegada: '2026-10-12',
+          diasRuta: 2,
+          horarioEstimadoMilitar: '08:00',
+          horaEstimadaSalida: '08:00',
+          horaEstimadaLlegada: '14:30',
+          guardada: true,
+          tarifaTerminalAereo: 0,
+        },
+      ],
+    };
+
+    const comisionado: any = {
+      id: 'com-1',
+      tipoComisionado: 'FUNCIONARIO',
+      ipRegistroHabeasData: '127.0.0.1',
+    };
+
+    const payload = mapearARequestCreacion(form, comisionado, 'usr-1', true);
+    expect(payload.itinerario).toBeDefined();
+    expect(payload.itinerario!.length).toBe(1);
+    expect(payload.itinerario![0].horaEstimadaSalida).toBe('08:00');
+    expect(payload.itinerario![0].horaEstimadaLlegada).toBe('14:30');
+    expect(payload.itinerario![0].horarioEstimadoMilitar).toBe('08:00');
+    // Verifica que los auxiliares de UI fueron eliminados
+    expect((payload.itinerario![0] as any).guardada).toBeUndefined();
+    expect((payload.itinerario![0] as any).tarifaTerminalAereo).toBeUndefined();
   });
 });
 

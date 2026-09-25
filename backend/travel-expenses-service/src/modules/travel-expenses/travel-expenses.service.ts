@@ -219,14 +219,52 @@ export class TravelExpensesService {
     const primerTramo = rutas[0];
     const ultimoTramo = rutas[rutas.length - 1];
 
+    // ── Detección de viaje de ida y vuelta ───────────────────────────────────
+    // Si hay más de un tramo y el destino del último coincide con el origen del
+    // primero, el comisionado ya regresó al punto de partida. En ese caso el
+    // "destino" real de la comisión es el origen del último tramo (el punto más
+    // alejado antes del regreso). Esto replica la misma lógica del frontend
+    // (viaticosUtils.ts#sincronizarItinerarioFormulario).
+    const normalizarCiudad = (txt?: string) =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+
+    const esViajeIdaVuelta =
+      rutas.length > 1 &&
+      normalizarCiudad(ultimoTramo.destinoCiudad) ===
+        normalizarCiudad(primerTramo.origenCiudad) &&
+      (ultimoTramo.destinoCiudad || '') !== '';
+
+    const destinoCiudadFinal = esViajeIdaVuelta
+      ? ultimoTramo.origenCiudad || ''
+      : ultimoTramo.destinoCiudad || dto.destinoCiudad || '';
+    const destinoDepartamentoFinal = esViajeIdaVuelta
+      ? ultimoTramo.origenDepartamento || ''
+      : ultimoTramo.destinoDepartamento || dto.destinoDepartamento || '';
+
+    // Normalizar horas de salida y llegada en cada tramo del itinerario
+    const rutasNormalizadas = rutas.map((r) => {
+      const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || r.horaSalida || '';
+      const horaLlegada = r.horaEstimadaLlegada || r.horaLlegada || '';
+      return {
+        ...r,
+        horaEstimadaSalida: horaSalida,
+        horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+        horaEstimadaLlegada: horaLlegada,
+      };
+    });
+
     return {
-      itinerario: rutas,
+      itinerario: rutasNormalizadas,
       fechaInicio: formatoISO(fechaInicio),
       fechaFin: formatoISO(fechaFin),
       diasComision,
       origenCiudad: primerTramo.origenCiudad || '',
-      destinoCiudad: ultimoTramo.destinoCiudad || dto.destinoCiudad || '',
-      destinoDepartamento: ultimoTramo.destinoDepartamento || dto.destinoDepartamento || '',
+      destinoCiudad: destinoCiudadFinal,
+      destinoDepartamento: destinoDepartamentoFinal,
     };
   }
 
@@ -2444,8 +2482,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#003DA5').text('Itinerario Detallado de Rutas:');
         solicitud.itinerario.forEach((tramo, idx) => {
           doc.fontSize(8).font('Helvetica').fillColor('#333333');
+          const horaSalida = tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar;
+          const horaLlegada = tramo.horaEstimadaLlegada;
+          const horarioStr = horaSalida && horaLlegada
+            ? `${horaSalida} → ${horaLlegada}`
+            : (horaSalida || horaLlegada || 'N/A');
           doc.text(
-            `  • Tramo ${idx + 1}: ${tramo.origenCiudad} → ${tramo.destinoCiudad} | Salida: ${tramo.fechaSalida} Llegada: ${tramo.fechaLlegada} | Horario: ${tramo.horarioEstimadoMilitar || 'N/A'} | ${tramo.tipoTrayecto} (${tramo.diasRuta} d)`,
+            `  • Tramo ${idx + 1}: ${tramo.origenCiudad} → ${tramo.destinoCiudad} | Salida: ${tramo.fechaSalida} Llegada: ${tramo.fechaLlegada} | Horario: ${horarioStr} | ${tramo.tipoTrayecto} (${tramo.diasRuta} d)`,
           );
         });
         doc.moveDown(0.3);
@@ -5756,7 +5799,11 @@ if (dto.costoEstimadoTiquete !== undefined) {
         doc.moveDown(0.2);
         solicitud.itinerario.forEach((tramo: any, idx: number) => {
           const trayectoStr = tramo.tipoTrayecto === 'IDA_Y_VUELTA' ? 'Ida y Vuelta' : 'Solo Ida';
-          const horarioStr = tramo.horarioEstimadoMilitar ? ` · Hora Militar: ${tramo.horarioEstimadoMilitar}` : '';
+          const horaSalida = tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar;
+          const horaLlegada = tramo.horaEstimadaLlegada;
+          const horarioStr = horaSalida && horaLlegada
+            ? ` · Horario: ${horaSalida} → ${horaLlegada}`
+            : (horaSalida ? ` · Salida: ${horaSalida}` : (horaLlegada ? ` · Llegada: ${horaLlegada}` : ''));
           const diasStr = tramo.diasRuta ? ` (${tramo.diasRuta} d)` : '';
           const transporteStr = tramo.tipoTransporte ? ` [${tramo.tipoTransporte}]` : '';
           doc

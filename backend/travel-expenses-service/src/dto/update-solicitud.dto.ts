@@ -100,7 +100,7 @@ export class UpdateSolicitudDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+  @IsIn(['TERRESTRE', 'AEREO', 'MIXTO', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
   tipoComision?: string;
 
   @IsOptional()

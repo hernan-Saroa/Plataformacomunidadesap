@@ -543,8 +543,13 @@ export class SolicitudComisionEntity {
     fechaSalida: string;
     fechaLlegada: string;
     diasRuta: number;
-    horarioEstimadoMilitar: string;
+    horarioEstimadoMilitar?: string;
+    horaEstimadaSalida?: string;
+    horaEstimadaLlegada?: string;
+    horaSalida?: string;
+    horaLlegada?: string;
     tipoTransporte?: 'AEREO' | 'TERRESTRE';
+    requiereTiquete?: boolean;
   }>;
 
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)

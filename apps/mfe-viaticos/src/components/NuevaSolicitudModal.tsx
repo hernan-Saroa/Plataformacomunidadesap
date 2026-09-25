@@ -874,6 +874,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
   };
 
+  const validarCamposDinamicosObligatorios = (): string | null => {
+    const obligatorios = camposCatalogo.filter(
+      (c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave) && esCampoObligatorio(c.clave),
+    );
+    for (const campo of obligatorios) {
+      const val = form.camposAdicionales?.[campo.clave];
+      if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+        return `Por favor complete el campo obligatorio: "${campo.etiqueta}".`;
+      }
+    }
+    return null;
+  };
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
@@ -897,6 +910,24 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const error = validarFechasSolicitud(fechaInicio, fechaFin);
       if (error) {
         setErrorValidacion(error);
+        return;
+      }
+      // ── Validación: origen ≠ destino ──────────────────────────────────────
+      {
+        const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+        const normalizar = (s: string) =>
+          s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if (oc && dc && normalizar(oc) === normalizar(dc)) {
+          setErrorValidacion(
+            `La ciudad de destino ("${dc}") no puede ser la misma que la de origen ("${oc}"). ` +
+            'Si el itinerario tiene un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+          );
+          return;
+        }
+      }
+      const errCamposDinamicos = validarCamposDinamicosObligatorios();
+      if (errCamposDinamicos) {
+        setErrorValidacion(errCamposDinamicos);
         return;
       }
       if (comisionado && parametrizacion) {
@@ -935,6 +966,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de guardar.');
       return;
     }
+    // ── Validación: origen ≠ destino ────────────────────────────────────────
+    // La sincronización del itinerario ya aplica la lógica de ida-vuelta, pero
+    // se agrega esta guarda adicional para detectar casos donde la ciudad de
+    // destino calculada termina siendo igual a la de origen (p.ej. itinerarios
+    // incompletos o con rutas de retorno sin tramo intermedio registrado).
+    {
+      const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+      const normalizar = (s: string) =>
+        s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      if (oc && dc && normalizar(oc) === normalizar(dc)) {
+        setErrorValidacion(
+          `La ciudad de destino ("${dc}") no puede ser la misma que la ciudad de origen ("${oc}"). ` +
+          'Verifique el itinerario: si hay un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+        );
+        return;
+      }
+    }
+    const errCamposDinamicos = validarCamposDinamicosObligatorios();
+    if (errCamposDinamicos) {
+      setErrorValidacion(errCamposDinamicos);
+      return;
+    }
+
     setEnviando(true);
     setErrorValidacion(null);
     try {
@@ -984,12 +1038,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
-                horaEstimadaSalida,
-                horaEstimadaLlegada,
                 tarifaTerminalAereo,
                 ...cleanRuta
               } = r;
-              return cleanRuta;
+              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
+              const horaLlegada = r.horaEstimadaLlegada || '';
+              return {
+                ...cleanRuta,
+                horaEstimadaSalida: horaSalida,
+                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+                horaEstimadaLlegada: horaLlegada,
+              };
             }),
           },
         );
@@ -1010,9 +1069,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
       await cargarChecklist(tipoChecklist);
       setPaso(3);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      setErrorValidacion('No fue posible guardar el borrador. Verifique e intente nuevamente.');
+      const msg = e?.response?.data?.message || e?.message;
+      setErrorValidacion(
+        Array.isArray(msg)
+          ? msg.join(', ')
+          : typeof msg === 'string' && msg.length > 0
+            ? msg
+            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
+      );
     } finally {
       setEnviando(false);
     }
@@ -1914,7 +1980,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   id={`campo_${campo.clave}`}
                                   required={obligatorio}
                                   rows={2}
-                                  placeholder={campo.ayuda || ''}
+                                  placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                   value={String(valorActual)}
                                   onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
                                   className={inputCls}
@@ -1966,7 +2032,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 id={`campo_${campo.clave}`}
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
                                 required={obligatorio}
-                                placeholder={campo.ayuda || ''}
+                                placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
                                 onChange={(e) => {
                                   const val = campo.tipoCampo === 'CURRENCY' ? Number(soloNumeros(e.target.value)) || 0 : e.target.value;

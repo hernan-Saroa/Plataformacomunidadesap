@@ -332,13 +332,13 @@ export function sincronizarItinerarioFormulario(
     }
   }
 
-  const horaSalida = primeraRuta.horarioEstimadoMilitar || '';
-  const horaLlegada = ultimaRuta.horarioEstimadoMilitar || '';
+  const horaSalida = primeraRuta.horaEstimadaSalida || primeraRuta.horarioEstimadoMilitar || '';
+  const horaLlegada = itinerario.length === 1
+    ? (primeraRuta.horaEstimadaLlegada || '')
+    : (ultimaRuta.horaEstimadaLlegada || ultimaRuta.horarioEstimadoMilitar || '');
 
   let horaGeneral = '';
-  if (itinerario.length === 1) {
-    horaGeneral = horaSalida ? formatearHorarioMilitar(horaSalida) : '';
-  } else if (horaSalida && horaLlegada) {
+  if (horaSalida && horaLlegada) {
     horaGeneral = `${formatearHorarioMilitar(horaSalida)} → ${formatearHorarioMilitar(horaLlegada)}`;
   } else if (horaSalida) {
     horaGeneral = formatearHorarioMilitar(horaSalida);
@@ -538,17 +538,22 @@ export function mapearARequestCreacion(
     documentos,
     camposAdicionales: form.camposAdicionales ?? {},
     itinerario: (form.itinerario || []).map((r) => {
-      // Excluir campos de UI que el backend no acepta
+      // Excluir únicamente campos auxiliares de UI interna
       const {
         guardada,
         origenDepartamentoId,
         destinoDepartamentoId,
-        horaEstimadaSalida,
-        horaEstimadaLlegada,
         tarifaTerminalAereo,
         ...cleanRuta
       } = r;
-      return cleanRuta;
+      const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
+      const horaLlegada = r.horaEstimadaLlegada || '';
+      return {
+        ...cleanRuta,
+        horaEstimadaSalida: horaSalida,
+        horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+        horaEstimadaLlegada: horaLlegada,
+      };
     }),
   };
 }

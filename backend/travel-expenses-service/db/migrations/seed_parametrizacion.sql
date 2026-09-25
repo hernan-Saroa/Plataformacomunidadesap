@@ -39,41 +39,41 @@ INSERT INTO travel_expenses.config_tipo_comisionado
   (tipo_comisionado, codigo_formulario, campos_obligatorios, campos_opcionales, campos_ocultos, activo)
 VALUES
   ('FUNCIONARIO', 'FMT023_FUNCIONARIO',
-   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision","cargoEsap"]'::jsonb,
    '["documentoComisionado","requiereTiquetes"]'::jsonb,
-   '[]'::jsonb,
+   '["numeroContrato","rolEsap"]'::jsonb,
    TRUE),
   ('CONTRATISTA', 'FMT023_CONTRATISTA',
-   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision","numeroContrato"]'::jsonb,
    '["documentoComisionado","requiereTiquetes"]'::jsonb,
-   '[]'::jsonb,
+   '["cargoEsap","rolEsap"]'::jsonb,
    TRUE),
   ('DOCENTE', 'FMT023_DOCENTE',
-   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision","rolEsap"]'::jsonb,
    '["documentoComisionado","requiereTiquetes"]'::jsonb,
-   '[]'::jsonb,
+   '["numeroContrato","cargoEsap"]'::jsonb,
    TRUE),
   ('ESTUDIANTE', 'FMT023_ESTUDIANTE',
    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
    '["documentoComisionado","requiereTiquetes"]'::jsonb,
+   '["numeroContrato","cargoEsap","rolEsap"]'::jsonb,
+   TRUE),
+  ('INVESTIGADOR', 'FMT023_INVESTIGADOR',
+   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision","rolEsap"]'::jsonb,
+   '["documentoComisionado","requiereTiquetes"]'::jsonb,
+   '["numeroContrato","cargoEsap"]'::jsonb,
+   TRUE),
+  ('INTERNACIONAL', 'FMT023_INTERNACIONAL',
+   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["documentoComisionado","requiereTiquetes"]'::jsonb,
    '[]'::jsonb,
    TRUE),
-   ('INVESTIGADOR', 'FMT023_INVESTIGADOR',
-    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
-    '["documentoComisionado","requiereTiquetes"]'::jsonb,
-    '[]'::jsonb,
-    TRUE),
-   ('INTERNACIONAL', 'FMT023_INTERNACIONAL',
-    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
-    '["documentoComisionado","requiereTiquetes"]'::jsonb,
-    '[]'::jsonb,
-    TRUE),
-   ('ACTO_ADMINISTRATIVO', 'FMT023_ACTO_ADMIN',
-    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
-    '["documentoComisionado","requiereTiquetes"]'::jsonb,
-    '[]'::jsonb,
-    TRUE)
-   ON CONFLICT (tipo_comisionado) DO NOTHING;
+  ('ACTO_ADMINISTRATIVO', 'FMT023_ACTO_ADMIN',
+   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["documentoComisionado","requiereTiquetes"]'::jsonb,
+   '[]'::jsonb,
+   TRUE)
+ON CONFLICT (tipo_comisionado) DO NOTHING;
 
 -- ============================================================================
 -- 3) Campos del formulario (config_campos_formulario)
@@ -95,7 +95,10 @@ VALUES
   ('montoViaticos',        'Viáticos (COP)',                  'number',   '0.00',                                                  NULL,                                                                                                                                                                                                                                                                'presupuesto', 90, TRUE),
   ('montoGastosViaje',     'Gastos de viaje (COP)',           'number',   '0.00',                                                  NULL,                                                                                                                                                                                                                                                                'presupuesto',100, TRUE),
   ('diasComision',         'Días de comisión',                'number',   '1',                                                     NULL,                                                                                                                                                                                                                                                                'presupuesto',110, TRUE),
-  ('requiereTiquetes',     '¿Requiere tiquetes?',             'checkbox', NULL,                                                    NULL,                                                                                                                                                                                                                                                                'tiquetes',   120, TRUE)
+  ('requiereTiquetes',     '¿Requiere tiquetes?',             'checkbox', NULL,                                                    NULL,                                                                                                                                                                                                                                                                'tiquetes',   120, TRUE),
+  ('numeroContrato',       'Número de Contrato',              'text',     'Ej. C-2024-001 (contrato SECOP)',                       NULL,                                                                                                                                                                                                                                                                'comisionado',130, TRUE),
+  ('cargoEsap',            'Cargo / Rol ESAP',                'text',     'Ej. Asesor Jurídico, Coordinador de Área...',           NULL,                                                                                                                                                                                                                                                                'comisionado',140, TRUE),
+  ('rolEsap',              'Rol ESAP',                        'text',     'Ej. Docente Capacitador, Catedrático, Investigador...', NULL,                                                                                                                                                                                                                                                                'comisionado',150, TRUE)
 ON CONFLICT (clave) DO NOTHING;
 
 -- ============================================================================

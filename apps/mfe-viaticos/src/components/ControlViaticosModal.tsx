@@ -422,8 +422,9 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
               <div>
                 <span className="text-slate-500">Tiempo estimado:</span>{' '}
                 <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {ruta.horarioEstimadoMilitar || '—'}
+                  <Clock className="w-3 h-3 text-[#003DA5]" />
+                  {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
+                  {ruta.horaEstimadaLlegada ? ` → ${ruta.horaEstimadaLlegada}` : ''}
                 </span>
               </div>
               <div>
