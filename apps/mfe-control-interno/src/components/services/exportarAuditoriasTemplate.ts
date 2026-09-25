@@ -13,7 +13,9 @@ export async function exportarAuditoriasTemplate(
   vigenciaActiva: string = new Date().getFullYear().toString(),
   // Versión del Programa Anual (EFDS-1919). No confundir con la VERSIÓN del
   // encabezado, que es la del formato EM-FO-001.
-  opciones: { version?: number; fechaVersion?: string } = {}
+  // `borrador`: sin versión porque el Plan Anual no está aprobado; `borradorDe`:
+  // cambios sin versionar, es el borrador de esa versión.
+  opciones: { version?: number; fechaVersion?: string; borrador?: boolean; borradorDe?: number } = {}
 ): Promise<{ exito: boolean; nombreArchivo: string; mensaje?: string; error?: string }> {
   try {
     const workbook = new ExcelJS.Workbook();
@@ -314,12 +316,27 @@ export async function exportarAuditoriasTemplate(
                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
             }
         } else {
-            const sInicio = semanaDeFecha(a.fechaInicioRaw);
-            const sFinP = semanaDeFecha(a.fechaFinPlaneacionRaw);
-            const sInicioE = semanaDeFecha(a.fechaInicioEjecucionRaw);
-            const sFinE = semanaDeFecha(a.fechaFinEjecucionRaw);
-            const sInicioC = semanaDeFecha(a.fechaInicioComunicacionRaw);
-            const sFin = semanaDeFecha(a.fechaFinRaw);
+            // Semana de la fecha; si cae fuera de la vigencia (una etapa que sigue en
+            // enero del año siguiente), la primera o la última columna.
+            const semanaOLimite = (dateVal: any): SemanaVigencia | null => {
+              const exacta = semanaDeFecha(dateVal);
+              const ymd = aYMD(dateVal);
+              if (exacta || !ymd || !semanasVigencia.length) return exacta;
+              // Solo el año vecino: una fecha de otra década es un error de datos y no se pinta
+              if (Math.abs(Number(ymd.slice(0, 4)) - Number(añoVigencia)) > 1) return null;
+              if (ymd > semanasVigencia[semanasVigencia.length - 1].domingo) return semanasVigencia[semanasVigencia.length - 1];
+              if (ymd < semanasVigencia[0].lunes) return semanasVigencia[0];
+              return null;
+            };
+            const sInicio = semanaOLimite(a.fechaInicioRaw);
+            const sFinP = semanaOLimite(a.fechaFinPlaneacionRaw);
+            const sInicioE = semanaOLimite(a.fechaInicioEjecucionRaw);
+            const sFinE = semanaOLimite(a.fechaFinEjecucionRaw);
+            const sInicioC = semanaOLimite(a.fechaInicioComunicacionRaw);
+            const sFin = semanaOLimite(a.fechaFinRaw);
+            // Si guarda fechas por etapa, se pintan solo las que tiene: una Especial puede
+            // no tener Planeación ni Ejecución (EFDS-1923) y antes se le inventaban.
+            const tieneEtapas = !!(a.fechaFinPlaneacionRaw || a.fechaInicioEjecucionRaw || a.fechaFinEjecucionRaw || a.fechaInicioComunicacionRaw);
 
             if (sInicio && sFin) {
               // Semana Santa, receso y las semanas excluidas no llevan letra:
@@ -337,12 +354,12 @@ export async function exportarAuditoriasTemplate(
                 }
               };
 
-              if (sFinP && sInicioE && sFinE && sInicioC) {
-                 pintarEtapa(sInicio, sFinP, 'P', 'FFBBDEFB'); // Azul claro
-                 pintarEtapa(sInicioE, sFinE, 'E', 'FFFFF59D'); // Amarillo suave
-                 pintarEtapa(sInicioC, sFin, 'C', 'FFA5D6A7'); // Verde claro
+              if (tieneEtapas) {
+                 if (a.fechaFinPlaneacionRaw && sFinP) pintarEtapa(sInicio, sFinP, 'P', 'FFBBDEFB'); // Azul claro
+                 if (sInicioE && sFinE) pintarEtapa(sInicioE, sFinE, 'E', 'FFFFF59D'); // Amarillo suave
+                 if (sInicioC) pintarEtapa(sInicioC, sFin, 'C', 'FFA5D6A7'); // Verde claro
               } else {
-                 // Sin las etapas intermedias se reparte el rango en 4-4-5,
+                 // Auditorías viejas sin fechas por etapa: se reparte el rango en 4-4-5,
                  // saltando también las semanas que no se programan.
                  const disponibles: SemanaVigencia[] = [];
                  for (let n = sInicio.numero; n <= sFin.numero; n++) {
@@ -398,9 +415,13 @@ export async function exportarAuditoriasTemplate(
     // las versiones generadas después de las 7 p. m.
     const fechaActualizado = new Date(opciones.fechaVersion || Date.now())
       .toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-    fAct.value = opciones.version
-      ? `Versión ${opciones.version} del Programa Anual - Actualizado el ${fechaActualizado}`
-      : `Actualizado el ${fechaActualizado}`;
+    fAct.value = opciones.borradorDe
+      ? `Borrador de la versión ${opciones.borradorDe} del Programa Anual (cambios sin versionar) - Actualizado el ${fechaActualizado}`
+      : opciones.borrador
+        ? `Borrador del Programa Anual: la versión 1 se genera al aprobar el Plan Anual - Actualizado el ${fechaActualizado}`
+        : opciones.version
+          ? `Versión ${opciones.version} del Programa Anual - Actualizado el ${fechaActualizado}`
+          : `Actualizado el ${fechaActualizado}`;
     fAct.font = { name: 'Arial', size: 9, bold: false };
     fAct.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
     for (let c = 1; c <= totalCols; c++) {
@@ -444,9 +465,13 @@ export async function exportarAuditoriasTemplate(
     const url = window.URL.createObjectURL(blob);
     
     const link = document.createElement('a');
-    const nombreArchivo = opciones.version
-      ? `PAI_${vigenciaActiva}_V${opciones.version}.xlsx`
-      : `PAI_${vigenciaActiva}_Exportado.xlsx`;
+    const nombreArchivo = opciones.borradorDe
+      ? `PAI_${vigenciaActiva}_V${opciones.borradorDe}_Borrador.xlsx`
+      : opciones.borrador
+        ? `PAI_${vigenciaActiva}_Borrador.xlsx`
+        : opciones.version
+          ? `PAI_${vigenciaActiva}_V${opciones.version}.xlsx`
+          : `PAI_${vigenciaActiva}_Exportado.xlsx`;
     link.href = url;
     link.download = nombreArchivo;
     document.body.appendChild(link);
@@ -457,9 +482,13 @@ export async function exportarAuditoriasTemplate(
     return {
       exito: true,
       nombreArchivo,
-      mensaje: opciones.version
-        ? `Programa Anual exportado (versión ${opciones.version}).`
-        : `Plan Anual exportado con éxito.`
+      mensaje: opciones.borradorDe
+        ? `Programa Anual exportado (borrador de la versión ${opciones.borradorDe}).`
+        : opciones.borrador
+          ? 'Programa Anual exportado (borrador, sin versión).'
+          : opciones.version
+            ? `Programa Anual exportado (versión ${opciones.version}).`
+            : `Plan Anual exportado con éxito.`
     };
   } catch (error) {
     console.error('Error al exportar Excel:', error);
