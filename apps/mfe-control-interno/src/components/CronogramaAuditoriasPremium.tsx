@@ -56,8 +56,14 @@ import {
   type TipoAuditoria as TipoAuditoriaHook,
   type EstadoAuditoria as EstadoAuditoriaHook,
 } from './hooks/useProgramaAnualData';
-import { esFestivo } from '../gestion-legal/utils/diasHabiles';
-import { fechaYMD, semanasDeVigencia, NOMBRE_BLOQUEO, type BloqueoSemana } from './services/calendarioVigencia';
+import { festivoDe, fechaYMD, semanasDeVigencia, NOMBRE_BLOQUEO, type BloqueoSemana } from './services/calendarioVigencia';
+
+/**
+ * Festivos calculados por la Ley 51 de 1983 para cualquier año (EFDS-2132). Antes
+ * salían de la lista fija de Gestión Legal, que solo va de 2024 a 2027: en 2035 o
+ * 2046 el cronograma no marcaba ni el 1 de enero.
+ */
+const esFestivo = (dia: Date) => !!festivoDe(fechaYMD(dia));
 import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
 import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
 import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
@@ -155,8 +161,10 @@ const DURACION_ETAPAS_WEEKS = {
 function obtenerEtapaAutomatica(fechaReferencia: Date, auditoria: AuditoriaProgramada): ColumnaKanban {
   if (!auditoria.fechaInicio) return 'desconocido';
   
+  // Al mediodía, igual que parsearFecha: a las 00:00 el primer día de cada etapa
+  // quedaba antes de su inicio (12:00) y no se pintaba.
   const ref = new Date(fechaReferencia);
-  ref.setHours(0, 0, 0, 0);
+  ref.setHours(12, 0, 0, 0);
 
   const { planeacion, ejecucion, comunicacion } = obtenerRangosEtapas(auditoria);
 
@@ -183,8 +191,10 @@ function resolverEtapaParaCronograma(dia: Date, aud: AuditoriaProgramada): Colum
   const ui = aud as any;
   const kanbanCol = resolverColumnaKanban(ui.estadoKanban, ui.fase, ui.estado);
 
-  // Sin estado Kanban definido → calcular por fechas
-  if (kanbanCol === 'desconocido') {
+  // Sin estado Kanban, o todavía en "Plan Anual" (programada y sin arrancar) →
+  // calcular por fechas. Antes "Plan Anual" se aplicaba a todos los días desde la
+  // última modificación y las auditorías de vigencias futuras no se pintaban.
+  if (kanbanCol === 'desconocido' || kanbanCol === 'plan_anual') {
     return obtenerEtapaAutomatica(dia, aud);
   }
 
@@ -271,7 +281,7 @@ function obtenerRangosEtapas(auditoria: AuditoriaProgramada) {
 
   // Fallback: Cálculo dinámico (4-4-5 semanas desde fechaInicio)
   const inicio = parsearFecha(fechaInicio) || new Date();
-  inicio.setHours(0, 0, 0, 0);
+  inicio.setHours(12, 0, 0, 0);
   
   const pInicio = new Date(inicio);
   const pFin = new Date(inicio);
