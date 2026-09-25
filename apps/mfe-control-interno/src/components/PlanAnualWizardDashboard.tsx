@@ -661,10 +661,14 @@ function ListaEvidenciasTarea({
 }
 
 function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
-  const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
+  // Cortes guardados como cierre → entrega del informe se leen como periodos (EFDS-958)
+  const puntosControlActividad = cortesComoPeriodos(((act as any).puntosControl || (act as any).puntos_control || []) as any[]);
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
+    // Muchas tareas del backend solo traen fechaLimite: sin fechaEntrega el campo de fecha
+    // del corte salía vacío y la fecha no se movía al configurar los cortes (EFDS-958).
+    fechaEntrega: String(t.fechaEntrega || t.fechaLimite || t.fecha_limite || '').slice(0, 10) || undefined,
     responsables: normalizarResponsablesTarea(t.responsables),
     adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
@@ -2579,7 +2583,21 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
         if (Array.isArray(winner.comiteAprobacion)) setComiteAprobacion(winner.comiteAprobacion);
         if (winner.jefeSeleccionado) setJefeSeleccionado(winner.jefeSeleccionado as Auditor);
         if (winner.rolesConfig) {
-          setRolesConfig(normalizarResponsables(winner.rolesConfig as RolConfig[]));
+          // Borradores guardados antes de EFDS-958: cortes cierre → entrega y tareas sin fechaEntrega
+          const normalizarFechas = (act: ActividadBase): ActividadBase => ({
+            ...act,
+            puntosControl: act.puntosControl ? cortesComoPeriodos(act.puntosControl) : act.puntosControl,
+            tareasSeguimiento: (act.tareasSeguimiento || []).map((t: any) => ({
+              ...t,
+              fechaEntrega: String(t.fechaEntrega || t.fechaLimite || t.fecha_limite || '').slice(0, 10) || undefined,
+            })),
+          });
+          const rolesDelBorrador = (winner.rolesConfig as RolConfig[]).map((rol) => ({
+            ...rol,
+            actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map(normalizarFechas),
+            actividadesCustom: (rol.actividadesCustom || []).map(normalizarFechas),
+          }));
+          setRolesConfig(normalizarResponsables(rolesDelBorrador));
         }
 
         const savedAtStr =
