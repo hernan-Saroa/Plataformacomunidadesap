@@ -16,6 +16,7 @@ import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ProgramaAnualRol4TareaSyncService } from './programa-anual-rol4-tarea-sync.service';
+import { ProgramaAnualVersionesService } from '../programa-anual-versiones/programa-anual-versiones.service';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -99,6 +100,7 @@ export class PlanAnual5RolesService {
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
     private readonly rol4TareaSync: ProgramaAnualRol4TareaSyncService,
+    private readonly versionesPrograma: ProgramaAnualVersionesService,
   ) {}
 
   /**
@@ -430,6 +432,17 @@ export class PlanAnual5RolesService {
         savedPlan.estado,
         cambios
       );
+    }
+
+    // Al aprobarse el plan nace la V1 del Programa Anual con lo programado en ese
+    // momento; antes el programa estaba en elaboración y no tenía versiones.
+    if (savedPlan.estado === 'aprobado' && this.normalizarEstadoPlan(estadoAnterior) !== 'aprobado') {
+      try {
+        await this.versionesPrograma.asegurarVersionInicial(savedPlan.año, { id: usuarioId ?? null, nombre: 'Aprobación del comité' });
+      } catch (errorVersion) {
+        // Si falla, la V1 se crea al abrir el programa: no se bloquea la aprobación.
+        console.error('[PlanAnual5RolesService.update] No se pudo crear la V1 del Programa Anual:', errorVersion);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

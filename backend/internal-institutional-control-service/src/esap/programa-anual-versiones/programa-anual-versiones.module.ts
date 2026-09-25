@@ -10,5 +10,7 @@ import { ProgramaAnualVersionesService } from './programa-anual-versiones.servic
   imports: [TypeOrmModule.forFeature([VersionProgramaAnual]), AuditoriasModule, AuthModule],
   controllers: [ProgramaAnualVersionesController],
   providers: [ProgramaAnualVersionesService],
+  // El Plan Anual crea la V1 del programa al aprobarse
+  exports: [ProgramaAnualVersionesService],
 })
 export class ProgramaAnualVersionesModule {}
