@@ -64,7 +64,7 @@ import {
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
-import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
+import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -660,15 +660,47 @@ function ListaEvidenciasTarea({
   );
 }
 
+/**
+ * "Agregar" con la descripción vacía (EFDS-2191): el campo queda en rojo con un aviso debajo
+ * y el cursor en él; todo se quita apenas se empieza a escribir.
+ */
+function marcarTareaSinDescripcion(input: HTMLInputElement) {
+  const mensaje = 'Escribe la descripción de la tarea antes de pulsar Agregar.';
+  input.style.borderColor = '#dc2626';
+  input.style.borderStyle = 'solid';
+  input.style.backgroundColor = '#fef2f2';
+  input.style.boxShadow = '0 0 0 3px rgba(220, 38, 38, 0.2)';
+  input.setAttribute('aria-invalid', 'true');
+  const fila = input.parentElement;
+  let aviso = fila?.parentElement?.querySelector<HTMLParagraphElement>('[data-aviso-tarea-vacia]') ?? null;
+  if (!aviso && fila) {
+    aviso = document.createElement('p');
+    aviso.setAttribute('data-aviso-tarea-vacia', '');
+    aviso.setAttribute('role', 'alert');
+    aviso.style.cssText = 'color:#dc2626;font-size:11px;font-weight:600;margin-top:4px;';
+    fila.insertAdjacentElement('afterend', aviso);
+  }
+  if (aviso) aviso.textContent = mensaje;
+  input.focus();
+  const limpiar = () => {
+    input.style.borderColor = '';
+    input.style.borderStyle = '';
+    input.style.backgroundColor = '';
+    input.style.boxShadow = '';
+    input.removeAttribute('aria-invalid');
+    aviso?.remove();
+    input.removeEventListener('input', limpiar);
+  };
+  input.addEventListener('input', limpiar);
+}
+
 function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   // Cortes guardados como cierre → entrega del informe se leen como periodos (EFDS-958)
   const puntosControlActividad = cortesComoPeriodos(((act as any).puntosControl || (act as any).puntos_control || []) as any[]);
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
-    // Muchas tareas del backend solo traen fechaLimite: sin fechaEntrega el campo de fecha
-    // del corte salía vacío y la fecha no se movía al configurar los cortes (EFDS-958).
-    fechaEntrega: String(t.fechaEntrega || t.fechaLimite || t.fecha_limite || '').slice(0, 10) || undefined,
+    fechaEntrega: fechaEntregaDeTarea(t), // EFDS-958: muchas solo traen fechaLimite
     responsables: normalizarResponsablesTarea(t.responsables),
     adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
@@ -2589,7 +2621,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
             puntosControl: act.puntosControl ? cortesComoPeriodos(act.puntosControl) : act.puntosControl,
             tareasSeguimiento: (act.tareasSeguimiento || []).map((t: any) => ({
               ...t,
-              fechaEntrega: String(t.fechaEntrega || t.fechaLimite || t.fecha_limite || '').slice(0, 10) || undefined,
+              fechaEntrega: fechaEntregaDeTarea(t),
             })),
           });
           const rolesDelBorrador = (winner.rolesConfig as RolConfig[]).map((rol) => ({
@@ -4329,9 +4361,12 @@ function Paso2({
 
       // 0. Si el corte de la tarea cambió de fechas (otra periodicidad), la tarea va al corte
       //    que corresponde a su fecha de entrega, no al que conserva el mismo id (EFDS-958).
+      //    Su fecha de seguimiento se recalcula desde el fin de ese corte, como en los cortes por defecto.
       if (tarea.fechaEntrega && corteViejo && !mismoPeriodo(corteViejo, corteNuevo)) {
         const destino = corteDeLaFecha(tarea.fechaEntrega, puntosNuevos);
-        if (destino) return { ...tarea, puntoControlId: destino.id };
+        if (destino) {
+          return { ...tarea, puntoControlId: destino.id, fechaEntrega: fechaSeguimientoPorDefecto(destino) ?? tarea.fechaEntrega };
+        }
       }
 
       // 1. Si la tarea ya tiene un puntoControlId válido en los nuevos puntos, conservarlo
@@ -5013,8 +5048,6 @@ function Paso2({
                                           {actividadData.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
                                             const hoyDate = new Date();
                                             hoyDate.setHours(0,0,0,0);
-                                            const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
-                                            const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                             const esCompletado = pc.estado === 'completado';
                                             // Estado según el periodo del corte (EFDS-958)
                                             const estadoCorte = estadoDelCorte(pc, hoyDate, esCompletado, (actividadData.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega));
@@ -5214,6 +5247,8 @@ function Paso2({
                                                             </label>
                                                             <div className="ml-auto">
                                                               <input type="date" data-nueva-fecha={`${idActividadEnEstado}-${pc.id}`}
+                                                                key={`nueva-fecha-${pc.id}-${pc.fechaSeguimiento}`}
+                                                                defaultValue={fechaSeguimientoPorDefecto(pc)}
                                                                 className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
                                                                 title="Fecha de entrega" />
                                                             </div>
@@ -5242,8 +5277,7 @@ function Paso2({
                                                                 const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
                                                                 // Con el campo vacío el botón no hacía nada y parecía que no se podían crear tareas (EFDS-2191)
                                                                 if (input && !input.value.trim()) {
-                                                                  input.focus();
-                                                                  toast.info('Escribe la descripción de la tarea en "Nueva tarea…" y luego pulsa Agregar');
+                                                                  marcarTareaSinDescripcion(input);
                                                                   return;
                                                                 }
                                                                 if (input && input.value.trim()) {
@@ -5576,8 +5610,6 @@ function Paso2({
                                         {actividad.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
                                           const hoyDate = new Date();
                                           hoyDate.setHours(0,0,0,0);
-                                          const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
-                                          const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                           const esCompletado = pc.estado === 'completado';
                                           // Estado según el periodo del corte (EFDS-958)
                                           const estadoCorte = estadoDelCorte(pc, hoyDate, esCompletado, (actividad.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega));
@@ -5778,6 +5810,8 @@ function Paso2({
                                                             </label>
                                                             <div className="ml-auto">
                                                               <input type="date" data-nueva-fecha-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                key={`nueva-fecha-custom-${pc.id}-${pc.fechaSeguimiento}`}
+                                                                defaultValue={fechaSeguimientoPorDefecto(pc)}
                                                                 className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
                                                                 title="Fecha de entrega" />
                                                             </div>
@@ -5806,8 +5840,7 @@ function Paso2({
                                                                 const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
                                                                 // Con el campo vacío el botón no hacía nada y parecía que no se podían crear tareas (EFDS-2191)
                                                                 if (input && !input.value.trim()) {
-                                                                  input.focus();
-                                                                  toast.info('Escribe la descripción de la tarea en "Nueva tarea…" y luego pulsa Agregar');
+                                                                  marcarTareaSinDescripcion(input);
                                                                   return;
                                                                 }
                                                                 if (input && input.value.trim()) {

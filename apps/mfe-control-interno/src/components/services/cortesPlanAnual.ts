@@ -38,7 +38,7 @@ function diaSiguiente(fecha: string): string {
 }
 
 /** Formato viejo: todos los cortes "empiezan" el último día de un mes (cierre del periodo). */
-export function sonCortesDeCierre(puntos: CorteFechas[]): boolean {
+function sonCortesDeCierre(puntos: CorteFechas[]): boolean {
   if (!Array.isArray(puntos) || puntos.length === 0) return false;
   return puntos.every((pc) => {
     const p = partes(pc.fechaProgramada);
@@ -89,6 +89,28 @@ export function tareasEnElAñoDeLosCortes<T extends { fechaEntrega?: string }>(
     const año = p[0] + salto;
     return { ...t, fechaEntrega: iso(año, p[1], Math.min(p[2], ultimoDiaDelMes(año, p[1]))) };
   });
+}
+
+/**
+ * Fecha de entrega de una tarea. Muchas tareas del backend solo traen fechaLimite: sin
+ * fechaEntrega el campo de fecha del corte salía vacío y la fecha no se movía al
+ * configurar los cortes.
+ */
+export function fechaEntregaDeTarea(t: { fechaEntrega?: string; fechaLimite?: string; fecha_limite?: string }): string | undefined {
+  return String(t.fechaEntrega || t.fechaLimite || t.fecha_limite || '').slice(0, 10) || undefined;
+}
+
+/**
+ * Fecha de seguimiento por defecto de las tareas de un corte: el último día del mes
+ * siguiente al fin del corte, igual que los cortes por defecto (30/06 → 31/07,
+ * 31/12 → 31/01 del año siguiente).
+ */
+export function fechaSeguimientoPorDefecto(corte: CorteFechas | undefined): string | undefined {
+  const fin = partes(corte?.fechaSeguimiento || corte?.fechaProgramada);
+  if (!fin) return undefined;
+  const año = fin[1] === 12 ? fin[0] + 1 : fin[0];
+  const mes = fin[1] === 12 ? 1 : fin[1] + 1;
+  return iso(año, mes, ultimoDiaDelMes(año, mes));
 }
 
 /**
