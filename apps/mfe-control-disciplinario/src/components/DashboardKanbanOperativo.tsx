@@ -3918,7 +3918,7 @@ export function DashboardKanbanOperativo({
         
         
         
-        noticiasFiltradas = noticiasData.filter(n => parseInt((n as any).radicadorId) === parseInt(userInfo));
+        noticiasFiltradas = noticiasData.filter(n => String((n as any).radicadorId) === String(userInfo));
         
       }
 
