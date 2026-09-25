@@ -15,7 +15,9 @@ import { SolicitudHistorialEstadoEntity } from '../../../entities/solicitud-hist
 import { ConfigService } from '../../config/config.service';
 import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
 import { NotificationClientService } from '../../../common/notification-client.service';
+import { HumanResourcesClientService } from '../../../common/human-resources-client.service';
 import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
+
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../../dto/segunda-revision-observaciones.dto';
 
@@ -47,6 +49,7 @@ describe('TravelExpensesService', () => {
       dataSource?: any;
       configService?: any;
       notificationClient?: any;
+      humanResourcesClient?: any;
     } = {},
   ) => {
     const {
@@ -68,6 +71,9 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+      },
+      humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
       },
       notificationClient = {
         archiveNotificacionesPorSolicitud: jest
@@ -125,9 +131,14 @@ describe('TravelExpensesService', () => {
           provide: NotificationClientService,
           useValue: notificationClient,
         },
+        {
+          provide: HumanResourcesClientService,
+          useValue: humanResourcesClient,
+        },
       ],
     }).compile();
   };
+
 
   beforeEach(async () => {
     const module = await createMockModule();
@@ -167,6 +178,66 @@ describe('TravelExpensesService', () => {
       });
       // No debe consultar auth.personas si lo encuentra localmente.
       expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe materializar comisionado desde talento humano (Oracle FNC) y persistirlo cuando existe en la vista', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn().mockImplementation(async (x) => ({
+          ...x,
+          id: 'com-fnc-001',
+          creadoEn: new Date(),
+          actualizadoEn: new Date(),
+        })),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.dependencias')) {
+            return [{ id_dependencia: 15 }];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'CARLOS ALBERTO GOMEZ RESTREPO',
+          id_number: '80123456',
+          organization_department: 'DIRECCION DE CAPACITACION',
+          email: 'carlos.gomez@esap.edu.co',
+          phone: '3109876543',
+        }),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('80123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          numeroDocumento: '80123456',
+          primerNombre: 'CARLOS',
+          segundoNombre: 'ALBERTO',
+          primerApellido: 'GOMEZ',
+          segundoApellido: 'RESTREPO',
+          email: 'carlos.gomez@esap.edu.co',
+          telefonoContacto: '3109876543',
+          tipoComisionado: 'FUNCIONARIO',
+          origenDatos: 'HUMANO',
+          idDependencia: 15,
+        }),
+      );
+      expect(result).toMatchObject({
+        numeroDocumento: '80123456',
+        origenDatos: 'HUMANO',
+        idDependencia: 15,
+      });
     });
 
     it('debe materializar comisionado desde auth.personas y persistirlo cuando no existe localmente', async () => {
@@ -243,6 +314,7 @@ describe('TravelExpensesService', () => {
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
     });
 
+
     it('debe lanzar BadRequestException si el documento viene vacío', async () => {
       const comisionadoRepo = {
         findOne: jest.fn(),
@@ -259,6 +331,102 @@ describe('TravelExpensesService', () => {
       await expect(svc.consultarComisionado('   ')).rejects.toBeInstanceOf(
         BadRequestException,
       );
+    });
+  });
+
+  describe('buscarTalentoHumano', () => {
+    it('debe buscar por documento en talento humano (Oracle FNC) exitosamente', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+          id_number: '53062883',
+          organization_department: 'DIRECCIÓN DE TALENTO HUMANO',
+          position_name: 'Profesional Especializado',
+          email: 'dianagut8425@gmail.com',
+          phone: '3101234567',
+        }),
+        buscarFuncionariosPorTermino: jest.fn(),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.buscarTalentoHumano(undefined, '53062883');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('53062883');
+      expect(result.ok).toBe(true);
+      expect(result.source).toBe('talento_humano_oracle');
+      expect(result.total).toBe(1);
+      expect(result.data[0].id_number).toBe('53062883');
+      expect(result.data[0].full_name).toBe('DIANA MARIA GUTIERREZ RAMIREZ');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe lanzar NotFoundException si el documento no se encuentra en talento humano', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+        buscarFuncionariosPorTermino: jest.fn(),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.buscarTalentoHumano(undefined, '53062883')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('53062883');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe buscar por término en talento humano (Oracle FNC) exitosamente', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn(),
+        buscarFuncionariosPorTermino: jest.fn().mockResolvedValue([
+          {
+            full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+            id_number: '53062883',
+            organization_department: 'DIRECCIÓN DE TALENTO HUMANO',
+          },
+        ]),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.buscarTalentoHumano('diana', undefined, 20);
+
+      expect(humanResourcesClient.buscarFuncionariosPorTermino).toHaveBeenCalledWith('diana', 20);
+      expect(result.ok).toBe(true);
+      expect(result.source).toBe('talento_humano_oracle');
+      expect(result.total).toBe(1);
+      expect(result.data[0].id_number).toBe('53062883');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe lanzar NotFoundException si no se encuentran funcionarios para el término en talento humano', async () => {
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn(),
+        buscarFuncionariosPorTermino: jest.fn().mockResolvedValue([]),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+
+      const module = await createMockModule({ humanResourcesClient, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.buscarTalentoHumano('inexistente', undefined, 20)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar búsqueda si el término tiene menos de 3 caracteres', async () => {
+      const module = await createMockModule({});
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.buscarTalentoHumano('ab')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -909,6 +1077,82 @@ describe('TravelExpensesService', () => {
 
       expect(result).toBeDefined();
       expect(solicitudRepo.save).toHaveBeenCalled();
+    });
+
+    it('debe crear solicitud con campos adicionales dinámicos y días de comisión decimales', async () => {
+      const comisionado = {
+        ...mockComisionado,
+        autorizacionHabeasData: true,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
+
+      let entidadCapturada: any = null;
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn().mockImplementation((dto) => {
+          entidadCapturada = dto;
+          return { id: 'sol-decimal-01', ...dto };
+        }),
+        save: jest.fn().mockImplementation((ent) => Promise.resolve(ent)),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ max: 'COM-2026-0005' }),
+              }),
+            }),
+          };
+          return cb(manager);
+        }),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Leticia',
+        destinoDepartamento: 'Amazonas',
+        fechaInicio: '2026-10-15',
+        fechaFin: '2026-10-16',
+        objetoComision: 'Acompañamiento a comunidades territoriales',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'C-0102',
+        requiereTiquetes: true,
+        diasComision: 1.5,
+        montoViaticos: 450000,
+        montoGastosViaje: 100000,
+        creadoPorUsuarioId: 'user-001',
+        camposAdicionales: {
+          centroCostos: 'CC-Amazonas-01',
+          contactoEmergencia: '3129876543',
+        },
+      });
+
+      expect(result).toBeDefined();
+      expect(entidadCapturada.diasComision).toBe(1.5);
+      expect(entidadCapturada.camposAdicionales).toEqual({
+        centroCostos: 'CC-Amazonas-01',
+        contactoEmergencia: '3129876543',
+      });
+      expect(result.camposAdicionales.centroCostos).toBe('CC-Amazonas-01');
     });
 
     it('debe lanzar 400 si fecha fin es anterior a fecha inicio', async () => {
@@ -4578,6 +4822,14 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             email: 'carlos.perez@esap.edu.co',
             telefonoContacto: '3001234567',
           },
+          diasPernoctados: 2,
+          tarifaDiaPernoctado: 300000,
+          totalPernoctados: 600000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 150000,
+          totalNoPernoctados: 150000,
+          tarifaDiariaBase: 200000,
+          decretoAplicado: 'Decreto 314 de 2026',
           documentosSoporte: [],
         };
 
@@ -4622,6 +4874,14 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             primerApellido: 'García',
             numeroDocumento: '52987654',
           },
+          diasPernoctados: 1,
+          tarifaDiaPernoctado: 250000,
+          totalPernoctados: 250000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 125000,
+          totalNoPernoctados: 125000,
+          tarifaDiariaBase: 200000,
+          decretoAplicado: 'Decreto 314 de 2026',
           documentosSoporte: [],
         };
 

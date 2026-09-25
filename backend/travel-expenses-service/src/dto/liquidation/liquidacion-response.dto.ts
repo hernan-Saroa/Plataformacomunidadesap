@@ -22,6 +22,18 @@ export class LiquidacionResponseDto {
     tarifaFinalAplicadaDia: number;
     numeroDiasNoches: number;
     valorTotalViaticos: number;
+    // Campos estructurados según Formato GF-FO-023
+    diasPernoctados?: number;
+    tarifaDiaPernoctado?: number;
+    totalPernoctados?: number;
+    diasNoPernoctados?: number;
+    tarifaDiaNoPernoctado?: number;
+    totalNoPernoctados?: number;
+    // Sección 4 GF-FO-023: Liquidación de los Gastos de Desplazamiento
+    transporteTerminalesAereos?: number;
+    transporteTerrestreFluvial?: number;
+    totalGastosDesplazamiento?: number;
+    totalViaticosYDesplazamientos?: number;
     desgloseCalculo: DesgloseDiaDto[];
     alertas?: string[];
   };

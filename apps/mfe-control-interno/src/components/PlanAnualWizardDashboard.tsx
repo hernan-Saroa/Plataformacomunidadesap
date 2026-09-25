@@ -63,6 +63,7 @@ import {
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
+import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -728,12 +729,17 @@ function sumarAniosIso(iso: string, años: number): string {
 }
 
 /**
- * Desplaza todas las fechas de entrega para que la más temprana caiga en `vigencia`
+ * Mueve las fechas de entrega a `vigencia` con el mismo salto de años que la actividad
  * (conserva separación entre tareas, p. ej. julio vs enero siguiente).
+ *
+ * El salto sale del año en que estaba programada la actividad (`añoActividad`), no de la
+ * tarea más temprana: si todas las tareas caen en enero del año siguiente (seguimiento
+ * del corte de diciembre), deben quedarse en el año siguiente (EFDS-2142).
  */
 function alinearTareasFechasEntregaAVigencia(
   tareas: TareaSeguimiento[] | undefined,
-  vigencia: number
+  vigencia: number,
+  añoActividad?: number,
 ): TareaSeguimiento[] | undefined {
   if (!tareas?.length) return tareas;
   const años = tareas
@@ -742,12 +748,35 @@ function alinearTareasFechasEntregaAVigencia(
     .map((y) => parseInt(y, 10));
   if (años.length === 0) return tareas;
   const minAño = Math.min(...años);
-  const delta = vigencia - minAño;
+  let delta = añoActividad ? vigencia - añoActividad : vigencia - minAño;
+  // Tareas heredadas de una vigencia anterior a la actividad: se traen a la vigencia
+  if (minAño + delta < vigencia) delta = vigencia - minAño;
   if (delta === 0) return tareas;
   return tareas.map((t) => ({
     ...t,
     fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
   }));
+}
+
+/** Año en que está programada la actividad, antes de llevarla a otra vigencia. */
+function añoProgramadoActividad(act: ActividadBase): number | undefined {
+  const ref = act.fechaInicio || act.puntosControl?.[0]?.fechaProgramada || act.fechaFin;
+  return ref && /^\d{4}-/.test(ref) ? parseInt(ref.slice(0, 4), 10) : undefined;
+}
+
+/** Lleva el corte a la vigencia; su seguimiento puede quedar en enero del año siguiente. */
+function llevarPuntoControlAVigencia<T extends { fechaProgramada: string; fechaSeguimiento?: string | null }>(
+  pc: T,
+  vigencia: number,
+): T {
+  const fechaProgramada = reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia);
+  return {
+    ...pc,
+    fechaProgramada,
+    fechaSeguimiento: pc.fechaSeguimiento
+      ? seguimientoDespuesDelCorte(reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia), fechaProgramada)
+      : pc.fechaSeguimiento,
+  };
 }
 
 /** Fecha de corte mostrada: último cierre del último punto de control si existe. */
@@ -2252,12 +2281,16 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 ? reemplazarAnioEnFechaIso(act.fechaFin, año)
                 : act.fechaFin,
               fechaCorte: act.fechaCorte
-                ? reemplazarAnioEnFechaIso(act.fechaCorte, año)
+                ? seguimientoDespuesDelCorte(
+                    reemplazarAnioEnFechaIso(act.fechaCorte, año),
+                    act.fechaInicio ? reemplazarAnioEnFechaIso(act.fechaInicio, año) : undefined,
+                  )
                 : resolverFechaCorteActividad(act, vigencia),
               puntosControl: [],
               tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
                 act.tareasSeguimiento,
                 vigencia,
+                añoProgramadoActividad(act),
               ),
             };
           }
@@ -2271,13 +2304,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 fechaProgramada: cortesRegenerados[i].fechaProgramada,
                 fechaSeguimiento: cortesRegenerados[i].fechaSeguimiento,
               }))
-            : puntos.map((pc) => ({
-                ...pc,
-                fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
-                fechaSeguimiento: pc.fechaSeguimiento
-                  ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
-                  : pc.fechaSeguimiento,
-              }));
+            : puntos.map((pc) => llevarPuntoControlAVigencia(pc, año));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -2295,18 +2322,16 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               act.fechaCorte ||
               resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
-            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+              act.tareasSeguimiento,
+              vigencia,
+              añoProgramadoActividad(act),
+            ),
           };
         }),
         actividadesCustom: (rol.actividadesCustom || []).map((act) => {
           const puntos = act.puntosControl || [];
-          const nuevosPuntos = puntos.map((pc) => ({
-            ...pc,
-            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia),
-            fechaSeguimiento: pc.fechaSeguimiento
-              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia)
-              : pc.fechaSeguimiento,
-          }));
+          const nuevosPuntos = puntos.map((pc) => llevarPuntoControlAVigencia(pc, vigencia));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -2324,7 +2349,11 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               act.fechaCorte ||
               resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
-            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+              act.tareasSeguimiento,
+              vigencia,
+              añoProgramadoActividad(act),
+            ),
           };
         }),
       }))
@@ -4761,8 +4790,10 @@ function Paso2({
 
                                 {/* Tareas de seguimiento de la actividad: antes solo se contaban en el
                                     encabezado del rol. En el Rol 4 son las auditorías del Programa
-                                    Anual (EFDS-2133), así que se listan igual que en Seguimiento. */}
-                                {seleccionada && (actividadData?.tareasSeguimiento?.length ?? 0) > 0 && (
+                                    Anual (EFDS-2133), así que se listan igual que en Seguimiento.
+                                    Al crear o editar, cada corte ya muestra sus tareas: aquí solo se
+                                    listan en consulta o si la actividad no tiene cortes. */}
+                                {(soloLectura || !(actividadData?.puntosControl?.length)) && seleccionada && (actividadData?.tareasSeguimiento?.length ?? 0) > 0 && (
                                   <div className="px-3 pb-2 pt-2 border-t border-blue-200 mt-2" onClick={(e) => e.stopPropagation()}>
                                     <div className="text-xs font-semibold text-gray-900 mb-1.5">
                                       Tareas de seguimiento ({actividadData!.tareasSeguimiento!.filter((t) => t.completada).length}/{actividadData!.tareasSeguimiento!.length} completadas)
@@ -6701,16 +6732,41 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados)
-      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
+      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados).
+      // Va con el mismo margen de las tablas y se repite en cada hoja (EFDS-1629).
+      const configEncabezado = {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
         version: (plan as any).version ?? 1,
-        fecha: plan.fechaCreacion 
+        fecha: plan.fechaCreacion
           ? new Date(plan.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
           : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
-        logoImg: LOGO_ESAP_URL
-      });
-      
+        logoImg: LOGO_ESAP_URL,
+        margen: margin,
+      };
+      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, configEncabezado);
+      const paginasConEncabezado = new Set<number>([1]);
+      const encabezarPagina = () => {
+        const pagina = doc.getNumberOfPages();
+        if (paginasConEncabezado.has(pagina)) return;
+        paginasConEncabezado.add(pagina);
+        dibujarEncabezadoInstitucional(doc, configEncabezado);
+      };
+      const paginasConPie = new Set<number>();
+      const pieDePagina = () => {
+        const pagina = doc.getNumberOfPages();
+        if (paginasConPie.has(pagina)) return;
+        paginasConPie.add(pagina);
+        dibujarPieInstitucional(doc, pagina, true, margin);
+      };
+      const nuevaPagina = () => {
+        doc.addPage();
+        encabezarPagina();
+        pieDePagina();
+        return alturaEncabezado + 6;
+      };
+      // Espacio que dejan las tablas para no montarse sobre el pie de página
+      const margenInferior = 22;
+
       let currentY = alturaEncabezado + 5;
 
       // Vigencia y Título
@@ -6877,7 +6933,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         'Avance general del Plan Anual: actividades, tareas, responsables, fechas y porcentajes.'
       );
 
-      // Generar tabla principal
+      // Generar tabla principal (las columnas fijas suman 247 mm)
+      const anchoSobrante = Math.max(0, pageWidth - margin * 2 - 247);
       autoTable(doc, {
         startY: currentY,
         head: tableHead,
@@ -6898,24 +6955,23 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         },
         columnStyles: {
           0: { cellWidth: 30 }, // Rol
-          1: { cellWidth: 42 }, // Actividades
+          // Actividades y Seguimiento reparten el ancho sobrante: la tabla ocupa lo mismo que el encabezado
+          1: { cellWidth: 42 + anchoSobrante / 2 }, // Actividades
           2: { cellWidth: 15, halign: 'center' }, // Inicio
           3: { cellWidth: 15, halign: 'center' }, // Fin
           4: { cellWidth: 22 }, // Responsable
           5: { cellWidth: 20 }, // Control
           6: { cellWidth: 14, halign: 'center' }, // Avance actividad
           7: { cellWidth: 18 }, // Resp. Tarea
-          8: { cellWidth: 42 }, // Seguimiento tareas
+          8: { cellWidth: 42 + anchoSobrante / 2 }, // Seguimiento tareas
           9: { cellWidth: 15, halign: 'center' }, // Fecha
           10: { cellWidth: 14, halign: 'center' } // Avance tarea
         },
-        margin: { left: margin, right: margin, top: alturaEncabezado + 20 },
+        margin: { left: margin, right: margin, top: alturaEncabezado + 6, bottom: margenInferior },
         pageBreak: 'auto',
         rowPageBreak: 'avoid',
-        didDrawPage: (data) => {
-          // Footer en cada página
-          dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
-        }
+        willDrawPage: encabezarPagina,
+        didDrawPage: pieDePagina,
       });
 
       currentY = (doc as any).lastAutoTable.finalY + 6;
@@ -6923,9 +6979,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       // El avance global cierra la sección general; cada actividad se cuenta una sola vez.
       const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
 
-      if (currentY > pageHeight - 30) {
-        doc.addPage();
-        currentY = margin + 20;
+      if (currentY > pageHeight - margenInferior - 14) {
+        currentY = nuevaPagina();
       }
 
       doc.setFillColor(240, 240, 240);
@@ -6935,8 +6990,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       doc.setFont('helvetica', 'bold');
       doc.text(`AVANCE GLOBAL DEL PLAN: ${promedioGral}%  (Total Actividades: ${totalActividadesCount})`, margin + 5, currentY + 8);
 
-      doc.addPage();
-      currentY = margin + 5;
+      currentY = nuevaPagina();
       dibujarTituloSeccion(
         'AVANCE DE ACTIVIDADES POR ROL',
         'Los porcentajes de esta sección corresponden al avance de las actividades según cada rol.'
@@ -6953,8 +7007,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
         // El título del rol no queda solo al final de la hoja: debe caber con el encabezado y la primera fila
         if (rolIdx > 0 && currentY > pageHeight - 55) {
-          doc.addPage();
-          currentY = margin + 5;
+          currentY = nuevaPagina();
         }
 
         doc.setFontSize(11);
@@ -7015,10 +7068,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             3: { cellWidth: 30, halign: 'center' },
             4: { cellWidth: 26, halign: 'center' }
           },
-          margin: { left: margin, right: margin, bottom: 20 },
-          didDrawPage: () => {
-            dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
-          },
+          margin: { left: margin, right: margin, top: alturaEncabezado + 6, bottom: margenInferior },
+          willDrawPage: encabezarPagina,
+          didDrawPage: pieDePagina,
           didParseCell: function(data) {
             // Destacar la fila de subtotal
             if (data.row.index === actividadesData.length - 1) {

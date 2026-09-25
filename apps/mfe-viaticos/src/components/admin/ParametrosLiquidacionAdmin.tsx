@@ -4,7 +4,7 @@ import viaticosService from '../../services/api/viaticosService';
 import { LiquidationParam } from '../../types/parametrizacion';
 import { formatearMoneda } from '../../utils/viaticosUtils';
 
-const PARAMETROS_MONETARIOS = new Set(['SMMLV_2026']);
+const PARAMETROS_MONETARIOS = new Set(['SMMLV_2026', 'TARIFA_TERMINAL_AEREO']);
 
 export default function ParametrosLiquidacionAdmin() {
   const [params, setParams] = useState<Record<string, LiquidationParam>>({});
@@ -48,6 +48,7 @@ export default function ParametrosLiquidacionAdmin() {
       if (params['FACTOR_CONTRATISTA']) dto.factorContratista = Number(params['FACTOR_CONTRATISTA'].valor);
       if (params['FACTOR_SIN_PERNOCTA']) dto.factorSinPernocta = Number(params['FACTOR_SIN_PERNOCTA'].valor);
       if (params['CACHE_TTL_MINUTES']) dto.cacheTtlMinutes = Number(params['CACHE_TTL_MINUTES'].valor);
+      if (params['TARIFA_TERMINAL_AEREO']) dto.tarifaTerminalAereo = Number(params['TARIFA_TERMINAL_AEREO'].valor);
 
       const res = await viaticosService.actualizarParametrosLiquidacion(dto);
       setExito(`Parámetros actualizados correctamente (${res.length} valores guardados)`);
@@ -158,6 +159,20 @@ export default function ParametrosLiquidacionAdmin() {
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
             />
             <p className="text-[10px] text-slate-500 mt-1">{getParam('ANO_VIGENCIA_ESCALAS')?.valor || '2026'}</p>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              Tarifa Terminales Aéreos (Resolución de Viáticos)
+            </label>
+            <input
+              type="number"
+              value={getParam('TARIFA_TERMINAL_AEREO')?.valor || '162634'}
+              onChange={(e) => cambiar('TARIFA_TERMINAL_AEREO', e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">
+              {formatearMoneda(Number(getParam('TARIFA_TERMINAL_AEREO')?.valor || '162634'))}
+            </p>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Cache TTL (minutos)</label>

@@ -58,7 +58,12 @@ import {
   NotificationClientService,
   buildTravelExpenseEmailHtml,
 } from '../../common/notification-client.service';
+import {
+  HumanResourcesClientService,
+  HumanResourcesSuggestedPerson,
+} from '../../common/human-resources-client.service';
 import { LiquidationService } from '../liquidation/liquidation.service';
+
 import {
   TipoComisionadoLiquidacion,
   CategoriaInvestigador,
@@ -82,6 +87,7 @@ interface AuthPersonaRow {
   dir_email: string | null;
   tel_celular: string | null;
   id_dependencia: string | number | null;
+  nom_dependencia: string | null;
 }
 
 function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
@@ -94,6 +100,18 @@ function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
     fecha.setDate(fecha.getDate() + 1);
   }
   return count;
+}
+
+function calcularDiasEntreFechas(fechaInicio: Date, fechaFin: Date): number {
+  const diff = Math.round((fechaFin.getTime() - fechaInicio.getTime()) / 86_400_000);
+  return diff <= 0 ? 1 : diff;
+}
+
+function formatoISO(fecha: Date): string {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -135,12 +153,83 @@ export class TravelExpensesService {
     private readonly configService: ConfigService,
     private readonly notificationClient: NotificationClientService,
     @Optional()
+    private readonly humanResourcesClient?: HumanResourcesClientService,
+    @Optional()
     private readonly liquidationService?: LiquidationService,
     @Optional()
     private readonly ticketsService?: TicketsService,
     @Optional()
     private readonly eventEmitter?: EventEmitter2,
   ) {}
+
+  private sincronizarItinerario(dto: {
+    itinerario?: any[];
+    fechaInicio?: string;
+    fechaFin?: string;
+    diasComision?: number;
+    destinoCiudad?: string;
+    destinoDepartamento?: string;
+  }): {
+    itinerario: any[];
+    fechaInicio: string;
+    fechaFin: string;
+    diasComision: number;
+    origenCiudad: string;
+    destinoCiudad: string;
+    destinoDepartamento: string;
+  } {
+    const rutas = Array.isArray(dto.itinerario) ? dto.itinerario : [];
+
+    if (rutas.length === 0) {
+      return {
+        itinerario: [],
+        fechaInicio: dto.fechaInicio || '',
+        fechaFin: dto.fechaFin || '',
+        diasComision: dto.diasComision ?? 1,
+        origenCiudad: '',
+        destinoCiudad: dto.destinoCiudad || '',
+        destinoDepartamento: dto.destinoDepartamento || '',
+      };
+    }
+
+    const fechasSalida = rutas
+      .map((r) => new Date(r.fechaSalida))
+      .filter((d) => !Number.isNaN(d.getTime()));
+    const fechasLlegada = rutas
+      .map((r) => new Date(r.fechaLlegada))
+      .filter((d) => !Number.isNaN(d.getTime()));
+
+    const fechaInicio = fechasSalida.length > 0
+      ? new Date(Math.min(...fechasSalida.map((d) => d.getTime())))
+      : new Date(dto.fechaInicio || new Date());
+    const fechaFin = fechasLlegada.length > 0
+      ? new Date(Math.max(...fechasLlegada.map((d) => d.getTime())))
+      : new Date(dto.fechaFin || new Date());
+
+    let diasComision = 0;
+    for (const ruta of rutas) {
+      if (ruta.diasRuta && Number.isFinite(ruta.diasRuta) && ruta.diasRuta > 0) {
+        diasComision += ruta.diasRuta;
+      }
+    }
+    if (diasComision === 0) {
+      diasComision = calcularDiasEntreFechas(fechaInicio, fechaFin);
+    }
+
+    const primerTramo = rutas[0];
+    const ultimoTramo = rutas[rutas.length - 1];
+
+    return {
+      itinerario: rutas,
+      fechaInicio: formatoISO(fechaInicio),
+      fechaFin: formatoISO(fechaFin),
+      diasComision,
+      origenCiudad: primerTramo.origenCiudad || '',
+      destinoCiudad: ultimoTramo.destinoCiudad || dto.destinoCiudad || '',
+      destinoDepartamento: ultimoTramo.destinoDepartamento || dto.destinoDepartamento || '',
+    };
+  }
+
 
   /**
    * Emite el evento asíncrono 'commission.disbursement_ready' para que el listener
@@ -331,6 +420,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -371,6 +462,7 @@ export class TravelExpensesService {
       observacionesPago: (s as any).observacionesPago ?? null,
       pagadoPorId: (s as any).pagadoPorId ?? null,
       fechaRegistroPago: (s as any).fechaRegistroPago?.toISOString?.() ?? (s as any).fechaRegistroPago ?? null,
+      camposAdicionales: (s as any).camposAdicionales ?? {},
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
@@ -487,6 +579,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -500,6 +594,7 @@ export class TravelExpensesService {
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
+      camposAdicionales: (s as any).camposAdicionales ?? {},
       };
     });
 
@@ -675,7 +770,91 @@ export class TravelExpensesService {
       return existente;
     }
 
-    // 2) Búsqueda secundaria: auth.personas (origen único ESAP).
+    // 2) Búsqueda secundaria: Talento Humano / Nómina (Oracle FNC - VW_INTEGRACIONFNC).
+    //    Se consulta vía certification-service (fuente oficial en línea de talento humano).
+    if (this.humanResourcesClient) {
+      try {
+        const funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+
+        if (funcionarioFnc && funcionarioFnc.id_number) {
+          const rawName = (funcionarioFnc.full_name || '').trim();
+          const partes = rawName.split(/\s+/).filter(Boolean);
+          let primerNombre = 'SIN NOMBRE';
+          let segundoNombre: string | null = null;
+          let primerApellido = 'SIN APELLIDO';
+          let segundoApellido: string | null = null;
+
+          if (partes.length === 1) {
+            primerNombre = partes[0];
+          } else if (partes.length === 2) {
+            primerNombre = partes[0];
+            primerApellido = partes[1];
+          } else if (partes.length === 3) {
+            primerNombre = partes[0];
+            primerApellido = partes[1];
+            segundoApellido = partes[2];
+          } else if (partes.length >= 4) {
+            primerNombre = partes[0];
+            segundoNombre = partes[1];
+            primerApellido = partes[2];
+            segundoApellido = partes.slice(3).join(' ');
+          }
+
+          // Resolver ID de dependencia en auth.dependencias si el nombre de dependencia viene informado
+          let idDependenciaFnc: number | null = null;
+          const depNombre = (
+            funcionarioFnc.organization_department ||
+            funcionarioFnc.cost_center ||
+            ''
+          ).trim();
+          if (depNombre) {
+            try {
+              const depMatch = await this.dataSource.query(
+                `SELECT id_dependencia
+                   FROM auth.dependencias
+                  WHERE UPPER(nom_dependencia) = UPPER($1)
+                     OR UPPER(cod_dependencia) = UPPER($1)
+                  LIMIT 1`,
+                [depNombre],
+              );
+              if (depMatch?.[0]?.id_dependencia != null) {
+                idDependenciaFnc = Number(depMatch[0].id_dependencia);
+              }
+            } catch (err: any) {
+              this.logger.debug?.(
+                `[consultarComisionado] No se pudo mapear id_dependencia para ${depNombre}: ${err?.message}`,
+              );
+            }
+          }
+
+          const nuevoDesdeFnc = this.comisionadoRepo.create({
+            numeroDocumento: doc,
+            primerNombre,
+            segundoNombre,
+            primerApellido,
+            segundoApellido,
+            email:
+              funcionarioFnc.email ||
+              funcionarioFnc.personal_email ||
+              'sin-correo@esap.edu.co',
+            telefonoContacto: funcionarioFnc.phone || '0000000000',
+            tipoComisionado: 'FUNCIONARIO',
+            origenDatos: 'HUMANO',
+            autorizacionHabeasData: false,
+            idDependencia: idDependenciaFnc,
+          } as Partial<ComisionadoEntity>);
+
+          return await this.comisionadoRepo.save(nuevoDesdeFnc);
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[travel-expenses] Error consultando talento humano / Oracle FNC: ${err?.message || err}`,
+        );
+      }
+    }
+
+    // 3) Búsqueda terciaria (fallback): auth.personas (origen único ESAP).
     //    Ambos microservicios comparten la misma base de datos
     //    (`esap_db`), por lo que se consulta directamente vía DataSource
     //    para evitar un round-trip HTTP y mantener la latencia baja.
@@ -703,15 +882,15 @@ export class TravelExpensesService {
       });
 
     if (!persona) {
-      // 3) No existe ni en comisionados ni en auth.personas:
+      // 4) No existe ni en comisionados, ni en talento humano (Oracle FNC), ni en auth.personas:
       //    bloqueamos el flujo porque no hay un funcionario válido
       //    para asociar a la solicitud de viáticos.
       throw new NotFoundException(
-        `No se encontró un comisionado con documento ${doc} en ESAP. Verifique el número o contacte al administrador del módulo de autenticación.`,
+        `No se encontró un comisionado con documento ${doc} ni en la base de datos de talento humano ni en ESAP. Verifique el número o contacte al administrador.`,
       );
     }
 
-    // 4) Persistimos la "foto" de la persona de ESAP en
+    // 5) Persistimos la "foto" de la persona de ESAP en
     //    travel_expenses.comisionados para que las siguientes consultas
     //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
     const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
@@ -741,6 +920,115 @@ export class TravelExpensesService {
 
     return this.comisionadoRepo.save(nuevo);
   }
+
+  /**
+   * Consulta general o específica de talento humano.
+   * Se consulta exclusivamente a través de HumanResourcesClientService (Oracle FNC / VW_INTEGRACIONFNC
+   * vía certification-service / nómina y financieros humanos) como fuente oficial única de talento humano.
+   * Si no se encuentra, arroja NotFoundException indicando que la persona no existe.
+   */
+  async buscarTalentoHumano(
+    query?: string,
+    documento?: string,
+    limit = 20,
+  ) {
+    const doc = String(documento || '').trim();
+    if (doc) {
+      this.logger.log(
+        `[buscarTalentoHumano] Consulta por documento: ${doc}`,
+      );
+
+      if (!this.humanResourcesClient) {
+        throw new NotFoundException(
+          `El servicio de talento humano no está disponible para consultar el documento ${doc}.`,
+        );
+      }
+
+      let funcionarioFnc: HumanResourcesSuggestedPerson | null = null;
+      try {
+        funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+      } catch (fncErr: any) {
+        this.logger.error(
+          `[buscarTalentoHumano] Error consultando talento humano para documento ${doc}: ${fncErr?.message || fncErr}`,
+        );
+        throw fncErr;
+      }
+
+      if (!funcionarioFnc || !funcionarioFnc.id_number) {
+        this.logger.warn(
+          `[buscarTalentoHumano] NO se encontró funcionario con documento ${doc} en Talento Humano / Nómina`,
+        );
+        throw new NotFoundException(
+          `No se encontró ningún funcionario con documento ${doc} en Talento Humano.`,
+        );
+      }
+
+      this.logger.log(
+        `[buscarTalentoHumano] Encontrado en talento humano: ${funcionarioFnc.full_name} (${funcionarioFnc.id_number})`,
+      );
+      return {
+        ok: true,
+        source: 'talento_humano_oracle',
+        query: doc,
+        total: 1,
+        data: [funcionarioFnc],
+      };
+    }
+
+    const term = String(query || '').trim();
+    if (!term || term.length < 3) {
+      throw new BadRequestException(
+        'El término de búsqueda debe tener al menos 3 caracteres.',
+      );
+    }
+
+    this.logger.log(
+      `[buscarTalentoHumano] Búsqueda por término: "${term}", limit: ${limit}`,
+    );
+
+    if (!this.humanResourcesClient) {
+      throw new NotFoundException(
+        `El servicio de talento humano no está disponible para buscar el término "${term}".`,
+      );
+    }
+
+    let funcionariosFnc: HumanResourcesSuggestedPerson[] = [];
+    try {
+      funcionariosFnc =
+        await this.humanResourcesClient.buscarFuncionariosPorTermino(
+          term,
+          limit,
+        );
+    } catch (fncErr: any) {
+      this.logger.error(
+        `[buscarTalentoHumano] Error buscando en talento humano con término "${term}": ${fncErr?.message || fncErr}`,
+      );
+      throw fncErr;
+    }
+
+    if (!Array.isArray(funcionariosFnc) || funcionariosFnc.length === 0) {
+      this.logger.warn(
+        `[buscarTalentoHumano] NO se encontraron funcionarios para el término "${term}" en Talento Humano / Nómina`,
+      );
+      throw new NotFoundException(
+        `No se encontraron funcionarios coincidentes con "${term}" en Talento Humano.`,
+      );
+    }
+
+    this.logger.log(
+      `[buscarTalentoHumano] Encontrados ${funcionariosFnc.length} funcionarios en talento humano para "${term}"`,
+    );
+
+    return {
+      ok: true,
+      source: 'talento_humano_oracle',
+      query: term,
+      total: funcionariosFnc.length,
+      data: funcionariosFnc,
+    };
+  }
+
 
   async obtenerSolicitudCompleta(
     solicitudId: string,
@@ -1106,6 +1394,7 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos,
       montoGastosViaje: dto.montoGastosViaje,
       diasComision: dto.diasComision,
+      ...(dto.camposAdicionales || {}),
     };
 
     const { camposFaltantes } = await this.validarCamposObligatorios(
@@ -1145,6 +1434,8 @@ export class TravelExpensesService {
         'La fecha fin no puede ser anterior a la fecha inicio.',
       );
     }
+
+    const sincronizacion = this.sincronizarItinerario(dto);
 
     const hoy = new Date();
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
@@ -1213,17 +1504,19 @@ export class TravelExpensesService {
       consecutivoUnico,
       comisionadoId: dto.comisionadoId,
       idDependencia: dto.idDependencia ?? null,
-      destinoCiudad: dto.destinoCiudad ?? '',
-      destinoDepartamento: dto.destinoDepartamento ?? '',
-      fechaInicio,
-      fechaFin,
+      destinoCiudad: sincronizacion.destinoCiudad,
+      destinoDepartamento: sincronizacion.destinoDepartamento,
+      fechaInicio: sincronizacion.fechaInicio,
+      fechaFin: sincronizacion.fechaFin,
       objetoComision: objetoSanitizado,
       prioridad: dto.prioridad ?? 'BAJA',
       rubroPresupuestal: dto.rubroPresupuestal ?? '',
+      numeroCdp: dto.numeroCdp ?? null,
+      fechaCdp: dto.fechaCdp ?? null,
       requiereTiquetes: dto.requiereTiquetes ?? false,
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
-      diasComision: dto.diasComision ?? 1,
+      diasComision: sincronizacion.diasComision,
       salarioBasico: dto.salarioBasico ?? 0,
       costoEstimadoTiquete: dto.costoEstimadoTiquete ?? 0,
       estadoSolicitud,
@@ -1234,6 +1527,23 @@ export class TravelExpensesService {
         ? 'INTERNACIONAL'
         : (dto.tipoComision ?? 'TERRESTRE'),
       creadoPorUsuarioId: dto.creadoPorUsuarioId,
+      camposAdicionales: dto.camposAdicionales ?? {},
+      itinerario: sincronizacion.itinerario,
+      // ========== Autoliquidación GF-FO-023 ==========
+      diasPernoctados: dto.diasPernoctados ?? null,
+      tarifaDiaPernoctado: dto.tarifaDiaPernoctado ?? null,
+      totalPernoctados: dto.totalPernoctados ?? null,
+      diasNoPernoctados: dto.diasNoPernoctados ?? null,
+      tarifaDiaNoPernoctado: dto.tarifaDiaNoPernoctado ?? null,
+      totalNoPernoctados: dto.totalNoPernoctados ?? null,
+      factorComisionado: dto.factorComisionado ?? null,
+      factorPernocta: dto.factorPernocta ?? null,
+      tarifaDiariaBase: dto.tarifaDiariaBase ?? null,
+      tarifaFinalAplicadaDia: dto.tarifaFinalAplicadaDia ?? null,
+      salarioBaseAplicado: dto.salarioBaseAplicado ?? null,
+      decretoAplicado: dto.decretoAplicado ?? null,
+      desgloseCalculo: dto.desgloseCalculo ?? null,
+      alertasLiquidacion: dto.alertasLiquidacion ?? null,
     });
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -1320,6 +1630,12 @@ export class TravelExpensesService {
     if (dto.rubroPresupuestal !== undefined) {
       solicitud.rubroPresupuestal = dto.rubroPresupuestal ?? '';
     }
+    if (dto.numeroCdp !== undefined) {
+      solicitud.numeroCdp = dto.numeroCdp ?? null;
+    }
+    if (dto.fechaCdp !== undefined) {
+      solicitud.fechaCdp = dto.fechaCdp ?? null;
+    }
     if (dto.prioridad !== undefined) {
       solicitud.prioridad = dto.prioridad ?? 'MEDIA';
     }
@@ -1338,7 +1654,7 @@ export class TravelExpensesService {
     if (dto.salarioBasico !== undefined) {
       solicitud.salarioBasico = dto.salarioBasico;
     }
-    if (dto.costoEstimadoTiquete !== undefined) {
+if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.costoEstimadoTiquete = dto.costoEstimadoTiquete;
     }
     if (dto.tipoComision !== undefined) {
@@ -1346,6 +1662,66 @@ export class TravelExpensesService {
     }
     if (dto.esInternacional !== undefined) {
       solicitud.esInternacional = dto.esInternacional;
+    }
+
+    // ========== Persistencia de Autoliquidación GF-FO-023 ==========
+    if (dto.diasPernoctados !== undefined) {
+      solicitud.diasPernoctados = dto.diasPernoctados;
+    }
+    if (dto.tarifaDiaPernoctado !== undefined) {
+      solicitud.tarifaDiaPernoctado = dto.tarifaDiaPernoctado;
+    }
+    if (dto.totalPernoctados !== undefined) {
+      solicitud.totalPernoctados = dto.totalPernoctados;
+    }
+    if (dto.diasNoPernoctados !== undefined) {
+      solicitud.diasNoPernoctados = dto.diasNoPernoctados;
+    }
+    if (dto.tarifaDiaNoPernoctado !== undefined) {
+      solicitud.tarifaDiaNoPernoctado = dto.tarifaDiaNoPernoctado;
+    }
+    if (dto.totalNoPernoctados !== undefined) {
+      solicitud.totalNoPernoctados = dto.totalNoPernoctados;
+    }
+    if (dto.factorComisionado !== undefined) {
+      solicitud.factorComisionado = dto.factorComisionado;
+    }
+    if (dto.factorPernocta !== undefined) {
+      solicitud.factorPernocta = dto.factorPernocta;
+    }
+    if (dto.tarifaDiariaBase !== undefined) {
+      solicitud.tarifaDiariaBase = dto.tarifaDiariaBase;
+    }
+    if (dto.tarifaFinalAplicadaDia !== undefined) {
+      solicitud.tarifaFinalAplicadaDia = dto.tarifaFinalAplicadaDia;
+    }
+    if (dto.salarioBaseAplicado !== undefined) {
+      solicitud.salarioBaseAplicado = dto.salarioBaseAplicado;
+    }
+    if (dto.decretoAplicado !== undefined) {
+      solicitud.decretoAplicado = dto.decretoAplicado;
+    }
+    if (dto.desgloseCalculo !== undefined) {
+      solicitud.desgloseCalculo = dto.desgloseCalculo;
+    }
+    if (dto.alertasLiquidacion !== undefined) {
+      solicitud.alertasLiquidacion = dto.alertasLiquidacion;
+    }
+
+    if (dto.camposAdicionales !== undefined) {
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        ...dto.camposAdicionales,
+      };
+    }
+    if (dto.itinerario !== undefined) {
+      const sincronizacion = this.sincronizarItinerario(dto);
+      solicitud.itinerario = sincronizacion.itinerario;
+      solicitud.fechaInicio = new Date(sincronizacion.fechaInicio);
+      solicitud.fechaFin = new Date(sincronizacion.fechaFin);
+      solicitud.diasComision = sincronizacion.diasComision;
+      solicitud.destinoCiudad = sincronizacion.destinoCiudad;
+      solicitud.destinoDepartamento = sincronizacion.destinoDepartamento;
     }
 
     return this.solicitudRepo.save(solicitud);
@@ -1918,21 +2294,30 @@ export class TravelExpensesService {
       };
 
       const drawTitle = () => {
-        doc.fillColor('#003DA5').fontSize(14).font('Helvetica-Bold');
-        doc.text('FORMATO 023 — SOLICITUD DE COMISIÓN DE VIÁTICOS', {
+        doc.fillColor('#003DA5').fontSize(11).font('Helvetica-Bold');
+        doc.text(
+          'FORMATO DE AUTORIZACIÓN SOLICITUD DE TRÁMITE Y LIQUIDACIÓN DE COMISIÓN DE SERVICIOS, GASTOS DE TRANSPORTE, GASTOS DE DESPLAZAMIENTO Y AUXILIO ECONÓMICO DE DESPLAZAMIENTO',
+          {
+            align: 'center',
+          },
+        );
+        doc.moveDown(0.3);
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333');
+        doc.text('CÓDIGO: GF-FO-023  |  VERSIÓN: 07  |  FECHA: 26/03/2026', {
           align: 'center',
         });
-        doc.fontSize(10).font('Helvetica');
-        doc.fillColor('#666666');
-        doc.text('Código: EM-FO-023 · Versión: 1 · Fecha: 01/Ene/2026', {
-          align: 'center',
-        });
-        doc.moveDown(1);
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
+        doc.text(
+          'Diligencie o seleccione únicamente y a completitud los campos requeridos',
+          { align: 'center' },
+        );
+        doc.moveDown(0.8);
       };
 
       const drawSectionTitle = (title: string) => {
-        doc.moveDown(0.5);
-        doc.fillColor('#003DA5').fontSize(11).font('Helvetica-Bold');
+        doc.moveDown(0.4);
+        doc.fillColor('#003DA5').fontSize(10).font('Helvetica-Bold');
         doc.text(title);
         doc
           .strokeColor('#CCCCCC')
@@ -1940,26 +2325,26 @@ export class TravelExpensesService {
           .moveTo(50, doc.y)
           .lineTo(562, doc.y)
           .stroke();
-        doc.moveDown(0.5);
+        doc.moveDown(0.4);
       };
 
       const drawField = (label: string, value: string) => {
-        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333').fontSize(8.5).font('Helvetica-Bold');
         doc.text(`${label}: `, { continued: true });
         doc.font('Helvetica').fillColor('#000000');
         doc.text(this.sanitizarTextoPdf(value) || 'N/A');
       };
 
       const drawMultiLineField = (label: string, value: string) => {
-        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333').fontSize(8.5).font('Helvetica-Bold');
         doc.text(`${label}:`);
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
         doc.font('Helvetica').fillColor('#000000');
         doc.text(this.sanitizarTextoPdf(value) || 'N/A', {
           width: 512,
           align: 'justify',
         });
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
       };
 
       const formatDate = (
@@ -1991,86 +2376,131 @@ export class TravelExpensesService {
         : 'Terrestre';
       const prioridad = solicitud.prioridad || 'MEDIA';
       const estado = solicitud.estadoSolicitud || 'RADICADA';
+      const salarioContrato = Number(solicitud.salarioBasico || 0);
+
+      // Usar valores de autoliquidación almacenados (GF-FO-023)
+      const diasPernoctados = Number(solicitud.diasPernoctados || 0);
+      const valorDiaPernoctado = Number(solicitud.tarifaDiaPernoctado || 0);
+      const subtotalPernoctados = Number(solicitud.totalPernoctados || 0);
+      const diasNoPernoctados = Number(solicitud.diasNoPernoctados || 0);
+      const valorDiaNoPernoctado = Number(solicitud.tarifaDiaNoPernoctado || 0);
+      const subtotalNoPernoctados = Number(solicitud.totalNoPernoctados || 0);
+      const montoViaticos = Number(solicitud.montoViaticos || 0);
+      const montoGastosViaje = Number(solicitud.montoGastosViaje || 0);
+      const montoTotalGeneral = montoViaticos + montoGastosViaje;
+      const decretoAplicado = solicitud.decretoAplicado || 'Decreto 314 de 2026';
+
+      // Duración total en días (pernoctados + no pernoctados * 0.5)
+      const diasTotales = diasPernoctados + (diasNoPernoctados * 0.5);
+
+      // Tarifa diaria base almacenada
+      const tarifaDiariaBase = Number(solicitud.tarifaDiariaBase || 0);
 
       drawHeader();
       drawTitle();
 
-      drawSectionTitle('1. INFORMACIÓN DE LA SOLICITUD');
-      drawField('No. Radicado', solicitud.consecutivoUnico);
-      drawField('Fecha de Radicación', formatDate(solicitud.creadoEn));
-      drawField('Estado de la Solicitud', estado);
-      drawField('Prioridad', prioridad);
-      drawField('Extemporánea', solicitud.extemporanea ? 'SÍ' : 'NO');
-      drawField(
-        'Radicado Fuera de Jornada',
-        solicitud.radicadoFueraJornada ? 'SÍ' : 'NO',
-      );
-      doc.moveDown(0.3);
+      // Dependencia solicitante y fecha de autoliquidación
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#333333');
+      doc.text(`Dependencia Solicitante: `, 50, doc.y, { continued: true });
+      doc.font('Helvetica').text(`ID ${solicitud.idDependencia || comisionado?.idDependencia || 'N/A'}`);
+      doc.font('Helvetica-Bold').text(`Fecha de Autoliquidación: `, { continued: true });
+      doc.font('Helvetica').text(formatDate(solicitud.creadoEn));
+      doc.font('Helvetica-Bold').text(`No. Radicado: `, { continued: true });
+      doc.font('Helvetica').text(`${solicitud.consecutivoUnico || 'S/N'} (${estado})`);
+      doc.moveDown(0.4);
 
-      drawSectionTitle('2. DATOS DEL COMISIONADO');
+      drawSectionTitle('1. DATOS DEL COMISIONADO / CONTRATISTA');
       drawField('Nombre Completo', nombreCompleto);
       drawField('No. Documento', comisionado?.numeroDocumento || 'N/A');
       drawField('Tipo de Comisionado', comisionado?.tipoComisionado || 'N/A');
       drawField('Correo Electrónico', comisionado?.email || 'N/A');
       drawField('Teléfono de Contacto', comisionado?.telefonoContacto || 'N/A');
-      drawField('Origen de Datos', comisionado?.origenDatos || 'N/A');
-      drawField(
-        'Autorización Hábeas Data',
-        comisionado?.autorizacionHabeasData ? 'SÍ' : 'NO',
-      );
+      if (salarioContrato > 0) {
+        drawField(
+          (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA'
+            ? 'Valor Honorarios'
+            : 'Asignación Básica Mensual',
+          formatCurrency(salarioContrato),
+        );
+      }
       doc.moveDown(0.3);
 
-      drawSectionTitle('3. DATOS DE LA COMISIÓN');
-      drawField('Ciudad Destino', solicitud.destinoCiudad);
-      drawField('Departamento Destino', solicitud.destinoDepartamento);
+      drawSectionTitle('2. DATOS AUTORIZACIÓN DE DESPLAZAMIENTO Y GASTOS DE DESPLAZAMIENTO');
+      drawField('Duración (en días)', `${diasTotales} ${diasTotales === 1 ? 'día' : 'días'}`);
       drawField('Fecha de Inicio', formatDate(solicitud.fechaInicio));
       drawField('Fecha de Finalización', formatDate(solicitud.fechaFin));
-      drawField('Días de Comisión', String(solicitud.diasComision));
+      drawField('Ciudad de Origen', 'Bogotá D.C. (Sede)');
+      drawField('Destino / Ciudad y Departamento', `${solicitud.destinoCiudad || 'N/A'} (${solicitud.destinoDepartamento || 'N/A'})`);
       drawField('Tipo de Transporte', tipoTransporte);
-      drawField('Requiere Tiquetes', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+      drawField('Requiere Tiquetes Aéreos', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+      drawField('Viáticos diarios según decreto (Base)', formatCurrency(tarifaDiariaBase));
       doc.moveDown(0.3);
 
-      drawSectionTitle('4. OBJETO DE LA COMISIÓN');
-      drawMultiLineField('Objeto / Justificación', solicitud.objetoComision);
-      doc.moveDown(0.3);
+      drawMultiLineField('Objeto de la Comisión', solicitud.objetoComision);
 
-      drawSectionTitle('5. INFORMACIÓN PRESUPUESTAL');
-      drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
-      drawField(
-        'Monto Viáticos',
-        formatCurrency(Number(solicitud.montoViaticos)),
-      );
-      drawField(
-        'Monto Gastos de Viaje',
-        formatCurrency(Number(solicitud.montoGastosViaje)),
-      );
-      drawField(
-        'Monto Total',
-        formatCurrency(
-          Number(solicitud.montoViaticos) + Number(solicitud.montoGastosViaje),
-        ),
-      );
-      doc.moveDown(0.3);
-
-      drawSectionTitle('6. DOCUMENTOS DE SOPORTE');
-      if (
-        solicitud.documentosSoporte &&
-        solicitud.documentosSoporte.length > 0
-      ) {
-        solicitud.documentosSoporte.forEach((documento, index) => {
-          const fileUrl = documento.urlRepositorio?.startsWith('http')
-            ? documento.urlRepositorio
-            : `${req?.protocol || 'http'}://${req?.get('host') || 'localhost:3010'}${documento.urlRepositorio}`;
-          const encodedUrl = encodeURI(fileUrl);
-          const displayText = `  ${index + 1}. ${documento.tipoDocumento} — ${documento.nombreArchivoOriginal || 'N/A'} (Abrir)`;
-          doc.font('Helvetica-Bold').fillColor('#003DA5');
-          doc.text(displayText, { link: encodedUrl });
+      // Itinerario detallado si existe
+      if (solicitud.itinerario && solicitud.itinerario.length > 0) {
+        doc.moveDown(0.2);
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#003DA5').text('Itinerario Detallado de Rutas:');
+        solicitud.itinerario.forEach((tramo, idx) => {
+          doc.fontSize(8).font('Helvetica').fillColor('#333333');
+          doc.text(
+            `  • Tramo ${idx + 1}: ${tramo.origenCiudad} → ${tramo.destinoCiudad} | Salida: ${tramo.fechaSalida} Llegada: ${tramo.fechaLlegada} | Horario: ${tramo.horarioEstimadoMilitar || 'N/A'} | ${tramo.tipoTrayecto} (${tramo.diasRuta} d)`,
+          );
         });
-      } else {
-        doc.font('Helvetica').fillColor('#666666');
-        doc.text('  No se han adjuntado documentos de soporte.');
+        doc.moveDown(0.3);
       }
-      doc.moveDown(0.5);
+
+      drawSectionTitle(`3. LIQUIDACIÓN DE LA AUTORIZACIÓN DE DESPLAZAMIENTO (${decretoAplicado})`);
+      // Tabla pernoctados / no pernoctados tal como el formato GF-FO-023
+      const tableY = doc.y;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('Descripción del Día', 55, tableY);
+      doc.text('No. Días', 220, tableY);
+      doc.text('Viáticos Diario', 310, tableY);
+      doc.text('Total Subtotal', 450, tableY);
+
+      doc.strokeColor('#CCCCCC').lineWidth(0.5).moveTo(50, tableY + 12).lineTo(562, tableY + 12).stroke();
+
+      let rowY = tableY + 16;
+      doc.fontSize(8).font('Helvetica').fillColor('#333333');
+      // Fila Pernoctados
+      doc.text('Pernoctados', 55, rowY);
+      doc.text(String(diasPernoctados), 220, rowY);
+      doc.text(formatCurrency(valorDiaPernoctado), 310, rowY);
+      doc.text(formatCurrency(subtotalPernoctados), 450, rowY);
+
+      rowY += 14;
+      // Fila No Pernoctados
+      doc.text('No Pernoctados', 55, rowY);
+      doc.text(String(diasNoPernoctados), 220, rowY);
+      doc.text(formatCurrency(valorDiaNoPernoctado), 310, rowY);
+      doc.text(formatCurrency(subtotalNoPernoctados), 450, rowY);
+
+      rowY += 14;
+      doc.strokeColor('#CCCCCC').lineWidth(0.5).moveTo(50, rowY).lineTo(562, rowY).stroke();
+      rowY += 4;
+      doc.font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('Total Viáticos', 55, rowY);
+      doc.text(formatCurrency(montoViaticos), 450, rowY);
+
+      doc.y = rowY + 14;
+
+      drawSectionTitle('4. LIQUIDACIÓN DE LOS GASTOS DE DESPLAZAMIENTO');
+      drawField('Total Transporte y desplazamientos terminales / aéreos', formatCurrency(montoGastosViaje));
+      drawField('Transporte terrestre, marítimo, fluvial o complementario', '$ 0');
+      drawField('TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS', formatCurrency(montoTotalGeneral));
+      doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#666666');
+      doc.text('* NOTA: Para la liquidación de gastos de transporte se aplicará lo referido en la Resolución de viáticos vigente.');
+      doc.moveDown(0.3);
+
+      drawSectionTitle('5. INFORMACIÓN FINANCIERA Y FIRMAS');
+      doc.fontSize(8).font('Helvetica').fillColor('#333333');
+      doc.text(
+        `El pago de la presente comisión de servicios / autorización de desplazamiento se hará con cargo a la Dependencia solicitante, del Rubro Presupuestal ${solicitud.rubroPresupuestal || 'asignado'}, según Certificado de Disponibilidad Presupuestal No. ${solicitud.numeroCdp || 'En trámite'}${solicitud.fechaCdp ? ` del ${solicitud.fechaCdp}` : ''}, y Registro Presupuestal No. ${solicitud.numeroRp || 'En trámite'}.`,
+        { width: 512, align: 'justify' },
+      );
+      doc.moveDown(0.4);
 
       // Verificamos si queda espacio suficiente para las firmas (~180pt). Si no, nueva página con header limpio.
       if (doc.y > 510) {
@@ -2078,7 +2508,12 @@ export class TravelExpensesService {
         drawHeader();
       }
 
-      drawSectionTitle('7. FIRMAS Y APROBACIONES');
+      // Ley 1581 de 2012 - Protección de Datos Personales
+      doc.fontSize(7).font('Helvetica-Oblique').fillColor('#666666');
+      doc.text(
+        'La información recolectada en este documento es tratada bajo la política de Datos Personales de la ESAP en cumplimiento a la Ley 1581 de 2012.',
+        { align: 'center' },
+      );
       doc.moveDown(0.5);
 
       // Estados de avance del flujo para activar los sellos visuales de aprobación
@@ -2774,7 +3209,7 @@ export class TravelExpensesService {
       const tipoComision = (solicitud.tipoComision || 'TERRESTRE').toUpperCase().trim();
       const fechaInicioStr = sanitizeFechaPlano(solicitud.fechaInicio);
       const fechaFinStr = sanitizeFechaPlano(solicitud.fechaFin);
-      const diasComision = String(Math.max(1, Number(solicitud.diasComision || 1)));
+      const diasComision = String(Math.max(0.5, Number(solicitud.diasComision || 1)));
       const rubroSanitizado = sanitizeTextoPlano(solicitud.rubroPresupuestal || '', 100);
       const montoViaticos = sanitizeMontoPlano(solicitud.montoViaticos);
       const montoGastosViaje = sanitizeMontoPlano(solicitud.montoGastosViaje);
@@ -3131,6 +3566,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -3859,6 +4296,8 @@ export class TravelExpensesService {
         objetoComision: s.objetoComision,
         prioridad: s.prioridad,
         rubroPresupuestal: s.rubroPresupuestal,
+        numeroCdp: s.numeroCdp ?? null,
+        fechaCdp: s.fechaCdp ?? null,
         requiereTiquetes: s.requiereTiquetes,
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
@@ -4466,6 +4905,8 @@ export class TravelExpensesService {
         objetoComision: s.objetoComision,
         prioridad: s.prioridad,
         rubroPresupuestal: s.rubroPresupuestal,
+        numeroCdp: s.numeroCdp ?? null,
+        fechaCdp: s.fechaCdp ?? null,
         requiereTiquetes: s.requiereTiquetes,
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
@@ -5308,10 +5749,30 @@ export class TravelExpensesService {
       drawField('Duración de la Comisión', `${solicitud.diasComision} día(s)`);
       drawField('Modalidad de Transporte', solicitud.requiereTiquetes ? 'Aéreo / Terrestre' : 'Terrestre');
       drawField('Requiere Pasajes / Tiquetes', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+
+      if (Array.isArray(solicitud.itinerario) && solicitud.itinerario.length > 0) {
+        doc.moveDown(0.3);
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#003DA5').text('Desglose de Rutas y Horarios Militares Estimados:');
+        doc.moveDown(0.2);
+        solicitud.itinerario.forEach((tramo: any, idx: number) => {
+          const trayectoStr = tramo.tipoTrayecto === 'IDA_Y_VUELTA' ? 'Ida y Vuelta' : 'Solo Ida';
+          const horarioStr = tramo.horarioEstimadoMilitar ? ` · Hora Militar: ${tramo.horarioEstimadoMilitar}` : '';
+          const diasStr = tramo.diasRuta ? ` (${tramo.diasRuta} d)` : '';
+          const transporteStr = tramo.tipoTransporte ? ` [${tramo.tipoTransporte}]` : '';
+          doc
+            .font('Helvetica')
+            .fontSize(8.5)
+            .fillColor('#334155')
+            .text(
+              `  Tramo ${idx + 1}: ${tramo.origenCiudad || 'Origen'} -> ${tramo.destinoCiudad || 'Destino'} (${trayectoStr}) | Del ${tramo.fechaSalida || 'N/A'} al ${tramo.fechaLlegada || 'N/A'}${diasStr}${horarioStr}${transporteStr}`,
+            );
+        });
+      }
       doc.moveDown(0.5);
 
       drawSectionTitle('3. LIQUIDACIÓN DEL GASTO AUTORIZADO');
       drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
+      drawField('Certificado de Disponibilidad Presupuestal (CDP)', solicitud.numeroCdp || 'N/A');
       drawField('Monto Viáticos', formatCurrency(Number(solicitud.montoViaticos)));
       drawField('Monto Gastos de Viaje', formatCurrency(Number(solicitud.montoGastosViaje)));
       if (solicitud.requiereTiquetes) {

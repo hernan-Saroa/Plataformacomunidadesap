@@ -14,6 +14,7 @@ interface Props {
   loading?: boolean;
   emptyText?: string;
   id?: string;
+  error?: string;
 }
 
 export default function SearchableSelect({
@@ -25,15 +26,20 @@ export default function SearchableSelect({
   loading = false,
   emptyText = 'Sin resultados',
   id,
+  error,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const selected = options.find((o) => o.value === value);
+  const selected = options.find(
+    (o) => o.value === value || (Boolean(value) && o.value?.trim().toLowerCase() === value?.trim().toLowerCase())
+  );
+  const displayLabel = selected ? selected.label : (value || placeholder);
 
   const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(query.toLowerCase()),
+    (o.label || '').toLowerCase().includes(query.toLowerCase()) ||
+    (o.value || '').toLowerCase().includes(query.toLowerCase())
   );
 
   useEffect(() => {
@@ -64,18 +70,23 @@ export default function SearchableSelect({
       <button
         type="button"
         id={id}
-        disabled={disabled || loading}
-        onClick={() => !disabled && !loading && setOpen(!open)}
-        className={`${inputCls} flex items-center justify-between ${disabled || loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+        className={`${inputCls} flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer'} ${error ? 'border-red-300 bg-red-50' : ''}`}
       >
-        <span className={selected ? 'text-slate-800' : 'text-slate-400'}>
-          {selected ? selected.label : placeholder}
+        <span className={`truncate text-left ${selected || value ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>
+          {displayLabel}
         </span>
-        <ChevronIcon open={open} />
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {loading && (
+            <div className="w-3 h-3 border-2 border-slate-300 border-t-[#003DA5] rounded-full animate-spin" />
+          )}
+          <ChevronIcon open={open} />
+        </div>
       </button>
 
       {open && !disabled && !loading && (
-        <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
           <div className="p-2 border-b border-slate-100">
             <input
               autoFocus
@@ -83,7 +94,7 @@ export default function SearchableSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscar..."
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
@@ -94,8 +105,8 @@ export default function SearchableSelect({
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => handleSelect(option.value)}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors ${option.value === value ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'}`}
+                  onMouseDown={(e) => { e.preventDefault(); handleSelect(option.value); }} onClick={() => handleSelect(option.value)}
+                  className={`w-full text-left px-3.5 py-2.5 text-sm hover:bg-blue-50 transition-colors ${option.value === value ? 'bg-blue-50 text-[#003DA5] font-bold' : 'text-slate-700'}`}
                 >
                   {option.label}
                 </button>
@@ -104,6 +115,7 @@ export default function SearchableSelect({
           </div>
         </div>
       )}
+      {error && <p className="text-[9px] text-red-600 mt-1">{error}</p>}
     </div>
   );
 }
@@ -122,4 +134,4 @@ function ChevronIcon({ open }: { open: boolean }) {
 }
 
 const inputCls =
-  'w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white';
+  'w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] focus:bg-white transition-all shadow-xs';
