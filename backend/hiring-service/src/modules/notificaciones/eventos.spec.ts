@@ -1,11 +1,15 @@
 import {
   avisoQueRige,
   destinatariosFinales,
+  esCorreo,
   eventosDeActividad,
   eventosDeTraza,
   leerAviso,
+  llenarTexto,
   mensajeDeAviso,
+  textoDelAviso,
   TrazaLeida,
+  variablesDesconocidas,
 } from './eventos';
 
 /**
@@ -162,6 +166,10 @@ describe('leerAviso', () => {
       roles: ['X'],
       personas: [],
       dependencias: [],
+      titulo: null,
+      mensaje: null,
+      correosExternos: [],
+      alContratista: false,
     });
   });
 
@@ -260,5 +268,76 @@ describe('mensajeDeAviso', () => {
     );
     expect(m.prioridad).toBe('Alta');
     expect(m.mensaje).toBe('3.4 · Revisión y reparto del proceso CTO-2026-0017 fue devuelta por Ana: «Falta el CDP»');
+  });
+});
+
+/** El texto que la Dirección escribe para un aviso (088). */
+describe('textoDelAviso · el texto propio de un aviso', () => {
+  const devolucion = {
+    evento: 'DEVUELTA' as const,
+    numeral: '3.4',
+    actorNombre: 'Ana',
+    observaciones: 'Falta el CDP',
+  };
+  const sinTexto = { titulo: null, mensaje: null };
+
+  it('sin texto propio sale el de siempre', () => {
+    expect(textoDelAviso(devolucion, 'Revisión y reparto', 'CTO-1', sinTexto)).toEqual(
+      mensajeDeAviso(devolucion, 'Revisión y reparto', 'CTO-1'),
+    );
+  });
+
+  it('llena las variables con lo que el aviso ya sabe', () => {
+    const t = textoDelAviso(devolucion, 'Revisión y reparto', 'CTO-1', {
+      titulo: 'Corrige el proceso {proceso}',
+      mensaje: '{quien} devolvió {actividad}: {observaciones}',
+    });
+
+    expect(t.titulo).toBe('Corrige el proceso CTO-1');
+    expect(t.mensaje).toBe('Ana devolvió 3.4 · Revisión y reparto: Falta el CDP');
+  });
+
+  it('cambiar solo el mensaje conserva el título de siempre y la prioridad del evento', () => {
+    const t = textoDelAviso(devolucion, 'Revisión y reparto', 'CTO-1', { titulo: null, mensaje: 'Revísalo' });
+
+    expect(t.titulo).toBe('Te devolvieron una actividad');
+    expect(t.prioridad).toBe('Alta');
+  });
+
+  it('lo que no se sabe queda vacío sin dejar espacios ni puntuación sueltos', () => {
+    expect(llenarTexto('Proceso {proceso} , revisado por {quien}.', { proceso: null, quien: 'Ana' })).toBe(
+      'Proceso, revisado por Ana.',
+    );
+  });
+
+  it('delata las variables mal escritas, que saldrían tal cual en el correo', () => {
+    expect(variablesDesconocidas('Hola {actvidad} del {proceso} y {nada}')).toEqual(['actvidad', 'nada']);
+    expect(variablesDesconocidas('Sin variables')).toEqual([]);
+  });
+});
+
+describe('leerAviso · texto y destinatarios de fuera (088)', () => {
+  const base = { evento: 'HABILITADA', activo: true, papeles: [], roles: [], personas: [], dependencias: [] };
+
+  it('descarta los correos que no son correos', () => {
+    const a = leerAviso({ ...base, correos_externos: ['contratista@empresa.co', 'sin-arroba', 3] });
+    expect(a?.correosExternos).toEqual(['contratista@empresa.co']);
+  });
+
+  it('un texto en blanco es el de siempre, no un aviso vacío', () => {
+    const a = leerAviso({ ...base, titulo: '   ', mensaje: null, al_contratista: true });
+    expect(a).toMatchObject({ titulo: null, mensaje: null, alContratista: true });
+  });
+
+  it('sin las columnas de la 088 no avisa a nadie de más', () => {
+    expect(leerAviso(base)).toMatchObject({ correosExternos: [], alContratista: false, titulo: null });
+  });
+});
+
+describe('esCorreo', () => {
+  it('pide arroba y dominio', () => {
+    expect(esCorreo('a@b.co')).toBe(true);
+    expect(esCorreo('a@b')).toBe(false);
+    expect(esCorreo('a b@c.co')).toBe(false);
   });
 });

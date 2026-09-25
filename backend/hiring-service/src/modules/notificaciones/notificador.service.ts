@@ -12,8 +12,8 @@ import {
   AvisoConfigurado,
   destinatariosFinales,
   EventoOcurrido,
-  mensajeDeAviso,
   PapelAviso,
+  textoDelAviso,
 } from './eventos';
 
 /** Si el motor está encendido. Se apaga con `NOTIFICACIONES_CONFIGURABLES=false`. */
@@ -94,17 +94,30 @@ export class NotificadorService implements OnApplicationBootstrap {
     // Las personas designadas llegan como id de persona; la campana necesita la cuenta.
     const cuentas = await this.campana.cuentasDe(candidatos);
     const destinatarios = destinatariosFinales(cuentas, ocurrido.actorId);
-    if (!destinatarios.length) return 0;
+
+    // Los de fuera de la plataforma: solo tienen correo (088).
+    const externos = [...aviso.correosExternos];
+    if (aviso.alContratista) {
+      const correo = await this.correoDelContratista(ocurrido.procesoId);
+      if (correo) externos.push(correo);
+    }
+    if (!destinatarios.length && !externos.length) return 0;
 
     const [actividad] = await this.dataSource.query(
       `SELECT nombre FROM hiring.actividades WHERE numeral = $1`,
       [ocurrido.numeral],
     );
-    const { titulo, mensaje, prioridad } = mensajeDeAviso(
+    const { titulo, mensaje, prioridad } = textoDelAviso(
       ocurrido,
       actividad?.nombre ?? null,
       proceso.radicado ?? null,
+      aviso,
     );
+
+    const correosExternos = externos.length
+      ? await this.campana.aCorreosExternos(externos, { titulo, mensaje })
+      : 0;
+    if (!destinatarios.length) return correosExternos;
 
     // El correo lo decide la actividad, no el aviso: se acordó así para que
     // quien configura no tenga que repetirlo en cada uno.
@@ -127,7 +140,30 @@ export class NotificadorService implements OnApplicationBootstrap {
       })),
       { porCorreo },
     );
-    return resultado.enviados;
+    return resultado.enviados + correosExternos;
+  }
+
+  /**
+   * El correo del contratista, del acto de adjudicación vigente.
+   *
+   * Es el único dato suyo que el módulo guarda: su registro maestro vive en
+   * Click. Sin acto vigente, o sin correo en él, no hay a quién avisar.
+   */
+  private async correoDelContratista(procesoId: string): Promise<string | null> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT correo_contratista AS correo
+           FROM hiring.actos_adjudicacion
+          WHERE proceso_id = $1 AND estado = 'VIGENTE' AND correo_contratista IS NOT NULL
+          ORDER BY emitido_at DESC
+          LIMIT 1`,
+        [procesoId],
+      );
+      return fila?.correo ?? null;
+    } catch (error: any) {
+      this.logger.warn(`No se pudo leer el correo del contratista: ${error.message}`);
+      return null;
+    }
   }
 
   /**

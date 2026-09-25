@@ -347,7 +347,7 @@ export class GuardarTipologiaDto {
   descripcion?: string;
 
   /** Lo consume la legalizacion (EFDS-1164) al exigir polizas. */
-  @ApiPropertyOptional({ description: 'Si los contratos de esta tipología exigen garantias' })
+  @ApiPropertyOptional({ description: 'Si los contratos de esta tipología exigen garantías' })
   @IsOptional()
   @IsBoolean()
   exigeGarantias?: boolean;

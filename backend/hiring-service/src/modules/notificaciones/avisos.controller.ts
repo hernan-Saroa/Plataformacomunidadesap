@@ -6,7 +6,7 @@ import { Permisos } from '../../auth/permisos.decorator';
 import { PERMISO_CONFIG_ADMINISTRAR } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
-import { AvisosService } from './avisos.service';
+import { AvisosService, CambiosAviso } from './avisos.service';
 
 /** A quién le llega cada aviso de una actividad (EFDS-1183). */
 @ApiTags('Configuración · Notificaciones')
@@ -27,12 +27,12 @@ export class AvisosController {
   @ApiOperation({
     summary: 'Encender, apagar o cambiar a quién llega un aviso de la actividad',
     description:
-      'Recibe { activo, dependencias, roles, personas }; lo que no llegue se conserva. Los avisos que salen siempre no se configuran.',
+      'Recibe { activo, dependencias, roles, personas, titulo, mensaje, correosExternos, alContratista }; lo que no llegue se conserva. Los avisos que salen siempre no se configuran.',
   })
   guardar(
     @Param('numeral') numeral: string,
     @Param('evento') evento: string,
-    @Body() cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
+    @Body() cambios: CambiosAviso,
     @Req() req: any,
   ) {
     return this.avisos.guardar(numeral, evento, cambios, getHiringAccess(req));

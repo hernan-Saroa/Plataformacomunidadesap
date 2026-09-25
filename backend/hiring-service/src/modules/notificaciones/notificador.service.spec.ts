@@ -23,6 +23,7 @@ describe('NotificadorService · despachar', () => {
   const conBase = (avisos: any[], extra: Record<string, any[]> = {}) => {
     const query = jest.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('avisos_por_correo')) return extra.porCorreo ?? [];
+      if (sql.includes('correo_contratista')) return extra.contratista ?? [];
       if (sql.includes('dir_email')) return extra.correos ?? [];
       if (sql.includes('FROM hiring.avisos')) return avisos;
       if (sql.includes('FROM hiring.procesos WHERE id')) return [{ modalidad: 'LICITACION', radicado: 'CTO-1' }];
@@ -202,6 +203,62 @@ describe('NotificadorService · despachar', () => {
       const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
       expect(llamada?.[1]).toEqual([permiso]);
       expect(query.mock.calls.some(([s]) => String(s).includes('FROM auth.user_roles') && !String(s).includes('perm.code'))).toBe(false);
+    });
+  });
+
+  describe('a quien no tiene cuenta (088)', () => {
+    const correosEnviados = (f: jest.Mock) =>
+      f.mock.calls
+        .filter(([url]) => String(url).endsWith('/api/v1/emails/send'))
+        .map(([, init]) => JSON.parse(init.body));
+
+    /** Adjuntar un documento, configurado solo para el contratista y un correo a mano. */
+    const soloDeFuera = (extra: Partial<Record<string, unknown>> = {}) => ({
+      evento: 'DOCUMENTO_ADJUNTO',
+      activo: true,
+      papeles: [],
+      roles: [],
+      correos_externos: ['interventoria@empresa.co'],
+      al_contratista: true,
+      ...extra,
+    });
+
+    it('le llega por correo al contratista del acto vigente y a los correos escritos', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([soloDeFuera()], {
+        contratista: [{ correo: 'gerencia@contratista.co' }],
+      });
+
+      expect(await srv.despachar([adjunto])).toBe(2);
+      expect(correosEnviados(f).map((c) => c.to).sort()).toEqual([
+        'gerencia@contratista.co',
+        'interventoria@empresa.co',
+      ]);
+      // Sin cuenta no hay campana, y el correo no los manda a la plataforma.
+      expect(f.mock.calls.some(([url]) => String(url).endsWith('/notifications/bulk'))).toBe(false);
+      expect(correosEnviados(f)[0].html).not.toContain('Abrir la plataforma');
+    });
+
+    it('sin acto vigente o sin correo en él, al contratista no le llega nada', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([soloDeFuera({ correos_externos: [] })], { contratista: [] });
+
+      expect(await srv.despachar([adjunto])).toBe(0);
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('sale con el texto que escribió la Dirección', async () => {
+      const f = fetchOk();
+      const { srv } = conBase(
+        [soloDeFuera({ titulo: 'Nuevo soporte en {proceso}', mensaje: '{quien} adjuntó un documento en {actividad}.' })],
+        { contratista: [] },
+      );
+
+      await srv.despachar([adjunto]);
+
+      const [correo] = correosEnviados(f);
+      expect(correo.subject).toBe('ESAP · Nuevo soporte en CTO-1');
+      expect(correo.text).toBe('director@esap.edu.co adjuntó un documento en 3.2 · Revisión y reparto.');
     });
   });
 

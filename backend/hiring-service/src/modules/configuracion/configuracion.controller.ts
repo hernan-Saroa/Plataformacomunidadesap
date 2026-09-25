@@ -19,6 +19,7 @@ import { randomBytes } from 'crypto';
 import { extname } from 'path';
 
 import { ConfiguracionService } from './configuracion.service';
+import { NOMBRE_EN_UTF8 } from '../archivos';
 import { RolesGuard } from '../../auth/roles.guard';
 import {
   ActualizarActividadDto,
@@ -45,6 +46,7 @@ const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
  * lo que la otra rechaza.
  */
 const RECEPCION_ARCHIVO = {
+  defParamCharset: NOMBRE_EN_UTF8,
   storage: diskStorage({
     destination: STORAGE_PATH,
     filename: (_req: any, file: any, cb: any) =>
