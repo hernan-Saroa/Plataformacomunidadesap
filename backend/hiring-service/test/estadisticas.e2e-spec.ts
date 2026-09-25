@@ -40,7 +40,7 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
     roles: ['GESTOR_CONTRATACION'],
   };
 
-  const SIN_FILTROS = { vigencia: null, modalidad: null };
+  const SIN_FILTROS = { vigencia: null, modalidad: null, tipologia: null };
 
   /**
    * Un contrato en ejecución, insertado con SQL.
@@ -101,7 +101,7 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
     await app.close();
   });
 
-  it('las cinco consultas corren contra el esquema', async () => {
+  it('todas las consultas corren contra el esquema', async () => {
     // Si al esquema le falta una columna que el SQL nombra, revienta aquí.
     const reporte = await estadisticas.gestion(SIN_FILTROS);
 
@@ -109,6 +109,35 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
     expect(Array.isArray(reporte.contratos.porEstado)).toBe(true);
     expect(Array.isArray(reporte.procesos.porDesenlace)).toBe(true);
     expect(Array.isArray(reporte.vigenciasDisponibles)).toBe(true);
+    expect(Array.isArray(reporte.modificaciones.porTipo)).toBe(true);
+    expect(Array.isArray(reporte.presupuesto.cuentasPorEstado)).toBe(true);
+    expect(Array.isArray(reporte.procesos.enCursoPorEtapa)).toBe(true);
+  });
+
+  it('el contrato sembrado sale en el listado, arrancado hoy', async () => {
+    const reporte = await estadisticas.gestion(SIN_FILTROS);
+    const sembrado = reporte.contratosDelReporte.find((c) => c.numero === NUMERO_CONTRATO);
+
+    expect(sembrado).toMatchObject({
+      estado: 'EJECUCION',
+      valor: VALOR,
+      valorInicial: VALOR,
+      pagado: 0,
+      modificaciones: 0,
+    });
+    expect(sembrado!.inicioEl).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('el filtro de tipología acota los contratos', async () => {
+    const conLaSuya = await estadisticas.gestion({
+      ...SIN_FILTROS,
+      tipologia: 'PRESTACION_SERVICIOS_PN',
+    });
+    expect(conLaSuya.contratosDelReporte.map((c) => c.numero)).toContain(NUMERO_CONTRATO);
+
+    const conOtra = await estadisticas.gestion({ ...SIN_FILTROS, tipologia: 'NO_EXISTE' });
+    expect(conOtra.contratos.total).toBe(0);
+    expect(conOtra.contratosDelReporte).toEqual([]);
   });
 
   it('el contrato sembrado se cuenta en ejecución', async () => {
@@ -130,6 +159,9 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
 
     const valorPorEstado = contratos.porEstado.reduce((s, c) => s + c.valor, 0);
     expect(valorPorEstado).toBe(contratos.valorTotal);
+
+    const porPersona = contratos.porTipoPersona.reduce((s, c) => s + c.cuantos, 0);
+    expect(porPersona).toBe(contratos.total);
   });
 
   it('la vigencia del contrato aparece entre las disponibles', async () => {
@@ -138,7 +170,7 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
   });
 
   it('el filtro de vigencia acota el reporte', async () => {
-    const reporte = await estadisticas.gestion({ vigencia: 1991, modalidad: null });
+    const reporte = await estadisticas.gestion({ vigencia: 1991, modalidad: null, tipologia: null });
 
     expect(reporte.contratos.total).toBe(0);
     expect(reporte.contratos.valorTotal).toBe(0);
@@ -150,12 +182,14 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
     const conLaSuya = await estadisticas.gestion({
       vigencia: VIGENCIA,
       modalidad: 'MINIMA_CUANTIA',
+      tipologia: null,
     });
     expect(conLaSuya.contratos.total).toBeGreaterThanOrEqual(1);
 
     const conOtra = await estadisticas.gestion({
       vigencia: VIGENCIA,
       modalidad: 'NO_EXISTE_ESTA_MODALIDAD',
+      tipologia: null,
     });
     expect(conOtra.contratos.total).toBe(0);
   });
@@ -166,6 +200,7 @@ describe('HU EFDS-1189 · estadísticas de gestión contractual', () => {
     const reporte = await estadisticas.gestion({
       vigencia: VIGENCIA,
       modalidad: 'MINIMA_CUANTIA',
+      tipologia: null,
     });
 
     expect(reporte.presupuesto.pagado).toBe(0);
