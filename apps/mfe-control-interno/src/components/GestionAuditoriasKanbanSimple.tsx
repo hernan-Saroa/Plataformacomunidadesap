@@ -1121,6 +1121,12 @@ export function GestionAuditoriasKanbanSimple() {
         fechaFinEjecucion: aud.fechaFinEjecucion, // ✅ Fecha fin de Ejecución
         fechaInicioComunicacion: aud.fechaInicioComunicacion, // ✅ Fecha inicio de Comunicación
         fechaFin: aud.fechaFin,
+        // Vigencia y semanas que no se trabajan (EFDS-2132): sin ellas, al editar el
+        // calendario suponía el año actual y guardar borraba las semanas quitadas.
+        planAnualAño: (aud as any).planAnualAño,
+        planAnualVigencia: (aud as any).planAnualVigencia,
+        planAnualId: (aud as any).planAnualId,
+        semanasExcluidas: (aud as any).semanasExcluidas || [],
         progreso: aud.progreso,
         hallazgos: aud.hallazgos,
         diasRestantes: aud.diasRestantes,
@@ -3387,6 +3393,12 @@ export function GestionAuditoriasKanbanSimple() {
                 rolDecretoAsociado: (auditoriaParaEditar as any).rolDecretoAsociado || meta.rolDecretoAsociado || '',
                 estadoKanban: auditoriaParaEditar.estado || 'Programa Anual',
                 vinculadaPlanAnual: auditoriaParaEditar.vinculadaPlanAnual || true,
+                // Sin la vigencia, el calendario suponía el año actual: una auditoría de
+                // 2041 no se pintaba, no dejaba marcar semanas y se guardaban fechas de otro año.
+                planAnualAño: (auditoriaParaEditar as any).planAnualAño ?? (auditoriaParaEditar as any).planAnualVigencia ?? undefined,
+                planAnualId: (auditoriaParaEditar as any).planAnualId || '',
+                // Semanas que no se trabajan: sin ellas, guardar la edición las borraba (EFDS-2132)
+                semanasExcluidas: (auditoriaParaEditar as any).semanasExcluidas || [],
               };
             })()}
           />

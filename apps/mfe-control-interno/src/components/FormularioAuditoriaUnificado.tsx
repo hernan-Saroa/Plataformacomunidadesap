@@ -474,7 +474,9 @@ export function FormularioAuditoriaUnificado({
       incluirHallazgosPreliminares: data?.incluirHallazgosPreliminares || false,
       vinculadaPlanAnual: data?.vinculadaPlanAnual || false,
       planAnualId: data?.planAnualId || '',
-      planAnualAño: data?.planAnualAño || new Date().getFullYear(),
+      // Sin vigencia, la del año de sus fechas y no el actual: el calendario solo
+      // marca semanas de su vigencia y alrededor (EFDS-2132).
+      planAnualAño: Number(data?.planAnualAño) || Number((inicioP || inicioE || inicioC || '').slice(0, 4)) || new Date().getFullYear(),
       rolDecretoAsociado: data?.rolDecretoAsociado || '',
       estadoKanban: data?.estadoKanban || 'Programa Anual',
     };
