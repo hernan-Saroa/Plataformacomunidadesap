@@ -20,7 +20,11 @@ import {
   ajustarSemanaEtapa,
   aplicarRangoEtapa,
   calcularProgramacion,
+  encadenarEtapas,
   fijarRangoEtapa,
+  inicioSugerido,
+  limpiarEtapa,
+  semanaQueContiene,
   semanaDesplazada,
   DURACION_ESTANDAR,
   fechaCorta,
@@ -117,9 +121,11 @@ export function CampoFechaCalendario({
   const [mes, setMes] = useState(() => mesDe(valor));
   // Se puede mirar cualquier año, con sus festivos; solo se marcan los de la vigencia
   const [añoVista, setAñoVista] = useState(vigencia);
+  // Abre donde está la etapa; si está vacía, donde termina la anterior (si la
+  // Planeación cierra el 31 de diciembre, la Ejecución abre en enero).
   useEffect(() => {
     if (!abierto) return;
-    const fecha = valor || fechas.fechaInicioPlaneacion;
+    const fecha = valor || fechas[campoInicio] || fechas[campoFin] || sugerido || fechas.fechaInicioPlaneacion;
     setMes(mesDe(fecha));
     setAñoVista(fecha ? parseYMD(fecha).getFullYear() : vigencia);
   }, [abierto]);
@@ -178,6 +184,17 @@ export function CampoFechaCalendario({
   const bloqueado = !!soloLectura || !!deshabilitado;
   const campoInicio = ({ P: 'fechaInicioPlaneacion', E: 'fechaInicioEjecucion', C: 'fechaInicioComunicacion' } as const)[etapa];
   const campoFin = ({ P: 'fechaFinPlaneacion', E: 'fechaFinEjecucion', C: 'fechaFinComunicacion' } as const)[etapa];
+  const etapaVacia = !programadas.some((p) => p.etapa === etapa);
+  // Día hábil siguiente al fin de la etapa anterior: donde debería arrancar esta
+  const sugerido = etapaVacia ? inicioSugerido(vigencia, fechas, semanasExcluidas, etapa) : undefined;
+
+  /**
+   * Todo cambio pasa por aquí para que la etapa siguiente arranque donde termina
+   * esta: si la Planeación se acorta o se corta a mitad de semana, la Ejecución
+   * empieza el día hábil siguiente en vez de quedar con un hueco.
+   */
+  const cambiar = (calculo: CalculoCronograma) =>
+    onCambio((f, ex) => encadenarEtapas(vigencia, f, calculo(f, ex)));
 
   /**
    * Marcar un rango es decir "esta etapa va desde aquí hasta allá", así que las
@@ -185,7 +202,7 @@ export function CampoFechaCalendario({
    * Semana Santa y receso siguen fuera porque no dependen del usuario.
    */
   const aplicarRango = (a: number, b: number) => {
-    onCambio((fechasActuales, excluidasActuales) => {
+    cambiar((fechasActuales, excluidasActuales) => {
       const dentro = (lunes: string) => {
         const s = semanas.find((x) => x.lunes === lunes);
         return !!s && s.numero >= a && s.numero <= b;
@@ -205,7 +222,7 @@ export function CampoFechaCalendario({
    */
   /** Fuera del año de la auditoría se guarda la fecha tal cual, sin recalcular etapas. */
   const fijarFechaSuelta = (dia: string) => {
-    onCambio((f, ex) => ({
+    cambiar((f, ex) => ({
       fechas: { ...fechasVacias(), ...f, [extremo === 'inicio' ? campoInicio : campoFin]: dia },
       semanasExcluidas: ex,
     }));
@@ -216,7 +233,7 @@ export function CampoFechaCalendario({
       fijarFechaSuelta(extremo === 'inicio' ? primerDiaHabil(semana) : semana.domingo);
       return;
     }
-    onCambio((f, ex) => {
+    cambiar((f, ex) => {
       const actuales = programacionDesdeFechas(vigencia, f, ex);
       if (actuales.some((p) => p.etapa === etapa)) {
         return ajustarSemanaEtapa(vigencia, f, ex, etapa, semana.numero);
@@ -232,6 +249,22 @@ export function CampoFechaCalendario({
         return { fechas: resultado.fechas, semanasExcluidas: ex };
       }
 
+      // La etapa arranca donde termina la anterior: desde el campo de fin, la semana
+      // marcada es el cierre; desde el de inicio, la sugerida arranca el día exacto.
+      const desdeSugerido = inicioSugerido(vigencia, f, ex, etapa);
+      const semanaSugerida = desdeSugerido ? semanaQueContiene(desdeSugerido, semanas) : undefined;
+      if (desdeSugerido && semanaSugerida && semana.numero >= semanaSugerida.numero
+        && (extremo === 'fin' || semana.numero === semanaSugerida.numero)) {
+        // Si la anterior termina a mitad de semana, esa semana sigue siendo suya
+        const compartida = !!actuales[semanaSugerida.numero - 1]?.etapa;
+        const primera = compartida ? semanaDesplazada(vigencia, ex, semanaSugerida.numero, 1) : semanaSugerida.numero;
+        const ultima = extremo === 'fin'
+          ? Math.max(semana.numero, primera)
+          : semanaDesplazada(vigencia, ex, primera, pasos);
+        const resultado = fijarRangoEtapa(vigencia, f, ex, etapa, primera, ultima);
+        return { ...resultado, fechas: { ...resultado.fechas, [campoInicio]: desdeSugerido } };
+      }
+
       const otro = semanaDesplazada(vigencia, ex, semana.numero, extremo === 'inicio' ? pasos : -pasos);
       return fijarRangoEtapa(
         vigencia, f, ex, etapa,
@@ -243,7 +276,7 @@ export function CampoFechaCalendario({
 
   /** Propuesta preliminar: las 13 semanas del ciclo desde donde arranque. */
   const aplicarCicloEstandar = () => {
-    onCambio((f, ex) => {
+    cambiar((f, ex) => {
       const actuales = programacionDesdeFechas(vigencia, f, ex);
       const propias = actuales.filter((p) => p.etapa === etapa);
       const desde = propias[0]?.semana
@@ -288,7 +321,7 @@ export function CampoFechaCalendario({
    */
   const fijarDia = (semana: SemanaVigencia, dia: string) => {
     if (!esVigencia) { fijarFechaSuelta(dia); return; }
-    onCambio((f, ex) => {
+    cambiar((f, ex) => {
       const yaEsMia = programacionDesdeFechas(vigencia, f, ex)[semana.numero - 1]?.etapa === etapa;
       const base = yaEsMia
         ? { fechas: { ...fechasVacias(), ...f }, semanasExcluidas: ex }
@@ -318,9 +351,15 @@ export function CampoFechaCalendario({
     });
   };
 
-  const limpiar = () => onCambio(() => ({ fechas: fechasVacias(), semanasExcluidas: [] }));
+  /** Borra solo la etapa del campo; antes borraba las tres. */
+  const limpiar = () => cambiar((f, ex) => limpiarEtapa(vigencia, f, ex, etapa));
 
-  const textoCampo = valor ? parseYMD(valor).toLocaleDateString('es-CO') : 'dd/mm/aaaa';
+  // Con la etapa vacía, el inicio muestra dónde arrancaría (el día después de la anterior)
+  const textoCampo = valor
+    ? parseYMD(valor).toLocaleDateString('es-CO')
+    : extremo === 'inicio' && sugerido
+      ? `${parseYMD(sugerido).toLocaleDateString('es-CO')} (sugerida)`
+      : 'dd/mm/aaaa';
 
   return (
     <Popover open={abierto} onOpenChange={(v) => !bloqueado && setAbierto(v)}>
@@ -434,7 +473,7 @@ export function CampoFechaCalendario({
         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-gray-100 pt-1.5 text-[10px] text-gray-500">
           <Leyenda fondo={ROJO_FESTIVO} texto="Día festivo" />
           <Leyenda fondo={FONDO_BLOQUEADA} rayado texto="Semana Santa y receso" />
-          <Leyenda fondo="#FFFFFF" texto="Semana quitada" />
+          <Leyenda fondo="#FFFFFF" texto="Semana que no se trabaja" />
         </div>
 
         {!hayCronograma ? (
@@ -459,14 +498,15 @@ export function CampoFechaCalendario({
                 Ciclo 4-4-5
               </button>
             )}
-            {hayCronograma && !bloqueado && (
+            {!etapaVacia && !bloqueado && (
               <button
                 type="button"
                 onClick={limpiar}
+                title={`Borra solo las semanas de ${NOMBRE_ETAPA[etapa]}; las demás etapas quedan como están`}
                 className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
               >
                 <Eraser className="h-3.5 w-3.5" />
-                Limpiar
+                Limpiar {NOMBRE_ETAPA[etapa]}
               </button>
             )}
           </div>
@@ -522,7 +562,7 @@ function Mes({
 }: MesProps) {
   const inicioMes = fechaYMD(new Date(vigencia, mes, 1));
   const finMes = fechaYMD(new Date(vigencia, mes + 1, 0));
-  // Cada semana se muestra en un solo mes (el de su jueves, como en el Excel):
+  // Cada semana se muestra en un solo mes (el de su primer día hábil, como en el Excel):
   // si salía en los dos, marcarla desde el mes siguiente corría la fecha al anterior.
   const filas = semanas.filter((s) => s.mes === mes && s.año === vigencia);
   const hoy = fechaYMD(new Date());
@@ -570,7 +610,7 @@ function Mes({
           const titulo = bloqueada
             ? `${NOMBRE_BLOQUEO[semana.bloqueo!]}: no se programa`
             : excluida
-              ? `${nombreSemana} desmarcada · clic para volver a marcarla`
+              ? `${nombreSemana} no se trabaja · clic para volver a incluirla`
               : etapa
                 ? `${nombreSemana} · ${NOMBRE_ETAPA[etapa]} · clic para desmarcarla`
                 : `${nombreSemana} como ${extremo} de la ${NOMBRE_ETAPA[etapaCampo]} (${fechaCorta(semana.lunes)} – ${fechaCorta(semana.domingo)})`;

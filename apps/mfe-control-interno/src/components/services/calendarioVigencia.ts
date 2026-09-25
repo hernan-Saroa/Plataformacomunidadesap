@@ -7,8 +7,8 @@
  * anterior al festivo del 12 de octubre (Decreto 1373 de 2007). Así sirve para
  * 2027 y los años que vengan sin tocar código.
  *
- * Las semanas van de lunes a domingo y la semana 1 es la que contiene el 1 de
- * enero, igual que en el formato del Programa Anual (EM-FO-001).
+ * Las semanas van de lunes a domingo y cada una es del mes de su primer día
+ * hábil, igual que en la hoja SEMANAS del Programa Anual (EM-FO-001).
  */
 
 export type BloqueoSemana = 'semana_santa' | 'receso';
@@ -24,9 +24,9 @@ export interface SemanaVigencia {
   numero: number;
   lunes: string;
   domingo: string;
-  /** Año al que pertenece la semana (el del jueves) */
+  /** Año al que pertenece la semana (el de su primer día hábil en la vigencia) */
   año: number;
-  /** Mes (0-11) al que pertenece la semana: el del jueves, como en ISO 8601 */
+  /** Mes (0-11) al que pertenece la semana: el de su primer día hábil, como en el EM-FO-001 */
   mes: number;
   /** Número de la semana dentro de ese mes (1..5) */
   numeroEnMes: number;
@@ -205,10 +205,17 @@ export function semanasDeVigencia(año: number): SemanaVigencia[] {
   let numero = 1;
   while (lunes <= ultimoDia) {
     const domingo = sumarDias(lunes, 6);
-    const jueves = sumarDias(lunes, 3);
-    // La semana partida entre dos años se queda con el mes de su jueves
-    const añoSemana = jueves.getFullYear();
-    const mes = jueves.getMonth();
+    // Como en la hoja SEMANAS del formato oficial (EM-FO-001), la semana es del mes
+    // de su primer día hábil: la del 28 de septiembre es de septiembre aunque traiga
+    // el 1 y el 2 de octubre. La que cruza de año se queda en la vigencia si tiene
+    // días hábiles en ella: la del 29 de diciembre de 2025 es la Semana 1 de enero
+    // de 2026 y la del 28 de diciembre de 2026, la Semana 4 de diciembre.
+    const habiles = [0, 1, 2, 3, 4]
+      .map((d) => sumarDias(lunes, d))
+      .filter((d) => !festivosPorFecha.has(fechaYMD(d)));
+    const referencia = habiles.find((d) => d.getFullYear() === año) ?? habiles[0] ?? lunes;
+    const añoSemana = referencia.getFullYear();
+    const mes = referencia.getMonth();
     const clave = `${añoSemana}-${mes}`;
     contadorMes.set(clave, (contadorMes.get(clave) || 0) + 1);
     const lunesYMD = fechaYMD(lunes);
@@ -420,7 +427,8 @@ export interface ResultadoAjuste {
  *
  * Antes cada clic recalculaba el ciclo completo y las otras etapas se movían,
  * así que lo que ya estaba marcado parecía perderse. Aquí solo cambia la etapa
- * del campo: al agregar una semana el rango se estira hasta ella, al quitar un
+ * del campo: al agregar una semana el rango se estira hasta ella (las libres que
+ * se salten quedan como semanas que no se trabajan), al quitar un
  * extremo el rango se encoge y al quitar una del medio queda excluida. Si la
  * semana era de otra etapa, esa otra se recorta para no quedar encima.
  */
@@ -448,20 +456,142 @@ export function fijarRangoEtapa(
   };
 
   ponerRango(etapa, desde, hasta);
+  cederSemanas(semanas, programadas, nuevasFechas, etapa, desde, hasta);
+
+  return { fechas: nuevasFechas, semanasExcluidas };
+}
+
+/**
+ * Las demás etapas ceden las semanas que quedan dentro del rango de `etapa`; si les
+ * quedan semanas a ambos lados, se quedan con el bloque más grande. El extremo que
+ * no pierde semanas conserva su día exacto: antes marcar la Ejecución devolvía al
+ * domingo una Planeación cortada un miércoles.
+ */
+function cederSemanas(
+  semanas: SemanaVigencia[],
+  programadas: SemanaProgramada[],
+  nuevasFechas: FechasEtapas,
+  etapa: EtapaCronograma,
+  desde: number,
+  hasta: number,
+): void {
   for (const otra of ['P', 'E', 'C'] as EtapaCronograma[]) {
     if (otra === etapa) continue;
-    const suyas = programadas
-      .filter((p) => p.etapa === otra)
-      .map((p) => p.semana.numero)
-      .filter((n) => n < desde || n > hasta);
-    if (!suyas.length) { ponerRango(otra, 1, 0); continue; }
+    const { inicio, fin } = CAMPOS_ETAPA[otra];
+    const todas = programadas.filter((p) => p.etapa === otra).map((p) => p.semana.numero);
+    if (!todas.length) continue;
+    const suyas = todas.filter((n) => n < desde || n > hasta);
+    if (!suyas.length) { nuevasFechas[inicio] = ''; nuevasFechas[fin] = ''; continue; }
     const posteriores = suyas.filter((n) => n > hasta);
     const anteriores = suyas.filter((n) => n < desde);
     const bloque = posteriores.length >= anteriores.length ? posteriores : anteriores;
-    ponerRango(otra, bloque[0], bloque[bloque.length - 1]);
+    const primera = bloque[0];
+    const ultima = bloque[bloque.length - 1];
+    if (primera !== todas[0]) nuevasFechas[inicio] = primerDiaHabil(semanas[primera - 1]);
+    if (ultima !== todas[todas.length - 1]) nuevasFechas[fin] = semanas[ultima - 1].domingo;
+  }
+}
+
+/**
+ * Día hábil siguiente a una fecha: salta fines de semana, festivos, Semana Santa,
+ * el receso y las semanas que no se trabajan.
+ */
+export function diaHabilSiguiente(fecha: string, año: number, semanasExcluidas: string[] = []): string {
+  const porLunes = new Map(semanasDeVigencia(año).map((s) => [s.lunes, s]));
+  const excluidas = new Set(semanasExcluidas);
+  let dia = sumarDias(parseYMD(fecha), 1);
+  for (let i = 0; i < 400; i++) {
+    const ymd = fechaYMD(dia);
+    const semana = porLunes.get(fechaYMD(lunesDe(dia)));
+    const habil = dia.getDay() !== 0 && dia.getDay() !== 6
+      && !!semana && !semana.bloqueo && !excluidas.has(semana.lunes)
+      && !semana.festivos.some((f) => f.fecha === ymd);
+    if (habil) return ymd;
+    dia = sumarDias(dia, 1);
+  }
+  return fechaYMD(sumarDias(parseYMD(fecha), 1));
+}
+
+const SIGUIENTE_ETAPA: Array<[EtapaCronograma, EtapaCronograma]> = [['P', 'E'], ['E', 'C']];
+
+/** Etapa anterior a la dada (Ejecución → Planeación, Comunicación → Ejecución). */
+export function etapaAnterior(etapa: EtapaCronograma): EtapaCronograma | undefined {
+  return SIGUIENTE_ETAPA.find(([, siguiente]) => siguiente === etapa)?.[0];
+}
+
+/**
+ * Fecha en que debería arrancar una etapa: el día hábil siguiente al fin de la
+ * anterior. Sin etapa anterior o sin su fin, no hay sugerencia.
+ */
+export function inicioSugerido(
+  año: number,
+  fechas: Partial<FechasEtapas>,
+  semanasExcluidas: string[],
+  etapa: EtapaCronograma,
+): string | undefined {
+  const anterior = etapaAnterior(etapa);
+  const fin = anterior ? fechas[CAMPOS_ETAPA[anterior].fin] : undefined;
+  return fin ? diaHabilSiguiente(fin, año, semanasExcluidas) : undefined;
+}
+
+/**
+ * Cada etapa arranca donde termina la anterior (EFDS-2132). Cuando cambia el fin
+ * de Planeación, la Ejecución empieza el día hábil siguiente y conserva su fin; si
+ * la anterior la tapó entera, conserva sus semanas desde el nuevo inicio. Igual la
+ * Comunicación con la Ejecución. Solo reacciona al cambio del fin anterior, para no
+ * deshacer un inicio que el usuario movió a propósito.
+ */
+export function encadenarEtapas(
+  año: number,
+  antes: Partial<FechasEtapas>,
+  despues: ResultadoAjuste,
+): ResultadoAjuste {
+  const fechas: FechasEtapas = { ...fechasVacias(), ...despues.fechas };
+  const { semanasExcluidas } = despues;
+  const semanas = semanasDeVigencia(año);
+
+  for (const [anterior, etapa] of SIGUIENTE_ETAPA) {
+    const finAnterior = fechas[CAMPOS_ETAPA[anterior].fin];
+    const { inicio, fin } = CAMPOS_ETAPA[etapa];
+    const cambio = (antes[CAMPOS_ETAPA[anterior].fin] || '') !== finAnterior;
+    if (!cambio || !finAnterior || !fechas[inicio] || !fechas[fin]) continue;
+
+    const nuevoInicio = diaHabilSiguiente(finAnterior, año, semanasExcluidas);
+    if (nuevoInicio > fechas[fin]) {
+      const cuenta = programacionDesdeFechas(año, antes, semanasExcluidas).filter((p) => p.etapa === etapa).length
+        || DURACION_ESTANDAR[etapa];
+      const primera = semanaQueContiene(nuevoInicio, semanas);
+      if (!primera) continue;
+      fechas[fin] = semanas[semanaDesplazada(año, semanasExcluidas, primera.numero, cuenta - 1) - 1].domingo;
+    }
+    fechas[inicio] = nuevoInicio;
   }
 
-  return { fechas: nuevasFechas, semanasExcluidas };
+  return { fechas, semanasExcluidas };
+}
+
+/**
+ * Quita una sola etapa (EFDS-2132): antes Limpiar borraba las tres. También
+ * vuelven a contar las semanas que se habían sacado dentro de esa etapa.
+ */
+export function limpiarEtapa(
+  año: number,
+  fechas: Partial<FechasEtapas>,
+  semanasExcluidas: string[],
+  etapa: EtapaCronograma,
+): ResultadoAjuste {
+  const { inicio, fin } = CAMPOS_ETAPA[etapa];
+  const desde = fechas[inicio];
+  const hasta = fechas[fin];
+  const semanas = semanasDeVigencia(año);
+  const dentro = (lunes: string) => {
+    const s = semanas.find((x) => x.lunes === lunes);
+    return !!s && !!desde && !!hasta && s.domingo >= desde.slice(0, 10) && s.lunes <= hasta.slice(0, 10);
+  };
+  return {
+    fechas: { ...fechasVacias(), ...fechas, [inicio]: '', [fin]: '' },
+    semanasExcluidas: semanasExcluidas.filter((lunes) => !dentro(lunes)),
+  };
 }
 
 /** Semana que queda n semanas útiles más adelante (o atrás, con n negativo). */
@@ -527,20 +657,30 @@ export function ajustarSemanaEtapa(
   excluidas = excluidas.filter((l) => l !== objetivo.lunes);
   const desde = mias.length ? Math.min(mias[0], numero) : numero;
   const hasta = mias.length ? Math.max(mias[mias.length - 1], numero) : numero;
+
+  // Las semanas libres que el usuario se saltó no entran: marcar S1, S2 y luego
+  // S4 deja la S3 como semana que no se trabaja, en vez de meterla sola.
+  if (mias.length) {
+    const [a, b] = numero > mias[mias.length - 1]
+      ? [mias[mias.length - 1] + 1, numero - 1]
+      : [numero + 1, mias[0] - 1];
+    for (let n = a; n <= b; n++) {
+      const p = programadas[n - 1];
+      if (p && !p.etapa && !p.semana.bloqueo && !excluidas.includes(p.semana.lunes)) {
+        excluidas = [...excluidas, p.semana.lunes];
+      }
+    }
+  }
   ponerRango(etapa, desde, hasta);
+
+  // El extremo que no se movió conserva su día exacto (un corte a mitad de semana)
+  const { inicio: campoInicio, fin: campoFin } = CAMPOS_ETAPA[etapa];
+  if (mias.length && desde === mias[0] && fechas[campoInicio]) nuevasFechas[campoInicio] = fechas[campoInicio]!;
+  if (mias.length && hasta === mias[mias.length - 1] && fechas[campoFin]) nuevasFechas[campoFin] = fechas[campoFin]!;
 
   // Las demás etapas ceden las semanas que queden dentro del nuevo rango: la
   // etapa crece a costa de la vecina y la auditoría no se alarga.
-  for (const otra of ['P', 'E', 'C'] as EtapaCronograma[]) {
-    if (otra === etapa) continue;
-    const suyas = propias(otra).filter((n) => n < desde || n > hasta);
-    if (!suyas.length) { ponerRango(otra, 1, 0); continue; }
-    const posteriores = suyas.filter((n) => n > hasta);
-    const anteriores = suyas.filter((n) => n < desde);
-    // Si le quedan semanas a ambos lados, se queda con el bloque más grande
-    const bloque = posteriores.length >= anteriores.length ? posteriores : anteriores;
-    ponerRango(otra, bloque[0], bloque[bloque.length - 1]);
-  }
+  cederSemanas(semanas, programadas, nuevasFechas, etapa, desde, hasta);
 
   return { fechas: nuevasFechas, semanasExcluidas: excluidas };
 }
