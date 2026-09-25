@@ -52,6 +52,16 @@ export class CreateSolicitudDto {
 
   @IsOptional()
   @IsString()
+  @Length(0, 100)
+  numeroCdp?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 50)
+  fechaCdp?: string;
+
+  @IsOptional()
+  @IsString()
   @IsIn(['ALTA', 'MEDIA', 'BAJA'])
   prioridad?: string;
 
@@ -113,7 +123,7 @@ export class CreateSolicitudDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+  @IsIn(['TERRESTRE', 'AEREO', 'MIXTO', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
   tipoComision?: string;
 
   @IsOptional()

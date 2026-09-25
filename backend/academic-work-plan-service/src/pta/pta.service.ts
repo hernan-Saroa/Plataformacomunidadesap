@@ -10711,14 +10711,26 @@ export class PtaService {
         }
         continue;
       }
-      const estadoPorComponente = new Map(componentesDelPta.map((c: any) => [c.componente, c.estado]));
+      const detallePorComponente = new Map(componentesDelPta.map((c: any) => [c.componente, {
+        estado: c.estado,
+        // getComponentesAprobacion calcula `aplica` desde el contenido real
+        // (horas/actividades) y lo mantiene true para una reaprobación abierta
+        // por solicitud de edición. El lote no debe decidir filas técnicas
+        // vacías, incluso si quedaron pendientes como alerta de integridad.
+        aplica: c.aplica,
+      }]));
 
       for (const componente of componentes) {
-        const estadoActual = estadoPorComponente.get(componente);
-        if (estadoActual === undefined) {
+        const detalleActual = detallePorComponente.get(componente);
+        if (detalleActual === undefined) {
           resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'No aplica a este PTA' });
           continue;
         }
+        if (detalleActual.aplica === false) {
+          resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'Sin actividades en este componente' });
+          continue;
+        }
+        const estadoActual = detalleActual.estado;
         if (estadoActual === decision) {
           resultados.push({
             ptaId,
@@ -10776,6 +10788,129 @@ export class PtaService {
       },
       { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 },
     );
+
+    return { resumen, resultados };
+  }
+
+  /**
+   * Revisión masiva por componente/subsección. Igual que la aprobación masiva,
+   * solo orquesta: cada decisión pasa por revisarComponente(), que conserva la
+   * validación de permisos, alcance territorial y bloqueos del flujo individual.
+   */
+  async revisarComponentesLote(body: any, auth?: PtaAuthenticatedUser) {
+    if (!auth) {
+      throw new ForbiddenException('No autenticado para revisar componentes del PTA.');
+    }
+
+    const decisionRaw = coalesceString(body?.estado);
+    if (decisionRaw && !['revisado', 'devuelto'].includes(decisionRaw)) {
+      throw new BadRequestException('El estado de la revisión masiva debe ser "revisado" o "devuelto".');
+    }
+    const decision: 'revisado' | 'devuelto' = decisionRaw === 'devuelto' ? 'devuelto' : 'revisado';
+    const ptaIds: string[] = Array.isArray(body?.ptaIds)
+      ? Array.from(new Set<string>((body.ptaIds as unknown[])
+          .map((value) => coalesceString(value)).filter((value): value is string => !!value)))
+      : [];
+    const revisiones: string[] = Array.isArray(body?.revisiones)
+      ? Array.from(new Set<string>((body.revisiones as unknown[])
+          .map((value) => coalesceString(value)).filter((value): value is string => !!value)))
+      : [];
+
+    if (ptaIds.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un PTA para la revisión masiva.');
+    }
+    if (revisiones.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un componente para la revisión masiva.');
+    }
+
+    const decisiones = revisiones.map((key) => {
+      const separator = key.lastIndexOf(':');
+      const componente = separator > 0 ? key.slice(0, separator) : '';
+      const subseccion = separator > 0 ? key.slice(separator + 1) : '';
+      const validas = REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
+      if (!COMPONENT_APPROVAL_KEY_SET.has(componente) || !validas.includes(subseccion as any)) {
+        throw new BadRequestException(`Componente o subsección de revisión no soportado: ${key}`);
+      }
+      return { key, componente, subseccion };
+    });
+
+    type ResultadoRevisionLote = {
+      ptaId: string;
+      componente: string;
+      subseccion: string;
+      estado: 'revisado' | 'devuelto' | 'omitido' | 'fallido';
+      motivo?: string;
+    };
+    const resultados: ResultadoRevisionLote[] = [];
+
+    for (const ptaId of ptaIds) {
+      const existePta = await this.ptaRepo.exists({ where: { id: ptaId } });
+      if (!existePta) {
+        for (const item of decisiones) {
+          resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'fallido', motivo: 'PTA no encontrado' });
+        }
+        continue;
+      }
+
+      let componentesDelPta: Awaited<ReturnType<PtaService['getComponentesRevision']>>;
+      try {
+        componentesDelPta = await this.getComponentesRevision(ptaId);
+      } catch (error) {
+        const motivo = error instanceof Error ? error.message : 'PTA no encontrado';
+        for (const item of decisiones) {
+          resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'fallido', motivo });
+        }
+        continue;
+      }
+      const estadoPorRevision = new Map(componentesDelPta.map((item: any) => [
+        `${item.componente}:${item.subseccion}`, String(item.estado || 'pendiente').toLowerCase(),
+      ]));
+
+      for (const item of decisiones) {
+        const estadoActual = estadoPorRevision.get(item.key);
+        if (estadoActual === undefined) {
+          resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'omitido', motivo: 'No aplica a este PTA' });
+          continue;
+        }
+        if (estadoActual === decision) {
+          resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'omitido', motivo: decision === 'revisado' ? 'Ya estaba revisado' : 'Ya estaba devuelto' });
+          continue;
+        }
+        if (estadoActual === 'devuelto') {
+          resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'omitido', motivo: 'Devuelto: pendiente de corrección del docente' });
+          continue;
+        }
+        try {
+          await this.revisarComponente(ptaId, {
+            componente: item.componente,
+            subseccion: item.subseccion,
+            estado: decision,
+            comentarios: body?.comentarios,
+            revisorId: body?.revisorId,
+            revisorNombre: body?.revisorNombre,
+            revisorRol: body?.revisorRol,
+          }, auth);
+          resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: decision });
+        } catch (error) {
+          resultados.push({
+            ptaId,
+            componente: item.componente,
+            subseccion: item.subseccion,
+            estado: 'fallido',
+            motivo: error instanceof Error ? error.message : 'Error desconocido',
+          });
+        }
+      }
+    }
+
+    const resumen = resultados.reduce((acc, item) => {
+      acc.total += 1;
+      if (item.estado === 'revisado') acc.revisados += 1;
+      else if (item.estado === 'devuelto') acc.devueltos += 1;
+      else if (item.estado === 'omitido') acc.omitidos += 1;
+      else acc.fallidos += 1;
+      return acc;
+    }, { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 });
 
     return { resumen, resultados };
   }

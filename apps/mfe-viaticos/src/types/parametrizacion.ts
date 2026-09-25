@@ -124,6 +124,19 @@ export interface TarifaRegionalExcepcion {
   creadoEn: string;
 }
 
+export interface TarifaTransporteTerminal {
+  id?: number;
+  departamento: string;
+  departamentoId?: number | null;
+  ciudad?: string;
+  ciudadAeropuerto: string;
+  valorMaximoTrayecto: number;
+  incrementoIncluido?: boolean;
+  activo?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface LiquidationParam {
   id: number;
   clave: string;

@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { EscalaViaticoEntity } from '../../entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from '../../entities/liquidation/tarifa-investigador.entity';
-import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa-regional-excepcion.entity';
+import { TarifaTransporteTerminalEntity } from '../../entities/liquidation/tarifa-transporte-terminal.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
 import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
 import { Optional } from '@nestjs/common';
@@ -60,9 +60,9 @@ export class LiquidationService {
     string,
     { data: TarifaInvestigadorEntity; expiry: number }
   >();
-  private readonly regionalCache = new Map<
+  private readonly terminalCache = new Map<
     string,
-    { data: TarifaRegionalExcepcionEntity; expiry: number }
+    { data: TarifaTransporteTerminalEntity[]; expiry: number }
   >();
   private readonly paramsCache = new Map<
     string,
@@ -75,8 +75,8 @@ export class LiquidationService {
     private readonly escalaRepo: Repository<EscalaViaticoEntity>,
     @InjectRepository(TarifaInvestigadorEntity)
     private readonly investigadorRepo: Repository<TarifaInvestigadorEntity>,
-    @InjectRepository(TarifaRegionalExcepcionEntity)
-    private readonly regionalRepo: Repository<TarifaRegionalExcepcionEntity>,
+    @InjectRepository(TarifaTransporteTerminalEntity)
+    private readonly terminalRepo: Repository<TarifaTransporteTerminalEntity>,
     @InjectRepository(LiquidationParamEntity)
     private readonly paramRepo: Repository<LiquidationParamEntity>,
     private readonly dataSource: DataSource,
@@ -145,11 +145,20 @@ export class LiquidationService {
     return Number(valor);
   }
 
+  async obtenerTarifaTerminalAereo(): Promise<number> {
+    const valor = await this.obtenerParametro('TARIFA_TERMINAL_AEREO', '162634');
+    return Number(valor);
+  }
+
   async recargarParametros(): Promise<void> {
     this.paramsCache.clear();
     this.escalaCache.clear();
     this.investigadorCache.clear();
-    this.regionalCache.clear();
+    this.terminalCache.clear();
+  }
+
+  async invalidarCache(): Promise<void> {
+    await this.recargarParametros();
   }
 
   private static parseFechaLocal(iso: string): Date {
@@ -214,22 +223,8 @@ export class LiquidationService {
           : [0];
       salarioBaseAplicado = Math.max(...asignaciones);
 
-      if (dto.aplicaExcepcionRegional && dto.destinoDepartamento) {
-        const excepcion = await this.obtenerExcepcionRegional(
-          dto.destinoDepartamento,
-        );
-        if (excepcion && excepcion.activo) {
-          tarifaDiariaBase = Number(excepcion.tarifaDiaria);
-          decretoAplicado = excepcion.decretoReferencia || decretoAplicado;
-        } else {
-          const escala =
-            await this.obtenerEscalaPorSalario(salarioBaseAplicado);
-          tarifaDiariaBase = Number(escala.tarifaDiaria);
-        }
-      } else {
-        const escala = await this.obtenerEscalaPorSalario(salarioBaseAplicado);
-        tarifaDiariaBase = Number(escala.tarifaDiaria);
-      }
+      const escala = await this.obtenerEscalaPorSalario(salarioBaseAplicado);
+      tarifaDiariaBase = Number(escala.tarifaDiaria);
     }
 
     const factorComisionado = await this.obtenerFactorComisionado(tipo);
@@ -288,6 +283,35 @@ export class LiquidationService {
       totalNoPernoctados = tarifaDiaNoPernoctado;
     }
 
+    // Sección 4 GF-FO-023: Liquidación de los Gastos de Desplazamiento
+    let transporteTerminalesAereos = 0;
+    if (dto.itinerario && dto.itinerario.length > 0) {
+      for (const tramo of dto.itinerario) {
+        if (tramo.tipoTransporte === 'AEREO') {
+          const tarifaTramo = await this.obtenerTarifaTerminal(
+            tramo.destinoCiudad,
+            tramo.destinoDepartamento,
+            (tramo as any).destinoDepartamentoId,
+          );
+          const factorTrayecto = tramo.tipoTrayecto === 'IDA_Y_VUELTA' ? 2 : 1;
+          transporteTerminalesAereos += tarifaTramo * factorTrayecto;
+        }
+      }
+    } else if (dto.incluyeTransporteAereo) {
+      transporteTerminalesAereos = await this.obtenerTarifaTerminal(
+        dto.destinoCiudad,
+        dto.destinoDepartamento,
+      );
+    }
+
+    const transporteTerrestreFluvial = dto.montoTransporteTerrestre
+      ? Math.round(dto.montoTransporteTerrestre)
+      : 0;
+    const totalGastosDesplazamiento =
+      transporteTerminalesAereos + transporteTerrestreFluvial;
+    const totalViaticosYDesplazamientos =
+      valorTotalViaticos + totalGastosDesplazamiento;
+
     return {
       success: true,
       data: {
@@ -305,6 +329,10 @@ export class LiquidationService {
         diasNoPernoctados,
         tarifaDiaNoPernoctado,
         totalNoPernoctados,
+        transporteTerminalesAereos,
+        transporteTerrestreFluvial,
+        totalGastosDesplazamiento,
+        totalViaticosYDesplazamientos,
         desgloseCalculo: desglose,
         alertas: alertas.length > 0 ? alertas : undefined,
       },
@@ -483,26 +511,105 @@ export class LiquidationService {
   }
 
   /**
-   * Obtiene la excepción regional activa para un departamento.
-   * Usa caché en memoria TTL configurable.
-   * Retorna null si no existe excepción para el departamento.
+   * Obtiene la tarifa máxima de transporte hacia terminal aérea según resolución (tabla oficial).
+   * Busca por departamento o ciudad en la tabla travel_expenses.tarifas_transporte_terminal.
+   * Si no se encuentra tarifa especial, retorna la tarifa para 'Otros' ($ 50.689).
    */
-  private async obtenerExcepcionRegional(
-    departamento: string,
-  ): Promise<TarifaRegionalExcepcionEntity | null> {
-    const cacheKey = `regional_${departamento.toUpperCase()}`;
-    let excepcion = getCached<TarifaRegionalExcepcionEntity>(
-      this.regionalCache,
+  async obtenerTarifaTerminal(
+    ciudad?: string,
+    departamento?: string,
+    departamentoId?: number,
+  ): Promise<number> {
+    const cacheKey = 'all_tarifas_terminal';
+    let tarifas = getCached<TarifaTransporteTerminalEntity[]>(
+      this.terminalCache as any,
       cacheKey,
     );
-    if (!excepcion) {
-      excepcion = await this.regionalRepo.findOne({
-        where: { departamento: departamento.toUpperCase(), activo: true },
-      });
-      if (excepcion) {
-        setCached(this.regionalCache, cacheKey, excepcion, this.cacheTtlMs);
+
+    if (!tarifas) {
+      tarifas = await this.terminalRepo.find({ where: { activo: true } });
+      setCached(this.terminalCache as any, cacheKey, tarifas, this.cacheTtlMs);
+    }
+
+    if (!tarifas || tarifas.length === 0) {
+      return 50689;
+    }
+
+    // 1. Coincidencia directa por ID de geopolítica si viene provisto
+    if (departamentoId) {
+      const matchPorId = tarifas.find(
+        (t) => t.departamentoId === departamentoId && (t.departamento || t.ciudad)?.toLowerCase() !== 'otros',
+      );
+      if (matchPorId) {
+        return Number(matchPorId.valorMaximo);
       }
     }
-    return excepcion || null;
+
+    const normalizar = (txt?: string): string =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+
+    const deptoNorm = normalizar(departamento);
+    const ciudadNorm = normalizar(ciudad);
+
+    // 2. Mapeo inteligente con los términos de cada departamento/ciudad/aeropuerto
+    const match = tarifas.find((t) => {
+      const tDepto = normalizar(t.departamento || t.ciudad);
+      const tCiudad = normalizar(t.ciudad);
+      const tAeropuerto = normalizar(t.ciudadAeropuerto);
+      if (tDepto === 'otros' || tCiudad === 'otros') return false;
+
+      // Coincidencia con departamento
+      if (deptoNorm && (tDepto === deptoNorm || tDepto.includes(deptoNorm) || deptoNorm.includes(tDepto))) {
+        return true;
+      }
+      // Coincidencia con ciudad o aeropuerto
+      if (ciudadNorm && (tDepto.includes(ciudadNorm) || tCiudad.includes(ciudadNorm) || tAeropuerto.includes(ciudadNorm) || ciudadNorm.includes(tCiudad))) {
+        return true;
+      }
+      // Ciudades clave reconocidas en aeropuertos especiales
+      if (deptoNorm.includes('antioquia') || ciudadNorm.includes('medellin') || ciudadNorm.includes('rionegro')) {
+        return tDepto.includes('antioquia') || tCiudad.includes('antioquia');
+      }
+      if (deptoNorm.includes('atlantico') || ciudadNorm.includes('barranquilla') || ciudadNorm.includes('soledad')) {
+        return tDepto.includes('atlantico') || tCiudad.includes('atlantico');
+      }
+      if (deptoNorm.includes('cordoba') || ciudadNorm.includes('monteria') || ciudadNorm.includes('garzones')) {
+        return tDepto.includes('cordoba') || tCiudad.includes('cordoba');
+      }
+      if (deptoNorm.includes('magdalena') || ciudadNorm.includes('santa marta')) {
+        return tDepto.includes('magdalena') || tCiudad.includes('magdalena');
+      }
+      if (deptoNorm.includes('narino') || ciudadNorm.includes('pasto') || ciudadNorm.includes('chachagui')) {
+        return tDepto.includes('narino') || tCiudad.includes('narino');
+      }
+      if (deptoNorm.includes('putumayo') || ciudadNorm.includes('puerto asis')) {
+        return tDepto.includes('putumayo') || tCiudad.includes('putumayo');
+      }
+      if (deptoNorm.includes('quindio') || ciudadNorm.includes('armenia') || ciudadNorm.includes('tebaida')) {
+        return tDepto.includes('quindio') || tCiudad.includes('quindio');
+      }
+      if (deptoNorm.includes('santander') || ciudadNorm.includes('bucaramanga') || ciudadNorm.includes('lebrija')) {
+        return tDepto.includes('santander') || tCiudad.includes('santander');
+      }
+      if (deptoNorm.includes('sucre') || ciudadNorm.includes('sincelejo') || ciudadNorm.includes('corozal')) {
+        return tDepto.includes('sucre') || tCiudad.includes('sucre');
+      }
+      if (deptoNorm.includes('valle') || ciudadNorm.includes('cali') || ciudadNorm.includes('palmira')) {
+        return tDepto.includes('valle') || tCiudad.includes('valle');
+      }
+      return false;
+    });
+
+    if (match) {
+      return Number(match.valorMaximo);
+    }
+
+    // Buscar la fila "Otros"
+    const otros = tarifas.find((t) => normalizar(t.departamento || t.ciudad).includes('otros'));
+    return otros ? Number(otros.valorMaximo) : 50689;
   }
 }
