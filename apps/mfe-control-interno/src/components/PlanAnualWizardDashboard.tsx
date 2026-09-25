@@ -64,6 +64,7 @@ import {
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
+import { cortesComoPeriodos, estadoDelCorte, fechaTareaEnElCorte } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -1191,9 +1192,10 @@ function esFechaIso(valor: string): boolean {
 }
 
 /**
- * Tabla de cortes oficiales según el formato ESAP/Decreto 648.
- * Cada entrada: [fechaProgramada (fin del período), fechaSeguimiento (entrega del informe)].
- * Mes en base 1. Usa año+1 cuando el mes de seguimiento es enero/feb/mar del año siguiente.
+ * Cortes según la periodicidad del control (formato ESAP/Decreto 648).
+ * Cada corte es un periodo: fechaProgramada = inicio y fechaSeguimiento = fin, igual que
+ * los muestra la pantalla ("Inicio" / "Fin") y los genera el modal de configuración
+ * (EFDS-958). La fecha de entrega del informe va en las tareas de cada corte.
  */
 function generarCortesOficiales(
   frecuencia: string,
@@ -1204,47 +1206,23 @@ function generarCortesOficiales(
   const mesUltimoDia = (y: number, m: number) => new Date(y, m, 0).getDate();
 
   const ctrl = frecuencia.toLowerCase();
+  // El orden importa: "cuatrimestral" también contiene "trimestral".
+  const meses = ctrl.includes('semestral') ? 6
+    : ctrl.includes('cuatrimestral') ? 4
+    : ctrl.includes('trimestral') ? 3
+    : ctrl.includes('anual') ? 12
+    : ctrl.includes('mensual') ? 1
+    : 0;
+  if (!meses) return [];
 
-  if (ctrl.includes('semestral')) {
-    return [
-      { fechaProgramada: fmt(año, 6, 30),  fechaSeguimiento: fmt(año,   7, 31) },
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
-    ];
-  }
-  if (ctrl.includes('cuatrimestral')) {
-    return [
-      { fechaProgramada: fmt(año, 4, 30),  fechaSeguimiento: fmt(año,   5, 31) },
-      { fechaProgramada: fmt(año, 8, 31),  fechaSeguimiento: fmt(año,   9, 30) },
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
-    ];
-  }
-  if (ctrl.includes('trimestral')) {
-    return [
-      { fechaProgramada: fmt(año, 3, 31),  fechaSeguimiento: fmt(año,  4, 30) },
-      { fechaProgramada: fmt(año, 6, 30),  fechaSeguimiento: fmt(año,  7, 31) },
-      { fechaProgramada: fmt(año, 9, 30),  fechaSeguimiento: fmt(año, 10, 31) },
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
-    ];
-  }
-  if (ctrl.includes('anual')) {
-    return [
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 2, mesUltimoDia(año+1, 2)) },
-    ];
-  }
-  if (ctrl.includes('mensual')) {
-    return Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1;
-      const ld = mesUltimoDia(año, m);
-      const nextM = m === 12 ? 1 : m + 1;
-      const nextY = m === 12 ? año + 1 : año;
-      const nextLd = mesUltimoDia(nextY, nextM);
-      return {
-        fechaProgramada: fmt(año, m, ld),
-        fechaSeguimiento: fmt(nextY, nextM, nextLd),
-      };
-    });
-  }
-  return [];
+  return Array.from({ length: 12 / meses }, (_, i) => {
+    const mesInicio = i * meses + 1;
+    const mesFin = mesInicio + meses - 1;
+    return {
+      fechaProgramada: fmt(año, mesInicio, 1),
+      fechaSeguimiento: fmt(año, mesFin, mesUltimoDia(año, mesFin)),
+    };
+  });
 }
 
 /**
@@ -2294,7 +2272,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               ),
             };
           }
-          const puntos = act.puntosControl || [];
+          const puntos = cortesComoPeriodos(act.puntosControl || []);
           // Para actividades con periodicidad definida regeneramos cortes oficiales
           // para no romper fechas que caen en año+1 (p.ej. 31/01 del año siguiente).
           const cortesRegenerados = generarCortesOficiales(act.control || '', año);
@@ -2330,7 +2308,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
           };
         }),
         actividadesCustom: (rol.actividadesCustom || []).map((act) => {
-          const puntos = act.puntosControl || [];
+          const puntos = cortesComoPeriodos(act.puntosControl || []);
           const nuevosPuntos = puntos.map((pc) => llevarPuntoControlAVigencia(pc, vigencia));
           const ultimoSeg =
             nuevosPuntos.length > 0
@@ -4333,6 +4311,12 @@ function Paso2({
       // 3. Fallback: asignar según el índice de la tarea distribuido entre los cortes
       const fallbackPunto = puntosNuevos[tIdx % puntosNuevos.length];
       return { ...tarea, puntoControlId: fallbackPunto.id };
+    }).map((tarea) => {
+      // La fecha de entrega de cada tarea queda en el año de su corte (EFDS-958): antes se
+      // configuraban los cortes de 2035 y las tareas seguían con las fechas de la plantilla.
+      const corte = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
+      if (!corte || !tarea.fechaEntrega) return tarea;
+      return { ...tarea, fechaEntrega: fechaTareaEnElCorte(tarea.fechaEntrega, corte) };
     });
   };
 
@@ -4988,9 +4972,11 @@ function Paso2({
                                             const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
                                             const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                             const esCompletado = pc.estado === 'completado';
-                                            const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                            const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
-                                            const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                            // Estado según el periodo del corte (EFDS-958)
+                                            const estadoCorte = estadoDelCorte(pc, hoyDate, esCompletado, (actividadData.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega));
+                                            const enSeguimiento = estadoCorte === 'enSeguimiento';
+                                            const esVencido = estadoCorte === 'vencido';
+                                            const esActivo = estadoCorte === 'activo';
                                             return (
                                               <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
                                                 <div className="flex items-start gap-3">
@@ -5543,9 +5529,11 @@ function Paso2({
                                           const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
                                           const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                           const esCompletado = pc.estado === 'completado';
-                                          const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                          const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
-                                          const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                          // Estado según el periodo del corte (EFDS-958)
+                                          const estadoCorte = estadoDelCorte(pc, hoyDate, esCompletado, (actividad.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega));
+                                          const enSeguimiento = estadoCorte === 'enSeguimiento';
+                                          const esVencido = estadoCorte === 'vencido';
+                                          const esActivo = estadoCorte === 'activo';
                                           return (
                                             <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
                                               <div className="flex items-start gap-3">
@@ -9841,8 +9829,10 @@ function SeccionGestionYSeguimiento({
                                     const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
                                     const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                     const cumplido = corteEstaCumplido(actividad, pc.id);
-                                    const enSeguimiento = !cumplido && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                    const esVencido = !cumplido && !enSeguimiento && fechaCorte < hoyDate;
+                                    // Estado según el periodo del corte (EFDS-958)
+                                    const estadoCorte = estadoDelCorte(pc, hoyDate, cumplido, (actividad.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega || (t as any).fechaLimite));
+                                    const enSeguimiento = estadoCorte === 'enSeguimiento';
+                                    const esVencido = estadoCorte === 'vencido';
                                     const tareasDelCorte = (actividad.tareasSeguimiento || []).filter(
                                       (t) => t.puntoControlId === pc.id,
                                     );
