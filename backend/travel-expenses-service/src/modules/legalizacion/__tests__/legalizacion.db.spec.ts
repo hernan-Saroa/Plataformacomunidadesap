@@ -126,23 +126,21 @@ describirConBase('EFDS-1309 — legalización contra base real', () => {
   describe('disparador y transición PAGADA → PENDIENTE_LEGALIZACION', () => {
     let id: string;
 
+    // La base es compartida (otra suite en paralelo, EFDS-1311): se afirma sobre
+    // la solicitud propia en las muestras del canario, no sobre diferencias de totales.
     it('el canario detecta una PAGADA sin legalización y deja de verla al abrirla', async () => {
-      const antes = await canario.verificar();
       id = await crearSolicitud('PAGADA');
 
       const conHueco = await canario.verificar();
-      expect(conHueco.violaciones.sinLegalizacion).toBe(antes.violaciones.sinLegalizacion + 1);
+      expect(conHueco.muestras.sinLegalizacion).toContain(id);
       expect(conHueco.ok).toBe(false);
 
       const r = await disparador.evaluar(id);
       expect(r).toMatchObject({ accion: 'ABIERTA', transicionada: true });
 
       const despues = await canario.verificar();
-      expect(despues.violaciones.sinLegalizacion).toBe(antes.violaciones.sinLegalizacion);
-      expect(despues.poblacion.legalizaciones).toBe(antes.poblacion.legalizaciones + 1);
-      expect(despues.poblacion.legalizacionesPorEstadoSolicitud.PENDIENTE_LEGALIZACION ?? 0).toBe(
-        (antes.poblacion.legalizacionesPorEstadoSolicitud.PENDIENTE_LEGALIZACION ?? 0) + 1,
-      );
+      expect(despues.muestras.sinLegalizacion).not.toContain(id);
+      expect(despues.muestras.pagadaConLegalizacion).not.toContain(id);
     });
 
     it('deja la solicitud en PENDIENTE_LEGALIZACION con su historial y un plazo de 5 días hábiles desde el fin', async () => {
@@ -264,19 +262,19 @@ describirConBase('EFDS-1309 — legalización contra base real', () => {
         )[0];
 
       // El mismo día del vencimiento, antes del corte: por vencer.
-      await vencimientos.avisar(new Date(limite - 60 * 60 * 1000));
+      await vencimientos.avisar(new Date(limite - 60 * 60 * 1000), { soloSolicitudes: [sid] });
       const tras1 = await marcas();
       expect(tras1.notificado_por_vencer_en).not.toBeNull();
       expect(tras1.notificado_vencido_en).toBeNull();
 
-      await vencimientos.avisar(new Date(limite - 30 * 60 * 1000));
+      await vencimientos.avisar(new Date(limite - 30 * 60 * 1000), { soloSolicitudes: [sid] });
       expect((await marcas()).notificado_por_vencer_en).toEqual(tras1.notificado_por_vencer_en);
 
       // Pasado el corte: vencida, una vez.
-      await vencimientos.avisar(new Date(limite + 60 * 60 * 1000));
+      await vencimientos.avisar(new Date(limite + 60 * 60 * 1000), { soloSolicitudes: [sid] });
       const tras3 = await marcas();
       expect(tras3.notificado_vencido_en).not.toBeNull();
-      await vencimientos.avisar(new Date(limite + 2 * 60 * 60 * 1000));
+      await vencimientos.avisar(new Date(limite + 2 * 60 * 60 * 1000), { soloSolicitudes: [sid] });
       expect((await marcas()).notificado_vencido_en).toEqual(tras3.notificado_vencido_en);
     });
   });
@@ -338,7 +336,7 @@ describirConBase('EFDS-1309 — legalización contra base real', () => {
 
     it('carga los 4 soportes, guarda el hash y envía a revisión', async () => {
       const d = await service.detalle(id, enlace);
-      const cargados = [];
+      const cargados: Array<{ id: string }> = [];
       for (const item of d.checklist.items) {
         cargados.push(
           await service.subirSoporte(

@@ -42,4 +42,18 @@ export class LegalizacionSoporteEntity {
 
   @Column({ name: 'creado_en', type: 'timestamptz', default: () => 'now()' })
   creadoEn: Date;
+
+  // --- EFDS-1310: revisión del analista (migración 451) ---
+
+  @Column({ name: 'revision', type: 'varchar', length: 20, nullable: true })
+  revision: 'APROBADO' | 'RECHAZADO' | null;
+
+  @Column({ name: 'observacion_revision', type: 'text', nullable: true })
+  observacionRevision: string | null;
+
+  @Column({ name: 'revisado_por_id', type: 'uuid', nullable: true })
+  revisadoPorId: string | null;
+
+  @Column({ name: 'revisado_en', type: 'timestamptz', nullable: true })
+  revisadoEn: Date | null;
 }

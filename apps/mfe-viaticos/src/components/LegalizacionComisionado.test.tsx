@@ -151,6 +151,35 @@ describe('LegalizacionComisionado — EFDS-1309', () => {
     expect(screen.queryByRole('button', { name: /Enviar a revisión/ })).not.toBeInTheDocument();
   });
 
+  it('EFDS-1310 · devuelta: muestra la observación del analista y el soporte rechazado', async () => {
+    const rechazado = item('LEG_GF_FO_031', 'Formato GF-FO-031', true);
+    rechazado.soportes[0] = { ...rechazado.soportes[0], revision: 'RECHAZADO', observacionRevision: 'Falta la firma' } as any;
+    rechazado.cumplido = false;
+    svc.listarMias.mockResolvedValue([{ ...RESUMEN, devuelta: true }]);
+    svc.detalle.mockResolvedValue(detalle([rechazado], { devuelta: true, observacionDevolucion: 'Reemplace el formato firmado.' }));
+    render(<LegalizacionComisionado />);
+    expect(await screen.findByText('Devuelta')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('COM-2026-0001'));
+    expect(await screen.findByText('El analista devolvió la legalización.')).toBeInTheDocument();
+    expect(screen.getByText('Reemplace el formato firmado.')).toBeInTheDocument();
+    expect(screen.getByText('Rechazado: Falta la firma')).toBeInTheDocument();
+  });
+
+  it('EFDS-1310 · legalizada: muestra el registro SIIF y el reintegro, sin acciones', async () => {
+    svc.detalle.mockResolvedValue(
+      detalle([item('LEG_AGENDA_CUMPLIDA', 'Agenda cumplida', true)], {
+        estadoSolicitud: 'LEGALIZADO', puedeEditar: false, semaforo: 'ENVIADA',
+        numeroRegistroSiif: 'LEG-SIIF-1', fechaRegistroSiif: '2026-09-25',
+        valorPagado: '1500000.00', valorLegalizado: '1200000.00', valorReintegro: '300000.00',
+      }),
+    );
+    render(<LegalizacionComisionado />);
+    fireEvent.click(await screen.findByText('COM-2026-0001'));
+    expect(await screen.findByText('Comisión legalizada. El expediente está cerrado.')).toBeInTheDocument();
+    expect(screen.getByText(/Valor a reintegrar/)).toHaveTextContent('300.000');
+    expect(screen.queryByLabelText('Archivo para Agenda cumplida')).not.toBeInTheDocument();
+  });
+
   it('sin checklist configurado para el tipo de comisionado, lo explica y no deja enviar', async () => {
     svc.detalle.mockResolvedValue(detalle([]));
     render(<LegalizacionComisionado />);

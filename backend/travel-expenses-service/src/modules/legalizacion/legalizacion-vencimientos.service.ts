@@ -29,7 +29,7 @@ export class LegalizacionVencimientosService {
     @Optional() private readonly notificationClient?: NotificationClientService,
   ) {}
 
-  async avisar(ahora = new Date()): Promise<ResultadoAvisos> {
+  async avisar(ahora = new Date(), opciones: { soloSolicitudes?: string[] } = {}): Promise<ResultadoAvisos> {
     const festivos = await cargarFestivosAuth(this.dataSource);
     const abiertas: Array<{
       id: string;
@@ -48,7 +48,9 @@ export class LegalizacionVencimientosService {
          FROM travel_expenses.legalizaciones_comision l
          JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
          LEFT JOIN travel_expenses.config_legalizacion c ON c.modalidad_pago = l.modalidad_pago
-        WHERE l.fecha_envio IS NULL`,
+        WHERE l.fecha_envio IS NULL
+          AND ($1::uuid[] IS NULL OR s.id = ANY($1::uuid[]))`,
+      [opciones.soloSolicitudes ?? null],
     );
 
     const r: ResultadoAvisos = { revisadas: abiertas.length, porVencer: 0, vencidas: 0, notificadas: 0 };
