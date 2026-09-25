@@ -50,11 +50,17 @@ export function esSuperAdmin(user?: UsuarioAutenticado | null): boolean {
 
 type Relacion = 'SUPER_ADMIN' | 'CREADOR' | 'COMISIONADO' | 'ANALISTA';
 
-interface SolicitudContexto {
+export interface SolicitudContexto {
   id: string;
   consecutivo_unico: string;
   estado_solicitud: string;
   modalidad_pago: string;
+  valor_pagado: string | null;
+  fecha_pago_ymd: string | null;
+  numero_obligacion: string | null;
+  codigo_rp: string | null;
+  dias_comision: string | null;
+  comisionado_id: string;
   destino_ciudad: string;
   destino_departamento: string;
   fecha_inicio_ymd: string;
@@ -75,7 +81,16 @@ export interface ItemChecklist {
   descripcion: string | null;
   tipoRequisito: 'OBLIGATORIO' | 'OPCIONAL';
   condicion: string | null;
-  soportes: Array<{ id: string; nombreArchivoOriginal: string; tamanoBytes: number; creadoEn: Date }>;
+  soportes: Array<{
+    id: string;
+    nombreArchivoOriginal: string;
+    tamanoBytes: number;
+    creadoEn: Date;
+    /** EFDS-1310: revisión del analista (null = sin revisar). */
+    revision: 'APROBADO' | 'RECHAZADO' | null;
+    observacionRevision: string | null;
+  }>;
+  /** Tiene al menos un soporte que no fue rechazado: un rechazado hay que reemplazarlo. */
   cumplido: boolean;
 }
 
@@ -102,9 +117,13 @@ export class LegalizacionService {
   // Contexto y acceso
   // ---------------------------------------------------------------------------
 
-  private async cargarSolicitud(solicitudId: string): Promise<SolicitudContexto> {
+  async cargarSolicitud(solicitudId: string): Promise<SolicitudContexto> {
     const filas: SolicitudContexto[] = await this.dataSource.query(
       `SELECT s.id, s.consecutivo_unico, s.estado_solicitud, s.modalidad_pago,
+              s.valor_pagado::text AS valor_pagado,
+              to_char(s.fecha_pago, 'YYYY-MM-DD') AS fecha_pago_ymd,
+              s.numero_obligacion, s.codigo_rp, s.dias_comision::text AS dias_comision,
+              s.comisionado_id,
               s.destino_ciudad, s.destino_departamento,
               to_char(s.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio_ymd,
               to_char(s.fecha_fin, 'YYYY-MM-DD')    AS fecha_fin_ymd,
@@ -128,7 +147,7 @@ export class LegalizacionService {
   }
 
   /** Documento de identidad del usuario autenticado (auth.user → auth.personas). */
-  private async documentoDelUsuario(userId: string): Promise<string | null> {
+  async documentoDelUsuario(userId: string): Promise<string | null> {
     const filas: Array<{ num_identificacion: string }> = await this.dataSource.query(
       `SELECT p.num_identificacion
          FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
@@ -169,7 +188,7 @@ export class LegalizacionService {
     return r;
   }
 
-  private async cargarLegalizacion(solicitudId: string): Promise<LegalizacionComisionEntity> {
+  async cargarLegalizacion(solicitudId: string): Promise<LegalizacionComisionEntity> {
     const leg = await this.dataSource
       .getRepository(LegalizacionComisionEntity)
       .findOne({ where: { solicitudId } });
@@ -219,6 +238,8 @@ export class LegalizacionService {
             nombreArchivoOriginal: s.nombreArchivoOriginal,
             tamanoBytes: s.tamanoBytes,
             creadoEn: s.creadoEn,
+            revision: s.revision ?? null,
+            observacionRevision: s.observacionRevision ?? null,
           }));
         return {
           tipoDocumentoSoporteId: c.tipo_documento_soporte_id,
@@ -228,7 +249,7 @@ export class LegalizacionService {
           tipoRequisito: c.tipo_requisito,
           condicion: c.condicion,
           soportes: propios,
-          cumplido: propios.length > 0,
+          cumplido: propios.some((s) => s.revision !== 'RECHAZADO'),
         };
       });
 
@@ -283,6 +304,18 @@ export class LegalizacionService {
       calendarioIncompleto: leg.calendarioIncompleto,
       fechaEnvio: leg.fechaEnvio,
       semaforo,
+      // EFDS-1310: devolución (sigue en PENDIENTE_LEGALIZACION) y cierre.
+      devuelta: Boolean(leg.devueltaEn && !leg.fechaEnvio),
+      devueltaEn: leg.devueltaEn,
+      observacionDevolucion: leg.observacionDevolucion,
+      numeroDevoluciones: leg.numeroDevoluciones,
+      revisionAprobadaEn: leg.revisionAprobadaEn,
+      cerradaEn: leg.cerradaEn,
+      numeroRegistroSiif: leg.numeroRegistroSiif,
+      fechaRegistroSiif: leg.fechaRegistroSiif,
+      valorPagado: leg.valorPagado ?? sol.valor_pagado,
+      valorLegalizado: leg.valorLegalizado,
+      valorReintegro: leg.valorReintegro,
     };
   }
 

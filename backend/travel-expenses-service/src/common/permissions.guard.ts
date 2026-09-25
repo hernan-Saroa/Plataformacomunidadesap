@@ -61,6 +61,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
     'travel_expenses:send_to_budget',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   ROL_ANALISTA: [
     'travel_expenses:read_assigned',
@@ -69,6 +70,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
     'travel_expenses:send_to_budget',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   ANALISTA_VIATICOS: [
     'travel_expenses:read_assigned',
@@ -77,6 +79,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
     'travel_expenses:send_to_budget',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   SECRETARIO: [
     'travel_expenses:read_inbox',

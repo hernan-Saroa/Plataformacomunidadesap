@@ -61,17 +61,35 @@ function mensajeDeError(err: unknown): string {
   return err instanceof Error && err.message ? err.message : 'Ocurrió un error inesperado.';
 }
 
-function BadgeSemaforo({ semaforo }: { semaforo: SemaforoLegalizacion }) {
-  const s = SEMAFORO[semaforo];
+/** Indicador visible: el cierre y la devolución (EFDS-1310) priman sobre el plazo. */
+function indicador(leg: ResumenLegalizacion): { etiqueta: string; clase: string; semaforo: SemaforoLegalizacion } {
+  if (leg.estadoSolicitud === 'LEGALIZADO') {
+    return { etiqueta: 'Legalizada', clase: 'bg-emerald-600 text-white', semaforo: 'ENVIADA' };
+  }
+  if (leg.devuelta) {
+    return { etiqueta: 'Devuelta', clase: 'bg-red-100 text-red-700', semaforo: 'VENCIDA' };
+  }
+  return { ...SEMAFORO[leg.semaforo], semaforo: leg.semaforo };
+}
+
+export function formatearPesos(v: string | number | null | undefined): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(
+    Number(v ?? 0),
+  );
+}
+
+function BadgeLegalizacion({ leg }: { leg: ResumenLegalizacion }) {
+  const s = indicador(leg);
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${s.clase}`}>
-      {semaforo === 'VENCIDA' ? <AlertTriangle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+      {s.semaforo === 'VENCIDA' ? <AlertTriangle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
       {s.etiqueta}
     </span>
   );
 }
 
 function TextoPlazo({ leg }: { leg: ResumenLegalizacion }) {
+  if (leg.estadoSolicitud === 'LEGALIZADO') return <>Legalizada y cerrada</>;
   if (leg.semaforo === 'ENVIADA') return <>Enviada a revisión</>;
   const cuando = formatearFechaLimite(leg.fechaLimite);
   if (leg.semaforo === 'VENCIDA') return <>Venció el {cuando}</>;
@@ -152,10 +170,18 @@ function FilaSoporte({
         <ul className="mt-3 space-y-1.5">
           {item.soportes.map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-              <span className="flex min-w-0 items-center gap-2 text-xs text-slate-700">
+              <span className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-700">
                 <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                 <span className="truncate">{s.nombreArchivoOriginal}</span>
                 <span className="shrink-0 text-slate-400">{tamanoLegible(s.tamanoBytes)}</span>
+                {s.revision === 'APROBADO' && (
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">Aprobado</span>
+                )}
+                {s.revision === 'RECHAZADO' && (
+                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                    Rechazado: {s.observacionRevision}
+                  </span>
+                )}
               </span>
               <span className="flex shrink-0 items-center gap-1">
                 <button
@@ -287,8 +313,28 @@ function DetalleView({ solicitudId, onVolver }: { solicitudId: string; onVolver:
             <TextoPlazo leg={detalle} />
           </p>
         </div>
-        <BadgeSemaforo semaforo={detalle.semaforo} />
+        <BadgeLegalizacion leg={detalle} />
       </div>
+
+      {detalle.devuelta && (
+        <div role="note" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <p className="font-bold">El analista devolvió la legalización.</p>
+          <p className="mt-1">{detalle.observacionDevolucion}</p>
+          <p className="mt-1">Reemplace los soportes rechazados y vuelva a enviarla.</p>
+        </div>
+      )}
+      {detalle.estadoSolicitud === 'LEGALIZADO' && (
+        <div role="note" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+          <p className="font-bold">Comisión legalizada. El expediente está cerrado.</p>
+          <p className="mt-1">
+            Registro SIIF {detalle.numeroRegistroSiif} del {detalle.fechaRegistroSiif} · Legalizado{' '}
+            {formatearPesos(detalle.valorLegalizado)} de {formatearPesos(detalle.valorPagado)} pagados.
+          </p>
+          {Number(detalle.valorReintegro ?? 0) > 0 && (
+            <p className="mt-1 font-bold">Valor a reintegrar: {formatearPesos(detalle.valorReintegro)}.</p>
+          )}
+        </div>
+      )}
 
       {detalle.calendarioIncompleto && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -457,7 +503,7 @@ export default function LegalizacionComisionado() {
                       {l.obligatoriosPendientes} pendiente{l.obligatoriosPendientes === 1 ? '' : 's'}
                     </span>
                   )}
-                  <BadgeSemaforo semaforo={l.semaforo} />
+                  <BadgeLegalizacion leg={l} />
                 </div>
               </button>
             </li>

@@ -5,8 +5,10 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
+  Query,
   Req,
   StreamableFile,
   UploadedFile,
@@ -24,6 +26,11 @@ import type { UsuarioAutenticado } from './legalizacion.service';
 import { LegalizacionConfigService } from './legalizacion-config.service';
 import type { ActualizarModalidadDto, ItemChecklistConfigDto } from './legalizacion-config.service';
 import { LegalizacionCanarioService } from './legalizacion-canario.service';
+import { LegalizacionRevisionService } from './legalizacion-revision.service';
+import type { FiltroBandeja, RegistrarSiifDto } from './legalizacion-revision.service';
+
+/** EFDS-1310 — El MFE ya consulta este permiso para la sección de legalizaciones. */
+const PERMISO_REVISAR = 'travel_expenses:legalizations.manage';
 
 /**
  * Los tokens de auth-service no llevan permisos (solo roles), así que el guard
@@ -62,6 +69,7 @@ export class LegalizacionController {
     private readonly service: LegalizacionService,
     private readonly config: LegalizacionConfigService,
     private readonly canario: LegalizacionCanarioService,
+    private readonly revision: LegalizacionRevisionService,
   ) {}
 
   @Get('mis')
@@ -104,6 +112,79 @@ export class LegalizacionController {
   @ApiOperation({ summary: 'Canario agregado de invariantes de legalización' })
   verificarCanario() {
     return this.canario.verificar();
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1310 — Revisión del analista, registro en SIIF y cierre
+  // ---------------------------------------------------------------------------
+
+  @Get('revision/bandeja')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Bandeja del analista: por revisar, devueltas o cerradas' })
+  bandejaRevision(@Query('filtro') filtro: FiltroBandeja | undefined, @Req() req: RequestConUsuario) {
+    return this.revision.bandeja(req.user!, filtro || 'POR_REVISAR');
+  }
+
+  @Get('revision/:solicitudId')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Detalle de la legalización para revisión, con su historial' })
+  detalleRevision(@Param('solicitudId', new ParseUUIDPipe()) solicitudId: string, @Req() req: RequestConUsuario) {
+    return this.revision.detalle(solicitudId, req.user!);
+  }
+
+  @Patch('revision/:solicitudId/soportes/:soporteId')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Aprobar o rechazar un soporte (rechazo con observación obligatoria)' })
+  revisarSoporte(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Param('soporteId', new ParseUUIDPipe()) soporteId: string,
+    @Body() body: { decision: 'APROBADO' | 'RECHAZADO'; observacion?: string },
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.revisarSoporte(solicitudId, soporteId, body, req.user!);
+  }
+
+  @Post('revision/:solicitudId/devolver')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Devolver la legalización al comisionado (sigue en PENDIENTE_LEGALIZACION)' })
+  devolver(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Body() body: { observacion: string },
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.devolver(solicitudId, body, req.user!);
+  }
+
+  @Post('revision/:solicitudId/aprobar')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Aprobar la revisión: todos los soportes revisados y aprobados' })
+  aprobar(@Param('solicitudId', new ParseUUIDPipe()) solicitudId: string, @Req() req: RequestConUsuario) {
+    return this.revision.aprobar(solicitudId, req.user!);
+  }
+
+  @Get('revision/:solicitudId/siif-export')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'CSV para registrar la legalización en SIIF Nación' })
+  async exportarSiif(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Req() req: RequestConUsuario,
+  ): Promise<StreamableFile> {
+    const { nombreArchivo, contenido } = await this.revision.exportarSiif(solicitudId, req.user!);
+    return new StreamableFile(Buffer.from(contenido, 'utf8'), {
+      type: 'text/csv; charset=utf-8',
+      disposition: `attachment; filename="${nombreArchivo}"`,
+    });
+  }
+
+  @Post('revision/:solicitudId/registrar-siif')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Registrar en SIIF (número digitado), pasar a LEGALIZADO y cerrar el expediente' })
+  registrarSiif(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Body() body: RegistrarSiifDto,
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.registrarYCerrar(solicitudId, body, req.user!);
   }
 
   @Get(':solicitudId')

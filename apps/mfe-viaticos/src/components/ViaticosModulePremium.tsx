@@ -46,7 +46,8 @@ import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
-import LegalizacionComisionado from './LegalizacionComisionado';
+import LegalizacionesSeccion from './LegalizacionesSeccion';
+import VistaAnalistaViaticos from './VistaAnalistaViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
@@ -741,7 +742,7 @@ export default function ViaticosModulePremium() {
   }
 
   if (esAnalista && !esSuperAdmin) {
-    return <AnalystInbox />;
+    return <VistaAnalistaViaticos />;
   }
 
   return (
@@ -1533,7 +1534,7 @@ export default function ViaticosModulePremium() {
 
            {/* ── LEGALIZACIONES ── */}
            {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
-             <LegalizacionComisionado />
+             <LegalizacionesSeccion />
           )}
 
             {/* ── RESOLUCIONES ── */}

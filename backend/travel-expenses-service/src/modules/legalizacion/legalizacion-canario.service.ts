@@ -25,6 +25,24 @@ export interface ResultadoCanario {
     plazoInvertido: number;
     /** Enviadas con algún soporte obligatorio del checklist faltante. */
     enviadaIncompleta: number;
+    /** EFDS-1310: solicitud LEGALIZADO sin legalización cerrada. */
+    legalizadoSinCierre: number;
+    /** EFDS-1310: legalización cerrada con la solicitud en otro estado. */
+    cierreFueraDeLegalizado: number;
+    /** EFDS-1310: reintegro distinto de pagado - legalizado. */
+    reintegroInconsistente: number;
+    /** EFDS-1310: revisión aprobada con algún soporte rechazado o sin revisar. */
+    aprobadaConPendientes: number;
+  };
+  /**
+   * Hasta 50 solicitudes por violación, para saber cuáles son. El total sigue en
+   * `violaciones`; esto no lo reemplaza.
+   */
+  muestras: {
+    sinLegalizacion: string[];
+    pagadaConLegalizacion: string[];
+    legalizadoSinCierre: string[];
+    cierreFueraDeLegalizado: string[];
   };
 }
 
@@ -93,7 +111,47 @@ export class LegalizacionCanarioService {
           AND NOT EXISTS (
                 SELECT 1 FROM travel_expenses.legalizacion_soportes ls
                  WHERE ls.legalizacion_id = l.id
-                   AND ls.tipo_documento_soporte_id = d.tipo_documento_soporte_id)`,
+                   AND ls.tipo_documento_soporte_id = d.tipo_documento_soporte_id
+                   AND ls.revision IS DISTINCT FROM 'RECHAZADO')`,
+    );
+
+    const [cierre] = await this.dataSource.query(
+      `SELECT
+         (SELECT count(*) FROM travel_expenses.solicitudes_comision s
+            LEFT JOIN travel_expenses.legalizaciones_comision l ON l.solicitud_id = s.id
+           WHERE s.estado_solicitud = $1 AND l.cerrada_en IS NULL)                   AS legalizado_sin_cierre,
+         (SELECT count(*) FROM travel_expenses.legalizaciones_comision l
+            JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+           WHERE l.cerrada_en IS NOT NULL AND s.estado_solicitud <> $1)              AS cierre_fuera,
+         (SELECT count(*) FROM travel_expenses.legalizaciones_comision l
+           WHERE l.cerrada_en IS NOT NULL
+             AND l.valor_reintegro <> l.valor_pagado - l.valor_legalizado)           AS reintegro_inconsistente,
+         (SELECT count(DISTINCT l.id) FROM travel_expenses.legalizaciones_comision l
+            JOIN travel_expenses.legalizacion_soportes ls ON ls.legalizacion_id = l.id
+           WHERE l.revision_aprobada_en IS NOT NULL
+             AND (ls.revision IS NULL OR ls.revision = 'RECHAZADO'))                 AS aprobada_con_pendientes`,
+      [EstadoSolicitud.LEGALIZADO],
+    );
+
+    const [muestras] = await this.dataSource.query(
+      `WITH s AS (
+         SELECT sc.id, sc.estado_solicitud,
+                (c.modalidad_pago IS NOT NULL
+                 AND array_position($1::text[], sc.estado_solicitud::text)
+                     >= array_position($1::text[], c.estado_disparador::text)) AS alcanzo,
+                l.id AS legalizacion_id, l.cerrada_en
+           FROM travel_expenses.solicitudes_comision sc
+           LEFT JOIN travel_expenses.config_legalizacion c
+             ON c.modalidad_pago = sc.modalidad_pago AND c.activo
+           LEFT JOIN travel_expenses.legalizaciones_comision l ON l.solicitud_id = sc.id
+       )
+       SELECT
+         COALESCE((array_agg(id::text) FILTER (WHERE alcanzo AND legalizacion_id IS NULL))[1:50], '{}') AS sin_legalizacion,
+         COALESCE((array_agg(id::text) FILTER (WHERE legalizacion_id IS NOT NULL AND estado_solicitud = $2))[1:50], '{}') AS pagada_con_legalizacion,
+         COALESCE((array_agg(id::text) FILTER (WHERE estado_solicitud = $3 AND cerrada_en IS NULL))[1:50], '{}') AS legalizado_sin_cierre,
+         COALESCE((array_agg(id::text) FILTER (WHERE cerrada_en IS NOT NULL AND estado_solicitud <> $3))[1:50], '{}') AS cierre_fuera
+         FROM s`,
+      [ORDEN_FLUJO, EstadoSolicitud.PAGADA, EstadoSolicitud.LEGALIZADO],
     );
 
     const n = (v: unknown) => Number(v ?? 0);
@@ -103,6 +161,10 @@ export class LegalizacionCanarioService {
       legalizacionFueraDeFlujo: n(agregado.fuera_de_flujo),
       plazoInvertido: n(agregado.plazo_invertido),
       enviadaIncompleta: n(incompletas.n),
+      legalizadoSinCierre: n(cierre.legalizado_sin_cierre),
+      cierreFueraDeLegalizado: n(cierre.cierre_fuera),
+      reintegroInconsistente: n(cierre.reintegro_inconsistente),
+      aprobadaConPendientes: n(cierre.aprobada_con_pendientes),
     };
 
     const legalizacionesPorEstadoSolicitud = Object.fromEntries(
@@ -122,6 +184,12 @@ export class LegalizacionCanarioService {
         legalizacionesPorEstadoSolicitud,
       },
       violaciones,
+      muestras: {
+        sinLegalizacion: muestras.sin_legalizacion,
+        pagadaConLegalizacion: muestras.pagada_con_legalizacion,
+        legalizadoSinCierre: muestras.legalizado_sin_cierre,
+        cierreFueraDeLegalizado: muestras.cierre_fuera,
+      },
     };
   }
 }
