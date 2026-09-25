@@ -15,7 +15,7 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { ActaInicioService } from './acta-inicio.service';
-import { SuscribirActaInicioDto } from './dto/acta-inicio.dto';
+import { SuscribirActaDto, SuscribirActaInicioDto } from './dto/acta-inicio.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
@@ -32,6 +32,53 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
 @Controller('procesos/:id/acta-inicio')
 export class ActaInicioController {
   constructor(private readonly service: ActaInicioService) {}
+
+  @Get('suscripcion')
+  @Puede('ver', '8.7')
+  @ApiOperation({
+    summary: 'Acta de inicio suscrita del contrato (8.7)',
+    description: 'Si la modalidad la exige, si se puede registrar ya y la registrada.',
+  })
+  estadoActa(@Param('id', ParseUUIDPipe) procesoId: string) {
+    return this.service.estadoActa(procesoId);
+  }
+
+  @Post('suscripcion')
+  @Puede('editar', '8.7')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El acta de inicio se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Actividad 8.7 · Registrar el acta de inicio suscrita',
+    description:
+      'Con el acta firmada por las dos partes. Cierra la legalización; el contrato entra en ejecución con la reunión (9.1).',
+  })
+  async registrarActa(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SuscribirActaDto,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) return this.service.registrarActa(procesoId, dto, null, null, getHiringAccess(req));
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.registrarActa(
+        procesoId,
+        dto,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
 
   @Get()
   @Puede('ver', '9.1')
