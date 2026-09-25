@@ -41,7 +41,10 @@ VALUES
   ('33333333-3333-3333-3333-333333333333', 'dev.control.etapa9qa', 'DEV_FIXTURE_NO_LOGIN', true),
   ('44444444-4444-4444-4444-444444444444', 'dev.subdireccion.etapa9qa', 'DEV_FIXTURE_NO_LOGIN', true),
   ('55555555-5555-5555-5555-555555555555', 'dev.presupuesto.etapa9qa', 'DEV_FIXTURE_NO_LOGIN', true),
-  ('66666666-6666-6666-6666-666666666666', 'dev.tesoreria.etapa9qa', 'DEV_FIXTURE_NO_LOGIN', true)
+  ('66666666-6666-6666-6666-666666666666', 'dev.tesoreria.etapa9qa', 'DEV_FIXTURE_NO_LOGIN', true),
+  -- Enlace que radica COM-2026-0001: el seed la deja a nombre del UUID nulo y
+  -- así ningún enlace podría legalizarla (EFDS-1309).
+  ('99999999-9999-9999-9999-999999999999', 'dev.enlace.etapa9qa', 'DEV_FIXTURE_NO_LOGIN', true)
 ON CONFLICT (id_user) DO NOTHING;
 
 DO $$
@@ -77,7 +80,19 @@ BEGIN
   IF v_role_id IS NOT NULL THEN
     INSERT INTO auth.user_roles (id_user, id_rol) VALUES ('66666666-6666-6666-6666-666666666666', v_role_id) ON CONFLICT DO NOTHING;
   END IF;
+
+  SELECT id INTO v_role_id FROM auth.role WHERE code = 'ENLACE_DEPENDENCIA';
+  IF v_role_id IS NOT NULL THEN
+    INSERT INTO auth.user_roles (id_user, id_rol) VALUES ('99999999-9999-9999-9999-999999999999', v_role_id) ON CONFLICT DO NOTHING;
+  END IF;
 END $$;
+
+-- La comisión queda radicada por el enlace de desarrollo (solo si sigue en el
+-- UUID nulo del seed: no pisa un creador real).
+UPDATE travel_expenses.solicitudes_comision
+SET creado_por_usuario_id = '99999999-9999-9999-9999-999999999999'
+WHERE consecutivo_unico = 'COM-2026-0001'
+  AND creado_por_usuario_id = '00000000-0000-0000-0000-000000000000';
 
 INSERT INTO travel_expenses.analistas_viaticos (id, usuario_id, nombre_completo, username, email, activo)
 VALUES (
@@ -151,7 +166,8 @@ SET
 
   actualizado_en = now()
 WHERE consecutivo_unico = 'COM-2026-0001'
-  AND estado_solicitud <> 'PAGADA';
+  -- No regresar una comisión que ya avanzó a la Etapa 9 (EFDS-1309).
+  AND estado_solicitud NOT IN ('PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO');
 
 -- ----------------------------------------------------------------------------
 -- 3. Historial de estados (trazabilidad), solo si aún no existe (idempotente).

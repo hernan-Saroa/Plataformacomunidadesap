@@ -33,6 +33,7 @@ import { LiquidationModule } from './modules/liquidation/liquidation.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
 import { CommonModule } from './common/common.module';
+import { LegalizacionModule, LEGALIZACION_ENTITIES } from './modules/legalizacion/legalizacion.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { CommonModule } from './common/common.module';
         SolicitudHistorialEstadoEntity,
         FestivoColombiaEntity,
         AuthSystemSettingEntity,
+        ...LEGALIZACION_ENTITIES,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -78,6 +80,7 @@ import { CommonModule } from './common/common.module';
     ConsolidacionModule,
     NotificationsModule,
     CommonModule,
+    LegalizacionModule,
   ],
   controllers: [AppController],
   providers: [

@@ -44,6 +44,7 @@ import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
+import LegalizacionComisionado from './LegalizacionComisionado';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
@@ -1350,23 +1351,7 @@ export default function ViaticosModulePremium() {
 
            {/* ── LEGALIZACIONES ── */}
            {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
-             <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Receipt className="w-5 h-5 text-amber-600" />
-                    Legalización y Cumplido de Comisión
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Revisión de facturas, cumplidos firmados y cálculo de reintegros o devoluciones.
-                  </p>
-                </div>
-              </div>
-              <div className="p-8 text-center text-slate-400 text-xs">
-                <Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Cargue de soportes de legalización activo para comisiones finalizadas.
-              </div>
-            </div>
+             <LegalizacionComisionado />
           )}
 
             {/* ── RESOLUCIONES ── */}
