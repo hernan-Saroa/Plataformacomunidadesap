@@ -47,6 +47,7 @@ import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
+import { evaluacionProgramable } from '../utils/auditableEvaluacion';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -724,8 +725,19 @@ export function FormularioAuditoriaUnificado({
         }
 
         // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
-        const evaluaciones = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
-        
+        const todas = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
+        // Solo los procesos que se pueden programar: switch "Aud." en SÍ, o en
+        // automático los de criticidad Extremo o que se auditan el primer año. Al
+        // editar se conserva el proceso que la auditoría ya tiene.
+        const evaluaciones = (todas || []).filter((ev: EvaluacionProceso) =>
+          evaluacionProgramable(ev as any) || (!!formData.procesoAuditado && ev.proceso?.nombre === formData.procesoAuditado),
+        );
+        if (todas && todas.length > 0 && evaluaciones.length === 0) {
+          setEvaluacionesDisponibles([]);
+          setProcesosAuditables([]);
+          return;
+        }
+
         if (evaluaciones && evaluaciones.length > 0) {
           // Guardar evaluaciones completas para acceder a datos de riesgo
           setEvaluacionesDisponibles(evaluaciones);
