@@ -251,11 +251,18 @@ export function semanaQueContiene(fecha: string, semanas: SemanaVigencia[]): Sem
   return semanas.find((s) => fecha >= s.lunes && fecha <= s.domingo);
 }
 
-/** Primer día hábil de la semana: de lunes a viernes, saltando festivos. */
+/**
+ * Primer día hábil de la semana: de lunes a viernes, saltando festivos y los días
+ * de otro año. La Semana 1 de enero de 2041 va del lunes 31 de diciembre de 2040,
+ * pero la etapa arranca el 2 de enero (el 1 es festivo), como en el formato oficial.
+ */
 export function primerDiaHabil(semana: SemanaVigencia): string {
-  for (let i = 0; i < 5; i++) {
-    const dia = fechaYMD(sumarDias(parseYMD(semana.lunes), i));
-    if (!semana.festivos.some((f) => f.fecha === dia)) return dia;
+  for (const mismoAño of [true, false]) {
+    for (let i = 0; i < 5; i++) {
+      const dia = fechaYMD(sumarDias(parseYMD(semana.lunes), i));
+      if (mismoAño && Number(dia.slice(0, 4)) !== semana.año) continue;
+      if (!semana.festivos.some((f) => f.fecha === dia)) return dia;
+    }
   }
   return semana.lunes;
 }
@@ -536,7 +543,8 @@ export function inicioSugerido(
 
 /**
  * Cada etapa arranca donde termina la anterior (EFDS-2132). Cuando cambia el fin
- * de Planeación, la Ejecución empieza el día hábil siguiente y conserva su fin; si
+ * de Planeación y las dos etapas iban pegadas, la Ejecución empieza el día hábil
+ * siguiente y conserva su fin; si
  * la anterior la tapó entera, conserva sus semanas desde el nuevo inicio. Igual la
  * Comunicación con la Ejecución. Solo reacciona al cambio del fin anterior, para no
  * deshacer un inicio que el usuario movió a propósito.
@@ -553,8 +561,16 @@ export function encadenarEtapas(
   for (const [anterior, etapa] of SIGUIENTE_ETAPA) {
     const finAnterior = fechas[CAMPOS_ETAPA[anterior].fin];
     const { inicio, fin } = CAMPOS_ETAPA[etapa];
-    const cambio = (antes[CAMPOS_ETAPA[anterior].fin] || '') !== finAnterior;
+    const finAntes = antes[CAMPOS_ETAPA[anterior].fin] || '';
+    const cambio = finAntes !== finAnterior;
     if (!cambio || !finAnterior || !fechas[inicio] || !fechas[fin]) continue;
+    // Solo si venían pegadas: con la anterior vacía o con un hueco entre las dos, el
+    // usuario está armando la etapa semana por semana y la siguiente no se toca
+    // (antes, al limpiar la Planeación y volver a marcarla, la Ejecución se estiraba hacia atrás).
+    const inicioAntes = antes[inicio] || '';
+    const pegadas = !!finAntes && !!inicioAntes
+      && inicioAntes.slice(0, 10) <= diaHabilSiguiente(finAntes, año, semanasExcluidas);
+    if (!pegadas) continue;
 
     const nuevoInicio = diaHabilSiguiente(finAnterior, año, semanasExcluidas);
     if (nuevoInicio > fechas[fin]) {

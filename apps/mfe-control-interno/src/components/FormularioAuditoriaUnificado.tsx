@@ -2694,7 +2694,7 @@ function Paso3EquipoAuditor({
             >
               <option value="">Seleccione el auditor líder...</option>
               {auditores
-                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAuditorLider(a.cargo))
+                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo))
                 .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
@@ -2826,7 +2826,7 @@ function Paso4Programacion({
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Marque en el calendario las semanas de cada etapa. Con el botón "Ciclo 4-4-5" se propone el estándar de 13 semanas y de ahí se ajusta a mano; Semana Santa y la semana de receso nunca entran.
+          Marque en el calendario las semanas de cada etapa, una por una. Con el botón "Aplicar ciclo 4-4-5" se llenan de una vez las 13 semanas estándar y de ahí se ajusta a mano; Semana Santa y la semana de receso nunca entran.
         </p>
       </div>
 
