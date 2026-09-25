@@ -29,6 +29,11 @@ export class LiquidacionResponseDto {
     diasNoPernoctados?: number;
     tarifaDiaNoPernoctado?: number;
     totalNoPernoctados?: number;
+    // Sección 4 GF-FO-023: Liquidación de los Gastos de Desplazamiento
+    transporteTerminalesAereos?: number;
+    transporteTerrestreFluvial?: number;
+    totalGastosDesplazamiento?: number;
+    totalViaticosYDesplazamientos?: number;
     desgloseCalculo: DesgloseDiaDto[];
     alertas?: string[];
   };

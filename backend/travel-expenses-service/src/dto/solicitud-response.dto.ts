@@ -11,6 +11,8 @@ export class SolicitudResponseDto {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string | null;
+  fechaCdp?: string | null;
   requiereTiquetes: boolean;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;

@@ -70,6 +70,7 @@ import {
   EscalaViatico,
   TarifaInvestigador,
   TarifaRegionalExcepcion,
+  TarifaTransporteTerminal,
   LiquidationParam,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
@@ -888,42 +889,60 @@ export class ViaticosService {
     }
   }
 
-  // ==================== EXCEPCIONES REGIONALES ====================
+  // ==================== TARIFAS TRANSPORTE TERMINALES AÉREOS ====================
 
-  async obtenerExcepcionesRegionales(): Promise<TarifaRegionalExcepcion[]> {
+  async obtenerTarifasTransporteTerminal(): Promise<TarifaTransporteTerminal[]> {
     try {
-      return await apiClient.get<TarifaRegionalExcepcion[]>('/viaticos/api/v1/liquidation/config/excepciones-regionales');
+      return await apiClient.get<TarifaTransporteTerminal[]>('/viaticos/api/v1/liquidation/config/tarifas-transporte-terminal');
     } catch (error) {
-      console.error('Error obteniendo excepciones regionales:', error);
+      console.error('Error obteniendo tarifas de transporte a terminal:', error);
       return [];
     }
   }
 
-  async crearExcepcionRegional(dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
+  async crearTarifaTransporteTerminal(dto: Partial<TarifaTransporteTerminal>): Promise<TarifaTransporteTerminal | null> {
     try {
-      return await apiClient.post<TarifaRegionalExcepcion>('/viaticos/api/v1/liquidation/config/excepciones-regionales', dto);
+      return await apiClient.post<TarifaTransporteTerminal>('/viaticos/api/v1/liquidation/config/tarifas-transporte-terminal', dto);
     } catch (error) {
-      console.error('Error creando excepción regional:', error);
+      console.error('Error creando tarifa de transporte a terminal:', error);
       throw error;
     }
+  }
+
+  async actualizarTarifaTransporteTerminal(id: number, dto: Partial<TarifaTransporteTerminal>): Promise<TarifaTransporteTerminal | null> {
+    try {
+      return await apiClient.put<TarifaTransporteTerminal>(`/viaticos/api/v1/liquidation/config/tarifas-transporte-terminal/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando tarifa de transporte a terminal:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTarifaTransporteTerminal(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/tarifas-transporte-terminal/${id}`);
+    } catch (error) {
+      console.error('Error eliminando tarifa de transporte a terminal:', error);
+      throw error;
+    }
+  }
+
+  // ==================== EXCEPCIONES REGIONALES (LEGACY) ====================
+
+  async obtenerExcepcionesRegionales(): Promise<TarifaRegionalExcepcion[]> {
+    return [];
+  }
+
+  async crearExcepcionRegional(dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
+    return null;
   }
 
   async actualizarExcepcionRegional(id: number, dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
-    try {
-      return await apiClient.put<TarifaRegionalExcepcion>(`/viaticos/api/v1/liquidation/config/excepciones-regionales/${id}`, dto);
-    } catch (error) {
-      console.error('Error actualizando excepción regional:', error);
-      throw error;
-    }
+    return null;
   }
 
   async eliminarExcepcionRegional(id: number): Promise<{ message: string }> {
-    try {
-      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/excepciones-regionales/${id}`);
-    } catch (error) {
-      console.error('Error eliminando excepción regional:', error);
-      throw error;
-    }
+    return { message: 'Eliminado' };
   }
 
   async obtenerCatalogoDepartamentos(): Promise<string[]> {

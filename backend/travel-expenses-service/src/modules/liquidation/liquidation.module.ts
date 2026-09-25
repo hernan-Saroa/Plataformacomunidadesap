@@ -10,6 +10,8 @@ import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
 import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
 
+import { TarifaTransporteTerminalEntity } from '../../entities/liquidation/tarifa-transporte-terminal.entity';
+
 /**
  * Módulo de autoliquidación de viáticos.
  * Agrupa entidades, DTOs, servicio y controlador para el cálculo de viáticos
@@ -21,6 +23,7 @@ import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.enti
       EscalaViaticoEntity,
       TarifaInvestigadorEntity,
       TarifaRegionalExcepcionEntity,
+      TarifaTransporteTerminalEntity,
       LiquidationParamEntity,
       AuthSystemSettingEntity,
     ]),

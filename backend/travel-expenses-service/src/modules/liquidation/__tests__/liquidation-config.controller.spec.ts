@@ -24,10 +24,10 @@ describe('LiquidationConfigController (integration)', () => {
             crearTarifaInvestigador: jest.fn(),
             actualizarTarifaInvestigador: jest.fn(),
             eliminarTarifaInvestigador: jest.fn(),
-            obtenerExcepcionesRegionales: jest.fn(),
-            crearExcepcionRegional: jest.fn(),
-            actualizarExcepcionRegional: jest.fn(),
-            eliminarExcepcionRegional: jest.fn(),
+            obtenerTarifasTransporteTerminal: jest.fn(),
+            crearTarifaTransporteTerminal: jest.fn(),
+            actualizarTarifaTransporteTerminal: jest.fn(),
+            eliminarTarifaTransporteTerminal: jest.fn(),
             obtenerParametros: jest.fn(),
             actualizarParametrosLote: jest.fn(),
             obtenerCatalogoDepartamentos: jest.fn(),
@@ -168,59 +168,59 @@ describe('LiquidationConfigController (integration)', () => {
     });
   });
 
-  describe('GET /liquidation/config/excepciones-regionales', () => {
-    it('debe retornar lista de excepciones', async () => {
-      const mockExcepciones = [
-        { id: 1, departamento: 'Amazonas', tarifaDiaria: 380000, activo: true },
+  describe('GET /liquidation/config/tarifas-transporte-terminal', () => {
+    it('debe retornar lista de tarifas de transporte terminal', async () => {
+      const mockTarifas = [
+        { id: 1, departamento: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximoTrayecto: 162634, activo: true },
       ];
       jest
-        .spyOn(service, 'obtenerExcepcionesRegionales')
-        .mockResolvedValue(mockExcepciones);
+        .spyOn(service, 'obtenerTarifasTransporteTerminal')
+        .mockResolvedValue(mockTarifas);
 
-      const result = await controller.obtenerExcepcionesRegionales();
-      expect(result).toEqual(mockExcepciones);
+      const result = await controller.obtenerTarifasTransporteTerminal();
+      expect(result).toEqual(mockTarifas);
     });
   });
 
-  describe('POST /liquidation/config/excepciones-regionales', () => {
-    it('debe crear una excepción', async () => {
+  describe('POST /liquidation/config/tarifas-transporte-terminal', () => {
+    it('debe crear una tarifa de transporte terminal', async () => {
       const dto = {
-        departamento: 'Amazonas',
-        esNuevoDepartamento: true,
-        tarifaDiaria: 380000,
+        departamento: 'ANTIOQUIA',
+        ciudadAeropuerto: 'ANTIOQUIA (Rionegro)',
+        valorMaximoTrayecto: 162634,
       };
       const created = { id: 1, ...dto, activo: true };
-      jest.spyOn(service, 'crearExcepcionRegional').mockResolvedValue(created);
+      jest.spyOn(service, 'crearTarifaTransporteTerminal').mockResolvedValue(created);
 
-      const result = await controller.crearExcepcionRegional(dto);
+      const result = await controller.crearTarifaTransporteTerminal(dto);
       expect(result).toEqual(created);
     });
   });
 
-  describe('PUT /liquidation/config/excepciones-regionales/:id', () => {
-    it('debe actualizar una excepción', async () => {
-      const updated = { id: 1, tarifaDiaria: 400000 };
+  describe('PUT /liquidation/config/tarifas-transporte-terminal/:id', () => {
+    it('debe actualizar una tarifa de transporte terminal', async () => {
+      const updated = { id: 1, valorMaximoTrayecto: 170000 };
       jest
-        .spyOn(service, 'actualizarExcepcionRegional')
+        .spyOn(service, 'actualizarTarifaTransporteTerminal')
         .mockResolvedValue(updated);
 
-      const result = await controller.actualizarExcepcionRegional('1', {
-        tarifaDiaria: 400000,
+      const result = await controller.actualizarTarifaTransporteTerminal('1', {
+        valorMaximoTrayecto: 170000,
       });
       expect(result).toEqual(updated);
     });
   });
 
-  describe('DELETE /liquidation/config/excepciones-regionales/:id', () => {
-    it('debe eliminar (soft-delete) una excepción', async () => {
+  describe('DELETE /liquidation/config/tarifas-transporte-terminal/:id', () => {
+    it('debe eliminar (soft-delete) una tarifa de transporte terminal', async () => {
       const response = {
-        message: 'Excepción regional eliminada correctamente',
+        message: 'Tarifa de transporte a terminal eliminada correctamente',
       };
       jest
-        .spyOn(service, 'eliminarExcepcionRegional')
+        .spyOn(service, 'eliminarTarifaTransporteTerminal')
         .mockResolvedValue(response);
 
-      const result = await controller.eliminarExcepcionRegional('1');
+      const result = await controller.eliminarTarifaTransporteTerminal('1');
       expect(result).toEqual(response);
     });
   });

@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Clock,
   FileCheck2,
   FileText,
   Lock,
@@ -257,6 +258,7 @@ export default function ConsolidacionExpediente({
             value={`${String(solicitud.fechaInicio).slice(0, 10)} al ${String(solicitud.fechaFin).slice(0, 10)} · ${dias} día(s)`}
           />
           <Field label="Rubro presupuestal" value={solicitud.rubroPresupuestal} />
+          <Field label="CDP (Disponibilidad)" value={solicitud.numeroCdp || '—'} />
           <Field label="Prioridad" value={solicitud.prioridad} />
         </div>
         <div>
@@ -495,22 +497,40 @@ function Row({
 function DesgloseGeneral({ rutas }: { rutas: RutaItinerario[] }) {
   const sync = sincronizarItinerarioFormulario(rutas);
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 p-2.5 bg-[#003DA5]/5 border border-[#003DA5]/10 rounded-xl">
-      <div>
-        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Origen</p>
-        <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.origenCiudad || '—'}</p>
+    <div className="mb-3 p-3 bg-gradient-to-r from-[#003DA5]/5 to-indigo-50/50 border border-[#003DA5]/15 rounded-xl space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-black uppercase tracking-wider bg-[#003DA5] text-white px-1.5 py-0.5 rounded">
+            Ruta General
+          </span>
+          <span className="text-xs font-bold text-slate-800">
+            {sync.rutaGeneral || `${sync.origenCiudad || '—'} → ${sync.destinoCiudad || '—'}`}
+          </span>
+        </div>
+        {sync.horaEstimadaGeneral && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#003DA5] bg-white border border-blue-200 px-2 py-0.5 rounded shadow-xs">
+            <Clock className="w-3 h-3 text-[#003DA5]" /> Tiempo estimado completo: <strong>{sync.horaEstimadaGeneral}</strong>
+          </span>
+        )}
       </div>
-      <div>
-        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Destino</p>
-        <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.destinoCiudad || '—'}</p>
-      </div>
-      <div>
-        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Fecha Inicio</p>
-        <p className="text-[11px] font-semibold text-slate-800">{sync.fechaInicio || '—'}</p>
-      </div>
-      <div>
-        <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Fecha Fin</p>
-        <p className="text-[11px] font-semibold text-slate-800">{sync.fechaFin || '—'}</p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1.5 border-t border-blue-100 text-[10px]">
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Origen Inicial</p>
+          <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.origenCiudad || '—'}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Destino Final</p>
+          <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.destinoCiudad || '—'}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Fechas</p>
+          <p className="text-[11px] font-semibold text-slate-800">{sync.fechaInicio} al {sync.fechaFin}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Días Totales</p>
+          <p className="text-[11px] font-semibold text-slate-800">{sync.diasComision} día(s)</p>
+        </div>
       </div>
     </div>
   );
@@ -547,9 +567,9 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
                 <span className="font-semibold text-slate-700">{ruta.diasRuta} día(s)</span>
               </div>
               <div>
-                <span className="text-slate-500">Horario:</span>{' '}
+                <span className="text-slate-500">Tiempo estimado:</span>{' '}
                 <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
-                  <span>⏰</span>
+                  <Clock className="w-3 h-3 text-[#003DA5]" />
                   {ruta.horarioEstimadoMilitar || '—'}
                 </span>
               </div>
