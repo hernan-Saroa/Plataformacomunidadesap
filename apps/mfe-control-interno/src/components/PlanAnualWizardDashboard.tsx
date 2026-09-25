@@ -64,7 +64,7 @@ import {
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
-import { cortesComoPeriodos, estadoDelCorte, fechaTareaEnElCorte } from './services/cortesPlanAnual';
+import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -4289,13 +4289,35 @@ function Paso2({
   const remapearTareasACortes = (
     tareas: TareaSeguimiento[] = [],
     puntosViejos: PuntoControl[] = [],
-    puntosNuevos: PuntoControl[] = []
+    puntosNuevos: PuntoControl[] = [],
+    añoBaseDelPlan?: number
   ): TareaSeguimiento[] => {
     if (!puntosNuevos || puntosNuevos.length === 0) return tareas;
 
-    return (tareas || []).map((tarea, tIdx) => {
+    const mismoPeriodo = (a?: PuntoControl, b?: PuntoControl) =>
+      !!a && !!b && a.fechaProgramada === b.fechaProgramada && a.fechaSeguimiento === b.fechaSeguimiento;
+
+    // Las fechas de entrega pasan al año de los cortes (EFDS-958): antes se configuraban los
+    // cortes de 2035 y las tareas seguían con las fechas de la plantilla.
+    const añoCortes = parseInt(
+      [...puntosNuevos].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0].fechaProgramada.slice(0, 4),
+      10,
+    );
+    const tareasEnAño = tareasEnElAñoDeLosCortes(tareas || [], añoCortes, añoBaseDelPlan);
+
+    return tareasEnAño.map((tarea, tIdx) => {
+      const corteViejo = puntosViejos.find((p) => p.id === tarea.puntoControlId);
+      const corteNuevo = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
+
+      // 0. Si el corte de la tarea cambió de fechas (otra periodicidad), la tarea va al corte
+      //    que corresponde a su fecha de entrega, no al que conserva el mismo id (EFDS-958).
+      if (tarea.fechaEntrega && corteViejo && !mismoPeriodo(corteViejo, corteNuevo)) {
+        const destino = corteDeLaFecha(tarea.fechaEntrega, puntosNuevos);
+        if (destino) return { ...tarea, puntoControlId: destino.id };
+      }
+
       // 1. Si la tarea ya tiene un puntoControlId válido en los nuevos puntos, conservarlo
-      if (tarea.puntoControlId && puntosNuevos.some((p) => p.id === tarea.puntoControlId)) {
+      if (corteNuevo) {
         return tarea;
       }
 
@@ -4311,12 +4333,6 @@ function Paso2({
       // 3. Fallback: asignar según el índice de la tarea distribuido entre los cortes
       const fallbackPunto = puntosNuevos[tIdx % puntosNuevos.length];
       return { ...tarea, puntoControlId: fallbackPunto.id };
-    }).map((tarea) => {
-      // La fecha de entrega de cada tarea queda en el año de su corte (EFDS-958): antes se
-      // configuraban los cortes de 2035 y las tareas seguían con las fechas de la plantilla.
-      const corte = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
-      if (!corte || !tarea.fechaEntrega) return tarea;
-      return { ...tarea, fechaEntrega: fechaTareaEnElCorte(tarea.fechaEntrega, corte) };
     });
   };
 
@@ -4324,6 +4340,14 @@ function Paso2({
     if (!actividadConfigurando) return;
 
     const { numeroRol, nombreActividad, esCustom, indexCustom } = actividadConfigurando;
+
+    // Año más antiguo entre las tareas de todo el plan: el de la plantilla de la que salieron
+    const añosTareas = rolesConfig
+      .flatMap((r) => [...r.actividadesSeleccionadas, ...(r.actividadesCustom || [])])
+      .flatMap((a) => a.tareasSeguimiento || [])
+      .map((t) => parseInt(String(t.fechaEntrega || '').slice(0, 4), 10))
+      .filter((a) => Number.isInteger(a));
+    const añoBaseDelPlan = añosTareas.length ? Math.min(...añosTareas) : undefined;
 
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
@@ -4336,7 +4360,8 @@ function Paso2({
                 const tareasActualizadas = remapearTareasACortes(
                   act.tareasSeguimiento || [],
                   act.puntosControl || [],
-                  puntos
+                  puntos,
+                  añoBaseDelPlan
                 );
                 return {
                   ...act,
@@ -4358,7 +4383,8 @@ function Paso2({
                 const tareasActualizadas = remapearTareasACortes(
                   act.tareasSeguimiento || [],
                   act.puntosControl || [],
-                  puntos
+                  puntos,
+                  añoBaseDelPlan
                 );
                 return {
                   ...act,
@@ -5196,6 +5222,12 @@ function Paso2({
                                                             <button
                                                               onClick={() => {
                                                                 const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
+                                                                // Con el campo vacío el botón no hacía nada y parecía que no se podían crear tareas (EFDS-2191)
+                                                                if (input && !input.value.trim()) {
+                                                                  input.focus();
+                                                                  toast.info('Escribe la descripción de la tarea en "Nueva tarea…" y luego pulsa Agregar');
+                                                                  return;
+                                                                }
                                                                 if (input && input.value.trim()) {
                                                                   const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs="${idActividadEnEstado}-${pc.id}"]`);
                                                                   const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj="${idActividadEnEstado}-${pc.id}"]`);
@@ -5754,6 +5786,12 @@ function Paso2({
                                                             <button
                                                               onClick={() => {
                                                                 const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                // Con el campo vacío el botón no hacía nada y parecía que no se podían crear tareas (EFDS-2191)
+                                                                if (input && !input.value.trim()) {
+                                                                  input.focus();
+                                                                  toast.info('Escribe la descripción de la tarea en "Nueva tarea…" y luego pulsa Agregar');
+                                                                  return;
+                                                                }
                                                                 if (input && input.value.trim()) {
                                                                   const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs-custom="${rol.numero}-${index}-${pc.id}"]`);
                                                                   const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj-custom="${rol.numero}-${index}-${pc.id}"]`);

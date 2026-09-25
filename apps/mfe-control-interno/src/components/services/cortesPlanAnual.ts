@@ -61,18 +61,49 @@ export function cortesComoPeriodos<T extends CorteFechas>(puntos: T[]): T[] {
 }
 
 /**
- * Lleva la fecha de una tarea al año de su corte, conservando mes y día. Si así queda
- * antes de que empiece el corte, pasa al año siguiente: el informe de enero del corte
- * de julio a diciembre queda en enero del año siguiente.
+ * Lleva las fechas de entrega de las tareas de una actividad al año de sus cortes,
+ * todas con el mismo salto de años para conservar la distancia entre ellas (el informe
+ * de enero del año siguiente sigue en el año siguiente). Solo se mueven si quedaron
+ * fuera del plan: antes del año de los cortes o después del año siguiente.
+ *
+ * `añoBaseDelPlan` es el año más antiguo entre las tareas de todo el plan (el de la
+ * plantilla): con él, una actividad cuya única tarea es de enero del año siguiente conserva
+ * ese año siguiente.
  */
-export function fechaTareaEnElCorte(fechaTarea: string | undefined, corte: CorteFechas | undefined): string | undefined {
-  const t = partes(fechaTarea);
-  const c = partes(corte?.fechaProgramada);
-  if (!t || !c || !corte) return fechaTarea;
-  let año = c[0];
-  const enAño = (a: number) => iso(a, t[1], Math.min(t[2], ultimoDiaDelMes(a, t[1])));
-  if (enAño(año) < corte.fechaProgramada.slice(0, 10)) año += 1;
-  return enAño(año);
+export function tareasEnElAñoDeLosCortes<T extends { fechaEntrega?: string }>(
+  tareas: T[],
+  añoCortes: number,
+  añoBaseDelPlan?: number,
+): T[] {
+  const años = tareas
+    .map((t) => partes(t.fechaEntrega)?.[0])
+    .filter((a): a is number => typeof a === 'number');
+  if (!años.length || !Number.isInteger(añoCortes)) return tareas;
+  const min = Math.min(...años);
+  if (min >= añoCortes && min <= añoCortes + 1) return tareas;
+  const base = añoBaseDelPlan != null && añoBaseDelPlan <= min && añoBaseDelPlan < añoCortes ? añoBaseDelPlan : min;
+  const salto = añoCortes - base;
+  return tareas.map((t) => {
+    const p = partes(t.fechaEntrega);
+    if (!p) return t;
+    const año = p[0] + salto;
+    return { ...t, fechaEntrega: iso(año, p[1], Math.min(p[2], ultimoDiaDelMes(año, p[1]))) };
+  });
+}
+
+/**
+ * Corte al que pertenece una fecha de entrega: el informe se entrega después de que el
+ * periodo termina, así que es el último corte que ya terminó en esa fecha (el de julio
+ * a diciembre para el 31 de enero del año siguiente). Si ninguno terminó, el que la contiene.
+ */
+export function corteDeLaFecha<T extends CorteFechas>(fecha: string | undefined, cortes: T[]): T | undefined {
+  if (!fecha || !cortes.length) return undefined;
+  const f = fecha.slice(0, 10);
+  const fin = (c: T) => (c.fechaSeguimiento || c.fechaProgramada).slice(0, 10);
+  const ordenados = [...cortes].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada));
+  const terminados = ordenados.filter((c) => fin(c) < f);
+  if (terminados.length) return terminados[terminados.length - 1];
+  return ordenados.find((c) => c.fechaProgramada.slice(0, 10) <= f && f <= fin(c)) ?? ordenados[0];
 }
 
 export type EstadoCorte = 'completado' | 'activo' | 'enSeguimiento' | 'vencido' | 'futuro';
