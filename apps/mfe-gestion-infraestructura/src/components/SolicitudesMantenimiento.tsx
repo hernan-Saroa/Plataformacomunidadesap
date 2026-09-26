@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Wrench, Clock, AlertTriangle, Plus, ListTodo, FolderKanban,
   Inbox, Search, FileSearch, ClipboardList, Loader2, Hammer,
@@ -15,13 +15,16 @@ import {
   clasificarSLA,
   obtenerSesionUMI,
   listarCodigosTecnicosDeSesionUMI,
+  hasPerm,
+  getMisSolicitudes,
+  tecnicoPerteneceASesionUMI,
 } from '../services/infraestructuraService';
 
 interface SolicitudesMantenimientoProps {
   mantenimientos: SolicitudMantenimiento[];
   remitidasTI: SolicitudMantenimiento[];
-  vista: 'todas' | 'remitidasTI' | 'asignadasMi';
-  onChangeVista: (vista: 'todas' | 'remitidasTI' | 'asignadasMi') => void;
+  vista: 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes';
+  onChangeVista: (vista: 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes') => void;
   onNuevaSolicitud: () => void;
   onGestionar?: (idSolicitud: string) => void;
   loading?: boolean;
@@ -76,18 +79,24 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   catalogoCS = [],
 }) => {
   const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const rolesNorm = useMemo(() => new Set((sesionUmi.roles ?? []).map((r: unknown) => String(r ?? '').trim().toUpperCase())), [sesionUmi]);
   const [catalogoTecnicos, setCatalogoTecnicos] = useState<CatalogoItem[]>([]);
   const [codigosTecnicosSesion, setCodigosTecnicosSesion] = useState<string[]>([]);
+  const [tieneVinculoTecnico, setTieneVinculoTecnico] = useState<boolean>(false);
   useEffect(() => {
     let cancelado = false;
     const cargar = async () => {
       try {
         const tecnicos = await infraestructuraService.getTecnicos(false);
         if (cancelado) return;
-        setCatalogoTecnicos(Array.isArray(tecnicos) ? tecnicos : []);
-        const cods = await listarCodigosTecnicosDeSesionUMI(sesionUmi, Array.isArray(tecnicos) ? tecnicos : []);
+        const listaSegura = Array.isArray(tecnicos) ? tecnicos : [];
+        setCatalogoTecnicos(listaSegura);
+        const cods = await listarCodigosTecnicosDeSesionUMI(sesionUmi, listaSegura);
         if (cancelado) return;
         setCodigosTecnicosSesion(cods);
+        const vinculo = listaSegura.some((t) => tecnicoPerteneceASesionUMI(t, sesionUmi));
+        if (cancelado) return;
+        setTieneVinculoTecnico(!!vinculo || cods.length > 0);
       } catch (err) {
         console.error('[UMI-ERROR cargar tecnicos]', err);
         setCatalogoTecnicos([]);
@@ -96,31 +105,92 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
     cargar();
     return () => { cancelado = true; };
   }, [sesionUmi]);
+  const esSoloSolicitante = useMemo(() => {
+    if (tieneVinculoTecnico) return false;
+    if (rolesNorm.has('SUPER_ADMIN')) return false;
+    if (!rolesNorm.has('SOLICITANTE_INFRA') && !rolesNorm.has('USER')) return false;
+    const otros = ['ADMIN','GESTOR_MANTENIMIENTO','ADMINISTRADOR_FUNCIONAL','ADMINISTRADOR_FUNCIONAL_INFRA','COORDINADOR_INFRAESTRUCTURA','UMI','INFRAESTRUCTURA','ANALISTA_ASIGNADOR_UMI','CONSULTA_CALIDAD_INFRA','ADMINISTRADOR_MODULO_INFRA','TECNICO_UMI','TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO'];
+    for (const r of otros) if (rolesNorm.has(r)) return false;
+    return true;
+  }, [rolesNorm, tieneVinculoTecnico]);
+  const rolesNormGestion = new Set((sesionUmi.roles ?? []).map((r: any) => String(r ?? '').trim().toUpperCase()));
+  const bypassRolesConsulta =
+    rolesNormGestion.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+    rolesNormGestion.has('ADMINISTRADOR_FUNCIONAL') ||
+    rolesNormGestion.has('COORDINADOR_INFRAESTRUCTURA') ||
+    rolesNormGestion.has('CONSULTA_CALIDAD_INFRA') ||
+    rolesNormGestion.has('SUPER_ADMIN');
+  const puedeVerBandejaGeneral =
+    bypassRolesConsulta || hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.solicitud.read_all', 'infraestructura.reportes.gestion', 'infraestructura.reportes.consolidados']);
+  const puedeVerRemitidasTI =
+    bypassRolesConsulta || hasPerm(sesionUmi, ['infraestructura.view_all_ti', 'infraestructura.view_all', 'infraestructura.solicitud.read_ti', 'infraestructura.solicitud.ti_tracing_full', 'infraestructura.solicitud.read_all']);
+  const puedeVerAsignadasMi = hasPerm(sesionUmi, ['infraestructura.solicitud.cierre_tecnico', 'infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.solicitud.execute_assigned']) || tieneVinculoTecnico;
+  const puedeRadicarLocal = !tieneVinculoTecnico && !esRolTecnico(sesionUmi) && hasPerm(sesionUmi, 'infraestructura.solicitud.create');
+  function esRolTecnico(ses: any) {
+    const roles = (ses?.roles ?? []).map((r: any) => String(r ?? '').trim().toUpperCase());
+    const set = new Set(roles);
+    return set.has('TECNICO_UMI') || set.has('TECNICO_ELECTRICO_ESPECIALIZADO') || set.has('TECNICO_UMI_MULTIPROPOSITO');
+  }
+  React.useEffect(() => {
+    if (vista === 'todas') {
+      if (esSoloSolicitante) onChangeVista('misSolicitudes');
+      else if (tieneVinculoTecnico && !puedeVerBandejaGeneral) onChangeVista('asignadasMi');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esSoloSolicitante, tieneVinculoTecnico, puedeVerBandejaGeneral]);
+  const [misSolicitudes, setMisSolicitudes] = useState<SolicitudMantenimiento[]>([]);
+  const [cargandoMisSolicitudes, setCargandoMisSolicitudes] = useState<boolean>(false);
+  const cargarMisSolicitudes = useCallback(async () => {
+    if (!sesionUmi.userId) { setMisSolicitudes([]); return; }
+    setCargandoMisSolicitudes(true);
+    try {
+      const data = await getMisSolicitudes();
+      setMisSolicitudes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('[UMI-ERROR cargar mis-solicitudes]', err);
+      setMisSolicitudes([]);
+    } finally { setCargandoMisSolicitudes(false); }
+  }, [sesionUmi.userId]);
+  useEffect(() => {
+    let cancelado = false;
+    cargarMisSolicitudes().then(() => { /* noop */ }).catch(() => {});
+    return () => { cancelado = true; };
+  }, [cargarMisSolicitudes, onRefresh]);
   const asignadasMi = useMemo(() => {
-    const codigosSet = new Set((codigosTecnicosSesion || []).map((c) => c.trim().toUpperCase()));
-    const result = mantenimientos.filter((m) => {
+    const cods: string[] = Array.isArray(codigosTecnicosSesion) ? codigosTecnicosSesion : [];
+    const upper = (s: any) => String(s || '').trim().toUpperCase();
+    const norm = (s: any): string => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '').toLowerCase();
+    const codigosSet = new Set<string>(cods.map(upper).filter(Boolean));
+    const sesEmail = String(sesionUmi.email || '').trim().toLowerCase();
+    const sesUserId = String(sesionUmi.userId || '').trim().toLowerCase();
+    const sesUsername = String(sesionUmi.username || '').trim().toLowerCase();
+    const sesEmailLocal = sesEmail.split('@')[0];
+    const sesFullNameNorm = norm((sesionUmi as any).fullName || (sesionUmi as any).nombre || '');
+    return mantenimientos.filter((m) => {
       const r = String(m.responsableAsignado || '').trim();
       if (!r) return false;
       if (codigosSet.size > 0) {
         const match = r.match(/TEC[-_][A-Za-z0-9]+[-_][A-Za-z0-9]+/);
-        if (match && match[0]) {
-          return codigosSet.has(match[0].toUpperCase());
-        }
+        if (match && match[0] && codigosSet.has(upper(match[0]))) return true;
       }
       const lower = r.toLowerCase();
-      const email = String(sesionUmi.email || '').trim().toLowerCase();
-      const userId = String(sesionUmi.userId || '').trim().toLowerCase();
-      if (email && lower.includes(` ${email} `)) return true;
-      if (email && lower.endsWith(` ${email}`)) return true;
-      if (email && lower.startsWith(`${email} `)) return true;
-      if (email && lower === email) return true;
-      if (userId && lower.includes(userId)) return true;
+      if (sesEmail) {
+        if (lower.includes(sesEmail)) return true;
+      }
+      if (sesUserId && lower.includes(sesUserId)) return true;
+      if (sesUsername && lower.includes(sesUsername)) return true;
+      if (sesEmailLocal && lower.includes(sesEmailLocal)) return true;
+      const rNorm = norm(r);
+      if (sesFullNameNorm && rNorm.includes(sesFullNameNorm)) return true;
       return false;
     });
-    return result;
   }, [mantenimientos, codigosTecnicosSesion, sesionUmi]);
   const lista =
-    vista === 'todas' ? mantenimientos : vista === 'asignadasMi' ? asignadasMi : remitidasTI;
+    vista === 'todas' ? mantenimientos
+      : vista === 'asignadasMi' ? asignadasMi
+      : vista === 'misSolicitudes' ? misSolicitudes
+      : remitidasTI;
+  const vistaLoading = vista === 'misSolicitudes' ? cargandoMisSolicitudes : !!loading;
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
@@ -271,71 +341,96 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                 Actualizar
               </button>
             )}
-            <button
-              type="button"
-              onClick={onNuevaSolicitud}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm shadow-amber-500/15 transition-all duration-200 active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              Nueva Solicitud
-            </button>
+            {puedeRadicarLocal && (
+              <button
+                type="button"
+                onClick={onNuevaSolicitud}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm shadow-amber-500/15 transition-all duration-200 active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                Nueva Solicitud
+              </button>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-2 border-b border-slate-100 pb-px">
-          <button
-            type="button"
-            onClick={() => onChangeVista('todas')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-              vista === 'todas'
-                ? 'border-amber-600 text-amber-700 bg-amber-50/40'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-            }`}
-          >
-            <Inbox className="w-4 h-4" />
-            Bandeja UMI
-            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
-              {mantenimientos.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeVista('asignadasMi')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-              vista === 'asignadasMi'
-                ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-            }`}
-          >
-            <User className="w-4 h-4" />
-            Asignadas a mí
-            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
-              {asignadasMi.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeVista('remitidasTI')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
-              vista === 'remitidasTI'
-                ? 'border-sky-600 text-sky-700 bg-sky-50/40'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-            }`}
-          >
-            <GitBranch className="w-4 h-4" />
-            Remitidas a TI
-            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
-              {remitidasTI.length}
-            </span>
-          </button>
+          {puedeVerBandejaGeneral && (
+            <button
+              type="button"
+              onClick={() => onChangeVista('todas')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+                vista === 'todas'
+                  ? 'border-amber-600 text-amber-700 bg-amber-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <Inbox className="w-4 h-4" />
+              Bandeja UMI
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
+                {mantenimientos.length}
+              </span>
+            </button>
+          )}
+          {sesionUmi.userId && !tieneVinculoTecnico && !esRolTecnico(sesionUmi) && (misSolicitudes.length > 0 || hasPerm(sesionUmi, 'infraestructura.solicitud.create')) && (
+            <button
+              type="button"
+              onClick={() => onChangeVista('misSolicitudes')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+                vista === 'misSolicitudes'
+                  ? 'border-rose-600 text-rose-700 bg-rose-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <FolderKanban className="w-4 h-4" />
+              Mis Solicitudes
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
+                {misSolicitudes.length}
+              </span>
+            </button>
+          )}
+          {puedeVerAsignadasMi && (
+            <button
+              type="button"
+              onClick={() => onChangeVista('asignadasMi')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+                vista === 'asignadasMi'
+                  ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Asignadas a mí
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
+                {asignadasMi.length}
+              </span>
+            </button>
+          )}
+          {puedeVerRemitidasTI && (
+            <button
+              type="button"
+              onClick={() => onChangeVista('remitidasTI')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+                vista === 'remitidasTI'
+                  ? 'border-sky-600 text-sky-700 bg-sky-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <GitBranch className="w-4 h-4" />
+              Remitidas a TI
+              <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
+                {remitidasTI.length}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
       <div className="p-6 space-y-4">
-        {loading && lista.length === 0 && (
+        {vistaLoading && lista.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">Cargando solicitudes...</div>
         )}
-        {!loading && lista.length === 0 && (
+        {!vistaLoading && lista.length === 0 && (
           <div className="py-16 text-center space-y-3">
             <div className="inline-flex w-14 h-14 rounded-2xl bg-slate-100 items-center justify-center text-slate-400">
               <ListTodo className="w-7 h-7" />
@@ -346,6 +441,8 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   ? 'Aún no hay solicitudes remitidas a Tecnologías de la Información'
                   : vista === 'asignadasMi'
                   ? 'Aún no tienes solicitudes de mantenimiento asignadas'
+                  : vista === 'misSolicitudes'
+                  ? 'No has radicado solicitudes aún'
                   : 'No hay solicitudes de mantenimiento para la bandeja UMI'}
               </p>
               <p className="text-xs text-slate-400 mt-1">
@@ -353,10 +450,12 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
                   ? 'Cuando radique una solicitud clasificada como TECNOLÓGICA, aparecerá aquí para seguimiento.'
                   : vista === 'asignadasMi'
                   ? 'Las solicitudes asignadas a tus códigos de técnico vinculados aparecerán aquí automáticamente.'
+                  : vista === 'misSolicitudes'
+                  ? 'Las solicitudes que radique aparecerán aquí automáticamente. Puede dar seguimiento a su estado.'
                   : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
               </p>
             </div>
-            {(vista === 'todas') && (
+            {(vista === 'todas' || vista === 'misSolicitudes' || !vista) && puedeRadicarLocal && (
               <button
                 type="button"
                 onClick={onNuevaSolicitud}

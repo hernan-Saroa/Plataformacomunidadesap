@@ -404,7 +404,171 @@ export interface SesionUsuarioUMI {
   email: string | null;
   username: string | null;
   roles: string[];
+  permissions: string[];
 }
+
+const normPerm = (s: unknown): string =>
+  String(s ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+
+const FE_GRUPOS: Record<string, string[]> = {
+  INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.EDIT',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SEDES_CRU',
+    'INFRAESTRUCTURA.PARAM.ESPACIOS_CRU',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.EDIT',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.READ_ASSIGNED',
+    'INFRAESTRUCTURA.SOLICITUD.EXECUTE_ASSIGNED',
+    'INFRAESTRUCTURA.SOLICITUD.CIERRE_TECNICO',
+    'INFRAESTRUCTURA.SOLICITUD.CLOSE_WITH_EVIDENCE',
+    'INFRAESTRUCTURA.SOLICITUD.READ_REJECTION_REASON_OWN',
+  ],
+  INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_PARAM_ALL_CRU: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SLA_CRU',
+    'INFRAESTRUCTURA.PARAM.TECNICOS_CRU',
+    'INFRAESTRUCTURA.PARAM.REGLAS_CRU',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_ANALISTA_ASIGNADOR_OPERATIVO: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.READ_ALL',
+    'INFRAESTRUCTURA.SOLICITUD.READ_TI',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFIRM_CLOSE_OWN',
+    'INFRAESTRUCTURA.SOLICITUD.READ_AUDIT_HISTORY_ANY',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+};
+
+const FE_LEGACY_MAP: Record<string, string[]> = {
+  SUPER_ADMIN: ['__ALL__'],
+  ADMIN: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
+  GESTOR_MANTENIMIENTO: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
+  ADMINISTRADOR_FUNCIONAL: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  ADMINISTRADOR_FUNCIONAL_INFRA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  COORDINADOR_INFRAESTRUCTURA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  UMI: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
+  INFRAESTRUCTURA: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
+  TECNICO_UMI: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  USER: ['INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR'],
+  SOLICITANTE_INFRA: ['INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR'],
+  ANALISTA_ASIGNADOR_UMI: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
+  TECNICO_ELECTRICO_ESPECIALIZADO: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  TECNICO_UMI_MULTIPROPOSITO: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  CONSULTA_CALIDAD_INFRA: ['INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD'],
+  ADMINISTRADOR_MODULO_INFRA: ['INFRA_PARAM_ALL_CRU'],
+};
+
+export const hasPerm = (
+  ses: SesionUsuarioUMI | null | undefined,
+  codigoPermiso: string | string[] | null | undefined,
+): boolean => {
+  if (!ses || !codigoPermiso) return false;
+  const codigos = Array.isArray(codigoPermiso) ? codigoPermiso : [codigoPermiso];
+  if (codigos.length === 0) return false;
+  const rolesNorm = (ses.roles ?? []).map(normPerm);
+  if (rolesNorm.includes('SUPER_ADMIN')) return true;
+  const perms = new Set((ses.permissions ?? []).map(normPerm).filter(Boolean));
+  const legacySet = new Set<string>();
+  for (const rol of rolesNorm) {
+    const grupos = FE_LEGACY_MAP[rol] || [];
+    for (const g of grupos) {
+      if (g === '__ALL__') {
+        for (const list of Object.values(FE_GRUPOS)) for (const p of list) legacySet.add(normPerm(p));
+      } else {
+        const list = FE_GRUPOS[g] || [];
+        for (const p of list) legacySet.add(normPerm(p));
+      }
+    }
+  }
+  for (const raw of codigos) {
+    const needle = normPerm(raw);
+    if (!needle) continue;
+    if (perms.has(needle) || legacySet.has(needle)) return true;
+  }
+  return false;
+};
+
+const extraerCodigosPermisosDeObjeto = (obj: any): string[] => {
+  if (obj == null) return [];
+  if (Array.isArray(obj)) return obj.map((x) => String(x)).filter(Boolean);
+  if (typeof obj !== 'object') return [];
+  if (Array.isArray((obj as any).codes)) return (obj as any).codes.map((x: any) => String(x)).filter(Boolean);
+  if (Array.isArray((obj as any).data)) return extraerCodigosPermisosDeObjeto((obj as any).data);
+  if (Array.isArray((obj as any).permissions)) return extraerCodigosPermisosDeObjeto((obj as any).permissions);
+  if (typeof (obj as any).code === 'string') return [(obj as any).code];
+  if (typeof (obj as any).permission === 'string') return [(obj as any).permission];
+  return [];
+};
 
 const leerCookie = (nombre: string): string | null => {
   if (typeof document === 'undefined') return null;
@@ -457,11 +621,19 @@ export const obtenerSesionUMI = (): SesionUsuarioUMI => {
           .map((role: any) => typeof role === 'string' ? role : role?.code || role?.name || '')
           .filter(Boolean) as string[];
       }
+      let permissions: string[] = [];
+      if (Array.isArray(cache?.permissions)) permissions = cache.permissions as string[];
+      else if (Array.isArray(userObj?.permissions)) permissions = userObj.permissions as string[];
+      else if (userObj?.permissions != null) permissions = extraerCodigosPermisosDeObjeto(userObj.permissions);
+      if (cache?.permissions != null && !Array.isArray(cache.permissions)) {
+        permissions = Array.from(new Set([...permissions, ...extraerCodigosPermisosDeObjeto(cache.permissions)]));
+      }
       return {
         userId,
         email,
         username,
         roles: Array.isArray(roles) ? roles.filter((r: any) => typeof r === 'string' && r.length > 0) : [],
+        permissions: permissions.filter((p: any) => typeof p === 'string' && p.length > 0),
       };
     }
   }
@@ -492,7 +664,18 @@ export const obtenerSesionUMI = (): SesionUsuarioUMI => {
     else if (typeof payload?.realm_access?.roles !== 'undefined' && Array.isArray(payload.realm_access.roles))
       roles = payload.realm_access.roles as string[];
     else if (typeof payload?.rol === 'string') roles = [payload.rol];
-    return { userId, email, username, roles };
+    let permissions: string[] = [];
+    if (Array.isArray(payload?.permissions)) permissions = payload.permissions as string[];
+    else if (Array.isArray(payload?.perm_codes)) permissions = payload.perm_codes as string[];
+    else if (payload?.scope && typeof payload.scope === 'string') permissions = payload.scope.split(/\s+/).filter(Boolean);
+    else if (payload?.permissions != null) permissions = extraerCodigosPermisosDeObjeto(payload.permissions);
+    return {
+      userId,
+      email,
+      username,
+      roles: Array.isArray(roles) ? (roles as any[]).filter((r: any) => typeof r === 'string' && r.length > 0) : [],
+      permissions: permissions.filter((p: any) => typeof p === 'string' && p.length > 0),
+    };
   } catch {
     return vacio;
   }
@@ -1609,3 +1792,6 @@ export const infraestructuraService = {
     return await res.json();
   },
 };
+
+export const getMisSolicitudes = (): Promise<SolicitudMantenimiento[]> =>
+  infraestructuraService.getMisSolicitudes();

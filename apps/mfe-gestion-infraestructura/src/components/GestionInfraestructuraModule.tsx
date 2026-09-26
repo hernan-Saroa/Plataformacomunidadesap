@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Building2,
   Layers,
@@ -18,6 +18,9 @@ import {
   EstadisticasInfraestructura,
   CatalogoItem,
   BloqueEdificio,
+  obtenerSesionUMI,
+  hasPerm,
+  tecnicoPerteneceASesionUMI,
 } from '../services/infraestructuraService';
 import { MetricasInfraestructura } from './MetricasInfraestructura';
 import { GestionSedes } from './GestionSedes';
@@ -38,7 +41,7 @@ interface Toast {
 }
 
 export const GestionInfraestructuraModule: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabActiva>('espacios');
+  const [activeTab, setActiveTab] = useState<TabActiva>('mantenimiento');
   const [loading, setLoading] = useState<boolean>(true);
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [espacios, setEspacios] = useState<EspacioFisico[]>([]);
@@ -60,26 +63,153 @@ export const GestionInfraestructuraModule: React.FC = () => {
     porcentajeOcupacion: 0,
   });
 
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const rolesNorm = useMemo(() => new Set((sesionUmi.roles ?? []).map((r: unknown) => String(r ?? '').trim().toUpperCase())), [sesionUmi]);
+  const [catalogoTecnicos, setCatalogoTecnicos] = useState<CatalogoItem[]>([]);
+  const [tieneVinculoTecnico, setTieneVinculoTecnico] = useState<boolean>(false);
+  useEffect(() => {
+    let cancelado = false;
+    const cargar = async () => {
+      try {
+        const tecnicos = await infraestructuraService.getTecnicos(false);
+        if (cancelado) return;
+        const listaSegura = Array.isArray(tecnicos) ? tecnicos : [];
+        setCatalogoTecnicos(listaSegura);
+        const cods = await infraestructuraService.listarCodigosTecnicosDeSesionUMI ? infraestructuraService.listarCodigosTecnicosDeSesionUMI(sesionUmi, listaSegura) : Promise.resolve<string[]>([]);
+        if (cancelado) return;
+        const vinculo = listaSegura.some((t) => tecnicoPerteneceASesionUMI(t, sesionUmi)) || (Array.isArray(cods) && cods.length > 0);
+        if (cancelado) return;
+        setTieneVinculoTecnico(!!vinculo);
+      } catch (err) {
+        console.error('[UMI-ERROR cargar tecnicos GIM]', err);
+        setCatalogoTecnicos([]);
+      }
+    };
+    cargar();
+    return () => { cancelado = true; };
+  }, [sesionUmi]);
+  const esRolTecnico = useMemo(() => {
+    const rolesTec = ['TECNICO_UMI','TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO'];
+    for (const r of rolesTec) if (rolesNorm.has(r)) return true;
+    return false;
+  }, [rolesNorm]);
+  const esTecnico = tieneVinculoTecnico || esRolTecnico;
+  const esSoloSolicitante = useMemo(() => {
+    if (esTecnico) return false;
+    if (rolesNorm.has('SUPER_ADMIN')) return false;
+    if (!rolesNorm.has('SOLICITANTE_INFRA') && !rolesNorm.has('USER')) return false;
+    const otros = ['ADMIN','GESTOR_MANTENIMIENTO','ADMINISTRADOR_FUNCIONAL','ADMINISTRADOR_FUNCIONAL_INFRA','COORDINADOR_INFRAESTRUCTURA','UMI','INFRAESTRUCTURA','ANALISTA_ASIGNADOR_UMI','CONSULTA_CALIDAD_INFRA','ADMINISTRADOR_MODULO_INFRA'];
+    for (const r of otros) if (rolesNorm.has(r)) return false;
+    return true;
+  }, [rolesNorm, esTecnico]);
+  const puedeVerInventarioGlobal = hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.param.espacios_cru', 'infraestructura.param.sedes_cru', 'infraestructura.param.territorial_crud', 'infraestructura.param.categories_cru', 'infraestructura.param.categories_crud']);
+  // ERS L70 P2 ANALISTA_ASIGNADOR (Encargado UMI): NO gestiona inventario/sedes/espacios (eso P5/P6).
+  // Necesita VIEW sólo para RADICAR correctamente y saber de qué espacio se trata (lectura operativa).
+  // Pero NO ve los tabs de inventario completo, salvo view_all o param.*
+  // P5 ADMINISTRADOR_FUNCIONAL_INFRA con param.approve_config / read_all / reportes_gestion SI ve inventario bypass.
+  const rolesNormP5 = new Set((sesionUmi.roles ?? []).map((r: string) => String(r).toUpperCase().trim()));
+  const bypassRolesInventario = rolesNormP5.has('ADMINISTRADOR_FUNCIONAL_INFRA') || rolesNormP5.has('ADMINISTRADOR_FUNCIONAL') || rolesNormP5.has('COORDINADOR_INFRAESTRUCTURA') || rolesNormP5.has('SUPER_ADMIN');
+  const puedeVerEspacios = bypassRolesInventario || hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.param.espacios_cru', 'infraestructura.param.territorial_crud']);
+  const puedeVerSedes = bypassRolesInventario || hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.param.sedes_cru', 'infraestructura.param.territorial_crud']);
+  const puedeVerMantenimiento = bypassRolesInventario || hasPerm(sesionUmi, [
+    'infraestructura.view_all',
+    'infraestructura.view_all_ti',
+    'infraestructura.solicitud.create',
+    'infraestructura.solicitud.read',
+    'infraestructura.solicitud.read_all',
+    'infraestructura.solicitud.read_assigned',
+    'infraestructura.solicitud.read_own',
+    'infraestructura.solicitud.read_rejection_reason_own',
+    'infraestructura.solicitud.edit',
+    'infraestructura.solicitud.assign',
+    'infraestructura.solicitud.reject',
+    'infraestructura.solicitud.redistribute',
+    'infraestructura.solicitud.forward_ti',
+    'infraestructura.solicitud.confirmar_recepcion_insumos',
+    'infraestructura.solicitud.cierre_tecnico',
+    'infraestructura.solicitud.close_with_evidence',
+    'infraestructura.solicitud.execute_assigned',
+    'infraestructura.solicitud.conformidad',
+    'infraestructura.solicitud.calificacion',
+    'infraestructura.reportes.gestion',
+    'infraestructura.reportes.consolidados',
+  ]);
+  const puedeVerCategorias = bypassRolesInventario || hasPerm(sesionUmi, ['infraestructura.param.categories_cru', 'infraestructura.param.categories_crud', 'infraestructura.view_all', 'infraestructura.view_all_ti']);
+  const puedeVerParametros = bypassRolesInventario || hasPerm(sesionUmi, [
+    'infraestructura.param.sla_cru',
+    'infraestructura.param.sla_times_edit',
+    'infraestructura.param.tecnicos_cru',
+    'infraestructura.param.technicians_crud',
+    'infraestructura.param.reglas_cru',
+    'infraestructura.param.rules_edit',
+    'infraestructura.param.categories_cru',
+    'infraestructura.param.categories_crud',
+    'infraestructura.view_all',
+  ]);
+  // Métricas Globales (ERS P2 KPIs operativos).
+  // - SA/P5/P6/P7 = Siempre (view_all/reportes/param*)
+  // - P2 ANALISTA_ASIGNADOR_UMI = OPERATIVO (asign, reject, redistribute, forward_ti, read_all): se requieren SUS KPIs
+  // - P1 / P3 / P4 = NO verán métricas globales
+  const puedeVerMetricasGlobales = puedeVerInventarioGlobal || tieneCualquieraPermiso([
+    'infraestructura.view_all','infraestructura.view_all_ti',
+    'infraestructura.reportes.consolidados','infraestructura.reportes.gestion',
+    'infraestructura.param.sla_cru','infraestructura.param.tecnicos_cru','infraestructura.param.reglas_cru','infraestructura.param.categories_cru',
+    // KPIs para P2 OPERATIVO (no inventario, no reportes): lee asignaciones bandeja
+    'infraestructura.solicitud.assign','infraestructura.solicitud.reject','infraestructura.solicitud.redistribute','infraestructura.solicitud.forward_ti','infraestructura.solicitud.read_all',
+  ]);
+  function tieneCualquieraPermiso(codigos: string[]) {
+    for (const c of codigos) if (hasPerm(sesionUmi, c)) return true;
+    return false;
+  }
+  const puedeRadicarSolicitud = !esTecnico && hasPerm(sesionUmi, 'infraestructura.solicitud.create');
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sedesData, espaciosData, mantenimientosData, remitidasTIData, statsData, csData] =
-        await Promise.all([
-          infraestructuraService.getSedes(),
-          infraestructuraService.getEspacios(),
-          infraestructuraService.getMantenimientos({ incluirTI: false }),
-          infraestructuraService.getMantenimientos({ incluirTI: true }),
-          infraestructuraService.getEstadisticas(),
-          infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
-        ]);
-      setSedes(sedesData);
-      setEspacios(espaciosData);
-      setMantenimientos(mantenimientosData);
-      setRemitidasTI(remitidasTIData.filter((s) => s.areaResponsableActual === 'TI'));
-      setStats(statsData);
+      const [
+        sedesRes,
+        espaciosRes,
+        mantenimientosRes,
+        remitidasTIRes,
+        statsRes,
+        csRes,
+      ] = await Promise.allSettled([
+        infraestructuraService.getSedes(),
+        infraestructuraService.getEspacios(),
+        infraestructuraService.getMantenimientos({ incluirTI: false }),
+        infraestructuraService.getMantenimientos({ incluirTI: true }),
+        infraestructuraService.getEstadisticas(),
+        infraestructuraService.getCatalogo('CATEGORIA_SERVICIO'),
+      ]);
+      const extraer = <T,>(r: PromiseSettledResult<T>, fallback: T): T =>
+        r.status === 'fulfilled' ? r.value : fallback;
+      const sedesData = extraer(sedesRes, [] as any[]);
+      const espaciosData = extraer(espaciosRes, [] as any[]);
+      const mantenimientosData = extraer(mantenimientosRes, [] as any[]);
+      const remitidasTIData = extraer(remitidasTIRes, [] as any[]);
+      const statsData = extraer<any>(statsRes, {});
+      const csData = extraer(csRes, [] as any[]);
+      setSedes(Array.isArray(sedesData) ? sedesData : []);
+      setEspacios(Array.isArray(espaciosData) ? espaciosData : []);
+      setMantenimientos(Array.isArray(mantenimientosData) ? mantenimientosData : []);
+      setRemitidasTI((Array.isArray(remitidasTIData) ? remitidasTIData : []).filter((s: any) => s.areaResponsableActual === 'TI'));
+      setStats(statsData && typeof statsData === 'object' ? statsData : {});
       setCatalogoCS(Array.isArray(csData) ? csData : []);
+      const fallidos = ([
+        ['sedes', sedesRes],
+        ['espacios', espaciosRes],
+        ['mantenimientos', mantenimientosRes],
+        ['remitidasTI', remitidasTIRes],
+        ['estadisticas', statsRes],
+        ['catalogoCS', csRes],
+      ] as Array<[string, PromiseSettledResult<any>]>)
+        .filter(([, r]) => r.status === 'rejected')
+        .map(([k, r]) => `${k}=${(r as PromiseRejectedResult).reason?.message || String((r as PromiseRejectedResult).reason)}`);
+      if (fallidos.length > 0) {
+        console.warn('[GIM] fetchData endpoints fallidos (no bloquean resto):', fallidos.join(' | '));
+      }
     } catch (err) {
-      console.error('Error al cargar datos de infraestructura:', err);
+      console.error('Error crítico al cargar datos de infraestructura:', err);
     } finally {
       setLoading(false);
     }
@@ -88,6 +218,21 @@ export const GestionInfraestructuraModule: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (loading) return;
+    const tabsOrden = [
+      { clave: 'espacios', puede: puedeVerEspacios },
+      { clave: 'sedes', puede: puedeVerSedes },
+      { clave: 'mantenimiento', puede: puedeVerMantenimiento },
+      { clave: 'categorias', puede: puedeVerCategorias },
+      { clave: 'parametros', puede: puedeVerParametros },
+    ] as const;
+    const actualValida = tabsOrden.find((t) => t.clave === activeTab);
+    if (actualValida && actualValida.puede) return;
+    const primera = tabsOrden.find((t) => t.puede);
+    if (primera && primera.clave !== activeTab) setActiveTab(primera.clave);
+  }, [loading, puedeVerEspacios, puedeVerSedes, puedeVerMantenimiento, puedeVerCategorias, puedeVerParametros, activeTab]);
 
   useEffect(() => {
     if (!toast) return;
@@ -204,91 +349,103 @@ export const GestionInfraestructuraModule: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Sincronizar
           </button>
-          <button
-            type="button"
-            onClick={() => setMostrarFormulario(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-md shadow-amber-500/25 ring-1 ring-amber-500/30 transition-all active:scale-95"
-          >
-            <Wrench className="w-4 h-4" />
-            Radicar Solicitud
-          </button>
+          {puedeRadicarSolicitud && (
+            <button
+              type="button"
+              onClick={() => setMostrarFormulario(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-md shadow-amber-500/25 ring-1 ring-amber-500/30 transition-all active:scale-95"
+            >
+              <Wrench className="w-4 h-4" />
+              Radicar Solicitud
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Métricas Globales */}
-      <MetricasInfraestructura stats={stats} />
+      {/* Métricas Globales (solo UMI / Admin / Técnico / Calidad) */}
+      {puedeVerMetricasGlobales && <MetricasInfraestructura stats={stats} />}
 
       {/* Navegación por Pestañas */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-px overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setActiveTab('espacios')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'espacios'
-              ? 'border-indigo-600 text-indigo-600 bg-white shadow-sm'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          Espacios y Aulas ({espacios.length})
-        </button>
+        {puedeVerEspacios && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('espacios')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'espacios'
+                ? 'border-indigo-600 text-indigo-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Espacios y Aulas ({espacios.length})
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('sedes')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'sedes'
-              ? 'border-blue-600 text-blue-600 bg-white shadow-sm'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          Sedes Territoriales ({sedes.length})
-        </button>
+        {puedeVerSedes && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('sedes')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'sedes'
+                ? 'border-blue-600 text-blue-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Sedes Territoriales ({sedes.length})
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('mantenimiento')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'mantenimiento'
-              ? 'border-amber-600 text-amber-600 bg-white shadow-sm'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-        >
-          <Wrench className="w-4 h-4" />
-          Mantenimiento ({mantenimientos.length})
-        </button>
+        {puedeVerMantenimiento && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('mantenimiento')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'mantenimiento'
+                ? 'border-amber-600 text-amber-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            Mantenimiento ({mantenimientos.length})
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('categorias')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'categorias'
-              ? 'border-violet-600 text-violet-600 bg-white shadow-sm'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-        >
-          <FolderKanban className="w-4 h-4" />
-          Categorías Servicio ({catalogoCS.length})
-        </button>
+        {puedeVerCategorias && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('categorias')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'categorias'
+                ? 'border-violet-600 text-violet-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <FolderKanban className="w-4 h-4" />
+            Categorías Servicio ({catalogoCS.length})
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('parametros')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
-            activeTab === 'parametros'
-              ? 'border-emerald-600 text-emerald-600 bg-white shadow-sm'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-        >
-          <Settings className="w-4 h-4" />
-          Parámetros UMI
-        </button>
+        {puedeVerParametros && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('parametros')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'parametros'
+                ? 'border-emerald-600 text-emerald-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Parámetros UMI
+          </button>
+        )}
       </div>
 
       {/* Vista de Contenido Activo */}
       <div className="transition-all duration-300">
-        {activeTab === 'espacios' && (
+        {activeTab === 'espacios' && puedeVerEspacios && (
           <GestionEspacios
             espacios={espacios}
             sedes={sedes}
@@ -314,7 +471,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
             }}
           />
         )}
-        {activeTab === 'sedes' && (
+        {activeTab === 'sedes' && puedeVerSedes && (
           <GestionSedes
             sedes={sedes}
             onSedeCreada={(nuevaSede) => {
@@ -364,7 +521,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
             }}
           />
         )}
-        {activeTab === 'mantenimiento' && (
+        {activeTab === 'mantenimiento' && puedeVerMantenimiento && (
           <SolicitudesMantenimientoView
             mantenimientos={mantenimientos}
             remitidasTI={remitidasTI}
@@ -377,8 +534,8 @@ export const GestionInfraestructuraModule: React.FC = () => {
             catalogoCS={catalogoCS}
           />
         )}
-        {activeTab === 'categorias' && <AdminCategoriasServicioMini />}
-        {activeTab === 'parametros' && <AdminParametrosUMI />}
+        {activeTab === 'categorias' && puedeVerCategorias && <AdminCategoriasServicioMini />}
+        {activeTab === 'parametros' && puedeVerParametros && <AdminParametrosUMI />}
       </div>
     </div>
   );

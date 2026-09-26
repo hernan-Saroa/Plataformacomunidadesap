@@ -45,7 +45,6 @@ export class EspaciosController {
   }
 
   @Post()
-  @Public()
   @ApiOperation({ summary: 'Crear un nuevo espacio físico (aula, laboratorio, auditorio)' })
   @ApiResponse({ status: 201, description: 'Espacio físico creado correctamente.' })
   @ApiResponse({ status: 409, description: 'Código duplicado en el mismo bloque.' })
@@ -54,28 +53,24 @@ export class EspaciosController {
   }
 
   @Patch(':id')
-  @Public()
   @ApiOperation({ summary: 'Actualizar cualquier campo de un espacio físico (incluyendo estado e isActivo).' })
   updateEspacio(@Param('id', ParseUUIDPipe) id: string, @Body() payload: UpdateEspacioDto) {
     return this.espaciosService.updateEspacio(id, payload);
   }
 
   @Patch(':id/estado')
-  @Public()
   @ApiOperation({ summary: 'Actualizar estado de disponibilidad de un espacio (atajo)' })
   updateEstado(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEstadoEspacioDto) {
     return this.espaciosService.updateEstado(id, dto);
   }
 
   @Patch(':id/toggle')
-  @Public()
   @ApiOperation({ summary: 'Cambiar soft-delete isActivo del espacio. Flip estado a INACTIVO / DISPONIBLE coherente.' })
   toggleEspacio(@Param('id', ParseUUIDPipe) id: string) {
     return this.espaciosService.toggleEspacioActivo(id);
   }
 
   @Delete(':id')
-  @Public()
   @ApiOperation({ summary: 'Eliminar físicamente un espacio (sin relaciones fuertes aún).' })
   deleteEspacio(@Param('id', ParseUUIDPipe) id: string) {
     return this.espaciosService.deleteEspacio(id);

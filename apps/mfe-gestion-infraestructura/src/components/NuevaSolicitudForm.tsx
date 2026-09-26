@@ -548,7 +548,11 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
 
                 <button
                   type="button"
-                  onClick={() => setTipoAtencion('TECNOLOGICA')}
+                  onClick={() => {
+                    setTipoAtencion('TECNOLOGICA');
+                    setIdCategoria(undefined);
+                    setIdSubcategoria(undefined);
+                  }}
                   className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
                     tipoAtencion === 'TECNOLOGICA'
                       ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-200'
@@ -850,10 +854,12 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                     <Layers className="w-3.5 h-3.5 text-slate-400" />
                     Categoría de servicio
                   </span>
-                  <span className="text-slate-400 font-normal ml-2">(opcional fase 2)</span>
+                  <span className={`font-normal ml-2 ${tipoAtencion === 'TECNOLOGICA' ? 'text-sky-600' : 'text-slate-400'}`}>
+                    {tipoAtencion === 'TECNOLOGICA' ? '(no aplica para Atención TIC)' : '(opcional fase 2)'}
+                  </span>
                 </label>
                 <select
-                  value={idCategoria ?? ''}
+                  value={tipoAtencion === 'TECNOLOGICA' ? '' : idCategoria ?? ''}
                   onChange={(e) => {
                     const val = e.target.value;
                     if (val === '') {
@@ -865,10 +871,14 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                       setIdSubcategoria(undefined);
                     }
                   }}
-                  disabled={cargandoCatalogos}
-                  className={inputClase('idCategoria')}
+                  disabled={cargandoCatalogos || tipoAtencion === 'TECNOLOGICA'}
+                  className={`${inputClase('idCategoria')} ${tipoAtencion === 'TECNOLOGICA' ? 'bg-slate-50/60 opacity-60 cursor-not-allowed' : ''}`}
                 >
-                  <option value="">-- Seleccione una categoría (opcional) --</option>
+                  <option value="">
+                    {tipoAtencion === 'TECNOLOGICA'
+                      ? '-- Categorías Locativas NO aplican para TIC --'
+                      : '-- Seleccione una categoría (opcional) --'}
+                  </option>
                   {categoriasPrincipales.map((c) => {
                     const requiereCoord = !!(c as any).metadata?.requiereCoordinador;
                     return (
@@ -883,7 +893,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                   })}
                 </select>
               </div>
-              {(() => {
+              {tipoAtencion !== 'TECNOLOGICA' && (() => {
                 if (!Number.isInteger(idCategoria)) return null;
                 const sel = categoriasPrincipales.find((c) => c.idCatalogo === idCategoria);
                 const requiereCoord = !!(sel as any)?.metadata?.requiereCoordinador;
@@ -898,7 +908,7 @@ export const NuevaSolicitudForm: React.FC<NuevaSolicitudFormProps> = ({ onClose,
                 );
               })()}
 
-              {subcategorias.length > 0 && (
+              {tipoAtencion !== 'TECNOLOGICA' && subcategorias.length > 0 && (
                 <div>
                   <label className={labelClase}>
                     <span className="inline-flex items-center gap-1.5">

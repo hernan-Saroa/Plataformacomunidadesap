@@ -1,0 +1,234 @@
+import { ForbiddenException } from '@nestjs/common';
+import { AuthUser } from './types.js';
+
+const norm = (s: string) => String(s || '').trim().toUpperCase();
+
+const normRoles = (user?: AuthUser | null): Set<string> => {
+  if (!user) return new Set<string>();
+  const raw = Array.isArray(user.roles) ? (user.roles as unknown as Array<any>) : [];
+  const out: string[] = [];
+  for (const r of raw) {
+    if (r === null || r === undefined) continue;
+    if (typeof r === 'string') {
+      const n = norm(r);
+      if (n) out.push(n);
+      continue;
+    }
+    if (typeof r === 'object') {
+      const candidatos = [r.code, r.codigo, r.role, r.rol, r.name, r.nombre, r.key];
+      for (const c of candidatos) {
+        if (typeof c === 'string') {
+          const n = norm(c);
+          if (n) { out.push(n); break; }
+        }
+      }
+    }
+  }
+  return new Set<string>(out.filter(Boolean));
+};
+
+const LEGACY_ROL_UMI_GLOBAL = new Set<string>([
+  'SUPER_ADMIN',
+  'ADMIN',
+  'USER',
+  'GESTOR_MANTENIMIENTO',
+  'ADMINISTRADOR_FUNCIONAL',
+  'ADMINISTRADOR_FUNCIONAL_INFRA',
+  'UMI',
+  'INFRAESTRUCTURA',
+  'COORDINADOR_INFRAESTRUCTURA',
+  'TECNICO_UMI',
+  'ANALISTA_ASIGNADOR_UMI',
+  'SOLICITANTE_INFRA',
+  'CONSULTA_CALIDAD_INFRA',
+  'ADMINISTRADOR_MODULO_INFRA',
+  'TECNICO_ELECTRICO_ESPECIALIZADO',
+  'TECNICO_UMI_MULTIPROPOSITO',
+]);
+
+const MATCH_ANY_PERM_LEGACY_BYPASS = new Set<string>([
+  'SUPER_ADMIN',
+  'ADMIN',
+  'GESTOR_MANTENIMIENTO',
+  'ADMINISTRADOR_FUNCIONAL',
+  'COORDINADOR_INFRAESTRUCTURA',
+  'UMI',
+  'INFRAESTRUCTURA',
+]);
+
+const LEGACY_MAP: Record<string, string[]> = {
+  SUPER_ADMIN: ['__ALL__'],
+  ADMIN: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
+  GESTOR_MANTENIMIENTO: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
+  ADMINISTRADOR_FUNCIONAL: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  ADMINISTRADOR_FUNCIONAL_INFRA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  COORDINADOR_INFRAESTRUCTURA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  UMI: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
+  INFRAESTRUCTURA: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
+  TECNICO_UMI: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  USER: ['INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR'],
+  SOLICITANTE_INFRA: ['INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR'],
+  ANALISTA_ASIGNADOR_UMI: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
+  TECNICO_ELECTRICO_ESPECIALIZADO: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  TECNICO_UMI_MULTIPROPOSITO: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  CONSULTA_CALIDAD_INFRA: ['INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD'],
+  ADMINISTRADOR_MODULO_INFRA: ['INFRA_PARAM_ALL_CRU'],
+};
+
+const GRUPOS: Record<string, string[]> = {
+  INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.EDIT',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SLA_CRU',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SEDES_CRU',
+    'INFRAESTRUCTURA.PARAM.ESPACIOS_CRU',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.EDIT',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+  ],
+  INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.READ_ASSIGNED',
+    'INFRAESTRUCTURA.SOLICITUD.EXECUTE_ASSIGNED',
+    'INFRAESTRUCTURA.SOLICITUD.CIERRE_TECNICO',
+    'INFRAESTRUCTURA.SOLICITUD.CLOSE_WITH_EVIDENCE',
+    'INFRAESTRUCTURA.SOLICITUD.READ_REJECTION_REASON_OWN',
+  ],
+  INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+  ],
+  INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_PARAM_ALL_CRU: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SLA_CRU',
+    'INFRAESTRUCTURA.PARAM.TECNICOS_CRU',
+    'INFRAESTRUCTURA.PARAM.REGLAS_CRU',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_ANALISTA_ASIGNADOR_OPERATIVO: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.READ_ALL',
+    'INFRAESTRUCTURA.SOLICITUD.READ_TI',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFIRM_CLOSE_OWN',
+    'INFRAESTRUCTURA.SOLICITUD.READ_AUDIT_HISTORY_ANY',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+};
+
+const legacyEquivSet = (rolesNorm: Set<string>): Set<string> => {
+  const out = new Set<string>();
+  if (rolesNorm.has('SUPER_ADMIN')) {
+    out.add('__ALL__');
+    return out;
+  }
+  for (const rolNorm of rolesNorm) {
+    if (!LEGACY_ROL_UMI_GLOBAL.has(rolNorm)) continue;
+    const grupos = LEGACY_MAP[rolNorm] || [];
+    for (const g of grupos) out.add(g);
+  }
+  const perms = new Set<string>();
+  for (const gKey of out) {
+    if (gKey === '__ALL__') continue;
+    const list = GRUPOS[gKey] || [];
+    for (const p of list) perms.add(norm(p));
+  }
+  return perms;
+};
+
+const permisoUsuarioRoot = (codeNorm: string, user?: AuthUser | null): boolean => {
+  if (!user) return false;
+  const roles = normRoles(user);
+  if (roles.has('SUPER_ADMIN')) return true;
+  return false;
+};
+
+export const userHasPermission = (
+  code: string,
+  user?: AuthUser | null,
+): boolean => {
+  if (!code) return false;
+  const codeNorm = norm(code);
+  if (!codeNorm) return false;
+  if (permisoUsuarioRoot(codeNorm, user)) return true;
+  if (!user) return false;
+  if (user.permissions instanceof Set) {
+    if (user.permissions.has(codeNorm)) return true;
+    for (const p of user.permissions) if (norm(p) === codeNorm) return true;
+  }
+  if (Array.isArray(user.permissions)) {
+    for (const p of user.permissions) if (norm(p) === codeNorm) return true;
+  }
+  const roles = normRoles(user);
+  const legacy = legacyEquivSet(roles);
+  if (legacy.has('__ALL__')) return true;
+  if (legacy.has(codeNorm)) return true;
+  return false;
+};
+
+export const requirePermission = (
+  code: string,
+  user?: AuthUser | null,
+  msg?: string,
+): void => {
+  if (!userHasPermission(code, user)) {
+    throw new ForbiddenException(
+      msg || `Permiso insuficiente: '${String(code || '').trim()}'. Contacta al administrador.`,
+    );
+  }
+};

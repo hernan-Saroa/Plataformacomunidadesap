@@ -13,13 +13,8 @@ import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
 import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
 import { StorageService } from './storage.service.js';
 import { NotificationClientService, SendNotificationDto } from '../common/notification-client.service.js';
-
-interface AuthUser {
-  userId: string;
-  username: string;
-  email: string;
-  roles: string[];
-}
+import { AuthUser } from '../auth/types.js';
+import { requirePermission, userHasPermission } from '../auth/permissions.helper.js';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 function isUuid(value: unknown): value is string {
@@ -68,15 +63,18 @@ export interface FiltrosConsolidadoCalificacion {
   idAreaSolicitante?: string | null;
 }
 
-const ROLES_BYPASS_CALIFICACIONES: readonly string[] = [
-  'SUPER_ADMIN',
-  'GESTOR_MANTENIMIENTO',
-  'ADMINISTRADOR_FUNCIONAL',
-] as const;
 function usuarioEsBypassConsolidados(user?: AuthUser | null): boolean {
   if (!user || !Array.isArray(user.roles) || user.roles.length === 0) return false;
-  const roles = user.roles.map((r) => String(r).toUpperCase());
-  return ROLES_BYPASS_CALIFICACIONES.some((r) => roles.includes(String(r).toUpperCase()));
+  const fallbackLegacy = (user.roles || []).map((r) => String(r).toUpperCase())
+    .some((r) => [
+      'SUPER_ADMIN',
+      'GESTOR_MANTENIMIENTO',
+      'ADMINISTRADOR_FUNCIONAL',
+      'ADMINISTRADOR_FUNCIONAL_INFRA',
+      'COORDINADOR_INFRAESTRUCTURA',
+      'CONSULTA_CALIDAD_INFRA',
+    ].includes(r));
+  return fallbackLegacy || userHasPermission('infraestructura.reportes.consolidados', user) || userHasPermission('infraestructura.reportes.gestion', user);
 }
 function parsearFechaUTCNullable(val: unknown): Date | null {
   if (val == null || val === '') return null;
@@ -123,7 +121,9 @@ const REGLA_ESCALAMIENTO = 'REGLA_ESCALAMIENTO';
 const PARAMETRO_UMI = 'PARAMETRO_UMI';
 const COD_TIEMPO_GLOBAL = 'TIEMPO_RESPUESTA_DIAS';
 const PREFIX_TIEMPO_CAT = 'TIEMPO_RESP_DIAS_CAT_';
-const ROLES_ASIGNADOR_PERMITIDOS: readonly string[] = ['SUPER_ADMIN', 'GESTOR_MANTENIMIENTO'] as const;
+const PERMISO_ASIGNAR_SOLICITUD = 'infraestructura.solicitud.assign';
+const PERMISO_VER_BANDEJA_GENERAL = 'infraestructura.view_all';
+const PERMISO_VER_INCLUIDO_TI = 'infraestructura.view_all_ti';
 
 @Injectable()
 export class MantenimientoService implements OnModuleInit {
@@ -189,10 +189,12 @@ export class MantenimientoService implements OnModuleInit {
 
   private usuarioTieneRolUMI(user?: AuthUser | null): boolean {
     if (!user || !Array.isArray(user.roles)) return false;
-    const roles = user.roles.map((r) => String(r).toLowerCase());
-    return roles.some((r) => ['super_admin', 'admin', 'umi', 'infraestructura', 'coordinador_infraestructura'].includes(r));
+    const fallbackLegacy = (user.roles || []).map((r) => String(r).toLowerCase())
+      .some((r) => ['super_admin', 'admin', 'umi', 'infraestructura', 'coordinador_infraestructura', 'gestor_mantenimiento'].includes(r));
+    return fallbackLegacy || userHasPermission(PERMISO_VER_BANDEJA_GENERAL, user);
   }
 
+  private readonly loggerFindAll = new Logger('MantenimientoFindAll');
   async findAll(
     estado?: string,
     prioridad?: string,
@@ -200,6 +202,12 @@ export class MantenimientoService implements OnModuleInit {
     idCategoria?: number,
     user?: AuthUser | null,
   ): Promise<SolicitudMantenimiento[]> {
+    this.loggerFindAll.log(`==== INICIO findAll ====`);
+    this.loggerFindAll.log(`  incluirTI=${String(incluirTI)}, estado=${String(estado || 'undef')}, idCategoria=${String(idCategoria || 'undef')}`);
+    this.loggerFindAll.log(`  user.userId=${String(user?.userId || 'UNDEF')}, user.email=${String(user?.email || '')}`);
+    this.loggerFindAll.log(`  user.roles RAW=${JSON.stringify(user?.roles || [])}`);
+    this.loggerFindAll.log(`  user.permissions size=${String((user?.permissions as Set<string> | undefined)?.size || 0)}`);
+
     const query = this.mantenimientoRepo.createQueryBuilder('solicitud')
       .leftJoinAndSelect('solicitud.sede', 'sede')
       .leftJoinAndSelect('solicitud.espacio', 'espacio')
@@ -215,11 +223,151 @@ export class MantenimientoService implements OnModuleInit {
     if (Number.isInteger(idCategoria) && (idCategoria as number) > 0) {
       query.andWhere('solicitud.idCategoria = :idCategoria', { idCategoria });
     }
-    if (!incluirTI && this.usuarioTieneRolUMI(user)) {
-      query.andWhere("solicitud.areaResponsableActual IN ('UMI','PENDIENTE_CLASIFICACION')");
+
+    const normRole = (s: any) => {
+      if (s === null || s === undefined) return '';
+      if (typeof s === 'string') return s.trim().toUpperCase();
+      if (typeof s === 'object') {
+        const cands = [s.code, s.codigo, s.role, s.rol, s.name, s.nombre, s.key];
+        for (const c of cands) if (typeof c === 'string') { const n = c.trim().toUpperCase(); if (n) return n; }
+      }
+      return '';
+    };
+    const userRolesNorm = new Set((user?.roles || []).map(normRole).filter(Boolean));
+    this.loggerFindAll.log(`  userRolesNorm=${JSON.stringify([...userRolesNorm])}`);
+
+    const esSUPER_ADMIN = userRolesNorm.has('SUPER_ADMIN');
+    const bypassBandejaGeneralPorRol =
+      esSUPER_ADMIN ||
+      userRolesNorm.has('ADMIN') ||
+      userRolesNorm.has('GESTOR_MANTENIMIENTO') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      userRolesNorm.has('COORDINADOR_INFRAESTRUCTURA') ||
+      userRolesNorm.has('UMI') ||
+      userRolesNorm.has('INFRAESTRUCTURA') ||
+      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI');
+    const bypassRemitidasTIPorRol =
+      esSUPER_ADMIN ||
+      userRolesNorm.has('ADMIN') ||
+      userRolesNorm.has('GESTOR_MANTENIMIENTO') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL') ||
+      userRolesNorm.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+      userRolesNorm.has('COORDINADOR_INFRAESTRUCTURA') ||
+      userRolesNorm.has('UMI') ||
+      userRolesNorm.has('INFRAESTRUCTURA') ||
+      userRolesNorm.has('ANALISTA_ASIGNADOR_UMI') ||
+      userRolesNorm.has('CONSULTA_CALIDAD_INFRA');
+    this.loggerFindAll.log(`  bypassBandejaGeneralPorRol=${String(bypassBandejaGeneralPorRol)}, bypassRemitidasTIPorRol=${String(bypassRemitidasTIPorRol)}`);
+
+    const puedeVerTodo =
+      bypassBandejaGeneralPorRol ||
+      userHasPermission(PERMISO_VER_BANDEJA_GENERAL, user) ||
+      userHasPermission('infraestructura.solicitud.read_all', user) ||
+      userHasPermission('infraestructura.reportes.gestion', user) ||
+      userHasPermission('infraestructura.reportes.consolidados', user);
+    const puedeVerIncluidoTI =
+      bypassRemitidasTIPorRol ||
+      userHasPermission(PERMISO_VER_INCLUIDO_TI, user) ||
+      userHasPermission('infraestructura.solicitud.read_ti', user) ||
+      userHasPermission('infraestructura.solicitud.ti_tracing_full', user);
+    this.loggerFindAll.log(`  puedeVerTodo=${String(puedeVerTodo)}, puedeVerIncluidoTI=${String(puedeVerIncluidoTI)}`);
+
+    if (incluirTI === true) {
+      if (puedeVerIncluidoTI) {
+        query.andWhere('solicitud.areaResponsableActual = :areaTI', { areaTI: 'TI' });
+        this.loggerFindAll.log(`  APLICADO FILTRO: areaResponsableActual = TI`);
+      } else {
+        query.andWhere('FALSE');
+        this.loggerFindAll.log(`  APLICADO FALSE (sin permiso para ver TI)`);
+      }
+    } else {
+      query.andWhere("solicitud.areaResponsableActual IN (:...areasUMI)", { areasUMI: ['UMI', 'PENDIENTE'] });
+      this.loggerFindAll.log(`  APLICADO FILTRO: areaResponsableActual IN (UMI, PENDIENTE)`);
     }
 
-    return query.orderBy('solicitud.fechaRadicacion', 'DESC').getMany();
+    if (!puedeVerTodo) {
+      if (!user?.userId) {
+        query.andWhere('FALSE');
+        this.loggerFindAll.log(`  APLICADO FALSE (sin puedeVerTodo ni userId)`);
+      } else {
+        const needlesRaw: string[] = [];
+        const emailLower = String(user.email || '').trim().toLowerCase();
+        if (emailLower) needlesRaw.push(emailLower);
+        if (user.userId) needlesRaw.push(String(user.userId).trim().toLowerCase());
+        const usernameRaw = typeof (user as any).username === 'string' ? String((user as any).username).trim().toLowerCase() : '';
+        if (usernameRaw) needlesRaw.push(usernameRaw);
+        const nameRaw = typeof (user as any).name === 'string' ? String((user as any).name).trim().toLowerCase() : '';
+        if (nameRaw) needlesRaw.push(nameRaw);
+        const codTec = typeof (user as any).codigoTecnico === 'string' ? String((user as any).codigoTecnico).trim().toUpperCase() : '';
+        if (codTec) needlesRaw.push(codTec);
+
+        if (emailLower || user.userId) {
+          try {
+            const qCat = this.catalogoRepo.createQueryBuilder('c')
+              .select(['c.codigo', 'c.nombre'])
+              .where("c.catalogo = 'TECNICO_MANTENIMIENTO'")
+              .andWhere('c.isActivo = :act', { act: true });
+            const orsCat: string[] = [];
+            const parsCat: any = {};
+            if (emailLower) {
+              parsCat.e = emailLower;
+              orsCat.push("LOWER(c.metadata->>'email') = :e");
+              orsCat.push("c.metadata->'correos' @> to_jsonb(CAST(ARRAY[:e] AS text[]))::jsonb");
+              orsCat.push("LOWER(c.metadata->>'correo') = :e");
+            }
+            if (user.userId) {
+              parsCat.uid = String(user.userId);
+              orsCat.push("c.metadata->>'usuarioIdAutorizado' = :uid");
+              orsCat.push("c.metadata->'usuarioIdsAutorizados' @> to_jsonb(CAST(ARRAY[:uid] AS text[]))::jsonb");
+            }
+            if (orsCat.length) qCat.andWhere(`(${orsCat.join(' OR ')})`, parsCat);
+            const tecnicosVinc = await qCat.getMany();
+            for (const t of tecnicosVinc) {
+              if (t?.codigo) needlesRaw.push(String(t.codigo).trim().toUpperCase());
+              if (t?.nombre) needlesRaw.push(String(t.nombre).trim().toLowerCase());
+            }
+            this.loggerFindAll.log(`  CATALOGO tecnicos vinculados al usuario encontrados: ${tecnicosVinc.length}`);
+          } catch (errCat: any) {
+            this.loggerFindAll.warn(`  Fallo busqueda catalogo tecnicos: ${errCat?.message || String(errCat)}`);
+          }
+        }
+
+        const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+        const uidEsUuidValido = UUID_RE.test(String(user.userId || ''));
+        const params: any = {};
+        if (uidEsUuidValido) params.usuarioId = user.userId;
+        let pIdx = 0;
+        const likeParts: string[] = [];
+        for (const n of needlesRaw) {
+          if (!n || n.length < 3) continue;
+          const k = `needle_${pIdx}`;
+          params[k] = `%${n}%`;
+          likeParts.push(`LOWER(solicitud.responsableAsignado) LIKE :${k}`);
+          pIdx++;
+        }
+        const partesOr: string[] = [];
+        if (uidEsUuidValido) partesOr.push(`solicitud.usuarioSolicitanteId = :usuarioId`);
+        if (likeParts.length > 0) partesOr.push(`(${likeParts.join(' OR ')})`);
+        const orClause = partesOr.length > 0
+          ? `(${partesOr.join(' OR ')})`
+          : `FALSE`;
+        query.andWhere(orClause, params);
+        this.loggerFindAll.log(`  APLICADO FILTRO TECNICO/SOLICITANTE OR: uidValido=${String(uidEsUuidValido)}; needles=${JSON.stringify(needlesRaw)}; cond=${orClause}`);
+      }
+    }
+
+    const sqlPreview = query.getSql();
+    this.loggerFindAll.log(`  SQL PREVIEW (primeros 600 chars): ${sqlPreview.slice(0, 600)}`);
+
+    try {
+      const rows = await query.orderBy('solicitud.fechaRadicacion', 'DESC').getMany();
+      this.loggerFindAll.log(`==== FIN findAll: ${rows.length} filas ====`);
+      return rows;
+    } catch (err: any) {
+      this.loggerFindAll.error(`==== ERROR findAll: ${err?.message || String(err)} ====`);
+      throw err;
+    }
   }
 
   async findByUsuario(usuarioId: string | undefined): Promise<SolicitudMantenimiento[]> {
@@ -1131,16 +1279,16 @@ export class MantenimientoService implements OnModuleInit {
     if (!user || !Array.isArray(user.roles) || user.roles.length === 0) {
       return { permitido: false, errorMsg: 'Usuario autenticado requerido para aprobar/rechazar/redistribuir solicitudes UMI.' };
     }
-    const rolesNorm = user.roles.map((r) => String(r).toUpperCase().trim());
-    const permitido = rolesNorm.some((r) => (ROLES_ASIGNADOR_PERMITIDOS as readonly string[]).includes(r));
-    if (!permitido) {
-      return {
-        permitido: false,
-        errorMsg:
-          'Rol insuficiente. Solo usuarios SUPER_ADMIN o GESTOR_MANTENIMIENTO pueden aprobar, rechazar o redistribuir solicitudes UMI.',
-      };
+    try {
+      requirePermission(PERMISO_ASIGNAR_SOLICITUD, user);
+      return { permitido: true };
+    } catch (err: any) {
+      const msg =
+        (err?.message && typeof err.message === 'string')
+          ? err.message
+          : 'Permiso insuficiente. Requiere permiso infraestructura.solicitud.assign para aprobar, rechazar o redistribuir solicitudes UMI.';
+      return { permitido: false, errorMsg: msg };
     }
-    return { permitido: true };
   }
 
   private pushAsignacion(
@@ -1222,12 +1370,12 @@ export class MantenimientoService implements OnModuleInit {
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
     // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
     const ESTADOS_PERMITIDOS_APROBAR = esTI
-      ? ['PENDIENTE_APROBACION', 'EN_ANALISIS']
+      ? ['RECIBIDA', 'PENDIENTE_APROBACION', 'EN_ANALISIS']
       : ['RECIBIDA', 'EN_ANALISIS', 'PENDIENTE_CLASIFICACION', 'PENDIENTE_APROBACION'];
     if (!ESTADOS_PERMITIDOS_APROBAR.includes(solicitud.estado || '')) {
       throw new ConflictException(
         esTI
-          ? `Solo se puede aprobar la remisión a TI en estados PENDIENTE_APROBACION o EN_ANALISIS. Estado actual: ${solicitud.estado}. Para reasignar técnico utilice Redistribuir.`
+          ? `Solo se puede aprobar la remisión a TI en estados RECIBIDA, PENDIENTE_APROBACION o EN_ANALISIS. Estado actual: ${solicitud.estado}. Para reasignar técnico utilice Redistribuir.`
           : `Solo se puede aprobar y asignar la primera vez en estados: ${ESTADOS_PERMITIDOS_APROBAR.join(', ')}. Estado actual: ${solicitud.estado}. Para cambiar técnico responsable utilice Redistribuir (acción permitida).`,
       );
     }
@@ -1414,6 +1562,20 @@ export class MantenimientoService implements OnModuleInit {
     );
   }
 
+  // EFDS-1737 L17: bypass conformidad/devolver = SUPER_ADMIN + ADMINISTRADOR_FUNCIONAL + ADMINISTRADOR_FUNCIONAL_INFRA.
+  // NUNCA pasa P2 (ANALISTA_ASIGNADOR_UMI), NUNCA pasa P3/P4 TECNICOS, NUNCA pasa P7 CALIDAD.
+  // Alineado 1:1 al frontend DetalleSolicitudModal.tsx esBypassConformidadValido.
+  private bypassConformidadAutorizado(user: AuthUser | null | undefined): boolean {
+    if (!user || !Array.isArray(user.roles)) return false;
+    const roles = user.roles.map((r) => String(r || '').toUpperCase());
+    return (
+      roles.includes('SUPER_ADMIN') ||
+      roles.includes('GESTOR_MANTENIMIENTO') ||
+      roles.includes('ADMINISTRADOR_FUNCIONAL') ||
+      roles.includes('ADMINISTRADOR_FUNCIONAL_INFRA')
+    );
+  }
+
   private extraerTecnicoCodigoDesdeResponsable(
     solicitud: SolicitudMantenimiento,
   ): { codigo: string | null; nombre: string | null } {
@@ -1462,6 +1624,34 @@ export class MantenimientoService implements OnModuleInit {
     if (this.usuarioEsSuperAdminOAsignador(user)) return;
     const tecnicoAsignadoCodigo = per.tecnicoCodigo;
     if (!tecnicoAsignadoCodigo) return;
+    const ID_CS_002 = 48;
+    const tecnico = await this.catalogoRepo.findOne({
+      where: { catalogo: TECNICO_MANTENIMIENTO, codigo: tecnicoAsignadoCodigo, isActivo: true },
+    });
+    let tecnicoEsElectricoValido = false;
+    if (tecnico && tecnico.metadata && typeof tecnico.metadata === 'object') {
+      const md = tecnico.metadata as any;
+      const categoriasPermitidasIds = Array.isArray(md.categoriasPermitidasIds)
+        ? (md.categoriasPermitidasIds as any[]).map((x) => Number(x))
+        : [];
+      const especialidadesIds = Array.isArray(md.especialidadesIds)
+        ? (md.especialidadesIds as any[]).map((x) => Number(x))
+        : [];
+      const categoriasExcluidasIds = Array.isArray(md.categoriasExcluidasIds)
+        ? (md.categoriasExcluidasIds as any[]).map((x) => Number(x))
+        : [];
+      if (categoriasExcluidasIds.includes(ID_CS_002)) {
+        tecnicoEsElectricoValido = false;
+      } else if (
+        categoriasPermitidasIds.includes(ID_CS_002) ||
+        especialidadesIds.includes(ID_CS_002) ||
+        tecnico.codigo.toUpperCase().startsWith('TEC-ELEC')
+      ) {
+        tecnicoEsElectricoValido = true;
+      }
+    }
+    if (tecnicoEsElectricoValido) return;
+
     const regla001 = await this.catalogoRepo.findOne({
       where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
     });
@@ -1469,11 +1659,10 @@ export class MantenimientoService implements OnModuleInit {
       regla001?.metadata && typeof regla001.metadata === 'object'
         ? String((regla001.metadata as any).tecnicoCodigo || '').trim()
         : '';
-    if (esp && tecnicoAsignadoCodigo !== esp) {
-      throw new ForbiddenException(
-        'La categoría CS_002 Eléctricas requiere el técnico especializado configurado en la regla 001.',
-      );
-    }
+    if (esp && tecnicoAsignadoCodigo === esp) return;
+    throw new ForbiddenException(
+      'La categoría CS_002 Eléctricas requiere el técnico especializado configurado en la regla 001.',
+    );
   }
 
   async iniciarEjecucionDirecta(
@@ -2092,16 +2281,16 @@ export class MantenimientoService implements OnModuleInit {
     solicitud: SolicitudMantenimiento,
     user: AuthUser | null | undefined,
   ): boolean {
-    if (this.usuarioEsSuperAdminOAsignador(user)) return true;
+    // EFDS-1737 L17: actor conformidad/devolver = (a) solicitante original match, OR (b) bypass SUPER_ADMIN / ADMIN_FUNCIONAL / ADMIN_FUNCIONAL_INFRA.
+    // NOTA: NO usar usuarioEsSuperAdminOAsignador (aquí incluye P2 Analista Asignador por GESTOR_MANTENIMIENTO → no queremos P2 acceda conformidad/devolver).
+    if (this.bypassConformidadAutorizado(user)) return true;
     if (!user) return false;
     const userEmail = String(user.email || '').toLowerCase().trim();
-    const solEmailId = String(solicitud.usuarioSolicitanteId || '').toLowerCase().trim();
     const solEmail = String(solicitud.usuarioSolicitanteEmail || solicitud.solicitanteEmail || '').toLowerCase().trim();
     const solUserId = String(solicitud.usuarioSolicitanteId || '').toLowerCase().trim();
     const currentUserId = String(user.userId || '').toLowerCase().trim();
     if (currentUserId && solUserId && currentUserId === solUserId) return true;
     if (userEmail && solEmail && userEmail === solEmail) return true;
-    if (currentUserId && solEmailId && currentUserId === solEmailId) return true;
     return false;
   }
 
@@ -2495,7 +2684,7 @@ export class MantenimientoService implements OnModuleInit {
       }
     }
 
-    qb.orderBy('promedio', 'DESC').addOrderBy('numeroCalificaciones', 'DESC');
+    qb.orderBy('"promedio"', 'DESC').addOrderBy('"numeroCalificaciones"', 'DESC');
 
     const rawRows = await qb.getRawMany();
 
