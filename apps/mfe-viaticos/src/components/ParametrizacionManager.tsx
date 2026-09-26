@@ -13,6 +13,8 @@ import {
   ToggleRight,
   DollarSign,
   Plane,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import {
@@ -28,13 +30,13 @@ import {
 } from '../types/parametrizacion';
 import EscalasViaticosAdmin from './admin/EscalasViaticosAdmin';
 import TarifasInvestigadorAdmin from './admin/TarifasInvestigadorAdmin';
-import ExcepcionesRegionalesAdmin from './admin/ExcepcionesRegionalesAdmin';
+import TarifasTransporteTerminalAdmin from './admin/TarifasTransporteTerminalAdmin';
 import ParametrosLiquidacionAdmin from './admin/ParametrosLiquidacionAdmin';
 import TicketsAdminPanel from './admin/TicketsAdminPanel';
 // Dependencias se gestiona desde el shell (Configuración General > Dependencias)
 // y NO se renderiza como tab aquí para evitar duplicación con el menú global.
 
-type TabActiva = 'campos' | 'configuraciones' | 'escalas' | 'tarifas' | 'excepciones' | 'parametros' | 'tiquetes';
+type TabActiva = 'campos' | 'configuraciones' | 'escalas' | 'tarifas' | 'terminalesAereos' | 'parametros' | 'tiquetes';
 
 const TIPOS_CAMPO: TipoCampoFormulario[] = ['TEXT', 'TEXTAREA', 'SELECT', 'DATE', 'NUMBER', 'BOOLEAN', 'CURRENCY', 'DOCUMENT'];
 const GRUPOS_CAMPO: GrupoCampoFormulario[] = ['comisionado', 'comision', 'valores', 'soportes'];
@@ -114,9 +116,9 @@ export default function ParametrizacionManager() {
         viaticosService.obtenerTodasConfiguraciones(),
         viaticosService.obtenerTiposDocumentoSoporte(),
       ]);
-      setCampos(camposRes);
-      setConfiguraciones(configsRes);
-      setTiposDocumento(docsRes);
+      setCampos(Array.isArray(camposRes) ? camposRes : []);
+      setConfiguraciones(Array.isArray(configsRes) ? configsRes : []);
+      setTiposDocumento(Array.isArray(docsRes) ? docsRes : []);
     } catch (e) {
       setError('Error cargando datos de parametrización.');
       console.error(e);
@@ -171,6 +173,7 @@ export default function ParametrizacionManager() {
       if (campoEditando.id) {
         const dto: ActualizarCampoFormularioDTO = {
           etiqueta: campoEditando.etiqueta,
+          tipoCampo: campoEditando.tipoCampo,
           placeholder: campoEditando.placeholder || undefined,
           grupo: campoEditando.grupo || undefined,
           orden: campoEditando.orden,
@@ -200,6 +203,37 @@ export default function ParametrizacionManager() {
       console.error(e);
     } finally {
       setCampoGuardando(false);
+    }
+  };
+
+  const alternarEstadoCampo = async (campo: CampoFormulario) => {
+    setError(null);
+    try {
+      const nuevoEstado = !campo.activo;
+      await viaticosService.actualizarCampoFormulario(campo.clave, { activo: nuevoEstado });
+      setCampos((prev) =>
+        prev.map((c) => (c.clave === campo.clave ? { ...c, activo: nuevoEstado } : c)),
+      );
+      mostrarExito(`Campo "${campo.clave}" ${nuevoEstado ? 'activado' : 'desactivado'}.`);
+    } catch (e) {
+      setError('Error cambiando el estado del campo.');
+      console.error(e);
+    }
+  };
+
+  const moverOrdenCampo = async (campo: CampoFormulario, delta: number) => {
+    const nuevoOrden = Math.max(0, (campo.orden ?? 0) + delta);
+    if (nuevoOrden === campo.orden) return;
+    setError(null);
+    try {
+      await viaticosService.actualizarCampoFormulario(campo.clave, { orden: nuevoOrden });
+      setCampos((prev) =>
+        prev.map((c) => (c.clave === campo.clave ? { ...c, orden: nuevoOrden } : c)),
+      );
+      mostrarExito(`Orden del campo "${campo.clave}" actualizado.`);
+    } catch (e) {
+      setError('Error actualizando el orden del campo.');
+      console.error(e);
     }
   };
 
@@ -417,15 +451,15 @@ export default function ParametrizacionManager() {
           </button>
           <button
             type="button"
-            onClick={() => setTabActiva('excepciones')}
+            onClick={() => setTabActiva('terminalesAereos')}
             className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
-              tabActiva === 'excepciones'
+              tabActiva === 'terminalesAereos'
                 ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            <DollarSign className="w-4 h-4" />
-            Excepciones Regionales
+            <Plane className="w-4 h-4" />
+            Transporte Terminales Aéreas
           </button>
           <button
             type="button"
@@ -464,16 +498,16 @@ export default function ParametrizacionManager() {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-xs text-slate-500">
-                      Gestiona los campos dinámicos del formulario de solicitud.
+                      Gestiona los campos del formulario de solicitud (actívalos, desactívalos, cambia su tipo o reordénalos).
                     </p>
-                    {/* <button
+                    <button
                       type="button"
                       onClick={() => abrirModalCampo()}
-                      className="inline-flex items-center gap-2 px-3 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-lg text-xs font-bold transition-colors"
+                      className="inline-flex items-center gap-2 px-3 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Nuevo Campo
-                    </button> */}
+                    </button>
                   </div>
 
                   {campos.length === 0 ? (
@@ -490,7 +524,7 @@ export default function ParametrizacionManager() {
                             <th className="px-4 py-3">Etiqueta</th>
                             <th className="px-4 py-3">Tipo</th>
                             <th className="px-4 py-3">Grupo</th>
-                            <th className="px-4 py-3">Orden</th>
+                            <th className="px-4 py-3 text-center">Orden</th>
                             <th className="px-4 py-3">Estado</th>
                             <th className="px-4 py-3 text-right">Acciones</th>
                           </tr>
@@ -510,13 +544,49 @@ export default function ParametrizacionManager() {
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-slate-600">{campo.grupo || '—'}</td>
-                              <td className="px-4 py-3 text-slate-600">{campo.orden}</td>
+                              <td className="px-4 py-3 text-center">
+                                <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => moverOrdenCampo(campo, -1)}
+                                    title="Subir orden"
+                                    disabled={campo.orden <= 0}
+                                    className="p-0.5 rounded hover:bg-white text-slate-600 disabled:opacity-30"
+                                  >
+                                    <ChevronUp className="w-3 h-3" />
+                                  </button>
+                                  <span className="font-mono text-[11px] font-bold px-1.5 text-slate-700">
+                                    {campo.orden}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => moverOrdenCampo(campo, 1)}
+                                    title="Bajar orden"
+                                    className="p-0.5 rounded hover:bg-white text-slate-600"
+                                  >
+                                    <ChevronDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
                               <td className="px-4 py-3">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  campo.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                }`}>
-                                  {campo.activo ? 'Activo' : 'Inactivo'}
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => alternarEstadoCampo(campo)}
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold transition-colors cursor-pointer"
+                                  title="Clic para cambiar estado activo / inactivo"
+                                >
+                                  {campo.activo ? (
+                                    <>
+                                      <ToggleRight className="w-4 h-4 text-emerald-600" />
+                                      <span className="text-emerald-700">Activo</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ToggleLeft className="w-4 h-4 text-slate-400" />
+                                      <span className="text-slate-500">Inactivo</span>
+                                    </>
+                                  )}
+                                </button>
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <div className="flex items-center justify-end gap-1">
@@ -637,7 +707,7 @@ export default function ParametrizacionManager() {
               
               {tabActiva === 'escalas' && <EscalasViaticosAdmin />}
               {tabActiva === 'tarifas' && <TarifasInvestigadorAdmin />}
-              {tabActiva === 'excepciones' && <ExcepcionesRegionalesAdmin />}
+              {tabActiva === 'terminalesAereos' && <TarifasTransporteTerminalAdmin />}
               {tabActiva === 'parametros' && <ParametrosLiquidacionAdmin />}
               {tabActiva === 'tiquetes' && <TicketsAdminPanel />}
             </>

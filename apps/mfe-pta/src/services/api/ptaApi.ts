@@ -682,6 +682,40 @@ export async function aprobarComponentesLote(data: {
   }
 }
 
+export type RevisarComponentesLoteResultado = {
+  ptaId: string;
+  componente: string;
+  subseccion: string;
+  estado: 'revisado' | 'devuelto' | 'omitido' | 'fallido';
+  motivo?: string;
+};
+
+export async function revisarComponentesLote(data: {
+  ptaIds: string[];
+  revisiones: string[];
+  estado?: 'revisado' | 'devuelto';
+  comentarios?: string;
+  revisorId?: string;
+  revisorNombre?: string;
+  revisorRol?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/revisar-componentes-lote`, data);
+    const normalized = normalizeResult<{
+      resumen: { total: number; revisados: number; devueltos: number; omitidos: number; fallidos: number };
+      resultados: RevisarComponentesLoteResultado[];
+    }>(raw, { resumen: { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('[mfe-pta][revisarComponentesLote] Error:', error);
+    return {
+      success: false,
+      data: { resumen: { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
+      message: (error as any)?.message || 'Error al revisar los componentes seleccionados',
+    };
+  }
+}
+
 export async function getComponentesRevision(ptaId: string) {
   try {
     const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-revision`);
@@ -882,7 +916,7 @@ export async function revisarEvidenciaPTA(
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][revisarEvidenciaPTA] Error:', error);
-    return { success: false };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible guardar la decisión sobre el soporte.') };
   }
 }
 
@@ -2007,6 +2041,18 @@ export async function getBancoDocenteCabezote(id: string, periodoCarga?: string)
     return normalizeResult<any>(raw, null);
   } catch {
     return { success: false, data: null };
+  }
+}
+
+/** Consulta administrativa: el servidor aplica permiso funcional y alcance por componente. */
+export async function getEvidenciasSeguimientoPTA(ptaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/evidencias/seguimiento`);
+    const normalized = normalizeResult<any[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.error('[mfe-pta][getEvidenciasSeguimientoPTA] Error:', error);
+    return { success: false, data: [], message: getApiErrorMessage(error, 'No fue posible consultar los soportes autorizados.') };
   }
 }
 

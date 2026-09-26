@@ -651,11 +651,15 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </p>
           )}
 
-          {/* Indicador de días */}
+          {/* Indicador de días — nunca muestra negativos */}
           <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5 text-gray-600">
-              <Clock className="w-3.5 h-3.5 text-gray-400" />
-              <span className="font-semibold">{noticia.diasPendientes} días</span>
+            <div className="flex items-center gap-1.5">
+              <Clock className={`w-3.5 h-3.5 ${noticia.diasPendientes <= 0 ? 'text-red-400' : 'text-gray-400'}`} />
+              {noticia.diasPendientes <= 0 ? (
+                <span className="font-bold text-red-600">Vencido</span>
+              ) : (
+                <span className="font-semibold text-gray-600">{noticia.diasPendientes} días</span>
+              )}
             </div>
             <span className="text-gray-400 text-[11px]">
               {new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', timeZone: 'America/Bogota' })}
@@ -1021,9 +1025,16 @@ function TarjetaProceso({
                 Pendiente
               </span>
             )}
-            <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-gray-50 border border-gray-200 flex items-center gap-1" style={{ color: semaforo.color }}>
-              <span className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-              {formatDiasRestantes(proceso.diasRestantes)}
+            <span
+              className={`text-[11px] font-semibold px-2 py-1 rounded-full flex items-center gap-1 border ${
+                proceso.diasRestantes <= 0 || proceso.semaforo === 'rojo'
+                  ? 'bg-red-50 border-red-300 text-red-700'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+              style={{ color: proceso.diasRestantes <= 0 ? '#B91C1C' : semaforo.color }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ background: proceso.diasRestantes <= 0 ? '#DC2626' : semaforo.color }} />
+              {proceso.diasRestantes <= 0 ? 'Vencido' : formatDiasRestantes(proceso.diasRestantes)}
             </span>
             {noticiasSeguras.length > 0 && (
               <button
@@ -3420,14 +3431,17 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
   };
 
   // Calcula el nivel del semáforo con base en los porcentajes de riesgo/crítico configurados
+  // alertaDias: umbral en días hábiles para el estado amarillo (parametrizado por etapa en config)
   function calcularNivelSemaforo(
     diasRestantes: number,
     porcentajeTiempo: number,
     porcentajeRiesgo: number = 85,
-    porcentajeCritico: number = 95
+    porcentajeCritico: number = 95,
+    alertaDias: number = 3
   ): 'verde' | 'amarillo' | 'rojo' {
     if (diasRestantes <= 0 || porcentajeTiempo >= porcentajeCritico) return 'rojo';
-    if (porcentajeTiempo >= porcentajeRiesgo) return 'amarillo';
+    // Alerta amarilla: faltan <= alertaDias días (parametrizado por etapa) O % de tiempo en zona de riesgo
+    if (diasRestantes <= alertaDias || porcentajeTiempo >= porcentajeRiesgo) return 'amarillo';
     return 'verde';
   }
 
@@ -3442,11 +3456,10 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
   }
 
   // Mensaje estándar de tiempo restante para etapas/procesos
+  // Nunca muestra negativos: si diasRestantes <= 0 siempre indica vencimiento
   function formatDiasRestantes(diasRestantes: number): string {
-    if (diasRestantes === 0) return 'Vence Hoy';
-    if (diasRestantes > 0) return `Faltan ${diasRestantes} Día${diasRestantes === 1 ? '' : 's'}`;
-    const dias = Math.abs(diasRestantes);
-    return `Vencido por ${dias} Día${dias === 1 ? '' : 's'}`;
+    if (diasRestantes <= 0) return 'Vencido';
+    return `Faltan ${diasRestantes} Día${diasRestantes === 1 ? '' : 's'}`;
   }
 
   // Transformar proceso desde API al formato interno
@@ -3467,10 +3480,20 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       }
     }
 
+    // Obtener alertaDias del stage config que coincida con esta etapa
+    const stageMatch = currentStages.find(s =>
+      s.id === etapa || s.etapa === etapa || s.nombre === etapa ||
+      s.etapa?.toUpperCase() === etapa?.toUpperCase() ||
+      s.nombre?.toUpperCase() === etapa?.toUpperCase()
+    );
+    const alertaDiasEtapa: number = stageMatch?.alertaDias ?? 3;
+
     const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
     const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
     const hoy = new Date();
-    const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    // Clamp a 0: nunca mostrar días negativos
+    const rawDias = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const diasRestantes = Math.max(0, rawDias);
 
     const porcentajeTiempo = proceso.timePercentage !== undefined
       ? Math.round(proceso.timePercentage)
@@ -3480,7 +3503,10 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
       })();
 
-    const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0 ? 'rojo' : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+    // Si rawDias era negativo (ya vencido), forzar rojo independientemente del porcentaje
+    const semaforo: 'verde' | 'amarillo' | 'rojo' = rawDias <= 0
+      ? 'rojo'
+      : calcularNivelSemaforo(diasRestantes, porcentajeTiempo, 85, 95, alertaDiasEtapa);
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
     return {
@@ -3918,7 +3944,7 @@ export function DashboardKanbanOperativo({
         
         
         
-        noticiasFiltradas = noticiasData.filter(n => parseInt((n as any).radicadorId) === parseInt(userInfo));
+        noticiasFiltradas = noticiasData.filter(n => String((n as any).radicadorId) === String(userInfo));
         
       }
 
@@ -4184,7 +4210,8 @@ export function DashboardKanbanOperativo({
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
-      diasPendientes: typeof (noticia as any).diasHabilesRestantes === 'number' ? (noticia as any).diasHabilesRestantes : dias,
+      // Clamp a 0: nunca almacenar días negativos; semáforo y estilo manejan el estado "vencido"
+      diasPendientes: Math.max(0, typeof (noticia as any).diasHabilesRestantes === 'number' ? (noticia as any).diasHabilesRestantes : dias),
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
     radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
@@ -4308,9 +4335,19 @@ export function DashboardKanbanOperativo({
     // semana/festivos), asi que "dias restantes" debe contarse tambien en dias habiles -
     // de lo contrario el numero mostrado queda inflado frente a lo configurado por etapa
     // (ej. mostraba 20 dias calendario cuando la etapa vence en 13 dias habiles).
-    const diasRestantes = typeof proceso.diasHabilesRestantes === 'number'
+    const rawDiasHabiles = typeof proceso.diasHabilesRestantes === 'number'
       ? proceso.diasHabilesRestantes
       : (fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0);
+    // Clamp a 0: nunca mostrar días negativos en la tarjeta; semáforo rojo indica vencimiento
+    const diasRestantes = Math.max(0, rawDiasHabiles);
+
+    // Obtener alertaDias del stage config que coincida con esta etapa
+    const stageAlertMatch = currentStages.find(s =>
+      s.id === etapa || s.etapa === etapa || s.nombre === etapa ||
+      s.etapa?.toUpperCase() === etapa?.toUpperCase() ||
+      s.nombre?.toUpperCase() === etapa?.toUpperCase()
+    );
+    const alertaDiasEtapa: number = stageAlertMatch?.alertaDias ?? 3;
 
     const porcentajeTiempo = proceso.timePercentage !== undefined
       ? Math.round(proceso.timePercentage)
@@ -4320,7 +4357,10 @@ export function DashboardKanbanOperativo({
         return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
       })();
 
-    const semaforo = calcularNivelSemaforo(diasRestantes, porcentajeTiempo, umbrales.porcentajeRiesgo, umbrales.porcentajeCritico);
+    // Si rawDiasHabiles era negativo (ya vencido), forzar rojo
+    const semaforo = rawDiasHabiles <= 0
+      ? 'rojo' as const
+      : calcularNivelSemaforo(diasRestantes, porcentajeTiempo, umbrales.porcentajeRiesgo, umbrales.porcentajeCritico, alertaDiasEtapa);
 
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
@@ -6681,99 +6721,96 @@ export function DashboardKanbanOperativo({
           className="w-full max-w-full bg-white rounded-2xl border border-gray-200/90 p-3.5 sm:p-4 shadow-sm overflow-hidden space-y-3"
           style={{ boxShadow: '0 2px 8px -2px rgba(0, 61, 165, 0.05), 0 1px 4px -1px rgba(0,0,0,0.06)' }}
         >
-          {/* Fila 1: Título de Vista contextual + Buscador de Procesos y Noticias */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full min-w-0">
-            {/* Título e Indicador de Vista */}
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs transition-colors"
-                style={{
-                  background: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#003DA512',
-                  border: tipoVista === 'inhibitorios' ? '1px solid #FDE68A' : '1px solid #003DA525'
-                }}
-              >
-                {tipoVista === 'archivados' ? (
-                  <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
-                ) : tipoVista === 'inhibitorios' ? (
-                  <Ban className="w-5 h-5 text-amber-700" />
-                ) : tipoVista === 'lista' ? (
-                  <List className="w-5 h-5" style={{ color: '#003DA5' }} />
-                ) : (
-                  <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2
-                    className="font-bold leading-tight truncate tracking-tight text-gray-900"
-                    style={{
-                      fontSize: containerWidth < 500 ? '1.05rem' : '1.2rem'
-                    }}
-                  >
-                    {tipoVista === 'archivados'
-                      ? 'Archivados'
-                      : tipoVista === 'inhibitorios'
-                        ? 'Inhibitorios (Art. 209)'
-                        : tipoVista === 'lista'
-                          ? 'Lista de Procesos'
-                          : 'Tablero Kanban'}
-                  </h2>
-                  <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
-                    style={{
-                      backgroundColor: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#EFF6FF',
-                      color: tipoVista === 'inhibitorios' ? '#92400E' : '#003DA5'
-                    }}
-                  >
-                    {tipoVista === 'archivados'
-                      ? `${itemsArchivadosFiltrados.length} exp.`
-                      : tipoVista === 'inhibitorios'
-                        ? `${itemsInhibitoriosFiltrados.length} exp.`
-                        : `${itemsFiltrados.length} activos`}
-                  </span>
-                </div>
-                <p className="text-[11px] text-gray-400 truncate hidden sm:block">
-                  {tipoVista === 'archivados'
-                    ? 'Expedientes archivados o cerrados'
-                    : tipoVista === 'inhibitorios'
-                      ? 'Procesos culminados por auto inhibitorio'
-                      : 'Control operativo de noticias y expedientes'}
-                </p>
-              </div>
+          {/* Fila 1: Título de Vista contextual */}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs transition-colors"
+              style={{
+                background: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#003DA512',
+                border: tipoVista === 'inhibitorios' ? '1px solid #FDE68A' : '1px solid #003DA525'
+              }}
+            >
+              {tipoVista === 'archivados' ? (
+                <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
+              ) : tipoVista === 'inhibitorios' ? (
+                <Ban className="w-5 h-5 text-amber-700" />
+              ) : tipoVista === 'lista' ? (
+                <List className="w-5 h-5" style={{ color: '#003DA5' }} />
+              ) : (
+                <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
+              )}
             </div>
 
-            {/* Buscador de procesos y noticias amigable */}
-            <div className="relative flex items-center w-full sm:w-72 md:w-80 flex-shrink-0 min-w-0">
-              <Search className="absolute left-3 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
-              <input
-                ref={busquedaInputRef}
-                type="text"
-                value={busquedaGlobal}
-                onChange={(e) => setBusquedaGlobal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setBusquedaGlobal('');
-                }}
-                placeholder="Buscar por proceso, radicado..."
-                className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
-                style={{
-                  borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
-                  backgroundColor: busquedaGlobal ? '#FFFFFF' : '#F8FAFC',
-                }}
-              />
-              {busquedaGlobal ? (
-                <button
-                  onClick={() => {
-                    setBusquedaGlobal('');
-                    busquedaInputRef.current?.focus();
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2
+                  className="font-bold leading-tight truncate tracking-tight text-gray-900"
+                  style={{
+                    fontSize: containerWidth < 500 ? '1.05rem' : '1.2rem'
                   }}
-                  className="absolute right-2.5 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
-                  title="Limpiar búsqueda"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              ) : null}
+                  {tipoVista === 'archivados'
+                    ? 'Archivados'
+                    : tipoVista === 'inhibitorios'
+                      ? 'Inhibitorios (Art. 209)'
+                      : tipoVista === 'lista'
+                        ? 'Lista de Procesos'
+                        : 'Tablero Kanban'}
+                </h2>
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+                  style={{
+                    backgroundColor: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#EFF6FF',
+                    color: tipoVista === 'inhibitorios' ? '#92400E' : '#003DA5'
+                  }}
+                >
+                  {tipoVista === 'archivados'
+                    ? `${itemsArchivadosFiltrados.length} exp.`
+                    : tipoVista === 'inhibitorios'
+                      ? `${itemsInhibitoriosFiltrados.length} exp.`
+                      : `${itemsFiltrados.length} activos`}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 truncate">
+                {tipoVista === 'archivados'
+                  ? 'Expedientes archivados o cerrados'
+                  : tipoVista === 'inhibitorios'
+                    ? 'Procesos culminados por auto inhibitorio'
+                    : 'Control operativo de noticias y expedientes'}
+              </p>
             </div>
+          </div>
+
+          {/* Fila 2: Buscador de procesos y noticias a ancho completo */}
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
+            <input
+              ref={busquedaInputRef}
+              type="text"
+              value={busquedaGlobal}
+              onChange={(e) => setBusquedaGlobal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setBusquedaGlobal('');
+              }}
+              placeholder="Buscar por proceso, radicado..."
+              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
+              style={{
+                borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
+                backgroundColor: busquedaGlobal ? '#FFFFFF' : '#F8FAFC',
+              }}
+            />
+            {busquedaGlobal ? (
+              <button
+                onClick={() => {
+                  setBusquedaGlobal('');
+                  busquedaInputRef.current?.focus();
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
 
           {/* Fila 2: Barra de herramientas y filtros con scroll horizontal estético */}

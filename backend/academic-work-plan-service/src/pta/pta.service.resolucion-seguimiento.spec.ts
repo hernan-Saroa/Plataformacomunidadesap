@@ -24,6 +24,7 @@ describe('PtaService - resolución de investigación en Seguimiento', () => {
       save: jest.fn(async (value: any) => value),
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
+    service.syncPtaSeguimientoEstado = jest.fn();
     return service;
   }
 

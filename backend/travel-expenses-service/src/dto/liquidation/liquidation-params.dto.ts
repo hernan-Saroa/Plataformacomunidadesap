@@ -17,4 +17,9 @@ export class UpdateLiquidationParamsDto {
   @IsNumber()
   @Min(0)
   cacheTtlMinutes?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tarifaTerminalAereo?: number;
 }

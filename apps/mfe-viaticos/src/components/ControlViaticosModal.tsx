@@ -11,13 +11,19 @@ import {
   Info,
   ShieldCheck,
   X,
+  Clock,
+  MapPin,
+  Route,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
-import { SolicitudControlViaticosResponse, LiquidacionResponse } from '../types/viaticos';
+import { SolicitudControlViaticosResponse, LiquidacionResponse, RutaItinerario } from '../types/viaticos';
 import {
   esPdfMime,
+  formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
+  formatearHorarioMilitar,
+  sincronizarItinerarioFormulario,
 } from '../utils/viaticosUtils';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
@@ -187,9 +193,14 @@ function LiquidacionSection({
         <span className="text-slate-500">Tarifa final aplicada/día</span>
         <span className="font-bold text-slate-800">{formatearMoneda(tarifaDiaria)}</span>
       </div>
-      <div className="flex justify-between">
-        <span className="text-slate-500">Días / Noches</span>
-        <span className="font-semibold text-slate-800">{dias}</span>
+      <div className="flex justify-between items-center">
+        <span className="text-slate-500">Días a liquidar</span>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-100">
+            {formatearDiasComision(dias)}
+          </span>
+          <span className="text-slate-500 text-[11px]">({dias})</span>
+        </div>
       </div>
       <div className="flex justify-between border-t border-slate-200 pt-2 font-bold">
         <span className="text-slate-800">Valor Total Viáticos</span>
@@ -332,7 +343,115 @@ function AuditoriaPrimerNivelSection({
           </div>
         </div>
       </div>
-    </section>
+  </section>
+);
+}
+
+function DesgloseGeneral({ rutas }: { rutas: RutaItinerario[] }) {
+  const sync = sincronizarItinerarioFormulario(rutas);
+  return (
+    <div className="mb-3 p-3 bg-gradient-to-r from-[#003DA5]/5 to-indigo-50/50 border border-[#003DA5]/15 rounded-xl space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-black uppercase tracking-wider bg-[#003DA5] text-white px-1.5 py-0.5 rounded">
+            Ruta General
+          </span>
+          <span className="text-xs font-bold text-slate-800">
+            {sync.rutaGeneral || `${sync.origenCiudad || '—'} → ${sync.destinoCiudad || '—'}`}
+          </span>
+        </div>
+        {sync.horaEstimadaGeneral && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#003DA5] bg-white border border-blue-200 px-2 py-0.5 rounded shadow-xs">
+            <Clock className="w-3 h-3 text-[#003DA5]" /> Tiempo estimado completo: <strong>{sync.horaEstimadaGeneral}</strong>
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1.5 border-t border-blue-100 text-[10px]">
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Origen Inicial</p>
+          <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.origenCiudad || '—'}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Destino Final</p>
+          <p className="text-[11px] font-semibold text-slate-800 truncate">{sync.destinoCiudad || '—'}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Fechas</p>
+          <p className="text-[11px] font-semibold text-slate-800">{sync.fechaInicio} al {sync.fechaFin}</p>
+        </div>
+        <div>
+          <p className="text-[9px] font-bold text-[#003DA5] uppercase tracking-wider">Días Totales</p>
+          <p className="text-[11px] font-semibold text-slate-800">{formatearDiasComision(sync.diasComision)} ({sync.diasComision} d)</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
+  return (
+    <div>
+      <DesgloseGeneral rutas={rutas} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {rutas.map((ruta, idx) => (
+          <div
+            key={ruta.id}
+            className="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-[#003DA5] text-white flex items-center justify-center text-[9px] font-black">
+                {idx + 1}
+              </div>
+              <p className="text-[11px] font-bold text-slate-800">
+                {ruta.origenCiudad || 'Origen'} → {ruta.destinoCiudad || 'Destino'}
+              </p>
+              <span className="ml-auto text-[9px] font-bold text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                Tramo {idx + 1}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+              <div>
+                <span className="text-slate-500">Fechas:</span>{' '}
+                <span className="font-semibold text-slate-700">{ruta.fechaSalida} – {ruta.fechaLlegada}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Días:</span>{' '}
+                <span className="font-semibold text-slate-700">{ruta.diasRuta} día(s)</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Tiempo estimado:</span>{' '}
+                <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-[#003DA5]" />
+                  {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
+                  {ruta.horaEstimadaLlegada ? ` → ${ruta.horaEstimadaLlegada}` : ''}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Trayecto:</span>{' '}
+                <span className="font-semibold text-slate-700">
+                  {ruta.tipoTrayecto === 'SOLO_IDA' ? 'Solo Ida' : 'Ida y Vuelta'}
+                </span>
+              </div>
+              {ruta.tipoTransporte && (
+                <div className="col-span-2">
+                  <span className="text-slate-500">Transporte:</span>{' '}
+                  <span
+                    className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${
+                      ruta.tipoTransporte === 'AEREO'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {ruta.tipoTransporte}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -526,9 +645,11 @@ export default function ControlViaticosModal({
                     </div>
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 uppercase">Fechas del viaje</label>
-                      <div className="text-slate-800">
-                        {fmtFecha(solicitud.fechaInicio)} – {fmtFecha(solicitud.fechaFin)}
-                        {' '}({solicitud.diasComision || 1} días)
+                      <div className="text-slate-800 flex items-center gap-1.5 flex-wrap">
+                        <span>{fmtFecha(solicitud.fechaInicio)} – {fmtFecha(solicitud.fechaFin)}</span>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                          {formatearDiasComision(Number(solicitud.diasComision || 1))}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -584,6 +705,19 @@ export default function ControlViaticosModal({
                   </div>
                 </div>
               </section>
+
+              {/* ==================== Section 2.5: Itinerario ==================== */}
+              {(solicitud as any).itinerario && (solicitud as any).itinerario.length > 0 && (
+                <section className="mb-6 border-t border-slate-100 pt-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
+                    <Route className="w-4 h-4" />
+                    Itinerario Multiruta — Desglose de Tramos
+                  </h3>
+                  <ItinerarioDesglose
+                    rutas={(solicitud as any).itinerario as RutaItinerario[]}
+                  />
+                </section>
+              )}
 
               {/* ==================== Section 2: Liquidación ==================== */}
               <section className="mb-6 border-t border-slate-100 pt-4">

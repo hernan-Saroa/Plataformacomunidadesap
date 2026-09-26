@@ -6,8 +6,20 @@ import {
   IsOptional,
   IsNumber,
   IsInt,
+  IsObject,
   Min,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { RutaItinerarioDto } from './RutaItinerarioDto';
+
+export interface DesgloseCalculoDto {
+  dia: number;
+  fecha: string;
+  valor: number;
+  pernocta: boolean;
+}
 
 export class CreateSolicitudDto {
   @IsOptional()
@@ -37,6 +49,16 @@ export class CreateSolicitudDto {
   @IsString()
   @Length(0, 100)
   rubroPresupuestal?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  numeroCdp?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 50)
+  fechaCdp?: string;
 
   @IsOptional()
   @IsString()
@@ -101,7 +123,7 @@ export class CreateSolicitudDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+  @IsIn(['TERRESTRE', 'AEREO', 'MIXTO', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
   tipoComision?: string;
 
   @IsOptional()
@@ -112,4 +134,85 @@ export class CreateSolicitudDto {
   @IsNumber()
   @Min(0)
   idDependencia?: number;
+
+  // ========== Autoliquidación GF-FO-023 (calculada por backend) ==========
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  diasPernoctados?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaDiaPernoctado?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  totalPernoctados?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  diasNoPernoctados?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaDiaNoPernoctado?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  totalNoPernoctados?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  factorComisionado?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  factorPernocta?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaDiariaBase?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaFinalAplicadaDia?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  salarioBaseAplicado?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  decretoAplicado?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => Object)
+  desgloseCalculo?: DesgloseCalculoDto[];
+
+  @IsOptional()
+  @IsArray()
+  alertasLiquidacion?: string[];
+
+  @IsOptional()
+  @IsObject()
+  camposAdicionales?: Record<string, any>;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RutaItinerarioDto)
+  itinerario?: RutaItinerarioDto[];
 }

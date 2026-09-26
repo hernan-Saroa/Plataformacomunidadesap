@@ -63,6 +63,8 @@ import {
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
+import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
+import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -658,11 +660,47 @@ function ListaEvidenciasTarea({
   );
 }
 
+/**
+ * "Agregar" con la descripción vacía (EFDS-2191): el campo queda en rojo con un aviso debajo
+ * y el cursor en él; todo se quita apenas se empieza a escribir.
+ */
+function marcarTareaSinDescripcion(input: HTMLInputElement) {
+  const mensaje = 'Escribe la descripción de la tarea antes de pulsar Agregar.';
+  input.style.borderColor = '#dc2626';
+  input.style.borderStyle = 'solid';
+  input.style.backgroundColor = '#fef2f2';
+  input.style.boxShadow = '0 0 0 3px rgba(220, 38, 38, 0.2)';
+  input.setAttribute('aria-invalid', 'true');
+  const fila = input.parentElement;
+  let aviso = fila?.parentElement?.querySelector<HTMLParagraphElement>('[data-aviso-tarea-vacia]') ?? null;
+  if (!aviso && fila) {
+    aviso = document.createElement('p');
+    aviso.setAttribute('data-aviso-tarea-vacia', '');
+    aviso.setAttribute('role', 'alert');
+    aviso.style.cssText = 'color:#dc2626;font-size:11px;font-weight:600;margin-top:4px;';
+    fila.insertAdjacentElement('afterend', aviso);
+  }
+  if (aviso) aviso.textContent = mensaje;
+  input.focus();
+  const limpiar = () => {
+    input.style.borderColor = '';
+    input.style.borderStyle = '';
+    input.style.backgroundColor = '';
+    input.style.boxShadow = '';
+    input.removeAttribute('aria-invalid');
+    aviso?.remove();
+    input.removeEventListener('input', limpiar);
+  };
+  input.addEventListener('input', limpiar);
+}
+
 function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
-  const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
+  // Cortes guardados como cierre → entrega del informe se leen como periodos (EFDS-958)
+  const puntosControlActividad = cortesComoPeriodos(((act as any).puntosControl || (act as any).puntos_control || []) as any[]);
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
+    fechaEntrega: fechaEntregaDeTarea(t), // EFDS-958: muchas solo traen fechaLimite
     responsables: normalizarResponsablesTarea(t.responsables),
     adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
@@ -728,12 +766,17 @@ function sumarAniosIso(iso: string, años: number): string {
 }
 
 /**
- * Desplaza todas las fechas de entrega para que la más temprana caiga en `vigencia`
+ * Mueve las fechas de entrega a `vigencia` con el mismo salto de años que la actividad
  * (conserva separación entre tareas, p. ej. julio vs enero siguiente).
+ *
+ * El salto sale del año en que estaba programada la actividad (`añoActividad`), no de la
+ * tarea más temprana: si todas las tareas caen en enero del año siguiente (seguimiento
+ * del corte de diciembre), deben quedarse en el año siguiente (EFDS-2142).
  */
 function alinearTareasFechasEntregaAVigencia(
   tareas: TareaSeguimiento[] | undefined,
-  vigencia: number
+  vigencia: number,
+  añoActividad?: number,
 ): TareaSeguimiento[] | undefined {
   if (!tareas?.length) return tareas;
   const años = tareas
@@ -742,12 +785,35 @@ function alinearTareasFechasEntregaAVigencia(
     .map((y) => parseInt(y, 10));
   if (años.length === 0) return tareas;
   const minAño = Math.min(...años);
-  const delta = vigencia - minAño;
+  let delta = añoActividad ? vigencia - añoActividad : vigencia - minAño;
+  // Tareas heredadas de una vigencia anterior a la actividad: se traen a la vigencia
+  if (minAño + delta < vigencia) delta = vigencia - minAño;
   if (delta === 0) return tareas;
   return tareas.map((t) => ({
     ...t,
     fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
   }));
+}
+
+/** Año en que está programada la actividad, antes de llevarla a otra vigencia. */
+function añoProgramadoActividad(act: ActividadBase): number | undefined {
+  const ref = act.fechaInicio || act.puntosControl?.[0]?.fechaProgramada || act.fechaFin;
+  return ref && /^\d{4}-/.test(ref) ? parseInt(ref.slice(0, 4), 10) : undefined;
+}
+
+/** Lleva el corte a la vigencia; su seguimiento puede quedar en enero del año siguiente. */
+function llevarPuntoControlAVigencia<T extends { fechaProgramada: string; fechaSeguimiento?: string | null }>(
+  pc: T,
+  vigencia: number,
+): T {
+  const fechaProgramada = reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia);
+  return {
+    ...pc,
+    fechaProgramada,
+    fechaSeguimiento: pc.fechaSeguimiento
+      ? seguimientoDespuesDelCorte(reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia), fechaProgramada)
+      : pc.fechaSeguimiento,
+  };
 }
 
 /** Fecha de corte mostrada: último cierre del último punto de control si existe. */
@@ -1162,9 +1228,10 @@ function esFechaIso(valor: string): boolean {
 }
 
 /**
- * Tabla de cortes oficiales según el formato ESAP/Decreto 648.
- * Cada entrada: [fechaProgramada (fin del período), fechaSeguimiento (entrega del informe)].
- * Mes en base 1. Usa año+1 cuando el mes de seguimiento es enero/feb/mar del año siguiente.
+ * Cortes según la periodicidad del control (formato ESAP/Decreto 648).
+ * Cada corte es un periodo: fechaProgramada = inicio y fechaSeguimiento = fin, igual que
+ * los muestra la pantalla ("Inicio" / "Fin") y los genera el modal de configuración
+ * (EFDS-958). La fecha de entrega del informe va en las tareas de cada corte.
  */
 function generarCortesOficiales(
   frecuencia: string,
@@ -1175,47 +1242,23 @@ function generarCortesOficiales(
   const mesUltimoDia = (y: number, m: number) => new Date(y, m, 0).getDate();
 
   const ctrl = frecuencia.toLowerCase();
+  // El orden importa: "cuatrimestral" también contiene "trimestral".
+  const meses = ctrl.includes('semestral') ? 6
+    : ctrl.includes('cuatrimestral') ? 4
+    : ctrl.includes('trimestral') ? 3
+    : ctrl.includes('anual') ? 12
+    : ctrl.includes('mensual') ? 1
+    : 0;
+  if (!meses) return [];
 
-  if (ctrl.includes('semestral')) {
-    return [
-      { fechaProgramada: fmt(año, 6, 30),  fechaSeguimiento: fmt(año,   7, 31) },
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
-    ];
-  }
-  if (ctrl.includes('cuatrimestral')) {
-    return [
-      { fechaProgramada: fmt(año, 4, 30),  fechaSeguimiento: fmt(año,   5, 31) },
-      { fechaProgramada: fmt(año, 8, 31),  fechaSeguimiento: fmt(año,   9, 30) },
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
-    ];
-  }
-  if (ctrl.includes('trimestral')) {
-    return [
-      { fechaProgramada: fmt(año, 3, 31),  fechaSeguimiento: fmt(año,  4, 30) },
-      { fechaProgramada: fmt(año, 6, 30),  fechaSeguimiento: fmt(año,  7, 31) },
-      { fechaProgramada: fmt(año, 9, 30),  fechaSeguimiento: fmt(año, 10, 31) },
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
-    ];
-  }
-  if (ctrl.includes('anual')) {
-    return [
-      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 2, mesUltimoDia(año+1, 2)) },
-    ];
-  }
-  if (ctrl.includes('mensual')) {
-    return Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1;
-      const ld = mesUltimoDia(año, m);
-      const nextM = m === 12 ? 1 : m + 1;
-      const nextY = m === 12 ? año + 1 : año;
-      const nextLd = mesUltimoDia(nextY, nextM);
-      return {
-        fechaProgramada: fmt(año, m, ld),
-        fechaSeguimiento: fmt(nextY, nextM, nextLd),
-      };
-    });
-  }
-  return [];
+  return Array.from({ length: 12 / meses }, (_, i) => {
+    const mesInicio = i * meses + 1;
+    const mesFin = mesInicio + meses - 1;
+    return {
+      fechaProgramada: fmt(año, mesInicio, 1),
+      fechaSeguimiento: fmt(año, mesFin, mesUltimoDia(año, mesFin)),
+    };
+  });
 }
 
 /**
@@ -2252,16 +2295,20 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 ? reemplazarAnioEnFechaIso(act.fechaFin, año)
                 : act.fechaFin,
               fechaCorte: act.fechaCorte
-                ? reemplazarAnioEnFechaIso(act.fechaCorte, año)
+                ? seguimientoDespuesDelCorte(
+                    reemplazarAnioEnFechaIso(act.fechaCorte, año),
+                    act.fechaInicio ? reemplazarAnioEnFechaIso(act.fechaInicio, año) : undefined,
+                  )
                 : resolverFechaCorteActividad(act, vigencia),
               puntosControl: [],
               tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
                 act.tareasSeguimiento,
                 vigencia,
+                añoProgramadoActividad(act),
               ),
             };
           }
-          const puntos = act.puntosControl || [];
+          const puntos = cortesComoPeriodos(act.puntosControl || []);
           // Para actividades con periodicidad definida regeneramos cortes oficiales
           // para no romper fechas que caen en año+1 (p.ej. 31/01 del año siguiente).
           const cortesRegenerados = generarCortesOficiales(act.control || '', año);
@@ -2271,13 +2318,7 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 fechaProgramada: cortesRegenerados[i].fechaProgramada,
                 fechaSeguimiento: cortesRegenerados[i].fechaSeguimiento,
               }))
-            : puntos.map((pc) => ({
-                ...pc,
-                fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
-                fechaSeguimiento: pc.fechaSeguimiento
-                  ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
-                  : pc.fechaSeguimiento,
-              }));
+            : puntos.map((pc) => llevarPuntoControlAVigencia(pc, año));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -2295,18 +2336,16 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               act.fechaCorte ||
               resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
-            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+              act.tareasSeguimiento,
+              vigencia,
+              añoProgramadoActividad(act),
+            ),
           };
         }),
         actividadesCustom: (rol.actividadesCustom || []).map((act) => {
-          const puntos = act.puntosControl || [];
-          const nuevosPuntos = puntos.map((pc) => ({
-            ...pc,
-            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia),
-            fechaSeguimiento: pc.fechaSeguimiento
-              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia)
-              : pc.fechaSeguimiento,
-          }));
+          const puntos = cortesComoPeriodos(act.puntosControl || []);
+          const nuevosPuntos = puntos.map((pc) => llevarPuntoControlAVigencia(pc, vigencia));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -2324,7 +2363,11 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
               act.fechaCorte ||
               resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
-            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+              act.tareasSeguimiento,
+              vigencia,
+              añoProgramadoActividad(act),
+            ),
           };
         }),
       }))
@@ -2572,7 +2615,21 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
         if (Array.isArray(winner.comiteAprobacion)) setComiteAprobacion(winner.comiteAprobacion);
         if (winner.jefeSeleccionado) setJefeSeleccionado(winner.jefeSeleccionado as Auditor);
         if (winner.rolesConfig) {
-          setRolesConfig(normalizarResponsables(winner.rolesConfig as RolConfig[]));
+          // Borradores guardados antes de EFDS-958: cortes cierre → entrega y tareas sin fechaEntrega
+          const normalizarFechas = (act: ActividadBase): ActividadBase => ({
+            ...act,
+            puntosControl: act.puntosControl ? cortesComoPeriodos(act.puntosControl) : act.puntosControl,
+            tareasSeguimiento: (act.tareasSeguimiento || []).map((t: any) => ({
+              ...t,
+              fechaEntrega: fechaEntregaDeTarea(t),
+            })),
+          });
+          const rolesDelBorrador = (winner.rolesConfig as RolConfig[]).map((rol) => ({
+            ...rol,
+            actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map(normalizarFechas),
+            actividadesCustom: (rol.actividadesCustom || []).map(normalizarFechas),
+          }));
+          setRolesConfig(normalizarResponsables(rolesDelBorrador));
         }
 
         const savedAtStr =
@@ -4282,13 +4339,38 @@ function Paso2({
   const remapearTareasACortes = (
     tareas: TareaSeguimiento[] = [],
     puntosViejos: PuntoControl[] = [],
-    puntosNuevos: PuntoControl[] = []
+    puntosNuevos: PuntoControl[] = [],
+    añoBaseDelPlan?: number
   ): TareaSeguimiento[] => {
     if (!puntosNuevos || puntosNuevos.length === 0) return tareas;
 
-    return (tareas || []).map((tarea, tIdx) => {
+    const mismoPeriodo = (a?: PuntoControl, b?: PuntoControl) =>
+      !!a && !!b && a.fechaProgramada === b.fechaProgramada && a.fechaSeguimiento === b.fechaSeguimiento;
+
+    // Las fechas de entrega pasan al año de los cortes (EFDS-958): antes se configuraban los
+    // cortes de 2035 y las tareas seguían con las fechas de la plantilla.
+    const añoCortes = parseInt(
+      [...puntosNuevos].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0].fechaProgramada.slice(0, 4),
+      10,
+    );
+    const tareasEnAño = tareasEnElAñoDeLosCortes(tareas || [], añoCortes, añoBaseDelPlan);
+
+    return tareasEnAño.map((tarea, tIdx) => {
+      const corteViejo = puntosViejos.find((p) => p.id === tarea.puntoControlId);
+      const corteNuevo = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
+
+      // 0. Si el corte de la tarea cambió de fechas (otra periodicidad), la tarea va al corte
+      //    que corresponde a su fecha de entrega, no al que conserva el mismo id (EFDS-958).
+      //    Su fecha de seguimiento se recalcula desde el fin de ese corte, como en los cortes por defecto.
+      if (tarea.fechaEntrega && corteViejo && !mismoPeriodo(corteViejo, corteNuevo)) {
+        const destino = corteDeLaFecha(tarea.fechaEntrega, puntosNuevos);
+        if (destino) {
+          return { ...tarea, puntoControlId: destino.id, fechaEntrega: fechaSeguimientoPorDefecto(destino) ?? tarea.fechaEntrega };
+        }
+      }
+
       // 1. Si la tarea ya tiene un puntoControlId válido en los nuevos puntos, conservarlo
-      if (tarea.puntoControlId && puntosNuevos.some((p) => p.id === tarea.puntoControlId)) {
+      if (corteNuevo) {
         return tarea;
       }
 
@@ -4312,6 +4394,14 @@ function Paso2({
 
     const { numeroRol, nombreActividad, esCustom, indexCustom } = actividadConfigurando;
 
+    // Año más antiguo entre las tareas de todo el plan: el de la plantilla de la que salieron
+    const añosTareas = rolesConfig
+      .flatMap((r) => [...r.actividadesSeleccionadas, ...(r.actividadesCustom || [])])
+      .flatMap((a) => a.tareasSeguimiento || [])
+      .map((t) => parseInt(String(t.fechaEntrega || '').slice(0, 4), 10))
+      .filter((a) => Number.isInteger(a));
+    const añoBaseDelPlan = añosTareas.length ? Math.min(...añosTareas) : undefined;
+
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         if (esCustom && indexCustom !== undefined) {
@@ -4323,7 +4413,8 @@ function Paso2({
                 const tareasActualizadas = remapearTareasACortes(
                   act.tareasSeguimiento || [],
                   act.puntosControl || [],
-                  puntos
+                  puntos,
+                  añoBaseDelPlan
                 );
                 return {
                   ...act,
@@ -4345,7 +4436,8 @@ function Paso2({
                 const tareasActualizadas = remapearTareasACortes(
                   act.tareasSeguimiento || [],
                   act.puntosControl || [],
-                  puntos
+                  puntos,
+                  añoBaseDelPlan
                 );
                 return {
                   ...act,
@@ -4603,6 +4695,25 @@ function Paso2({
                             /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
                             const fechaCorteMostrar = actividadData ? fechaCorteDisplayDesdeActividad(actividadData) : undefined;
+                            // Las actividades del Rol 4 que alimenta el Programa Anual no tienen cortes: sus
+                            // tareas (una por auditoría) se muestran en un solo corte con el periodo del plan.
+                            const cortePorVigencia =
+                              !(actividadData?.puntosControl?.length) && actividadRol4SinCortesPrecargados(rol.numero, actividad);
+                            const cortesVisibles: PuntoControl[] = cortePorVigencia
+                              ? [{
+                                  id: `corte-vigencia-${idActividadEnEstado}`,
+                                  orden: 1,
+                                  nombre: 'Corte 1',
+                                  descripcion: '',
+                                  fechaProgramada: actividadData?.fechaInicio || fechaInicio,
+                                  fechaSeguimiento: actividadData?.fechaFin || fechaFin,
+                                  fechaReal: null,
+                                  responsable: '',
+                                  estado: 'pendiente',
+                                  observaciones: '',
+                                  evidencias: [],
+                                }]
+                              : actividadData?.puntosControl || [];
                             return (
                               <div
                                 key={actId}
@@ -4758,7 +4869,7 @@ function Paso2({
                                     )}
                                   </div>
                                 </label>
-                                
+
                                 {/* Configuración de evidencias - Solo visible si actividad está seleccionada */}
                                 {seleccionada && (
                                   <div className="px-3 pb-3 pt-2 border-t border-blue-200 mt-2 space-y-3">
@@ -4888,11 +4999,11 @@ function Paso2({
                                         <div className="flex items-center gap-2">
                                           <CalendarClock className="w-4 h-4 text-blue-600" />
                                           <span className="text-xs font-bold text-blue-900">
-                                            {actividadData?.puntosControl && actividadData.puntosControl.length > 0
-                                              ? `${actividadData.puntosControl.length} Cortes de Seguimiento`
+                                            {cortesVisibles.length > 0
+                                              ? `${cortesVisibles.length} ${cortesVisibles.length === 1 ? 'Corte' : 'Cortes'} de Seguimiento`
                                               : 'Sin cortes configurados'}
                                           </span>
-                                          {actividadData?.frecuenciaPuntosControl && (
+                                          {!cortePorVigencia && actividadData?.frecuenciaPuntosControl && (
                                             <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
                                               {actividadData.frecuenciaPuntosControl}
                                             </span>
@@ -4900,13 +5011,14 @@ function Paso2({
                                         </div>
                                         <button
                                           type="button"
-                                          disabled={soloLectura}
+                                          disabled={soloLectura || cortePorVigencia}
+                                          title={cortePorVigencia ? 'Las tareas de esta actividad vienen del Programa Anual' : undefined}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
                                           }}
                                           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
-                                            soloLectura
+                                            soloLectura || cortePorVigencia
                                               ? 'bg-slate-400 text-slate-100 cursor-default'
                                               : 'bg-blue-600 hover:bg-blue-700 text-white'
                                           }`}
@@ -4917,17 +5029,17 @@ function Paso2({
                                       </div>
 
                                       {/* Timeline de cortes */}
-                                      {actividadData?.puntosControl && actividadData.puntosControl.length > 0 && (
+                                      {cortesVisibles.length > 0 && (
                                         <div className="divide-y divide-gray-100">
-                                          {actividadData.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                          {cortesVisibles.map((pc: PuntoControl, pcIdx: number) => {
                                             const hoyDate = new Date();
                                             hoyDate.setHours(0,0,0,0);
-                                            const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
-                                            const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                             const esCompletado = pc.estado === 'completado';
-                                            const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                            const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
-                                            const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                            // Estado según el periodo del corte (EFDS-958)
+                                            const estadoCorte = estadoDelCorte(pc, hoyDate, esCompletado, (actividadData.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega));
+                                            const enSeguimiento = estadoCorte === 'enSeguimiento';
+                                            const esVencido = estadoCorte === 'vencido';
+                                            const esActivo = estadoCorte === 'activo';
                                             return (
                                               <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
                                                 <div className="flex items-start gap-3">
@@ -4942,7 +5054,7 @@ function Paso2({
                                                   }`}>
                                                     {esCompletado ? 'S' : pcIdx + 1}
                                                   </div>
-                                                  {pcIdx < actividadData.puntosControl!.length - 1 && (
+                                                  {pcIdx < cortesVisibles.length - 1 && (
                                                     <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
                                                       esCompletado ? 'bg-green-300' : 'bg-gray-200'
                                                     }`} />
@@ -5049,6 +5161,12 @@ function Paso2({
                                                                     onAsignar={(aud) => updateTareaCorte({ responsables: [aud.nombre] })}
                                                                     onQuitar={() => updateTareaCorte({ responsables: [] })}
                                                                   />
+                                                                  {/* Tareas del Rol 4 que genera el Programa Anual: se recrean mientras la auditoría siga en el programa */}
+                                                                  {((tarea as any).origen === 'programa_anual' || String(tarea.id).startsWith('tarea-aud-')) && (
+                                                                    <p className="mt-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-2 py-1">
+                                                                      Viene del Programa Anual. Si la elimina, vuelve a aparecer mientras la auditoría siga programada; para quitarla, archive la auditoría en Auditorías OCI.
+                                                                    </p>
+                                                                  )}
                                                                 </div>
                                                                 <div className="flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                                                   <button 
@@ -5121,6 +5239,8 @@ function Paso2({
                                                             </label>
                                                             <div className="ml-auto">
                                                               <input type="date" data-nueva-fecha={`${idActividadEnEstado}-${pc.id}`}
+                                                                key={`nueva-fecha-${pc.id}-${pc.fechaSeguimiento}`}
+                                                                defaultValue={fechaSeguimientoPorDefecto(pc)}
                                                                 className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
                                                                 title="Fecha de entrega" />
                                                             </div>
@@ -5147,6 +5267,11 @@ function Paso2({
                                                             <button
                                                               onClick={() => {
                                                                 const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
+                                                                // Con el campo vacío el botón no hacía nada y parecía que no se podían crear tareas (EFDS-2191)
+                                                                if (input && !input.value.trim()) {
+                                                                  marcarTareaSinDescripcion(input);
+                                                                  return;
+                                                                }
                                                                 if (input && input.value.trim()) {
                                                                   const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs="${idActividadEnEstado}-${pc.id}"]`);
                                                                   const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj="${idActividadEnEstado}-${pc.id}"]`);
@@ -5477,12 +5602,12 @@ function Paso2({
                                         {actividad.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
                                           const hoyDate = new Date();
                                           hoyDate.setHours(0,0,0,0);
-                                          const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
-                                          const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                           const esCompletado = pc.estado === 'completado';
-                                          const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                          const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
-                                          const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                          // Estado según el periodo del corte (EFDS-958)
+                                          const estadoCorte = estadoDelCorte(pc, hoyDate, esCompletado, (actividad.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega));
+                                          const enSeguimiento = estadoCorte === 'enSeguimiento';
+                                          const esVencido = estadoCorte === 'vencido';
+                                          const esActivo = estadoCorte === 'activo';
                                           return (
                                             <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
                                               <div className="flex items-start gap-3">
@@ -5677,6 +5802,8 @@ function Paso2({
                                                             </label>
                                                             <div className="ml-auto">
                                                               <input type="date" data-nueva-fecha-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                key={`nueva-fecha-custom-${pc.id}-${pc.fechaSeguimiento}`}
+                                                                defaultValue={fechaSeguimientoPorDefecto(pc)}
                                                                 className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
                                                                 title="Fecha de entrega" />
                                                             </div>
@@ -5703,6 +5830,11 @@ function Paso2({
                                                             <button
                                                               onClick={() => {
                                                                 const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                // Con el campo vacío el botón no hacía nada y parecía que no se podían crear tareas (EFDS-2191)
+                                                                if (input && !input.value.trim()) {
+                                                                  marcarTareaSinDescripcion(input);
+                                                                  return;
+                                                                }
                                                                 if (input && input.value.trim()) {
                                                                   const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs-custom="${rol.numero}-${index}-${pc.id}"]`);
                                                                   const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj-custom="${rol.numero}-${index}-${pc.id}"]`);
@@ -6669,16 +6801,41 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados)
-      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
+      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados).
+      // Va con el mismo margen de las tablas y se repite en cada hoja (EFDS-1629).
+      const configEncabezado = {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
         version: (plan as any).version ?? 1,
-        fecha: plan.fechaCreacion 
+        fecha: plan.fechaCreacion
           ? new Date(plan.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
           : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
-        logoImg: LOGO_ESAP_URL
-      });
-      
+        logoImg: LOGO_ESAP_URL,
+        margen: margin,
+      };
+      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, configEncabezado);
+      const paginasConEncabezado = new Set<number>([1]);
+      const encabezarPagina = () => {
+        const pagina = doc.getNumberOfPages();
+        if (paginasConEncabezado.has(pagina)) return;
+        paginasConEncabezado.add(pagina);
+        dibujarEncabezadoInstitucional(doc, configEncabezado);
+      };
+      const paginasConPie = new Set<number>();
+      const pieDePagina = () => {
+        const pagina = doc.getNumberOfPages();
+        if (paginasConPie.has(pagina)) return;
+        paginasConPie.add(pagina);
+        dibujarPieInstitucional(doc, pagina, true, margin);
+      };
+      const nuevaPagina = () => {
+        doc.addPage();
+        encabezarPagina();
+        pieDePagina();
+        return alturaEncabezado + 6;
+      };
+      // Espacio que dejan las tablas para no montarse sobre el pie de página
+      const margenInferior = 22;
+
       let currentY = alturaEncabezado + 5;
 
       // Vigencia y Título
@@ -6845,7 +7002,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         'Avance general del Plan Anual: actividades, tareas, responsables, fechas y porcentajes.'
       );
 
-      // Generar tabla principal
+      // Generar tabla principal (las columnas fijas suman 247 mm)
+      const anchoSobrante = Math.max(0, pageWidth - margin * 2 - 247);
       autoTable(doc, {
         startY: currentY,
         head: tableHead,
@@ -6866,24 +7024,23 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         },
         columnStyles: {
           0: { cellWidth: 30 }, // Rol
-          1: { cellWidth: 42 }, // Actividades
+          // Actividades y Seguimiento reparten el ancho sobrante: la tabla ocupa lo mismo que el encabezado
+          1: { cellWidth: 42 + anchoSobrante / 2 }, // Actividades
           2: { cellWidth: 15, halign: 'center' }, // Inicio
           3: { cellWidth: 15, halign: 'center' }, // Fin
           4: { cellWidth: 22 }, // Responsable
           5: { cellWidth: 20 }, // Control
           6: { cellWidth: 14, halign: 'center' }, // Avance actividad
           7: { cellWidth: 18 }, // Resp. Tarea
-          8: { cellWidth: 42 }, // Seguimiento tareas
+          8: { cellWidth: 42 + anchoSobrante / 2 }, // Seguimiento tareas
           9: { cellWidth: 15, halign: 'center' }, // Fecha
           10: { cellWidth: 14, halign: 'center' } // Avance tarea
         },
-        margin: { left: margin, right: margin, top: alturaEncabezado + 20 },
+        margin: { left: margin, right: margin, top: alturaEncabezado + 6, bottom: margenInferior },
         pageBreak: 'auto',
         rowPageBreak: 'avoid',
-        didDrawPage: (data) => {
-          // Footer en cada página
-          dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
-        }
+        willDrawPage: encabezarPagina,
+        didDrawPage: pieDePagina,
       });
 
       currentY = (doc as any).lastAutoTable.finalY + 6;
@@ -6891,9 +7048,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       // El avance global cierra la sección general; cada actividad se cuenta una sola vez.
       const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
 
-      if (currentY > pageHeight - 30) {
-        doc.addPage();
-        currentY = margin + 20;
+      if (currentY > pageHeight - margenInferior - 14) {
+        currentY = nuevaPagina();
       }
 
       doc.setFillColor(240, 240, 240);
@@ -6903,8 +7059,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       doc.setFont('helvetica', 'bold');
       doc.text(`AVANCE GLOBAL DEL PLAN: ${promedioGral}%  (Total Actividades: ${totalActividadesCount})`, margin + 5, currentY + 8);
 
-      doc.addPage();
-      currentY = margin + 5;
+      currentY = nuevaPagina();
       dibujarTituloSeccion(
         'AVANCE DE ACTIVIDADES POR ROL',
         'Los porcentajes de esta sección corresponden al avance de las actividades según cada rol.'
@@ -6921,8 +7076,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
         // El título del rol no queda solo al final de la hoja: debe caber con el encabezado y la primera fila
         if (rolIdx > 0 && currentY > pageHeight - 55) {
-          doc.addPage();
-          currentY = margin + 5;
+          currentY = nuevaPagina();
         }
 
         doc.setFontSize(11);
@@ -6983,10 +7137,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             3: { cellWidth: 30, halign: 'center' },
             4: { cellWidth: 26, halign: 'center' }
           },
-          margin: { left: margin, right: margin, bottom: 20 },
-          didDrawPage: () => {
-            dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
-          },
+          margin: { left: margin, right: margin, top: alturaEncabezado + 6, bottom: margenInferior },
+          willDrawPage: encabezarPagina,
+          didDrawPage: pieDePagina,
           didParseCell: function(data) {
             // Destacar la fila de subtotal
             if (data.row.index === actividadesData.length - 1) {
@@ -7509,7 +7662,11 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               ].filter(tab => tab.visible).map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setSeccion(tab.id as any)}
+                  onClick={() => {
+                    setSeccion(tab.id as any);
+                    // Si ya estaba en Seguimiento, el clic vuelve a traer el Rol 4 al día
+                    if (tab.id === 'gestion' && seccion === 'gestion') onRefetchPlan?.();
+                  }}
                   className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all relative ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
                 >
                   {tab.icon}
@@ -8305,8 +8462,11 @@ function SeccionGestionYSeguimiento({
     }
   };
 
+  // Al entrar se piden de nuevo el cumplimiento y el plan: las tareas del Rol 4
+  // salen del Programa Anual (EFDS-2133), que pudo cambiar desde Auditorías OCI
+  // mientras esta pantalla conservaba el plan que había cargado antes.
   useEffect(() => {
-    cargarCumplimiento();
+    cargarCumplimiento().then(() => onRefetchPlan?.());
   }, [vigenciaPlan]);
 
   // Refrescar cumplimiento y recargar plan (para sincronizar actividades con tipo_calculo=auditorias)
@@ -9750,8 +9910,10 @@ function SeccionGestionYSeguimiento({
                                     const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
                                     const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                     const cumplido = corteEstaCumplido(actividad, pc.id);
-                                    const enSeguimiento = !cumplido && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                    const esVencido = !cumplido && !enSeguimiento && fechaCorte < hoyDate;
+                                    // Estado según el periodo del corte (EFDS-958)
+                                    const estadoCorte = estadoDelCorte(pc, hoyDate, cumplido, (actividad.tareasSeguimiento || []).filter((t) => t.puntoControlId === pc.id).map((t) => t.fechaEntrega || (t as any).fechaLimite));
+                                    const enSeguimiento = estadoCorte === 'enSeguimiento';
+                                    const esVencido = estadoCorte === 'vencido';
                                     const tareasDelCorte = (actividad.tareasSeguimiento || []).filter(
                                       (t) => t.puntoControlId === pc.id,
                                     );

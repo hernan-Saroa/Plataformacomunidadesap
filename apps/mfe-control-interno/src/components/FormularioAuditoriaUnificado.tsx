@@ -46,6 +46,8 @@ import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso, t
 import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
+import { evaluacionProgramable } from '../utils/auditableEvaluacion';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -138,6 +140,8 @@ export interface AuditoriaUnificadaFormData {
   // Campos legacy para compatibilidad
   fechaInicio?: string;
   fechaFin?: string;
+  // Lunes (YYYY-MM-DD) de las semanas sacadas del cronograma en el calendario (EFDS-2132)
+  semanasExcluidas?: string[];
   hitos: HitoAuditoria[];
   
   // 5. OBJETIVOS Y CRITERIOS
@@ -391,15 +395,24 @@ export function FormularioAuditoriaUnificado({
   };
 
   const buildInitialState = (data?: Partial<AuditoriaUnificadaFormData>): AuditoriaUnificadaFormData => {
-    let inicioP = formatDateForInput(data?.fechaInicioPlaneacion || data?.fechaInicio);
+    // Una Especial puede no tener Planeación ni Ejecución (EFDS-1923): el inicio y el
+    // fin generales solo son de Planeación y de Comunicación si la auditoría tiene esas
+    // etapas. Antes, una Especial solo de Comunicación abría con Planeación y
+    // Ejecución inventadas (4-4-5 desde su inicio).
+    const tieneEtapas = !!(data?.fechaFinPlaneacion || data?.fechaInicioEjecucion || data?.fechaFinEjecucion || data?.fechaInicioComunicacion);
+    let inicioP = formatDateForInput(
+      data?.fechaInicioPlaneacion || (!tieneEtapas || data?.fechaFinPlaneacion ? data?.fechaInicio : ''),
+    );
     let finP = formatDateForInput(data?.fechaFinPlaneacion);
     let inicioE = formatDateForInput(data?.fechaInicioEjecucion);
     let finE = formatDateForInput(data?.fechaFinEjecucion);
     let inicioC = formatDateForInput(data?.fechaInicioComunicacion);
-    let finC = formatDateForInput(data?.fechaFinComunicacion || data?.fechaFin);
+    let finC = formatDateForInput(
+      data?.fechaFinComunicacion || (!tieneEtapas || data?.fechaInicioComunicacion ? data?.fechaFin : ''),
+    );
 
-    // Auto-calcular etapas restantes si existe inicio de planeación pero no fin de planeación
-    if (inicioP && !finP) {
+    // Auditorías viejas que solo guardan el inicio: se proponen las etapas 4-4-5
+    if (!tieneEtapas && inicioP && !finP) {
       finP = addDaysToDateString(inicioP, 27); // 4 semanas
       if (!inicioE) inicioE = addDaysToDateString(finP, 1);
       if (!finE) finE = addDaysToDateString(inicioE, 27); // 4 semanas
@@ -444,6 +457,7 @@ export function FormularioAuditoriaUnificado({
       fechaFinComunicacion: finC,
       fechaInicio: inicioP || formatDateForInput(data?.fechaInicio),
       fechaFin: finC || formatDateForInput(data?.fechaFin),
+      semanasExcluidas: Array.isArray(data?.semanasExcluidas) ? data!.semanasExcluidas : [],
       hitos: data?.hitos || [],
       objetivos: data?.objetivos || [],
       criteriosAuditoria: data?.criteriosAuditoria || [],
@@ -461,7 +475,9 @@ export function FormularioAuditoriaUnificado({
       incluirHallazgosPreliminares: data?.incluirHallazgosPreliminares || false,
       vinculadaPlanAnual: data?.vinculadaPlanAnual || false,
       planAnualId: data?.planAnualId || '',
-      planAnualAño: data?.planAnualAño || new Date().getFullYear(),
+      // Sin vigencia, la del año de sus fechas y no el actual: el calendario solo
+      // marca semanas de su vigencia y alrededor (EFDS-2132).
+      planAnualAño: Number(data?.planAnualAño) || Number((inicioP || inicioE || inicioC || '').slice(0, 4)) || new Date().getFullYear(),
       rolDecretoAsociado: data?.rolDecretoAsociado || '',
       estadoKanban: data?.estadoKanban || 'Programa Anual',
     };
@@ -709,8 +725,19 @@ export function FormularioAuditoriaUnificado({
         }
 
         // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
-        const evaluaciones = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
-        
+        const todas = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
+        // Solo los procesos que se pueden programar: switch "Aud." en SÍ, o en
+        // automático los de criticidad Extremo o que se auditan el primer año. Al
+        // editar se conserva el proceso que la auditoría ya tiene.
+        const evaluaciones = (todas || []).filter((ev: EvaluacionProceso) =>
+          evaluacionProgramable(ev as any) || (!!formData.procesoAuditado && ev.proceso?.nombre === formData.procesoAuditado),
+        );
+        if (todas && todas.length > 0 && evaluaciones.length === 0) {
+          setEvaluacionesDisponibles([]);
+          setProcesosAuditables([]);
+          return;
+        }
+
         if (evaluaciones && evaluaciones.length > 0) {
           // Guardar evaluaciones completas para acceder a datos de riesgo
           setEvaluacionesDisponibles(evaluaciones);
@@ -908,6 +935,23 @@ export function FormularioAuditoriaUnificado({
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  /**
+   * Cronograma del calendario (EFDS-2132): se calcula con el estado más reciente
+   * y se guarda de una vez, para que dos clics seguidos no se pisen.
+   */
+  const aplicarCronograma = (calculo: CalculoCronograma) => {
+    setFormData(prev => {
+      const { fechas, semanasExcluidas } = calculo(prev, prev.semanasExcluidas || []);
+      return {
+        ...prev,
+        ...fechas,
+        semanasExcluidas,
+        fechaInicio: fechas.fechaInicioPlaneacion || fechas.fechaInicioEjecucion || fechas.fechaInicioComunicacion,
+        fechaFin: fechas.fechaFinComunicacion || fechas.fechaFinEjecucion || fechas.fechaFinPlaneacion,
+      };
+    });
   };
 
   const handleAgregarObjetivo = () => {
@@ -1340,6 +1384,7 @@ export function FormularioAuditoriaUnificado({
               disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
               validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
               esAuditoriaEspecial={esAuditoriaEspecial}
+            onAplicarCronograma={aplicarCronograma}
             />
           );
         default:
@@ -1403,6 +1448,7 @@ export function FormularioAuditoriaUnificado({
             disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
             validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
             esAuditoriaEspecial={esAuditoriaEspecial}
+          onAplicarCronograma={aplicarCronograma}
           />
         );
       case 5:
@@ -2671,7 +2717,7 @@ function Paso3EquipoAuditor({
             >
               <option value="">Seleccione el auditor líder...</option>
               {auditores
-                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAuditorLider(a.cargo))
+                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo))
                 .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
@@ -2753,6 +2799,8 @@ interface Paso4Props extends PasoProps {
   disponibilidadEquipoAuditor?: DisponibilidadEquipoAuditorResponse | null;
   validandoDisponibilidadEquipo?: boolean;
   esAuditoriaEspecial?: boolean;
+  /** Aplica el cronograma completo en una sola actualización (EFDS-2132) */
+  onAplicarCronograma: (calculo: CalculoCronograma) => void;
 }
 
 function Paso4Programacion({
@@ -2761,6 +2809,7 @@ function Paso4Programacion({
   disponibilidadEquipoAuditor,
   validandoDisponibilidadEquipo,
   esAuditoriaEspecial,
+  onAplicarCronograma,
 }: Paso4Props) {
   // Verificar si las etapas anteriores están completas (convertir a boolean)
   const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
@@ -2777,99 +2826,22 @@ function Paso4Programacion({
   const maxDate = `${añoVigencia}-12-31`;
 
   // Calcular días de cada etapa
+  // Días de la etapa contando el primero y el último (4 semanas = 28 días, no 27)
   const calcularDias = (inicio: string, fin: string) => {
     if (!inicio || !fin) return 0;
-    return Math.ceil((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24));
+    return Math.round((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24)) + 1;
   };
 
-  // Handlers para auto-calcular etapas del cronograma (13 Semanas: 4-4-5)
-  const handleFechaInicioPlaneacionChange = (val: string) => {
-    if (!val) {
-      onChange('fechaInicioPlaneacion', '');
-      onChange('fechaInicio', '');
-      return;
-    }
-    const fechaFinP = addDaysToDateString(val, fourWeek-1); // 4 Semanas
-    const fechaInicioE = addDaysToDateString(fechaFinP, 1);
-    const fechaFinE = addDaysToDateString(fechaInicioE, fourWeek-1); // 4 Semanas
-    const fechaInicioC = addDaysToDateString(fechaFinE, 1);
-    const fechaFinC = addDaysToDateString(fechaInicioC, fiveWeek-1); // 5 Semanas
-    
-
-    onChange('fechaInicioPlaneacion', val);
-    onChange('fechaInicio', val);
-    onChange('fechaFinPlaneacion', fechaFinP);
-    onChange('fechaInicioEjecucion', fechaInicioE);
-    onChange('fechaFinEjecucion', fechaFinE);
-    onChange('fechaInicioComunicacion', fechaInicioC);
-    onChange('fechaFinComunicacion', fechaFinC);
-    onChange('fechaFin', fechaFinC);
+  // Cada campo de fecha abre el calendario de la vigencia (EFDS-2132). El cambio
+  // se aplica en un solo paso y sobre lo último guardado: con varios onChange
+  // seguidos, dos clics rápidos partían del estado viejo y se perdía el primero.
+  const propiedadesCalendario = {
+    vigencia: añoVigencia,
+    fechas: formData,
+    semanasExcluidas: formData.semanasExcluidas || [],
+    onCambio: onAplicarCronograma,
   };
-
-  const handleFechaFinPlaneacionChange = (val: string) => {
-    if (!val) {
-      onChange('fechaFinPlaneacion', '');
-      return;
-    }
-    const fechaInicioE = val;
-    const fechaFinE = addDaysToDateString(fechaInicioE, fourWeek-1); // 4 Semanas
-    const fechaInicioC = addDaysToDateString(fechaFinE, 1);
-    const fechaFinC = addDaysToDateString(fechaInicioC, fiveWeek-1); // 5 Semanas
-
-    onChange('fechaFinPlaneacion', val);
-    onChange('fechaInicioEjecucion', fechaInicioE);
-    onChange('fechaFinEjecucion', fechaFinE);
-    onChange('fechaInicioComunicacion', fechaInicioC);
-    onChange('fechaFinComunicacion', fechaFinC);
-    onChange('fechaFin', fechaFinC);
-  };
-
-  const handleFechaInicioEjecucionChange = (val: string) => {
-    if (!val) {
-      onChange('fechaInicioEjecucion', '');
-      return;
-    }
-    const fechaFinE = addDaysToDateString(val, fourWeek-1); // 4 Semanas
-    const fechaInicioC = addDaysToDateString(fechaFinE, 1);
-    const fechaFinC = addDaysToDateString(fechaInicioC, fiveWeek-1); // 5 Semanas
-
-    onChange('fechaInicioEjecucion', val);
-    onChange('fechaFinEjecucion', fechaFinE);
-    onChange('fechaInicioComunicacion', fechaInicioC);
-    onChange('fechaFinComunicacion', fechaFinC);
-    onChange('fechaFin', fechaFinC);
-  };
-
-  const handleFechaFinEjecucionChange = (val: string) => {
-    if (!val) {
-      onChange('fechaFinEjecucion', '');
-      return;
-    }
-    const fechaInicioC = val;
-    const fechaFinC = addDaysToDateString(val, fiveWeek-1); // 5 Semanas
-
-    onChange('fechaFinEjecucion', val);
-    onChange('fechaInicioComunicacion', fechaInicioC);
-    onChange('fechaFinComunicacion', fechaFinC);
-    onChange('fechaFin', fechaFinC);
-  };
-
-  const handleFechaInicioComunicacionChange = (val: string) => {
-    if (!val) {
-      onChange('fechaInicioComunicacion', '');
-      return;
-    }
-    const fechaFinC = addDaysToDateString(val, fiveWeek-1); // 5 Semanas
-
-    onChange('fechaInicioComunicacion', val);
-    onChange('fechaFinComunicacion', fechaFinC);
-    onChange('fechaFin', fechaFinC);
-  };
-
-  const handleFechaFinComunicacionChange = (val: string) => {
-    onChange('fechaFinComunicacion', val);
-    onChange('fechaFin', val);
-  };
+  const ayudaCalendario = 'Marque las semanas en el calendario';
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -2877,7 +2849,7 @@ function Paso4Programacion({
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Defina las fechas específicas para cada etapa. El sistema calcula automáticamente el ciclo estándar de 13 semanas (4-4-5).
+          Marque en el calendario las semanas de cada etapa, una por una. Con el botón "Aplicar ciclo 4-4-5" se llenan de una vez las 13 semanas estándar y de ahí se ajusta a mano; Semana Santa y la semana de receso nunca entran.
         </p>
       </div>
 
@@ -2903,14 +2875,15 @@ function Paso4Programacion({
         </div>
       </div>
 
+
       {/* ETAPA 1: PLANEACIÓN - Siempre habilitada */}
       <EquipoAuditorDisponibilidadAlert
         disponibilidad={disponibilidadEquipoAuditor}
         validando={validandoDisponibilidadEquipo}
       />
 
-      <Card className="p-6 border-2 border-blue-200 bg-blue-50/30">
-        <div className="flex items-center gap-3 mb-4">
+      <Card className="p-4 sm:p-6 border-2 border-blue-200 bg-blue-50/30">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Planeación 1</h4>
@@ -2928,30 +2901,26 @@ function Paso4Programacion({
           <FieldWrapper
             label="Fecha de Inicio"
             required={!esAuditoriaEspecial}
-            helpText="Inicio de la etapa de Planeación"
+            helpText={ayudaCalendario}
           >
-            <Input
-              type="date"
-              value={formData.fechaInicioPlaneacion || ''}
-              onChange={(e) => handleFechaInicioPlaneacionChange(e.target.value)}
-              className="border-gray-300"
-              min={minDate}
-              max={maxDate}
+            <CampoFechaCalendario
+              {...propiedadesCalendario}
+              etapa="P"
+              extremo="inicio"
+              valor={formData.fechaInicioPlaneacion}
             />
           </FieldWrapper>
 
           <FieldWrapper
             label="Fecha de Fin"
             required={!esAuditoriaEspecial}
-            helpText="Finalización de la etapa de Planeación"
+            helpText={ayudaCalendario}
           >
-            <Input
-              type="date"
-              value={formData.fechaFinPlaneacion || ''}
-              onChange={(e) => handleFechaFinPlaneacionChange(e.target.value)}
-              className="border-gray-300"
-              min={formData.fechaInicioPlaneacion || minDate}
-              max={maxDate}
+            <CampoFechaCalendario
+              {...propiedadesCalendario}
+              etapa="P"
+              extremo="fin"
+              valor={formData.fechaFinPlaneacion}
             />
           </FieldWrapper>
         </div>
@@ -2964,8 +2933,8 @@ function Paso4Programacion({
       </Card>
 
       {/* ETAPA 2: EJECUCIÓN - Se habilita al completar Planeación */}
-      <Card className={`p-6 border-2 ${planeacionHabilitada ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
-        <div className="flex items-center gap-3 mb-4">
+      <Card className={`p-4 sm:p-6 border-2 ${planeacionHabilitada ? 'border-amber-200 bg-amber-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className={`w-8 h-8 rounded-full ${planeacionHabilitada ? 'bg-amber-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>2</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Ejecución</h4>
@@ -2986,35 +2955,31 @@ function Paso4Programacion({
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FieldWrapper 
-            label="Fecha de Inicio" 
+          <FieldWrapper
+            label="Fecha de Inicio"
             required={planeacionCompleta && !esAuditoriaEspecial}
-            helpText="Inicio de la etapa de Ejecución"
+            helpText={ayudaCalendario}
           >
-            <Input
-              type="date"
-              value={formData.fechaInicioEjecucion || ''}
-              onChange={(e) => handleFechaInicioEjecucionChange(e.target.value)}
-              className="border-gray-300"
-              disabled={!planeacionHabilitada}
-              min={formData.fechaFinPlaneacion || minDate}
-              max={maxDate}
+            <CampoFechaCalendario
+              {...propiedadesCalendario}
+              etapa="E"
+              extremo="inicio"
+              valor={formData.fechaInicioEjecucion}
+              deshabilitado={!planeacionHabilitada}
             />
           </FieldWrapper>
 
-          <FieldWrapper 
-            label="Fecha de Fin" 
+          <FieldWrapper
+            label="Fecha de Fin"
             required={planeacionCompleta && !esAuditoriaEspecial}
-            helpText="Finalización de la etapa de Ejecución"
+            helpText={ayudaCalendario}
           >
-            <Input
-              type="date"
-              value={formData.fechaFinEjecucion || ''}
-              onChange={(e) => handleFechaFinEjecucionChange(e.target.value)}
-              className="border-gray-300"
-              disabled={!planeacionHabilitada}
-              min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || minDate}
-              max={maxDate}
+            <CampoFechaCalendario
+              {...propiedadesCalendario}
+              etapa="E"
+              extremo="fin"
+              valor={formData.fechaFinEjecucion}
+              deshabilitado={!planeacionHabilitada}
             />
           </FieldWrapper>
         </div>
@@ -3027,8 +2992,8 @@ function Paso4Programacion({
       </Card>
 
       {/* ETAPA 3: COMUNICACIÓN - Se habilita al completar Ejecución */}
-      <Card className={`p-6 border-2 ${ejecucionHabilitada ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
-        <div className="flex items-center gap-3 mb-4">
+      <Card className={`p-4 sm:p-6 border-2 ${ejecucionHabilitada ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className={`w-8 h-8 rounded-full ${ejecucionHabilitada ? 'bg-green-600' : 'bg-gray-400'} text-white flex items-center justify-center font-bold text-sm`}>3</div>
           <div>
             <h4 className="font-bold text-gray-900">Etapa de Comunicación</h4>
@@ -3049,35 +3014,31 @@ function Paso4Programacion({
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FieldWrapper 
-            label="Fecha de Inicio" 
+          <FieldWrapper
+            label="Fecha de Inicio"
             required={ejecucionCompleta && !esAuditoriaEspecial}
-            helpText="Inicio de la etapa de Comunicación"
+            helpText={ayudaCalendario}
           >
-            <Input
-              type="date"
-              value={formData.fechaInicioComunicacion || ''}
-              onChange={(e) => handleFechaInicioComunicacionChange(e.target.value)}
-              className="border-gray-300"
-              disabled={!ejecucionHabilitada}
-              min={formData.fechaFinEjecucion || minDate}
-              max={maxDate}
+            <CampoFechaCalendario
+              {...propiedadesCalendario}
+              etapa="C"
+              extremo="inicio"
+              valor={formData.fechaInicioComunicacion}
+              deshabilitado={!ejecucionHabilitada}
             />
           </FieldWrapper>
 
-          <FieldWrapper 
-            label="Fecha de Fin" 
+          <FieldWrapper
+            label="Fecha de Fin"
             required={ejecucionCompleta && !esAuditoriaEspecial}
-            helpText="Finalización de la auditoría"
+            helpText={ayudaCalendario}
           >
-            <Input
-              type="date"
-              value={formData.fechaFinComunicacion || ''}
-              onChange={(e) => handleFechaFinComunicacionChange(e.target.value)}
-              className="border-gray-300"
-              disabled={!ejecucionHabilitada}
-              min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || minDate}
-              max={maxDate}
+            <CampoFechaCalendario
+              {...propiedadesCalendario}
+              etapa="C"
+              extremo="fin"
+              valor={formData.fechaFinComunicacion}
+              deshabilitado={!ejecucionHabilitada}
             />
           </FieldWrapper>
         </div>

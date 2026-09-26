@@ -56,7 +56,14 @@ import {
   type TipoAuditoria as TipoAuditoriaHook,
   type EstadoAuditoria as EstadoAuditoriaHook,
 } from './hooks/useProgramaAnualData';
-import { esFestivo } from '../gestion-legal/utils/diasHabiles';
+import { festivoDe, fechaYMD, semanasDeVigencia, NOMBRE_BLOQUEO, type BloqueoSemana } from './services/calendarioVigencia';
+
+/**
+ * Festivos calculados por la Ley 51 de 1983 para cualquier año (EFDS-2132). Antes
+ * salían de la lista fija de Gestión Legal, que solo va de 2024 a 2027: en 2035 o
+ * 2046 el cronograma no marcaba ni el 1 de enero.
+ */
+const esFestivo = (dia: Date) => !!festivoDe(fechaYMD(dia));
 import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
 import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
 import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
@@ -154,16 +161,20 @@ const DURACION_ETAPAS_WEEKS = {
 function obtenerEtapaAutomatica(fechaReferencia: Date, auditoria: AuditoriaProgramada): ColumnaKanban {
   if (!auditoria.fechaInicio) return 'desconocido';
   
+  // Al mediodía, igual que parsearFecha: a las 00:00 el primer día de cada etapa
+  // quedaba antes de su inicio (12:00) y no se pintaba.
   const ref = new Date(fechaReferencia);
-  ref.setHours(0, 0, 0, 0);
+  ref.setHours(12, 0, 0, 0);
 
   const { planeacion, ejecucion, comunicacion } = obtenerRangosEtapas(auditoria);
+  const dentro = (r: RangoEtapa | null) => !!r && ref >= r.inicio && ref <= r.fin;
 
-  if (ref >= planeacion.inicio && ref <= planeacion.fin) return 'planeacion';
-  if (ref >= ejecucion.inicio && ref <= ejecucion.fin) return 'ejecucion';
-  if (ref >= comunicacion.inicio && ref <= comunicacion.fin) return 'comunicacion';
-  
-  if (ref < planeacion.inicio) return 'plan_anual';
+  if (dentro(planeacion)) return 'planeacion';
+  if (dentro(ejecucion)) return 'ejecucion';
+  if (dentro(comunicacion)) return 'comunicacion';
+
+  const primera = planeacion ?? ejecucion ?? comunicacion;
+  if (!primera || ref < primera.inicio) return 'plan_anual';
   return 'seguimiento';
 }
 
@@ -182,8 +193,10 @@ function resolverEtapaParaCronograma(dia: Date, aud: AuditoriaProgramada): Colum
   const ui = aud as any;
   const kanbanCol = resolverColumnaKanban(ui.estadoKanban, ui.fase, ui.estado);
 
-  // Sin estado Kanban definido → calcular por fechas
-  if (kanbanCol === 'desconocido') {
+  // Sin estado Kanban, o todavía en "Plan Anual" (programada y sin arrancar) →
+  // calcular por fechas. Antes "Plan Anual" se aplicaba a todos los días desde la
+  // última modificación y las auditorías de vigencias futuras no se pintaban.
+  if (kanbanCol === 'desconocido' || kanbanCol === 'plan_anual') {
     return obtenerEtapaAutomatica(dia, aud);
   }
 
@@ -249,9 +262,17 @@ function parsearFecha(raw: string | undefined | null): Date | null {
   return null;
 }
 
-function obtenerRangosEtapas(auditoria: AuditoriaProgramada) {
+type RangoEtapa = { inicio: Date; fin: Date };
+
+/**
+ * Rango de cada etapa con las fechas guardadas. Una etapa sin fechas queda en
+ * null: una auditoría Especial puede tener solo Ejecución y Comunicación, o solo
+ * Comunicación (EFDS-1923), y antes se le inventaba un ciclo 4-4-5 desde su inicio.
+ * El 4-4-5 queda solo para las auditorías viejas que no guardan fechas por etapa.
+ */
+function obtenerRangosEtapas(auditoria: AuditoriaProgramada): Record<'planeacion' | 'ejecucion' | 'comunicacion', RangoEtapa | null> {
   const { fechaInicio, fechaFinPlaneacion, fechaInicioEjecucion, fechaFinEjecucion, fechaInicioComunicacion, fechaFin } = auditoria;
-  
+
   const pStart = parsearFecha(fechaInicio);
   const pEnd   = parsearFecha(fechaFinPlaneacion);
   const eStart = parsearFecha(fechaInicioEjecucion);
@@ -259,18 +280,17 @@ function obtenerRangosEtapas(auditoria: AuditoriaProgramada) {
   const cStart = parsearFecha(fechaInicioComunicacion);
   const cEnd   = parsearFecha(fechaFin);
 
-  // Si tenemos todas las fechas persistidas, usarlas directamente
-  if (pStart && pEnd && eStart && eEnd && cStart && cEnd) {
+  if (pEnd || eStart || eEnd || cStart) {
     return {
-      planeacion:   { inicio: pStart, fin: pEnd   },
-      ejecucion:    { inicio: eStart, fin: eEnd   },
-      comunicacion: { inicio: cStart, fin: cEnd   }
+      planeacion:   pStart && pEnd ? { inicio: pStart, fin: pEnd } : null,
+      ejecucion:    eStart && eEnd ? { inicio: eStart, fin: eEnd } : null,
+      comunicacion: cStart && cEnd ? { inicio: cStart, fin: cEnd } : null,
     };
   }
 
-  // Fallback: Cálculo dinámico (4-4-5 semanas desde fechaInicio)
+  // Auditorías viejas sin fechas por etapa: ciclo 4-4-5 desde fechaInicio
   const inicio = parsearFecha(fechaInicio) || new Date();
-  inicio.setHours(0, 0, 0, 0);
+  inicio.setHours(12, 0, 0, 0);
   
   const pInicio = new Date(inicio);
   const pFin = new Date(inicio);
@@ -394,6 +414,12 @@ function auditoriasEnRangoDiaLaborable(
     // El día debe solaparse con el rango de la auditoría
     return diaInicio <= fin && diaFin >= inicio;
   });
+}
+
+/** Semana Santa o receso de la semana que arranca ese lunes (EFDS-2132). */
+function bloqueoDeSemana(lunes: Date): BloqueoSemana | undefined {
+  const ymd = fechaYMD(lunes);
+  return semanasDeVigencia(lunes.getFullYear()).find((s) => s.lunes === ymd)?.bloqueo;
 }
 
 /** Estilo rojo institucional para días festivos en el calendario */
@@ -571,15 +597,19 @@ export function CronogramaAuditoriasPremium({
   const handleExportExcel = async () => {
     toast.info('Generando archivo Excel...');
 
-    // El Programa Anual se exporta desde la versión que resuelve el backend: el
-    // documento sale de la base de datos y queda versionado (EFDS-1919 / EFDS-1639).
+    // El documento sale de la base de datos (EFDS-1919 / EFDS-1639). Exportar no
+    // crea versiones: la V1 nace al aprobar el Plan Anual y las demás con "Generar versión".
     try {
       const resultado = await exportarProgramaAnualVersionado(vigencia);
       if (resultado.exito) {
         toast.success(
-          resultado.nueva
-            ? `Programa Anual exportado. Se generó la versión ${resultado.version}.`
-            : `Programa Anual exportado (versión ${resultado.version}, sin cambios).`,
+          resultado.borrador
+            ? 'Programa Anual exportado como borrador: la versión 1 se genera al aprobar el Plan Anual.'
+            : resultado.pendiente
+              ? `Programa Anual exportado como borrador de la versión ${resultado.version + 1}. Use "Generar versión" para oficializar los cambios.`
+              : resultado.nueva
+                ? `Programa Anual exportado. Se generó la versión ${resultado.version}.`
+                : `Programa Anual exportado (versión ${resultado.version}).`,
         );
         if (resultado.nueva) {
           window.dispatchEvent(new CustomEvent(EVENTO_VERSION_PROGRAMA, { detail: { vigencia } }));
@@ -650,6 +680,7 @@ export function CronogramaAuditoriasPremium({
         fechaInicioEjecucionRaw: a.fechaInicioEjecucion,
         fechaFinEjecucionRaw: a.fechaFinEjecucion,
         fechaInicioComunicacionRaw: a.fechaInicioComunicacion,
+        semanasExcluidas: a.semanasExcluidas || [],
         progreso: typeof a.avance === 'number' ? a.avance : 0,
         hallazgos: 0, 
         riesgo: a.riesgo || 'Bajo'
@@ -1101,15 +1132,17 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
     setVerMasEtapa((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Obtener inicio y fin de la semana
+  // La semana va de lunes a domingo, igual que en el Programa Anual (EFDS-2132)
   const inicioSemana = new Date(fecha);
-  inicioSemana.setDate(fecha.getDate() - fecha.getDay());
-  
+  inicioSemana.setDate(fecha.getDate() - ((fecha.getDay() + 6) % 7));
+
   const diasSemana = Array.from({ length: 7 }, (_, i) => {
     const dia = new Date(inicioSemana);
     dia.setDate(inicioSemana.getDate() + i);
     return dia;
   });
+
+  const bloqueoSemana = bloqueoDeSemana(inicioSemana);
 
   return (
     <motion.div
@@ -1118,6 +1151,12 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-4 overflow-x-auto"
     >
+      {bloqueoSemana && (
+        <div className="flex items-center gap-2 rounded-xl border-2 border-orange-300 bg-orange-50 px-4 py-2.5 text-sm font-bold text-orange-900">
+          <CalendarOff className="w-4 h-4 shrink-0" aria-hidden />
+          {NOMBRE_BLOQUEO[bloqueoSemana]}: en esta semana no se programan auditorías
+        </div>
+      )}
       <div className="grid grid-cols-7 gap-3 min-w-[900px]">
         {diasSemana.map((dia, idx) => {
           const auditoriasDelDia = auditoriasEnRangoDiaLaborable(dia, auditorias);
@@ -1629,11 +1668,14 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                         const inicioMs = new Date(auditoria.fechaInicio).getTime();
                         const finMs = new Date(auditoria.fechaFin).getTime();
                         const totalMs = finMs - inicioMs;
-                        
+
                         // Evitar división por cero
-                        const duracionMs = Math.max(totalMs, 1000 * 60 * 60 * 24); 
-                        const pPct = ((planeacion.fin.getTime() - planeacion.inicio.getTime() + (1000 * 60 * 60 * 24)) / duracionMs) * 100;
-                        const ePct = ((ejecucion.fin.getTime() - ejecucion.inicio.getTime() + (1000 * 60 * 60 * 24)) / duracionMs) * 100;
+                        const duracionMs = Math.max(totalMs, 1000 * 60 * 60 * 24);
+                        // Una etapa que la auditoría no tiene (Especial) no ocupa espacio en la barra
+                        const pct = (r: RangoEtapa | null) =>
+                          r ? ((r.fin.getTime() - r.inicio.getTime() + (1000 * 60 * 60 * 24)) / duracionMs) * 100 : 0;
+                        const pPct = pct(planeacion);
+                        const ePct = pct(ejecucion);
 
                         return (
                           <button
@@ -1927,6 +1969,19 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                   // ✅ Badge ACTUAL respeta estadoKanban (movido por el usuario)
                   const esActual = resolverEtapaActual(auditoria) === col;
 
+                  // Etapa que la auditoría no tiene (una Especial que arranca en Ejecución o Comunicación)
+                  if (!rango) {
+                    return (
+                      <div key={etapa} className="p-3 rounded-xl border-2 border-dashed border-gray-300 bg-white opacity-70">
+                        <div className="text-[10px] font-black mb-1 text-gray-500">{ETIQUETA_COLUMNA_KANBAN[col]}</div>
+                        <div className="text-[10px] font-bold text-gray-400">No programada</div>
+                      </div>
+                    );
+                  }
+                  // Semanas que toca la etapa, contando el primer y el último día
+                  const DIA = 24 * 60 * 60 * 1000;
+                  const semanas = Math.max(1, Math.ceil((rango.fin.getTime() - rango.inicio.getTime() + DIA) / (7 * DIA)));
+
                   return (
                     <div 
                       key={etapa}
@@ -1949,7 +2004,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                         {rango.fin.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
                       </div>
                       <div className="text-[9px] text-gray-500 mt-1 font-medium italic">
-                        {DURACION_ETAPAS_WEEKS[col as keyof typeof DURACION_ETAPAS_WEEKS]} semanas
+                        {semanas} {semanas === 1 ? 'semana' : 'semanas'}
                       </div>
                     </div>
                   );
@@ -1977,13 +2032,13 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
               <div className="text-xs font-bold text-gray-600 mb-1">Fecha Inicio</div>
               <div className="text-sm font-black text-gray-900">
-                {new Date(auditoria.fechaInicio).toLocaleDateString('es-CO')}
+                {parsearFecha(auditoria.fechaInicio)?.toLocaleDateString('es-CO') ?? '—'}
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
               <div className="text-xs font-bold text-gray-600 mb-1">Fecha Fin Sugerida</div>
               <div className="text-sm font-black text-gray-900">
-                {new Date(auditoria.fechaFin).toLocaleDateString('es-CO')}
+                {parsearFecha(auditoria.fechaFin)?.toLocaleDateString('es-CO') ?? '—'}
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
@@ -2043,11 +2098,15 @@ function getTituloFecha(fecha: Date, vista: VistaCalendario): string {
   if (vista === 'dia') {
     return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
   } else if (vista === 'semana') {
+    // Semana de lunes a domingo (EFDS-2132)
     const inicioSemana = new Date(fecha);
-    inicioSemana.setDate(fecha.getDate() - fecha.getDay());
+    inicioSemana.setDate(fecha.getDate() - ((fecha.getDay() + 6) % 7));
     const finSemana = new Date(inicioSemana);
     finSemana.setDate(inicioSemana.getDate() + 6);
-    return `${inicioSemana.getDate()} - ${finSemana.getDate()} ${MESES[fecha.getMonth()]} ${fecha.getFullYear()}`;
+    const mismoMes = inicioSemana.getMonth() === finSemana.getMonth();
+    return mismoMes
+      ? `${inicioSemana.getDate()} - ${finSemana.getDate()} ${MESES[inicioSemana.getMonth()]} ${finSemana.getFullYear()}`
+      : `${inicioSemana.getDate()} ${MESES[inicioSemana.getMonth()]} - ${finSemana.getDate()} ${MESES[finSemana.getMonth()]} ${finSemana.getFullYear()}`;
   } else if (vista === 'mes') {
     return `${MESES[fecha.getMonth()]} ${fecha.getFullYear()}`;
   } else {

@@ -17,6 +17,7 @@ import {
   BadRequestException,
   HttpCode,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Response } from 'express';
@@ -24,11 +25,21 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { getUploadRootDir } from '../../common/storage.util';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { Public } from '../../auth/public.decorator';
 import { PermissionsGuard } from '../../common/permissions.guard';
+
 import { Permissions } from '../../common/permissions.decorator';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
@@ -97,6 +108,7 @@ function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
 @ApiTags('control-viaticos')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TravelExpensesController {
+  private readonly logger = new Logger(TravelExpensesController.name);
   constructor(private readonly service: TravelExpensesService) {}
 
   @Get('solicitudes')
@@ -252,9 +264,83 @@ export class TravelExpensesController {
   }
 
   @Get('comisionados/:documento')
+  @Public()
+  @ApiOperation({
+    summary: 'Consultar comisionado por número de documento',
+    description:
+      'Busca el funcionario en la base local, en la base de datos de Talento Humano (Oracle FNC / VW_INTEGRACIONFNC) o en ESAP (auth.personas), y lo registra como comisionado.',
+  })
+  @ApiParam({
+    name: 'documento',
+    description: 'Número de documento de identidad del funcionario',
+    example: '1019283746',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Comisionado encontrado o materializado exitosamente.',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'No se encontró el funcionario en ninguna base de datos.',
+  })
   consultarComisionado(@Param('documento') documento: string) {
     return this.service.consultarComisionado(documento);
   }
+
+  @Get('talento-humano/consultar')
+  @Public()
+  @ApiOperation({
+    summary: 'Consulta general o específica en la base de datos de Talento Humano (Oracle FNC)',
+    description:
+      'Permite realizar una búsqueda general por coincidencia de nombre o cédula (`query`), o una consulta directa por número exacto de documento (`documento`). Conecta con la vista VW_INTEGRACIONFNC vía el microservicio de integración.',
+  })
+  @ApiQuery({
+    name: 'query',
+    required: false,
+    description: 'Término de búsqueda general (mínimo 3 caracteres para buscar por nombre o número)',
+    example: 'Gomez',
+  })
+  @ApiQuery({
+    name: 'documento',
+    required: false,
+    description: 'Número de cédula o documento de identidad exacto',
+    example: '80123456',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Límite máximo de resultados a retornar (por defecto 20)',
+    example: 20,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Resultados de funcionarios encontrados en Talento Humano.',
+  })
+  consultarTalentoHumano(
+    @Query('query') query?: string,
+    @Query('documento') documento?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 20;
+    this.logger.log(
+      `[consultarTalentoHumano] Entrada - query: "${query}", documento: "${documento}", limit: ${parsedLimit}`,
+    );
+    const result = this.service.buscarTalentoHumano(query, documento, parsedLimit);
+    result.then(
+      (res) => {
+        this.logger.log(
+          `[consultarTalentoHumano] Respuesta - ok: ${res?.ok}, source: ${res?.source}, total: ${res?.total}`,
+        );
+      },
+      (err) => {
+        this.logger.error(
+          `[consultarTalentoHumano] Error - ${err?.message || err}`,
+        );
+      },
+    );
+    return result;
+  }
+
 
   @Post('requests')
   @Permissions('travel_expenses:create_request')

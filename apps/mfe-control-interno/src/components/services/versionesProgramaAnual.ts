@@ -25,20 +25,32 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
     fechaInicioEjecucionRaw: f.fechaInicioEjecucion,
     fechaFinEjecucionRaw: f.fechaFinEjecucion,
     fechaInicioComunicacionRaw: f.fechaInicioComunicacion,
+    semanasExcluidas: (f as any).semanasExcluidas || [],
   }));
 }
 
 /**
- * Exporta el Programa Anual vigente. El backend decide si corresponde una
- * versión nueva: la crea solo si cambió algo de lo que el documento imprime.
+ * Exporta el Programa Anual tal como está. Exportar no crea versiones: antes de
+ * aprobarse el Plan Anual sale como borrador; después, como la versión vigente o,
+ * si hay cambios sin versionar, como el borrador de la siguiente. La V1 nace con la
+ * aprobación del plan y las demás con "Generar versión".
  */
 export async function exportarProgramaAnualVersionado(vigencia: number) {
   const version = await controlInternoService.resolverVersionProgramaAnual(vigencia);
   const resultado = await exportarAuditoriasTemplate(filasParaDocumento(version.filas), String(vigencia), {
-    version: version.version,
-    fechaVersion: version.fecha,
+    version: version.borrador || version.pendiente ? undefined : version.version,
+    fechaVersion: version.borrador || version.pendiente ? undefined : version.fecha,
+    borrador: !!version.borrador,
+    borradorDe: version.pendiente ? version.version + 1 : undefined,
   });
-  return { ...resultado, version: version.version, nueva: version.nueva, cambios: version.cambios };
+  return {
+    ...resultado,
+    version: version.version,
+    nueva: version.nueva,
+    cambios: version.cambios,
+    borrador: !!version.borrador,
+    pendiente: !!version.pendiente,
+  };
 }
 
 /** Descarga una versión anterior tal como quedó guardada. */
