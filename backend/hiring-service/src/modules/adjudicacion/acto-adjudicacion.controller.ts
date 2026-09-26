@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,6 +20,7 @@ import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -29,8 +29,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Acto de adjudicación — actividad 7.4 (EFDS-1159).
@@ -45,8 +43,7 @@ export class ActoAdjudicacionController {
   constructor(private readonly service: ActoAdjudicacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar', 'contratacion.adjudicacion.decidir')
+  @Puede('ver', '7.4')
   @ApiOperation({
     summary: 'Estado de la adjudicación',
     description:
@@ -57,8 +54,7 @@ export class ActoAdjudicacionController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.adjudicacion.decidir')
+  @Puede('decidir', '7.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -97,8 +93,7 @@ export class ActoAdjudicacionController {
   }
 
   @Post('publicar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.adjudicacion.decidir')
+  @Puede('decidir', '7.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -138,8 +133,7 @@ export class ActoAdjudicacionController {
   }
 
   @Post('revocar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.adjudicacion.decidir')
+  @Puede('decidir', '7.4')
   @ApiOperation({
     summary: 'Revocar el acto de adjudicación',
     description:

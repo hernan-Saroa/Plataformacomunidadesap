@@ -12,7 +12,7 @@ import { RegistroActividadService } from './registro-actividad.service';
  */
 describe('RegistroActividadService · la firma con el token institucional', () => {
   const servicio = () =>
-    new RegistroActividadService({} as never, {} as never, {} as never) as never as {
+    new RegistroActividadService({} as never, {} as never, {} as never, {} as never) as never as {
       exigirFirmaValida(firma: { id: string; fechaFirma: string; metodo: string } | undefined): void;
       exigeFirma(em: unknown, numeral: string): Promise<boolean>;
     };

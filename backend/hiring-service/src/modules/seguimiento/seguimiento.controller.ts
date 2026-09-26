@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -18,13 +17,8 @@ import { unlink } from 'fs/promises';
 
 import { SeguimientoService } from './seguimiento.service';
 import { CargarSeguimientoDto } from './dto/seguimiento.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_SEGUIMIENTO_CARGAR,
-  PERMISO_SEGUIMIENTO_VER,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -46,8 +40,7 @@ export class SeguimientoController {
   constructor(private readonly service: SeguimientoService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_SEGUIMIENTO_VER)
+  @Puede('ver', '9.2')
   @ApiOperation({
     summary: 'Estado del contrato en ejecución y sus soportes',
     description:
@@ -58,8 +51,7 @@ export class SeguimientoController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_SEGUIMIENTO_CARGAR)
+  @Puede('editar', '9.2')
   @UseInterceptors(
     FileInterceptor(
       'file',

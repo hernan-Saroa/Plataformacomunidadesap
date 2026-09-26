@@ -9,7 +9,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -19,30 +18,27 @@ import { unlink } from 'fs/promises';
 
 import { DocumentosActividadService } from './documentos-actividad.service';
 import { getHiringAccess } from '../../auth/hiring-access';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
- * Los documentos que una actividad entrega según sus formatos (EFDS-1183).
+ * Los documentos que pide cada actividad (EFDS-2066).
  *
- * Sirve a cualquier actividad, a diferencia de `/documentos`, que resuelve la
- * lista fija de la 5.1: aquí las filas salen de los formatos que Contratación
- * le haya asignado desde la biblioteca, y por eso una actividad empieza a
- * pedir documentos sin que nadie despliegue nada.
+ * Sirve a las sesenta y tres: las filas salen de lo que Configuración haya
+ * definido para la actividad en `documentos_requeridos`, así que una actividad
+ * empieza a pedir documentos sin que nadie despliegue nada.
  */
-@ApiTags('Documentos por formato de la actividad')
+@ApiTags('Documentos requeridos por actividad')
 @Controller('procesos/:id/actividades/:numeral/documentos')
 export class DocumentosActividadController {
   constructor(private readonly service: DocumentosActividadService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', { param: 'numeral' })
   @ApiOperation({
     summary: 'Documentos que pide la actividad y los que ya se entregaron',
     description:
-      'Las filas salen de los formatos asignados a la actividad, filtrados por la modalidad del proceso. Responde con lista vacía cuando no hay ninguno: es la respuesta correcta, no un error.',
+      'Las filas salen de los documentos requeridos de la actividad, filtrados por la modalidad y la tipología del proceso. Responde con lista vacía cuando no hay ninguno: es la respuesta correcta, no un error.',
   })
   estado(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -53,8 +49,7 @@ export class DocumentosActividadController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.documento.upload')
+  @Puede('editar', { param: 'numeral' })
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -68,12 +63,12 @@ export class DocumentosActividadController {
   @ApiOperation({
     summary: 'Cargar un documento de la actividad',
     description:
-      'Con `plantillaId` el documento cumple el requisito de ese formato; sin él queda como anexo adicional, que se guarda pero no se exige.',
+      'Con `codigo` el documento cubre ese requisito; sin él queda como anexo adicional, que se guarda pero no se exige.',
   })
   async cargar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Param('numeral') numeral: string,
-    @Body() body: { plantillaId?: string },
+    @Body() body: { codigo?: string },
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
@@ -81,14 +76,15 @@ export class DocumentosActividadController {
 
     const ruta = join(STORAGE_PATH, file.filename);
     try {
-      return await this.service.cargar(
+      const documento = await this.service.cargar(
         procesoId,
         numeral,
-        body?.plantillaId,
+        body?.codigo || undefined,
         file,
         await sha256Archivo(ruta),
         getHiringAccess(req),
       );
+      return { id: documento.id, nombre: documento.nombre };
     } catch (error) {
       // Multer escribió el archivo antes de que el servicio validara nada: si
       // el registro no prospera, ese archivo no pertenece a ningún expediente.
@@ -97,13 +93,28 @@ export class DocumentosActividadController {
     }
   }
 
-  @Delete(':documentoId')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.documento.upload')
+  @Post(':documentoProcesoId/anular')
+  @Puede('editar', { param: 'numeral' })
   @ApiOperation({
-    summary: 'Retirar un documento de la actividad',
+    summary: 'Sustituir un documento requerido',
     description:
-      'Queda la traza de que se cargó y de que se retiró, con quién y cuándo. El archivo en disco se conserva: el expediente debe poder probar qué se entregó.',
+      'Deja sin efecto la entrega para poder cargar otra. No se borra: el expediente conserva la versión anterior.',
+  })
+  anular(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('numeral') numeral: string,
+    @Param('documentoProcesoId', ParseUUIDPipe) documentoProcesoId: string,
+    @Req() req: any,
+  ) {
+    return this.service.anular(procesoId, numeral, documentoProcesoId, getHiringAccess(req));
+  }
+
+  @Delete(':documentoId')
+  @Puede('editar', { param: 'numeral' })
+  @ApiOperation({
+    summary: 'Retirar un anexo adicional de la actividad',
+    description:
+      'Solo lo que no cubre ningún requisito; lo que sí lo cubre se sustituye. Queda la traza de que se cargó y de que se retiró, con quién y cuándo.',
   })
   retirar(
     @Param('id', ParseUUIDPipe) procesoId: string,

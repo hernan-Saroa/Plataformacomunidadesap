@@ -10,7 +10,6 @@ import {
   Put,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -23,10 +22,9 @@ import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Recepción de ofertas — actividad 6.1 (EFDS-1155).
@@ -41,8 +39,7 @@ export class OfertasController {
   constructor(private readonly service: OfertasService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '6.1')
   @ApiOperation({
     summary: 'Estado de la recepción de ofertas',
     description:
@@ -53,8 +50,7 @@ export class OfertasController {
   }
 
   @Put('plazo')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.1')
   @ApiOperation({
     summary: 'Fijar o corregir el vencimiento del plazo',
     description:
@@ -69,8 +65,7 @@ export class OfertasController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -108,8 +103,7 @@ export class OfertasController {
   }
 
   @Post('cerrar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.1')
   @ApiOperation({
     summary: 'Actividad 6.1 · Cerrar la recepción y publicar la lista',
     description:
@@ -120,8 +114,7 @@ export class OfertasController {
   }
 
   @Delete(':oferenteId')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.1')
   @ApiOperation({
     summary: 'Retirar una oferta registrada por error',
     description:

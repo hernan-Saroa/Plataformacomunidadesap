@@ -10,6 +10,7 @@ import {
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
+import { DocumentoRequerido } from '../../entities/documento-requerido.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Documento } from '../../entities/documento.entity';
 import {
@@ -975,46 +976,38 @@ export class ConfiguracionService {
   // formatos aprobados en el SIG que se diligencian en Word y se firman. Aqui
   // se administra cual corresponde a cada actividad y modalidad.
 
-  /** Formatos de una actividad, o toda la biblioteca si no se indica numeral. */
+  /**
+   * Formatos de una actividad, o toda la biblioteca si no se indica numeral.
+   *
+   * Cada uno dice en qué actividades se pide (`usadaEn`): desde EFDS-2066 un
+   * formato no pertenece a una actividad, lo citan los documentos requeridos
+   * de las que lo usen, y sin esto no se sabría qué deja sin plantilla
+   * retirarlo.
+   */
   async plantillas(numeral?: string) {
     const repo = this.dataSource.getRepository(Plantilla);
-    return repo.find({
+    const plantillas = await repo.find({
       where: numeral ? { numeral } : {},
       order: { numeral: 'ASC', codigo: 'ASC', version: 'DESC' },
     });
-  }
 
-  /**
-   * Mueve un formato de la biblioteca a otra actividad.
-   *
-   * Se sube una vez y se asigna donde corresponda: obligar a subir el mismo
-   * archivo en cada actividad multiplicaria copias del mismo documento y las
-   * dejaria desincronizadas cuando el SIG publique una version nueva.
-   *
-   * `numeral` vacio lo devuelve a la biblioteca sin actividad asignada.
-   */
-  async asignarPlantilla(
-    id: string,
-    numeral: string | null,
-    modalidades?: string[],
-  ) {
-    const repo = this.dataSource.getRepository(Plantilla);
-    const plantilla = await repo.findOne({ where: { id } });
-    if (!plantilla) throw new NotFoundException('El formato no existe');
-
-    if (numeral) {
-      const actividad = await this.dataSource.getRepository(Actividad).findOne({
-        where: { numeral },
-      });
-      if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
+    const requisitos = await this.dataSource.getRepository(DocumentoRequerido).find({
+      where: { activo: true },
+      select: ['numeral', 'plantillaCodigo'],
+    });
+    const usos = new Map<string, Set<string>>();
+    for (const r of requisitos) {
+      if (!r.plantillaCodigo) continue;
+      if (!usos.has(r.plantillaCodigo)) usos.set(r.plantillaCodigo, new Set());
+      usos.get(r.plantillaCodigo)!.add(r.numeral);
     }
 
-    plantilla.numeral = numeral ?? '';
-    // Solo se tocan si vienen: asignar actividad y cambiar el alcance son dos
-    // gestos distintos, y mover un formato de actividad no debe borrar en
-    // silencio las modalidades que ya tenia marcadas.
-    if (modalidades) plantilla.modalidades = modalidades;
-    return repo.save(plantilla);
+    return plantillas.map((p) => ({
+      ...p,
+      usadaEn: [...(usos.get(p.codigo) ?? [])].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      ),
+    }));
   }
 
   /**

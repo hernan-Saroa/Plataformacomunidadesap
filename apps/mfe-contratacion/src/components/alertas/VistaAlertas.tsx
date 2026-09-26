@@ -14,7 +14,8 @@ import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
 import { AlertaVencimiento } from '../../types';
 import { fechaLarga } from '../shared/fechas';
-import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { PERMISOS } from '../../auth/permisos';
+import { useAlcance } from '../../auth/alcance';
 import { ParametrosAlertas } from './ParametrosAlertas';
 
 const RASGOS: Record<
@@ -68,7 +69,8 @@ export function VistaAlertas({ onAbrir }: Props = {}) {
    * lo mismo hacían dudar de cuál mandaba.
    */
   const [pestana, setPestana] = useState<'pendientes' | 'configuracion'>('pendientes');
-  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
+  const { tiene } = useAlcance();
+  const puedeConfigurar = tiene(PERMISOS.configurar);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

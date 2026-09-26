@@ -30,7 +30,6 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   /** Un archivo cargado, tal como lo entrega multer al servicio. */
@@ -219,6 +218,6 @@ describe('HU EFDS-1149 · documentos del proceso (actividad 5.1)', () => {
     // expediente un documento que esa modalidad no contempla.
     await expect(
       documentos.cargar(proceso.id, 'ACTO_JUSTIFICACION', archivo('x.pdf'), '3'.repeat(64), gestor),
-    ).rejects.toThrow(/no corresponde a la modalidad/i);
+    ).rejects.toThrow(/no está entre los que la actividad 5\.1 pide/i);
   });
 });

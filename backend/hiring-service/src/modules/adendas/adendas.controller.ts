@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,6 +20,7 @@ import { AnularAdendaDto, EmitirAdendaDto, PublicarAdendaDto } from './dto/adend
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -29,8 +29,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Adendas del proceso — actividad 5.6 (EFDS-1154).
@@ -45,8 +43,7 @@ export class AdendasController {
   constructor(private readonly service: AdendasService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.6')
   @ApiOperation({
     summary: 'Adendas del proceso, con su estado',
     description:
@@ -57,8 +54,7 @@ export class AdendasController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.6')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -96,8 +92,7 @@ export class AdendasController {
   }
 
   @Post(':adendaId/publicar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.6')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -145,8 +140,7 @@ export class AdendasController {
   }
 
   @Post(':adendaId/anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.6')
   @ApiOperation({
     summary: 'Anular una adenda emitida por error',
     description:

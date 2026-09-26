@@ -3,86 +3,59 @@ import { ConflictException } from '@nestjs/common';
 import { AprobacionService } from './aprobacion.service';
 
 /**
- * No se aprueba una actividad con formatos sin entregar (EFDS-1183).
+ * No se aprueba una actividad con documentos obligatorios sin entregar
+ * (EFDS-1183, EFDS-2066).
  *
  * La pantalla ya deshabilitaba el botón, pero eso solo protege a quien lo
- * mira: el servicio aceptaba la aprobación de una actividad cuyo formato
+ * mira: el servicio aceptaba la aprobación de una actividad cuyo documento
  * seguía en blanco. En la base local quedó un proceso aprobado sin ninguno de
  * sus documentos, que es justo lo que la comprobación tiene que impedir.
+ *
+ * Qué falta lo decide el catálogo único —modalidad, tipología, obligatorio—, y
+ * sus reglas se prueban en `requisitos.spec.ts`. Aquí se fija lo que la
+ * aprobación hace con la respuesta.
  */
-describe('AprobacionService · formatosPendientes', () => {
-  const servicio = () =>
-    new AprobacionService(
+describe('AprobacionService · documentosPendientes', () => {
+  const pendientes = (faltantes: { codigo: string; nombre: string }[]) => {
+    let preguntado: unknown[] = [];
+    const catalogo = {
+      faltantes: async (...args: unknown[]) => {
+        preguntado = args;
+        return faltantes;
+      },
+    };
+    const servicio = new AprobacionService(
       {} as never,
       { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
       {} as never,
-    );
-
-  /** Llama al método privado, que nadie usa desde fuera del servicio. */
-  const pendientes = (
-    formatos: unknown[],
-    entregados: unknown[],
-    modalidad: string | null = 'LICITACION_PUBLICA',
-    expediente: unknown = { id: 'exp-1' },
-  ) => {
-    const em = {
-      getRepository: (entidad: { name: string }) => ({
-        find: async () => (entidad.name === 'Plantilla' ? formatos : entregados),
-        findOne: async () => expediente,
-      }),
+      catalogo as never,
+    ) as unknown as {
+      documentosPendientes(em: unknown, procesoId: string, numeral: string): Promise<string[]>;
     };
-    return (
-      servicio() as unknown as {
-        formatosPendientes(
-          em: unknown,
-          procesoId: string,
-          numeral: string,
-          modalidad: string | null,
-        ): Promise<string[]>;
-      }
-    ).formatosPendientes(em, 'proc-1', '3.2', modalidad);
+
+    return {
+      resultado: servicio.documentosPendientes('em', 'proc-1', '3.2'),
+      preguntado: () => preguntado,
+    };
   };
 
-  const formato = (id: string, codigo: string, modalidades: string[] = []) => ({
-    id,
-    codigo,
-    modalidades,
+  it('nombra el documento que falta, no solo cuántos', async () => {
+    // «Falta cargar el análisis del sector» le dice a quien aprueba qué pedir.
+    const { resultado } = pendientes([{ codigo: 'BS-FO-101', nombre: 'Análisis del sector' }]);
+    await expect(resultado).resolves.toEqual(['Análisis del sector']);
   });
 
-  it('nombra el formato que falta, no solo cuántos', async () => {
-    // «Falta cargar BS-FO-101» le dice a quien aprueba qué pedir.
-    await expect(pendientes([formato('f1', 'BS-FO-101')], [])).resolves.toEqual(['BS-FO-101']);
+  it('sin documentos pendientes no hay nada que exigir', async () => {
+    const { resultado } = pendientes([]);
+    await expect(resultado).resolves.toEqual([]);
   });
 
-  it('no reclama el que ya se entregó', async () => {
-    await expect(
-      pendientes([formato('f1', 'BS-FO-101')], [{ plantillaId: 'f1' }]),
-    ).resolves.toEqual([]);
-  });
-
-  it('un adjunto suelto no cumple el requisito del formato', async () => {
-    // Es el fallo que dejaba pasar la aprobación: el panel guardaba el soporte
-    // sin atarlo al formato, así que el requisito seguía pendiente.
-    await expect(
-      pendientes([formato('f1', 'BS-FO-101')], [{ plantillaId: null }]),
-    ).resolves.toEqual(['BS-FO-101']);
-  });
-
-  it('ignora los formatos de otra modalidad', async () => {
-    await expect(
-      pendientes([formato('f1', 'BS-FO-046', ['CONTRATACION_DIRECTA'])], []),
-    ).resolves.toEqual([]);
-  });
-
-  it('sin formatos asignados no hay nada que exigir', async () => {
-    // La mayoría de las actividades: exigir ahí bloquearía el flujo entero.
-    await expect(pendientes([], [])).resolves.toEqual([]);
-  });
-
-  it('sin expediente abierto los da todos por pendientes', async () => {
-    await expect(
-      pendientes([formato('f1', 'BS-FO-101')], [], 'LICITACION_PUBLICA', null),
-    ).resolves.toEqual(['BS-FO-101']);
+  it('pregunta dentro de la transacción de la decisión', async () => {
+    // Con el manager del DataSource no vería lo que la misma transacción
+    // acaba de escribir.
+    const { resultado, preguntado } = pendientes([]);
+    await resultado;
+    expect(preguntado()).toEqual(['proc-1', '3.2', 'em']);
   });
 
   it('el conflicto es el tipo que la pantalla sabe leer', () => {

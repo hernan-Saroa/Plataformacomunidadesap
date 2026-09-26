@@ -201,7 +201,7 @@ export class ComiteContratacionService {
       where: { procesoId },
       order: { fecha: 'DESC', createdAt: 'DESC' },
     });
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_COMITE_CONTRATACION);
 
     // Cerrada por una sesión que aprobó o que rechazó: no se registra otra.
     // Reabrir una aprobación reescribiría una etapa que pudo cerrar y radicar
@@ -568,7 +568,7 @@ export class ComiteContratacionService {
 
   /** Lo transcribe el abogado del proceso, como el resto de la etapa 3. */
   private async exigirQueLeToque(procesoId: string, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_COMITE_CONTRATACION);
 
     if (motivo === 'SIN_ABOGADO') {
       throw new ConflictException(

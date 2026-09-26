@@ -25,9 +25,9 @@
  * Lo que decide es si lo que hay que guardar cabe en una fecha y una nota.
  */
 export const NUMERALES_CON_REGISTRO = [
-  // Etapa 3 · lo que acompaña al estudio previo
-  '3.2',
-  // De la etapa 3 solo queda el análisis del sector. Las otras cinco salieron:
+  // De la etapa 3 no queda ninguna. El análisis del sector (3.2) se entrega
+  // con el estudio previo, en la lista de chequeo de la 3.1 (migración 090).
+  // Las otras cinco salieron:
   // radicar es recibir el proceso en la Dirección y ponerle responsable (3.3);
   // la 3.4 es la decisión del abogado sobre el estudio previo; la 3.5 es
   // ratificar la modalidad que el área eligió —subir un papel la daba por

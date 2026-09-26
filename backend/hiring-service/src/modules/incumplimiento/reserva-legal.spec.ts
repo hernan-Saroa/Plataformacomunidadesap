@@ -1,14 +1,8 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { PERMISOS_KEY } from '../../auth/permisos.decorator';
-import {
-  PERMISO_INCUMPLIMIENTO_DECIDIR,
-  PERMISO_INCUMPLIMIENTO_TRAMITAR,
-  PERMISO_INCUMPLIMIENTO_VER,
-  tienePermiso,
-} from '../../auth/permisos';
+import { Alcance } from '../../auth/alcance';
+import { PuedeGuard } from '../../auth/puede.guard';
 
 /**
  * Criterio de EFDS-1182 (RF-INC-03): «dado un caso de presunto incumplimiento,
@@ -17,42 +11,46 @@ import {
  * deja constancia de quién lo hizo».
  *
  * Son las dos mitades de la reserva legal y se prueban por separado porque las
- * resuelven dos piezas distintas: el bloqueo lo hace PermisosGuard antes de
- * llegar al servicio, y la constancia la deja el servicio al responder. Probar
- * solo el bloqueo dejaría sin verificar que el acceso legítimo queda anotado,
- * que es lo que un ente de control viene a pedir.
+ * resuelven dos piezas distintas: el bloqueo lo hace el guard antes de llegar
+ * al servicio, y la constancia la deja el servicio al responder.
  *
- * Se prueba el guard directamente, sin levantar el módulo: lo que la historia
- * exige es que un permiso ausente corte la petición, y eso ocurre en
- * `canActivate` sin que haga falta base de datos ni HTTP.
+ * Desde la 083 la atribución es `ver` en el trámite INC.1 —o en todo el
+ * módulo—: el caso no cuelga de la etapa 9, así que ver la ejecución del
+ * contrato no abre el incumplimiento.
  */
 
-/**
- * El contexto mínimo que PermisosGuard lee: el handler y la clase para buscar
- * la metadata, y el `user` de la petición.
- */
+/** El contexto mínimo que PuedeGuard lee: el handler, la clase y el usuario. */
 function contextoCon(user: unknown): ExecutionContext {
   return {
-    getHandler: () => function consultar() {},
+    getHandler: () => function estado() {},
     getClass: () => class IncumplimientoController {},
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
+    switchToHttp: () => ({ getRequest: () => ({ user, params: {} }) }),
   } as unknown as ExecutionContext;
 }
 
+const alcance = (accion: Alcance['accion'], lugar: { etapa?: number; tramite?: string } = {}): Alcance => ({
+  accion,
+  etapa: lugar.etapa ?? null,
+  numeral: null,
+  tramite: lugar.tramite ?? null,
+});
+
 /**
- * Un guard con la metadata ya puesta, para no depender de los decoradores del
- * controlador: aquí se prueba la regla, no cómo se anota.
- *
- * `PermisosService` se sustituye por uno que nunca otorga nada. Es
- * deliberado: la tercera fuente del guard —el mapa del código— ya está
- * cubierta por `tienePermiso`, y dejar que la consulta respondiera «sí» aquí
- * escondería el fallo que esta prueba busca.
+ * Un guard que exige ver el INC.1, como el GET del incumplimiento, con los
+ * alcances que se le den al usuario.
  */
-function guardExigiendo(...permisos: string[]): PermisosGuard {
-  const reflector = { getAllAndOverride: () => permisos } as unknown as Reflector;
-  const servicio = { alguno: async () => false } as any;
-  return new PermisosGuard(reflector, servicio);
+function guardCon(alcances: Alcance[]): PuedeGuard {
+  const reflector = {
+    getAllAndOverride: () => ({ accion: 'ver', destino: 'INC.1' }),
+  } as unknown as Reflector;
+  return new PuedeGuard(
+    reflector,
+    { deRoles: async () => alcances } as any,
+    { alguno: async () => false } as any,
+  );
 }
+
+const USUARIO = { roles: ['CUALQUIERA'] };
 
 /**
  * Un EntityManager de mentira que recuerda lo que se guardó.
@@ -94,70 +92,52 @@ function managerDePrueba() {
 
 describe('reserva legal del caso de incumplimiento', () => {
   describe('sin la atribución, el acceso se bloquea', () => {
-    it('un usuario sin permisos no pasa del guard', async () => {
-      const guard = guardExigiendo(PERMISO_INCUMPLIMIENTO_VER);
-
-      await expect(
-        guard.canActivate(contextoCon({ permissions: [], roles: [] })),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('tener otro permiso del módulo no abre el caso', async () => {
-      // Instruir el trámite no es consultarlo: la reserva se pide permiso a
-      // permiso, no por pertenecer al bloque.
-      const guard = guardExigiendo(PERMISO_INCUMPLIMIENTO_VER);
-
-      await expect(
-        guard.canActivate(
-          contextoCon({ permissions: [PERMISO_INCUMPLIMIENTO_TRAMITAR], roles: [] }),
-        ),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('sin sesión tampoco', async () => {
-      const guard = guardExigiendo(PERMISO_INCUMPLIMIENTO_VER);
-
-      await expect(guard.canActivate(contextoCon(undefined))).rejects.toBeInstanceOf(
+    it('un usuario sin alcance no pasa del guard', async () => {
+      await expect(guardCon([]).canActivate(contextoCon(USUARIO))).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
 
-    it('el mensaje dice qué permiso falta y no qué rol', async () => {
-      // Nombrar el rol sería adivinar: cuál lo otorga depende de cómo esté
-      // configurada la entidad, y cambia sin tocar el código.
-      const guard = guardExigiendo(PERMISO_INCUMPLIMIENTO_VER);
-
+    it('ver toda la ejecución del contrato no abre el caso', async () => {
+      // El incumplimiento no cuelga de la etapa 9: quien vigila el contrato no
+      // entra por eso al trámite que lo juzga.
       await expect(
-        guard.canActivate(contextoCon({ permissions: [], roles: [] })),
-      ).rejects.toThrow(PERMISO_INCUMPLIMIENTO_VER);
+        guardCon([alcance('ver', { etapa: 9 })]).canActivate(contextoCon(USUARIO)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('con la atribución sí pasa', async () => {
-      const guard = guardExigiendo(PERMISO_INCUMPLIMIENTO_VER);
-
+    it('el trámite sancionatorio tampoco: INC.2 no es INC.1', async () => {
       await expect(
-        guard.canActivate(contextoCon({ permissions: [PERMISO_INCUMPLIMIENTO_VER], roles: [] })),
+        guardCon([alcance('ver', { tramite: 'INC.2' })]).canActivate(contextoCon(USUARIO)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('sin sesión tampoco', async () => {
+      await expect(guardCon([]).canActivate(contextoCon(undefined))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('el mensaje dice qué acción falta y dónde, no qué rol', async () => {
+      await expect(guardCon([]).canActivate(contextoCon(USUARIO))).rejects.toThrow(
+        'No tienes permiso para ver en INC.1',
+      );
+    });
+
+    it('con la atribución sí pasa: su trámite o todo el módulo', async () => {
+      await expect(
+        guardCon([alcance('ver', { tramite: 'INC.1' })]).canActivate(contextoCon(USUARIO)),
       ).resolves.toBe(true);
-    });
-  });
-
-  /**
-   * Quién queda dentro de la reserva.
-   *
-   * La lista es más ancha que la de reportar porque el caso lo tramita el área
-   * jurídica y lo revisa la Dirección, pero sigue siendo una lista: que sea
-   * ancha no la convierte en abierta.
-   */
-  describe('a quién alcanza la reserva', () => {
-    it('un rol ajeno al módulo no consulta el caso', () => {
-      expect(tienePermiso({ roles: ['CONTRATISTA'] }, PERMISO_INCUMPLIMIENTO_VER)).toBe(false);
+      await expect(guardCon([alcance('ver')]).canActivate(contextoCon(USUARIO))).resolves.toBe(
+        true,
+      );
     });
 
-    it('instruir y decidir siguen separados dentro de la reserva', () => {
-      // La migración 651 lo explica: quien lleva el trámite no lo sanciona.
-      const permisos = { roles: ['GESTOR_CONTRATACION'] };
-
-      expect(tienePermiso(permisos, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
+    it('reportar el caso también deja verlo', async () => {
+      // Editar implica ver: el supervisor que lo reporta sigue su caso.
+      await expect(
+        guardCon([alcance('editar', { tramite: 'INC.1' })]).canActivate(contextoCon(USUARIO)),
+      ).resolves.toBe(true);
     });
   });
 
