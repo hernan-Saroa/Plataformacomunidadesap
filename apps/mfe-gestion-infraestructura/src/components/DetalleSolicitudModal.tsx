@@ -18,6 +18,7 @@ import {
   clasificarSLA,
   SolicitudValoracion,
   obtenerSesionUMI,
+  hasPerm,
 } from '../services/infraestructuraService';
 import { DetalleValoracionForm } from './DetalleValoracionForm';
 import { DetalleCierreEjecucionForm } from './DetalleCierreEjecucionForm';
@@ -219,11 +220,13 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   // EFDS-1736 RF-INF-007: Cierre técnico ejecución + evidencia
   // ---------------------------------------------------------------------------
   const [openCierre, setOpenCierre] = useState<boolean>(false);
+  const [forzarEdicionReaperturaCierre, setForzarEdicionReaperturaCierre] = useState<boolean>(false);
 
   const handleCierreSaved = async (resp: any) => {
     if (resp && typeof resp === 'object' && (resp.idSolicitud || resp.estado)) {
       setDetalle(resp);
     }
+    setForzarEdicionReaperturaCierre(false);
     await recargarDetalle();
     await onCambioExitoso?.();
   };
@@ -492,9 +495,19 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     }
   };
 
+  const tipoAtencionNorm = (detalle?.tipoAtencion || detalle?.tipo_atencion || '').toString().trim().toUpperCase();
+  const areaRespNorm = (detalle?.areaResponsableActual || detalle?.area_responsable_actual || '').toString().trim().toUpperCase();
+  const esAreaTI = (() => {
+    if (!detalle) return false;
+    if (['TI','OFICINA TI','TIC','TECNOLOGIAS','INFORMATICA','OFICINA TIC'].includes(areaRespNorm)) return true;
+    if (areaRespNorm.includes('TI') && !areaRespNorm.includes('TIERRA')) return true;
+    if (['TECNOLOGICA','TECNOLOGICO','ATENCION TECNOLOGICA'].includes(tipoAtencionNorm)) return true;
+    return false;
+  })();
+
   const aprobarYAsignarHandler = async () => {
     if (!idSolicitud || !detalle) return;
-    const areaTI = (detalle.areaResponsableActual || '').toUpperCase() === 'TI';
+    const areaTI = esAreaTI;
     const codTec = tecnicoManualSeleccionado || sugerencia?.sugerido?.codigo || '';
     if (!areaTI && !codTec) {
       setToastModal({ tipo: 'err', texto: 'Debes seleccionar un técnico para aprobar y asignar. Usa "Sugerir técnico" o elige uno manualmente.' });
@@ -551,7 +564,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         motivo,
         observaciones: rechazoObservaciones.trim() || undefined,
       });
-      const areaTI = (detalle?.areaResponsableActual || '').toUpperCase() === 'TI';
+      const areaTI = esAreaTI;
       if (areaTI) {
         setToastModal({ tipo: 'ok', texto: 'Remisión TI RECHAZADA. La solicitud retorna a la bandeja UMI para correcciones. El motivo queda registrado.' });
       } else {
@@ -836,6 +849,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const ESTADOS_PRE_APROBACION_TI: string[] = [
     'REMITIDA_TI',
     'PENDIENTE_APROBACION',
+    'RECIBIDA',
   ];
   const ESTADOS_FINALES_O_BLOQUEADOS: string[] = [
     'COMPLETADA',
@@ -843,58 +857,81 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     'CERRADA_SIN_ATENCION',
     'RECHAZADA',
   ];
+  const sesionUmiDetalle = useMemo(() => obtenerSesionUMI(), []);
+  const tienePerm = (codigo: string) => hasPerm(sesionUmiDetalle, codigo);
+
   const puedeAprobarAsignarUMI =
     detalle &&
-    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    ESTADOS_PRE_APROBACION_UMI.includes(estadoActual);
+    !esAreaTI &&
+    ESTADOS_PRE_APROBACION_UMI.includes(estadoActual) &&
+    (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.solicitud.reject'));
   const puedeAprobarRemisionTI =
     detalle &&
-    detalle.areaResponsableActual?.toUpperCase() === 'TI' &&
-    ESTADOS_PRE_APROBACION_TI.includes(estadoActual);
-  const puedeRechazarUMI = puedeAprobarAsignarUMI;
-  const puedeRechazarRemisionTI = puedeAprobarRemisionTI;
+    esAreaTI &&
+    ESTADOS_PRE_APROBACION_TI.includes(estadoActual) &&
+    (tienePerm('infraestructura.solicitud.forward_ti') || tienePerm('infraestructura.solicitud.assign'));
+  const puedeRechazarUMI =
+    detalle &&
+    !esAreaTI &&
+    ESTADOS_PRE_APROBACION_UMI.includes(estadoActual) &&
+    tienePerm('infraestructura.solicitud.reject');
+  const puedeRechazarRemisionTI =
+    detalle &&
+    esAreaTI &&
+    ESTADOS_PRE_APROBACION_TI.includes(estadoActual) &&
+    tienePerm('infraestructura.solicitud.reject');
   const puedeRedistribuir =
     detalle &&
-    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    estadoActual === 'ASIGNADA';
+    !esAreaTI &&
+    estadoActual === 'ASIGNADA' &&
+    tienePerm('infraestructura.solicitud.redistribute');
 
   // Visibilidad caja Motor sugerencia + reasignación manual (EFDS-1734 / 1735 / 1736):
-  // Sólo tiene sentido durante aprobación inicial o reasignación en ASIGNADA; nunca en ejecución / finales.
-  const puedeVerMotorAsignacion = !!(puedeAprobarAsignarUMI || estadoActual === 'ASIGNADA');
+  // Sólo tiene sentido durante aprobación inicial (RECIBIDA/PENDIENTE...) NUNCA cuando ASIGNADA.
+  // Cuando ASIGNADA, para cambiar el técnico P2 usa "Redistribuir" (modal independiente).
+  const puedeVerMotorAsignacion = !!(
+    tienePerm('infraestructura.solicitud.assign') ||
+    tienePerm('infraestructura.solicitud.redistribute') ||
+    tienePerm('infraestructura.solicitud.forward_ti') ||
+    tienePerm('infraestructura.solicitud.edit')
+  ) && (puedeAprobarAsignarUMI);
 
+  // Iniciar Ejecución Directa / Registrar Valoración Previa (ASIGNADA):
+  // SOLO PARA TÉCNICOS (cierre_tecnico o execute_assigned). NUNCA P2 Analista Asignador
+  // (él asigna, nunca valora ni ejecuta en campo - ERS L70)
+  // NUNCA SOLICITANTE P1.
   const puedeIniciarEjecOValoracion =
     detalle &&
-    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    (estadoActual === 'ASIGNADA');
+    !esAreaTI &&
+    (estadoActual === 'ASIGNADA') &&
+    (tienePerm('infraestructura.solicitud.cierre_tecnico') || tienePerm('infraestructura.solicitud.execute_assigned'));
   const puedeConfirmarRecepcionMateriales =
-    detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS';
+    detalle && estadoActual === 'EN_ESPERA_DE_INSUMOS' &&
+    (tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all') || tienePerm('infraestructura.solicitud.execute_assigned') || tienePerm('infraestructura.solicitud.cierre_tecnico'));
   const esCategoriaElectricas48 = Number(detalle?.idCategoria) === 48;
-
-  // EFDS-1736 helpers footer
-  const yaCerradoTecnicamente = !!(detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION');
-  const puedeCerrarTecnicamente =
+  // (EFDS-1735 AC-10, AC-12, AC-13) - quien puede confirmar recepcion materiales:
+  // 1) P2/P5/P7 Assign / View_all (Encargado / Admin Funcional / Calidad) - principal ERS
+  // 2) Tecnico con rol cierre_tecnico / execute_assigned (casos bodega entrega directa, frecuente ESAP) - UX pragmático
+  // 3) SUPER_ADMIN via hasPerm bypass
+  // 4) SOLICITANTE P1 NUNCA (no cae en ningun permiso arriba)
+  // La validación real de "si el técnico es el asignado" la hace el backend (403 si no corresponde).
+  // El frontend solo separa quién ve el botón para no confundir.
+  const puedeConfirmarRecepcionMaterialesFinal = puedeConfirmarRecepcionMateriales;
+  const puedeIniciarEjecOValoracionAsignado =
     detalle &&
     detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    estadoActual === 'EN_PROGRESO' &&
-    !yaCerradoTecnicamente;
-  const puedeVerCierreTecnico =
-    detalle &&
-    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
-    yaCerradoTecnicamente;
+    estadoActual === 'ASIGNADA' &&
+    puedeIniciarEjecOValoracion;
 
-  // ---------------------------------------------------------------------------
   // EFDS-1737 RF-INF-008 helpers conformidad
+  // EFDS-1740 RF-INF-011: cierre brecha1 FE usa hasPerm alineado a BE, no literales
   // ---------------------------------------------------------------------------
+  // EFDS-1737 L17 + CP-05 + CP-10/11: actor conformidad = (a) SOLICITANTE ORIGINAL match exacto, OR (b) SUPER_ADMIN / ADMIN_FUNCIONAL bypass.
+  // NUNCA P2 (assign), NUNCA P3/P4 TECNICOS, NUNCA P7 CALIDAD. Guardia UI = backend hace 403 real.
   const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
-
-  const validarRolesAsignadorFE = (roles: string[]): boolean => {
-    const set = new Set((roles || []).map((r) => String(r).trim().toUpperCase()));
-    return set.has('SUPER_ADMIN') || set.has('GESTOR_MANTENIMIENTO') || set.has('ADMINISTRADOR_FUNCIONAL') || set.has('ADMIN');
-  };
-
-  const esUsuarioSolicitanteConforme = useMemo(() => {
+  const rolesNormConformidad = useMemo(() => new Set((sesionUmi?.roles ?? []).map(String).map(s => s.trim().toUpperCase())), [sesionUmi]);
+  const esSolicitanteOriginalDeEstaSolicitud = useMemo(() => {
     if (!detalle) return false;
-    if (validarRolesAsignadorFE(sesionUmi.roles || [])) return true;
     const userIdActual = String(sesionUmi.userId || '').trim().toLowerCase();
     const emailActual = String(sesionUmi.email || '').trim().toLowerCase();
     const sUserId = String((detalle as any).usuarioSolicitanteId || '').trim().toLowerCase();
@@ -903,6 +940,50 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     if (emailActual && sEmail && emailActual === sEmail) return true;
     return false;
   }, [detalle, sesionUmi]);
+  const esBypassConformidadValido = !!(sesionUmi && (
+    rolesNormConformidad.has('SUPER_ADMIN') ||
+    rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL') ||
+    rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL_INFRA')
+  ));
+  const esUsuarioSolicitanteConforme = !!(detalle && (esSolicitanteOriginalDeEstaSolicitud || esBypassConformidadValido));
+
+  // EFDS-1736 helpers footer
+  // Reapertura por rechazo conformidad (EFDS-1737 RF-INF-008 RECHAZADA_Y_REABIERTA):
+  // Backend L2266-L2268 NUNCA borra fechaCierreTecnico (preserva auditoría del cierre #1).
+  // Frontend debe rehabilitar el botón Cierre Técnico para la reapertura #n.
+  const conformidadRechazadaReabierta = String((detalle as any)?.resultadoConformidad || '').trim().toUpperCase() === 'RECHAZADA_Y_REABIERTA';
+  const yaCerradoTecnicamente = !!(
+    (detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION')
+    && !conformidadRechazadaReabierta
+  );
+  const puedeCerrarTecnicamente =
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    estadoActual === 'EN_PROGRESO' &&
+    !yaCerradoTecnicamente &&
+    tienePerm('infraestructura.solicitud.cierre_tecnico');
+  // EFDS-1736 + EFDS-1737: quien puede VER cierre técnico modal (solo lectura, no edita):
+  // (a) Técnicos (ejecutaron la labor: cierre_tecnico / close_with_evidence)
+  // (b) SUPER_ADMIN / P2 / P5 / P7 (view_all o reportes.gestion)
+  // (c) Solicitante original P1 (tiene derecho a VER evidencia/costo del trabajo que confirmara, siempre)
+  // El botón "Ver cierre técnico" es información pública de la labor realizada a efectos de conformidad.
+  const puedeVerCierreTecnico = !!(
+    detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    (detalle?.fechaCierreTecnico || estadoActual === 'COMPLETADA' || estadoActual === 'CERRADA' || estadoActual === 'CERRADA_SIN_ATENCION') &&
+    (
+      tienePerm('infraestructura.solicitud.cierre_tecnico') ||
+      tienePerm('infraestructura.solicitud.close_with_evidence') ||
+      tienePerm('infraestructura.view_all') ||
+      tienePerm('infraestructura.reportes.gestion') ||
+      esSolicitanteOriginalDeEstaSolicitud ||
+      esBypassConformidadValido
+    )
+  );
+  const puedeReenviarTI = detalle &&
+    detalle.areaResponsableActual?.toUpperCase() !== 'TI' &&
+    tienePerm('infraestructura.solicitud.forward_ti') &&
+    ['RECIBIDA','EN_ANALISIS','PENDIENTE_CLASIFICACION','PENDIENTE_APROBACION','ASIGNADA'].includes(estadoActual);
 
   const usuarioEsSolicitanteOAsignador = !!(detalle && esUsuarioSolicitanteConforme);
 
@@ -989,10 +1070,14 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       {detalle && idSolicitud && (
         <DetalleCierreEjecucionForm
           open={openCierre}
-          onClose={() => setOpenCierre(false)}
+          onClose={() => {
+            setOpenCierre(false);
+            setForzarEdicionReaperturaCierre(false);
+          }}
           idSolicitud={idSolicitud}
           solicitud={detalle}
           onSaved={handleCierreSaved}
+          forzarModoEdicionReapertura={forzarEdicionReaperturaCierre}
         />
       )}
       {detalle && idSolicitud && (
@@ -1966,7 +2051,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
           )}
         </div>
 
-        {detalle && ((detalle.areaResponsableActual || '').toUpperCase() === 'TI') && (
+        {detalle && esAreaTI && (
           <div className="px-5 pb-4 -mt-3 bg-white">
             <label className="block text-xs font-bold text-slate-700 tracking-tight mb-1.5">
               Observaciones de confirmación de recepción (opcional)
@@ -1984,7 +2069,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-t border-slate-200 bg-white">
           <div className="flex flex-wrap items-center gap-3">
             {detalle && (() => {
-              const areaTI = (detalle.areaResponsableActual || '').toUpperCase() === 'TI';
+              const areaTI = esAreaTI;
               if (areaTI) {
                 return (
                   <>
@@ -2064,12 +2149,16 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
             })()}
 
             {/* EFDS-1735 RF-INF-006: Botones flujo ejecución / valoración  */}
-            {puedeConfirmarRecepcionMateriales && (
+            {puedeConfirmarRecepcionMaterialesFinal && (
               <button
                 type="button"
                 onClick={abrirConfirmarRecepcion}
                 disabled={bloqueado}
-                title="Encargado UMI: confirma recepción física de materiales comprados/solicitados. Estado pasa a En ejecución."
+                title={
+                  tienePerm('infraestructura.solicitud.assign') || tienePerm('infraestructura.view_all')
+                    ? 'Encargado UMI / Admin Funcional: confirma recepción física de materiales comprados/solicitados. Estado pasa a En ejecución.'
+                    : 'Técnico asignado: confirma recepción de materiales directamente desde bodega y pasa a ejecución.'
+                }
                 className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
               >
                 <Truck className="w-3.5 h-3.5" />
@@ -2143,7 +2232,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
             {puedeCerrarTecnicamente && (
               <button
                 type="button"
-                onClick={() => setOpenCierre(true)}
+                onClick={() => {
+                  setForzarEdicionReaperturaCierre(!!conformidadRechazadaReabierta);
+                  setOpenCierre(true);
+                }}
                 disabled={bloqueado}
                 title="Cerrar técnicamente la ejecución: registrar trabajo realizado, costo final y evidencias fotográficas mínimas (1). Estado pasa a COMPLETADA."
                 className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed border border-emerald-700 text-white text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap shadow-sm"
@@ -2155,7 +2247,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
             {puedeVerCierreTecnico && (
               <button
                 type="button"
-                onClick={() => setOpenCierre(true)}
+                onClick={() => {
+                  setForzarEdicionReaperturaCierre(false);
+                  setOpenCierre(true);
+                }}
                 className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
                 title="Ver el resumen de cierre técnico ya ejecutado (modo lectura)."
               >
@@ -2235,7 +2330,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
               )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">
-            {detalle && ((detalle.areaResponsableActual || '').toUpperCase() !== 'TI') && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
+            {puedeReenviarTI && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
               <button
                 type="button"
                 onClick={abrirRemitir}

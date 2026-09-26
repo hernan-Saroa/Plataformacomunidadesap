@@ -92,12 +92,13 @@ export class MantenimientoController {
   // Solicitudes
   // ---------------------------------------------------------------------------
   @Get()
-  @Public()
-  @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). UMI filtra por defecto area UMI/PENDIENTE; use ?incluirTI=true para ver también las remitidas a TI.' })
+  @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). Usuario con permiso infraestructura.view_all ve bandeja general UMI (default excluye TI); incluirTI=true también incluye remitidas TI. Si solo tiene read_own, ve únicamente sus solicitudes radicadas (filtradas por usuarioSolicitanteId).' })
   @ApiQuery({ name: 'estado', required: false })
   @ApiQuery({ name: 'prioridad', required: false })
   @ApiQuery({ name: 'idCategoria', required: false, description: 'Filtrar por categoria servicio EFDS-1732 (idCatalogo CATEGORIA_SERVICIO, 47..54 = CS_001..CS_008)' })
   @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
+  @ApiResponse({ status: 401, description: 'JWT o headers x-user-id/x-user-roles faltantes' })
+  @ApiResponse({ status: 403, description: 'Permisos insuficientes' })
   findAll(
     @Query('estado') estado?: string,
     @Query('prioridad') prioridad?: string,
