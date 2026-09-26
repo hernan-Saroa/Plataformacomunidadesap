@@ -11,6 +11,7 @@ import { HistorialPlanAnual } from './entities/historial-plan-anual.entity';
 import { PlanAnualWizardBorrador } from './entities/plan-anual-wizard-borrador.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { AuthModule } from '../../auth/auth.module';
+import { ProgramaAnualVersionesModule } from '../programa-anual-versiones/programa-anual-versiones.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuthModule } from '../../auth/auth.module';
     ]),
     NotificacionesModule,
     AuthModule,
+    ProgramaAnualVersionesModule,
   ],
   controllers: [PlanAnual5RolesController],
   providers: [PlanAnual5RolesService, ProgramaAnualRol4TareaSyncService],

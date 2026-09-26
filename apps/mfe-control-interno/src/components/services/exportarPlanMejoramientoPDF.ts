@@ -16,7 +16,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // Importar logo ESAP
-import logoESAP from '@/assets/cropped-favicon-32x32.png';
+import { LOGO_CERTIFICACIONES_ESAP_B64 } from './logoCertificacionesESAP';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -73,33 +73,11 @@ const COLORES_ESAP = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// CACHE DEL LOGO
+// LOGO INSTITUCIONAL
 // ════════════════════════════════════════════════════════════════════════════
 
-let _logoCache: string | null = null;
-
 async function getLogoBase64(): Promise<string> {
-  if (_logoCache) return _logoCache;
-  
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        _logoCache = canvas.toDataURL('image/png');
-        resolve(_logoCache);
-      } else {
-        reject(new Error('No se pudo obtener el contexto del canvas'));
-      }
-    };
-    img.onerror = reject;
-    img.src = logoESAP;
-  });
+  return LOGO_CERTIFICACIONES_ESAP_B64;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -125,10 +103,12 @@ function crearEncabezadoFormulario(doc: jsPDF, logoBase64?: string): number {
   // Agregar logo si está disponible
   if (logoBase64) {
     try {
-      const logoSize = 18;
-      const logoCenterX = margen + (logoWidth / 2) - (logoSize / 2);
-      const logoCenterY = margen + (headerHeight / 2) - (logoSize / 2);
-      doc.addImage(logoBase64, 'PNG', logoCenterX, logoCenterY, logoSize, logoSize);
+      // El logo mide 450x171 px: se conserva la proporción dentro de la casilla
+      const logoAncho = logoWidth - 6;
+      const logoAlto = logoAncho * (171 / 450);
+      const logoX = margen + (logoWidth - logoAncho) / 2;
+      const logoY = margen + (headerHeight - logoAlto) / 2;
+      doc.addImage(logoBase64, 'PNG', logoX, logoY, logoAncho, logoAlto);
     } catch (error) {
       console.warn('No se pudo agregar logo');
       doc.setFontSize(11);

@@ -66,6 +66,12 @@ export class SolicitudComisionEntity {
   @Column({ name: 'rubro_presupuestal', type: 'varchar', length: 100 })
   rubroPresupuestal: string;
 
+  @Column({ name: 'numero_cdp', type: 'varchar', length: 100, nullable: true })
+  numeroCdp: string | null;
+
+  @Column({ name: 'fecha_cdp', type: 'varchar', length: 50, nullable: true })
+  fechaCdp: string | null;
+
   @Column({ name: 'requiere_tiquetes', type: 'boolean', default: false })
   requiereTiquetes: boolean;
 
@@ -87,8 +93,147 @@ export class SolicitudComisionEntity {
   })
   montoGastosViaje: number;
 
-  @Column({ name: 'dias_comision', type: 'int', default: 1 })
+  @Column({
+    name: 'dias_comision',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 1,
+  })
   diasComision: number;
+
+  // ========== Autoliquidación GF-FO-023 (Decreto 314 de 2026) ==========
+  @Column({
+    name: 'dias_pernoctados',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  diasPernoctados: number | null;
+
+  @Column({
+    name: 'tarifa_dia_pernoctado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiaPernoctado: number | null;
+
+  @Column({
+    name: 'total_pernoctados',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  totalPernoctados: number | null;
+
+  @Column({
+    name: 'dias_no_pernoctados',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  diasNoPernoctados: number | null;
+
+  @Column({
+    name: 'tarifa_dia_no_pernoctado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiaNoPernoctado: number | null;
+
+  @Column({
+    name: 'total_no_pernoctados',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  totalNoPernoctados: number | null;
+
+  @Column({
+    name: 'factor_comisionado',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    default: 1.0,
+    nullable: true,
+  })
+  factorComisionado: number | null;
+
+  @Column({
+    name: 'factor_pernocta',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    default: 1.0,
+    nullable: true,
+  })
+  factorPernocta: number | null;
+
+  @Column({
+    name: 'tarifa_diaria_base',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiariaBase: number | null;
+
+  @Column({
+    name: 'tarifa_final_aplicada_dia',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaFinalAplicadaDia: number | null;
+
+  @Column({
+    name: 'salario_base_aplicado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  salarioBaseAplicado: number | null;
+
+  @Column({ name: 'decreto_aplicado', type: 'varchar', length: 100, nullable: true })
+  decretoAplicado: string | null;
+
+  @Column({
+    name: 'desglose_calculo',
+    type: 'jsonb',
+    nullable: true,
+  })
+  desgloseCalculo: Array<{
+    dia: number;
+    fecha: string;
+    valor: number;
+    pernocta: boolean;
+  }> | null;
+
+  @Column({
+    name: 'alertas_liquidacion',
+    type: 'jsonb',
+    nullable: true,
+  })
+  alertasLiquidacion: string[] | null;
 
   @Column({
     name: 'estado_solicitud',
@@ -375,6 +520,37 @@ export class SolicitudComisionEntity {
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
+
+  @Column({
+    name: 'campos_adicionales',
+    type: 'jsonb',
+    default: () => "'{}'::jsonb",
+  })
+  camposAdicionales: Record<string, any>;
+
+  @Column({
+    name: 'itinerario',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
+  })
+  itinerario: Array<{
+    id?: string;
+    origenCiudad: string;
+    origenDepartamento?: string;
+    destinoCiudad: string;
+    destinoDepartamento: string;
+    tipoTrayecto: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+    fechaSalida: string;
+    fechaLlegada: string;
+    diasRuta: number;
+    horarioEstimadoMilitar?: string;
+    horaEstimadaSalida?: string;
+    horaEstimadaLlegada?: string;
+    horaSalida?: string;
+    horaLlegada?: string;
+    tipoTransporte?: 'AEREO' | 'TERRESTRE';
+    requiereTiquete?: boolean;
+  }>;
 
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
   documentosSoporte: DocumentoSoporteEntity[];

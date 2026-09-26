@@ -26,7 +26,7 @@ import {
   guardarFirmaDigitalPTA, getPTAUserData, savePTAUserData, deletePTA,
   getAllPtasConEvidencias, revisarEvidenciaPTA,
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
-  getPTAById, aprobarComponentesLote,
+  getPTAById, aprobarComponentesLote, revisarComponentesLote,
   type AprobarComponentesLoteResultado,
   getPTADecisionListScope, type PTADecisionListScope,
 } from '../../services/api/ptaApi';
@@ -77,6 +77,7 @@ import {
   hasComponentPermission,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
+import { getPtaAssignmentTerritorialLabel } from './shared/ptaTerritorialDisplay';
 import '../../styles/pta-world-class.css';
 
 // ══ Lazy-loaded components (code splitting — loaded only when their tab/view is active) ══
@@ -1661,6 +1662,10 @@ const BULK_APPROVAL_GROUP_ICON: Record<PTABulkApprovalGroupKey, React.ComponentT
   ext_fortalecimiento: Globe,
   ext_gobierno: Globe,
   complementarias: Briefcase,
+  complementarias_pregrado: Briefcase,
+  complementarias_posgrado: Briefcase,
+  complementarias_territorial: Briefcase,
+  complementarias_gestion_profesoral: Briefcase,
 };
 
 function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}) {
@@ -1835,6 +1840,28 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       ? 'resuelto' : 'sin_alcance';
   }, [claveColapsadaAutorizadaPorEtapa, componentesAprobacionSet, isSuperUserEffective,
     permisos.componentesRevisables, permisos.puedeAprobar, tieneEtapaAprobacion]);
+
+  /**
+   * La selección masiva se habilita por trabajo pendiente dentro del alcance real
+   * del usuario, no por el estado global/rol legacy del PTA. Un revisor puro puede
+   * seleccionar sus pendientes y un aprobador solo los componentes autorizados.
+   */
+  const puedeSeleccionarParaRevision = useCallback((pta: any): boolean => {
+    const estadoGlobal = normalizeEstadoKey(pta?.estado);
+    return tieneEtapaRevision
+      && !['BORRADOR', 'APROBADO', 'TERMINADO', 'FINALIZADO'].includes(estadoGlobal)
+      && estadoDeMiEtapa(pta, 'revision') === 'pendiente';
+  }, [estadoDeMiEtapa, tieneEtapaRevision]);
+
+  const puedeSeleccionarParaAprobacion = useCallback((pta: any): boolean => {
+    return tieneEtapaAprobacion
+      && isEstadoPendienteAprobacion(pta?.estado)
+      && estadoDeMiEtapa(pta, 'aprobacion') === 'pendiente';
+  }, [estadoDeMiEtapa, tieneEtapaAprobacion]);
+
+  const puedeSeleccionarParaLote = useCallback((pta: any): boolean => {
+    return puedeSeleccionarParaRevision(pta) || puedeSeleccionarParaAprobacion(pta);
+  }, [puedeSeleccionarParaAprobacion, puedeSeleccionarParaRevision]);
 
   const { addNotification } = useNotifications();
   const [ptas, setPtas] = useState<any[]>([]);
@@ -2018,6 +2045,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   });
   const [showBatchApproval, setShowBatchApproval] = useState(false);
   const [batchObs, setBatchObs] = useState('');
+  const [showBatchReview, setShowBatchReview] = useState(false);
+  const [batchReviewObs, setBatchReviewObs] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const PAGE_SIZE = pageSize;
@@ -2335,8 +2364,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const next = new Set(selectedIds);
       for (let i = start; i <= end; i++) {
         const p = paginated[i];
-        if (p && isEstadoPendienteAprobacion(p.estado)
-            && puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
+        if (p && puedeSeleccionarParaLote(p)) {
           next.add(p.id);
         }
       }
@@ -2347,7 +2375,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       setSelectedIds(next);
     }
     lastClickedIdx.current = idx;
-  }, [selectedIds, permisos.nivelAprobacion, isSuperUserEffective]);
+  }, [selectedIds, puedeSeleccionarParaLote]);
 
   // ═══ Feature 21: Inline status quick change handler ═══
   const handleInlineStatusChange = useCallback(async (ptaId: string, nuevoEstado: string) => {
@@ -2675,6 +2703,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         p.docente_nombre?.toLowerCase().includes(q) ||
         p.id?.toLowerCase().includes(q) ||
         p.estado?.toLowerCase().includes(q) ||
+        getPtaAssignmentTerritorialLabel(p).toLowerCase().includes(q) ||
         p.territorial?.toLowerCase().includes(q) ||
         p.programa?.toLowerCase().includes(q) ||
         p.dedicacion?.toLowerCase().includes(q) ||
@@ -2746,6 +2775,40 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     return result;
   }, [baseFilteredPtas, filtroEstado, filtroMisComponentes, matchesPersonalStageFilter, matchesWorkflowTab]);
+
+  // Una selección nunca puede sobrevivir a un cambio de período, filtro,
+  // datos o permisos si el PTA dejó de estar visible y accionable. Esto evita
+  // enviar al backend IDs ocultos de una consulta anterior.
+  const selectableFilteredIds = useMemo(() => new Set(
+    filteredPtas.filter((pta: any) => puedeSeleccionarParaLote(pta)).map((pta: any) => pta.id),
+  ), [filteredPtas, puedeSeleccionarParaLote]);
+
+  useEffect(() => {
+    setSelectedIds((previous) => {
+      const next = new Set(Array.from(previous).filter(id => selectableFilteredIds.has(id)));
+      if (next.size === previous.size && Array.from(next).every(id => previous.has(id))) return previous;
+      return next;
+    });
+  }, [selectableFilteredIds]);
+
+  const selectedReviewIds = useMemo(() => filteredPtas
+    .filter((pta: any) => selectedIds.has(pta.id) && puedeSeleccionarParaRevision(pta))
+    .map((pta: any) => pta.id),
+  [filteredPtas, selectedIds, puedeSeleccionarParaRevision]);
+
+  const selectedApprovalIds = useMemo(() => filteredPtas
+    .filter((pta: any) => selectedIds.has(pta.id) && puedeSeleccionarParaAprobacion(pta))
+    .map((pta: any) => pta.id),
+  [filteredPtas, selectedIds, puedeSeleccionarParaAprobacion]);
+
+  useEffect(() => {
+    if (selectedReviewIds.length === 0) setShowBatchReview(false);
+    if (selectedApprovalIds.length === 0) {
+      setShowBatchApproval(false);
+      setShowBatchDevolucion(false);
+      setBulkComponentGroupKey(null);
+    }
+  }, [selectedApprovalIds.length, selectedReviewIds.length]);
 
   const workflowTabs = useMemo(() => {
     // Contadores facetados: incluyen los demás filtros activos, pero no el tab
@@ -4403,7 +4466,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           )}
 
           {/* Batch Actions Bar */}
-          {selectedIds.size > 0 && permisos.puedeAprobar && (
+          {selectedIds.size > 0 && (tieneEtapaAprobacion || tieneEtapaRevision) && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -4426,28 +4489,45 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => setShowBatchApproval(true)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
-                      background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                      backdropFilter: 'blur(4px)', transition: 'all 0.15s',
-                    }}
-                  >
-                    <Send style={{ width: 12, height: 12 }} /> Aprobar
-                  </button>
-                  <button
-                    onClick={() => setShowBatchDevolucion(true)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
-                      background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                      backdropFilter: 'blur(4px)', transition: 'all 0.15s',
-                    }}
-                  >
-                    <RotateCcw style={{ width: 12, height: 12 }} /> Devolver
-                  </button>
+                  {tieneEtapaRevision && selectedReviewIds.length > 0 && (
+                    <button
+                      onClick={() => setShowBatchReview(true)}
+                      style={{
+                        padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
+                        background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                        backdropFilter: 'blur(4px)', transition: 'all 0.15s',
+                      }}
+                    >
+                      <CheckCircle style={{ width: 12, height: 12 }} /> Marcar revisados
+                    </button>
+                  )}
+                  {tieneEtapaAprobacion && selectedApprovalIds.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => setShowBatchApproval(true)}
+                        style={{
+                          padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
+                          background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                          backdropFilter: 'blur(4px)', transition: 'all 0.15s',
+                        }}
+                      >
+                        <Send style={{ width: 12, height: 12 }} /> Aprobar
+                      </button>
+                      <button
+                        onClick={() => setShowBatchDevolucion(true)}
+                        style={{
+                          padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
+                          background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                          backdropFilter: 'blur(4px)', transition: 'all 0.15s',
+                        }}
+                      >
+                        <RotateCcw style={{ width: 12, height: 12 }} /> Devolver
+                      </button>
+                    </>
+                  )}
                   {/* Feature 30: Bulk Notification */}
                   <button
                     onClick={() => setShowBulkNotify(true)}
@@ -4479,7 +4559,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               estado GENERAL del PTA por nivel; esta aprueba componentes puntuales
               — Docencia Pregrado/Posgrado/Territorial, Investigación, cada sección
               de Extensión, Complementarias — sin tocar el resto del PTA). */}
-          {selectedIds.size > 0 && bulkApprovalGroups.length > 0 && (
+          {selectedApprovalIds.length > 0 && bulkApprovalGroups.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -4496,7 +4576,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   </div>
                   <div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
-                      Aprobar componentes de {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''}
+                      Aprobar componentes de {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''}
                     </div>
                     <div style={{ fontSize: '0.65rem', color: '#6B7280' }}>
                       Cada botón aprueba solo el componente correspondiente a su permiso, en los PTAs seleccionados que lo tengan pendiente
@@ -4932,7 +5012,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   ].join(' ');
                   const minW = activeCols.reduce((sum, col) => sum + (colMinWidths[col.key] || 100), 72 + 32) + (activeCols.length * 16);
                   const tableMinWidth = `max(${minW}px, 100%)`;
-                  const seleccionablesPagina = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado));
+                  const seleccionablesPagina = paginated.filter((p: any) => puedeSeleccionarParaLote(p));
                   const todosSeleccionadosEnPagina = seleccionablesPagina.length > 0
                     && seleccionablesPagina.every((p: any) => selectedIds.has(p.id));
 
@@ -5049,6 +5129,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
                       const pctCarga = getPtaCompletionPercentage(horasProg, horasDisp);
                       const isPendiente = isEstadoPendienteAprobacion(pta.estado);
+                      const isSeleccionable = puedeSeleccionarParaLote(pta);
                       const isSelected = selectedIds.has(pta.id);
                       const estadoLabel = pta.estado?.replace(/_/g, ' ') || 'Sin estado';
                       // El flujo ahora es granular por componente: en los estados "pendientes" mostramos
@@ -5125,15 +5206,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           >
                             <input
                               type="checkbox"
-                              disabled={!isPendiente}
+                              disabled={!isSeleccionable}
                               checked={isSelected}
                               onChange={() => {}}
                               onClick={(e: React.MouseEvent<HTMLInputElement>) => {
                                 handleRowSelect(pta.id, idx, e.shiftKey, paginated);
                                 lastClickedIdx.current = idx;
                               }}
-                              title={!isPendiente ? 'Solo se pueden seleccionar PTAs pendientes' : 'Seleccionar (Shift+clic para seleccionar un rango)'}
-                              style={{ width: 15, height: 15, cursor: isPendiente ? 'pointer' : 'default', accentColor: '#003DA5' }}
+                              title={!isSeleccionable ? 'No tiene decisiones pendientes en este PTA' : 'Seleccionar (Shift+clic para seleccionar un rango)'}
+                              style={{ width: 15, height: 15, cursor: isSeleccionable ? 'pointer' : 'default', accentColor: '#003DA5' }}
                             />
                           </span>
 
@@ -5436,7 +5517,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           {/* Feature 19: Optional Territorial column */}
                           {effectiveCols.has('territorial') && (
                           <div style={{ fontSize: '0.78rem', color: '#4B5563', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {pta.territorial || '—'}
+                            {getPtaAssignmentTerritorialLabel(pta) || '—'}
                           </div>
                           )}
 
@@ -5466,7 +5547,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               <div style={{ padding: '14px 16px 14px 52px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
                                 {[
                                   { label: 'Programa', value: pta.programa || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#003DA5', icon: GraduationCap },
-                                  { label: 'Territorial', value: pta.territorial || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#059669', icon: MapPin },
+                                  { label: 'Territorial', value: getPtaAssignmentTerritorialLabel(pta) || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#059669', icon: MapPin },
                                   { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
                                   { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
                                   { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
@@ -5845,9 +5926,99 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         )}
       </AnimatePresence>
 
+      {/* ═══ MODAL: Batch Review ═══ */}
+      <AnimatePresence>
+        {showBatchReview && selectedReviewIds.length > 0 && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 55, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(17,24,39,0.6)', backdropFilter: 'blur(4px)' }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            >
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CheckCircle style={{ width: 20, height: 20, color: '#059669' }} />
+                  Revisión en Lote
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
+                  Se marcarán como revisadas solamente las subsecciones autorizadas y pendientes de los {selectedReviewIds.length} PTA{selectedReviewIds.length > 1 ? 's' : ''} seleccionados.
+                </p>
+              </div>
+              <div style={{ padding: '16px 24px' }}>
+                <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 14, borderRadius: 8, border: '1px solid #E5E7EB' }}>
+                  {filteredPtas.filter((pta: any) => selectedReviewIds.includes(pta.id)).map((pta: any) => (
+                    <div key={pta.id} style={{ padding: '8px 12px', borderBottom: '1px solid #F9FAFB', fontSize: '0.82rem', fontWeight: 600, color: '#111827' }}>
+                      {pta.docente_nombre || 'Docente'}
+                    </div>
+                  ))}
+                </div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                  Observaciones para todos (opcional)
+                </label>
+                <textarea
+                  value={batchReviewObs}
+                  onChange={event => setBatchReviewObs(event.target.value)}
+                  placeholder="Observaciones aplicables a todas las revisiones seleccionadas..."
+                  rows={3}
+                  style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #D1D5DB', fontSize: '0.82rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
+                />
+              </div>
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button
+                  onClick={() => { setShowBatchReview(false); setBatchReviewObs(''); }}
+                  style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    const revisiones = Array.from(new Set(permisos.componentesRevisables || []));
+                    if (revisiones.length === 0) {
+                      toast.error('No tiene componentes de PTA habilitados para revisar');
+                      return;
+                    }
+                    setProcesando(true);
+                    const ids = selectedReviewIds;
+                    const res = await revisarComponentesLote({
+                      ptaIds: ids,
+                      revisiones,
+                      comentarios: batchReviewObs || undefined,
+                      revisorId: aprobadorId,
+                      revisorNombre: aprobadorNombre,
+                      revisorRol: rolLabel,
+                    });
+                    setProcesando(false);
+                    if (!res.success) {
+                      toast.error(res.message || 'Error al procesar la revisión en lote');
+                      return;
+                    }
+                    setShowBatchReview(false);
+                    setBatchReviewObs('');
+                    setSelectedIds(new Set());
+                    if (res.data.resumen.revisados > 0) {
+                      toast.success(`${res.data.resumen.revisados} revisión(es) marcada(s) correctamente`);
+                    }
+                    if (res.data.resumen.fallidos > 0) {
+                      toast.error(`${res.data.resumen.fallidos} revisión(es) no se pudieron procesar`);
+                    }
+                    await loadData();
+                  }}
+                  disabled={procesando}
+                  style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <CheckCircle style={{ width: 13, height: 13 }} />
+                  {procesando ? 'Procesando...' : `Revisar ${selectedReviewIds.length} PTA${selectedReviewIds.length > 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* ═══ MODAL: Batch Approval ═══ */}
       <AnimatePresence>
-        {showBatchApproval && selectedIds.size > 0 && (
+        {showBatchApproval && selectedApprovalIds.length > 0 && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 55, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(17,24,39,0.6)', backdropFilter: 'blur(4px)' }}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -5861,12 +6032,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Aprobación en Lote
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                  {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''} para aprobación
+                  {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} para aprobación
                 </p>
               </div>
               <div style={{ padding: '16px 24px' }}>
                 <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 14, borderRadius: 8, border: '1px solid #E5E7EB' }}>
-                  {filteredPtas.filter((p: any) => selectedIds.has(p.id)).map((p: any) => {
+                  {filteredPtas.filter((p: any) => selectedApprovalIds.includes(p.id)).map((p: any) => {
                     const pSc = getStatusConfig(p.estado);
                     return (
                       <div key={p.id} style={{
@@ -5910,7 +6081,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       return;
                     }
                     setProcesando(true);
-                    const ids = Array.from(selectedIds);
+                    const ids = selectedApprovalIds;
                     // "Aprobar Lote" aprueba, por cada PTA seleccionado, los componentes
                     // que le correspondan al rol/permisos de quien lo acciona (Jefatura,
                     // Decanatura, etc.) — no un nivel jerárquico global del PTA, que es
@@ -5945,7 +6116,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                 >
                   <Send style={{ width: 13, height: 13 }} />
-                  {procesando ? 'Procesando...' : `Aprobar ${selectedIds.size} PTAs`}
+                  {procesando ? 'Procesando...' : `Aprobar ${selectedApprovalIds.length} PTAs`}
                 </button>
               </div>
             </motion.div>
@@ -5955,7 +6126,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
       {/* ═══ MODAL: Confirmar aprobación masiva por componente ═══ */}
       <AnimatePresence>
-        {bulkComponentGroupKey && selectedIds.size > 0 && (() => {
+        {bulkComponentGroupKey && selectedApprovalIds.length > 0 && (() => {
           const group = bulkApprovalGroups.find(g => g.key === bulkComponentGroupKey);
           if (!group) return null;
           return (
@@ -5972,12 +6143,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     Aprobar {group.label}
                   </h3>
                   <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                    Se aprobará este componente en los {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial, otro componente devuelto) se reportan sin afectar al resto.
+                    Se aprobará este componente en los {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial, otro componente devuelto) se reportan sin afectar al resto.
                   </p>
                 </div>
                 <div style={{ padding: '16px 24px' }}>
                   <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 14, borderRadius: 8, border: '1px solid #E5E7EB' }}>
-                    {filteredPtas.filter((p: any) => selectedIds.has(p.id)).map((p: any) => (
+                    {filteredPtas.filter((p: any) => selectedApprovalIds.includes(p.id)).map((p: any) => (
                       <div key={p.id} style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         padding: '8px 12px', borderBottom: '1px solid #F9FAFB', fontSize: '0.82rem',
@@ -6007,7 +6178,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   <button
                     onClick={async () => {
                       setProcesando(true);
-                      const ptaIds = Array.from(selectedIds);
+                      const ptaIds = selectedApprovalIds;
                       const res = await aprobarComponentesLote({
                         ptaIds,
                         componentes: group.componentKeys,
@@ -6170,7 +6341,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
       {/* ═══ MODAL: Batch Devolución (Feature 16) ═══ */}
       <AnimatePresence>
-        {showBatchDevolucion && selectedIds.size > 0 && (
+        {showBatchDevolucion && selectedApprovalIds.length > 0 && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 55, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(17,24,39,0.6)', backdropFilter: 'blur(4px)' }}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -6184,12 +6355,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Devolución en Lote
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                  {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''} para devolución
+                  {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} para devolución
                 </p>
               </div>
               <div style={{ padding: '16px 24px' }}>
                 <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: 14, borderRadius: 8, border: '1px solid #E5E7EB' }}>
-                  {filteredPtas.filter((p: any) => selectedIds.has(p.id)).map((p: any) => (
+                  {filteredPtas.filter((p: any) => selectedApprovalIds.includes(p.id)).map((p: any) => (
                     <div key={p.id} style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       padding: '8px 12px', borderBottom: '1px solid #F9FAFB', fontSize: '0.82rem',
@@ -6227,7 +6398,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       return;
                     }
                     setProcesando(true);
-                    const ids = Array.from(selectedIds);
+                    const ids = selectedApprovalIds;
                     // "Devolver Lote" devuelve, por cada PTA seleccionado, los componentes
                     // que le correspondan al rol/permisos de quien lo acciona — mismo
                     // criterio que "Aprobar Lote", en vez del viejo modelo de niveles.
@@ -6267,7 +6438,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   }}
                 >
                   <RotateCcw style={{ width: 13, height: 13 }} />
-                  {procesando ? 'Procesando...' : `Devolver ${selectedIds.size} PTAs`}
+                  {procesando ? 'Procesando...' : `Devolver ${selectedApprovalIds.length} PTAs`}
                 </button>
               </div>
             </motion.div>

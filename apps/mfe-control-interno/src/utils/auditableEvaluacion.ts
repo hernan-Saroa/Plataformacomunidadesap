@@ -22,3 +22,22 @@ export function resolverAuditableEfectivo(
   if (manual === true || manual === false) return manual;
   return calculado;
 }
+
+/**
+ * Si el proceso se puede elegir al programar una auditoría (Asociar a Proceso).
+ * Manda el switch "Aud." del Universo cuando se cambió a mano: en NO no aparece
+ * aunque sea Extremo. En automático aparece si su criticidad es Extremo o si se
+ * audita el primer año. Antes la lista mostraba todos los procesos evaluados.
+ */
+export function evaluacionProgramable(ev: {
+  auditableManual?: boolean | null;
+  auditableCalculado?: boolean | null;
+  nivelCriticidadDafp?: string | null;
+  cicloRotacionDafp?: string | null;
+  priorizacionAnos?: number[] | null;
+}): boolean {
+  if (ev.auditableManual === true || ev.auditableManual === false) return ev.auditableManual;
+  const criticidad = (ev.nivelCriticidadDafp || '').trim().toLowerCase();
+  if (criticidad === 'extremo' || criticidad.startsWith('crític') || criticidad.startsWith('critic')) return true;
+  return ev.auditableCalculado ?? calcularAuditableDesdeCiclo(ev.cicloRotacionDafp, ev.priorizacionAnos);
+}

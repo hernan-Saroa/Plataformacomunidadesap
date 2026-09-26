@@ -23,6 +23,25 @@ export const ORIGEN_TAREA_PROGRAMA_ANUAL = 'programa_anual';
  */
 const ORIGEN_TAREA_EVALUACION_UNIVERSO = 'evaluacion_universo';
 
+/**
+ * Al guardar el plan desde el wizard las tareas pierden el campo `origen`, así que
+ * también se reconocen por el prefijo del id con que las crea cada sincronización.
+ */
+const esTareaDelPrograma = (t: TareaSeguimientoPlan) =>
+  t.origen === ORIGEN_TAREA_PROGRAMA_ANUAL || String(t.id ?? '').startsWith('tarea-aud-');
+const esTareaDelUniverso = (t: TareaSeguimientoPlan) =>
+  t.origen === ORIGEN_TAREA_EVALUACION_UNIVERSO || String(t.id ?? '').startsWith('tarea-ev-');
+
+/** Evidencias u observaciones que alguien registró: esas tareas no se borran. */
+const tieneSeguimientoRegistrado = (t: TareaSeguimientoPlan) => {
+  const extra = t as TareaSeguimientoPlan & { adjuntosTarea?: unknown[]; observaciones?: unknown };
+  const obs = extra.observaciones;
+  return (
+    (Array.isArray(extra.adjuntosTarea) && extra.adjuntosTarea.length > 0) ||
+    (Array.isArray(obs) ? obs.length > 0 : typeof obs === 'string' && obs.trim() !== '')
+  );
+};
+
 export interface TareaSeguimientoPlan {
   id: string;
   descripcion: string;
@@ -108,13 +127,17 @@ export class ProgramaAnualRol4TareaSyncService {
       const actuales = this.parseTareas(actividad.tareas_seguimiento);
       const previas = new Map(
         actuales
-          .filter((t) => t.origen === ORIGEN_TAREA_PROGRAMA_ANUAL && t.auditoriaId)
-          .map((t) => [String(t.auditoriaId), t]),
+          .filter(esTareaDelPrograma)
+          .map((t): [string, TareaSeguimientoPlan] => [
+            String(t.auditoriaId ?? String(t.id).replace(/^tarea-aud-/, '')),
+            t,
+          ]),
       );
 
-      // Las tareas que el usuario agregó a mano se conservan tal cual.
+      // Las tareas que el usuario agregó a mano se conservan tal cual. Las del universo
+      // se retiran, salvo las que ya tienen evidencias u observaciones.
       const otras = actuales.filter(
-        (t) => t.origen !== ORIGEN_TAREA_PROGRAMA_ANUAL && t.origen !== ORIGEN_TAREA_EVALUACION_UNIVERSO,
+        (t) => !esTareaDelPrograma(t) && (!esTareaDelUniverso(t) || tieneSeguimientoRegistrado(t)),
       );
 
       const delPrograma = auditorias.map((a): TareaSeguimientoPlan => {

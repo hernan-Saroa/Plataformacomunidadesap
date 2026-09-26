@@ -5,6 +5,8 @@ import {
   EstadoSolicitudViatico,
   FormNuevaSolicitud,
   Geopolitica,
+  RutaItinerario,
+  TarifaTransporteTerminal,
 } from '../types/viaticos';
 
 /**
@@ -23,11 +25,15 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     documentoComisionado: '',
     comisionadoId: '',
     objetoComision: '',
+    origenCiudad: '',
+    origenDepartamento: '',
     destinoCiudad: '',
     destinoDepartamento: '',
     fechaInicio: hoyISO(),
     fechaFin: siguienteDiaISO(),
     rubroPresupuestal: '',
+    numeroCdp: '',
+    fechaCdp: '',
     prioridad: 'MEDIA',
     requiereTiquetes: true,
     montoViaticos: 0,
@@ -38,6 +44,8 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     aceptaHabeasData: false,
     tipoComision: 'TERRESTRE',
     esInternacional: false,
+    camposAdicionales: {},
+    itinerario: [],
   };
 }
 
@@ -128,7 +136,9 @@ export function formatearNombreComisionado(comisionado: Comisionado): string {
 }
 
 /**
- * Calcula los días de comisión (inclusive) entre dos fechas ISO (yyyy-mm-dd).
+ * Calcula los días de comisión entre dos fechas ISO (yyyy-mm-dd) según Formato GF-FO-023:
+ * - Mismo día (sin pernocta): 0.5 días (medio día liquidado al 50%).
+ * - Con pernocta: N noches + medio día (0.5) de retorno (ej. 01 al 02 = 1.5 días).
  */
 export function calcularDiasComision(fechaInicio: string, fechaFin: string): number {
   if (!fechaInicio || !fechaFin) return 0;
@@ -136,7 +146,271 @@ export function calcularDiasComision(fechaInicio: string, fechaFin: string): num
   const fin = new Date(`${fechaFin}T00:00:00`);
   if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) return 0;
   const diff = Math.round((fin.getTime() - ini.getTime()) / 86_400_000);
-  return Math.max(0, diff + 1);
+  if (diff <= 0) return 0.5;
+  return diff + 0.5;
+}
+
+/**
+ * Calcula los días de un tramo/ruta individual a partir de sus fechas.
+ * Aplica la misma lógica que calcularDiasComision (mismo día = 0.5 días, con noche = N noches + 0.5 día retorno).
+ */
+export function calcularDiasRuta(fechaSalida: string, fechaLlegada: string): number {
+  if (!fechaSalida || !fechaLlegada) return 0;
+  const ini = new Date(`${fechaSalida}T00:00:00`);
+  const fin = new Date(`${fechaLlegada}T00:00:00`);
+  if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) return 0;
+  const diff = Math.round((fin.getTime() - ini.getTime()) / 86_400_000);
+  if (diff <= 0) return 0.5;
+  return diff + 0.5;
+}
+
+/**
+ * Formatea un horario militar HH:mm de forma legible.
+ * Ej: '07:30' → '07:30 h'
+ */
+export function formatearHorarioMilitar(horario: string): string {
+  if (!horario) return '—';
+  return `${horario} h`;
+}
+
+/**
+ * Valida que una cadena tenga formato horario militar HH:mm.
+ */
+export function esHorarioMilitarValido(horario: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(horario || '');
+}
+
+/**
+ * Construye una representación legible de la ruta general a partir del itinerario,
+ * mostrando la secuencia continua de ciudades (ej. "Bogotá → Medellín → Cali").
+ */
+export function construirRutaGeneral(itinerario: RutaItinerario[]): string {
+  if (!itinerario || itinerario.length === 0) return '';
+  const ciudadesSecuencia: string[] = [];
+  for (const ruta of itinerario) {
+    const orig = (ruta.origenCiudad || '').trim();
+    const dest = (ruta.destinoCiudad || '').trim();
+    if (orig && (ciudadesSecuencia.length === 0 || ciudadesSecuencia[ciudadesSecuencia.length - 1] !== orig)) {
+      ciudadesSecuencia.push(orig);
+    }
+    if (dest) {
+      ciudadesSecuencia.push(dest);
+    }
+  }
+  return ciudadesSecuencia.join(' → ');
+}
+
+/**
+ * Valida la coherencia de fechas y horas entre tramos consecutivos del itinerario.
+ * Regla: el inicio de la siguiente ruta no puede ser inferior a la fecha del tramo anterior.
+ * Si es el mismo día, la hora estimada no puede ser anterior a la del tramo anterior.
+ */
+export function validarSecuenciaItinerario(itinerario: RutaItinerario[]): {
+  valida: boolean;
+  error?: string;
+  indexInvalido?: number;
+} {
+  if (!itinerario || itinerario.length <= 1) {
+    return { valida: true };
+  }
+
+  for (let i = 1; i < itinerario.length; i++) {
+    const prev = itinerario[i - 1];
+    const curr = itinerario[i];
+
+    if (curr.fechaSalida && prev.fechaSalida && curr.fechaSalida < prev.fechaSalida) {
+      return {
+        valida: false,
+        error: `El inicio de la ruta ${i + 1} (${curr.fechaSalida}) no puede ser inferior a la fecha de salida del tramo anterior (${prev.fechaSalida}).`,
+        indexInvalido: i,
+      };
+    }
+
+    if (curr.fechaSalida && prev.fechaLlegada && curr.fechaSalida < prev.fechaLlegada) {
+      return {
+        valida: false,
+        error: `El inicio de la ruta ${i + 1} (${curr.fechaSalida}) no puede ser inferior a la fecha de llegada del tramo anterior (${prev.fechaLlegada}).`,
+        indexInvalido: i,
+      };
+    }
+
+    if (
+      curr.fechaSalida &&
+      prev.fechaLlegada &&
+      curr.fechaSalida === prev.fechaLlegada &&
+      curr.horarioEstimadoMilitar &&
+      prev.horarioEstimadoMilitar &&
+      curr.horarioEstimadoMilitar < prev.horarioEstimadoMilitar
+    ) {
+      return {
+        valida: false,
+        error: `Para el mismo día (${curr.fechaSalida}), la hora estimada del tramo ${i + 1} (${curr.horarioEstimadoMilitar}) no puede ser anterior a la del tramo previo (${prev.horarioEstimadoMilitar}).`,
+        indexInvalido: i,
+      };
+    }
+
+    if (curr.fechaSalida && curr.fechaLlegada && curr.fechaLlegada < curr.fechaSalida) {
+      return {
+        valida: false,
+        error: `La fecha de llegada del tramo ${i + 1} (${curr.fechaLlegada}) no puede ser inferior a su fecha de salida (${curr.fechaSalida}).`,
+        indexInvalido: i,
+      };
+    }
+  }
+
+  return { valida: true };
+}
+
+/**
+ * Sincroniza los campos globales del formulario a partir del itinerario:
+ * - fechaInicio: fecha de salida de la PRIMERA ruta.
+ * - fechaFin: fecha de llegada de la ÚLTIMA ruta.
+ * - origen/destino: origen del primer tramo y destino del último tramo.
+ * - rutaGeneral: descripción secuencial de la ruta general.
+ * - horaEstimadaGeneral: rango consolidado de horas estimadas (primer tramo a último tramo).
+ * - diasComision: suma de diasRuta o cálculo entre fechaInicio y fechaFin.
+ */
+export function sincronizarItinerarioFormulario(
+  itinerario: RutaItinerario[],
+): {
+  fechaInicio: string;
+  fechaFin: string;
+  diasComision: number;
+  origenCiudad: string;
+  origenDepartamento: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  rutaGeneral: string;
+  horaEstimadaSalida: string;
+  horaEstimadaLlegada: string;
+  horaEstimadaGeneral: string;
+  transporteTerminalesAereos: number;
+  tieneTransporteAereo: boolean;
+} {
+  if (itinerario.length === 0) {
+    return {
+      fechaInicio: hoyISO(),
+      fechaFin: siguienteDiaISO(),
+      diasComision: 1,
+      origenCiudad: '',
+      origenDepartamento: '',
+      destinoCiudad: '',
+      destinoDepartamento: '',
+      rutaGeneral: '',
+      horaEstimadaSalida: '',
+      horaEstimadaLlegada: '',
+      horaEstimadaGeneral: '',
+      transporteTerminalesAereos: 0,
+      tieneTransporteAereo: false,
+    };
+  }
+
+  // La fecha inicio es del primer tramo, y la fecha fin es la del último tramo
+  const primeraRuta = itinerario[0];
+  const ultimaRuta = itinerario[itinerario.length - 1];
+
+  const fInicio = primeraRuta.fechaSalida || hoyISO();
+  const fFin = ultimaRuta.fechaLlegada || primeraRuta.fechaLlegada || siguienteDiaISO();
+
+  let diasTotal = 0;
+  let totalTerminalesAereos = 0;
+  let tieneAereo = false;
+
+  for (const ruta of itinerario) {
+    diasTotal += ruta.diasRuta || calcularDiasRuta(ruta.fechaSalida, ruta.fechaLlegada);
+
+    if (ruta.tipoTransporte === 'AEREO') {
+      tieneAereo = true;
+      const tarifa = calcularTarifaTerminalAereoRuta(
+        ruta.destinoDepartamento,
+        ruta.destinoCiudad,
+        ruta.tipoTrayecto,
+        undefined,
+        ruta.destinoDepartamentoId,
+      );
+      totalTerminalesAereos += tarifa.totalTramo;
+    }
+  }
+
+  const horaSalida = primeraRuta.horaEstimadaSalida || primeraRuta.horarioEstimadoMilitar || '';
+  const horaLlegada = itinerario.length === 1
+    ? (primeraRuta.horaEstimadaLlegada || '')
+    : (ultimaRuta.horaEstimadaLlegada || ultimaRuta.horarioEstimadoMilitar || '');
+
+  let horaGeneral = '';
+  if (horaSalida && horaLlegada) {
+    horaGeneral = `${formatearHorarioMilitar(horaSalida)} → ${formatearHorarioMilitar(horaLlegada)}`;
+  } else if (horaSalida) {
+    horaGeneral = formatearHorarioMilitar(horaSalida);
+  } else if (horaLlegada) {
+    horaGeneral = formatearHorarioMilitar(horaLlegada);
+  }
+
+  // ── Detección de viaje de ida y vuelta ───────────────────────────────────
+  // Si hay más de un tramo y el destino del último tramo coincide con el
+  // origen del primero, significa que el comisionado ya regresó al punto de
+  // partida. En ese caso el "destino" de la comisión es el origen del último
+  // tramo (el punto más alejado al que se viajó antes del retorno).
+  const normalizarCiudad = (txt?: string) =>
+    (txt || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const esViajeIdaVuelta =
+    itinerario.length > 1 &&
+    normalizarCiudad(ultimaRuta.destinoCiudad) === normalizarCiudad(primeraRuta.origenCiudad) &&
+    ultimaRuta.destinoCiudad !== '';
+
+  const destinoCiudadFinal = esViajeIdaVuelta
+    ? ultimaRuta.origenCiudad || ''
+    : ultimaRuta.destinoCiudad || '';
+  const destinoDepartamentoFinal = esViajeIdaVuelta
+    ? ultimaRuta.origenDepartamento || ''
+    : ultimaRuta.destinoDepartamento || '';
+
+  return {
+    fechaInicio: fInicio,
+    fechaFin: fFin,
+    diasComision: diasTotal > 0 ? diasTotal : calcularDiasComision(fInicio, fFin),
+    origenCiudad: primeraRuta.origenCiudad || '',
+    origenDepartamento: primeraRuta.origenDepartamento || '',
+    destinoCiudad: destinoCiudadFinal,
+    destinoDepartamento: destinoDepartamentoFinal,
+    rutaGeneral: construirRutaGeneral(itinerario),
+    horaEstimadaSalida: horaSalida,
+    horaEstimadaLlegada: horaLlegada,
+    horaEstimadaGeneral: horaGeneral,
+    transporteTerminalesAereos: totalTerminalesAereos,
+    tieneTransporteAereo: tieneAereo,
+  };
+}
+
+/**
+ * Formatea el conteo de días de forma amigable al usuario.
+ * Ejemplos:
+ *  - 1.5 -> "1 día y medio"
+ *  - 2.5 -> "2 días y medio"
+ *  - 0.5 -> "Medio día"
+ *  - 1   -> "1 día"
+ *  - 3   -> "3 días"
+ */
+export function formatearDiasComision(dias: number): string {
+  if (dias === null || dias === undefined || isNaN(dias) || dias <= 0) {
+    return '0 días';
+  }
+  const entero = Math.floor(dias);
+  const decimal = Math.round((dias - entero) * 10) / 10;
+
+  if (decimal === 0.5) {
+    if (entero === 0) return 'Medio día';
+    if (entero === 1) return '1 día y medio';
+    return `${entero} días y medio`;
+  }
+
+  if (dias === 1) return '1 día';
+  return `${dias} días`;
 }
 
 import {
@@ -222,6 +496,22 @@ export function mapearARequestCreacion(
     urlRepositorio: d.urlRepositorio,
     tipoMime: d.tipoMime,
   }));
+
+  // Determinar tipo de comisión según los transportes del itinerario
+  const tipoComisionCalculado = (() => {
+    if (form.esInternacional) return 'INTERNACIONAL';
+    const tramos = form.itinerario || [];
+    const tieneAereo = tramos.some((r) => r.tipoTransporte === 'AEREO');
+    const tieneTerrestre = tramos.some((r) => r.tipoTransporte === 'TERRESTRE');
+    if (tieneAereo && tieneTerrestre) return 'MIXTO';
+    if (tieneAereo) return 'AEREO';
+    if (tieneTerrestre) return 'TERRESTRE';
+    // fallback al tipoComision pasado si no hay itinerario
+    return ['TERRESTRE', 'AEREO', 'MIXTO', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'].includes(tipoComision)
+      ? tipoComision
+      : 'TERRESTRE';
+  })();
+
   return {
     comisionadoId: comisionado.id,
     destinoCiudad: form.destinoCiudad.trim(),
@@ -231,6 +521,8 @@ export function mapearARequestCreacion(
     objetoComision: sanitizeObjetoComision(form.objetoComision).trim(),
     prioridad: form.prioridad,
     rubroPresupuestal: form.rubroPresupuestal.trim(),
+    numeroCdp: form.numeroCdp?.trim() || undefined,
+    fechaCdp: form.fechaCdp?.trim() || undefined,
     requiereTiquetes: form.requiereTiquetes,
     montoViaticos: form.montoViaticos,
     montoGastosViaje: form.montoGastosViaje,
@@ -241,9 +533,28 @@ export function mapearARequestCreacion(
     aceptaHabeasData: aceptaHabeasData,
     ipRegistroHabeasData: aceptaHabeasData ? '127.0.0.1' : comisionado.ipRegistroHabeasData,
     modoBorrador,
-    tipoComision: form.esInternacional ? 'INTERNACIONAL' : (tipoComision || 'TERRESTRE'),
+    tipoComision: tipoComisionCalculado,
     esInternacional: Boolean(form.esInternacional),
     documentos,
+    camposAdicionales: form.camposAdicionales ?? {},
+    itinerario: (form.itinerario || []).map((r) => {
+      // Excluir únicamente campos auxiliares de UI interna
+      const {
+        guardada,
+        origenDepartamentoId,
+        destinoDepartamentoId,
+        tarifaTerminalAereo,
+        ...cleanRuta
+      } = r;
+      const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
+      const horaLlegada = r.horaEstimadaLlegada || '';
+      return {
+        ...cleanRuta,
+        horaEstimadaSalida: horaSalida,
+        horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+        horaEstimadaLlegada: horaLlegada,
+      };
+    }),
   };
 }
 
@@ -466,7 +777,22 @@ export function departamentosDisponibles(): string[] {
  * Ciudades de un departamento dado (vacío si el departamento no existe).
  */
 export function ciudadesDeDepartamento(departamento: string): string[] {
-  return DEPARTAMENTOS_COLOMBIA[departamento] || [];
+  if (!departamento) return [];
+  if (DEPARTAMENTOS_COLOMBIA[departamento]) {
+    return DEPARTAMENTOS_COLOMBIA[departamento];
+  }
+  const clean = (s: string) =>
+    s
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '');
+  const target = clean(departamento);
+  const foundKey = Object.keys(DEPARTAMENTOS_COLOMBIA).find(
+    (k) => clean(k) === target,
+  );
+  return foundKey ? DEPARTAMENTOS_COLOMBIA[foundKey] : [];
 }
 
 /**
@@ -502,4 +828,101 @@ export function fallbackGeopolitica(): Geopolitica[] {
     });
   });
   return lista;
+}
+
+/**
+ * Tarifas estándar de transporte a terminales aéreos según resolución GF-FO-023.
+ */
+export const TARIFAS_TERMINALES_AEREAS_DEFAULT: Array<{
+  departamento: string;
+  departamentoId?: number;
+  ciudadAeropuerto: string;
+  valorMaximo: number;
+}> = [
+  { departamento: 'Antioquia', departamentoId: 5, ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximo: 162634 },
+  { departamento: 'Atlántico', departamentoId: 8, ciudadAeropuerto: 'ATLANTICO (Soledad)', valorMaximo: 130704 },
+  { departamento: 'Córdoba', departamentoId: 23, ciudadAeropuerto: 'CORDOBA (Los Garzones)', valorMaximo: 118731 },
+  { departamento: 'Magdalena', departamentoId: 47, ciudadAeropuerto: 'MAGDALENA (Santa Marta)', valorMaximo: 129708 },
+  { departamento: 'Nariño', departamentoId: 52, ciudadAeropuerto: 'NARIÑO (Chachagui)', valorMaximo: 186581 },
+  { departamento: 'Otros', departamentoId: undefined, ciudadAeropuerto: 'Otros', valorMaximo: 50689 },
+  { departamento: 'Putumayo', departamentoId: 86, ciudadAeropuerto: 'PUTUMAYO (Puerto Asís)', valorMaximo: 93788 },
+  { departamento: 'Quindío', departamentoId: 63, ciudadAeropuerto: 'QUNDIO (La Tebaida)', valorMaximo: 186581 },
+  { departamento: 'Santander', departamentoId: 68, ciudadAeropuerto: 'SANTANDER (Lebrija)', valorMaximo: 186581 },
+  { departamento: 'Sucre', departamentoId: 70, ciudadAeropuerto: 'SUCRE (Corozal)', valorMaximo: 162634 },
+  { departamento: 'Valle del Cauca', departamentoId: 76, ciudadAeropuerto: 'VALLE DEL CAUCA (Palmira)', valorMaximo: 186581 },
+];
+
+/**
+ * Calcula la tarifa de transporte a terminal aérea aplicable para una ruta dada.
+ * Prioriza la coincidencia por departamentoId (código DANE de geopolítica en auth),
+ * luego por nombre de departamento, ciudad, y finalmente Otros ($50.689).
+ */
+export function calcularTarifaTerminalAereoRuta(
+  departamento?: string,
+  ciudad?: string,
+  tipoTrayecto?: 'SOLO_IDA' | 'IDA_Y_VUELTA' | string,
+  tarifasPersonalizadas?: TarifaTransporteTerminal[],
+  departamentoId?: number | null,
+): {
+  departamento: string;
+  ciudadAeropuerto: string;
+  valorMaximoPorTrayecto: number;
+  factorTrayecto: number;
+  totalTramo: number;
+} {
+  const norm = (s?: string) =>
+    (s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const deptoNorm = norm(departamento);
+  const ciudadNorm = norm(ciudad);
+
+  const lista = (tarifasPersonalizadas && tarifasPersonalizadas.length > 0)
+    ? (tarifasPersonalizadas as any[])
+    : TARIFAS_TERMINALES_AEREAS_DEFAULT;
+
+  let match: any = undefined;
+
+  // 1. Coincidencia prioritaria por departamentoId (código DANE geopolítica)
+  if (departamentoId != null) {
+    match = lista.find((t: any) => {
+      const tId = t.departamentoId ?? t.departamento_id;
+      return tId != null && Number(tId) === Number(departamentoId);
+    });
+  }
+
+  // 2. Coincidencia por nombre de departamento o ciudad si no hubo match por ID
+  if (!match) {
+    match = lista.find((t: any) => {
+      const tDepto = norm(t.departamento || t.ciudad);
+      const tCiudad = norm(t.ciudad);
+      const tAero = norm(t.ciudadAeropuerto);
+      if (tDepto === 'otros' || tCiudad === 'otros') return false;
+
+      if (deptoNorm && (tDepto === deptoNorm || tDepto.includes(deptoNorm) || deptoNorm.includes(tDepto))) {
+        return true;
+      }
+      if (ciudadNorm && (tDepto.includes(ciudadNorm) || tCiudad.includes(ciudadNorm) || tAero.includes(ciudadNorm))) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  const otros: any = lista.find((t: any) => norm(t.departamento || t.ciudad).includes('otros'));
+  const valorUnitario = match
+    ? Number(match.valorMaximoTrayecto ?? match.valorMaximo ?? 50689)
+    : (otros ? Number(otros.valorMaximoTrayecto ?? otros.valorMaximo ?? 50689) : 50689);
+  const factor = tipoTrayecto === 'IDA_Y_VUELTA' ? 2 : 1;
+
+  return {
+    departamento: match ? (match.departamento || match.ciudad) : 'Otros',
+    ciudadAeropuerto: match ? match.ciudadAeropuerto : 'Otros',
+    valorMaximoPorTrayecto: valorUnitario,
+    factorTrayecto: factor,
+    totalTramo: valorUnitario * factor,
+  };
 }
