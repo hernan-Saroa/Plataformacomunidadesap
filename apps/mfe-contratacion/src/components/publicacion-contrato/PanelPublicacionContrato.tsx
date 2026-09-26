@@ -16,7 +16,6 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
-import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
 
@@ -214,7 +213,7 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
 
       {/* Qué destinos faltan lo dice el servidor: la pantalla no conoce la lista. */}
       {estado.legalizado && estado.pendientes.length > 0 && !registrando ? (
-        <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+        <Permitido accion="editar" punto="8.8" quien="el gestor de contratación">
           <Boton
             icono={<Upload className="w-3.5 h-3.5" />}
             onClick={() => {

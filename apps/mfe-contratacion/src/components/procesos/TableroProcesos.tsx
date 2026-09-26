@@ -3,6 +3,7 @@ import { FileText, ArrowRight } from 'lucide-react';
 
 import { ProcesoResumen } from '../../types';
 import { ETAPAS } from '../proceso/Etapas';
+import { etapaEnCurso } from './etapaEnCurso';
 
 interface EstadoVisual {
   texto: string;
@@ -33,9 +34,10 @@ export function TableroProcesos({ procesos, estadoDe, onAbrir }: Props) {
   const columnas = useMemo(() => {
     const porEtapa = new Map<number, ProcesoResumen[]>();
     for (const proceso of procesos) {
-      const lista = porEtapa.get(proceso.etapa) ?? [];
+      const etapa = etapaEnCurso(proceso);
+      const lista = porEtapa.get(etapa) ?? [];
       lista.push(proceso);
-      porEtapa.set(proceso.etapa, lista);
+      porEtapa.set(etapa, lista);
     }
 
     return ETAPAS.filter((etapa) => !etapa.fueraDeAlcance || porEtapa.has(etapa.numero)).map(

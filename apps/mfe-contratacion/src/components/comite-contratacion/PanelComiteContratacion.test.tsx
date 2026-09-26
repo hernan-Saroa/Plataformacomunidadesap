@@ -25,7 +25,7 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   valorEstimado: 2_000_000_000,
   umbral: UMBRAL,
   sesiones: [],
-  reabribles: ['3.1', '3.2', '3.5', '3.6'],
+  reabribles: ['3.1', '3.5', '3.6'],
   puedeRegistrar: false,
   puedeDejarConstancia: false,
   motivoNoDecide: null,
@@ -139,15 +139,15 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     // La lista de cuatro dice cuáles son reabribles en general; cuáles están
     // en APROBADO lo sabe el backend. Ofrecer una que no lo está sería ofrecer
     // algo que el servicio va a rechazar al enviarlo.
-    pintar(estado({ puedeRegistrar: true, reabribles: ['3.1', '3.5'] }));
+    pintar(estado({ puedeRegistrar: true, reabribles: ['3.1', '3.6'] }));
 
     await userEvent.click(
       await screen.findByRole('button', { name: /Registrar lo que decidió el comité/ }),
     );
 
     expect(screen.getByLabelText(/3.1 · Estudio previo/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/3.5 · Modalidad/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/3.2 · Análisis del sector/)).toBeNull();
+    expect(screen.getByLabelText(/3.6 · Causal/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/3.5 · Modalidad/)).toBeNull();
   });
 
   /**
@@ -165,7 +165,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
     // Sin marcar nada no hay nada que validar, así que el campo no está.
     expect(screen.queryByLabelText(/Qué hay que validar/)).toBeNull();
 
-    await userEvent.click(screen.getByLabelText(/3.2 · Análisis del sector/));
+    await userEvent.click(screen.getByLabelText(/3.5 · Modalidad/));
     expect(screen.getByLabelText(/Qué hay que validar/)).toBeInTheDocument();
   });
 
@@ -185,7 +185,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
       'El estudio previo no sustenta la experiencia exigida',
     );
     await userEvent.click(screen.getByLabelText(/3.1 · Estudio previo/));
-    await userEvent.click(screen.getByLabelText(/3.2 · Análisis del sector/));
+    await userEvent.click(screen.getByLabelText(/3.5 · Modalidad/));
 
     const acta = new File(['contenido'], 'acta.pdf', { type: 'application/pdf' });
     await userEvent.upload(
@@ -200,7 +200,7 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
       expect.objectContaining({
         decision: 'OBSERVADO',
         observaciones: 'El estudio previo no sustenta la experiencia exigida',
-        numeralesReabrir: ['3.1', '3.2'],
+        numeralesReabrir: ['3.1', '3.5'],
       }),
       acta,
     );

@@ -39,7 +39,6 @@ const papel = (...papeles: PapelAviso[]): Destino => ({ papeles });
 /** Las que no siguen la regla de su etapa. */
 const POR_ACTIVIDAD: Record<string, Destino> = {
   '3.1': papel('RADICADOR'),
-  '3.2': papel('RADICADOR'),
   // Aún no es de nadie: le toca a quien puede tomarlo de la bandeja.
   '3.3': papel('BANDEJA_CONTRATACION'),
   // Le toca al abogado que le asignan en la 3.3.

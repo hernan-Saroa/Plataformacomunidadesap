@@ -33,6 +33,11 @@ const aviso = (cambios: Partial<AvisoEvento>): AvisoEvento => ({
   dependencias: [],
   roles: [],
   personas: [],
+  titulo: null,
+  mensaje: null,
+  textoDeSiempre: { titulo: 'Contratación recibió el proceso', mensaje: 'El proceso LP-001-2026 fue recibido.' },
+  correosExternos: [],
+  alContratista: false,
   ...cambios,
 });
 
@@ -42,6 +47,10 @@ const configuracion = (
   papeles: PAPELES,
   requiereAprobacion: cambios.requiereAprobacion ?? true,
   porCorreo: true,
+  variables: [
+    { clave: 'actividad', descripcion: 'Numeral y nombre de la actividad' },
+    { clave: 'proceso', descripcion: 'Radicado del proceso' },
+  ],
   siempre:
     cambios.requiereAprobacion === false
       ? []
@@ -129,6 +138,54 @@ describe('NotificacionesActividad', () => {
       expect(screen.queryByText('Se envía a aprobación')).toBeNull();
       // Sin avisos fijos no se pone un título vacío.
       expect(screen.queryByText('Se avisa siempre')).toBeNull();
+    });
+  });
+
+  describe('fuera de la plataforma y el texto (088)', () => {
+    it('agrega un correo externo, que ya cuenta como destinatario', async () => {
+      const guardar = vi
+        .spyOn(contratacionService, 'guardarAvisoDeActividad')
+        .mockResolvedValue(configuracion({ recibido: { correosExternos: ['interventoria@empresa.co'] } }));
+      render(<NotificacionesActividad numeral="3.2" />);
+      await abrir('Contratación recibe el proceso');
+
+      await userEvent.type(screen.getByLabelText('Agregar un correo externo'), ' Interventoria@Empresa.co ');
+      await userEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+
+      expect(guardar).toHaveBeenCalledWith('3.2', 'RECIBIDO_EN_CONTRATACION', {
+        correosExternos: ['interventoria@empresa.co'],
+        activo: false,
+      });
+      expect(await screen.findByText('interventoria@empresa.co')).toBeInTheDocument();
+    });
+
+    it('no ofrece agregar algo que no es un correo', async () => {
+      render(<NotificacionesActividad numeral="3.2" />);
+      await abrir('Contratación recibe el proceso');
+
+      await userEvent.type(screen.getByLabelText('Agregar un correo externo'), 'interventoria');
+      expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+    });
+
+    it('guarda el texto propio con las variables que se pulsan', async () => {
+      const guardar = vi
+        .spyOn(contratacionService, 'guardarAvisoDeActividad')
+        .mockResolvedValue(configuracion());
+      render(<NotificacionesActividad numeral="3.2" />);
+      await abrir('Contratación recibe el proceso');
+
+      // El texto de siempre se ve de fondo, para saber de qué se parte.
+      const mensaje = screen.getByLabelText('Mensaje del aviso');
+      expect(mensaje).toHaveAttribute('placeholder', 'El proceso LP-001-2026 fue recibido.');
+
+      await userEvent.type(mensaje, 'Ya recibimos el proceso');
+      await userEvent.click(screen.getByRole('button', { name: '{proceso}' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar texto' }));
+
+      expect(guardar).toHaveBeenCalledWith('3.2', 'RECIBIDO_EN_CONTRATACION', {
+        titulo: null,
+        mensaje: 'Ya recibimos el proceso {proceso}',
+      });
     });
   });
 

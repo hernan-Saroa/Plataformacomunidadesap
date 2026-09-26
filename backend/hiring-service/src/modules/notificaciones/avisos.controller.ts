@@ -3,9 +3,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_CONFIG_ADMINISTRAR, PERMISO_PROCESO_VER } from '../../auth/permisos';
+import { PERMISO_CONFIG_ADMINISTRAR } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
-import { AvisosService } from './avisos.service';
+import { Puede } from '../../auth/puede.guard';
+import { AvisosService, CambiosAviso } from './avisos.service';
 
 /** A quién le llega cada aviso de una actividad (EFDS-1183). */
 @ApiTags('Configuración · Notificaciones')
@@ -14,8 +15,7 @@ export class AvisosController {
   constructor(private readonly avisos: AvisosService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', undefined, { oPermiso: PERMISO_CONFIG_ADMINISTRAR })
   @ApiOperation({ summary: 'Los avisos de la actividad: si están encendidos y a quién llegan' })
   listar(@Param('numeral') numeral: string) {
     return this.avisos.deActividad(numeral);
@@ -27,12 +27,12 @@ export class AvisosController {
   @ApiOperation({
     summary: 'Encender, apagar o cambiar a quién llega un aviso de la actividad',
     description:
-      'Recibe { activo, dependencias, roles, personas }; lo que no llegue se conserva. Los avisos que salen siempre no se configuran.',
+      'Recibe { activo, dependencias, roles, personas, titulo, mensaje, correosExternos, alContratista }; lo que no llegue se conserva. Los avisos que salen siempre no se configuran.',
   })
   guardar(
     @Param('numeral') numeral: string,
     @Param('evento') evento: string,
-    @Body() cambios: { activo?: boolean; roles?: string[]; personas?: string[]; dependencias?: string[] },
+    @Body() cambios: CambiosAviso,
     @Req() req: any,
   ) {
     return this.avisos.guardar(numeral, evento, cambios, getHiringAccess(req));
@@ -69,8 +69,7 @@ export class DependenciasController {
   constructor(private readonly avisos: AvisosService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', undefined, { oPermiso: PERMISO_CONFIG_ADMINISTRAR })
   @ApiOperation({ summary: 'Dependencias de la ESAP, del catálogo de la plataforma' })
   listar() {
     return this.avisos.dependencias();

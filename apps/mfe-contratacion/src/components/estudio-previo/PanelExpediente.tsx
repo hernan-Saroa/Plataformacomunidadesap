@@ -239,7 +239,9 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                 {doc.descargaUrl && (
                   <>
                     {/* El expediente es donde se revisa: primero abrirlo, y
-                        bajarlo solo si hace falta tenerlo fuera. */}
+                        bajarlo solo si hace falta tenerlo fuera. En el azul de
+                        los enlaces y no en gris: en gris se leían como
+                        apagados aunque el archivo estuviera ahí. */}
                     <button
                       type="button"
                       onClick={() =>
@@ -250,14 +252,14 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                           mimeType: doc.mimeType,
                         })
                       }
-                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+                      className="shrink-0 p-1.5 rounded-lg text-[#003DA5] hover:bg-slate-50"
                       title={`Ver ${doc.nombre}`}
                     >
                       <Eye className="w-4 h-4" />
                     </button>
                     <a
                       href={contratacionService.urlDescarga(doc.descargaUrl)}
-                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-[#003DA5] hover:bg-slate-50"
+                      className="shrink-0 p-1.5 rounded-lg text-[#003DA5] hover:bg-slate-50"
                       title={`Descargar ${doc.nombre}`}
                     >
                       <Download className="w-4 h-4" />

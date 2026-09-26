@@ -25,9 +25,10 @@ import { Modalidad, ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 import { PaginationPremium } from '../shared/PaginationPremium';
-import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { useAlcance } from '../../auth/alcance';
 import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
+import { etapaEnCurso } from './etapaEnCurso';
 
 interface Props {
   /** Abre directamente el formulario del estudio previo. */
@@ -124,8 +125,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
     () => (localStorage.getItem('contratacion:vista') as 'lista' | 'tablero') || 'lista',
   );
 
-  /** Radicar es de quien radica: el resto solo consulta el listado. */
-  const puedeCrear = tienePermiso(PERMISOS.procesoCrear);
+  /** Radicar es empezar el estudio previo: quien edita la 3.1. El resto consulta. */
+  const { puede } = useAlcance();
+  const puedeCrear = puede('editar', '3.1');
 
   const cambiarVista = (nueva: 'lista' | 'tablero') => {
     setVista(nueva);
@@ -644,9 +646,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
 
                   {/* Etapa */}
                   <div className="celda-apilada min-w-0">
-                    <StepperCompacto etapaActual={p.etapa} />
+                    <StepperCompacto etapaActual={etapaEnCurso(p)} />
                     <span className="block text-[11px] font-bold text-gray-500 tabular-nums mt-1">
-                      Etapa {p.etapa} de 10
+                      Etapa {etapaEnCurso(p)} de 10
                     </span>
                   </div>
 

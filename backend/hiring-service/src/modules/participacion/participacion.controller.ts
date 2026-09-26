@@ -1,16 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ParticipacionService } from './participacion.service';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_PRESUPUESTO_GESTIONAR,
-  PERMISO_PROCESO_TOMAR,
-  PERMISO_PROCESO_VER,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * Quién está en un proceso (EFDS-1183).
@@ -26,8 +20,7 @@ export class ParticipacionController {
   constructor(private readonly service: ParticipacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.3')
   @ApiOperation({
     summary: 'Quién lleva el proceso',
     description:
@@ -38,8 +31,7 @@ export class ParticipacionController {
   }
 
   @Post('tomar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_TOMAR)
+  @Puede('editar', '3.3')
   @ApiOperation({
     summary: 'Actividad 3.3 · Tomar el proceso de la bandeja',
     description:
@@ -50,16 +42,15 @@ export class ParticipacionController {
   }
 
   /**
-   * El mismo permiso que verificar y expedir, y no uno propio de «tomar».
+   * Lo mismo que verificar: editar la 4.2, y no la 4.1.
    *
-   * En la etapa 3 tomar y aprobar son de personas distintas, y por eso existe
-   * `contratacion.proceso.take`. Aquí no: quien recibe la solicitud es quien la
-   * resuelve, y un permiso aparte solo permitiría apropiarse de solicitudes que
-   * luego no se pueden atender.
+   * Quien recibe la solicitud es quien la resuelve, y exigir otra cosa solo
+   * permitiría apropiarse de solicitudes que luego no se pueden atender. La
+   * 4.1 tampoco sirve: la edita el gestor al solicitar, y con ella podría
+   * quedarse con la solicitud de la Financiera.
    */
   @Post('financiera/tomar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PRESUPUESTO_GESTIONAR)
+  @Puede('editar', '4.2')
   @ApiOperation({
     summary: 'Actividad 4.1 · Tomar la solicitud de CDP',
     description:
@@ -130,8 +121,7 @@ export class CandidatosController {
   constructor(private readonly service: ParticipacionService) {}
 
   @Get('abogados')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.4')
   @ApiOperation({
     summary: 'Cuentas que pueden revisar un proceso',
     description:
@@ -142,8 +132,7 @@ export class CandidatosController {
   }
 
   @Get('financieros')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PRESUPUESTO_GESTIONAR, PERMISO_PROCESO_VER)
+  @Puede('ver', '4.1')
   @ApiOperation({
     summary: 'Cuentas que pueden resolver un CDP',
     description:

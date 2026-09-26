@@ -1,4 +1,4 @@
-import { ConteoValor, EstadisticasGestion } from './estadisticas.service';
+import { ConteoValor, EstadisticasGestion, ResumenDias } from './estadisticas.service';
 
 /**
  * Las estadísticas de gestión como archivo descargable (EFDS-1189).
@@ -51,27 +51,65 @@ function seccion(titulo: string, cortes: ConteoValor[]): string[] {
   ];
 }
 
+/** Un tramo del ciclo: promedio, mediana y sobre cuántos contratos se midió. */
+function tramo(nombre: string, resumen: ResumenDias): string {
+  return fila(nombre, resumen.promedio ?? 'Sin datos', resumen.mediana ?? 'Sin datos', resumen.muestras);
+}
+
+/**
+ * Cómo se llama un filtro en el archivo.
+ *
+ * Con el nombre y no con el código: `ABREVIADA_MENOR_CUANTIA` en el encabezado
+ * de un informe obliga a quien lo lee a saber cómo lo guarda el sistema. Si el
+ * corte quedó vacío no hay de dónde sacar el nombre y va el código.
+ */
+function nombreDelFiltro(codigo: string | null, cortes: ConteoValor[]): string {
+  if (!codigo) return 'Todas';
+  return cortes.find((c) => c.clave === codigo)?.etiqueta ?? codigo;
+}
+
 /**
  * El reporte completo en CSV.
  *
  * Con BOM al principio: sin él, Excel abre el archivo como ANSI y «Adjudicación
  * de mínima cuantía» se lee «AdjudicaciÃ³n». Es un byte y ahorra que el área
  * tenga que importar el archivo a mano cada vez.
+ *
+ * Termina con el listado de contratos: las cifras de arriba se citan en el
+ * informe, y el listado es lo que el organismo de control pide para cruzarlas.
  */
 export function reporteCsv(estadisticas: EstadisticasGestion): string {
-  const { filtros, contratos, procesos, presupuesto } = estadisticas;
+  const { filtros, contratos, procesos, presupuesto, modificaciones, seguimiento, tiempos } =
+    estadisticas;
 
   const lineas = [
     fila('Estadísticas y reportes de gestión contractual'),
     fila('Generado', estadisticas.generadoEn),
     fila('Vigencia', filtros.vigencia ?? 'Todas'),
-    fila('Modalidad', filtros.modalidad ?? 'Todas'),
+    fila('Modalidad', nombreDelFiltro(filtros.modalidad, contratos.porModalidad)),
+    fila('Tipología', nombreDelFiltro(filtros.tipologia, contratos.porTipologia)),
+    '',
+
+    fila('Totales'),
+    fila('Contratos', contratos.total),
+    fila('Valor total', contratos.valorTotal),
+    fila('Valor inicial, sin adiciones', contratos.valorInicial),
+    fila('Valor promedio por contrato', contratos.valorPromedio),
+    fila('Contratistas distintos', contratos.contratistasDistintos),
+    fila('Procesos de selección', procesos.total),
+    fila('Valor estimado de los procesos', procesos.valorEstimado),
     '',
 
     ...seccion('Contratos por estado', contratos.porEstado),
     ...seccion('Contratos por modalidad de selección', contratos.porModalidad),
     ...seccion('Contratos por tipología', contratos.porTipologia),
+    ...seccion('Contratos por tipo de persona del contratista', contratos.porTipoPersona),
+    ...seccion('Contratos suscritos por mes', contratos.porMes),
+    ...seccion('Principales contratistas por valor', contratos.principalesContratistas),
+
     ...seccion('Procesos de selección por desenlace', procesos.porDesenlace),
+    ...seccion('Procesos de selección por modalidad', procesos.porModalidad),
+    ...seccion('Procesos en curso por etapa', procesos.enCursoPorEtapa),
 
     fila('Ejecución presupuestal'),
     fila('Concepto', 'Valor'),
@@ -79,12 +117,78 @@ export function reporteCsv(estadisticas: EstadisticasGestion): string {
     fila('Pagado', presupuesto.pagado),
     fila('Por pagar', presupuesto.porPagar),
     fila('Porcentaje ejecutado', presupuesto.porcentajeEjecutado),
+    fila('Cuentas en trámite', presupuesto.enTramite),
+    '',
+    ...seccion('Cuentas de cobro por estado', presupuesto.cuentasPorEstado),
+
+    fila('Modificaciones contractuales'),
+    fila('Concepto', 'Valor'),
+    fila('Modificaciones aprobadas', modificaciones.total),
+    fila('Contratos modificados', modificaciones.contratosModificados),
+    fila('Valor adicionado', modificaciones.valorAdicionado),
+    fila('Porcentaje adicionado sobre el valor inicial', modificaciones.porcentajeAdicionado),
+    fila('Días prorrogados', modificaciones.diasProrrogados),
+    '',
+    ...seccion('Modificaciones por tipo', modificaciones.porTipo),
+
+    ...seccion('Contratos que requieren atención', seguimiento.porSituacion),
+    fila('Casos de presunto incumplimiento abiertos', seguimiento.incumplimientosAbiertos),
+    fila('Contratos con incumplimiento abierto', seguimiento.contratosConIncumplimiento),
     '',
 
-    fila('Totales'),
-    fila('Contratos', contratos.total),
-    fila('Valor total', contratos.valorTotal),
-    fila('Procesos de selección', procesos.total),
+    fila('Tiempos del ciclo, en días calendario'),
+    fila('Tramo', 'Promedio', 'Mediana', 'Contratos medidos'),
+    tramo('De la radicación del proceso a la firma', tiempos.radicacionASuscripcion),
+    tramo('De la firma al acta de inicio', tiempos.suscripcionAInicio),
+    '',
+
+    fila('Listado de contratos'),
+    ...(estadisticas.contratosDelReporte.length === 0
+      ? [fila('Sin datos')]
+      : [
+          fila(
+            'Proceso',
+            'Contrato',
+            'Objeto',
+            'Contratista',
+            'Tipo de persona',
+            'Modalidad',
+            'Tipología',
+            'Estado',
+            'Valor inicial',
+            'Valor actual',
+            'Pagado',
+            'Porcentaje pagado',
+            'Suscrito el',
+            'Inicio',
+            'Plazo en días',
+            'Fin del plazo',
+            'Modificaciones',
+            'Supervisor',
+          ),
+          ...estadisticas.contratosDelReporte.map((c) =>
+            fila(
+              c.radicado,
+              c.numero,
+              c.objeto,
+              c.contratista,
+              c.tipoPersona,
+              c.modalidad ?? '',
+              c.tipologia ?? '',
+              contratos.porEstado.find((e) => e.clave === c.estado)?.etiqueta ?? c.estado,
+              c.valorInicial,
+              c.valor,
+              c.pagado,
+              c.porcentajePagado,
+              c.suscritoEl ?? '',
+              c.inicioEl ?? '',
+              c.plazoDias ?? '',
+              c.finDelPlazo ?? '',
+              c.modificaciones,
+              c.supervisor ?? '',
+            ),
+          ),
+        ]),
   ];
 
   return `﻿${lineas.join('\r\n')}\r\n`;

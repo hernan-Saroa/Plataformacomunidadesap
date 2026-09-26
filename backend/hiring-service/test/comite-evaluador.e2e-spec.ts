@@ -34,21 +34,18 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   const financiero: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000002',
     userName: 'prueba.financiero',
     roles: ['ESTRUCTURADOR_FINANCIERO'],
-    puedeEditar: false,
   };
 
   const ordenador: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000003',
     userName: 'prueba.ordenador',
     roles: ['ORDENADOR_GASTO'],
-    puedeEditar: false,
   };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -337,7 +334,6 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
         userId: usuario.id_user,
         userName: 'prueba.evaluadora',
         roles: ['EVALUADOR_FINANCIERO'],
-        puedeEditar: false,
       };
 
       expect(await comite.dimensionesDe(proceso.id, suAcceso)).toEqual(['FINANCIERO']);
@@ -362,7 +358,6 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
         userId: usuario.id_user,
         userName: 'prueba.intruso',
         roles: ['EVALUADOR_JURIDICO'],
-        puedeEditar: false,
       };
 
       expect(await comite.dimensionesDe(proceso.id, intruso)).toEqual([]);

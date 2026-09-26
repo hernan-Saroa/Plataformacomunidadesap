@@ -21,7 +21,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { UmbralesModule } from '../umbrales/umbrales.module';
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
 import { CdpModule } from '../cdp/cdp.module';
-import { ListaChequeoModule } from '../lista-chequeo/lista-chequeo.module';
+import { DocumentosActividadModule } from '../documentos-actividad/documentos-actividad.module';
 import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
@@ -45,8 +45,8 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
     ParticipacionModule,
     // Enviar el estudio previo es radicar en la Dirección de Contratación, y
     // el procedimiento manda remitir con él los documentos de la lista de
-    // chequeo que la modalidad exija.
-    ListaChequeoModule,
+    // chequeo que la modalidad exija: los de la 3.1 en el catálogo único.
+    DocumentosActividadModule,
     CierreActividadModule,
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],

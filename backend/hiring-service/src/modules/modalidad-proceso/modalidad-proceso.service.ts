@@ -13,7 +13,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { CdpService } from '../cdp/cdp.service';
@@ -59,6 +59,8 @@ export class ModalidadProcesoService {
     private readonly umbrales: UmbralesService,
     private readonly cdp: CdpService,
     private readonly cierre: CierreActividadService,
+    /** Quién puede proponer la modalidad (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -73,7 +75,7 @@ export class ModalidadProcesoService {
           .findOne({ where: { codigo: proceso.modalidad } })
       : null;
 
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_MODALIDAD);
     const estadoActual = actividad?.estado ?? 'BORRADOR';
 
     const revisiones = actividad
@@ -179,7 +181,7 @@ export class ModalidadProcesoService {
    * el ciclo se repetiría con la misma equivocación.
    */
   async decidir(procesoId: string, dto: DecidirModalidadDto, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_MODALIDAD);
     if (motivo === 'SIN_ABOGADO') {
       throw new ConflictException(
         'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
@@ -263,7 +265,7 @@ export class ModalidadProcesoService {
    * equivocó y ya está encima del expediente.
    */
   private async esDelArea(proceso: Proceso, acceso: HiringAccess): Promise<boolean> {
-    if (!tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR)) return false;
+    if (!(await this.alcance.puedeEn(acceso, 'editar', NUMERAL_MODALIDAD))) return false;
 
     const loRadico =
       !!proceso.createdBy &&

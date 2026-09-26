@@ -4,7 +4,7 @@ import { PublicacionService } from './publicacion.service';
 
 /** Servicio con la base de datos fuera del camino: aquí se prueban las reglas. */
 function servicio() {
-  return new PublicacionService({ manager: {} } as any);
+  return new PublicacionService({ manager: {} } as any, {} as any);
 }
 
 /** El `em` que espera el servicio: sin expediente y sin días propios cargados. */

@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -25,10 +24,9 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Publicación del acta y archivo del expediente — actividad 10.4 (EFDS-1174).
@@ -44,8 +42,7 @@ export class ArchivoExpedienteController {
   constructor(private readonly service: ArchivoExpedienteService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.seguimiento.ver')
+  @Puede('ver', '10.4')
   @ApiOperation({
     summary: 'Estado de la publicación del acta y del archivo',
     description:
@@ -56,8 +53,7 @@ export class ArchivoExpedienteController {
   }
 
   @Post('publicaciones')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.expediente.archivar')
+  @Puede('editar', '10.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -103,8 +99,7 @@ export class ArchivoExpedienteController {
   }
 
   @Post('archivar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.expediente.archivar')
+  @Puede('decidir', '10.4')
   @ApiOperation({
     summary: 'Actividad 10.4 · Archivar el expediente contractual',
     description:
@@ -119,8 +114,7 @@ export class ArchivoExpedienteController {
   }
 
   @Post('reabrir')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.expediente.archivar')
+  @Puede('decidir', '10.4')
   @ApiOperation({
     summary: 'Reabrir el expediente archivado',
     description:

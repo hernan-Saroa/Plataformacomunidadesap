@@ -59,7 +59,7 @@ describe('PublicacionService · terminarPlazo', () => {
 
     const instancia = new PublicacionService({
       transaction: async (cb: (em: any) => Promise<any>) => cb(em),
-    } as never);
+    } as never, {} as never);
 
     (instancia as any).exigirPublicacion = async () => publicacion;
     (instancia as any).estadoPublicacion = async () => ({ publicacion });

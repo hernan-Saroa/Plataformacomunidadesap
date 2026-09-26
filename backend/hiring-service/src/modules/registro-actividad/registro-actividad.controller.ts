@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -20,6 +19,7 @@ import { AnularRegistroDto, RegistrarActividadDto } from './dto/registro-activid
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -28,8 +28,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Actividades que se cumplen dejando constancia (migración 051).
@@ -49,8 +47,7 @@ export class RegistroActividadController {
   constructor(private readonly service: RegistroActividadService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.actividad.edit')
+  @Puede('ver', { param: 'numeral' })
   @ApiOperation({
     summary: 'Estado del registro de la actividad',
     description:
@@ -61,8 +58,7 @@ export class RegistroActividadController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', { param: 'numeral' })
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -109,8 +105,7 @@ export class RegistroActividadController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', { param: 'numeral' })
   @ApiOperation({
     summary: 'Anular el registro vigente',
     description:

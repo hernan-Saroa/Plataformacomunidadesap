@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFiles,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -21,10 +20,9 @@ import { AnularLiquidacionDto, LiquidarDto } from './dto/liquidacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Acta de liquidación — actividad 10.2 (EFDS-1172).
@@ -39,8 +37,7 @@ export class LiquidacionController {
   constructor(private readonly service: LiquidacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.seguimiento.ver')
+  @Puede('ver', '10.2')
   @ApiOperation({
     summary: 'Estado de la liquidación',
     description:
@@ -51,8 +48,7 @@ export class LiquidacionController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '10.2')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -105,8 +101,7 @@ export class LiquidacionController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '10.2')
   @ApiOperation({
     summary: 'Anular el acta de liquidación',
     description:

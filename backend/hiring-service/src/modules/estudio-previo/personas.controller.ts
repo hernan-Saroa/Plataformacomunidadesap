@@ -1,11 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RolesGuard } from '../../auth/roles.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 
 
@@ -28,8 +27,7 @@ export class PersonasController {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Personas para los selectores del estudio previo' })
   async listar(@Query('q') q?: string, @Query('limit') limit?: string) {
     const solicitado = limit ? parseInt(limit, 10) : LIMITE_POR_DEFECTO;
