@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,6 +20,7 @@ import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-defini
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -29,8 +29,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Informe de evaluación definitivo — actividad 7.3 (EFDS-1159).
@@ -44,8 +42,7 @@ export class InformeDefinitivoController {
   constructor(private readonly service: InformeDefinitivoService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
+  @Puede('ver', '7.3')
   @ApiOperation({
     summary: 'Estado del informe definitivo',
     description:
@@ -56,8 +53,7 @@ export class InformeDefinitivoController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -93,8 +89,7 @@ export class InformeDefinitivoController {
   }
 
   @Post('publicar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -133,8 +128,7 @@ export class InformeDefinitivoController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.3')
   @ApiOperation({
     summary: 'Anular el informe definitivo',
     description: 'Deja sin efecto el informe para poder generar otro; el anulado queda con su motivo.',

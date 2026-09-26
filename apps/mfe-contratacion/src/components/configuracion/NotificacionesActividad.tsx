@@ -1,22 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Check, Pencil, Plus, RotateCcw, Search, ShieldCheck, User, Users, X } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  Check,
+  Mail,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  Type,
+  User,
+  Users,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { AvisoEvento, ConfiguracionAvisos, PapelAviso } from '../../types';
-import { PERMISOS, tienePermiso } from '../../auth/permisos';
+import { AvisoEvento, CambiosAviso, ConfiguracionAvisos, PapelAviso } from '../../types';
+import { PERMISOS } from '../../auth/permisos';
+import { useAlcance } from '../../auth/alcance';
 import { campo } from '../shared/PiezasPanel';
 
 interface Props {
   numeral: string;
-}
-
-/** Lo que se manda al guardar a quién llega un aviso: siempre la lista completa. */
-interface CambiosAviso {
-  activo: boolean;
-  dependencias: string[];
-  roles: string[];
-  personas: string[];
 }
 
 /**
@@ -43,7 +50,8 @@ export function NotificacionesActividad({ numeral }: Props) {
   const [guardando, setGuardando] = useState<string | null>(null);
   /** El aviso que alguien quiso encender sin destinatario: se enciende al elegir el primero. */
   const [porEncender, setPorEncender] = useState<string | null>(null);
-  const puedeEditar = tienePermiso(PERMISOS.configurar);
+  const { tiene } = useAlcance();
+  const puedeEditar = tiene(PERMISOS.configurar);
 
   useEffect(() => {
     setDatos(null);
@@ -62,7 +70,8 @@ export function NotificacionesActividad({ numeral }: Props) {
     datos?.papeles.find((p) => p.codigo === codigo)?.nombre ?? codigo;
 
   const tieneDestinatario = (a: AvisoEvento) =>
-    a.papeles.length + a.dependencias.length + a.roles.length + a.personas.length > 0;
+    a.papeles.length + a.dependencias.length + a.roles.length + a.personas.length + a.correosExternos.length > 0 ||
+    a.alContratista;
 
   /** «al abogado del proceso · a Dirección Financiera · a todos los de Director de Contratación». */
   const aQuien = (a: AvisoEvento) =>
@@ -71,6 +80,8 @@ export function NotificacionesActividad({ numeral }: Props) {
       ...a.dependencias.map((d) => `a ${d.nombre}`),
       ...a.roles.map((r) => `a todos los de ${r.name}`),
       ...a.personas.map((p) => `a ${p.nombre}`),
+      ...(a.alContratista ? ['al contratista'] : []),
+      ...a.correosExternos.map((c) => `a ${c}`),
     ].join(' · ');
 
   const ejecutar = async (evento: string, accion: () => Promise<ConfiguracionAvisos>, exito: string) => {
@@ -109,6 +120,7 @@ export function NotificacionesActividad({ numeral }: Props) {
       exito,
     );
     if (ok && cambios.activo) setPorEncender(null);
+    return ok;
   };
 
   if (error) return <p className="text-xs text-red-600 m-0">{error}</p>;
@@ -202,6 +214,9 @@ export function NotificacionesActividad({ numeral }: Props) {
                         : `Apagado · avisaría ${aQuien(a)}`}
                     {!a.personalizado && <span className="text-slate-400"> · sugerido</span>}
                   </p>
+                  {(a.titulo || a.mensaje) && (
+                    <p className="text-[11px] text-slate-500 m-0 mt-0.5">Con texto propio</p>
+                  )}
                 </div>
                 {puedeEditar && !estaAbierto && (
                   <button
@@ -237,6 +252,21 @@ export function NotificacionesActividad({ numeral }: Props) {
                     setAbierto(null);
                     setPorEncender(null);
                   }}
+                />
+              )}
+
+              {estaAbierto && (
+                <TextoDelAviso
+                  aviso={a}
+                  variables={datos.variables}
+                  guardando={guardando === a.evento}
+                  onGuardar={(texto) =>
+                    guardarDestinatarios(
+                      a,
+                      texto,
+                      texto.titulo || texto.mensaje ? 'Texto del aviso guardado' : 'Vuelve a salir el texto de siempre',
+                    )
+                  }
                 />
               )}
             </div>
@@ -327,11 +357,12 @@ function Destinatarios({
   nombrePapel: (codigo: PapelAviso) => string;
   guardando: boolean;
   encenderAlElegir: boolean;
-  onGuardar: (cambios: CambiosAviso, exito: string) => void;
+  onGuardar: (cambios: CambiosAviso, exito: string) => Promise<boolean>;
   onRestablecer?: () => void;
   onListo: () => void;
 }) {
   const [buscando, setBuscando] = useState(encenderAlElegir);
+  const [correoNuevo, setCorreoNuevo] = useState('');
   const [donde, setDonde] = useState<'dependencias' | 'roles' | 'personas'>('dependencias');
   const [texto, setTexto] = useState('');
   const [catalogo, setCatalogo] = useState<{
@@ -359,11 +390,51 @@ function Destinatarios({
     setTexto('');
   };
 
+  /** Además de los elegidos, lo que llega por correo a quien no tiene cuenta. */
+  const hayDeFuera = aviso.alContratista || aviso.correosExternos.length > 0;
+
   const quitar = (quitado: Elegido) => {
     const resto = elegidos.filter((e) => !(e.clase === quitado.clase && e.id === quitado.id));
     // Sin nadie más a quien avisar, encendido no avisaría nada: se apaga.
-    const quedaAlguien = resto.length > 0 || aviso.papeles.length > 0;
+    const quedaAlguien = resto.length > 0 || aviso.papeles.length > 0 || hayDeFuera;
     onGuardar(conLista(resto, quedaAlguien && aviso.activo), `Ya no avisa ${aElegido(quitado)}`);
+  };
+
+  /** Si queda alguien de la plataforma, sin contar a los de fuera. */
+  const quedaDentro = aviso.papeles.length > 0 || elegidos.length > 0;
+
+  const cambiarContratista = (alContratista: boolean) =>
+    onGuardar(
+      {
+        alContratista,
+        activo: alContratista
+          ? aviso.activo || encenderAlElegir
+          : aviso.activo && (quedaDentro || aviso.correosExternos.length > 0),
+      },
+      alContratista ? 'Avisará también al contratista' : 'Ya no avisa al contratista',
+    );
+
+  const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoNuevo.trim());
+
+  const agregarCorreo = async () => {
+    const correo = correoNuevo.trim().toLowerCase();
+    if (!correoValido || aviso.correosExternos.includes(correo)) return;
+    const ok = await onGuardar(
+      { correosExternos: [...aviso.correosExternos, correo], activo: aviso.activo || encenderAlElegir },
+      `Avisará también a ${correo}`,
+    );
+    if (ok) setCorreoNuevo('');
+  };
+
+  const quitarCorreo = (correo: string) => {
+    const resto = aviso.correosExternos.filter((c) => c !== correo);
+    onGuardar(
+      {
+        correosExternos: resto,
+        activo: aviso.activo && (quedaDentro || resto.length > 0 || aviso.alContratista),
+      },
+      `Ya no avisa a ${correo}`,
+    );
   };
 
   // Los catálogos se piden al abrir el buscador: casi siempre se entra solo a mirar.
@@ -465,7 +536,27 @@ function Destinatarios({
         </div>
       ))}
 
-      {aviso.papeles.length === 0 && elegidos.length === 0 && !buscando && (
+      {aviso.correosExternos.map((correo) => (
+        <div
+          key={correo}
+          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5"
+        >
+          <Mail className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" aria-hidden="true" />
+          <span className="text-xs text-slate-800 flex-1 min-w-0 truncate">{correo}</span>
+          <span className="text-[10px] text-slate-400">Correo externo</span>
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => quitarCorreo(correo)}
+            aria-label={`Quitar ${correo}`}
+            className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+
+      {aviso.papeles.length === 0 && elegidos.length === 0 && !hayDeFuera && !buscando && (
         <p className="text-xs text-amber-700 m-0">Todavía no avisa a nadie: agrega a quién.</p>
       )}
 
@@ -607,6 +698,54 @@ function Destinatarios({
         </button>
       )}
 
+      {/* Fuera de la plataforma: el contratista y quien no tenga cuenta. Solo
+          les llega el correo, porque no tienen campana. */}
+      <div className="rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-2 space-y-2">
+        <p className="text-xs font-bold text-slate-700 m-0">Fuera de la plataforma</p>
+        <div className="flex items-start gap-2.5">
+          <Interruptor
+            encendido={aviso.alContratista}
+            deshabilitado={guardando}
+            etiqueta="Avisar al contratista"
+            onCambio={cambiarContratista}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-slate-800 m-0 flex items-center gap-1.5">
+              <Briefcase className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+              Al contratista
+            </p>
+            <p className="text-[11px] text-slate-500 m-0 mt-0.5">
+              Al correo que se registró en el acto de adjudicación. Antes de adjudicar no hay a quién.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="email"
+            value={correoNuevo}
+            onChange={(ev) => setCorreoNuevo(ev.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter') {
+                ev.preventDefault();
+                agregarCorreo();
+              }
+            }}
+            placeholder="otro@correo.com"
+            aria-label="Agregar un correo externo"
+            className={campo}
+          />
+          <button
+            type="button"
+            disabled={guardando || !correoValido}
+            onClick={agregarCorreo}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md border border-gray-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Agregar
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         {onRestablecer ? (
           <button
@@ -628,6 +767,114 @@ function Destinatarios({
         >
           Listo
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El texto con que sale el aviso (088).
+ *
+ * Vacío sale el de siempre, que se ve de fondo en los campos para saber de qué
+ * se parte. Las variables se insertan con un clic: escribirlas a mano es la
+ * forma más fácil de equivocarse en una llave, y el servidor rechaza las que
+ * no existen para que no salgan tal cual en el correo de todos.
+ */
+function TextoDelAviso({
+  aviso,
+  variables,
+  guardando,
+  onGuardar,
+}: {
+  aviso: AvisoEvento;
+  variables: { clave: string; descripcion: string }[];
+  guardando: boolean;
+  onGuardar: (texto: { titulo: string | null; mensaje: string | null }) => void;
+}) {
+  const [titulo, setTitulo] = useState(aviso.titulo ?? '');
+  const [mensaje, setMensaje] = useState(aviso.mensaje ?? '');
+  /** El campo donde van las variables que se pulsen: el último que se tocó. */
+  const [ultimo, setUltimo] = useState<'titulo' | 'mensaje'>('mensaje');
+
+  useEffect(() => {
+    setTitulo(aviso.titulo ?? '');
+    setMensaje(aviso.mensaje ?? '');
+  }, [aviso.titulo, aviso.mensaje]);
+
+  const cambiado = titulo.trim() !== (aviso.titulo ?? '') || mensaje.trim() !== (aviso.mensaje ?? '');
+  const propio = !!(aviso.titulo || aviso.mensaje);
+
+  const insertar = (clave: string) => {
+    const pieza = `{${clave}}`;
+    if (ultimo === 'titulo') setTitulo((t) => (t ? `${t} ${pieza}` : pieza));
+    else setMensaje((m) => (m ? `${m} ${pieza}` : pieza));
+  };
+
+  return (
+    <div className="border-t border-gray-100 px-3 py-3 space-y-2">
+      <p className="text-xs font-bold text-slate-700 m-0 flex items-center gap-1.5">
+        <Type className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+        Texto del aviso
+      </p>
+      <p className="text-[11px] text-slate-500 m-0">
+        Déjalo vacío para que salga el de siempre, que se ve de fondo con datos de ejemplo.
+      </p>
+
+      <input
+        type="text"
+        value={titulo}
+        maxLength={120}
+        onFocus={() => setUltimo('titulo')}
+        onChange={(ev) => setTitulo(ev.target.value)}
+        placeholder={aviso.textoDeSiempre.titulo}
+        aria-label="Título del aviso"
+        className={campo}
+      />
+      <textarea
+        value={mensaje}
+        rows={3}
+        maxLength={1000}
+        onFocus={() => setUltimo('mensaje')}
+        onChange={(ev) => setMensaje(ev.target.value)}
+        placeholder={aviso.textoDeSiempre.mensaje}
+        aria-label="Mensaje del aviso"
+        className={campo}
+      />
+
+      <div className="flex flex-wrap gap-1">
+        {variables.map((v) => (
+          <button
+            key={v.clave}
+            type="button"
+            title={v.descripcion}
+            onClick={() => insertar(v.clave)}
+            className="px-1.5 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-[11px] font-mono text-blue-800 hover:bg-blue-100"
+          >
+            {`{${v.clave}}`}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          type="button"
+          disabled={guardando || !cambiado}
+          onClick={() => onGuardar({ titulo: titulo.trim() || null, mensaje: mensaje.trim() || null })}
+          className="px-3 py-1.5 text-xs font-bold rounded-md bg-[#003DA5] text-white hover:bg-[#002e7d] disabled:opacity-50"
+        >
+          Guardar texto
+        </button>
+        {propio && (
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => onGuardar({ titulo: null, mensaje: null })}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-gray-700 disabled:opacity-50"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Usar el de siempre
+          </button>
+        )}
       </div>
     </div>
   );

@@ -66,7 +66,7 @@ class ConJustificacion {
 export class SolicitarProrrogaDto extends ConJustificacion {
   @ApiProperty({ description: 'Días que se añaden al plazo del contrato' })
   @Type(() => Number)
-  @IsInt({ message: 'Los días de prórroga van en numeros enteros' })
+  @IsInt({ message: 'Los días de prórroga van en números enteros' })
   @IsPositive({ message: 'Una prórroga de cero días no prorroga nada' })
   diasProrroga: number;
 }

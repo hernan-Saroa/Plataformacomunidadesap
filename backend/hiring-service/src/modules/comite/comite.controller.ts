@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,10 +20,9 @@ import { DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Comité evaluador — actividad 6.2 (EFDS-1156).
@@ -39,8 +37,7 @@ export class ComiteController {
   constructor(private readonly service: ComiteService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '6.2')
   @ApiOperation({
     summary: 'Comité evaluador del proceso',
     description:
@@ -51,8 +48,7 @@ export class ComiteController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.designacion.ordenar')
+  @Puede('decidir', '6.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -94,8 +90,7 @@ export class ComiteController {
   }
 
   @Post('revocar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.designacion.ordenar')
+  @Puede('decidir', '6.2')
   @ApiOperation({
     summary: 'Revocar la designación vigente',
     description:

@@ -44,6 +44,16 @@ export class ActoAdjudicacion {
   @Column({ name: 'numero_acto', length: 60 })
   numeroActo: string;
 
+  /**
+   * Correo del adjudicatario (migración 088).
+   *
+   * El contratista no tiene cuenta en la plataforma y su registro maestro vive
+   * en Click: esto es lo único que se le pide, para poder notificarle desde
+   * aquí. Opcional para no trabar la adjudicación de quien no lo dio.
+   */
+  @Column({ name: 'correo_contratista', type: 'varchar', length: 200, nullable: true })
+  correoContratista: string | null;
+
   @Column({ name: 'fecha_acto', type: 'date' })
   fechaActo: string;
 

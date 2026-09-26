@@ -15,6 +15,7 @@ describe('AprobacionService · puedeAprobar con varios designados', () => {
       {} as never,
       { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
       {} as never,
+      {} as never,
     );
 
   const conRoles = (...roles: string[]) => ({ roles, personas: [] });

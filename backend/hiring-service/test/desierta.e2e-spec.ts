@@ -57,19 +57,16 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
   const financiero: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000002',
     userName: 'prueba.financiero',
     roles: ['ESTRUCTURADOR_FINANCIERO'],
-    puedeEditar: false,
   };
   const ordenador: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000003',
     userName: 'prueba.ordenador',
     roles: ['ORDENADOR_GASTO'],
-    puedeEditar: false,
   };
 
   let juridica: { acceso: HiringAccess; personaId: string };
@@ -300,7 +297,6 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
         userId: cuentas[0].id_user,
         userName: 'prueba.juridica',
         roles: ['EVALUADOR_JURIDICO'],
-        puedeEditar: false,
       },
     };
     tecnico = {
@@ -309,7 +305,6 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
         userId: cuentas[1].id_user,
         userName: 'prueba.tecnico',
         roles: ['EVALUADOR_TECNICO'],
-        puedeEditar: false,
       },
     };
     financiera = {
@@ -318,7 +313,6 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
         userId: cuentas[2].id_user,
         userName: 'prueba.financiera',
         roles: ['EVALUADOR_FINANCIERO'],
-        puedeEditar: false,
       },
     };
   });

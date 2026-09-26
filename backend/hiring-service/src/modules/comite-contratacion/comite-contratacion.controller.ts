@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -18,10 +17,8 @@ import { unlink } from 'fs/promises';
 
 import { ComiteContratacionService } from './comite-contratacion.service';
 import { RegistrarSesionComiteDto } from './dto/comite-contratacion.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_PROCESO_VER } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
@@ -41,8 +38,7 @@ export class ComiteContratacionController {
   constructor(private readonly service: ComiteContratacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.7')
   @ApiOperation({
     summary: 'Si el proceso pasa por comité y qué decidió',
     description:

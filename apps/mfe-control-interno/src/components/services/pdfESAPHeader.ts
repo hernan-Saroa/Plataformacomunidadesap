@@ -48,6 +48,11 @@ export interface ConfiguracionDocumento {
   logoImg?: string;         // Logo ESAP (opcional, para incluir en encabezado)
   /** Fila extra debajo de proceso: "Documento de referencia: ..." */
   documentoReferencia?: string;
+  /**
+   * Margen lateral en mm. Si se indica, el encabezado ocupa todo el ancho entre
+   * márgenes (hojas horizontales), alineado con las tablas del documento.
+   */
+  margen?: number;
 }
 
 /**
@@ -63,7 +68,7 @@ export function dibujarEncabezadoInstitucional(
   yInicio: number = 10
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 15;
+  const margin = config.margen ?? 15;
   let yPos = yInicio;
 
   // Configuración por defecto
@@ -78,8 +83,9 @@ export function dibujarEncabezadoInstitucional(
     // Dimensiones de las secciones
     const alturaEncabezado = 20;
     const logoWidth = 35;
-    const tituloWidth = 100;
     const infoWidth = 45;
+    // Con margen explícito la columna del título toma el ancho sobrante (EFDS-1629)
+    const tituloWidth = config.margen != null ? pageWidth - margin * 2 - logoWidth - infoWidth : 100;
     const rowHeight = alturaEncabezado / 3;
 
     // Posiciones X
@@ -216,13 +222,14 @@ export function dibujarEncabezadoInstitucional(
  * @param incluirContacto - Si incluir información de contacto (default: true)
  */
 export function dibujarPieInstitucional(
-  doc: jsPDF, 
+  doc: jsPDF,
   numeroPagina: number,
-  incluirContacto: boolean = true
+  incluirContacto: boolean = true,
+  margen: number = 15
 ): void {
   const pageHeight = doc.internal.pageSize.getHeight();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 15;
+  const margin = margen;
   const yPie = pageHeight - 15;
 
   doc.setFontSize(7);

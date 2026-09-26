@@ -157,6 +157,53 @@ describe('PtaService.aprobarComponentesLote', () => {
     expect(result.resumen).toEqual({ total: 1, aprobados: 0, devueltos: 0, omitidos: 1, fallidos: 0 });
   });
 
+  it('omite una fila técnica pendiente cuando el componente no tiene actividades', async () => {
+    const service = createService();
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([
+      { componente: 'investigacion', estado: 'pendiente', aplica: false, horas: 0, estado_visual: 'no_aplica' },
+    ]);
+    service.aprobarComponente = jest.fn();
+
+    const result = await service.aprobarComponentesLote(
+      { ptaIds: ['pta-vacio'], componentes: ['investigacion'] },
+      { ...auth, allowedComponents: ['investigacion'] },
+    );
+
+    expect(service.aprobarComponente).not.toHaveBeenCalled();
+    expect(result.resultados).toEqual([
+      { ptaId: 'pta-vacio', componente: 'investigacion', estado: 'omitido', motivo: 'Sin actividades en este componente' },
+    ]);
+    expect(result.resumen).toEqual({ total: 1, aprobados: 0, devueltos: 0, omitidos: 1, fallidos: 0 });
+  });
+
+  it('no eleva permisos en lote y conserva el resultado de cada componente por separado', async () => {
+    const service = createService();
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([
+      { componente: 'academica_pregrado', estado: 'pendiente', aplica: true },
+      { componente: 'investigacion', estado: 'pendiente', aplica: true },
+    ]);
+    service.aprobarComponente = jest.fn(async (_ptaId: string, body: any) => {
+      if (body.componente === 'investigacion') {
+        throw new ForbiddenException('No tiene permisos para aprobar el componente "investigacion" del PTA.');
+      }
+      return { approval: body, estadoGeneral: 'Pendiente' };
+    });
+
+    const result = await service.aprobarComponentesLote({
+      ptaIds: ['pta-1'],
+      componentes: ['academica_pregrado', 'investigacion'],
+    }, auth);
+
+    expect(result.resultados).toEqual([
+      { ptaId: 'pta-1', componente: 'academica_pregrado', estado: 'aprobado' },
+      {
+        ptaId: 'pta-1', componente: 'investigacion', estado: 'fallido',
+        motivo: 'No tiene permisos para aprobar el componente "investigacion" del PTA.',
+      },
+    ]);
+    expect(result.resumen).toEqual({ total: 2, aprobados: 1, devueltos: 0, omitidos: 0, fallidos: 1 });
+  });
+
   it('propaga aprobadorRol al body de aprobarComponente, igual que la aprobación individual', async () => {
     // La identidad (aprobadorId/aprobadorNombre) la impone siempre `auth` server-side,
     // pero aprobadorRol sí se toma del body — sin este passthrough, un componente

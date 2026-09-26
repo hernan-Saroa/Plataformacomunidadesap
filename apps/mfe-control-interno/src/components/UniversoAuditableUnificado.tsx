@@ -55,6 +55,10 @@ import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/u
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { parseYMD } from './services/calendarioVigencia';
+
+/** "2041-01-03" → 3/1/2041. Con new Date(texto) se leía en UTC y en Colombia salía un día antes. */
+const fechaLista = (valor?: string | null) => (valor ? parseYMD(String(valor)).toLocaleDateString('es-CO') : '—');
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -1156,7 +1160,7 @@ function TabProgramaAnual({
                           <div>
                             <span className="text-gray-500">Periodo:</span>
                             <span className="ml-2 font-semibold text-gray-900">
-                              {new Date(auditoria.fechaInicio).toLocaleDateString('es-CO')} - {new Date(auditoria.fechaFin).toLocaleDateString('es-CO')}
+                              {fechaLista(auditoria.fechaInicio)} - {fechaLista(auditoria.fechaFin)}
                             </span>
                           </div>
                           <div>
