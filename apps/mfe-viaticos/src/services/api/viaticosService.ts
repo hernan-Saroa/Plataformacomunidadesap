@@ -282,6 +282,7 @@ export class ViaticosService {
       estado: (s.estadoSolicitud || 'RADICADA') as EstadoSolicitudViatico,
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
+      fechaRadicacion: s.fechaRadicacion || null,
       requiereTiqueteAereo: s.requiereTiquetes,
       prioridad: s.prioridad,
       creadoEn: s.creadoEn.slice(0, 10),

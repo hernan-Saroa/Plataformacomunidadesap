@@ -333,6 +333,7 @@ export interface SolicitudListaResponse {
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
   extemporanea: boolean;
+  fechaRadicacion?: string | null;
   creadoPorUsuarioId?: string;
   esCreadoPorMi?: boolean;
   creadoEn: string;
@@ -446,6 +447,7 @@ export interface SolicitudViatico {
   estado: EstadoSolicitudViatico;
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
+  fechaRadicacion?: string | null;
   requiereTiqueteAereo: boolean;
   prioridad?: string;
   numeroResolucion?: string;

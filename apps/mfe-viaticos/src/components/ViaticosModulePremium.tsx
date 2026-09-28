@@ -1251,6 +1251,11 @@ export default function ViaticosModulePremium() {
                                   {sol.dependencia || 'Sede Central'}
                                 </span>
                               </div>
+                              {sol.fechaRadicacion && (
+                                <div className="text-[10px] text-slate-400 mt-1" title="Fecha de radicación">
+                                  Radicada: {new Date(sol.fechaRadicacion).toLocaleDateString('es-CO')}
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1.5 font-bold text-slate-800 flex-wrap">
