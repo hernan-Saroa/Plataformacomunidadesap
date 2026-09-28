@@ -108,6 +108,12 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       extra: { max: 5 },
     });
     await ds.initialize();
+    const [rol] = await ds.query(`SELECT 1 AS existe FROM pg_roles WHERE rolname = 'travel_expenses_pruebas'`);
+    if (!rol) {
+      throw new Error(
+        'Falta el rol travel_expenses_pruebas: ejecute db/dev-fixtures/rol_pruebas_legalizacion.sql en la base LOCAL antes de RUN_DB_TESTS=1.',
+      );
+    }
     for (const [uid, username] of [[ENLACE, 'test.enlace.efds1310'], [ANALISTA, 'test.analista.efds1310'], [OTRO_ANALISTA, 'test.otro.efds1310']]) {
       await ds.query(
         `INSERT INTO auth."user" (id_user, username, password_hash, is_active)
@@ -125,16 +131,19 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
 
   afterAll(async () => {
     if (ds?.isInitialized) {
-      // Los expedientes cerrados son inmutables: la purga de pruebas se declara explícitamente.
+      // Los expedientes cerrados son inmutables. La purga de pruebas solo es posible con el
+      // rol dedicado travel_expenses_pruebas (migración 452), que no existe fuera de local.
       await ds.transaction(async (m) => {
-        await m.query(`SET LOCAL travel_expenses.purga_pruebas = 'on'`);
         if (solicitudes.length) {
-          await m.query(
-            `DELETE FROM travel_expenses.legalizacion_revisiones WHERE legalizacion_id IN
-               (SELECT id FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = ANY($1::uuid[]))`,
-            [solicitudes],
-          );
+          await m.query(`SET LOCAL ROLE travel_expenses_pruebas`);
+          await m.query(`SET LOCAL travel_expenses.purga_pruebas = 'on'`);
+          const legs = `(SELECT id FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = ANY($1::uuid[]))`;
+          await m.query(`DELETE FROM travel_expenses.legalizacion_revisiones WHERE legalizacion_id IN ${legs}`, [solicitudes]);
+          // Explícito y no por cascada: la acción de la FK corre como dueño de la tabla y el
+          // trigger no vería el rol de pruebas.
+          await m.query(`DELETE FROM travel_expenses.legalizacion_soportes WHERE legalizacion_id IN ${legs}`, [solicitudes]);
           await m.query(`DELETE FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = ANY($1::uuid[])`, [solicitudes]);
+          await m.query(`RESET ROLE`);
           await m.query(`DELETE FROM travel_expenses.solicitudes_historial_estados WHERE solicitud_id = ANY($1::uuid[])`, [solicitudes]);
           await m.query(`DELETE FROM travel_expenses.solicitudes_comision WHERE id = ANY($1::uuid[])`, [solicitudes]);
         }
@@ -318,6 +327,18 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
 
       const [despues] = await ds.query(`SELECT valor_legalizado::float AS v FROM travel_expenses.legalizaciones_comision WHERE id = $1`, [leg.id]);
       expect(despues.v).toBe(800_000);
+    });
+
+    it('la variable de purga sola no alcanza: sin el rol de pruebas la base sigue rechazando (migración 452)', async () => {
+      const [leg] = await ds.query(`SELECT id FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = $1`, [id]);
+      await expect(
+        ds.transaction(async (m) => {
+          await m.query(`SET LOCAL travel_expenses.purga_pruebas = 'on'`);
+          await m.query(`DELETE FROM travel_expenses.legalizaciones_comision WHERE id = $1`, [leg.id]);
+        }),
+      ).rejects.toThrow(/inmutable/);
+      const [sigue] = await ds.query(`SELECT count(*)::int AS n FROM travel_expenses.legalizaciones_comision WHERE id = $1`, [leg.id]);
+      expect(sigue.n).toBe(1);
     });
 
     it('la solicitud LEGALIZADO queda en solo lectura para el flujo de viáticos', () => {
