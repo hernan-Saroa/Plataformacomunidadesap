@@ -1770,7 +1770,8 @@ export class PlanesMejoramientoService {
 
     const usuariosNotificar = new Set<string>();
 
-    if (rolesDestinatarios.includes('Jefe OCIG')) {
+    // La configuración de notificaciones puede traer el nombre anterior del rol (EFDS-2197)
+    if (rolesDestinatarios.includes('Jefe OCI') || rolesDestinatarios.includes('Jefe OCIG')) {
       try {
         const jefesOCI = await this.obtenerJefesControlInterno();
         jefesOCI.forEach((id) => usuariosNotificar.add(String(id)));

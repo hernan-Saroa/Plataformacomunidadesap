@@ -2698,8 +2698,12 @@ function Paso3EquipoAuditor({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el jefe OCI / supervisor...</option>
+              {/* Solo el rol Jefe OCI (EFDS-2197); al editar se conserva el ya asignado */}
               {auditores
-                .filter(a => REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor(a.cargo))
+                .filter(a =>
+                  REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor(a.cargo) ||
+                  a.id === formData.supervisorAsignado
+                )
                 .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
@@ -2716,8 +2720,13 @@ function Paso3EquipoAuditor({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
+              {/* Solo el rol Auditor (EFDS-2197); al editar se conserva el ya asignado */}
               {auditores
-                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo))
+                .filter(a =>
+                  a.id !== formData.supervisorAsignado &&
+                  (REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo) ||
+                    a.id === formData.auditorLider)
+                )
                 .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
@@ -2735,7 +2744,9 @@ function Paso3EquipoAuditor({
               {auditores.filter(a =>
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
-                REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo)
+                // Solo el rol Auditor (EFDS-2197); al editar se conservan los ya elegidos
+                (REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo) ||
+                  isAuditorEnEquipo(a))
               ).map(auditor => {
                 const seleccionado = isAuditorEnEquipo(auditor);
                 return (
