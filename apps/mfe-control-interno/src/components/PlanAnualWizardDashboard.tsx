@@ -4695,6 +4695,25 @@ function Paso2({
                             /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
                             const fechaCorteMostrar = actividadData ? fechaCorteDisplayDesdeActividad(actividadData) : undefined;
+                            // Las actividades del Rol 4 que alimenta el Programa Anual no tienen cortes: sus
+                            // tareas (una por auditoría) se muestran en un solo corte con el periodo del plan.
+                            const cortePorVigencia =
+                              !(actividadData?.puntosControl?.length) && actividadRol4SinCortesPrecargados(rol.numero, actividad);
+                            const cortesVisibles: PuntoControl[] = cortePorVigencia
+                              ? [{
+                                  id: `corte-vigencia-${idActividadEnEstado}`,
+                                  orden: 1,
+                                  nombre: 'Corte 1',
+                                  descripcion: '',
+                                  fechaProgramada: actividadData?.fechaInicio || fechaInicio,
+                                  fechaSeguimiento: actividadData?.fechaFin || fechaFin,
+                                  fechaReal: null,
+                                  responsable: '',
+                                  estado: 'pendiente',
+                                  observaciones: '',
+                                  evidencias: [],
+                                }]
+                              : actividadData?.puntosControl || [];
                             return (
                               <div
                                 key={actId}
@@ -4851,40 +4870,6 @@ function Paso2({
                                   </div>
                                 </label>
 
-                                {/* Tareas de seguimiento de la actividad: antes solo se contaban en el
-                                    encabezado del rol. En el Rol 4 son las auditorías del Programa
-                                    Anual (EFDS-2133), así que se listan igual que en Seguimiento.
-                                    Al crear o editar, cada corte ya muestra sus tareas: aquí solo se
-                                    listan en consulta o si la actividad no tiene cortes. */}
-                                {(soloLectura || !(actividadData?.puntosControl?.length)) && seleccionada && (actividadData?.tareasSeguimiento?.length ?? 0) > 0 && (
-                                  <div className="px-3 pb-2 pt-2 border-t border-blue-200 mt-2" onClick={(e) => e.stopPropagation()}>
-                                    <div className="text-xs font-semibold text-gray-900 mb-1.5">
-                                      Tareas de seguimiento ({actividadData!.tareasSeguimiento!.filter((t) => t.completada).length}/{actividadData!.tareasSeguimiento!.length} completadas)
-                                    </div>
-                                    <ul className="space-y-1">
-                                      {actividadData!.tareasSeguimiento!.map((tarea: any) => {
-                                        const limite = String(tarea.fechaLimite || tarea.fecha_limite || tarea.fechaEntrega || '').split('T')[0];
-                                        const responsables = Array.isArray(tarea.responsables) ? tarea.responsables.filter(Boolean) : [];
-                                        return (
-                                          <li key={tarea.id} className="flex items-start gap-2 rounded-md bg-white px-2 py-1.5 border border-gray-100">
-                                            <span className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] ${tarea.completada ? 'bg-green-600 border-green-600 text-white' : 'border-gray-300'}`}>
-                                              {tarea.completada ? '✓' : ''}
-                                            </span>
-                                            <div className="min-w-0 flex-1">
-                                              <p className={`text-xs ${tarea.completada ? 'text-gray-500 line-through' : 'text-gray-800'}`}>{tarea.descripcion}</p>
-                                              <p className="text-[10px] text-gray-500">
-                                                {limite ? `Límite: ${new Date(limite + 'T00:00:00').toLocaleDateString('es-CO')}` : 'Sin fecha límite'}
-                                                {' · '}
-                                                {responsables.length > 0 ? responsables.join(', ') : 'Sin responsable'}
-                                              </p>
-                                            </div>
-                                          </li>
-                                        );
-                                      })}
-                                    </ul>
-                                  </div>
-                                )}
-
                                 {/* Configuración de evidencias - Solo visible si actividad está seleccionada */}
                                 {seleccionada && (
                                   <div className="px-3 pb-3 pt-2 border-t border-blue-200 mt-2 space-y-3">
@@ -5014,11 +4999,11 @@ function Paso2({
                                         <div className="flex items-center gap-2">
                                           <CalendarClock className="w-4 h-4 text-blue-600" />
                                           <span className="text-xs font-bold text-blue-900">
-                                            {actividadData?.puntosControl && actividadData.puntosControl.length > 0
-                                              ? `${actividadData.puntosControl.length} Cortes de Seguimiento`
+                                            {cortesVisibles.length > 0
+                                              ? `${cortesVisibles.length} ${cortesVisibles.length === 1 ? 'Corte' : 'Cortes'} de Seguimiento`
                                               : 'Sin cortes configurados'}
                                           </span>
-                                          {actividadData?.frecuenciaPuntosControl && (
+                                          {!cortePorVigencia && actividadData?.frecuenciaPuntosControl && (
                                             <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
                                               {actividadData.frecuenciaPuntosControl}
                                             </span>
@@ -5026,13 +5011,14 @@ function Paso2({
                                         </div>
                                         <button
                                           type="button"
-                                          disabled={soloLectura}
+                                          disabled={soloLectura || cortePorVigencia}
+                                          title={cortePorVigencia ? 'Las tareas de esta actividad vienen del Programa Anual' : undefined}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
                                           }}
                                           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
-                                            soloLectura
+                                            soloLectura || cortePorVigencia
                                               ? 'bg-slate-400 text-slate-100 cursor-default'
                                               : 'bg-blue-600 hover:bg-blue-700 text-white'
                                           }`}
@@ -5043,9 +5029,9 @@ function Paso2({
                                       </div>
 
                                       {/* Timeline de cortes */}
-                                      {actividadData?.puntosControl && actividadData.puntosControl.length > 0 && (
+                                      {cortesVisibles.length > 0 && (
                                         <div className="divide-y divide-gray-100">
-                                          {actividadData.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                          {cortesVisibles.map((pc: PuntoControl, pcIdx: number) => {
                                             const hoyDate = new Date();
                                             hoyDate.setHours(0,0,0,0);
                                             const esCompletado = pc.estado === 'completado';
@@ -5068,7 +5054,7 @@ function Paso2({
                                                   }`}>
                                                     {esCompletado ? 'S' : pcIdx + 1}
                                                   </div>
-                                                  {pcIdx < actividadData.puntosControl!.length - 1 && (
+                                                  {pcIdx < cortesVisibles.length - 1 && (
                                                     <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
                                                       esCompletado ? 'bg-green-300' : 'bg-gray-200'
                                                     }`} />
@@ -5175,6 +5161,12 @@ function Paso2({
                                                                     onAsignar={(aud) => updateTareaCorte({ responsables: [aud.nombre] })}
                                                                     onQuitar={() => updateTareaCorte({ responsables: [] })}
                                                                   />
+                                                                  {/* Tareas del Rol 4 que genera el Programa Anual: se recrean mientras la auditoría siga en el programa */}
+                                                                  {((tarea as any).origen === 'programa_anual' || String(tarea.id).startsWith('tarea-aud-')) && (
+                                                                    <p className="mt-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-2 py-1">
+                                                                      Viene del Programa Anual. Si la elimina, vuelve a aparecer mientras la auditoría siga programada; para quitarla, archive la auditoría en Auditorías OCI.
+                                                                    </p>
+                                                                  )}
                                                                 </div>
                                                                 <div className="flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                                                   <button 

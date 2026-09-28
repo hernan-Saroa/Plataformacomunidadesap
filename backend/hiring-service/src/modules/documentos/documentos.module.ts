@@ -15,6 +15,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { CdpModule } from '../cdp/cdp.module';
+import { DocumentosActividadModule } from '../documentos-actividad/documentos-actividad.module';
 
 @Module({
   imports: [
@@ -32,6 +33,8 @@ import { CdpModule } from '../cdp/cdp.module';
     // Por `exigirCdpParaDocumentos`: en contratación directa el CDP condiciona
     // esta actividad, y esa regla ya vive en el ciclo del CDP (EFDS-1148).
     CdpModule,
+    // Qué documentos pide la 5.1 lo dice el catálogo único (EFDS-2066).
+    DocumentosActividadModule,
   ],
   controllers: [DocumentosController, AuditoriaController],
   providers: [DocumentosService],

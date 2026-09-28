@@ -15,14 +15,14 @@ const base = {
 };
 
 describe('admiteRegistro · qué actividades se cumplen dejando constancia', () => {
-  it('son las nueve que ninguna historia recogió y siguen sin pantalla propia', () => {
+  it('son las ocho que ninguna historia recogió y siguen sin pantalla propia', () => {
     // Eran catorce. De la etapa 3 fueron saliendo cinco: radicar es recibir el
     // proceso (3.3); la 3.4 es la decisión del abogado sobre el estudio previo;
     // la 3.5 es ratificar la modalidad; la 3.6 es elegir la causal del catálogo
     // de esa modalidad; y la 3.7 es lo que decidió el comité, que son tres
-    // desenlaces. Ninguna cabe en una fecha y un documento.
+    // desenlaces. Ninguna cabe en una fecha y un documento. La sexta, la 3.2,
+    // se entrega con el estudio previo (migración 090).
     expect([...NUMERALES_CON_REGISTRO]).toEqual([
-      '3.2',
       '5.9',
       '5.10',
       '5.11',
@@ -35,7 +35,6 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
   });
 
   it('acepta una de cada etapa', () => {
-    expect(admiteRegistro('3.2')).toBe(true);
     expect(admiteRegistro('5.10')).toBe(true);
     expect(admiteRegistro('6.10')).toBe(true);
     expect(admiteRegistro('8.6')).toBe(true);
@@ -54,11 +53,10 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
     expect(admiteRegistro('3.7')).toBe(false);
   });
 
-  it('el análisis del sector se queda: es el soporte de lo que pasó afuera', () => {
-    // El contraste que explica la regla. No es «ocurre fuera de la
-    // plataforma»: el comité también, y salió. Es si lo que hay que guardar
-    // cabe en una fecha y un documento, y el estudio de mercado sí.
-    expect(admiteRegistro('3.2')).toBe(true);
+  it('el análisis del sector ya no es un registro: se entrega con la 3.1', () => {
+    // Sus dos documentos pasaron a la lista de chequeo del estudio previo
+    // (migración 090) y la actividad se desactivó.
+    expect(admiteRegistro('3.2')).toBe(false);
   });
 
   it('no se lleva por delante las vecinas de la etapa 8', () => {

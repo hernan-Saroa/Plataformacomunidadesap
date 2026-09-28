@@ -94,11 +94,11 @@ describe('ComiteContratacionService · reabrirActividad', () => {
   });
 
   it('no admite reabrir una actividad que no está aprobada', async () => {
-    const actividad = { id: 'act-3.2', numeral: '3.2', estado: 'BORRADOR', version: 1 };
+    const actividad = { id: 'act-3.6', numeral: '3.6', estado: 'BORRADOR', version: 1 };
     const { instancia, em } = servicio({ actividad });
 
     await expect(
-      (instancia as any).reabrirActividad(em, 'p-1', '3.2', 'Corregir el análisis', acceso),
+      (instancia as any).reabrirActividad(em, 'p-1', '3.6', 'Corregir la causal', acceso),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 });

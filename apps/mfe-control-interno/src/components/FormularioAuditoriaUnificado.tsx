@@ -47,6 +47,7 @@ import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { CampoFechaCalendario, type CalculoCronograma } from './CalendarioProgramacion';
+import { evaluacionProgramable } from '../utils/auditableEvaluacion';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -394,15 +395,24 @@ export function FormularioAuditoriaUnificado({
   };
 
   const buildInitialState = (data?: Partial<AuditoriaUnificadaFormData>): AuditoriaUnificadaFormData => {
-    let inicioP = formatDateForInput(data?.fechaInicioPlaneacion || data?.fechaInicio);
+    // Una Especial puede no tener Planeación ni Ejecución (EFDS-1923): el inicio y el
+    // fin generales solo son de Planeación y de Comunicación si la auditoría tiene esas
+    // etapas. Antes, una Especial solo de Comunicación abría con Planeación y
+    // Ejecución inventadas (4-4-5 desde su inicio).
+    const tieneEtapas = !!(data?.fechaFinPlaneacion || data?.fechaInicioEjecucion || data?.fechaFinEjecucion || data?.fechaInicioComunicacion);
+    let inicioP = formatDateForInput(
+      data?.fechaInicioPlaneacion || (!tieneEtapas || data?.fechaFinPlaneacion ? data?.fechaInicio : ''),
+    );
     let finP = formatDateForInput(data?.fechaFinPlaneacion);
     let inicioE = formatDateForInput(data?.fechaInicioEjecucion);
     let finE = formatDateForInput(data?.fechaFinEjecucion);
     let inicioC = formatDateForInput(data?.fechaInicioComunicacion);
-    let finC = formatDateForInput(data?.fechaFinComunicacion || data?.fechaFin);
+    let finC = formatDateForInput(
+      data?.fechaFinComunicacion || (!tieneEtapas || data?.fechaInicioComunicacion ? data?.fechaFin : ''),
+    );
 
-    // Auto-calcular etapas restantes si existe inicio de planeación pero no fin de planeación
-    if (inicioP && !finP) {
+    // Auditorías viejas que solo guardan el inicio: se proponen las etapas 4-4-5
+    if (!tieneEtapas && inicioP && !finP) {
       finP = addDaysToDateString(inicioP, 27); // 4 semanas
       if (!inicioE) inicioE = addDaysToDateString(finP, 1);
       if (!finE) finE = addDaysToDateString(inicioE, 27); // 4 semanas
@@ -465,7 +475,9 @@ export function FormularioAuditoriaUnificado({
       incluirHallazgosPreliminares: data?.incluirHallazgosPreliminares || false,
       vinculadaPlanAnual: data?.vinculadaPlanAnual || false,
       planAnualId: data?.planAnualId || '',
-      planAnualAño: data?.planAnualAño || new Date().getFullYear(),
+      // Sin vigencia, la del año de sus fechas y no el actual: el calendario solo
+      // marca semanas de su vigencia y alrededor (EFDS-2132).
+      planAnualAño: Number(data?.planAnualAño) || Number((inicioP || inicioE || inicioC || '').slice(0, 4)) || new Date().getFullYear(),
       rolDecretoAsociado: data?.rolDecretoAsociado || '',
       estadoKanban: data?.estadoKanban || 'Programa Anual',
     };
@@ -713,8 +725,19 @@ export function FormularioAuditoriaUnificado({
         }
 
         // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
-        const evaluaciones = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
-        
+        const todas = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
+        // Solo los procesos que se pueden programar: switch "Aud." en SÍ, o en
+        // automático los de criticidad Extremo o que se auditan el primer año. Al
+        // editar se conserva el proceso que la auditoría ya tiene.
+        const evaluaciones = (todas || []).filter((ev: EvaluacionProceso) =>
+          evaluacionProgramable(ev as any) || (!!formData.procesoAuditado && ev.proceso?.nombre === formData.procesoAuditado),
+        );
+        if (todas && todas.length > 0 && evaluaciones.length === 0) {
+          setEvaluacionesDisponibles([]);
+          setProcesosAuditables([]);
+          return;
+        }
+
         if (evaluaciones && evaluaciones.length > 0) {
           // Guardar evaluaciones completas para acceder a datos de riesgo
           setEvaluacionesDisponibles(evaluaciones);
@@ -2694,7 +2717,7 @@ function Paso3EquipoAuditor({
             >
               <option value="">Seleccione el auditor líder...</option>
               {auditores
-                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAuditorLider(a.cargo))
+                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.puedeLiderarAuditoria(a.cargo))
                 .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
@@ -2826,7 +2849,7 @@ function Paso4Programacion({
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Marque en el calendario las semanas de cada etapa. Con el botón "Ciclo 4-4-5" se propone el estándar de 13 semanas y de ahí se ajusta a mano; Semana Santa y la semana de receso nunca entran.
+          Marque en el calendario las semanas de cada etapa, una por una. Con el botón "Aplicar ciclo 4-4-5" se llenan de una vez las 13 semanas estándar y de ahí se ajusta a mano; Semana Santa y la semana de receso nunca entran.
         </p>
       </div>
 

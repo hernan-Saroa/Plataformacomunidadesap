@@ -27,13 +27,13 @@ export const DECISIONES_COMITE: DecisionComite[] = [
  * Qué actividades anteriores puede reabrir el comité (EFDS-2068).
  *
  * Solo las que guardan su propia fila en `proceso_actividades` con contenido
- * sustantivo: el estudio previo (3.1), el análisis del sector (3.2), la
- * modalidad (3.5) y la causal (3.6). La 3.3 y la 3.4 quedan fuera porque no
+ * sustantivo: el estudio previo (3.1), que desde la 090 trae también el
+ * análisis del sector, la modalidad (3.5) y la causal (3.6). La 3.3 y la 3.4 quedan fuera porque no
  * tienen fila propia —la 3.3 es recibir el proceso en la Dirección y la 3.4 es
  * la decisión del abogado sobre el estudio previo, y las dos viven dentro del
  * ciclo de revisión de la 3.1—: devolver a la 3.1 ya las vuelve a abrir.
  */
-export const NUMERALES_REABRIBLES_POR_COMITE = ['3.1', '3.2', '3.5', '3.6'] as const;
+export const NUMERALES_REABRIBLES_POR_COMITE = ['3.1', '3.5', '3.6'] as const;
 
 /**
  * Lo que el comite decidio en una sesion — actividad 3.7 (RF-DOC-05).
@@ -90,8 +90,8 @@ export class RegistrarSesionComiteDto {
    * que le vuelvan a validar un punto concreto.
    *
    * Es una lista y no un numeral: una sesion de comite revisa el expediente
-   * entero y puede objetar el estudio previo y el analisis del sector a la
-   * vez. Con un solo numeral habia que elegir cual de los dos se corregia.
+   * entero y puede objetar el estudio previo y la modalidad o la causal a la
+   * vez. Con un solo numeral habia que elegir cual se corregia.
    *
    * Viaja como JSON dentro del multipart, igual que la firma: el cuerpo lleva
    * el acta, y un arreglo en `FormData` llegaria como "3.1,3.2".

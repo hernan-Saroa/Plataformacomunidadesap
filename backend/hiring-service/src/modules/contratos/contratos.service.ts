@@ -19,7 +19,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { Oferente } from '../../entities/oferente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_DESIGNACION_ORDENAR, tienePermiso } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import {
   AceptarContratoDto,
   FirmarContratoDto,
@@ -149,6 +149,8 @@ export class ContratosService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    /** Quién firma por la entidad (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -463,11 +465,12 @@ export class ContratosService {
       }
 
       // La firma del ordenador la registra el propio Ordenador del Gasto: es
-      // él quien compromete a la entidad. El gestor registra la del
-      // contratista, que no tiene cuenta, pero no puede firmar por la entidad.
+      // él quien compromete a la entidad, y eso es decidir la 8.1. El gestor
+      // registra la del contratista, que no tiene cuenta —editar la 8.1—,
+      // pero no puede firmar por la entidad.
       if (
         dto.parte === 'ORDENADOR' &&
-        !tienePermiso(acceso, PERMISO_DESIGNACION_ORDENAR)
+        !(await this.alcance.puedeEn(acceso, 'decidir', NUMERAL_CONTRATO))
       ) {
         throw new ForbiddenException(
           'La firma del ordenador del gasto la registra él mismo: tu rol no puede comprometer a la entidad',

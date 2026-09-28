@@ -1,11 +1,17 @@
 import React from 'react';
 
-import { tienePermiso } from '../../auth/permisos';
+import { useAlcance } from '../../auth/alcance';
+import { AccionAlcance } from '../../types';
 import { SinPermiso } from './PiezasPanel';
 
 interface Props {
-  /** Código del permiso que habilita la acción. */
-  permiso: string;
+  /** Lo que habilita la acción: ver, editar, aprobar o decidir. */
+  accion: AccionAlcance;
+  /**
+   * Dónde: el punto ('4.2'), la etapa ('E10'), el trámite ('INC.1') o nada,
+   * si basta con tener la acción en alguna parte.
+   */
+  punto?: string;
   /**
    * Quién sí la ejecuta, con el nombre que usa el área.
    *
@@ -18,20 +24,19 @@ interface Props {
 }
 
 /**
- * Muestra la acción solo a quien puede ejecutarla (EFDS-1183).
+ * Muestra la acción solo a quien puede ejecutarla (EFDS-1183, migración 083).
  *
  * Los paneles ofrecían todos sus botones a todo el mundo: quien solo consulta
  * veía «Cargar documento» o «Aprobar», los pulsaba y recibía un 403 que no
  * puede interpretar. La consecuencia no es solo el error, es que concluye que
  * la plataforma está rota.
  *
- * Esconder no es la protección —el guard del servicio sigue negando lo que
- * corresponda— es no pintar puertas falsas. Por eso ante la duda no se
- * esconde: `tienePermiso` responde que sí cuando la sesión no está o llega
- * incompleta, y una pantalla vacía sin explicación sería peor que un botón de
- * más.
+ * Se pregunta por la acción en el punto —«¿edita la 5.6?»— y no por un
+ * permiso general, que es lo que evalúa el guard del servicio. Esconder no es
+ * la protección: ante la duda no se esconde, y el guard sigue negando.
  */
-export function Permitido({ permiso, quien, children }: Props) {
-  if (tienePermiso(permiso)) return <>{children}</>;
+export function Permitido({ accion, punto, quien, children }: Props) {
+  const { puede } = useAlcance();
+  if (puede(accion, punto)) return <>{children}</>;
   return quien ? <SinPermiso quien={quien} /> : null;
 }

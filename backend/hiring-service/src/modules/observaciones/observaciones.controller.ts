@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,6 +23,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -32,8 +32,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Observaciones al proyecto de pliego — actividad 5.3 (EFDS-1151).
@@ -48,8 +46,7 @@ export class ObservacionesController {
   constructor(private readonly service: ObservacionesService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.3')
   @ApiOperation({
     summary: 'Observaciones del proceso con su resumen',
     description:
@@ -60,8 +57,7 @@ export class ObservacionesController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -101,8 +97,7 @@ export class ObservacionesController {
   }
 
   @Post(':observacionId/responder')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.3')
   @ApiOperation({
     summary: 'Responder una observación',
     description:
@@ -118,8 +113,7 @@ export class ObservacionesController {
   }
 
   @Post('cerrar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.3')
   @ApiOperation({
     summary: 'Dar por cumplida la recepción cuando no hubo observaciones',
     description:

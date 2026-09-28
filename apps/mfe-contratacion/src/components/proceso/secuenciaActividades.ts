@@ -68,10 +68,17 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
  * terminar: la 5.6 y la 5.7 las siguen necesitando, igual que necesitan la
  * 5.3 — cada numeral aquí declara de qué depende de verdad, no de qué lo
  * antecede en la matriz.
+ *
+ * La 9.5 (modificaciones) no es un paso de la línea: una prórroga, una adición
+ * o una suspensión caben en cualquier momento de la ejecución, y la ejecución
+ * arranca con el acta de inicio (9.1). Es lo mismo que exige el backend
+ * —`admiteModificacion` pide el contrato en ejecución o suspendido—, así que
+ * esperar a los pagos (9.4) era un candado que el servidor no pone.
  */
 const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
   '5.4': ['5.2'],
   '5.5': ['5.2'],
+  '9.5': ['9.1'],
 };
 
 /**
@@ -93,8 +100,13 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
  * la base, el cien por ciento de los contratos en ejecución tienen la 9.3 en
  * BORRADOR, así que ningún proceso llegaba a la 9.4 sin una intervención
  * manual en la base de datos.
+ *
+ * La 9.5 (modificaciones) entra por lo mismo: se cierra con la primera
+ * modificación aprobada, pero un contrato puede ejecutarse entero sin
+ * modificarse nunca, y exigirla encerraría la etapa 10 detrás de algo que
+ * quizá no ocurra.
  */
-export const NUNCA_BLOQUEA = new Set(['9.2', '9.3']);
+export const NUNCA_BLOQUEA = new Set(['9.2', '9.3', '9.5']);
 
 /** Si una dependencia declarada ya no le hace falta a quien la exige. */
 function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {

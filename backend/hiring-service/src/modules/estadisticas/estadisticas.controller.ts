@@ -34,14 +34,21 @@ export class EstadisticasController {
     summary: 'Indicadores de gestión de la contratación',
     description:
       'Contratos por estado del ciclo (suscritos, en ejecución, terminados, liquidados y ' +
-      'cerrados), desglose por modalidad y tipología, desenlace de los procesos de ' +
-      'selección y ejecución presupuestal. Se calcula al consultar: no hay tabla de ' +
-      'estadísticas que se pueda desincronizar del expediente.',
+      'cerrados), desglose por modalidad, tipología, tipo de persona y mes, principales ' +
+      'contratistas, desenlace y embudo de los procesos de selección, ejecución ' +
+      'presupuestal y cuentas de cobro, modificaciones, contratos que requieren atención, ' +
+      'tiempos del ciclo y el listado de contratos del corte. Se calcula al consultar: no ' +
+      'hay tabla de estadísticas que se pueda desincronizar del expediente.',
   })
   @ApiQuery({ name: 'vigencia', required: false, description: 'Año de suscripción' })
   @ApiQuery({ name: 'modalidad', required: false, description: 'Código de la modalidad' })
-  gestion(@Query('vigencia') vigencia?: string, @Query('modalidad') modalidad?: string) {
-    return this.service.gestion(this.filtros(vigencia, modalidad));
+  @ApiQuery({ name: 'tipologia', required: false, description: 'Código de la tipología' })
+  gestion(
+    @Query('vigencia') vigencia?: string,
+    @Query('modalidad') modalidad?: string,
+    @Query('tipologia') tipologia?: string,
+  ) {
+    return this.service.gestion(this.filtros(vigencia, modalidad, tipologia));
   }
 
   /**
@@ -64,12 +71,14 @@ export class EstadisticasController {
   })
   @ApiQuery({ name: 'vigencia', required: false, description: 'Año de suscripción' })
   @ApiQuery({ name: 'modalidad', required: false, description: 'Código de la modalidad' })
+  @ApiQuery({ name: 'tipologia', required: false, description: 'Código de la tipología' })
   async csv(
     @Res() res: Response,
     @Query('vigencia') vigencia?: string,
     @Query('modalidad') modalidad?: string,
+    @Query('tipologia') tipologia?: string,
   ) {
-    const estadisticas = await this.service.gestion(this.filtros(vigencia, modalidad));
+    const estadisticas = await this.service.gestion(this.filtros(vigencia, modalidad, tipologia));
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
@@ -79,12 +88,13 @@ export class EstadisticasController {
     res.send(reporteCsv(estadisticas));
   }
 
-  private filtros(vigencia?: string, modalidad?: string): FiltrosEstadisticas {
+  private filtros(vigencia?: string, modalidad?: string, tipologia?: string): FiltrosEstadisticas {
     return {
       vigencia: vigenciaPedida(vigencia),
       // Una modalidad vacía es «todas», no una modalidad llamada cadena vacía:
       // los selectores mandan `modalidad=` cuando el usuario limpia el filtro.
       modalidad: modalidad?.trim() || null,
+      tipologia: tipologia?.trim() || null,
     };
   }
 }

@@ -34,14 +34,14 @@ describe('actividadEnCurso · por dónde va el proceso', () => {
   });
 
   it('no salta a una que la secuencia todavía tiene bloqueada', () => {
-    // La 3.2 quedó a medias, así que la 3.3 no se puede abrir aunque exista.
+    // La 3.3 quedó a medias, así que la 3.5 no se puede abrir aunque exista.
     const catalogo = [
       act('3.1', 'APROBADO'),
-      act('3.2', 'EN_REVISION'),
-      act('3.3', 'BORRADOR'),
+      act('3.3', 'EN_REVISION'),
+      act('3.5', 'BORRADOR'),
     ];
 
-    expect(actividadEnCurso(catalogo, 'APROBADO')).toBe('3.2');
+    expect(actividadEnCurso(catalogo, 'APROBADO')).toBe('3.3');
   });
 
   it('salta las que la modalidad excluye', () => {

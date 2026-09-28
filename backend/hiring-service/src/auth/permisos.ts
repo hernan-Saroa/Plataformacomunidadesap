@@ -1,192 +1,65 @@
 /**
- * Permisos del módulo de Contratación.
+ * Los permisos transversales del módulo de Contratación.
+ *
+ * Desde la migración 083 casi todo se autoriza por acción y lugar: cuatro
+ * permisos de acción —`contratacion.ver`, `.editar`, `.aprobar`, `.decidir`—
+ * y el alcance de cada rol en `hiring.alcances_permiso`, que evalúa
+ * `@Puede(acción, lugar)` (ver `alcance.ts` y `puede.guard.ts`).
+ *
+ * Quedan aquí los cinco que no son de ninguna etapa y conservan su código.
+ * Siguen evaluándose con `@Permisos` y `PermisosGuard`. Los treinta y un
+ * códigos que la 083 reemplazó los desactivó la 084.
  *
  * Los permisos son del código y los roles son datos: el administrador crea,
- * renombra y combina roles desde la plataforma, y decide cuál de ellos otorga
- * cada permiso. Por eso los endpoints nombran `contratacion.acta_inicio.
- * suscribir` y no `ORDENADOR_GASTO` —ese rol puede llamarse de otra forma
- * mañana, o convivir con otro equivalente, y el endpoint tiene que seguir
- * funcionando—.
- *
- * Los códigos siguen el formato `modulo.recurso.accion` del catálogo de
- * `auth.permission`, donde los siembra la migración 060 junto con la matriz
- * rol × permiso; la 061 le añade el rol de apoyo a la supervisión.
- *
- * Qué rol otorga cada uno lo declara `ROLES_QUE_OTORGAN`, y la matriz que se
- * consulta y se enseña se arma sobre ese mapa en `matriz-roles.ts`.
+ * renombra y combina roles desde la plataforma y decide cuál de ellos otorga
+ * cada permiso. Por eso los endpoints nombran permisos y no roles.
  */
 
 import { normalizeRoles } from './hiring-access';
 
 // -------------------------------------------------------------- catálogo --
 
-/** Suscribir el acta de inicio y dar comienzo a la ejecución (EFDS-1167). */
-export const PERMISO_ACTA_INICIO_SUSCRIBIR = 'contratacion.acta-inicio.suscribir';
-
-/** Reasignar al supervisor durante la ejecución (EFDS-1169). */
-export const PERMISO_SUPERVISION_REASIGNAR = 'contratacion.supervision.reasignar';
-
-/** Cargar informes, actas y soportes del seguimiento (EFDS-1168). */
-export const PERMISO_SEGUIMIENTO_CARGAR = 'contratacion.seguimiento.cargar';
-
-/** Consultar el seguimiento de la ejecución (EFDS-1168). */
-export const PERMISO_SEGUIMIENTO_VER = 'contratacion.seguimiento.ver';
-
-/** Consultar el expediente del proceso; ya existe en auth.permission. */
-export const PERMISO_EXPEDIENTE_VER = 'contratacion.expediente.view';
-
-/** Solicitar una modificación contractual — actividad 9.5 (EFDS-1177). */
-export const PERMISO_MODIFICACION_SOLICITAR = 'contratacion.modificacion.solicitar';
-
 /**
- * Aprobar o negar la modificación (EFDS-1177).
+ * Consultar cualquier proceso de la entidad, no solo los propios.
  *
- * Aparte de solicitarla a propósito: quien pide la prórroga no puede
- * concedérsela a sí mismo. Es la misma separación que ya tienen el estudio
- * previo —`actividad.edit` frente a `actividad.approve`— y el CDP.
+ * No es de ninguna etapa: dice sobre qué procesos se trabaja, no qué se puede
+ * hacer en ellos. Qué etapas de esos procesos ve cada quien lo sigue diciendo
+ * su alcance.
  */
-export const PERMISO_MODIFICACION_APROBAR = 'contratacion.modificacion.aprobar';
-
-/** Consultar las modificaciones del contrato (EFDS-1177). */
-export const PERMISO_MODIFICACION_VER = 'contratacion.modificacion.ver';
-
-/** Reportar el presunto incumplimiento del contrato (EFDS-1180). */
-export const PERMISO_INCUMPLIMIENTO_REPORTAR = 'contratacion.incumplimiento.reportar';
-
-/** Consultar los reportes de presunto incumplimiento (EFDS-1180). */
-export const PERMISO_INCUMPLIMIENTO_VER = 'contratacion.incumplimiento.ver';
-
-/**
- * Instruir el trámite sancionatorio: abrirlo, citar audiencias, registrar lo
- * que pasó en ellas y notificar las resoluciones (EFDS-1181).
- */
-export const PERMISO_INCUMPLIMIENTO_TRAMITAR = 'contratacion.incumplimiento.tramitar';
-
-/**
- * Decidir el caso: archivarlo, declarar el incumplimiento o la caducidad, y
- * revocar lo resuelto (EFDS-1181).
- *
- * Aparte del anterior y no reunido con él: instruir y decidir no son la misma
- * competencia, y juntarlos le daría a quien lleva el trámite la facultad de
- * sancionar.
- */
-export const PERMISO_INCUMPLIMIENTO_DECIDIR = 'contratacion.incumplimiento.decidir';
-
-// Los diez del catálogo original (EFDS-1183); ya viven en auth.permission.
-export const PERMISO_ACTIVIDAD_EDITAR = 'contratacion.actividad.edit';
-export const PERMISO_ACTIVIDAD_ENVIAR = 'contratacion.actividad.send';
-export const PERMISO_ACTIVIDAD_APROBAR = 'contratacion.actividad.approve';
-export const PERMISO_DOCUMENTO_ADJUNTAR = 'contratacion.documento.upload';
-export const PERMISO_DOCUMENTO_ELIMINAR = 'contratacion.documento.delete';
-export const PERMISO_PROCESO_CREAR = 'contratacion.proceso.create';
-export const PERMISO_PROCESO_EDITAR = 'contratacion.proceso.edit';
-export const PERMISO_PROCESO_VER = 'contratacion.proceso.view';
 export const PERMISO_PROCESO_VER_TODOS = 'contratacion.proceso.view-all';
+
+/** Repartir los procesos entre los abogados de la Dirección. */
 export const PERMISO_PROCESO_ASIGNAR = 'contratacion.proceso.assign';
-/**
- * Tomar de la bandeja un proceso que llegó sin radicar (EFDS-1183).
- *
- * Separado de `assign` a propósito: repartir es entregarle un proceso a otro
- * —competencia del Director—, y tomar es quedarse con uno que nadie ha cogido.
- * Si fueran el mismo permiso, dejar que el equipo tome de la bandeja les daría
- * de paso la facultad de repartirse trabajo entre ellos.
- */
-export const PERMISO_PROCESO_TOMAR = 'contratacion.proceso.take';
-export const PERMISO_PROCESO_ARCHIVAR = 'contratacion.proceso.archive';
-export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
+
+/** Administrar la matriz de actividades, las tipologías, los umbrales y los alcances. */
 export const PERMISO_CONFIG_ADMINISTRAR = 'contratacion.config.manage';
+
+/** Consultar los informes y las estadísticas del módulo (EFDS-1189). */
 export const PERMISO_REPORTE_VER = 'contratacion.reporte.view';
-
-/** Consultar los vencimientos próximos y cumplidos (EFDS-1185). */
-export const PERMISO_ALERTA_VER = 'contratacion.alerta.ver';
-
-/**
- * Consultar el expediente completo para auditoría (EFDS-1186).
- *
- * Aparte de `expediente.view`: auditar incluye la trazabilidad y el historial
- * de supervisiones y modificaciones, no solo los documentos.
- */
-export const PERMISO_EXPEDIENTE_AUDITAR = 'contratacion.expediente.auditar';
-
-// ------------------------- las competencias que no son del gestor --
-//
-// Los seis que sustituyeron a las listas `ROLES_*` con composición propia. El
-// resto del trámite —publicar el pliego, emitir adendas, liquidar— comparte
-// `actividad.edit` porque comparte también quién lo hace: el gestor con su
-// expediente. Estos seis existen porque la matriz los encarga a alguien más.
-
-/**
- * Expedir el CDP y el RP, tramitar los pagos avalados y cerrar financieramente
- * el contrato (etapas 4, 9.4 y 10.3).
- *
- * Uno solo para los tres momentos porque es la misma competencia: mover el
- * presupuesto de la entidad, que es de la Dirección Financiera. Ni el gestor
- * que liquidó ni el supervisor que vigiló.
- */
-export const PERMISO_PRESUPUESTO_GESTIONAR = 'contratacion.presupuesto.gestionar';
-
-/**
- * Designar el comité evaluador y al supervisor (actividades 6.2 y 8.2).
- *
- * Del Ordenador del Gasto: el gestor lleva el proceso, pero no elige a quién se
- * encarga de evaluar ni de vigilar, y responde por a quién nombra.
- */
-export const PERMISO_DESIGNACION_ORDENAR = 'contratacion.designacion.ordenar';
-
-/**
- * Emitir el acto de adjudicación (actividad 7.4).
- *
- * Aparte de la designación aunque hoy lo tenga el mismo rol: adjudicar
- * compromete a la entidad con un tercero, y es la decisión de fondo del
- * proceso.
- */
-export const PERMISO_ADJUDICACION_DECIDIR = 'contratacion.adjudicacion.decidir';
-
-/**
- * Registrar el resultado de la evaluación (actividad 6.3).
- *
- * De las tres dimensiones del comité (RF-SIS-02). El gestor queda fuera porque
- * no evaluó, y el permiso solo abre la puerta: quién puede registrar lo decide
- * además la membresía del comité de ese proceso (EFDS-1438).
- */
-export const PERMISO_EVALUACION_REGISTRAR = 'contratacion.evaluacion.registrar';
-
-/**
- * Avalar la cuenta de cobro y suscribir el informe final (actividades 9.4 y
- * 10.1).
- *
- * Aparte de `seguimiento.cargar` a propósito: cargar un informe documenta,
- * avalar decide. Si quien radica la cuenta pudiera avalarla, el aval dejaría de
- * ser una revisión —mismo criterio que las garantías (EFDS-1164)—.
- */
-export const PERMISO_SUPERVISION_AVALAR = 'contratacion.supervision.avalar';
-
-/**
- * Archivar y reabrir el expediente, y registrar la publicación del acta
- * (actividad 10.4).
- *
- * La custodia es del Archivo de Gestión: reabrir un expediente archivado toca
- * algo que ya se declaró completo ante entes de control.
- */
-export const PERMISO_EXPEDIENTE_ARCHIVAR = 'contratacion.expediente.archivar';
 
 /**
  * Dar por terminado un plazo que sigue corriendo, para poder probar el flujo.
  *
  * Los dos términos que bloquean —el de publicidad del pliego (5.3) y el de
- * subsanaciones (6.5)— duran días hábiles reales. Recorrer un proceso completo
- * en una sesión de pruebas exigía esperarlos, así que en la práctica no se
- * probaba lo que viene después de ellos.
- *
- * No finge que el plazo venció: mueve la fecha de vencimiento a ayer y deja
- * traza de quién lo hizo. De ahí en adelante todo se comporta exactamente como
- * en producción, que es justo lo que hay que poder probar.
+ * subsanaciones (6.5)— duran días hábiles reales. No finge que el plazo
+ * venció: mueve la fecha de vencimiento a ayer y deja traza de quién lo hizo.
  *
  * Solo el superadministrador. No es una competencia del negocio —ningún rol de
- * la matriz acorta un término legal— sino una llave de pruebas, y por eso es el
- * único permiso del módulo que no se le da a ningún rol funcional.
+ * la matriz acorta un término legal— sino una llave de pruebas.
  */
 export const PERMISO_PLAZO_TERMINAR = 'contratacion.plazo.terminar';
+
+/**
+ * Los permisos que no dependen de ninguna etapa y la 083 conserva con su
+ * código. Todo lo demás se autoriza por acción y alcance (`@Puede`).
+ */
+export const PERMISOS_TRANSVERSALES = [
+  PERMISO_PROCESO_VER_TODOS,
+  PERMISO_PROCESO_ASIGNAR,
+  PERMISO_CONFIG_ADMINISTRAR,
+  PERMISO_REPORTE_VER,
+  PERMISO_PLAZO_TERMINAR,
+] as const;
 
 // ------------------------------------------------- de dónde salen hoy --
 
@@ -194,183 +67,27 @@ export const PERMISO_PLAZO_TERMINAR = 'contratacion.plazo.terminar';
  * El respaldo mientras el token no traiga los permisos.
  *
  * auth-service ya los calcula al iniciar sesión, pero arma el JWT solo con
- * `roles` y los descarta: hoy hiring no puede leerlos aunque quiera. Hasta que
- * el payload los incluya, cada permiso declara qué roles lo tenían en el
- * catálogo A4, y este mapa es el único sitio del módulo donde se nombra un rol.
+ * `roles`: hasta que el payload los incluya, cada permiso declara qué roles lo
+ * tenían en el catálogo, y `PermisosGuard` consulta además
+ * `auth.role_permissions`, que es la fuente que manda.
  *
- * Cuando el token traiga `permissions`, `permisosDelUsuario` los usará y este
- * mapa se podrá borrar sin tocar un solo endpoint. Esa es toda la razón de que
- * exista: que el cambio sea de una función y no de noventa y cinco decoradores.
+ * Solo los transversales: los permisos de acción no tienen respaldo en código a
+ * propósito. Su alcance vive en la base, y un rol creado desde el backoffice
+ * tiene que funcionar sin que el código lo nombre.
  */
 export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
-  [PERMISO_ACTA_INICIO_SUSCRIBIR]: [
-    'SUPERVISOR_CONTRATO',
-    'ORDENADOR_GASTO',
-    'GESTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  // Más estrecho: reasignar la supervisión es un acto del ordenador, igual que
-  // designarla la primera vez.
-  [PERMISO_SUPERVISION_REASIGNAR]: ['ORDENADOR_GASTO', 'SUPER_ADMIN'],
-  [PERMISO_SEGUIMIENTO_CARGAR]: [
-    'SUPERVISOR_CONTRATO',
-    'GESTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  // La consulta es ancha a propósito: el seguimiento de un contrato lo revisan
-  // control interno y la propia Dirección, no solo quien lo carga.
-  [PERMISO_SEGUIMIENTO_VER]: [
-    'SUPERVISOR_CONTRATO',
-    'APOYO_SUPERVISION',
-    'GESTOR_CONTRATACION',
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'ORDENADOR_GASTO',
-    'SUPER_ADMIN',
-  ],
-  [PERMISO_EXPEDIENTE_VER]: [
-    'GESTOR_CONTRATACION',
-    'ESTRUCTURADOR_TECNICO',
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'ORDENADOR_GASTO',
-    'SUPERVISOR_CONTRATO',
-    'APOYO_SUPERVISION',
-    'SUPER_ADMIN',
-  ],
-  /**
-   * Pedir la prórroga es un trámite contractual, no presupuestal: la lleva
-   * quien lleva el expediente. El supervisor no la solicita —constata que hace
-   * falta y lo dice por el seguimiento—, y la Dirección Financiera tampoco,
-   * porque la prórroga no mueve dinero.
-   */
-  [PERMISO_MODIFICACION_SOLICITAR]: [
-    'GESTOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  /**
-   * Concederla es del ordenador del gasto y la Dirección: extender el plazo
-   * compromete a la entidad frente al contratista, y quien la pidió no puede
-   * dársela a sí mismo.
-   */
-  [PERMISO_MODIFICACION_APROBAR]: [
-    'ORDENADOR_GASTO',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  // Ancha como la del seguimiento, y por lo mismo: lo que le pasó al plazo de
-  // un contrato lo revisan control interno y la Dirección.
-  [PERMISO_MODIFICACION_VER]: [
-    'GESTOR_CONTRATACION',
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'ORDENADOR_GASTO',
-    'SUPERVISOR_CONTRATO',
-    'APOYO_SUPERVISION',
-    'SUPER_ADMIN',
-  ],
-  // La lista más estrecha del bloque: RF-INC-01 encarga el reporte al
-  // supervisor, y es coherente con quién constata el hecho. Ni el gestor ni el
-  // ordenador vigilan la ejecución día a día, así que no están en condiciones
-  // de afirmar que algo se incumplió.
-  [PERMISO_INCUMPLIMIENTO_REPORTAR]: ['SUPERVISOR_CONTRATO', 'SUPER_ADMIN'],
-  // La consulta es más ancha: el caso lo tramita el área jurídica y lo revisa
-  // la Dirección, así que ocultárselo a quien lleva el expediente no protegería
-  // nada. La restricción por reserva legal que pide RF-INC-03 es EFDS-1182 y se
-  // resuelve allí, sobre este mismo permiso.
-  [PERMISO_INCUMPLIMIENTO_VER]: [
-    'SUPERVISOR_CONTRATO',
-    'GESTOR_CONTRATACION',
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'ORDENADOR_GASTO',
-    'SUPER_ADMIN',
-  ],
-  // El trámite lo lleva el área jurídica, que en la matriz de roles son los
-  // «ABOGADOS / PROFESIONALES» de la Dirección de Contratación: los que
-  // «proyectan todos los actos administrativos del proceso». Este módulo los
-  // viene llamando GESTOR_CONTRATACION desde la etapa 3, así que no se inventa
-  // un rol nuevo para nombrarlos otra vez.
-  [PERMISO_INCUMPLIMIENTO_TRAMITAR]: [
-    'GESTOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  // Más estrecho, con el criterio de las garantías (EFDS-1164) y del acto de
-  // adjudicación: quien instruye no decide. Declarar el incumplimiento o la
-  // caducidad compromete a la entidad frente al contratista —le impone una
-  // multa o le termina el contrato—, así que queda en la Dirección y en el
-  // Ordenador del Gasto, que es de quien son los actos que obligan.
-  [PERMISO_INCUMPLIMIENTO_DECIDIR]: [
-    'DIRECTOR_CONTRATACION',
-    'ORDENADOR_GASTO',
-    'SUPER_ADMIN',
-  ],
-  // Espejan las listas ROLES_* de hiring-access, que son la lectura vigente
-  // del catálogo A4: el guard por permiso no puede dar ni quitar acceso
-  // respecto del que ya daban los roles.
-  //
-  // Con una excepción deliberada, que es lo que trae la matriz (EFDS-1183): el
-  // estructurador técnico entra donde el formato dice que trabaja —«elabora
-  // estudios previos y pasa a aprobación del jefe de área»—. No se le quita
-  // nada a nadie y el rol no lo tiene todavía ningún usuario, así que el acceso
-  // solo cambia cuando el administrador se lo asigne a alguien.
-  [PERMISO_ACTIVIDAD_EDITAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
-  [PERMISO_ACTIVIDAD_ENVIAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
-  [PERMISO_ACTIVIDAD_APROBAR]: [
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  [PERMISO_DOCUMENTO_ADJUNTAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
-  [PERMISO_DOCUMENTO_ELIMINAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_CREAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_EDITAR]: ['GESTOR_CONTRATACION', 'ESTRUCTURADOR_TECNICO', 'SUPER_ADMIN'],
-  // Se suman los dos roles que el formato describe pero ningún HU había
-  // necesitado: el estructurador técnico, que elabora el estudio previo del
-  // área, y el apoyo a la supervisión, cuyo trabajo es enteramente de lectura.
-  //
-  // Y la Financiera (migración 072), que tenía `presupuesto.gestionar` para
-  // escribir las cuatro actividades del CDP y ningún permiso para leer el
-  // proceso al que se las escribía: el listado la dejaba entrar por la bandeja
-  // de solicitudes sin atender y dentro le fallaba cada consulta, empezando por
-  // la 4.1. Leer, no editar: `actividad.edit` sigue fuera, que es lo que separa
-  // a quien certifica la disponibilidad de quien diligencia el estudio previo.
-  [PERMISO_PROCESO_VER]: [
-    'GESTOR_CONTRATACION',
-    'ESTRUCTURADOR_TECNICO',
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'APOYO_SUPERVISION',
-    'ESTRUCTURADOR_FINANCIERO',
-    'SUPER_ADMIN',
-  ],
   // Una sola X en la Hoja1 del formato, la del Jefe de Oficina: ver toda la
-  // entidad es la excepción y no el modo de trabajo de la Dirección.
-  //
-  // El revisor lo tenía porque cuando se escribió esta tabla el reparto no
-  // existía y sin «ver todos» no habría alcanzado los expedientes que le tocaba
-  // revisar. Desde que la 3.3 reparte (EFDS-1183) llega a los suyos por su
-  // participación, así que esto solo le enseñaba de más: al abogado le salían
-  // los procesos de toda la entidad y no los que le asignaron.
+  // entidad es la excepción y no el modo de trabajo de la Dirección (068).
   [PERMISO_PROCESO_VER_TODOS]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
-  // Todo el equipo de la Dirección, porque la bandeja es compartida: quien
-  // llega primero se queda con el proceso. El estructurador técnico no entra
-  // —es de las áreas que radican, no de quien recibe—.
-  [PERMISO_PROCESO_TOMAR]: ['GESTOR_CONTRATACION', 'DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_ARCHIVAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
-  [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
-  // Las dos únicas casillas que la Hoja1 del formato le marca al
-  // «Administrador», que no es el SUPER_ADMIN de la plataforma: administra la
-  // parametrización de Contratación y no toca un solo proceso.
+  // Las dos únicas casillas que la Hoja1 le marca al «Administrador», que no
+  // es el SUPER_ADMIN de la plataforma: parametriza y no toca un proceso.
   [PERMISO_CONFIG_ADMINISTRAR]: [
     'DIRECTOR_CONTRATACION',
     'ADMINISTRADOR_CONTRATACION',
     'SUPER_ADMIN',
   ],
-  // Y los reportes se suman al apoyo a la supervisión, que es de quien la
+  // Y los informes se suman al apoyo a la supervisión, que es de quien la
   // Hoja2 dice «generamos informes, estadísticas, certificaciones».
   [PERMISO_REPORTE_VER]: [
     'DIRECTOR_CONTRATACION',
@@ -378,46 +95,7 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'APOYO_SUPERVISION',
     'SUPER_ADMIN',
   ],
-  // Ancha: el vencimiento de una póliza le importa a quien la vigila y a quien
-  // responde por el contrato.
-  [PERMISO_ALERTA_VER]: [
-    'GESTOR_CONTRATACION',
-    'SUPERVISOR_CONTRATO',
-    'REVISOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'ORDENADOR_GASTO',
-    'ESTRUCTURADOR_FINANCIERO',
-    'SUPER_ADMIN',
-  ],
-  // Los organismos de control entran aquí y no al expediente de trabajo.
-  [PERMISO_EXPEDIENTE_AUDITAR]: [
-    'ENTE_DE_CONTROL',
-    'DIRECTOR_CONTRATACION',
-    'ARCHIVO_GESTION_DC',
-    'SUPER_ADMIN',
-  ],
-
-  // Las seis competencias que no son del gestor. Espejan lo que la migración
-  // 060 sembró en auth.role_permissions, que es la fuente que manda; esto es
-  // el respaldo por si la consulta falla.
-  [PERMISO_PRESUPUESTO_GESTIONAR]: ['ESTRUCTURADOR_FINANCIERO', 'SUPER_ADMIN'],
-  [PERMISO_DESIGNACION_ORDENAR]: ['ORDENADOR_GASTO', 'SUPER_ADMIN'],
-  [PERMISO_ADJUDICACION_DECIDIR]: ['ORDENADOR_GASTO', 'SUPER_ADMIN'],
-  [PERMISO_EVALUACION_REGISTRAR]: [
-    'EVALUADOR_JURIDICO',
-    'EVALUADOR_FINANCIERO',
-    'EVALUADOR_TECNICO',
-    'SUPER_ADMIN',
-  ],
-  [PERMISO_SUPERVISION_AVALAR]: ['SUPERVISOR_CONTRATO', 'SUPER_ADMIN'],
-  [PERMISO_EXPEDIENTE_ARCHIVAR]: [
-    'ARCHIVO_GESTION_DC',
-    'GESTOR_CONTRATACION',
-    'DIRECTOR_CONTRATACION',
-    'SUPER_ADMIN',
-  ],
-  // El único sin rol funcional: acortar un término no es competencia de nadie
-  // en la matriz, es una llave de pruebas.
+  // El único sin rol funcional: es una llave de pruebas.
   [PERMISO_PLAZO_TERMINAR]: ['SUPER_ADMIN'],
 };
 
@@ -441,7 +119,7 @@ export function permisosDelUsuario(user: any): string[] {
     .map(([permiso]) => permiso);
 }
 
-/** Si el usuario puede hacer algo, para decidirlo fuera de un guard. */
+/** Si el usuario tiene un permiso transversal, para decidirlo fuera de un guard. */
 export function tienePermiso(user: any, permiso: string): boolean {
   return permisosDelUsuario(user).includes(permiso);
 }

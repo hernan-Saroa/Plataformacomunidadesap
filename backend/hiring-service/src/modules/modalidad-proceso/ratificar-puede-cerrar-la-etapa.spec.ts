@@ -49,6 +49,7 @@ describe('decidir la modalidad · el cierre de la etapa 3', () => {
         },
       } as never,
       { exigeFirma: async () => false } as never,
+      {} as never,
     );
 
     // `estado` vuelve a leer de la base al terminar y no es lo que se prueba.
