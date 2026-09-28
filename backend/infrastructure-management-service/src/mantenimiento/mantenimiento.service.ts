@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, OnModuleInit, Optional, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
+import type ExcelJSType from 'exceljs';
+import type PdfPrinterType from 'pdfmake';
+import type archiverType from 'archiver';
+import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
 import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
@@ -61,6 +65,87 @@ export interface FiltrosConsolidadoCalificacion {
   idCategoria?: number | string | null;
   codigoTecnico?: string | null;
   idAreaSolicitante?: string | null;
+}
+
+// ===== EFDS-1739 RF-INF-010 Reportes e Indicadores de Gestión =====
+export type AreaFiltroReporte = 'UMI' | 'TI' | 'TODAS';
+export interface FiltrosReporteGestionParams {
+  fechaDesde?: string | Date | null;
+  fechaHasta?: string | Date | null;
+  idSede?: string | null;
+  idCategoria?: number | string | null;
+  areaResponsable?: AreaFiltroReporte | string | null;
+  codigoTecnico?: string | null;
+  estado?: string | null;
+}
+export interface ReportePeriodoDelta {
+  valorActual: number;
+  valorAnterior: number;
+  variacionAbsoluta: number;
+  variacionPorcentual: number;
+}
+export interface ReporteGestionTotalCasos {
+  totalRadicados: ReportePeriodoDelta;
+  porEstado: Array<{ estado: string; cantidad: number; porcentaje: number }>;
+  porTipoAtencion: Array<{ tipoAtencion: string; cantidad: number; porcentaje: number }>;
+}
+export interface ReporteGestionPorCategoriaItem {
+  idCategoria: number | null;
+  codigoCategoria?: string | null;
+  nombreCategoria: string;
+  radicados: number;
+  completados: number;
+  enCurso: number;
+  vencidos: number;
+  promedioCalificacion: number;
+  color?: string | null;
+}
+export interface ReporteGestionPorTecnicoItem {
+  codigoTecnico: string | null;
+  nombreTecnico: string;
+  asignados: number;
+  completados: number;
+  enCurso: number;
+  promedioCalificacion: number;
+  cargaVigente: number;
+}
+export interface ReporteGestionTiemposAtencionItem {
+  idCategoria: number | null;
+  nombreCategoria: string;
+  metaSlaDias: number;
+  casosCumplenSLA: number;
+  casosExcedenSLA: number;
+  porcentajeCumplimiento: number;
+  promedioRealDias: number;
+}
+export interface ReporteGestionPercepcionServicio {
+  promedioGlobal: number;
+  totalCalificaciones: number;
+  porDistribucion: DistribucionCalificacion;
+  porCategoria: ConsolidadoCalificacionItem[];
+  porTecnico: ConsolidadoCalificacionItem[];
+}
+export interface ReporteGestionRollupGeograficoItem {
+  idSede: string | null;
+  nombreSede: string;
+  radicados: number;
+  completados: number;
+  enCurso: number;
+  porPiso?: Array<{ piso: string; cantidad: number }>;
+}
+export interface ReporteGestionDto {
+  periodo: {
+    fechaDesdeISO: string | null;
+    fechaHastaISO: string | null;
+    fechaDesdeAnteriorISO: string | null;
+    fechaHastaAnteriorISO: string | null;
+  };
+  totalCasos: ReporteGestionTotalCasos;
+  porCategoria: ReporteGestionPorCategoriaItem[];
+  porTecnico: ReporteGestionPorTecnicoItem[];
+  tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[];
+  percepcionServicio: ReporteGestionPercepcionServicio;
+  rollupGeografico: ReporteGestionRollupGeograficoItem[];
 }
 
 function usuarioEsBypassConsolidados(user?: AuthUser | null): boolean {
@@ -2724,6 +2809,715 @@ export class MantenimientoService implements OnModuleInit {
     return resultado;
   }
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1739 RF-INF-010: Reportes e Indicadores de Gestión (6 métricas)
+  // Filtro default últimos 90 días. Rango máximo 12 meses → 400 si excede.
+  // Guardia permiso infraestructura.reportes.gestion o bypass legacy admin.
+  // ---------------------------------------------------------------------------
+  async obtenerReporteGestion(
+    filtros: FiltrosReporteGestionParams,
+    user: AuthUser | null | undefined,
+  ): Promise<ReporteGestionDto> {
+    requirePermission('infraestructura.reportes.gestion', user);
+
+    const now = new Date();
+    const hastaDefault = new Date(now);
+    const desdeDefault = new Date(now);
+    desdeDefault.setDate(desdeDefault.getDate() - 90);
+    let fDesde = parsearFechaUTCNullable(filtros.fechaDesde) ?? desdeDefault;
+    let fHasta = parsearFechaUTCNullable(filtros.fechaHasta) ?? hastaDefault;
+    if (fDesde.getTime() > fHasta.getTime()) {
+      const swap = fDesde; fDesde = fHasta; fHasta = swap;
+    }
+    const diasRango = Math.max(1, Math.ceil((fHasta.getTime() - fDesde.getTime()) / (24 * 60 * 60 * 1000)));
+    if (diasRango > 366) {
+      throw new BadRequestException('Rango de fechas excede el máximo permitido (12 meses).');
+    }
+    const duracionMs = fHasta.getTime() - fDesde.getTime();
+    const fDesdeAnt = new Date(fDesde.getTime() - duracionMs);
+    const fHastaAnt = new Date(fDesde.getTime() - 1);
+
+    const idSede = (typeof filtros.idSede === 'string' && filtros.idSede.trim() && isUuid(filtros.idSede)) ? filtros.idSede.trim() : null;
+    const idCategoria = filtros.idCategoria == null || String(filtros.idCategoria).trim() === ''
+      ? null
+      : Number.isInteger(Number(filtros.idCategoria)) && Number(filtros.idCategoria) > 0
+      ? Number(filtros.idCategoria)
+      : null;
+    const areaRaw = String(filtros.areaResponsable || '').trim().toUpperCase();
+    const areaResponsable: AreaFiltroReporte = areaRaw === 'TI' || areaRaw === 'TODAS' ? areaRaw as AreaFiltroReporte : 'UMI';
+    const codigoTecnico = typeof filtros.codigoTecnico === 'string' && filtros.codigoTecnico.trim() ? filtros.codigoTecnico.trim() : null;
+    const estado = typeof filtros.estado === 'string' && filtros.estado.trim() ? filtros.estado.trim().toUpperCase() : null;
+
+    const aplicarFiltrosComunes = (qb: any, campoFecha: string, desde: Date, hasta: Date) => {
+      qb.andWhere(`${campoFecha} >= :desde`, { desde });
+      qb.andWhere(`${campoFecha} <= :hasta`, { hasta });
+      if (idSede) qb.andWhere('s.idSede = :idSede', { idSede });
+      if (idCategoria != null) qb.andWhere('s.idCategoria = :idCat', { idCat: idCategoria });
+      if (areaResponsable === 'UMI') {
+        qb.andWhere("s.areaResponsableActual IN (:...areasUMI)", { areasUMI: ['UMI', 'PENDIENTE'] });
+      } else if (areaResponsable === 'TI') {
+        qb.andWhere("s.areaResponsableActual = :areaTI", { areaTI: 'TI' });
+      }
+      if (codigoTecnico) {
+        qb.andWhere("s.responsableAsignado ILIKE :prefTec", { prefTec: codigoTecnico + SEPARADOR_TECNICO + '%' });
+      }
+      if (estado) qb.andWhere('s.estado = :est', { est: estado });
+    };
+
+    const ESTADOS_EN_CURSO = ['RECIBIDA', 'ASIGNADA', 'EN_ANALISIS', 'EN_CAMPO_VALORACION', 'EN_ESPERA_DE_INSUMOS', 'EN_PROGRESO', 'PENDIENTE_CONFORMIDAD'];
+    const ESTADOS_COMPLETADOS = ['CERRADA', 'CERRADA_SIN_ATENCION', 'COMPLETADA'];
+
+    // ---- A. totalCasos ----
+    const buildTotalQ = (campoFecha: string, desde: Date, hasta: Date) => {
+      const qb = this.mantenimientoRepo.createQueryBuilder('s');
+      qb.select([]);
+      aplicarFiltrosComunes(qb, campoFecha, desde, hasta);
+      return qb
+        .addSelect('COUNT(*)::bigint', 'total')
+        .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estCompletados) THEN 1 ELSE 0 END), 0)::bigint", 'completados')
+        .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estCurso) THEN 1 ELSE 0 END), 0)::bigint", 'encurso')
+        .setParameter('estCompletados', ESTADOS_COMPLETADOS)
+        .setParameter('estCurso', ESTADOS_EN_CURSO);
+    };
+    const totalActualRaw = await buildTotalQ('s.fechaRadicacion', fDesde, fHasta).getRawOne();
+    const totalAnteriorRaw = await buildTotalQ('s.fechaRadicacion', fDesdeAnt, fHastaAnt).getRawOne();
+    const totalActual = Number(totalActualRaw?.total ?? 0);
+    const totalAnterior = Number(totalAnteriorRaw?.total ?? 0);
+
+    const porEstadoQb = this.mantenimientoRepo.createQueryBuilder('s');
+    porEstadoQb.select([]);
+    aplicarFiltrosComunes(porEstadoQb, 's.fechaRadicacion', fDesde, fHasta);
+    const porEstadoRaw = await porEstadoQb
+      .addSelect('s.estado', 'estado')
+      .addSelect('COUNT(*)::bigint', 'cantidad')
+      .groupBy('s.estado')
+      .orderBy('"cantidad"', 'DESC')
+      .getRawMany();
+    const porEstado = (porEstadoRaw || []).map((r: any) => {
+      const c = Number(r.cantidad);
+      return { estado: String(r.estado || ''), cantidad: c, porcentaje: totalActual ? (c / totalActual) * 100 : 0 };
+    });
+
+    const porTipoQb = this.mantenimientoRepo.createQueryBuilder('s');
+    porTipoQb.select([]);
+    aplicarFiltrosComunes(porTipoQb, 's.fechaRadicacion', fDesde, fHasta);
+    const porTipoRaw = await porTipoQb
+      .addSelect('s.tipoAtencion', 'tipo')
+      .addSelect('COUNT(*)::bigint', 'cantidad')
+      .groupBy('s.tipoAtencion')
+      .orderBy('"cantidad"', 'DESC')
+      .getRawMany();
+    const porTipoAtencion = (porTipoRaw || []).map((r: any) => {
+      const c = Number(r.cantidad);
+      return { tipoAtencion: String(r.tipo || ''), cantidad: c, porcentaje: totalActual ? (c / totalActual) * 100 : 0 };
+    });
+
+    const totalCasos: ReporteGestionTotalCasos = {
+      totalRadicados: {
+        valorActual: totalActual,
+        valorAnterior: totalAnterior,
+        variacionAbsoluta: totalActual - totalAnterior,
+        variacionPorcentual: totalAnterior === 0 ? (totalActual > 0 ? 100 : 0) : ((totalActual - totalAnterior) / totalAnterior) * 100,
+      },
+      porEstado,
+      porTipoAtencion,
+    };
+
+    // ---- B. porCategoria ----
+    const catQb = this.mantenimientoRepo.createQueryBuilder('s');
+    catQb.select([]);
+    catQb.leftJoin(CatalogoItem, 'ci', 'ci.id = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
+    aplicarFiltrosComunes(catQb, 's.fechaRadicacion', fDesde, fHasta);
+    const catRaw = await catQb
+      .addSelect('CAST(s.idCategoria AS TEXT)', 'idCategoria')
+      .addSelect('COALESCE(ci.codigo, :sinCod)', 'codigoCategoria')
+      .addSelect('COALESCE(ci.nombre, :fallbackSinCat)', 'nombreCategoria')
+      .addSelect('COALESCE(ci.metadata::jsonb->>\'color\', NULL)', 'color')
+      .addSelect('COUNT(*)::bigint', 'radicados')
+      .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estComp) THEN 1 ELSE 0 END), 0)::bigint", 'completados')
+      .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estCur) THEN 1 ELSE 0 END), 0)::bigint", 'encurso')
+      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaLimiteAtencion < NOW() AND s.estado IN (:...estCurNoCierra) THEN 1 ELSE 0 END), 0)::bigint", 'vencidos')
+      .addSelect('ROUND(COALESCE(AVG(CASE WHEN s.calificacionServicio IS NOT NULL THEN CAST(s.calificacionServicio AS NUMERIC) END), 0), 2)', 'promCalif')
+      .setParameter('sinCod', '')
+      .setParameter('fallbackSinCat', '(sin categoría)')
+      .setParameter('estComp', ESTADOS_COMPLETADOS)
+      .setParameter('estCur', ESTADOS_EN_CURSO)
+      .setParameter('estCurNoCierra', ESTADOS_EN_CURSO.concat(['COMPLETADA']))
+      .groupBy('s.idCategoria').addGroupBy('ci.codigo').addGroupBy('ci.nombre').addGroupBy('ci.metadata')
+      .orderBy('"radicados"', 'DESC')
+      .getRawMany();
+    const porCategoria: ReporteGestionPorCategoriaItem[] = (catRaw || []).map((r: any) => {
+      const id = r.idCategoria && r.idCategoria !== '' ? Number(r.idCategoria) : null;
+      return {
+        idCategoria: Number.isInteger(id) ? id! : null,
+        codigoCategoria: r.codigoCategoria || null,
+        nombreCategoria: String(r.nombreCategoria || ''),
+        radicados: Number(r.radicados || 0),
+        completados: Number(r.completados || 0),
+        enCurso: Number(r.encurso || 0),
+        vencidos: Number(r.vencidos || 0),
+        promedioCalificacion: Number(r.promCalif || 0),
+        color: r.color || null,
+      };
+    });
+
+    // ---- C. porTecnico ----
+    const tecQb = this.mantenimientoRepo.createQueryBuilder('s');
+    tecQb.select([]);
+    aplicarFiltrosComunes(tecQb, 's.fechaRadicacion', fDesde, fHasta);
+    tecQb.andWhere("s.responsableAsignado IS NOT NULL AND TRIM(s.responsableAsignado) <> ''");
+    const tecRaw = await tecQb
+      .addSelect(`COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 1), ''), '')`, 'codigoTecnico')
+      .addSelect(`CASE WHEN COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 2), ''), '') = '' THEN COALESCE(NULLIF(s.responsableAsignado, ''), :fallback) ELSE NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 2), '') END`, 'nombreTecnico')
+      .addSelect('COUNT(*)::bigint', 'asignados')
+      .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estComp) THEN 1 ELSE 0 END), 0)::bigint", 'completados')
+      .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estCur) THEN 1 ELSE 0 END), 0)::bigint", 'encurso')
+      .addSelect('ROUND(COALESCE(AVG(CASE WHEN s.calificacionServicio IS NOT NULL THEN CAST(s.calificacionServicio AS NUMERIC) END), 0), 2)', 'promCalif')
+      .setParameter('sepTec', SEPARADOR_TECNICO)
+      .setParameter('fallback', '(sin nombre)')
+      .setParameter('estComp', ESTADOS_COMPLETADOS)
+      .setParameter('estCur', ESTADOS_EN_CURSO)
+      .groupBy('1').addGroupBy('s.responsableAsignado')
+      .orderBy('"asignados"', 'DESC')
+      .getRawMany();
+    const porTecnico: ReporteGestionPorTecnicoItem[] = await Promise.all((tecRaw || []).map(async (r: any) => {
+      const cod = r.codigoTecnico || null;
+      let carga = 0;
+      if (cod) { try { carga = await this.calcularCargaVigenteTecnico(cod); } catch { /* ignore */ } }
+      return {
+        codigoTecnico: cod,
+        nombreTecnico: String(r.nombreTecnico || ''),
+        asignados: Number(r.asignados || 0),
+        completados: Number(r.completados || 0),
+        enCurso: Number(r.encurso || 0),
+        promedioCalificacion: Number(r.promCalif || 0),
+        cargaVigente: Number.isFinite(carga) ? carga : 0,
+      };
+    }));
+
+    // ---- D. tiemposAtencionVsMeta (vs SLA por categoría) ----
+    const slaQb = this.mantenimientoRepo.createQueryBuilder('s');
+    slaQb.select([]);
+    slaQb.leftJoin(CatalogoItem, 'ci', 'ci.id = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
+    aplicarFiltrosComunes(slaQb, 's.fechaRadicacion', fDesde, fHasta);
+    slaQb.andWhere('s.fechaCierreTecnico IS NOT NULL AND s.fechaRadicacion IS NOT NULL');
+    const slaRaw = await slaQb
+      .addSelect('CAST(s.idCategoria AS TEXT)', 'idCategoria')
+      .addSelect('COALESCE(ci.nombre, :fallbackSinCat)', 'nombreCategoria')
+      .addSelect('COUNT(*)::bigint', 'totalCierres')
+      .addSelect('ROUND(COALESCE(AVG(EXTRACT(EPOCH FROM (s.fechaCierreTecnico - s.fechaRadicacion)) / 86400.0), 0), 2)', 'promDias')
+      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaCierreTecnico <= s.fechaLimiteAtencion THEN 1 ELSE 0 END), 0)::bigint", 'cumplen')
+      .addSelect("COALESCE(SUM(CASE WHEN s.fechaLimiteAtencion IS NOT NULL AND s.fechaCierreTecnico > s.fechaLimiteAtencion THEN 1 ELSE 0 END), 0)::bigint", 'exceden')
+      .setParameter('fallbackSinCat', '(sin categoría)')
+      .groupBy('s.idCategoria').addGroupBy('ci.nombre')
+      .orderBy('"totalCierres"', 'DESC')
+      .getRawMany();
+    const tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[] = await Promise.all((slaRaw || []).map(async (r: any) => {
+      const idStr = r.idCategoria && String(r.idCategoria).trim() !== '' ? String(r.idCategoria).trim() : null;
+      const idNum = (idStr && Number.isInteger(Number(idStr))) ? Number(idStr) : null;
+      let metaDias = 2;
+      if (Number.isInteger(idNum)) {
+        try {
+          const p = await this.obtenerParametroTiempoRespuesta(idNum!);
+          if (p && Number.isInteger(Number((p as any)?.dias ?? NaN))) metaDias = Number((p as any).dias);
+        } catch { /* ignore */ }
+      }
+      const total = Number(r.totalCierres || 0);
+      const cumplen = Number(r.cumplen || 0);
+      const exceden = Number(r.exceden || 0);
+      return {
+        idCategoria: idNum,
+        nombreCategoria: String(r.nombreCategoria || ''),
+        metaSlaDias: metaDias,
+        casosCumplenSLA: cumplen,
+        casosExcedenSLA: exceden,
+        porcentajeCumplimiento: total === 0 ? 0 : (cumplen / total) * 100,
+        promedioRealDias: Number(r.promDias || 0),
+      };
+    }));
+
+    // ---- E. percepcionServicio (reutiliza endpoint consolidados 1738) ----
+    const filtrosComunesPercepcion: FiltrosConsolidadoCalificacion = {
+      fechaDesde: fDesde, fechaHasta: fHasta,
+      idCategoria, codigoTecnico,
+    };
+    let global: ConsolidadoCalificacionItem[] = [];
+    let porCategoriaCons: ConsolidadoCalificacionItem[] = [];
+    let porTecnicoCons: ConsolidadoCalificacionItem[] = [];
+    try {
+      global = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'global' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
+      porCategoriaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'categoria' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
+      porTecnicoCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'tecnico' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
+    } catch { /* si no hay calificaciones, devuelve vacíos */ }
+    const primerGlobal = global?.[0];
+    const dist: DistribucionCalificacion = primerGlobal?.distribucion ? { ...distribucionVacia(), ...primerGlobal.distribucion } : distribucionVacia();
+    const sumaDist = (dist[1] + dist[2] + dist[3] + dist[4] + dist[5]) || 0;
+    const percepcionServicio: ReporteGestionPercepcionServicio = {
+      promedioGlobal: primerGlobal?.promedio ?? 0,
+      totalCalificaciones: primerGlobal?.numeroCalificaciones ?? sumaDist,
+      porDistribucion: dist,
+      porCategoria: porCategoriaCons || [],
+      porTecnico: porTecnicoCons || [],
+    };
+
+    // ---- F. rollupGeografico por sede + piso ----
+    const sedeQb = this.mantenimientoRepo.createQueryBuilder('s');
+    sedeQb.select([]);
+    sedeQb.leftJoin(CatalogoItem, 'sede', 'sede.id = s.idSede');
+    aplicarFiltrosComunes(sedeQb, 's.fechaRadicacion', fDesde, fHasta);
+    const sedeRaw = await sedeQb
+      .addSelect('CAST(s.idSede AS TEXT)', 'idSede')
+      .addSelect('COALESCE(sede.nombre, :fallbackSinSede)', 'nombreSede')
+      .addSelect('COUNT(*)::bigint', 'radicados')
+      .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estComp) THEN 1 ELSE 0 END), 0)::bigint", 'completados')
+      .addSelect("COALESCE(SUM(CASE WHEN s.estado IN (:...estCur) THEN 1 ELSE 0 END), 0)::bigint", 'encurso')
+      .setParameter('fallbackSinSede', '(sin sede)')
+      .setParameter('estComp', ESTADOS_COMPLETADOS)
+      .setParameter('estCur', ESTADOS_EN_CURSO)
+      .groupBy('s.idSede').addGroupBy('sede.nombre')
+      .orderBy('"radicados"', 'DESC')
+      .getRawMany();
+    const rollupGeografico: ReporteGestionRollupGeograficoItem[] = await Promise.all((sedeRaw || []).map(async (r: any) => {
+      const idSedeActual = r.idSede || null;
+      const pisos: Array<{ piso: string; cantidad: number }> = [];
+      if (idSedeActual) {
+        try {
+          const pisoQb = this.mantenimientoRepo.createQueryBuilder('s2');
+          pisoQb.select([]);
+          pisoQb.andWhere('s2.idSede = :idSede', { idSede: idSedeActual });
+          aplicarFiltrosComunes(pisoQb, 's2.fechaRadicacion', fDesde, fHasta);
+          pisoQb.andWhere("s2.piso IS NOT NULL AND TRIM(s2.piso) <> ''");
+          const rows = await pisoQb
+            .addSelect('s2.piso', 'piso')
+            .addSelect('COUNT(*)::bigint', 'cantidad')
+            .groupBy('s2.piso')
+            .orderBy('"cantidad"', 'DESC')
+            .getRawMany();
+          for (const p of rows || []) pisos.push({ piso: String(p.piso || ''), cantidad: Number(p.cantidad || 0) });
+        } catch { /* ignore */ }
+      }
+      return {
+        idSede: idSedeActual,
+        nombreSede: String(r.nombreSede || ''),
+        radicados: Number(r.radicados || 0),
+        completados: Number(r.completados || 0),
+        enCurso: Number(r.encurso || 0),
+        porPiso: pisos.length ? pisos : undefined,
+      };
+    }));
+
+    return {
+      periodo: {
+        fechaDesdeISO: fDesde.toISOString(),
+        fechaHastaISO: fHasta.toISOString(),
+        fechaDesdeAnteriorISO: fDesdeAnt.toISOString(),
+        fechaHastaAnteriorISO: fHastaAnt.toISOString(),
+      },
+      totalCasos,
+      porCategoria,
+      porTecnico,
+      tiemposAtencionVsMeta,
+      percepcionServicio,
+      rollupGeografico,
+    };
+  }
+
+  // ---- ST2 EFDS-1739: Exportador Excel 6 hojas ----
+  async generarExcelReporteGestion(
+    filtros: FiltrosReporteGestionParams,
+    user: AuthUser | null | undefined,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    requirePermission('infraestructura.reportes.gestion', user);
+    const reporte = await this.obtenerReporteGestion(filtros, user);
+    const hoy = new Date();
+    const fechaYYYYMMDD = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+    const filename = `Reporte_Gestion_Infraestructura_UMI_${fechaYYYYMMDD}.xlsx`;
+    const ExcelJS: any = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = user?.email || 'UMI-ESAP';
+    workbook.created = hoy;
+    workbook.lastPrinted = hoy;
+    workbook.modified = hoy;
+    workbook.calcProperties.fullCalcOnLoad = true;
+
+    // ================== HOJA 1: Resumen_KPI ==================
+    const wsKpi = workbook.addWorksheet('Resumen_KPI', { properties: { tabColor: { argb: 'FF1E40AF' } } });
+    wsKpi.getRow(1).values = ['REPORTE DE GESTIÓN DE INFRAESTRUCTURA UMI'];
+    wsKpi.getRow(1).font = { bold: true, size: 16, color: { argb: 'FF1E3A8A' } };
+    wsKpi.mergeCells('A1:F1');
+    wsKpi.getRow(2).values = ['Fecha generación', hoy.toISOString(), 'Usuario que genera', user?.email || 'N/A', '', ''];
+    wsKpi.getRow(3).values = ['Periodo desde', reporte.periodo.fechaDesdeISO, 'Periodo hasta', reporte.periodo.fechaHastaISO, '', ''];
+    wsKpi.getRow(4).values = ['Periodo anterior desde', reporte.periodo.fechaDesdeAnteriorISO, 'Periodo anterior hasta', reporte.periodo.fechaHastaAnteriorISO, '', ''];
+    wsKpi.getRow(5).values = ['', '', '', '', '', ''];
+    const casosCompletadosAcum = reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.casosCumplenSLA, 0);
+    const casosExcedenAcum = reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.casosExcedenSLA, 0);
+    const totalSlaEval = casosCompletadosAcum + casosExcedenAcum;
+    const pctSla = totalSlaEval === 0 ? 0 : (casosCompletadosAcum / totalSlaEval) * 100;
+    const horasPromedioTodas = (reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.promedioRealDias * (r.casosCumplenSLA + r.casosExcedenSLA), 0) / Math.max(1, totalSlaEval)) * 24;
+    wsKpi.getRow(6).values = ['KPI', 'Valor Actual', 'Valor Anterior', 'Variación Absoluta', 'Variación %', 'Notas'];
+    for (const c of ['A', 'B', 'C', 'D', 'E', 'F']) wsKpi.getColumn(c).width = 24;
+    wsKpi.getRow(6).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    wsKpi.getRow(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+    const kpisRows = [
+      ['1. Total radicados en periodo', reporte.totalCasos.totalRadicados.valorActual, reporte.totalCasos.totalRadicados.valorAnterior, reporte.totalCasos.totalRadicados.variacionAbsoluta, reporte.totalCasos.totalRadicados.variacionPorcentual.toFixed(2) + '%', 'Solicitudes recibidas'],
+      ['2. Tiempo promedio atención (horas)', horasPromedioTodas.toFixed(2), '-', '-', '-', 'Estimado desde tiempos vs meta por categoría'],
+      ['3. % SLA Cumplido', pctSla.toFixed(2) + '%', '-', '-', '-', `${casosCompletadosAcum}/${totalSlaEval} casos evaluados`],
+      ['4. Promedio Calificación Servicio', reporte.percepcionServicio.promedioGlobal.toFixed(2) + '/5', '-', '-', '-', `${reporte.percepcionServicio.totalCalificaciones} calificaciones`],
+    ];
+    for (const row of kpisRows) wsKpi.addRow(row);
+
+    // ================== HOJA 2: Distribucion_Categoria ==================
+    const wsCat = workbook.addWorksheet('Distribucion_Categoria', { properties: { tabColor: { argb: 'FF059669' } } });
+    wsCat.columns = [
+      { header: 'ID Categoría', key: 'idCategoria', width: 12 },
+      { header: 'Código', key: 'codigoCategoria', width: 12 },
+      { header: 'Nombre', key: 'nombreCategoria', width: 48 },
+      { header: 'Radicados', key: 'radicados', width: 12 },
+      { header: 'Completados', key: 'completados', width: 12 },
+      { header: 'En curso', key: 'enCurso', width: 12 },
+      { header: 'Vencidos SLA', key: 'vencidos', width: 14 },
+      { header: 'Promedio Calificación', key: 'promCalif', width: 18 },
+    ];
+    wsCat.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    wsCat.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF059669' } };
+    for (const c of reporte.porCategoria) {
+      wsCat.addRow({
+        idCategoria: c.idCategoria,
+        codigoCategoria: c.codigoCategoria,
+        nombreCategoria: c.nombreCategoria,
+        radicados: c.radicados,
+        completados: c.completados,
+        enCurso: c.enCurso,
+        vencidos: c.vencidos,
+        promCalif: c.promedioCalificacion,
+      });
+    }
+
+    // ================== HOJA 3: Rendimiento_Tecnicos ==================
+    const wsTec = workbook.addWorksheet('Rendimiento_Tecnicos', { properties: { tabColor: { argb: 'FFD97706' } } });
+    wsTec.columns = [
+      { header: 'Código Técnico', key: 'codigoTecnico', width: 22 },
+      { header: 'Nombre', key: 'nombreTecnico', width: 38 },
+      { header: 'Asignados periodo', key: 'asignados', width: 18 },
+      { header: 'Completados', key: 'completados', width: 14 },
+      { header: 'En curso', key: 'enCurso', width: 12 },
+      { header: 'Carga vigente HOY', key: 'cargaVigente', width: 18 },
+      { header: 'Promedio Calificación', key: 'promCalif', width: 20 },
+    ];
+    wsTec.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    wsTec.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD97706' } };
+    for (const t of reporte.porTecnico) {
+      wsTec.addRow({
+        codigoTecnico: t.codigoTecnico,
+        nombreTecnico: t.nombreTecnico,
+        asignados: t.asignados,
+        completados: t.completados,
+        enCurso: t.enCurso,
+        cargaVigente: t.cargaVigente,
+        promCalif: t.promedioCalificacion,
+      });
+    }
+
+    // ================== HOJA 4: Tiempos_Atencion_SLA ==================
+    const wsSla = workbook.addWorksheet('Tiempos_Atencion_SLA', { properties: { tabColor: { argb: 'FF7C3AED' } } });
+    wsSla.columns = [
+      { header: 'ID Categoría', key: 'id', width: 12 },
+      { header: 'Categoría', key: 'nombre', width: 46 },
+      { header: 'Meta SLA (días)', key: 'meta', width: 14 },
+      { header: 'Casos cumplen SLA', key: 'cumplen', width: 18 },
+      { header: 'Casos exceden SLA', key: 'exceden', width: 18 },
+      { header: '% Cumplimiento', key: 'pct', width: 16 },
+      { header: 'Promedio real (días)', key: 'promDias', width: 18 },
+    ];
+    wsSla.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    wsSla.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF7C3AED' } };
+    for (const s of reporte.tiemposAtencionVsMeta) {
+      wsSla.addRow({
+        id: s.idCategoria,
+        nombre: s.nombreCategoria,
+        meta: s.metaSlaDias,
+        cumplen: s.casosCumplenSLA,
+        exceden: s.casosExcedenSLA,
+        pct: s.porcentajeCumplimiento.toFixed(2) + '%',
+        promDias: s.promedioRealDias,
+      });
+    }
+
+    // ================== HOJA 5: Percepcion_Calificacion ==================
+    const wsPer = workbook.addWorksheet('Percepcion_Calificacion', { properties: { tabColor: { argb: 'FFDC2626' } } });
+    wsPer.columns = [
+      { header: 'Sección', key: 'seccion', width: 24 },
+      { header: 'Grupo / Bucket', key: 'grupo', width: 38 },
+      { header: 'Cantidad', key: 'cant', width: 12 },
+      { header: 'Promedio', key: 'prom', width: 14 },
+      { header: 'Notas', key: 'notas', width: 40 },
+    ];
+    wsPer.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    wsPer.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDC2626' } };
+    wsPer.addRow({ seccion: 'Global', grupo: 'Total calificaciones', cant: reporte.percepcionServicio.totalCalificaciones, prom: reporte.percepcionServicio.promedioGlobal, notas: 'Todas las calificaciones del periodo' });
+    for (let i = 1; i <= 5; i++) {
+      wsPer.addRow({
+        seccion: 'Distribución buckets', grupo: `${i} estrellas`,
+        cant: reporte.percepcionServicio.porDistribucion[i as 1 | 2 | 3 | 4 | 5],
+        prom: '',
+        notas: i === 5 ? 'Excelente' : i === 4 ? 'Bueno' : i === 3 ? 'Regular' : i === 2 ? 'Malo' : 'Pésimo',
+      });
+    }
+    wsPer.addRow({ seccion: '---', grupo: 'Por Categoría', cant: '', prom: '', notas: 'Detalle consolidado por categoría' });
+    for (const c of reporte.percepcionServicio.porCategoria) {
+      wsPer.addRow({ seccion: 'Por categoría', grupo: c.nombreGrupo, cant: c.numeroCalificaciones, prom: c.promedio, notas: `Suma ${c.sumaCalificaciones} - ID ${String(c.idGrupo)}` });
+    }
+    wsPer.addRow({ seccion: '---', grupo: 'Por Técnico', cant: '', prom: '', notas: 'Detalle consolidado por técnico' });
+    for (const t of reporte.percepcionServicio.porTecnico) {
+      wsPer.addRow({ seccion: 'Por técnico', grupo: t.nombreGrupo, cant: t.numeroCalificaciones, prom: t.promedio, notas: `Código ${String(t.idGrupo)}` });
+    }
+
+    // ================== HOJA 6: Detalle_Casos_Atendidos ==================
+    const wsDet = workbook.addWorksheet('Detalle_Casos_Atendidos', { properties: { tabColor: { argb: 'FF0F172A' } } });
+    wsDet.columns = [
+      { header: 'Consecutivo', key: 'consecutivo', width: 22 },
+      { header: 'Fecha radicación', key: 'fechaRad', width: 24 },
+      { header: 'Sede', key: 'sede', width: 28 },
+      { header: 'Piso / Salón', key: 'ubicacion', width: 18 },
+      { header: 'ID Categoría', key: 'idCat', width: 12 },
+      { header: 'Técnico asignado', key: 'tecnico', width: 34 },
+      { header: 'Estado', key: 'estado', width: 22 },
+      { header: 'Área responsable', key: 'area', width: 16 },
+      { header: 'Fecha cierre técnico', key: 'fechaCierre', width: 24 },
+      { header: 'Calificación 1-5', key: 'calif', width: 14 },
+      { header: 'Costo final COP', key: 'costo', width: 16 },
+      { header: 'Evidencias (links)', key: 'evidencias', width: 80 },
+    ];
+    wsDet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    wsDet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+
+    // Query detalle solicitudes del periodo
+    const qbDet = this.mantenimientoRepo.createQueryBuilder('s');
+    qbDet.leftJoinAndSelect('s.sede', 'sede');
+    const fd = new Date(reporte.periodo.fechaDesdeISO as string);
+    const fh = new Date(reporte.periodo.fechaHastaISO as string);
+    qbDet.andWhere('s.fechaRadicacion >= :fDesde', { fDesde: fd });
+    qbDet.andWhere('s.fechaRadicacion <= :fHasta', { fHasta: fh });
+    if (reporte.porCategoria.length === 1 && reporte.porCategoria[0]?.idCategoria != null) {
+      qbDet.andWhere('s.idCategoria = :idCat', { idCat: reporte.porCategoria[0].idCategoria });
+    }
+    qbDet.orderBy('s.fechaRadicacion', 'DESC');
+    qbDet.limit(5000);
+    const detalleSols = await qbDet.getMany();
+    for (const sol of detalleSols) {
+      const ubicTxt = [sol.piso, sol.salon].filter(Boolean).join(' / ') || (sol.espacio ? (sol.espacio as any).codigo || '' : '');
+      let evTxt = '';
+      try {
+        const evs = await this.getEvidenciasBySolicitud(sol.idSolicitud, 180);
+        const links: string[] = [];
+        for (let i = 0; i < Math.min(evs.length, 8); i++) {
+          const e = evs[i];
+          const url = e.urlPresigned || e.urlPublica || '';
+          if (!url) continue;
+          const label = `[Ev${i + 1}] ${e.nombreOriginal || 'adjunto'}`.slice(0, 120);
+          links.push(`=HYPERLINK("${url}", "${label.replace(/"/g, '""')}")`);
+        }
+        evTxt = links.join(' ; ');
+      } catch { /* ignore */ }
+      wsDet.addRow({
+        consecutivo: sol.consecutivo || sol.idSolicitud,
+        fechaRad: sol.fechaRadicacion ? new Date(sol.fechaRadicacion).toISOString() : '',
+        sede: (sol.sede as any)?.nombre || '',
+        ubicacion: String(ubicTxt || sol.ubicacionDetalle || ''),
+        idCat: sol.idCategoria ?? '',
+        tecnico: sol.responsableAsignado || '',
+        estado: sol.estado || '',
+        area: sol.areaResponsableActual || '',
+        fechaCierre: sol.fechaCierreTecnico ? new Date(sol.fechaCierreTecnico).toISOString() : '',
+        calif: sol.calificacionServicio ?? '',
+        costo: sol.costoFinalEfectivoCop ?? 0,
+        evidencias: { formula: evTxt || '' },
+      });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return { buffer: Buffer.from(buffer), filename };
+  }
+
+  // ---- ST3 EFDS-1739: Exportador PDF 5 secciones ----
+  async generarPdfReporteGestion(
+    filtros: FiltrosReporteGestionParams,
+    user: AuthUser | null | undefined,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    requirePermission('infraestructura.reportes.gestion', user);
+    const reporte = await this.obtenerReporteGestion(filtros, user);
+    const hoy = new Date();
+    const fechaYYYYMMDD = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+    const filename = `Reporte_Gestion_Infraestructura_UMI_${fechaYYYYMMDD}.pdf`;
+    const PdfPrinterMod: any = await import('pdfmake');
+    const PdfPrinter = PdfPrinterMod.default ?? PdfPrinterMod;
+
+    const printer = new PdfPrinter({
+      Roboto: {
+        normal: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
+        bold: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
+        italics: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
+        bolditalics: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
+      },
+    });
+
+    const catSlaComp = reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.casosCumplenSLA, 0);
+    const catSlaExc = reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.casosExcedenSLA, 0);
+    const totalSla = catSlaComp + catSlaExc;
+    const pctSla = totalSla === 0 ? 0 : (catSlaComp / totalSla) * 100;
+    const horasProm = (reporte.tiemposAtencionVsMeta.reduce((s, r) => s + r.promedioRealDias * (r.casosCumplenSLA + r.casosExcedenSLA), 0) / Math.max(1, totalSla)) * 24;
+
+    const delta = reporte.totalCasos.totalRadicados;
+    const deltaTxt = (delta.variacionPorcentual === 0 ? '0%' : (delta.variacionPorcentual > 0 ? '▲' : '▼') + ' ' + Math.abs(delta.variacionPorcentual).toFixed(2) + '%') + ` (${delta.variacionAbsoluta >= 0 ? '+' : ''}${delta.variacionAbsoluta})`;
+
+    const filaHeaderTabla = (arr: string[]) => arr.map((t) => ({ text: t, style: 'tableHeader' }));
+
+    const catTable: any[][] = [
+      filaHeaderTabla(['Categoría', 'Rad', 'Comp', 'Cur', 'Venc', 'Prom ★']),
+      ...reporte.porCategoria.map((c) => [
+        String(c.nombreCategoria || ''),
+        String(c.radicados),
+        String(c.completados),
+        String(c.enCurso),
+        String(c.vencidos),
+        String(c.promedioCalificacion),
+      ]),
+    ];
+    const tecTable: any[][] = [
+      filaHeaderTabla(['Técnico', 'Asig', 'Comp', 'Cur', 'Carga', 'Prom ★']),
+      ...reporte.porTecnico.map((t) => [
+        String(t.codigoTecnico || '') + '  ' + String(t.nombreTecnico || ''),
+        String(t.asignados),
+        String(t.completados),
+        String(t.enCurso),
+        String(t.cargaVigente),
+        String(t.promedioCalificacion),
+      ]),
+    ];
+    const slaTable: any[][] = [
+      filaHeaderTabla(['Categoría', 'Meta (d)', 'Cumplen', 'Exceden', '% Cumpl', 'Prom Real']),
+      ...reporte.tiemposAtencionVsMeta.map((s) => [
+        String(s.nombreCategoria || ''),
+        String(s.metaSlaDias),
+        String(s.casosCumplenSLA),
+        String(s.casosExcedenSLA),
+        s.porcentajeCumplimiento.toFixed(2) + '%',
+        s.promedioRealDias + ' d',
+      ]),
+    ];
+    const geoTable: any[][] = [
+      filaHeaderTabla(['Sede', 'Radicados', 'Completados', 'En curso']),
+      ...reporte.rollupGeografico.map((g) => [
+        String(g.nombreSede || ''),
+        String(g.radicados),
+        String(g.completados),
+        String(g.enCurso),
+      ]),
+    ];
+
+    const dd: import('pdfmake').TDocumentDefinitions = {
+      pageSize: 'LETTER',
+      pageMargins: [40, 50, 40, 60],
+      footer: (currentPage: number, pageCount: number) => ({
+        text: `Página ${currentPage} / ${pageCount}  ·  Generado: ${hoy.toISOString()}  ·  UMI ESAP`,
+        style: 'footer',
+        alignment: 'right',
+        margin: [0, 20, 30, 0],
+      }),
+      content: [
+        // ===== SECCIÓN 1: PORTADA =====
+        { text: 'REPORTE DE GESTIÓN', style: 'h1', alignment: 'center', margin: [0, 40, 0, 10] },
+        { text: 'Módulo de Infraestructura UMI', style: 'h2', alignment: 'center', margin: [0, 0, 0, 60] },
+        {
+          style: 'tableExample',
+          margin: [80, 0, 80, 0],
+          table: {
+            widths: ['35%', '65%'],
+            body: [
+              [{ text: 'Periodo reporte', style: 'k' }, { text: `Desde ${reporte.periodo.fechaDesdeISO?.slice(0, 10)} · Hasta ${reporte.periodo.fechaHastaISO?.slice(0, 10)}` }],
+              [{ text: 'Usuario', style: 'k' }, { text: user?.email || 'Consulta consolidada' }],
+              [{ text: 'Fecha emisión', style: 'k' }, { text: hoy.toISOString() }],
+              [{ text: 'Versión plan', style: 'k' }, { text: 'EFDS-1739 RF-INF-010 v1.0' }],
+            ],
+          },
+          layout: 'lightHorizontalLines',
+        },
+        { text: ' ', pageBreak: 'after' },
+
+        // ===== SECCIÓN 2: KPIs Cards =====
+        { text: '1. Indicadores clave (KPI)', style: 'h2', margin: [0, 0, 0, 20] },
+        {
+          style: 'tableKpi',
+          table: {
+            widths: ['*', '*', '*', '*'],
+            body: [
+              filaHeaderTabla(['Total radicados', 'Tiempo prom (h)', '% SLA cumplido', 'Calif promedio']),
+              [
+                { text: String(delta.valorActual), style: 'kpiValue', alignment: 'center' },
+                { text: horasProm.toFixed(2), style: 'kpiValue', alignment: 'center' },
+                { text: pctSla.toFixed(2) + '%', style: 'kpiValue', alignment: 'center' },
+                { text: reporte.percepcionServicio.promedioGlobal.toFixed(2) + ' / 5', style: 'kpiValue', alignment: 'center' },
+              ],
+              [
+                { text: deltaTxt, style: 'kpiSub', alignment: 'center' },
+                { text: 'vs periodo anterior', style: 'kpiSub', alignment: 'center' },
+                { text: `${catSlaComp}/${totalSla} casos evaluados`, style: 'kpiSub', alignment: 'center' },
+                { text: `${reporte.percepcionServicio.totalCalificaciones} calificaciones`, style: 'kpiSub', alignment: 'center' },
+              ],
+            ],
+          },
+          layout: 'headerLineOnly',
+        },
+        { text: ' ', pageBreak: 'after' },
+
+        // ===== SECCIÓN 3: Distribución Categoría =====
+        { text: '2. Distribución por Categoría de Servicio', style: 'h2', margin: [0, 0, 0, 15] },
+        { table: { headerRows: 1, body: catTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
+        { text: ' ', pageBreak: 'after' },
+
+        // ===== SECCIÓN 4: Rendimiento Técnicos =====
+        { text: '3. Rendimiento por Técnico Asignado', style: 'h2', margin: [0, 0, 0, 15] },
+        { table: { headerRows: 1, body: tecTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
+        { text: ' ', pageBreak: 'after' },
+
+        // ===== SECCIÓN 5: ANEXOS =====
+        { text: '4. Anexos', style: 'h2', margin: [0, 0, 0, 15] },
+        { text: '4.1 Tiempos de atención VS Meta SLA', style: 'h3', margin: [0, 0, 0, 10] },
+        { table: { headerRows: 1, body: slaTable, widths: ['*', 'auto', 'auto', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
+        { text: ' ', margin: [0, 20] },
+        { text: '4.2 Rollup geográfico por sede', style: 'h3', margin: [0, 0, 0, 10] },
+        { table: { headerRows: 1, body: geoTable, widths: ['*', 'auto', 'auto', 'auto'] }, layout: 'lightHorizontalLines' },
+        { text: ' ', margin: [0, 20] },
+        { text: `4.3 Percepción servicio — promedio global: ${reporte.percepcionServicio.promedioGlobal.toFixed(2)}/5 en ${reporte.percepcionServicio.totalCalificaciones} calificaciones. Distribución 1★${reporte.percepcionServicio.porDistribucion[1]} · 2★${reporte.percepcionServicio.porDistribucion[2]} · 3★${reporte.percepcionServicio.porDistribucion[3]} · 4★${reporte.percepcionServicio.porDistribucion[4]} · 5★${reporte.percepcionServicio.porDistribucion[5]}.`, margin: [0, 0, 0, 20] },
+      ],
+      styles: {
+        h1: { fontSize: 26, bold: true, color: '#1E3A8A' },
+        h2: { fontSize: 16, bold: true, color: '#1E40AF', margin: [0, 10, 0, 8] },
+        h3: { fontSize: 13, bold: true, color: '#334155' },
+        k: { bold: true, color: '#334155' },
+        footer: { fontSize: 8, color: '#64748B' },
+        tableHeader: { bold: true, fontSize: 10, color: 'white', fillColor: '#1E3A8A' },
+        kpiValue: { fontSize: 22, bold: true, color: '#0F172A' },
+        kpiSub: { fontSize: 9, color: '#64748B' },
+      },
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 10,
+      },
+    };
+
+    return new Promise((resolve, reject) => {
+      try {
+        const pdfDoc = printer.createPdfKitDocument(dd);
+        const chunks: any[] = [];
+        pdfDoc.on('data', (chunk: any) => chunks.push(chunk));
+        pdfDoc.on('end', () => resolve({ buffer: Buffer.concat(chunks), filename }));
+        pdfDoc.on('error', (e: any) => reject(e));
+        pdfDoc.end();
+      } catch (e) { reject(e); }
+    });
+  }
+
   async listarValoraciones(
     idSolicitud: string | null,
     user: AuthUser | null | undefined,
@@ -2826,5 +3620,71 @@ export class MantenimientoService implements OnModuleInit {
       await this.evidenciaRepo.save(actualizables as any);
     }
     return rows;
+  }
+
+  // ---- ST4 EFDS-1739: Descarga de evidencias individual + ZIP ----
+  async obtenerUrlDescargaEvidencia(
+    idEvidencia: string,
+    user: AuthUser | null | undefined,
+  ): Promise<{ redirectUrl: string; nombreOriginal: string; mimeType: string }> {
+    if (!isUuid(idEvidencia)) throw new BadRequestException('ID evidencia no tiene formato UUID válido.');
+    requirePermission('infraestructura.reportes.gestion', user);
+    const ev = await this.evidenciaRepo.findOne({ where: { idEvidencia } });
+    if (!ev) throw new NotFoundException('Evidencia no existe o fue eliminada.');
+    const expire = 60 * 60 * 24 * 180;
+    const firmada = await this.storage.regenerarUrlPresigned(ev.rutaObjeto, ev.bucket, expire);
+    ev.urlPresigned = firmada.urlPresigned;
+    ev.vencimientoPresigned = firmada.vencimientoPresigned;
+    try { await this.evidenciaRepo.save(ev as any); } catch { /* ignore */ }
+    return { redirectUrl: firmada.urlPresigned, nombreOriginal: ev.nombreOriginal || `evidencia-${idEvidencia}.bin`, mimeType: ev.mimeType || 'application/octet-stream' };
+  }
+
+  async descargarZipEvidenciasSolicitud(
+    idSolicitud: string,
+    user: AuthUser | null | undefined,
+  ): Promise<{ stream: PassThrough; filename: string; totalBytes: number }> {
+    if (!isUuid(idSolicitud)) throw new BadRequestException('ID solicitud no tiene formato UUID válido.');
+    requirePermission('infraestructura.reportes.gestion', user);
+    const sol = await this.findById(idSolicitud);
+    const evs = await this.getEvidenciasBySolicitud(sol.idSolicitud, 180);
+    const archiverMod: any = await import('archiver');
+    const archiver = archiverMod.default ?? archiverMod;
+    const output = new PassThrough();
+    const zip = archiver('zip', { zlib: { level: 6 }, highWaterMark: 1024 * 1024 });
+    zip.on('error', (err: any) => { try { output.destroy(err); } catch { /* ignore */ } });
+    zip.pipe(output);
+    const fsMod = await import('fs');
+    const fs = fsMod.default ?? fsMod;
+    let totalBytes = 0;
+    const vistos = new Set<string>();
+    for (let i = 0; i < evs.length; i++) {
+      const e = evs[i];
+      if (!e || !e.rutaObjeto) continue;
+      const key = `${e.bucket}:${e.rutaObjeto}`;
+      if (vistos.has(key)) continue;
+      vistos.add(key);
+      let baseName = String(e.nombreOriginal || `evidencia_${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
+      if (!/\.[a-z0-9]{1,10}$/i.test(baseName)) baseName = baseName + '.bin';
+      let nombreZip = `${String(i + 1).padStart(3, '0')}_${baseName}`;
+      let sufijo = 2;
+      const nombresEnZip = new Set<string>();
+      while (nombresEnZip.has(nombreZip)) { nombreZip = `${String(i + 1).padStart(3, '0')}_(${sufijo})_${baseName}`; sufijo++; }
+      nombresEnZip.add(nombreZip);
+      try {
+        if (this.storage.existeArchivo(e.rutaObjeto)) {
+          const stream = this.storage.obtenerStream(e.rutaObjeto);
+          zip.append(stream, { name: nombreZip, date: e.fechaSubida || new Date() });
+          totalBytes += Number(e.tamanoBytes || 0);
+        } else {
+          zip.append(`NO SE PUDO DESCARGAR ESTA EVIDENCIA (${nombreZip}). Error: Archivo no encontrado en disco local\n`, { name: nombreZip + '__FALLO.txt' });
+        }
+      } catch (err: any) {
+        zip.append(`NO SE PUDO DESCARGAR ESTA EVIDENCIA (${nombreZip}). Error: ${String(err?.message || err).slice(0, 500)}\n`, { name: nombreZip + '__FALLO.txt' });
+      }
+    }
+    zip.finalize().catch(() => { try { output.end(); } catch { /* ignore */ } });
+    const consecutivo = sol.consecutivo || sol.idSolicitud.slice(0, 10);
+    const filename = `Evidencias_${consecutivo.replace(/[^A-Za-z0-9_-]/g, '_')}.zip`;
+    return { stream: output, filename, totalBytes };
   }
 }

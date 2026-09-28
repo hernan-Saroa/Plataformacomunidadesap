@@ -29,6 +29,7 @@ function servicio({
     save: jest.fn((rows: any[]) => Promise.resolve(rows || [])),
     create: jest.fn((d: any) => d),
   } as any,
+  dataSource = {} as any,
   notificationClient = undefined as any,
 } = {}) {
   return new MantenimientoService(
@@ -38,6 +39,7 @@ function servicio({
     evidenciaRepo,
     valoracionRepo,
     valoracionInsumoRepo,
+    dataSource,
     storage,
     notificationClient,
   );
@@ -418,6 +420,7 @@ describe('[EFDS-1731] AC-02 Bandeja findAll filtro areaResponsableActual por rol
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     getMany: jest.fn().mockResolvedValue([]),
+    getSql: jest.fn(() => ''),
     ...qb,
   });
 
@@ -588,7 +591,7 @@ describe('[EFDS-1732] AC-03 findAll filtro opcional idCategoria integer', () => 
     const skip = jest.fn().mockReturnThis();
     const take = jest.fn().mockReturnThis();
     const getMany = jest.fn().mockResolvedValue([]);
-    const qb: any = { where, leftJoinAndSelect, andWhere, setParameter, orderBy, addOrderBy, skip, take, getMany };
+    const qb: any = { where, leftJoinAndSelect, andWhere, setParameter, orderBy, addOrderBy, skip, take, getMany, getSql: jest.fn(() => '') };
     const s = servicio({
       mantenimientoRepo: { createQueryBuilder: jest.fn(() => qb) } as any,
     });

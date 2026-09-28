@@ -9,6 +9,7 @@ import {
   X,
   FolderKanban,
   Settings,
+  BarChart3,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -30,8 +31,9 @@ import { NuevaSolicitudForm } from './NuevaSolicitudForm';
 import { DetalleSolicitudModal } from './DetalleSolicitudModal';
 import { AdminCategoriasServicioMini } from './AdminCategoriasServicioMini';
 import { AdminParametrosUMI } from './AdminParametrosUMI';
+import { ReportesGestionView } from './ReportesGestionView';
 
-type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias' | 'parametros';
+type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias' | 'parametros' | 'reportes';
 type VistaMantenimiento = 'todas' | 'remitidasTI' | 'asignadasMi';
 
 interface Toast {
@@ -146,6 +148,12 @@ export const GestionInfraestructuraModule: React.FC = () => {
     'infraestructura.param.categories_crud',
     'infraestructura.view_all',
   ]);
+  const bypassRolesReportes = bypassRolesInventario || rolesNorm.has('CONSULTA_CALIDAD_INFRA') || rolesNorm.has('ADMINISTRADOR_MODULO_INFRA');
+  const puedeVerReportes = bypassRolesReportes || hasPerm(sesionUmi, [
+    'infraestructura.reportes.gestion',
+    'infraestructura.reportes.consolidados',
+    'infraestructura.audit.trazabilidad',
+  ]);
   // Métricas Globales (ERS P2 KPIs operativos).
   // - SA/P5/P6/P7 = Siempre (view_all/reportes/param*)
   // - P2 ANALISTA_ASIGNADOR_UMI = OPERATIVO (asign, reject, redistribute, forward_ti, read_all): se requieren SUS KPIs
@@ -227,12 +235,13 @@ export const GestionInfraestructuraModule: React.FC = () => {
       { clave: 'mantenimiento', puede: puedeVerMantenimiento },
       { clave: 'categorias', puede: puedeVerCategorias },
       { clave: 'parametros', puede: puedeVerParametros },
+      { clave: 'reportes', puede: puedeVerReportes },
     ] as const;
     const actualValida = tabsOrden.find((t) => t.clave === activeTab);
     if (actualValida && actualValida.puede) return;
     const primera = tabsOrden.find((t) => t.puede);
     if (primera && primera.clave !== activeTab) setActiveTab(primera.clave);
-  }, [loading, puedeVerEspacios, puedeVerSedes, puedeVerMantenimiento, puedeVerCategorias, puedeVerParametros, activeTab]);
+  }, [loading, puedeVerEspacios, puedeVerSedes, puedeVerMantenimiento, puedeVerCategorias, puedeVerParametros, puedeVerReportes, activeTab]);
 
   useEffect(() => {
     if (!toast) return;
@@ -441,6 +450,21 @@ export const GestionInfraestructuraModule: React.FC = () => {
             Parámetros UMI
           </button>
         )}
+
+        {puedeVerReportes && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('reportes')}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-bold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === 'reportes'
+                ? 'border-indigo-600 text-indigo-600 bg-white shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Reportes Gestión
+          </button>
+        )}
       </div>
 
       {/* Vista de Contenido Activo */}
@@ -536,6 +560,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
         )}
         {activeTab === 'categorias' && puedeVerCategorias && <AdminCategoriasServicioMini />}
         {activeTab === 'parametros' && puedeVerParametros && <AdminParametrosUMI />}
+        {activeTab === 'reportes' && puedeVerReportes && <ReportesGestionView />}
       </div>
     </div>
   );
